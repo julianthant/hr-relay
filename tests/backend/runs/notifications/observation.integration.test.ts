@@ -10,4 +10,17 @@ describe("canonical notification producers", () => {
     await Promise.resolve(); expect(stopped).toBe(false); release?.(); await next; await stop; expect(stopped).toBe(true);
     await observer.observe(); expect(reads).toBe(2);
   });
+  it("tells status listeners once each time the served status moves", async () => {
+    let fail = true;
+    const observer = createNotificationObserver({ read: () => ({ observations: [], diagnostics: [] }), health: async () => { if (fail) throw new Error("private diagnostic"); }, inbox: { publish: async () => { throw new Error("unused"); } } });
+    const seen: unknown[] = [];
+    const unsubscribe = observer.onStatusChange(() => seen.push(observer.status()));
+    await observer.observe();
+    await observer.observe();
+    expect(seen).toEqual([{ state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: 1 }]);
+    fail = false; await observer.observe();
+    expect(seen).toEqual([{ state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: 1 }, { state: "ready", pending: 0 }]);
+    unsubscribe(); await observer.stop();
+    expect(seen).toHaveLength(2);
+  });
 });

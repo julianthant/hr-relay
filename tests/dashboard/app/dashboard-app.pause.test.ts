@@ -9,8 +9,8 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
 import { BulkRunCommandRequestSchema, CommandRequestSchema, type BulkRunCommandRequest, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
 import { lifecycleCommandId } from "../../../src/rules/commands/lifecycle-command-id.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
-import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { pickedRunWorld } from "../../support/helpers/dashboard/picked-dashboard.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 
@@ -27,7 +27,7 @@ async function mount(pause: "running" | "pause-pending" | "paused" = "running", 
   const sent: Array<CommandRequest | BulkRunCommandRequest> = [];
   const client = { ...transport, applicationLifecycle: async () => lifecycle,
     subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) {
-      input.onDay(day); input.onState({ state: "live" }); return { close() {} };
+      input.onDay(day); input.onState({ state: "live" }); return { select() {}, close() {} };
     },
     async executeBulkCommand(raw: unknown) { sent.push(BulkRunCommandRequestSchema.parse(raw)); return new Promise<never>(() => undefined); },
     async executeCommand(raw: unknown) { sent.push(CommandRequestSchema.parse(raw)); return reply.promise; },

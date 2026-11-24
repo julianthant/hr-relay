@@ -9,8 +9,8 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -38,7 +38,7 @@ it("Back to a kept day with its run open shows both at once, marked Updating, th
   const streams: { day: string; serve: (frame: DashboardDayWire) => void }[] = [];
   const client: DashboardClient = { ...transport, subscribeDay: input => {
     streams.push({ day: input.day, serve: frame => { input.onDay(frame); input.onState({ state: "live" }); } });
-    return { close: () => undefined };
+    return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
@@ -91,7 +91,7 @@ it("Back to a kept day gives the held run's Logs no Pause, Stop or Cancel, and s
   const streams: { day: string; serve: (frame: DashboardDayWire) => void }[] = [];
   const client: DashboardClient = { ...transport, subscribeDay: input => {
     streams.push({ day: input.day, serve: frame => { input.onDay(frame); input.onState({ state: "live" }); } });
-    return { close: () => undefined };
+    return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
@@ -129,7 +129,7 @@ it("a stream reset with a run open shows neither the pre-reset row nor its logs 
   const streams: { serve: (frame: DashboardDayWire) => void; reset: () => void }[] = [];
   const client: DashboardClient = { ...transport, subscribeDay: input => {
     streams.push({ serve: frame => { input.onDay(frame); input.onState({ state: "live" }); }, reset: () => input.onState({ state: "connecting" }) });
-    return { close: () => undefined };
+    return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });

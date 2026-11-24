@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { z } from "zod";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
-import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema, CommandIdSchema } from "../../../../src/rules/identity/ids.js";
 import { NotificationWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { registerNotificationRoutes } from "../../../../src/backend/transports/http/routes/notifications.js";
 import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
@@ -40,7 +40,7 @@ it("serves the same storage group through canonical inbox and day snapshots, kee
   const input = { database, clock, lifecycle, descriptors, runDetailDeps: createRunDetailTestWorld().depsOf(w) };
   const routes = composeNotificationRoutes({ ...input, assertCurrent: () => undefined, notificationObserver: observer,
     notificationTarget: () => ({ kind: "storage" }) });
-  const publications = composeNotificationPublications({ ...input, notificationInbox: inbox });
+  const publications = composeNotificationPublications({ ...input, notificationInbox: inbox, target: routes.target });
   const emitted: NotificationPublication[] = [];
   const unsubscribe = publications.subscribe(publication => emitted.push(publication));
   try {
@@ -80,7 +80,11 @@ it("serves the same storage group through canonical inbox and day snapshots, kee
     assert.deepEqual(queue.buildDashboardDayWire(DAY).notifications, rows);
     assert.equal(emitted.length, 5);
     for (const publication of emitted) {
-      const row = publications.project(publication).notification;
+      const { publication: wire, listed } = publications.project(publication);
+      const row = wire.notification;
+      assert.deepEqual(listed, rows[0], "a storage publication is listed inside its concern's one group row");
+      assert.ok(listed.kind === "notification" && listed.count === 5);
+      assert.deepEqual(publications.target(publication), { kind: "storage" });
       assert.ok(row.kind === "notification");
       assert.deepEqual(row.context, { state: "storage", concern: "backup" });
       assert.equal(row.group, undefined);
@@ -112,6 +116,13 @@ it("serves the same storage group through canonical inbox and day snapshots, kee
     assert.equal(await groupState(await read(expiredTag)), "snoozed");
 
     const linked = queuedEventOf(w, { seed: 1, descriptor: personLookupDescriptor, displayName: "First name" });
+    await inbox.publish({ kind: "command-unknown", commandId: CommandIdSchema.parse(uuidOf(900)) });
+    const done = emitted.at(-1);
+    assert.ok(done !== undefined && done.event.kind === "command-unknown");
+    const plain = publications.project(done);
+    assert.deepEqual(plain.listed, plain.publication.notification, "a publication outside a group is listed as itself");
+    const unlisted = { ...done, notification: { ...done.notification, notificationId: uuidOf(901) } } as NotificationPublication;
+    assert.throws(() => publications.project(unlisted), /NOTIFICATION_PUBLICATION_NOT_LISTED/u, "a publication its actor's list does not hold is a named failure");
     const notice = notificationRecordOf({ seed: 1, title: "Run needs attention", lastSeenAt: linked.ts });
     database.authority.notifications.create(notice);
     const subject = async (response: Response) => {

@@ -15,6 +15,11 @@ vi.mock("../../../../src/rules/time/clock.js", async importOriginal => {
   let elapsedMs = 0;
   return { ...actual, systemClock: { ...actual.systemClock, monotonicMs: () => elapsedMs += 51 } };
 });
+// Sign-up and sign-in verify at one cheaper scrypt cost; this file proves the evidence upgrade, not the password hash.
+vi.mock("node:crypto", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:crypto")>();
+  return { ...actual, scryptSync: (...[password, salt, length, options]: Parameters<typeof actual.scryptSync>) => actual.scryptSync(password, salt, length, { ...options, N: 2 ** 10 }) };
+});
 
 const CLOCK = manualClock(new Date("2026-08-14T10:00:00.000Z"));
 const tables = ["runs", "run_results", "run_checkpoints", "write_intents", "write_attempts", "gate_results", "run_delegations", "commands", "command_audits", "run_receipts", "timeline_events", "delegation_dependencies", "run_failures"] as const;

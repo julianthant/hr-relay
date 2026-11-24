@@ -137,7 +137,8 @@ const DELETE = {
   uncertain: deleting("Account deletion not confirmed", { state: "uncertain", personName: "Jordan Lee", message: "Couldn't confirm the deletion. Reopen Relay to check." }, 'text="Couldn\'t confirm the deletion. Reopen Relay to check."'),
 } satisfies Record<DeleteAccountPresentation["state"], Story>;
 
-const find = (query: string) => type("Search settings", query);
+/** Typing leaves focus in the search box; a click on the sidebar title puts the keyboard walk back at the top of the page, as a user's Tab would start. */
+const find = (query: string): ((page: Page) => Promise<void>) => then(type("Search settings", query), async page => { await page.getByRole("heading", { name: "Settings", exact: true }).click(); });
 const SEARCH = {
   results: scene("Search with matching settings", { play: then(loaded, find("browser")), story: { ready: '[role="status"]:has-text("found")' } }),
   none: scene("Search with no matching setting", { play: then(loaded, find("zzzz")), story: { ready: 'text="No settings found"' } }),
@@ -182,74 +183,48 @@ const NOTICE = {
 const AUDIT_FIXES = "#532";
 const breaks = (...rules: readonly StateRuleName[]): Readonly<Partial<Record<StateRuleName, string>>> => Object.fromEntries(rules.map(rule => [rule, AUDIT_FIXES]));
 const BREAK_SETS = {
-  /** FOCUS, and the Downloads row shows a file path. */
-  FOCUS_AND_PATH: breaks("named-and-focusable", "no-banned-text"),
-  /** The notice sits over the page's headings. */
-  TOAST: breaks("toast-text-only"),
-  /** FOCUS, and the Account edit dialog draws no body padding. */
-  FOCUS_DIALOG_PADDING: breaks("dialogs-share-shape", "named-and-focusable"),
-  /** FOCUS_DIALOG_PADDING, and Save is not the accent while the dialog shows a refusal. */
-  FOCUS_DIALOG_PADDING_ACCENT: breaks("dialogs-share-shape", "named-and-focusable", "primary-button-accent"),
-  /** The sidebar search shows no focus ring, or a dialog's own surface is tabbable and unnamed. */
+  /** Save is not the accent while the Account edit dialog shows a refusal. */
+  ACCENT: breaks("primary-button-accent"),
+  /** The Tab walk reaches no control while a toast is on screen. */
   FOCUS: breaks("named-and-focusable"),
-  /** FOCUS, and the toast sits over the page's headings. */
-  FOCUS_TOAST: breaks("named-and-focusable", "toast-text-only"),
-  /** FOCUS_AND_PATH, and the notice or toast sits over the page's headings. */
-  FOCUS_PATH_TOAST: breaks("named-and-focusable", "no-banned-text", "toast-text-only"),
+  /** FOCUS, and Save is not the accent while the dialog shows a refusal. */
+  FOCUS_ACCENT: breaks("named-and-focusable", "primary-button-accent"),
 } as const;
+
+/** Measured at both widths with the app's Sessions-bar inset on the frame: the bottom-centre toast still covers the "Runs" toolbar (the save, restart and notice stories) or the "Workflow configuration" title and group (the credentials and account-action stories). The overlap is real, so these stay recorded. */
+const TOAST_STORIES: ReadonlySet<string> = new Set([
+  "settings/action/name-not-saved",
+  "settings/action/password-changed",
+  "settings/action/password-not-confirmed",
+  "settings/credentials/unknown",
+  "settings/notice/restart-required",
+  "settings/notice/setting-unavailable",
+  "settings/runtime/restart-required",
+  "settings/save-combo/replayed",
+  "settings/save-combo/restart-required",
+  "settings/save/applied",
+  "settings/save/conflict",
+  "settings/save/refused",
+  "settings/save/unconfirmed",
+]);
 
 /** By `<state type>/<member>`. */
 const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleName, string>>>>> = {
-  "chatgpt/connected": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/expired": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/loading": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/sign-in-expired": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/signed-out": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/signing-in": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/unavailable": BREAK_SETS.FOCUS_AND_PATH,
-  "dialog/discard-changes": BREAK_SETS.FOCUS_AND_PATH,
-  "dialog/disconnect-chatgpt": BREAK_SETS.FOCUS_AND_PATH,
-  "load/loaded": BREAK_SETS.FOCUS_AND_PATH,
-  "plan/disabled": BREAK_SETS.FOCUS_AND_PATH,
-  "plan/enabled": BREAK_SETS.FOCUS_AND_PATH,
-  "plan/limit-reached": BREAK_SETS.FOCUS_AND_PATH,
-  "resolution/open": BREAK_SETS.FOCUS_AND_PATH,
-  "resolution/unknown": BREAK_SETS.FOCUS_AND_PATH,
-  "runtime/current": BREAK_SETS.FOCUS_AND_PATH,
-  "save/idle": BREAK_SETS.FOCUS_AND_PATH,
-  "save/saving": BREAK_SETS.FOCUS_AND_PATH,
-  "search/none": BREAK_SETS.FOCUS_AND_PATH,
-  "search/results": BREAK_SETS.FOCUS_AND_PATH,
-  "section/general": BREAK_SETS.FOCUS_AND_PATH,
-  "credentials/unknown": BREAK_SETS.TOAST,
-  "dialog/change-password": BREAK_SETS.FOCUS_DIALOG_PADDING,
-  "dialog/edit-name": BREAK_SETS.FOCUS_DIALOG_PADDING,
-  "dialog/edit-username": BREAK_SETS.FOCUS_DIALOG_PADDING,
-  "dialog/change-password-refused": BREAK_SETS.FOCUS_DIALOG_PADDING_ACCENT,
-  "dialog/edit-name-refused": BREAK_SETS.FOCUS_DIALOG_PADDING_ACCENT,
-  "dialog/edit-username-refused": BREAK_SETS.FOCUS_DIALOG_PADDING_ACCENT,
-  "dialog/delete-account": BREAK_SETS.FOCUS,
-  "dialog/edit-credential": BREAK_SETS.FOCUS,
-  "dialog/edit-shortcut": BREAK_SETS.FOCUS,
-  "dialog/edit-shortcut-refused": BREAK_SETS.FOCUS,
-  "dialog/remove-credential": BREAK_SETS.FOCUS,
-  "load/loading": BREAK_SETS.FOCUS,
+  "save/saving": BREAK_SETS.FOCUS,
+  "dialog/change-password-refused": BREAK_SETS.ACCENT,
+  "dialog/edit-name-refused": BREAK_SETS.ACCENT,
+  "dialog/edit-username-refused": BREAK_SETS.ACCENT,
   "notice/opened-for-check": BREAK_SETS.FOCUS,
-  "search/reading": BREAK_SETS.FOCUS,
-  "search/unavailable": BREAK_SETS.FOCUS,
   "action/duo-not-opened": BREAK_SETS.FOCUS,
-  "action/name-not-saved": BREAK_SETS.FOCUS_TOAST,
-  "action/password-changed": BREAK_SETS.FOCUS_TOAST,
-  "action/password-not-confirmed": BREAK_SETS.FOCUS_TOAST,
-  "notice/restart-required": BREAK_SETS.FOCUS_PATH_TOAST,
-  "notice/setting-unavailable": BREAK_SETS.FOCUS_PATH_TOAST,
-  "runtime/restart-required": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save-combo/replayed": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save-combo/restart-required": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save/applied": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save/conflict": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save/refused": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save/unconfirmed": BREAK_SETS.FOCUS_PATH_TOAST,
+  "action/name-not-saved": BREAK_SETS.FOCUS,
+  "action/password-changed": BREAK_SETS.FOCUS,
+  "action/password-not-confirmed": BREAK_SETS.FOCUS,
+  "save-combo/replayed": BREAK_SETS.FOCUS,
+  "save-combo/restart-required": BREAK_SETS.FOCUS,
+  "save/applied": BREAK_SETS.FOCUS,
+  "save/conflict": BREAK_SETS.FOCUS,
+  "save/refused": BREAK_SETS.FOCUS,
+  "save/unconfirmed": BREAK_SETS.FOCUS,
 };
 const SETTINGS_TABLES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
@@ -257,6 +232,6 @@ const SETTINGS_TABLES = defineSurface("settings", {
 });
 
 export const SETTINGS_STORIES = SETTINGS_TABLES.map(entry => {
-  const known = KNOWN_BREAKS[entry.id.slice("settings/".length)];
-  return known === undefined ? entry : { ...entry, story: { ...entry.story, knownFailures: known } };
+  const known = { ...KNOWN_BREAKS[entry.id.slice("settings/".length)], ...(TOAST_STORIES.has(entry.id) ? breaks("toast-text-only") : {}) };
+  return Object.keys(known).length === 0 ? entry : { ...entry, story: { ...entry.story, knownFailures: known } };
 });

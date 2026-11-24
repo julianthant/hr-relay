@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 const script = fileURLToPath(new URL("../../../scripts/ci/allowed-workflows.ts", import.meta.url));
 
 describe("allowed workflows check", () => {
-  it("requires needs-human to add a workflow outside the four approved files", () => {
+  it("requires needs-human to add a workflow outside the six approved files", () => {
     const cwd = mkdtempSync(join(tmpdir(), "allowed-workflows-"));
     const git = (...args: string[]): string => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
     const commit = (): void => {
@@ -24,7 +24,7 @@ describe("allowed workflows check", () => {
       const base = git("rev-parse", "HEAD");
       const check = (labels: string[]) => spawnSync(process.execPath, [script, base, JSON.stringify(labels)], { cwd, encoding: "utf8" });
 
-      for (const file of ["checks.yml", "development.yml", "staging.yml", "production.yml"]) writeWorkflow(file);
+      for (const file of ["checks.yml", "development.yml", "full.yml", "pr.yml", "staging.yml", "production.yml"]) writeWorkflow(file);
       commit();
       expect(check([]).status).toBe(0);
 
@@ -41,12 +41,13 @@ describe("allowed workflows check", () => {
 
   it.each([
     { file: "checks.yml", name: "static", condition: "if: github.event_name == 'pull_request' && inputs.kind != 'fast'" },
-    { file: "development.yml", name: "development", condition: "if: github.event_name == 'pull_request'" },
+    { file: "pr.yml", name: "metadata", condition: undefined },
   ])("runs from the $file $name job on pull requests", ({ file, name, condition }) => {
     const workflow = readFileSync(new URL(`../../../.github/workflows/${file}`, import.meta.url), "utf8");
     const job = workflow.split(`\n  ${name}:\n`)[1]?.split(/\n {2}[\w-]+:\n/u)[0] ?? "";
     const step = job.split(/\n {6}- /u).find(part => part.startsWith("name: Check added workflow files")) ?? "";
-    expect(step).toContain(condition);
+    if (condition) expect(step).toContain(condition);
+    else expect(step).not.toMatch(/^\s*if:/mu);
     expect(step).toContain("PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}");
     expect(step).toContain("run: node scripts/ci/allowed-workflows.ts \"$PR_BASE_SHA\" \"$PR_LABELS\"");
   });

@@ -43,7 +43,7 @@ afterEach_m0(_afterEachFixture1);
       assert_m0.match(host.textContent ?? '', /No matching actions/);
       const review = [...host.querySelectorAll('button')].find(button => button.textContent === 'Review'); assert_m0(review);
       await act_m0(async () => { review.click(); await new Promise(resolve => setTimeout(resolve, 40)); });
-      assert_m0.equal(document.activeElement?.getAttribute('role'), 'group');
+      assert_m0.equal(document.activeElement?.tagName, 'FORM');
       assert_m0.equal(document.activeElement?.getAttribute('aria-label'), 'Review identity');
       assert_m0.equal(document.activeElement?.closest('.sr-only') === null, true);
       assert_m0.equal(scroll.mock.calls.length, 0); assert_m0.equal(decision.mock.calls.length, 0);

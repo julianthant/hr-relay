@@ -24,7 +24,6 @@ import { queueStoryRow } from "../../../../fixtures/dashboard/queue-row-story-su
 import {
   REVIEW_CARDS, RUN_DECISIONS, withInlineCaptures, captureImage, captureOf, captureStep, decisionSteps, exampleDecision, exampleScenario,
 } from "../../../../fixtures/dashboard/run-panel-story-fixtures.js";
-import type { StateRuleName } from "../state-rule-limits.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import { StoryFrame } from "./story-frame.js";
 
@@ -227,21 +226,7 @@ const REVIEW = {
   empty: reviewStory("A review with no records", REVIEW_CARDS.empty),
 } satisfies Record<ReviewCase, Story>;
 
-/** Rules the run panel breaks today, by story, each recorded under the dashboard audit fixes feature. */
-const AUDIT_FIXES = "#532";
-const BREAKS: readonly (readonly [readonly StateRuleName[], readonly string[]])[] = [
-  [["fits-viewport"], ["header/queued", "header/running", "header/cancelling", "header/blocked", "header/awaiting-approval", "header/done", "header/failed", "header/cancelled", "header/partial", "timeline/completed", "timeline/active", "timeline/waiting", "timeline/failed", "timeline/pending", "timeline/skipped", "timeline/cancelled", "pause/pause-pending", "pause/paused", "logs/refreshing", "logs/refresh-failed", "logs/empty", "logs/needs-duo", "capture/fields", "capture/form", "capture/browser", "capture/person", "capture/plain", "capture-problem/load-error", "capture-problem/dimension-mismatch", "entry/fields", "entry/click", "entry/note", "note/info", "note/danger", "note/positive", "note/plain"]],
-  [["fits-viewport", "named-and-focusable"], ["decision/identity-mismatch", "decision/pick-person", "decision/pick-row", "decision/review-before-write", "decision/write-parked", "decision/write-unknown", "decision/failed-retryable", "decision/member-failed", "decision/correct-value", "decision/workbook-row", "decision/sign-in", "decision/paused", "decision/stalled", "decision/cancelling", "card/parked", "card/failed", "card/review", "card/held", "card/unconfirmed", "card/recorded", "card/resolved", "answered/done", "answered/retry", "answered/rejected", "answered/cancelled", "write/not-attempted", "write/prepared", "write/attempting", "failure/SUBJECT_MISMATCH", "failure/EMPLOYMENT_RECORD_MISMATCH", "failure/PROTECTED_SUBJECT_DISPLAY_REFUSED", "failure/DOCUMENT_READ_TIMEOUT", "failure/other", "capture-problem/unavailable", "entry/decision"]],
-  [["fits-viewport", "named-and-focusable", "no-banned-text"], ["decision/failed-after-write", "decision/refused", "write/committed", "write/verified", "write/unknown"]],
-  [["fits-viewport", "named-and-focusable"], ["card/loading"]],
-  [["dialogs-share-shape", "named-and-focusable"], ["review/ready", "review/unconfirmed", "review/needs-review", "review/empty"]],
-  [["dialogs-share-shape", "named-and-focusable", "no-dead-disabled-control"], ["review/approved"]],
-];
-/** Cut-off text shows at 1280 only with the fonts on the Mac; the Linux runner clips at 1024 alone. */
-const FITS_ONLY_AT_NARROW = { "fits-viewport": [1024] } as const;
-const knownFailures = (id: string): Story["knownFailures"] => Object.fromEntries(BREAKS.flatMap(([rules, ids]) => ids.includes(id) ? rules.map(rule => [rule, AUDIT_FIXES] as const) : []));
-
 export const RUN_PANEL_STORIES = defineSurface("run-panel", {
   header: HEADER, timeline: TIMELINE, pause: PAUSE, logs: LOGS, decision: DECISION, card: CARD, answered: ANSWERED,
   write: WRITE, failure: FAILURE, capture: CAPTURE, "capture-problem": CAPTURE_PROBLEM, entry: ENTRY, note: NOTE, "dry-run": DRY_RUN, review: REVIEW,
-}).map(entry => ({ ...entry, story: { ...entry.story, knownFailures: knownFailures(entry.id.replace(/^run-panel\//u, "")), knownFailureWidths: FITS_ONLY_AT_NARROW } }));
+});

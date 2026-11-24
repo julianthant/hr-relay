@@ -7,8 +7,8 @@ import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { assistantOpen } from "../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
-import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../mocks/helpers/fixture-queue.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { loadLazyPages } from "../../support/helpers/dashboard/lazy-pages.js";
 
@@ -49,7 +49,7 @@ const settle = () => act(async () => { await new Promise(resolve => setTimeout(r
 async function mount(search: string): Promise<HTMLElement> {
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
-  const client = { ...transport, subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: "live" }); return { close: () => undefined }; } };
+  const client = { ...transport, subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: "live" }); return { select() {}, close: () => undefined }; } };
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}${search}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host, { onCaughtError() {} });
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: logsPreviewThrows }) })));

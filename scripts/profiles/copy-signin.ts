@@ -12,6 +12,7 @@ import { probeOwnedViteServer } from "../../src/backend/app/host/local-vite-prob
 import { noSymlinkAncestry, readPrivateFile, statDirectory } from "../../src/backend/storage/configuration/credential-safe-file.js";
 import { createDashboardClient, type DashboardClient } from "../../src/dashboard/client/index.js";
 import { RuntimeProfileSchema, runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
+import type { CopyDuoScreen } from "../../src/models/profiles/profile.js";
 import { systemClock } from "../../src/rules/time/clock.js";
 import { runDevDashboard } from "../dev/dashboard.js";
 
@@ -119,6 +120,12 @@ export async function driveCopySignin(profile: CopyProfile, dashboard: ProfileDa
   }
 }
 
+/** One line per Duo capture point: its stage, the known screen name and each frame's allowlist name. */
+export function formatCopyDuoScreens(screens: readonly CopyDuoScreen[]): string {
+  return screens.map(({ stage, screen, frames, framesTruncated }) =>
+    `duo ${stage}: ${screen} (frames: ${frames.join(", ") || "none"}${framesTruncated ? ", truncated" : ""})\n`).join("");
+}
+
 export function operatorCredentials(): SignInCredentials {
   return readCopySigninCredentials(join(homedir(), ".config", "relay", "operator-signin.env"));
 }
@@ -141,6 +148,7 @@ async function runCopyBackend(profile: CopyProfile, fixtureWorkspace: string | u
         writeSync(process.stdout.fd, "approve the Duo request on your phone\n");
         process.send?.({ type: "relay-copy-signin-phone" });
       },
+      screens(screens) { process.send?.({ type: "relay-copy-signin-screens", screens }); },
     },
   });
 }
@@ -163,12 +171,13 @@ async function openCopyDashboard(profile: CopyProfile, fixtureWorkspace: string 
   assertCopySigninTarget(profile, workspace, ports);
   const origin = `http://127.0.0.1:${String(ports.frontendPort)}`;
   const ready = Promise.withResolvers<string>(), signals = new EventEmitter(), stop = new AbortController();
-  let approvals = 0, context: BrowserContext | undefined;
+  let approvals = 0, context: BrowserContext | undefined, screens: readonly CopyDuoScreen[] = [];
   const finished = runDevDashboard({ profile, signals, copySignin: {
     backendEntry: fileURLToPath(import.meta.url),
     ...(fixtureWorkspace === undefined ? {} : { fixtureWorkspace }),
     ready: ready.resolve,
     phone() { approvals = 1; },
+    screens(seen) { screens = seen; },
   } }).finally(() => { stop.abort(); });
   const halt = () => { signals.emit("SIGTERM"); };
   process.on("SIGINT", halt);
@@ -217,6 +226,7 @@ async function openCopyDashboard(profile: CopyProfile, fixtureWorkspace: string 
       dashboardStatus = await finished;
       process.removeListener("SIGINT", halt);
       process.removeListener("SIGTERM", halt);
+      process.stdout.write(formatCopyDuoScreens(screens));
     }
   }
   if (dashboardStatus !== 0) throw new CopySigninError("copy-signin-dashboard-stopped");

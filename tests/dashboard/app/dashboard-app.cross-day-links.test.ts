@@ -13,8 +13,8 @@ import { RunDetailWireSchema, NotePageSchema } from '../../../src/models/dashboa
 import { queueParentFixture } from '../../support/helpers/dashboard/queue-parent-fixture.js';
 import { FrontendBootstrapWireSchema } from '../../../src/models/dashboard/bootstrap.js';
 import { FIXTURE_NOW } from '../../support/fixtures/dashboard/fixture-identity.js';
-import { FIXTURE_DAY_WIRE } from '../../mocks/helpers/fixture-queue.js';
-import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../mocks/helpers/workflow-composition.js';
+import { FIXTURE_DAY_WIRE } from '../../support/helpers/dashboard/mock-world/fixture-queue.js';
+import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../support/helpers/dashboard/mock-world/workflow-composition.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
@@ -36,7 +36,7 @@ it('opens a linked child using its own partition day and exact run identity', as
   const client = { ...transport, subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
     requestedDays.push(input.day);
     input.onDay(input.day === childDay ? childWire : parentWire); input.onState({ state: 'live' });
-    return { close: () => undefined };
+    return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, '', `/?day=${parentWire.day}`);
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
@@ -169,7 +169,7 @@ async function relatedFixture(options: Readonly<{ failure?: 'missing' | 'wrong-p
   let subscription: Parameters<typeof transport.subscribeDay>[0] | undefined;
   const client = { ...transport,bootstrap: async () => { const boot = await transport.bootstrap();const first = boot.workflows[0];assert.ok(first);
     return FrontendBootstrapWireSchema.parse({ ...boot,workflows: [{ ...first,id: 'emergency-contact',code: 'ec',label: 'Emergency Contact' }] }); },
-    subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) { subscription = input;input.onDay(input.day === parentDay ? parentWire : childWire);input.onState({ state: 'live' });return { close() {} }; } };
+    subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) { subscription = input;input.onDay(input.day === parentDay ? parentWire : childWire);input.onState({ state: 'live' });return { select() {}, close() {} }; } };
   window.history.replaceState(null,'',`/?day=${parentDay}`);
   const preferences = createPersonPreferences('preview',{ ...NEUTRAL_PERSON_PREFERENCES,workflowPanelMode: 'sidebar' });
   const host = document.createElement('div');document.body.append(host);root = createRoot(host);

@@ -7,16 +7,16 @@ import { PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../../src/models/config
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
-import { readAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
+import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect } from "@playwright/test";
 import { chromium, type BrowserContext } from "playwright";
-import { it } from "vitest";
+import { beforeAll, it } from "vitest";
 import { z } from "zod";
-import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import { createProfileOnboardingDuoProvider, duoScreenSnapshot, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoBrowserOwner } from "../../../../src/backend/profiles/onboarding-duo.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -27,6 +27,19 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const FORM = `<!doctype html><form action="${SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="username"><label for="ssopassword">Password</label><input id="ssopassword" name="password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
+
+// The runner's first load of the staged MV3 extension is slow; paying it here keeps it out of each test's 5 s launch window.
+beforeAll(async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "onboarding-warm-"))), extension = join(root, "extension");
+  stageFastDuoExtension(realpathSync("fast-duo"), extension, PROFILE_ENROLLMENT_EXTENSION_MODE);
+  const context = await chromium.launchPersistentContext(join(root, "profile"), { channel: "chromium", headless: true,
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
+  try {
+    const worker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js"))
+      ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js") });
+    assert.ok(worker);
+  } finally { await context.close(); }
+});
 
 for (const pendingClose of [false, true]) it(pendingClose
   ? "real synthetic MV3 pending software-key attempt retains UNKNOWN across whole-window closure and reopen"
@@ -99,7 +112,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     let setup = context.pages()[0]; assert.ok(setup);
     assert.match(setup.url(), /^chrome-extension:\/\/[^/]+\/src\/options\.html$/);
     await expect(setup.locator("#editorTitle")).toHaveText("Set up Security key");
-    await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
+    await expect(setup.getByRole("heading", { name: "Relay sign-in method", exact: true })).toBeVisible();
     await expect(setup.locator(".brand small")).toHaveText("Relay sign-in setup");
     await expect(setup.locator("footer")).toHaveCount(0);
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId); assert.equal(launches, 1);
@@ -159,13 +172,13 @@ for (const pendingClose of [false, true]) it(pendingClose
     await Promise.all([profile.session.showOnboardingBrowser(draft.token, draft.operationId), profile.session.showOnboardingBrowser(draft.token, draft.operationId)]);
     assert.equal(launches, 1); assert.equal(context.pages().length, 2);
     setup = context.pages().find(page => page !== portal)!; assert.ok(setup);
-    await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
+    await expect(setup.getByRole("heading", { name: "Relay sign-in method", exact: true })).toBeVisible();
     assert.equal(submissions, 0); assert.deepEqual(read().methods, methodsBeforeReopen);
     await context.close();
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
     assert.equal(launches, 2); assert.equal(context.pages().length, 1);
     assert.equal(submissions, 0); assert.deepEqual(read().methods, methodsBeforeReopen);
-    await expect(context.pages()[0].getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
+    await expect(context.pages()[0].getByRole("heading", { name: "Relay sign-in method", exact: true })).toBeVisible();
     if (pendingClose) {
       setup = context.pages()[0];
       await setup.locator('.relay-method-card[data-method="key"]').click();
@@ -339,8 +352,11 @@ for (const scenario of ["software", "abort", "timeout"] as const) it(`real enrol
       finished = true;
       assert.equal(active.profileId, draft.profileId);
       assert.equal(machine.readProfileRegistry().profiles.filter(row => row.profileId === draft.profileId).length, 1);
+      const owner = machine.admitProfile(draft.profileId);
+      let stored: unknown;
+      try { stored = createCanonicalCredentials(owner).readRecord("duo")?.value; } finally { owner.release(); }
       const rows = z.strictObject({ credentials: z.array(z.looseObject({ state: z.string(), authenticator: z.looseObject({ transport: z.string() }).optional() })) })
-        .parse(readAuthenticatedCredentialFixture(machine.stateRoot, draft.profileId, "duo")).credentials;
+        .parse(stored).credentials;
       assert.deepEqual(rows.map(row => [row.state, row.authenticator?.transport]), [["ready", "usb"]]);
     }
   } catch (error) {
@@ -671,4 +687,55 @@ for (const phase of ["prelaunch", "clean-setup", "unproved-setup", "foreign"] as
     try { await runtime.stop(); machine.release(); } catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error]); }
   }
   if (failure !== undefined) throw failure instanceof Error ? failure : new Error("native-failed-replacement-control", { cause: failure });
+});
+
+const SNAPSHOT_SECRET = "value-sentinel";
+async function servedDuoScreen(pages: Record<string, string>): Promise<BrowserContext> {
+  const context = await (await chromium.launch({ headless: true })).newContext();
+  await context.route("http*://**/*", async route => {
+    const { origin, pathname } = new URL(route.request().url()), body = pages[`${origin}${pathname}`];
+    if (body === undefined) await route.abort(); else await route.fulfill({ contentType: "text/html", body });
+  });
+  return context;
+}
+
+it("records only the duo-error screen when an alert reflects a typed input value", async () => {
+  const context = await servedDuoScreen({ "https://api-test.duosecurity.com/frame/prompt": `<input id="code"><div role="alert" hidden></div>
+    <script>document.querySelector('#code').addEventListener('input', ({ target }) => { const alert = document.querySelector('[role=alert]'); alert.textContent = 'Invalid code ' + target.value; alert.hidden = false; });</script>` });
+  try {
+    const page = await context.newPage();
+    await page.goto(`https://api-test.duosecurity.com/frame/prompt?sid=${SNAPSHOT_SECRET}`);
+    await page.fill("#code", `${SNAPSHOT_SECRET}-typed`);
+    await expect(page.getByRole("alert")).toContainText(SNAPSHOT_SECRET);
+    assert.deepEqual(await duoScreenSnapshot(page), { screen: "duo-error", frames: ["duo"] });
+  } finally { await context.browser()?.close(); }
+});
+
+it("records non-HTTPS and opaque frames only as not-allowlisted and names the Duo screen", async () => {
+  const context = await servedDuoScreen({
+    "https://api-test.duosecurity.com/frame/prompt": `<h1>Check for a Duo Push</h1><p>Pushed a login request</p>
+      <iframe src="http://api-test.duosecurity.com/plain"></iframe><iframe srcdoc="<p>opaque</p>"></iframe><iframe src="https://elsewhere.example/x"></iframe>`,
+    "http://api-test.duosecurity.com/plain": "<button>Add a device</button>",
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("https://api-test.duosecurity.com/frame/prompt");
+    await expect.poll(() => page.frames().length).toBe(4);
+    assert.deepEqual(await duoScreenSnapshot(page), { screen: "push-sent", frames: ["duo", "not-allowlisted", "not-allowlisted", "not-allowlisted"] });
+  } finally { await context.browser()?.close(); }
+});
+
+it("records only the sso-page screen after a redirect", async () => {
+  const sso = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
+  const context = await servedDuoScreen({
+    "https://api-test.duosecurity.com/frame/prompt": `<script>location.replace(${JSON.stringify(`${sso}?execution=${SNAPSHOT_SECRET}`)})</script>`,
+    [sso]: `<form><label for="u">Username</label><input id="u"><button>Sign in</button></form>`,
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("https://api-test.duosecurity.com/frame/prompt");
+    await page.waitForURL(url => url.href.startsWith(sso));
+    await page.fill("#u", `${SNAPSHOT_SECRET}-user`);
+    assert.deepEqual(await duoScreenSnapshot(page), { screen: "sso-page", frames: ["ucsd-sso"] });
+  } finally { await context.browser()?.close(); }
 });

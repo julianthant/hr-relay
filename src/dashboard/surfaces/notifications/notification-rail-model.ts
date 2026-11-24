@@ -22,7 +22,9 @@ export type NotificationRailModel = Readonly<{
   state: NotificationsState;
   unread: number | undefined;
   changeOpen: (next: boolean) => void;
-  onControl: (id: string, control: NotificationControl) => void;
+  /** Whether the control was accepted. */
+  onControl: (id: string, control: NotificationControl) => Promise<boolean>;
+  canAct: (id: string) => boolean;
   onReadAll: () => void;
   onOpenItem: (item: NotificationItem) => void;
 }>;
@@ -49,7 +51,8 @@ export function useNotificationRailModel({ open = false, setOpen, onAlert, setNo
   return {
     state: served.state, unread: unreadCount(served.state),
     changeOpen: setOpen,
-    onControl: (id, action) => { setNotice(""); void served.control(id, action); },
+    onControl: (id, action) => { setNotice(""); return served.control(id, action); },
+    canAct: id => served.canAct(id),
     onReadAll: () => { setNotice(""); void served.readAll(); },
     onOpenItem: item => { setNotice(""); served.open(item, onOpenNotification, () => onActive?.(item.id), setNotice); },
   };
@@ -78,7 +81,7 @@ export function useNotificationAlert(play: () => void = playNotificationSound) {
   return useCallback((item: NotificationItem, sound: boolean) => {
     const finished = item.tone === "positive";
     toast({ tone: finished ? "success" : item.tone === "danger" ? "danger" : item.tone === "warning" ? "warning" : "info", title: item.title,
-      description: finished ? `${item.subject} · ${item.workflow}` : item.detail, ...(item.tone === "danger" ? { duration: 6000 } : {}) });
+      description: finished ? `${item.subject} · ${item.workflow}` : item.tone === "info" ? undefined : item.detail, ...(item.tone === "danger" ? { duration: 6000 } : {}) });
     if (sound) play();
   }, [toast, play]);
 }

@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, w
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { assertCopySigninFixture, assertCopySigninTarget, driveCopySignin, useCopySigninFixture, readCopySigninCredentials } from "../../../scripts/profiles/copy-signin.js";
+import { assertCopySigninFixture, assertCopySigninTarget, driveCopySignin, useCopySigninFixture, readCopySigninCredentials, formatCopyDuoScreens } from "../../../scripts/profiles/copy-signin.js";
 import { runDevDashboard } from "../../../scripts/dev/dashboard.js";
 import { copySigninFixtureBrowser } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import { osCredentialSecretStore, selectedCredentialSecretStore } from "../../../src/backend/storage/configuration/credential-key-custody.js";
@@ -26,6 +26,13 @@ beforeEach(() => {
 });
 
 afterEach(() => { rmSync(directory, { recursive: true, force: true }); });
+
+it("prints one line per Duo capture with only the screen and frame allowlist names", () => {
+  expect(formatCopyDuoScreens([{ stage: "gate", screen: "other-options", frames: ["duo", "not-allowlisted"] },
+    { stage: "push-options", screen: "push-options", frames: ["duo"], framesTruncated: true },
+    { stage: "after-push", screen: "capture-timeout", frames: [] }])).toBe("duo gate: other-options (frames: duo, not-allowlisted)\n"
+    + "duo push-options: push-options (frames: duo, truncated)\nduo after-push: capture-timeout (frames: none)\n");
+});
 
 it("reads the four values from the private env file without changing quoted values", () => {
   expect(readCopySigninCredentials(envFile)).toEqual(credentials);

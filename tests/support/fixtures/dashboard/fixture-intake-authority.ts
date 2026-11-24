@@ -33,7 +33,7 @@ import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { intakeFixtureDescriptor, intakeFixtureProjection } from "../intake-workflow-fixture.js";
 import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import type { MockBundleProof } from "../../../mocks/helpers/bundle.js";
+import type { MockBundleProof } from "../../helpers/dashboard/mock-world/bundle.js";
 
 export const INTAKE_CSV = "Employee ID#,Effective Date,Dept\n10456712,07/01/2026,Housing\n10-4567,07/01/2026,Housing\n10998801,07/01/2026,Student Affairs\n";
 export async function createIntakeAuthority(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {

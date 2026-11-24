@@ -150,6 +150,8 @@ it("still reports an unhealthy authority when a live page is corrupt", async () 
     const observation = await new AuthorityHealthPreflightRunner(f.admission, f.options, undefined, f.credentialStore, owner).run(context);
     assert.equal(observation.state, "unhealthy");
   }
+  // Shutdown planner maintenance reads the corrupt page too, and close reports it.
+  assert.throws(() => f.database.close(), /database disk image is malformed/u);
 });
 
 const BINDING_SQL = "SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1";

@@ -19,15 +19,16 @@ import { ucpathDriver } from "../../../src/backend/systems/ucpath/driver-declara
 import { TooltipProvider } from "../../../src/dashboard/ds/ui.js";
 import { CommandExecutor } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
-import type { DashboardClient } from "../../../src/dashboard/client/index.js";
+import { createRowStore, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
 import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
 import type { QueueSurfaceWire } from "../../../src/models/dashboard/projection.js";
 import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { ActorIdSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 import { defineTask } from "../../../src/workflow-kit/task.js";
-import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
+import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { createRunExecutorTestWorld, registryWithUcpathSearch } from "../../support/helpers/backend/run-executor-world.js";
+import { serveRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 import { happySessionHarness, personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
 import { personLookupModule } from "../../support/helpers/registered-workflows.js";
 
@@ -51,7 +52,7 @@ const holding = defineTask(ucpathDriver, SearchPersonOrg, {
   },
 });
 
-it("shows a running run's logs while worker heartbeats move its revision, and keeps them during each refresh", async () => {
+it("shows a running run's logs while worker heartbeats move its revision, and keeps them until the stream's next panel", async () => {
   const running = new Promise<void>(resolve => { entered = resolve; });
   const h = await world.executorHarness({ stores: registryWithUcpathSearch(holding), sessions: happySessionHarness() });
   const { database, clock, stateRoot } = h.authority;
@@ -82,28 +83,21 @@ it("shows a running run's logs while worker heartbeats move its revision, and ke
     const renewed = database.authority.runs.renewClaim({ runId, claim: claimed.claim, now: clock.now().toISOString() });
     assert.equal(renewed.state, "renewed");
   };
-  // The run-detail read is slow under a running worker: a heartbeat lands while it is in flight.
-  const held: (() => void)[] = [];
-  let beating = true;
-  let settledReads = 0;
-  let aborted = 0;
+  // The stream's panel is read by the server, never by the page: the page's own client must see no run reads.
+  const server = { runDetail: (id: string, signal?: AbortSignal) => readRunDetail(deps, id, signal),
+    runSection: (id: string, section: string, cursor?: string, signal?: AbortSignal) => readRunSection(deps, id, section, cursor, signal) };
+  const pageReads: string[] = [];
   const client = { artifactUrl: (id: string) => `/artifacts/${id}`,
-    runDetail: async (id: string, signal?: AbortSignal) => {
-      await new Promise<void>(resolve => held.push(resolve));
-      if (beating) heartbeat();
-      if (signal?.aborted) aborted++;
-      signal?.throwIfAborted();
-      const detail = await readRunDetail(deps, id, signal);
-      settledReads++;
-      return detail;
-    },
-    runSection: (id: string, section: string, cursor?: string, signal?: AbortSignal) => readRunSection(deps, id, section, cursor, signal) } as unknown as DashboardClient;
+    runDetail: async (id: string) => { pageReads.push(`detail ${id}`); throw new Error("the page does not read run detail"); },
+    runSection: async (id: string, section: string) => { pageReads.push(`${section} ${id}`); throw new Error("the page does not read run sections"); } } as unknown as DashboardClient;
+  const rows = createRowStore();
+  const stream = () => serveRunPanel(rows, server, runId);
 
   let refreshed = 0;
   const scope = Object.freeze({ actorId: ActorIdSchema.parse("local-operator"), client, authority: {}, dayRequest: {} });
   const binding = { scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
     authority: { epoch: scope.authority, catalog: [], now: () => clock.now().toISOString(), today: "2026-08-03", day: "2026-08-03",
-      dayState: { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh: () => { refreshed++; } },
+      dayState: { rows, subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh: () => { refreshed++; } },
       selection: { route: { start: false }, workflowId: personLookupModule.descriptor.id } } } as unknown as DashboardCommandBinding;
   function Panel({ row }: { row: QueueSurfaceWire }) {
     return createElement(TooltipProvider, null, createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
@@ -111,37 +105,38 @@ it("shows a running run's logs while worker heartbeats move its revision, and ke
   }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const frame = async () => { await act(async () => { root?.render(createElement(Panel, { row: currentRow() })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
-  const release = async () => { await act(async () => { for (const resolve of held.splice(0)) resolve(); await new Promise(resolve => setTimeout(resolve, 0)); }); };
+  const serve = async () => { await act(async () => { await stream(); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   const skeleton = () => document.querySelector("[aria-label='Loading logs']") !== null;
   const panelText = () => document.querySelector("[aria-label='Selected run logs']")?.textContent ?? "";
 
   await frame();
-  assert.ok(skeleton(), "the first read is still in flight");
+  assert.ok(skeleton(), "no panel has streamed yet");
+  await serve();
+  assert.equal(skeleton(), false, "the streamed panel replaces the skeleton");
+  assert.doesNotMatch(panelText(), /Refreshing/u);
   for (let cycle = 0; cycle < 3; cycle++) {
-    // A day frame re-serves the row at its new revision while the read is still in flight.
+    // A day frame re-serves the row at its new revision before the stream's panel for it arrives.
     heartbeat();
     await frame();
-    await release();
-    await frame();
-    assert.equal(skeleton(), false, `cycle ${String(cycle)}: the running run's logs replace the skeleton`);
-    // The next read is in flight: the panel keeps the last read logs and says it is refreshing.
+    assert.equal(skeleton(), false, `cycle ${String(cycle)}: the running run keeps its last logs`);
     assert.match(panelText(), /Refreshing.*Search for person.*In progress/u);
     assert.match(panelText(), /Deterministic, Person.*[1-9]\d* actions$/u);
+    await serve();
+    await frame();
+    assert.equal(skeleton(), false, `cycle ${String(cycle)}: the running run's logs stay`);
+    assert.doesNotMatch(panelText(), /Refreshing/u);
+    assert.match(panelText(), /Search for person.*In progress.*[1-9]\d* actions$/u);
   }
-  assert.equal(aborted, 0, "a new revision does not cancel the read in flight");
-  assert.equal(settledReads, 3, "every run-detail read settles");
-  assert.ok(refreshed > 0, "a read ahead of the row asks the day to catch up");
-
-  // The worker stops renewing: the read in flight lands ahead of its row once more, then the next read matches the row exactly.
-  beating = false;
-  await release();
-  await frame();
-  await release();
-  assert.equal(held.length, 0, "no read is left in flight");
-  assert.equal(settledReads, 5);
-  assert.equal(aborted, 0);
+  // A panel ahead of the row is shown without asking the day to catch up.
+  heartbeat();
+  await serve();
+  assert.equal(skeleton(), false);
   assert.doesNotMatch(panelText(), /Refreshing/u);
   assert.match(panelText(), /Search for person.*In progress.*[1-9]\d* actions$/u);
+  await frame();
+  assert.doesNotMatch(panelText(), /Refreshing/u);
+  assert.deepEqual(pageReads, [], "the page sends no run-detail or section reads");
+  assert.equal(refreshed, 0, "a panel ahead of the row does not refresh the day");
 
   finish();
   assert.equal((await execution).state, "failed");

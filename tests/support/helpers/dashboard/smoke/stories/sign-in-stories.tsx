@@ -14,8 +14,6 @@ type MethodState = ProfileOnboardingMethodState["state"];
 type BrowserState = ProfileOnboardingBrowser["state"];
 type SessionState = Exclude<PublicProfileState["state"], "active">;
 const noop = () => undefined;
-/** Log in, Sign up, Duo and the confirm and re-enrol dialogs hold a control the keyboard does not reach or one that shows no focus ring. */
-const FOCUS_BREAK = { "named-and-focusable": "#532" } as const;
 const OPERATION = "00000000-0000-4000-8000-000000000001";
 
 function SignInPage({ scene }: { scene: SignInScene }) {
@@ -35,10 +33,24 @@ async function play(page: Page, scene: SignInScene): Promise<void> {
     const input = page.getByLabel(label, { exact: true });
     if (await input.count() > 0) await input.fill(value);
   }
-  for (const name of scene.press ?? []) await page.getByRole("button", { name, exact: true }).last().click();
+  let pressedInDialog = false;
+  for (const name of scene.press ?? []) {
+    if (await page.locator('[role="dialog"]').count() > 0) pressedInDialog = true;
+    await page.getByRole("button", { name, exact: true }).last().click();
+  }
   if (scene.wait !== undefined) await page.clock.runFor(scene.wait);
   if (scene.submit === true) await page.getByRole("button", { name: scene.step === "signup" ? "Create profile" : "Log in" }).click();
   if (scene.confirm === true) await page.getByRole("button", { name: "Add this device" }).click();
+  // The keyboard walk starts at the top of the page, as it does for a person who has just arrived.
+  // A story that ends on an open dialog keeps its focus trap; any other waits for the dialog to finish closing.
+  if (scene.confirm === true || scene.press?.length === 1 && scene.press[0] === "Cancel sign-up") return;
+  await page.locator('[role="dialog"]').waitFor({ state: "hidden" });
+  // Radix restores focus from a dialog a task after the dialog leaves the page; a reset before then is undone.
+  if (pressedInDialog) await page.waitForFunction(() => document.activeElement !== null && document.activeElement !== document.body);
+  await page.evaluate(() => {
+    const { body } = document;
+    body.tabIndex = -1; body.focus({ preventScroll: true }); body.removeAttribute("tabindex");
+  });
 }
 
 /** `shows` is the text the finished story must show; without it the story's own first control is the ready point. */
@@ -48,8 +60,7 @@ function scene(title: string, input: SignInScene, shows?: string): Story {
     : input.setup !== undefined ? 'h1:has-text("Set up Duo"), h2:has-text("Set up Duo")'
     : input.step === "signup" ? 'button:has-text("Create profile")' : input.step === "ready" ? 'button:has-text("Go to dashboard")'
     : input.step === "duo" ? '[aria-label="Duo methods"]' : 'button:has-text("Log in")';
-  const breaksFocus = input.setup === undefined || input.confirm === true || input.reenrol === true;
-  return { title, render: () => <SignInPage scene={input} />, ready, ...(breaksFocus ? { knownFailures: FOCUS_BREAK } : {}), play: page => play(page, input), ...(waits ? { clock: true as const } : {}) };
+  return { title, render: () => <SignInPage scene={input} />, ready, play: page => play(page, input), ...(waits ? { clock: true as const } : {}) };
 }
 
 const STEP = {

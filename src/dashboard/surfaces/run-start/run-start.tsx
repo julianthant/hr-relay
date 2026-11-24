@@ -19,6 +19,7 @@ import { readLaunchRecovery, readLaunchVerificationPlan, retainLaunchFinal, dism
 import { createRunLaunchService, type RerunLaunchSource } from "./run-launch-model.js";
 import * as launchDraft from "./run-launch-draft-model.js";
 import type { LaunchDraft } from "./run-launch-draft-model.js";
+import { useKeepFocusInDialog } from "./run-dialog-focus.js";
 import { runDialogControls, useRunDialogMachine, visibleRunDialog, type AuthorityCheck, type LaunchGates, type LaunchRecovery, type RunDialogEvent, type RunDialogPrimaryInput } from "./run-dialog-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -432,7 +433,7 @@ export function RunStartDialog({
     try {
       const retained = readLaunchRecovery(window.sessionStorage, actorId);
       recoveryState = retained === null ? { state: "none" } : { state: "retained", command: retained };
-    } catch (caught) { recoveryState = { state: "unreadable", message: caught instanceof Error ? caught.message : String(caught) }; }
+    } catch { recoveryState = { state: "unreadable", message: "Relay cannot send the saved start again. Check the queue first." }; }
     if (rerunSource !== undefined) setCustomizeSteps(true);
     // A start keeps the routed stage; only a rerun opens on its own first stage.
     suppressStage.current = rerunSource === undefined;
@@ -657,6 +658,7 @@ export function RunStartDialog({
     omissionMismatch, plannedCount: plan?.planned.length ?? 0, ...(supportsDryRun ? { dryRun } : {}),
   };
   // A blocked Start on Steps stays pressable: pressing it shows the facts still missing.
+  useKeepFocusInDialog(open && !hidden);
   const controls = runDialogControls(view, gates);
   const primaryInput: RunDialogPrimaryInput = { gates, authority: authority(), planRequest: buildPlanRequest, prepare: target => launchService.prepareFinal(target) };
   const press = (event: ((input: RunDialogPrimaryInput) => RunDialogEvent) | null) => {
@@ -734,11 +736,11 @@ export function RunStartDialog({
           <DialogBody key={currentStage} className="launch-content @container">
             {isRerun && snapshot === null && sourceError === null && <p role="status">Loading source…</p>}
             {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
-            {recoveryError !== null && <Banner tone="danger" title="Submission recovery unavailable">{recoveryError}</Banner>}
+            {recoveryError !== null && <Banner tone="danger" title="Saved start unavailable">{recoveryError}</Banner>}
             {/* While the Start is in flight its outcome is not unknown yet; only a settled, unresolved command needs readback. */}
             {recovery !== null && !readback && !busy && (
               <Banner tone="warning" title="A previous submission needs readback">
-                <MetaLine items={[recovery.commandId, recovery.target.workflowId]} />
+                <MetaLine items={[workflows.find(candidate => candidate.workflowId === recovery.target.workflowId)?.label ?? "An earlier start"]} />
                 <Button disabled={busy} onClick={() => send({ type: "replay", authority: authority() })}>Replay exact submission</Button>
               </Banner>
             )}

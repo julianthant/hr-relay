@@ -3,7 +3,7 @@ import { describe,it } from "vitest";
 import { GENERAL_RUN_PATHS } from "../../../../../src/dashboard/surfaces/settings/general/general-groups-model.js";
 import { searchSettings,settingsSearchIndex } from "../../../../../src/dashboard/surfaces/settings/navigation/settings-search-model.js";
 import { buildSettingsNav } from "../../../../../src/dashboard/surfaces/settings/settings-model.js";
-import { fixtureSettingsDocument } from "../../../../mocks/helpers/fixture-settings.js";
+import { fixtureSettingsDocument } from "../../../../support/helpers/dashboard/mock-world/fixture-settings.js";
 
 const document = fixtureSettingsDocument();
 const groups = buildSettingsNav(document);

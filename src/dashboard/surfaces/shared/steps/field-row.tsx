@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Cpu, Eye, PencilLine } from "lucide-react";
 import { displayExtractedDate } from "../../../lib/date-format.js";
-import { Tooltip, dsFocus } from "../../../ds/ui.js";
+import { dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 
 export type FieldRowKind = "fill" | "read" | "compute";
@@ -18,7 +17,7 @@ export function FieldRow({ kind, label, value, unread = false, mark, onSource }:
   return <div data-log-field={kind} className={cn("grid min-w-0 items-baseline gap-x-3 border-b border-ui-stroke py-2.5 last:border-b-0", onSource ? COLUMNS_WITH_SOURCE : COLUMNS)}>
     <Icon aria-hidden className={cn("size-3.5 self-start translate-y-0.5", kind === "fill" ? "text-ui-info" : "text-ui-muted")} />
     <dt className="min-w-0 text-body font-medium">{label}</dt>
-    <FieldValueCell value={value} mark={mark} className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word] @max-[448px]:overflow-hidden @max-[448px]:text-ellipsis @max-[448px]:[overflow-wrap:normal] max-[1100px]:truncate", kind === "fill" ? "text-ui-info font-medium" : unread ? "text-ui-danger/75" : "text-ui-secondary")} />
+    <FieldValueCell value={value} mark={mark} className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word]", kind === "fill" ? "text-ui-info font-medium" : unread ? "text-ui-danger/75" : "text-ui-secondary")} />
     {onSource && <button type="button" aria-label={`Show source for ${label}`} onClick={event => onSource(event.currentTarget)} className={cn("self-start translate-y-0.5 rounded-sm text-ui-info hover:text-ui-primary", dsFocus)}><ArrowUpRight aria-hidden className="size-3.5" /></button>}
   </div>;
 }
@@ -28,20 +27,9 @@ export function FieldRows({ padded, children }: { padded: boolean; children: Rea
   return <dl className={cn("m-0", padded && "px-3")}>{children}</dl>;
 }
 
-/** At narrow widths the value truncates on one line; the shared tooltip then shows the whole value. */
+/** The value wraps at any width, so the whole of it stays on the page. */
 function FieldValueCell({ value, mark, className }: { value: string; mark?: string; className: string }) {
-  const [cut, setCut] = useState(false);
-  const cell = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const node = cell.current;
-    if (node === null) return;
-    const measure = () => setCut(node.scrollWidth > node.clientWidth);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [value]);
-  return <Tooltip side="bottom" content={value} open={cut ? undefined : false}><dd ref={cell} className={className}><FieldValue value={value} />{mark !== undefined && <span className="ml-2 whitespace-nowrap text-caption font-normal text-ui-muted">{mark}</span>}</dd></Tooltip>;
+  return <dd className={className}><FieldValue value={value} />{mark !== undefined && <span className="ml-2 whitespace-nowrap text-caption font-normal text-ui-muted">{mark}</span>}</dd>;
 }
 
 function FieldValue({ value }: { value: string }) {

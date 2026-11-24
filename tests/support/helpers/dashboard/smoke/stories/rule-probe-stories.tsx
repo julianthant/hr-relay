@@ -1,7 +1,7 @@
 /** Planted violations that prove each state rule bites, on the dashboard's real primitives. Never part of the catalogue. */
 import { useEffect, useState } from "react";
 import {
-  ActionBar, ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, useToasts,
+  ActionBar, ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, Switch, Tab, TabList, TabPanel, Tabs, useToasts,
 } from "../../../../../../src/dashboard/ds/ui.js";
 import type { StateRuleName } from "../state-rule-limits.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
@@ -22,7 +22,7 @@ function ToastOverToolbar() {
     const timer = window.setTimeout(() => { toast({ tone: "danger", sticky: true, title: "Run unavailable", description: "This run is no longer in the queue." }); }, 0);
     return () => { window.clearTimeout(timer); };
   }, [toast]);
-  return <div className="fixed inset-x-0 bottom-0"><ActionBar><ActionBarRow label="Queue actions"><Button>Start run</Button></ActionBarRow></ActionBar></div>;
+  return <div className="fixed inset-x-0" style={{ bottom: "calc(var(--ds-toast-inset-bottom) - 1rem)" }}><ActionBar><ActionBarRow label="Queue actions"><Button>Start run</Button></ActionBarRow></ActionBar></div>;
 }
 
 /** Starts a request after first paint; it answers 404 and then the text changes. */
@@ -105,6 +105,30 @@ export const RULE_PROBES = {
         /^(?![\s\S]*"(?:List|Board|Zoom out)")/u,
       ],
     },
+  },
+  "tab-list-hands-over-its-stop": {
+    story: {
+      title: "A tab list whose active tab takes the stop, and two that cannot",
+      render: () => <StoryFrame>
+        <Tabs value="one" onValueChange={() => undefined}>
+          <TabList label="Steps"><Tab value="one">One</Tab><Tab value="two">Two</Tab></TabList>
+          <TabPanel value="one">First</TabPanel>
+        </Tabs>
+        <div role="tablist" aria-label="Frozen" tabIndex={0}><button type="button" role="tab" aria-selected="true" tabIndex={-1}>Frozen tab</button></div>
+        <div role="tablist" aria-label="Nameless" tabIndex={0}><button type="button" role="tab" aria-selected="true"><svg aria-hidden width="12" height="12" /></button></div>
+      </StoryFrame>,
+    },
+    finds: { "named-and-focusable": [/"Frozen tab" cannot be reached with the keyboard/u, /has no name/u, /^(?![\s\S]*"(?:Steps|One|Two)" cannot)/u] },
+  },
+  "switch-ring-on-its-control": {
+    story: {
+      title: "A switch that rings its control, and an invisible input that rings nothing",
+      render: () => <StoryFrame>
+        <Switch label="Dry run" checked={false} onCheckedChange={() => undefined} />
+        <label><input type="checkbox" style={{ opacity: 0 }} /><span>Plain</span></label>
+      </StoryFrame>,
+    },
+    finds: { "named-and-focusable": [/"Plain" shows no focus ring/u, /^(?![\s\S]*"Dry run")/u] },
   },
   "nested-clip": {
     story: {

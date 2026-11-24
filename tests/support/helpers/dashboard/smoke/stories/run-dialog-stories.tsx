@@ -67,10 +67,7 @@ const rerunClient = (served: Partial<DashboardClient> = {}) => () => runDialogCl
 const planning = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ submitStartPlan: async () => runDialogPlan(), executeCommand: async () => RUN_DIALOG_APPLIED, ...served });
 const start = (page: Page) => press(page, "Start run");
 
-/** Every dialog is built from the same large banded shell, which draws its body padding off the design system's, and holds a control no keyboard reaches. */
-const SHELL_BREAK = { "dialogs-share-shape": "#532", "named-and-focusable": "#532" } as const;
-const stage = (title: string, client: () => DashboardClient, at: RunStartStage, extra: Partial<Story> & SceneOptions = {}) =>
-  scene(title, client, at, { knownFailures: SHELL_BREAK, ...extra });
+const stage = scene;
 
 const STAGE = {
   Input: stage("Input, nothing typed", () => runDialogClient(), "Input"),
@@ -119,8 +116,7 @@ const REFUSAL = {
 } satisfies Record<StartRefusalCode, Story>;
 
 const ANSWER = {
-  conflict: stage("The start answered with a version conflict", planning({ executeCommand: async () => RUN_DIALOG_CONFLICT }), "Checks", { then: start,
-    knownFailures: { ...SHELL_BREAK, "no-banned-text": "#532" } }),
+  conflict: stage("The start answered with a version conflict", planning({ executeCommand: async () => RUN_DIALOG_CONFLICT }), "Checks", { then: start }),
 } satisfies Record<string, Story>;
 
 const RETAINED_KEY = `hrauto:run-launch:v1:${RUN_DIALOG_ACTOR}`;
@@ -131,8 +127,8 @@ const retainedCommand = () => JSON.stringify({ version: 1, command: { commandId:
 const saved = (value: string | null) => () => { if (value === null) window.sessionStorage.removeItem(RETAINED_KEY); else window.sessionStorage.setItem(RETAINED_KEY, value); };
 const RECOVERY = {
   none: stage("Nothing saved from an earlier start", () => runDialogClient(), "Input", { before: saved(null) }),
-  unreadable: stage("A saved start that cannot be read", () => runDialogClient(), "Input", { before: saved("not json"), knownFailures: { ...SHELL_BREAK, "no-banned-text": "#532" } }),
-  retained: stage("A start sent earlier and not confirmed", planning({ executeCommand: never }), "Input", { before: saved(retainedCommand()), knownFailures: { ...SHELL_BREAK, "no-banned-text": "#532" } }),
+  unreadable: stage("A saved start that cannot be read", () => runDialogClient(), "Input", { before: saved("not json") }),
+  retained: stage("A start sent earlier and not confirmed", planning({ executeCommand: never }), "Input", { before: saved(retainedCommand()) }),
 } satisfies Record<LaunchRecovery["state"], Story>;
 
 /** The Options stage's controls, each pressed once away from its default. */
