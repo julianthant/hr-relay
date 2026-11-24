@@ -137,7 +137,8 @@ const DELETE = {
   uncertain: deleting("Account deletion not confirmed", { state: "uncertain", personName: "Jordan Lee", message: "Couldn't confirm the deletion. Reopen Relay to check." }, 'text="Couldn\'t confirm the deletion. Reopen Relay to check."'),
 } satisfies Record<DeleteAccountPresentation["state"], Story>;
 
-const find = (query: string) => type("Search settings", query);
+/** Typing leaves focus in the search box; the keyboard walk starts at the top of the page, as a user's does. */
+const find = (query: string): Scene["play"] => then(type("Search settings", query), async page => { await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); }); });
 const SEARCH = {
   results: scene("Search with matching settings", { play: then(loaded, find("browser")), story: { ready: '[role="status"]:has-text("found")' } }),
   none: scene("Search with no matching setting", { play: then(loaded, find("zzzz")), story: { ready: 'text="No settings found"' } }),
@@ -210,14 +211,10 @@ const TOAST_STORIES: ReadonlySet<string> = new Set([
 /** By `<state type>/<member>`. */
 const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleName, string>>>>> = {
   "save/saving": BREAK_SETS.FOCUS,
-  "search/none": BREAK_SETS.FOCUS,
-  "search/results": BREAK_SETS.FOCUS,
   "dialog/change-password-refused": BREAK_SETS.ACCENT,
   "dialog/edit-name-refused": BREAK_SETS.ACCENT,
   "dialog/edit-username-refused": BREAK_SETS.ACCENT,
   "notice/opened-for-check": BREAK_SETS.FOCUS,
-  "search/reading": BREAK_SETS.FOCUS,
-  "search/unavailable": BREAK_SETS.FOCUS,
   "action/duo-not-opened": BREAK_SETS.FOCUS,
   "action/name-not-saved": BREAK_SETS.FOCUS,
   "action/password-changed": BREAK_SETS.FOCUS,
