@@ -1,13 +1,8 @@
 import { createElement, memo, type ReactNode } from "react";
-import { CalendarClock, ClipboardCheck, FileText, Folder, Search, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
 import { Tooltip, dsFocus } from "../../ds/ui.js";
 import type { WorkflowCategoryGroup, WorkflowGroupEntry } from "../workflows/workflow-category.js";
-import { workflowInitials, type WorkflowNavigationEntry } from "./workflow-rail-model.js";
+import { categoryIcon, workflowInitials, type WorkflowNavigationEntry } from "./workflow-rail-model.js";
 import { WorkflowHarnessTag } from "./workflow-harness-tag.js";
-
-const CATEGORY_ICONS: Readonly<Record<string, LucideIcon>> = {
-  Lookup: Search, Separations: UserMinus, Onboarding: UserPlus, "Work-Study": ClipboardCheck, Documents: FileText, Timekeeping: CalendarClock,
-};
 
 const WorkflowNavigationRow = memo(function WorkflowNavigationRow({ node, selected, onSelect, metadata, unavailable, description }: {
   node: WorkflowGroupEntry<WorkflowNavigationEntry>; selected: boolean; onSelect: (id: string) => void; metadata?: ReactNode; unavailable?: string; description?: string;
@@ -46,7 +41,7 @@ export const WorkflowNavigation = memo(function WorkflowNavigation({ groups, act
   groups: readonly WorkflowCategoryGroup<WorkflowNavigationEntry>[]; active: string; onSelect: (id: string) => void; label: string; metadata?: (id: string) => ReactNode; unavailable?: (id: string) => string | undefined;
 }) {
   return <nav aria-label={label} className="workflow-rail" data-collapsed={collapsed || undefined}><div className="workflow-rail-groups">{groups.map(group =>
-    <section key={group.label} className="workflow-rail-group">{!collapsed && group.label !== "" && <h3>{createElement(CATEGORY_ICONS[group.label] ?? Folder, { "aria-hidden": true, className: "size-3.5 shrink-0" })}{group.label}</h3>}
+    <section key={group.label} className="workflow-rail-group">{!collapsed && group.label !== "" && <h3>{createElement(categoryIcon(group.label), { "aria-hidden": true, className: "size-3.5 shrink-0" })}{group.label}</h3>}
       <WorkflowNavigationEntries nodes={group.entries} active={active} onSelect={onSelect} metadata={metadata} unavailable={unavailable} description={description} collapsed={collapsed} />
     </section>)}</div></nav>;
 });

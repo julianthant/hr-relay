@@ -86,6 +86,19 @@ it('offers the operator tags in the tag filter', async () => {
   assert.ok(byText('[role="menuitemcheckbox"]', 'Fall'));
 });
 
+it('keeps the tag filter and clears a selection whose only tag was removed', async () => {
+  await render();
+  await click(host.querySelector('button[aria-label="Filter by tag"]'));
+  await click(byText('[role="menuitemcheckbox"]', 'Fall'));
+  assert.equal(host.querySelector('button[aria-label="Filter by tag"]')?.textContent, 'Fall');
+  assert.equal(host.querySelector('li[aria-label="Keys.xlsx"]'), null);
+  wiring.catalog = [make('roster', 'Roster.xlsx', { pinned: true, tags: [] }), make('keys', 'Keys.xlsx', { pinned: false, tags: [] })];
+  await render();
+  const trigger = host.querySelector('button[aria-label="Filter by tag"]');
+  assert.equal(trigger?.textContent, 'All tags');
+  assert.ok(host.querySelector('li[aria-label="Roster.xlsx"]') && host.querySelector('li[aria-label="Keys.xlsx"]'));
+});
+
 it('shows a toast when the command is refused', async () => {
   wiring.changeLibrary = vi.fn(async () => ({ state: 'refused', message: 'The library changed.' }));
   await render();

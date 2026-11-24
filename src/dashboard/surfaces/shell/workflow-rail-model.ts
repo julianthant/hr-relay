@@ -1,3 +1,4 @@
+import { CalendarClock, ClipboardCheck, FileText, Folder, Search, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
 import { useCallback, useState, useSyncExternalStore } from "react";
 import { WORKFLOW_SOURCES } from "../../app/workflow-sources.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
@@ -13,6 +14,15 @@ export function workflowInitials(label: string): string {
   const words = label.split(/[^\p{L}\p{N}]+/u).filter(word => word !== "");
   const letters = words.length > 1 ? words.slice(0, 2).map(word => word[0]).join("") : (words[0] ?? label).slice(0, 2);
   return letters.toUpperCase();
+}
+
+const CATEGORY_ICONS: Readonly<Record<string, LucideIcon>> = {
+  Lookup: Search, Separations: UserMinus, Onboarding: UserPlus, "Work-Study": ClipboardCheck, Documents: FileText, Timekeeping: CalendarClock,
+};
+
+/** The icon on a category heading in the rail; a category without one reads with a folder. */
+export function categoryIcon(label: string): LucideIcon {
+  return CATEGORY_ICONS[label] ?? Folder;
 }
 
 const CATEGORY_ORDER = ["Lookup", "Separations", "Onboarding", "Work-Study", "Payroll", "Utils", "OnBase", "Timekeeping"] as const;
