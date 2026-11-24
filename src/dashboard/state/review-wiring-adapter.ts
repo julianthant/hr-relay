@@ -95,7 +95,8 @@ export async function verifyOcrReviewEffect(client: DashboardClient, request: Da
 
 type ReviewDraftFields = Record<string, Record<string, string>>;
 type ReviewDraft = { revision: number; fields: ReviewDraftFields; includes: Record<string, boolean> };
-type ReviewAttempt = { request?: CommandRequest; captured?: Pick<ReviewDraft, "fields" | "includes">;
+/** `actedOn` is the run row version the command was first sent against; a check of its result keeps it. */
+type ReviewAttempt = { actedOn?: number; request?: CommandRequest; captured?: Pick<ReviewDraft, "fields" | "includes">;
   state: "pending" | "uncertain" | "conflict" | "refused"; text: string };
 interface ReviewMemory {
   draft?: ReviewDraft;
@@ -157,8 +158,8 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
   const send = useCallback(async (request: CommandRequest, captured?: Pick<ReviewDraft, "fields" | "includes">, check = false) => {
     const start = memory.binding;
     if (start === undefined || start.scope.client !== client || memory.attempt?.state === "pending") return;
-    memory.attempt = { request, captured, state: "pending", text: "Pending" };
-    const actedOn = heldRevision.current;
+    const actedOn = check ? memory.attempt?.actedOn ?? heldRevision.current : heldRevision.current;
+    memory.attempt = { actedOn, request, captured, state: "pending", text: "Pending" };
     publishReview(memory);
     const options = { scope: start.scope, readback: (input: DashboardCommandRequest) => verifyOcrReviewEffect(client, input) };
     let outcome = check ? await start.executor.check(request.commandId, { ...options, observe: async input => {
@@ -187,7 +188,7 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
         memory.attempt = undefined;
       }
     }
-    if (outcome.kind !== "confirmed") memory.attempt = { request, captured, state: reviewAttemptState(outcome), text: outcome.feedback.text };
+    if (outcome.kind !== "confirmed") memory.attempt = { actedOn, request, captured, state: reviewAttemptState(outcome), text: outcome.feedback.text };
     publishReview(memory);
     if (memory.listeners.size > 0) {
       memory.binding?.feedback(outcome);

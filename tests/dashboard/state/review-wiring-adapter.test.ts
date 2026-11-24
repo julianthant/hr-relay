@@ -11,6 +11,7 @@ import { afterEach, beforeEach, it, vi } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
 import { readRunReview } from "../../../src/dashboard/state/review-wiring-adapter.js";
+import { ROW_REVISION_WAIT_MS } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { RunReview } from "../../../src/dashboard/surfaces/run-detail/review/review.js";
 import { correctedOcrRecord } from "../../../src/dashboard/surfaces/run-detail/review/review-model.js";
 import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../src/models/dashboard/projection.js";
@@ -225,17 +226,18 @@ function editorWorld(unknownOnce = false, delegated = true) {
   const scope = { actorId: "local-operator", client, authority: epoch, dayRequest };
   let refresh: () => void = () => undefined;
   let refreshPaused = false;
+  let dayRefreshes = 0;
   const binding: DashboardCommandBinding = { scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
     authority: { epoch, catalog: [], now: () => FIXTURE_BOOTSTRAP.serverClock.now, today: day, day,
       dayState: { rows: createRowStore(), request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" },
-        refresh: () => { if (!refreshPaused) refresh(); }, subscribePublications: () => () => undefined }, selection: { route: { start: false }, workflowId: "ocr" } } };
+        refresh: () => { dayRefreshes++; if (!refreshPaused) refresh(); }, subscribePublications: () => () => undefined }, selection: { route: { start: false }, workflowId: "ocr" } } };
   function Harness() {
     const [revision, setRevision] = useState(runVersion);
     refresh = () => setRevision(runVersion);
     return createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(RunReview, { selection: selection(revision) }) }) });
   }
-  return { client, binding, commands, Harness, page: () => page, pauseRefresh: () => { refreshPaused = true; },
+  return { client, binding, commands, Harness, dayRefreshes: () => dayRefreshes, page: () => page, pauseRefresh: () => { refreshPaused = true; },
     recordedLookup: (mode: typeof recordedLookup) => { recordedLookup = mode; },
     resumeRefresh: () => { refreshPaused = false; refresh(); }, externalChange: (values: Readonly<Record<string, string>> = {}) => {
     assert.ok(page.ocr);
@@ -316,6 +318,9 @@ it("retains an uncertain save across remount and checks its original command wit
   await act(async () => button(host, "Check result").click());
   assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.disabled, false);
   assert.equal(h.commands.length, 1);
+  // The row the lost reply moved has already arrived; checking the result waits on no newer row and reopens no day.
+  await act(async () => { await vi.advanceTimersByTimeAsync(ROW_REVISION_WAIT_MS * 2); });
+  assert.equal(h.dayRefreshes(), 0);
   assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.value, "Retained Edit");
 });
 
