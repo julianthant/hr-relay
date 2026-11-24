@@ -93,17 +93,24 @@ for (const event of Object.keys(BASELINE) as RunEvent[]) {
   }
 }
 
-test("notification published: requests after the event", async ({ dashboard, page, seeded }) => {
+/** The unread count the notification bell names. */
+async function unreadCount(page: Page): Promise<number> {
+  const label = await page.getByRole("button", { name: /^Notifications, \d+ unread$/u }).getAttribute("aria-label") ?? "";
+  return Number(/(\d+) unread/u.exec(label)?.[1] ?? Number.NaN);
+}
+
+test("notification published: the inbox takes the row from the stream with no request", async ({ dashboard, page, seeded }) => {
   const seen = watchRequests(page);
   await dashboard.open();
   await quiet(page, seen);
+  const before = await unreadCount(page);
   seen.length = 0;
 
   await seeded.drive.publishNotification();
 
-  await expect.poll(() => seen.length, { message: "the inbox reads after a publication" }).toBeGreaterThan(0);
+  await expect.poll(() => unreadCount(page), { message: "the inbox shows the published row" }).toBe(before + 1);
   await quiet(page, seen);
-  expect([...seen].sort()).toEqual(["GET /api/v1/notifications", "GET /api/v1/notifications/status", "GET /api/v1/notifications/{id}/target"].sort());
+  expect(seen).toEqual([]);
 });
 
 // A Work-Study run held at its first read goes on and the executor parks it at the gate the workflow declares.
@@ -181,7 +188,8 @@ async function streamQuiet(page: Page, received: readonly Received[]): Promise<v
 function shapeOf({ envelope }: Received): string {
   if (envelope.type !== "change" && envelope.type !== "snapshot") return envelope.type;
   const day = envelope.type === "change" && envelope.day !== undefined ? "+day" : "";
-  return `${envelope.type}${day}[${envelope.rows.map(row => row.value.state).join(",")}]`;
+  // The notification-status row rides every snapshot; the shapes below name the run panel only.
+  return `${envelope.type}${day}[${envelope.rows.flatMap(row => row.model === "run-panel" ? [row.value.state] : []).join(",")}]`;
 }
 
 function recordMs(testInfo: TestInfo, type: string, ms: number): void {
@@ -230,7 +238,7 @@ for (const event of Object.keys(TOPIC_BASELINE) as RunEvent[]) {
       await expect.poll(() => stream.received.length, { message: "the stream carries the event" }).toBeGreaterThan(before);
       await streamQuiet(page, stream.received);
       const after = stream.received.slice(before);
-      const withRow = after.find(({ envelope }) => (envelope.type === "change" || envelope.type === "snapshot") && envelope.rows.length > 0);
+      const withRow = after.find(({ envelope }) => (envelope.type === "change" || envelope.type === "snapshot") && envelope.rows.some(row => row.model === "run-panel"));
       if (withRow !== undefined) recordMs(testInfo, "event to panel row", withRow.at - firedAt);
       stream.close();
       expect(after.map(shapeOf)).toEqual(TOPIC_BASELINE[event]?.[view]);
