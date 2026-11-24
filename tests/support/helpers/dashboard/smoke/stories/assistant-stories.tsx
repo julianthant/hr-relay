@@ -124,8 +124,6 @@ const BREAK_SETS = {
   COMPOSER_OVERFLOW: ["fits-viewport", "no-dead-disabled-control", "primary-button-accent"],
   /** COMPOSER, and a control in the open panel (the message box, or a button in the transcript) shows no visible focus ring. */
   COMPOSER_FOCUS: ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-  /** Pressing History removes the focused button, so Tab restarts past the chat list and none of its controls can be reached with the keyboard. */
-  LIST_FOCUS: ["named-and-focusable"],
   /** COMPOSER_FOCUS, and the history skeleton is drawn from the loading flag while no read is held. */
   COMPOSER_FOCUS_SKELETON: ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent", "skeleton-only-while-fetching"],
 } as const;
@@ -150,7 +148,7 @@ const KNOWN_BREAKS = {
   "disposition/confirming": BREAK_SETS.COMPOSER_FOCUS,
   "disposition/review": BREAK_SETS.COMPOSER_FOCUS,
   "disposition/stale": BREAK_SETS.COMPOSER_FOCUS,
-  "disposition/unknown": BREAK_SETS.COMPOSER_FOCUS,
+  "disposition/unknown": BREAK_SETS.COMPOSER,
   "history/failed": BREAK_SETS.COMPOSER_FOCUS,
   "history/notice": BREAK_SETS.COMPOSER_FOCUS,
   "history/ready": BREAK_SETS.COMPOSER_FOCUS,
@@ -167,12 +165,9 @@ const KNOWN_BREAKS = {
   "reply/answer-long": BREAK_SETS.COMPOSER_FOCUS,
   "turn/failed": BREAK_SETS.COMPOSER_FOCUS,
   "turn/idle": BREAK_SETS.COMPOSER_FOCUS,
-  "turn/unknown": BREAK_SETS.COMPOSER_FOCUS,
-  "turn/waiting": BREAK_SETS.COMPOSER_FOCUS,
+  "turn/unknown": BREAK_SETS.COMPOSER,
+  "turn/waiting": BREAK_SETS.COMPOSER,
   "history/loading": BREAK_SETS.COMPOSER_FOCUS_SKELETON,
-  "chats/empty": BREAK_SETS.LIST_FOCUS,
-  "chats/listed": BREAK_SETS.LIST_FOCUS,
-  "chats/no-match": BREAK_SETS.LIST_FOCUS,
 } as const;
 
 export const ASSISTANT_STORIES = withKnownBreaks(
