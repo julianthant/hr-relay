@@ -110,7 +110,6 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns, 
   </div>;
 }
 
-const FAILURES_SHOWN = 5;
 const share = (count: number, total: number) => total === 0 ? "—" : `${Math.round(count / total * 100)}%`;
 
 /** Proposed Analytics heading (#752): the title, then one row that sets the period and the workflow for the whole page and holds Export. */
@@ -151,7 +150,7 @@ function Figure({ label, status, value, note, onOpen }: { label: string; status?
   </div>;
 }
 
-/** Proposed Analytics body (#752): Runs with its key figures, Failures by reason, Workflows, and the assistant's use, on served data. */
+/** Proposed Analytics body (#752): Runs with its key figures, Workflows with a finished run, and the assistant's use, on served data. */
 export function AnalyticsRedesignSections({ data, range, workflow, onOpenRuns, openRunsLocked = false }: {
   data: AnalyticsData; range: ActivityDateRange; workflow: string;
   onOpenRuns?: (metric: "completed" | "failed" | "outstanding", workflowId?: string) => void;
@@ -159,16 +158,14 @@ export function AnalyticsRedesignSections({ data, range, workflow, onOpenRuns, o
   openRunsLocked?: boolean;
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
-  const [allFailures, setAllFailures] = useState(false);
   const shown = data.workflows.filter(row => workflow === "all" || row.id === workflow);
-  const active = shown.filter(row => finished(row) > 0), idle = shown.filter(row => finished(row) === 0);
+  const active = shown.filter(row => finished(row) > 0);
   const buckets = analyticsBuckets(range, shown);
   const totals = { done: shown.reduce((n, r) => n + r.done, 0), failed: shown.reduce((n, r) => n + r.failed, 0), attention: shown.reduce((n, r) => n + r.attention, 0) };
   const total = finished(totals);
   const days = buckets.map(bucket => ({ label: bucket.label, date: bucket.date }));
   const series = OUTCOMES.map(outcome => ({ id: outcome.key, label: outcome.label, status: outcome.status, color: outcome.color, values: buckets.map(bucket => bucket[outcome.key]) }));
   const typical = workflow === "all" ? (total === 0 ? null : data.typicalSeconds) : shown[0] ? rowTypicalSeconds(shown[0]) : null;
-  const failures = (data.failures ?? []).filter(row => workflow === "all" || row.workflowId === workflow).sort((a, b) => b.runs - a.runs || a.reason.localeCompare(b.reason));
   const messages = bucketCounts(buckets, data.assistant.messages), proposed = bucketCounts(buckets, data.assistant.actions.map(row => ({ date: row.date, count: row.proposed })));
   const messageTotal = messages.reduce((n, value) => n + value, 0), proposedTotal = proposed.reduce((n, value) => n + value, 0);
   const noun = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
@@ -188,19 +185,6 @@ export function AnalyticsRedesignSections({ data, range, workflow, onOpenRuns, o
           <Figure label="Typical time" value={analyticsClock(typical)} />
         </dl>} />
     </section>
-    <BodySection title="Failures">
-      {failures.length === 0 ? <p className="m-0 text-body text-ui-secondary">No failed runs in this period</p> : <>
-        <div className="ds-table-list-frame ds-usage-table"><table aria-label="Failures" className="table-fixed">
-          <colgroup><col /><col className="w-[168px]" /><col className="w-[72px]" /><col className="w-12" /></colgroup>
-          <thead><tr><th scope="col">Reason</th><th scope="col">Workflow</th><th scope="col" className={NUMBER}>Runs</th><th scope="col"><span className="sr-only">Open runs</span></th></tr></thead>
-          <tbody>{(allFailures ? failures : failures.slice(0, FAILURES_SHOWN)).map(row => <tr key={`${row.workflowId}:${row.reason}`}>
-            <td className="!h-auto text-pretty">{row.reason}</td><td className="truncate text-ui-secondary">{row.workflowLabel}</td><td className={NUMBER}>{row.runs}</td>
-            <td className="!px-2 text-right">{onOpenRuns && <IconButton size="xs" label={`Open ${row.workflowLabel} failed runs`} disabled={openRunsLocked} icon={<ArrowUpRight aria-hidden className={dsIcon.md} />} onClick={() => onOpenRuns("failed", row.workflowId)} />}</td>
-          </tr>)}</tbody>
-        </table></div>
-        {failures.length > FAILURES_SHOWN && <Button variant="ghost" size="sm" className="mt-2" onClick={() => setAllFailures(value => !value)}>{allFailures ? "Show fewer" : `Show all ${failures.length}`}</Button>}
-      </>}
-    </BodySection>
     <BodySection title="Workflows">
       {active.length === 0 ? <p className="m-0 text-body text-ui-secondary">No finished runs in this period</p> :
       <div className="ds-table-list-frame ds-usage-table"><table aria-label="Workflows" className="table-fixed">
@@ -229,7 +213,6 @@ export function AnalyticsRedesignSections({ data, range, workflow, onOpenRuns, o
           </Fragment>;
         })}</tbody>
       </table></div>}
-      {active.length > 0 && idle.length > 0 && <p className="m-0 mt-2 text-body text-ui-muted">No finished runs: {idle.map(row => row.label).join(", ")}</p>}
     </BodySection>
     <BodySection title="Assistant">
       {messageTotal + proposedTotal === 0 ? <p className="m-0 text-body text-ui-secondary">No assistant use in this period</p> :

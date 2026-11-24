@@ -6,14 +6,10 @@ export interface AnalyticsWorkflow {
   id: string; label: string; done: number; failed: number; attention: number; typicalSeconds: number | null;
   failedAt: readonly { label: string; runs: number }[]; days: readonly AnalyticsDayRow[];
 }
-/** Failed runs of one workflow that share a reason, in the catalog's sentence for it. */
-export interface AnalyticsFailure { reason: string; workflowId: string; workflowLabel: string; runs: number }
 /** Which Analytics page is drawn: the current one, or the proposed one of #752. */
 export type AnalyticsDesign = "current" | "redesign";
 export interface AnalyticsData {
   running: number; typicalSeconds: number | null;
-  /** Read only by the proposed page; the served report carries these and the adapter does not project them yet. */
-  failures?: readonly AnalyticsFailure[];
   workflows: readonly AnalyticsWorkflow[];
   /** Per-day assistant use for the report's days, in order. Tool calls and approvals are not recorded, so no series exists for them. */
   assistant: { messages: readonly { date: string; count: number }[]; actions: readonly { date: string; proposed: number }[] };
