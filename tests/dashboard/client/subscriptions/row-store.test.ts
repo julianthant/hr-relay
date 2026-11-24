@@ -55,3 +55,29 @@ describe("row store notification status", () => {
     assert.equal(rows.notificationStatus(), undefined, "a reset drops it with the panels");
   });
 });
+
+describe("row store settings", () => {
+  const error = WireErrorSchema.parse({ state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true });
+  const document = (revision: number) => ({ revision, settingsFingerprint: `${String(revision)}`.padStart(64, "a") });
+  const available = (revision: number): StreamRow => ({ model: "settings", key: "editable", value: { state: "available", value: document(revision) } } as unknown as StreamRow);
+  const unavailable: StreamRow = { model: "settings", key: "editable", value: { state: "unavailable", error } };
+
+  it("replaces the held document only at or above its revision and keeps it when a read fails", () => {
+    const rows = createRowStore();
+    assert.equal(rows.settings(), undefined);
+    rows.apply([unavailable]);
+    assert.deepEqual(rows.settings(), { unavailable: true }, "a first row that failed holds nothing to show");
+    rows.apply([available(2)]);
+    assert.deepEqual(rows.settings(), { document: document(2), unavailable: false });
+    rows.apply([available(1)]);
+    assert.deepEqual(rows.settings(), { document: document(2), unavailable: false }, "an older document never replaces a newer one");
+    rows.apply([unavailable]);
+    assert.deepEqual(rows.settings(), { document: document(2), unavailable: true }, "the good document stays, marked unavailable");
+    rows.apply([available(2)]);
+    assert.deepEqual(rows.settings(), { document: document(2), unavailable: false }, "the same revision read again clears the failure");
+    rows.apply([available(3)]);
+    assert.equal(rows.settings()?.document?.revision, 3);
+    rows.reset();
+    assert.equal(rows.settings(), undefined, "a reset drops it with the panels");
+  });
+});

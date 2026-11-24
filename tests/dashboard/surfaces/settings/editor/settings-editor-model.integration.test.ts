@@ -30,14 +30,13 @@ describe("typed Settings catalog controls", () => {
     assert.equal(labelValue(h), "Competing writer");
     assert.equal(h.controller().locked, false);
   });
-  for (const failure of ["lost-response", "failed-readback", "stale-readback", "intervening-writer", "foreign-result", "wrong-family"] as const) {
+  for (const failure of ["lost-response", "failed-readback", "intervening-writer", "foreign-result", "wrong-family"] as const) {
     it(`settles the edit from its read-back after ${failure}, never resending`, async () => {
       const h = await setup(); const original = h.authority.read();
       h.ports.execute = request => {
         const result = h.authority.execute(request);
         if (failure === "lost-response") throw new Error("synthetic-sensitive-server-message");
         if (failure === "failed-readback") h.ports.read = () => { throw new Error("synthetic-sensitive-server-message"); };
-        if (failure === "stale-readback") h.ports.read = () => original;
         if (failure === "intervening-writer") h.authority.apply({ "actor.label": { set: "Later writer" } });
         if (failure === "foreign-result") return { ...result, commandId: "00000000-0000-4000-8000-000000000099" };
         if (failure === "wrong-family") return { state: "applied", commandId: SettingsCommandRequestSchema.parse(request).commandId, affectedTargets: [{ family: "protected-settings", revision: 2 }], restartRequired: false, revision: 2, entries: {} };

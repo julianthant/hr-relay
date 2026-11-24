@@ -18,24 +18,24 @@ import bootstrapJson from "../../../../fixtures/dashboard/settings-story-bootstr
 import { SettingsPage } from "../../../../../../src/dashboard/surfaces/settings/settings.js";
 import type { SettingsStoryServer } from "../../../../fixtures/dashboard/settings-story-fixtures.js";
 import { StoryFrame } from "./story-frame.js";
-import { createRowStore } from "../../../../../../src/dashboard/client/index.js";
+import type { RowStoreWriter } from "../../../../../../src/dashboard/client/index.js";
 
 const noop = () => undefined;
 const ACTOR = "local-operator";
 const BOOTSTRAP = FrontendBootstrapWireSchema.parse(bootstrapJson);
 
 /** The command binding `DashboardApp` gives the tree, on the same client; the day it holds never loads. */
-function StoryCommandBinding({ children }: { children: ReactNode }) {
+function StoryCommandBinding({ children, rows }: { children: ReactNode; rows: RowStoreWriter }) {
   const client = useDashboardClient();
   const executor = useDashboardCommandExecutor();
   const binding = useMemo(() => {
     const epoch = Object.freeze({ client, bootstrap: BOOTSTRAP });
     const request = Object.freeze({ client, revision: 0 });
     const authority: DashboardAuthority = Object.freeze({ epoch, catalog: [], now: () => BOOTSTRAP.serverClock.now, today: "2026-08-03", day: "2026-08-03",
-      dayState: { rows: createRowStore(), request, day: LOADING, connection: { state: "connecting" as const }, subscribePublications: () => noop, refresh: noop },
+      dayState: { rows, request, day: LOADING, connection: { state: "connecting" as const }, subscribePublications: () => noop, refresh: noop },
       selection: { route: { start: false }, workflowId: "" } });
     return Object.freeze({ authority, executor, scope: Object.freeze({ actorId: ActorIdSchema.parse(ACTOR), client, authority: epoch, dayRequest: request }), feedback: noop });
-  }, [client, executor]);
+  }, [client, executor, rows]);
   return <DashboardCommandBindingProvider binding={binding}>{children}</DashboardCommandBindingProvider>;
 }
 
@@ -101,7 +101,7 @@ export function SettingsHost({ server, section, searchTarget, backToRun, account
   const settings = <ToastProviderBridge>{callbacks => <SettingsPage section={section} {...(searchTarget === undefined ? {} : { searchTarget })} {...(backToRun === undefined ? {} : { backToRun })}
     appearance={<AppearanceSettings theme="dark" onToggleTheme={noop} />} accountPage={page} deleteAccount={<DeleteAccountControl presentation={deleteAccount ?? { state: "unavailable" }} />}
     actorId={ACTOR} profileName="Jordan Lee" descriptorFingerprint={"d".repeat(64)} onSection={noop} onClose={noop} {...callbacks} />}</ToastProviderBridge>;
-  return <StoryFrame><DashboardClientProvider client={server.client}><StoryCommandBinding>
+  return <StoryFrame><DashboardClientProvider client={server.client}><StoryCommandBinding rows={server.rows}>
     {port === undefined ? settings : <ChatGptAccountContext.Provider value={port}>{settings}</ChatGptAccountContext.Provider>}
   </StoryCommandBinding></DashboardClientProvider></StoryFrame>;
 }
