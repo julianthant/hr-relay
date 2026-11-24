@@ -286,6 +286,18 @@ describe("editable Settings surface", () => {
     assert.ok(date.querySelector('button[aria-label="Choose job end date"]'));
   });
 
+  it("shows the served Relay username on Account, not the saved UCPath username, and the next-sign-in line when it is absent", async () => {
+    const applied: unknown[] = [];
+    const transport = await settingsClient(applied);
+    const values = { name: "Synthetic Operator", initials: "SO", timekeeper: "Synthetic Operator", timekeeperInitials: "SO", lastSignedInAt: "2026-08-28T08:00:00-08:00" };
+    const page = (username?: string) => ({ values: { ...values, ...(username === undefined ? {} : { username }) }, details: async () => ({ state: "refused", code: "PROFILE_INITIALS_REFUSED" }) as never, login: { changePassword: async () => ({ state: "changed" }) as never, changeUsername: async () => ({ state: "changed" }) as never } });
+    host = await mountSettingsPage(transport.client, "account", undefined, undefined, undefined, page("relay.person@ucsd.edu"));
+    assert.match(host.textContent ?? "", /Usernamerelay\.person@ucsd\.edu/u);
+    act(() => root?.unmount()); host.remove();
+    host = await mountSettingsPage(transport.client, "account", undefined, undefined, undefined, page());
+    assert.match(host.textContent ?? "", /UsernameShown after your next sign-in/u);
+  });
+
   it("holds a UCPath pencil-dialog draft through the timer, blur, Escape and Cancel and writes only on Save", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const applied: unknown[] = [];

@@ -1,5 +1,5 @@
 import { Pencil } from "lucide-react";
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { z } from "zod";
 import { BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, FormGroup, IconButton, Input, PageHeading, ResultRow, SecretField, dsIcon, useToasts } from "../../../ds/ui.js";
 import { operatorFailureSentence, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
@@ -38,6 +38,14 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
   // A saved result overrides the served values only until the served account itself changes.
   const values = saved?.base === base ? saved.values : page.values;
   const { toast } = useToasts();
+  // The session's account is read at sign-in, so a username changed earlier shows again only once re-read here.
+  const [served, setServed] = useState<string | undefined>();
+  const readAccount = page.readAccount;
+  useEffect(() => {
+    let live = true;
+    void readAccount?.().then(account => { if (live && account?.username !== undefined) setServed(account.username); }, () => undefined);
+    return () => { live = false; };
+  }, [readAccount]);
   /** Resolves to the refusal sentence to show in the open dialog, or undefined once the dialog may close. */
   const save = async (request: ProfileDetailsChangeRequest, title: string): Promise<string | undefined> => {
     let result: ProfileDetailsChangeResult;
@@ -61,7 +69,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     <PageHeading title="Account" />
     <Group label="Relay account" description="How you sign in to Relay.">
       {details("Name", values.name, next => { const [firstName = "", ...rest] = next.split(/\s+/u); return { name: { firstName, lastName: rest.join(" ") } }; })}
-      <RelayLoginRows login={{ ...login, username }} />
+      <RelayLoginRows login={{ ...login, username: served ?? username }} />
       {details("Initials", values.initials, initials => ({ initials }))}
       <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-6" /></span>} />
     </Group>
@@ -81,8 +89,8 @@ export type ProfileDetailsChangeRequest = z.infer<typeof ProfileDetailsChangeReq
 export type ProfileDetailsChangeResult = z.infer<typeof ProfileDetailsChangeResultSchema>;
 
 /** A value row whose pencil opens a dialog; Cancel and Escape close it and return focus to the pencil. */
-export function PencilRow({ label, description, shown, pencilLabel, title, editable = true, dialog }: {
-  label: string; description?: string; shown: string; pencilLabel: string; title: string; editable?: boolean;
+export function PencilRow({ label, description, shown, pencilLabel, title, dialog }: {
+  label: string; description?: string; shown: string; pencilLabel: string; title: string;
   dialog: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -91,7 +99,7 @@ export function PencilRow({ label, description, shown, pencilLabel, title, edita
   return <>
     <ResultRow label={label} description={description} value={<span className="inline-flex items-center justify-end gap-3">
       <span className="text-ui-primary">{shown}</span>
-      {editable ? <IconButton ref={pencil} type="button" label={pencilLabel} variant="ghost" size="sm" icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} /> : <span aria-hidden className="size-6" />}
+      <IconButton ref={pencil} type="button" label={pencilLabel} variant="ghost" size="sm" icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} />
     </span>} />
     {open && <Dialog open onOpenChange={next => { if (!next) close(); }}>
       <DialogContent size="sm" title={title} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
@@ -159,8 +167,10 @@ export function RelayLoginRows({ login }: { login: RelayLogin }) {
     if (kind === "username" && login.readUsername !== undefined) {
       // A lost username reply is read back: the served username shows silently, or one failure toast.
       const read = login.readUsername;
-      if (await readBack(read, served => served === next) === next) { setChangedUsername(next); return undefined; }
-      toast({ key, tone: "danger", title: `${LABEL[kind]} not changed` });
+      const served = await readBack(read, now => now === next);
+      if (served === next) { setChangedUsername(next); return undefined; }
+      // An absent served username means the change may have landed: it is not confirmed either way.
+      toast({ key, tone: "danger", title: served === undefined ? `${LABEL[kind]} change not confirmed` : `${LABEL[kind]} not changed` });
       return undefined;
     }
     // A password can't be read back, so a lost reply ends in one short line and no instructions.
