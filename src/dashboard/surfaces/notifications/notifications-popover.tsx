@@ -34,13 +34,13 @@ function NoticeRow({ item, handlers }: { item: NotificationItem; handlers: RowHa
     {context !== "" && <span className="notice-context">{context}</span>}
     <span className="notice-detail">{item.gone ? "This run was deleted." : item.detail}</span>
   </>;
-  return <li className="notice-row" data-unread={!item.read || undefined} data-gone={item.gone || undefined}>
+  return <li className="notice-row" data-unread={!item.read || undefined} data-gone={item.gone || undefined} data-read-only-history={item.readOnlyHistory}>
     {item.gone ? <div className="notice-main">{text}</div>
       : <button type="button" className={cn("notice-main", dsFocus)} onClick={() => handlers.onOpen(item)} disabled={!enabled}>{text}</button>}
-    <span className="notice-action">
+    {item.readOnlyHistory !== true && <span className="notice-action">
       <RowAction label={item.read ? "Mark as unread" : "Mark as read"} icon={item.read ? <Mail aria-hidden className={dsIcon.md} /> : <MailOpen aria-hidden className={dsIcon.md} />}
         onClick={() => handlers.onControl(item.id, item.read ? "unread" : "read")} disabled={!enabled} />
-    </span>
+    </span>}
   </li>;
 }
 

@@ -27,9 +27,11 @@ import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/b
 import { readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { verifyShellCommandEffect } from "../../../../src/dashboard/app/commands/command-dispatch.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { searchPartitionDay } from "../../../../src/models/dashboard/search-calendar.js";
 import { OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
+import { NotificationCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT, NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -221,6 +223,48 @@ it.each([CURRENT_AUTHORITY_SCHEMA_VERSION, 36])("imports schema %i runs, history
     expect(upgradeScratch()).toEqual(scratchBefore);
     expect(backupFiles()).toEqual(beforeImport);
   }
+});
+
+it("serves archived notices as read alongside actionable copy notices", async () => {
+  const source = await openCurrentWorld(), copy = await openCurrentWorld();
+  const now = clock.now().toISOString();
+  source.database.authority.notifications.create({ ...NOTIFICATION,
+    snooze: { state: "snoozed", until: "2026-11-24T12:00:00.000Z" } });
+  const backup = await takeBackup(source);
+  initializeCopyConfig(copy, clock);
+  await importIsolatedProfileData(copy.admission, copy.database, {
+    source: { manifestPath: backup.manifestPath, binding: source.admission.profileBinding },
+    destination: copy.admission.profileBinding,
+  }, clock);
+  const archivedId = NOTIFICATION.notificationId, localId = randomUUID();
+  copy.database.authority.notifications.create({ ...NOTIFICATION, notificationId: localId });
+  copy.closeDatabase();
+  const archivePath = join(copy.stateRoot, "files", "imported-history.sqlite");
+  const archive = readFileSync(archivePath);
+  const { client } = await openCopyDashboard(copy, clock);
+  const day = searchPartitionDay(clock.now());
+  const archived = { notificationId: archivedId, readState: "read", state: "read", readOnlyHistory: true };
+  for (const rows of [await client.notificationSnapshot(), (await client.dashboardDay(day)).notifications]) {
+    expect(rows.find(row => row.notificationId === archivedId)).toMatchObject(archived);
+    const local = rows.find(row => row.notificationId === localId);
+    expect(local).toMatchObject({ readState: "unread", state: "unread", revision: 1 });
+    expect(local).not.toHaveProperty("readOnlyHistory");
+  }
+  const command = { requestedAt: now, requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "dashboard", family: "notification" };
+  const target = await client.notificationCollection?.("read");
+  expect(target).toEqual({ actorId: LOCAL_OPERATOR_ACTOR_ID, members: [{ notificationId: localId, expectedVersion: 1 }], matchingCount: 1 });
+  const readAll = NotificationCommandRequestSchema.parse({ ...command, commandId: randomUUID(), type: "notification-read-all", target });
+  const applied = await client.executeCommand(readAll);
+  expect(applied).toMatchObject({ state: "applied", affectedTargets: [{ family: "notification", notificationId: localId }] });
+  expect(await verifyShellCommandEffect(client, day, readAll, applied)).toMatchObject({ state: "matched" });
+
+  const unread = NotificationCommandRequestSchema.parse({ ...command, commandId: randomUUID(), type: "notification-unread",
+    target: { actorId: LOCAL_OPERATOR_ACTOR_ID, notificationId: localId, expectedVersion: 2 } });
+  const toggled = await client.executeCommand(unread);
+  expect(toggled.state).toBe("applied");
+  expect(await verifyShellCommandEffect(client, day, unread, toggled)).toMatchObject({ state: "matched" });
+  expect((await client.notificationSnapshot()).find(row => row.notificationId === archivedId)).toMatchObject(archived);
+  expect(readFileSync(archivePath)).toEqual(archive);
 });
 
 it("refreshes imported runs beside copy-created runs and starts the dashboard on a schema-39 archive with no imported work or outbound requests", async () => {
