@@ -48,6 +48,9 @@ notification kind.
 Run the same command again to replace the synthetic history. A profile refresh replaces the
 imported archive, so run the seed again after importing a newer backup.
 
+Refresh an older archive from its source backup before seeding if it lacks the start plans and
+configuration snapshots needed to read its delegated runs or failed Lookup batches.
+
 ## Sign in
 
 From the copy checkout, run `npx tsx scripts/profiles/copy-signin.ts development` or use

@@ -30,6 +30,11 @@ export function historyArchivePath(stateRoot: string): string {
 }
 
 const commandFamilies = "family IN ('run-lifecycle','run','start','bulk-parent','bulk-child','failure-resolution','ocr-review','gate','workflow-batch') OR (family='worker-browser' AND json_extract(request_json,'$.type')='check-parked-write')";
+const archiveFormat = 2;
+const startEvidenceTables = {
+  run_requests: " WHERE id IN (SELECT json_extract(payload_json,'$.origin.startPlanId') FROM run_batches WHERE id IN (SELECT session_id FROM runs))",
+  settings_snapshots: " WHERE id IN (SELECT settings_snapshot_id FROM runs)",
+} as const;
 const historyTables = {
   runs: "", run_batches: "", deleted_runs: "", run_delegations: "", delegation_dependencies: "",
   run_checkpoints: "", gate_results: "", run_results: "", run_failures: "", run_receipts: "",
@@ -39,9 +44,10 @@ const historyTables = {
   command_audits: ` WHERE command_id IN (SELECT id FROM commands WHERE ${commandFamilies})`,
   run_references: " WHERE table_name IN ('commands','command_audits','run_delegations','delegation_dependencies','run_results','run_receipts')",
   workbook_operations: " WHERE json_extract(request_json,'$.source.kind') IN ('run','run-reference') AND receipt_json IS NOT NULL",
+  ...startEvidenceTables,
 } as const;
 const tables = Object.entries(historyTables);
-const headers = z.strictObject({ format: z.literal(1), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+const headers = z.strictObject({ format: z.literal(archiveFormat), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   installation_id: z.uuid(), profile_id: z.uuid() });
 const Column = z.string().regex(/^[a-z_]+$/u);
 const validatedVersion = new WeakMap<DatabaseSync, number>();
@@ -55,17 +61,24 @@ export function writeHistoryArchive(source: DatabaseSync, path: string, binding:
   return materializeHistoryArchive(source, path, binding, at);
 }
 
+function createHistoryTable(archive: DatabaseSync, name: string, columns: readonly string[]): void {
+  archive.exec(`CREATE TABLE ${name} (${columns.join(",")})`);
+  const key = columns.includes("id") ? "id" : columns.includes("run_id") ? "run_id" : columns[0];
+  archive.exec(`CREATE INDEX ${name}_lookup ON ${name}(${key})`);
+  if (columns.includes("run_id") && key !== "run_id") archive.exec(`CREATE INDEX ${name}_owner ON ${name}(run_id)`);
+}
+
 function materializeHistoryArchive(source: DatabaseSync, path: string, binding: ProfileDatabaseBinding, at?: IsoInstant) {
   const archive = new DatabaseSync(path);
   try {
     archive.exec("BEGIN");
     archive.exec("CREATE TABLE history_header(format INTEGER, schema_version INTEGER, installation_id TEXT, profile_id TEXT)");
-    archive.prepare("INSERT INTO history_header VALUES(1,?,?,?)").run(CURRENT_AUTHORITY_SCHEMA_VERSION, binding.installationId, binding.profileId);
+    archive.prepare("INSERT INTO history_header VALUES(?,?,?,?)").run(archiveFormat, CURRENT_AUTHORITY_SCHEMA_VERSION, binding.installationId, binding.profileId);
     const counts: Record<string, number> = {};
     for (const [name, where] of tables) {
       const select = source.prepare(`SELECT * FROM ${name}${at === undefined ? " WHERE 0" : where}`);
       const columns = select.columns().map(column => Column.parse(column.name));
-      archive.exec(`CREATE TABLE ${name} (${columns.join(",")})`);
+      createHistoryTable(archive, name, columns);
       const insert = archive.prepare(`INSERT INTO ${name} VALUES(${columns.map(() => "?").join(",")})`);
       let count = 0;
       for (let row of select.iterate()) {
@@ -79,9 +92,6 @@ function materializeHistoryArchive(source: DatabaseSync, path: string, binding: 
         insert.run(...columns.map(key => row[key]));
         count++;
       }
-      const key = columns.includes("id") ? "id" : columns.includes("run_id") ? "run_id" : columns[0];
-      archive.exec(`CREATE INDEX ${name}_lookup ON ${name}(${key})`);
-      if (columns.includes("run_id") && key !== "run_id") archive.exec(`CREATE INDEX ${name}_owner ON ${name}(run_id)`);
       counts[name] = count;
     }
     archive.exec("UPDATE run_search SET state='discarded' WHERE run_id IN (SELECT id FROM runs WHERE outcome='discarded') AND state NOT IN ('done','failed','cancelled','discarded','interrupted','superseded')");
@@ -223,7 +233,7 @@ function assertArchiveFile(path: string) {
 
 function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
   assertArchiveFile(path);
-  upgradeHistoryArchive(path, binding);
+  upgradeHistoryArchive(path, binding, database);
   const url = pathToFileURL(path);
   url.search = "mode=ro&immutable=1";
   database.prepare("ATTACH DATABASE ? AS history").run(url.href);
@@ -240,27 +250,40 @@ const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync) => void>
     backfillRunSearchOcrSubjects(archive);
   },
 };
-const ArchiveVersion = z.object({ schema_version: z.number().int(), installation_id: z.string(), profile_id: z.string() });
+const ArchiveVersion = z.strictObject({ format: z.literal([1, archiveFormat]), schema_version: z.number().int(), installation_id: z.uuid(), profile_id: z.uuid() });
+
+function readArchiveVersion(archive: DatabaseSync, binding: ProfileDatabaseBinding) {
+  const header = ArchiveVersion.parse(archive.prepare("SELECT format,schema_version,installation_id,profile_id FROM history_header").get());
+  if (header.installation_id !== binding.installationId || header.profile_id !== binding.profileId) throw new Error("isolated-history-binding-mismatch");
+  if (header.schema_version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("isolated-history-schema-unsupported");
+  return header;
+}
 
 /** Brings an archive an older build wrote up to the current schema in place, in one transaction. */
-function upgradeHistoryArchive(path: string, binding: ProfileDatabaseBinding): void {
+function upgradeHistoryArchive(path: string, binding: ProfileDatabaseBinding, layout: DatabaseSync): void {
   const probe = new DatabaseSync(path, { readOnly: true });
   let header: z.infer<typeof ArchiveVersion>;
-  try { header = ArchiveVersion.parse(probe.prepare("SELECT schema_version,installation_id,profile_id FROM history_header").get()); } finally { probe.close(); }
-  if (header.schema_version >= CURRENT_AUTHORITY_SCHEMA_VERSION) return;
-  if (header.installation_id !== binding.installationId || header.profile_id !== binding.profileId) throw new Error("isolated-history-binding-mismatch");
+  try { header = readArchiveVersion(probe, binding); } finally { probe.close(); }
+  if (header.schema_version === CURRENT_AUTHORITY_SCHEMA_VERSION && header.format === archiveFormat) return;
   let version: number;
   const archive = new DatabaseSync(path);
   try {
     archive.exec("BEGIN IMMEDIATE");
     try {
-      for (version = ArchiveVersion.parse(archive.prepare("SELECT schema_version,installation_id,profile_id FROM history_header").get()).schema_version;
+      const start = readArchiveVersion(archive, binding);
+      for (version = start.schema_version;
         version < CURRENT_AUTHORITY_SCHEMA_VERSION; version += 1) {
         const step = ARCHIVE_UPGRADES[version];
         if (step === undefined) throw new Error(`isolated-history-schema-unsupported: ${String(version)}`);
         step(archive);
       }
-      archive.prepare("UPDATE history_header SET schema_version=?").run(version);
+      if (start.format === 1) {
+        for (const name of Object.keys(startEvidenceTables)) {
+          const columns = layout.prepare(`SELECT * FROM main.${name} LIMIT 0`).columns().map(column => Column.parse(column.name));
+          createHistoryTable(archive, name, columns);
+        }
+      }
+      archive.prepare("UPDATE history_header SET schema_version=?,format=?").run(version, archiveFormat);
       archive.exec("COMMIT");
     } catch (error) { archive.exec("ROLLBACK"); throw error; }
   } finally { archive.close(); }
