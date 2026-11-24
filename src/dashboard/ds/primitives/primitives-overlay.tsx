@@ -864,7 +864,7 @@ function ToastViewport() {
   useLayoutEffect(() => {
     const root = document.documentElement;
     root.style.setProperty("--toast-stack-bottom", `${String(Math.max(stackBottom, published))}px`);
-    return () => root.style.removeProperty("--toast-stack-bottom");
+    return () => { root.style.removeProperty("--toast-stack-bottom"); };
   }, [stackBottom, published]);
   return <BaseToastViewport ref={viewportRef} aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
     {toasts.map(item => {
