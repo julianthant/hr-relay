@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/operator.js";
 import { DASHBOARD_CATALOG_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
+import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { resolveRunNavigation } from "../../../../src/dashboard/app/navigation/run-navigation.js";
 import { readSearchSnapshot, searchResults } from "../../../../src/dashboard/state/search-wiring-adapter.js";
@@ -91,6 +94,35 @@ it("finds an OCR run by a name or Employee ID carried only by its reviewed recor
   assert.equal(search.search({ q: "Example, Robin" }).totalMatches, 0);
   await assertOpensRun(f, { q: name }, runId);
 }, scaledMs(30_000));
+
+it("bounds eligible OCR reviews before reading record payloads", () => {
+  const db = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false });
+  try {
+    for (const migration of SQLITE_MIGRATIONS) for (const sql of migration.statements) db.exec(sql);
+    db.exec(`INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id)
+      VALUES(1,1,1,'2026-10-01T17:00:00.000Z',1,'ready','11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222');
+      WITH RECURSIVE seeds(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM seeds WHERE n<10001),
+      ids AS (SELECT printf('00000000-0000-4000-8000-%012d',n) AS id FROM seeds)
+      INSERT INTO runs(id,workflow,item_id,attempt,state,priority,claim_generation,version,settings_snapshot_id,descriptor_version,contract_fingerprint,
+        trace_id,dry_run,local_day,enqueued_at,envelope_json,lifecycle_json,created_at,updated_at)
+      SELECT id,'ocr',id,1,'queued','interactive',0,1,'fixture',1,'fixture',id,0,'2026-10-01',
+        '2026-10-01T17:00:00.000Z','{}','{}','2026-10-01T17:00:00.000Z','2026-10-01T17:00:00.000Z' FROM ids;
+      INSERT INTO run_search(run_id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,descriptor_version,has_receipt,has_diagnostic,
+        systems_json,source_version,metadata_json,created_at,updated_at)
+      SELECT id,workflow,trace_id,local_day,state,'single',dry_run,unixepoch(enqueued_at)*1000,descriptor_version,0,0,'[]',version,'{}',created_at,updated_at FROM runs;
+      INSERT INTO ocr_review_revisions(id,run_id,revision,payload_json,created_at)
+      SELECT id||'#1',id,1,'{}',created_at FROM runs;`);
+
+    const index = createRunSearchIndex(db);
+    const input = { q: "example", scope: "subject", facets: {}, limit: 1 };
+    // The payloads lack records. The cross-date call must hit the work limit before reading them.
+    assert.throws(() => index.search(input, 1), /run-search-query-too-broad.*10000 OCR reviews/u);
+    assert.equal(index.search({ ...input, facets: { from: "2026-10-02", to: "2026-10-02" } }, 1).totalMatches, 0);
+    assert.equal(index.search({ ...input, scope: "run" }, 1).totalMatches, 0);
+  } finally {
+    db.close();
+  }
+});
 
 it("ranks hosted OCR identity matches on the host across dates and reads the latest correction", async () => {
   const name = "Example, Avery", eid = "10800000", correctedName = "Éxample, Avery";

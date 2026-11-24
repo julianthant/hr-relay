@@ -95,19 +95,33 @@ const SEARCH_ROWS = `(SELECT run_id AS id,workflow,trace,local_day,state,shape,d
   subject,actor_id AS actor,descriptor_version AS version,failure_code AS failure,has_receipt AS receipt,
   has_diagnostic AS diagnostic,systems_json AS systems,metadata_json AS payload_json FROM run_search) s`;
 const OCR_SUBJECT_MATCH = "s.id IN (SELECT value FROM json_each(?))";
-const OcrSearchRowSchema = z.strictObject({ target_id: RunIdSchema, records_json: z.string() });
+const OcrSearchCandidateSchema = z.strictObject({ target_id: RunIdSchema, review_id: z.string() });
+const OcrSearchRecordsSchema = z.strictObject({ id: z.string(), records_json: z.string() });
 
 // A hosted review contributes matches to its visible host. Only matching run IDs reach ranking and paging.
 function readOcrSubjectMatches(database: DatabaseSync, query: string, facet: string | undefined, where: string, parameters: readonly (string | number)[]) {
   const matches = { exact: new Set<string>(), prefix: new Set<string>(), contains: new Set<string>(), facet: new Set<string>() };
-  const reviews = database.prepare(`SELECT s.id AS target_id,json_extract(review.payload_json,'$.records') AS records_json FROM runs ocr
+  const candidates = database.prepare(`SELECT s.id AS target_id,review.id AS review_id FROM runs ocr
     JOIN ${SEARCH_ROWS} ON s.id=COALESCE(ocr.parent_id,ocr.id)
     JOIN ocr_review_revisions review ON review.run_id=ocr.id AND review.revision=(
       SELECT max(revision) FROM ocr_review_revisions WHERE run_id=ocr.id
     )
-    WHERE ocr.workflow='ocr' AND json_extract(s.payload_json,'$.metadata.subject.reason') IS NOT 'withheld' AND ${where}`);
-  for (const row of reviews.iterate(...parameters)) {
-    const { target_id: target, records_json } = OcrSearchRowSchema.parse(row);
+    WHERE ocr.workflow='ocr' AND json_extract(s.payload_json,'$.metadata.subject.reason') IS NOT 'withheld' AND ${where}
+    LIMIT ?`).all(...parameters, LIMIT + 1);
+  if (candidates.length > LIMIT) throw new Error(`run-search-query-too-broad: narrow dates or metadata filters (maximum ${String(LIMIT)} OCR reviews)`);
+  if (candidates.length === 0) return matches;
+
+  const targets = new Map(candidates.map(row => {
+    const candidate = OcrSearchCandidateSchema.parse(row);
+    return [candidate.review_id, candidate.target_id] as const;
+  }));
+  const reviews = database.prepare(`SELECT id,json_extract(payload_json,'$.records') AS records_json
+    FROM ocr_review_revisions WHERE id IN (SELECT value FROM json_each(?))`);
+  for (const row of reviews.iterate(JSON.stringify([...targets.keys()]))) {
+    const { id, records_json } = OcrSearchRecordsSchema.parse(row);
+    const target = targets.get(id);
+    if (target === undefined) throw new Error("run-search-ocr-review-candidate-mismatch");
+    targets.delete(id);
     for (const record of OcrReviewRevisionSchema.shape.records.parse(JSON.parse(records_json))) {
       const employeeId = record.fields.answers.find(answer => answer.path === "employee.employeeId" || answer.path === "employeeId");
       for (const value of [ocrRecordName(record.fields), record.assertedEid, employeeId?.state === "read" ? employeeId.value : undefined]) {
@@ -121,6 +135,7 @@ function readOcrSubjectMatches(database: DatabaseSync, query: string, facet: str
       }
     }
   }
+  if (targets.size !== 0) throw new Error("run-search-ocr-review-candidate-mismatch");
   return matches;
 }
 
