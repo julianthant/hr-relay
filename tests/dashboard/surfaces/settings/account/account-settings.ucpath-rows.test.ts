@@ -60,7 +60,7 @@ describe("Settings > Account UCPath rows", () => {
     await act(async () => pencil("Edit UCPath password")?.click());
     await press("Save");
     assert.deepEqual(calls, ["submit"]);
-    assert.equal(dialog(), null);
+    assert.equal(dialog() === null, true);
     calls.length = 0;
     const trigger = pencil("Edit UCPath password");
     assert.ok(trigger);

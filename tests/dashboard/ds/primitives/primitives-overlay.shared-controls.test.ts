@@ -62,7 +62,7 @@ describe("Dialog and ConfirmDialog", () => {
     assert.ok(surface.querySelector('button[aria-label="Close"]'));
     const buttons = [...surface.querySelectorAll<HTMLButtonElement>("footer button")];
     assert.deepEqual(buttons.map(button => button.textContent), ["Cancel", "Delete run"]);
-    assert.equal(document.activeElement, buttons[0]);
+    assert.equal(document.activeElement === buttons[0], true);
     assert.match(buttons[1].className, /--ds-danger/u);
     assert.doesNotMatch(buttons[0].className, /--ds-danger/u);
     await act(async () => buttons[1].click());

@@ -205,7 +205,7 @@ it("the served consent dialog closes when its displayed attempt is replaced", as
     assert.ok(document.querySelector('[role="dialog"]'));
     await act(async () => root.render(createElement(OnboardingSetup, { page: "duo", port: { ...port, onboarding: { ...draft,
       methods: { ...draft.methods, key: { ...draft.methods.key, attemptId: "00000000-0000-4000-8000-000000000004" } } } } })));
-    assert.equal(document.querySelector('[role="dialog"]'), null); assert.equal(confirmed, 0);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true); assert.equal(confirmed, 0);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
@@ -378,7 +378,7 @@ it("opening the setup browser spins the button and leaves the instruction in pla
     assert.equal(instruction(), before);
     assert.equal(show()?.getAttribute("aria-busy"), null);
     assert.equal(show()?.disabled, false);
-    assert.equal(show()?.querySelector("svg"), null);
+    assert.equal(show()?.querySelector("svg") === null, true);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
@@ -429,8 +429,8 @@ it("shows the catalog sentence and no password when the initial profile state is
   try {
     await act(async () => root.render(createElement(Probe)));
     assert.equal(host.querySelector('[role="alert"]')?.textContent, operatorFailureSentence("DASHBOARD_FRONTEND_NOT_OWNED"));
-    assert.equal(host.querySelector('input[name="password"]'), null);
-    assert.equal(host.querySelector("form"), null);
+    assert.equal(host.querySelector('input[name="password"]') === null, true);
+    assert.equal(host.querySelector("form") === null, true);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
@@ -476,7 +476,7 @@ it("a refused sign-in keeps the email, clears and focuses the password, and clea
     assert.equal(formAlert(host), "Wrong email or password");
     assert.equal(host.querySelector<HTMLInputElement>('input[name="email"]')?.value, "fixture@ucsd.edu");
     assert.equal(host.querySelector<HTMLInputElement>('input[name="password"]')?.value, "");
-    assert.equal(document.activeElement, host.querySelector('input[name="password"]'));
+    assert.equal(document.activeElement === host.querySelector('input[name="password"]'), true);
     await submitForm(host);
     assert.equal(formAlert(host), "", "an invalid resubmit leaves only the field error");
     await typeInto(host, "password", "wrong-again"); await submitForm(host);

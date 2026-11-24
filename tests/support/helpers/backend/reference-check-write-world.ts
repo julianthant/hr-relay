@@ -6,7 +6,7 @@ import { createWorkbookLibraryAdapter } from "../../../../src/backend/processing
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
 import { resolveGateArmAnswer } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
-import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";

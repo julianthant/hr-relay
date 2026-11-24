@@ -201,7 +201,7 @@ describe('compact run headers', () => {
     const records = () => host.querySelector<HTMLButtonElement>('button[aria-label="Records 2"]');
     try {
       act(() => root.render(sample()));
-      assert.equal(document.querySelector('[role="dialog"]'), null);
+      assert.equal(document.querySelector('[role="dialog"]') === null, true);
       act(() => records()!.click()); assert.equal(onReview.mock.calls.length, 1);
       act(() => root.render(sample(true)));
       const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
