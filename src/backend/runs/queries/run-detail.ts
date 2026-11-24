@@ -37,6 +37,11 @@ import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-t
 import { requireCanonicalRun } from "./run-read.js";
 import { assertRunTimelineCompatible, hasRunDescriptorDrift } from "./run-timeline-compatibility.js";
 import { readDelegationCancellation } from "../../storage/sqlite/delegation-authority.js";
+import type { RunPanel } from "../../../models/dashboard/subscription.js";
+import { SectionUnavailableError } from "../commands/refusals.js";
+import { requireTrustRun } from "../trust/run-reader.js";
+import { buildRunLogsWhole } from "./run-logs.js";
+import { readRunSection } from "./run-sections.js";
 
 export { availableSections } from "./run-detail/availability.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
@@ -490,6 +495,26 @@ export function runLevelDecision(facts: Readonly<{ status: string; childRetryKey
   if (facts.paused) return projectDecision("paused", [...rowActionOption("resume", "resume", facts.rowActions), ...rowActionOption("cancel-run", "cancel", facts.rowActions)]);
   if (facts.stalled) return projectDecision("stalled", [...rowActionOption("recover", "recover-run", facts.rowActions), ...rowActionOption("cancel-run", "cancel", facts.rowActions)]);
   return undefined;
+}
+
+const PANEL_SECTIONS = ["captures", "identity-gate", "parked-write", "failure", "workbook-writes"] as const;
+
+/** Everything the run panel holds, read by the same queries its routes serve. A refusal throws as the route's would. */
+export async function readRunPanel(
+  deps: RunDetailQueryDeps,
+  runId: string,
+  signal: AbortSignal,
+): Promise<Extract<RunPanel, { state: "available" }>> {
+  const detail = await readRunDetail(deps, runId, signal);
+  signal.throwIfAborted();
+  if (!detail.availableSections.includes("logs")) throw new SectionUnavailableError(`section logs is not available for run ${runId}`);
+  const logs = buildRunLogsWhole(deps, runId, deps.projection.runFold(runId), requireTrustRun(deps.runReader, runId));
+  if (logs.section !== "logs") throw new Error("run panel logs read answered another section");
+  const sections = await Promise.all(PANEL_SECTIONS
+    .filter(name => detail.availableSections.includes(name) && (name !== "captures" || detail.captures?.state === "available"))
+    .map(name => readRunSection(deps, runId, name, undefined, signal)));
+  signal.throwIfAborted();
+  return { state: "available", detail, logs: logs.payload, sections };
 }
 
 /** The live route adds async capture verification; Archive's synchronous `buildRunDetail` freeze does not inspect that authority. */

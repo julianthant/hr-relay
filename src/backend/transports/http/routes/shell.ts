@@ -3,13 +3,14 @@ import { OperatorXlsxExportRequestSchema } from "../../../../models/dashboard/xl
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { CalendarQuerySchema } from "../../../../models/dashboard/calendar.js";
 import { z } from "zod";
-import { PositiveIntSchema, ProjectionCursorSchema } from "../../../../rules/identity/ids.js";
+import { PositiveIntSchema, ProjectionCursorSchema, RunIdSchema } from "../../../../rules/identity/ids.js";
 import { buildBootstrap } from "../../../runs/queries/bootstrap.js";
 import { emitOptionalDiagnostic } from "../../../logs/debug-events.js";
 import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
 import { SectionUnavailableError } from "../../../runs/commands/refusals.js";
 import { dashboardEventStreamBody } from "../subscriptions/sse-response.js";
-const TOPICS_PATTERN = /^dashboard-day:(\d{4}-\d{2}-\d{2})$/;
+// One day, and at most one open run whose panel rides the stream.
+const TOPICS_PATTERN = /^dashboard-day:(\d{4}-\d{2}-\d{2})(?:,run:([^,]+))?$/;
 const StreamResumeSchema = z.strictObject({
   lastEventId: ProjectionCursorSchema.optional(),
   lastProjectionGeneration: PositiveIntSchema.optional(),
@@ -89,6 +90,7 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
     });
     const connection = await deps.hub.connect({
       day: match[1],
+      ...(match[2] === undefined ? {} : { run: RunIdSchema.parse(match[2]) }),
       ...resume,
     });
     const stream = dashboardEventStreamBody(connection, lifecycle);

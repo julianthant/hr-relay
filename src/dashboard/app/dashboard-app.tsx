@@ -47,7 +47,7 @@ import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
-import { Button,FailureNotice,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
+import { Button,FailureNotice,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useSkeletonWait,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { createServedClock, ServedClockContext, useClockView } from "../state/served-clock.js";
@@ -320,6 +320,12 @@ interface LoadedAppProps {
 
 
 /** A stored command result opens its run through the same validated served navigation as a run notice. */
+/** The queue shows a kept copy of this day while it reloads: the muted Updating mark Sessions and Analytics use, after the skeleton wait. */
+function KeptDayMark() {
+  const waiting = useSkeletonWait();
+  return <span role="status" className={`text-body text-ui-muted pr-2${waiting ? " invisible" : ""}`}>Updating</span>;
+}
+
 function commandResultRun(destination: NotificationDestination): NotificationDestination | undefined {
   if (destination.kind !== "command-result") return destination;
   const request = destination.request;
@@ -385,21 +391,31 @@ function LoadedApp({
   }, [dayResource]);
 
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
+  // The queue, rail counts and labels may show a kept copy of this day while it reloads; every decision reads `dayWire`.
+  const keptDay = dayResource.state === "loading" && dayResource.kept?.value.day === day ? dayResource.kept.value : undefined;
+  const shownDay = dayWire ?? keptDay;
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>(() => workflowComposition.harness?.commandResults ?? []);
 
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId, canSelectWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
     ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
-  const workflowSurfaces = useMemo(() => dayWire?.queueSurfaces.filter(row => row.parent !== null || workflowSource(row.workflowId, dataSources) === "served"), [dayWire, dataSources]);
-  const queueRows = workflowSurfaces ?? NO_QUEUE_ROWS;
+  const workflowSurfaces = useMemo(() => shownDay?.queueSurfaces.filter(row => row.parent !== null || workflowSource(row.workflowId, dataSources) === "served"), [shownDay, dataSources]);
+  const shownQueueRows = workflowSurfaces ?? NO_QUEUE_ROWS;
+  const queueRows = dayWire === undefined ? NO_QUEUE_ROWS : shownQueueRows;
   const selectedRow = dayWire?.queueSurfaces.find(row => row.runId === route.run);
-  const logIdentity = useMemo(() => ({ client, authorityEpoch, actorId: boot.actor.id, day, runId: route.run }), [client, authorityEpoch, boot.actor.id, day, route.run]);
+  // A stream reset names a new day stream, so the row held from before it is never shown again.
+  const dayStream = dayState.stream ?? dayState.request;
+  const logIdentity = useMemo(() => ({ client, authorityEpoch, actorId: boot.actor.id, day, runId: route.run, dayStream }), [client, authorityEpoch, boot.actor.id, day, route.run, dayStream]);
   const retainedLogRow = useRef<{ identity: object; row: QueueSurfaceWire } | undefined>(undefined);
   if (selectedRow !== undefined) retainedLogRow.current = { identity: logIdentity, row: selectedRow };
   else if (dayResource.state !== "loading" || retainedLogRow.current?.identity !== logIdentity) retainedLogRow.current = undefined;
-  const logRow = selectedRow ?? (dayResource.state === "loading" ? retainedLogRow.current?.row : undefined);
+  // Back to a kept day with its run open shows that run's kept row; its logs stay display-only until the day is fresh.
+  const heldLogRow = selectedRow === undefined && dayResource.state === "loading" ? retainedLogRow.current?.row ?? keptDay?.queueSurfaces.find(row => row.runId === route.run) : undefined;
+  // A held row carries no command authority: its actions are dropped and Logs gets no action handler until the day is fresh.
+  const heldLogView = useMemo(() => heldLogRow === undefined ? undefined : { ...heldLogRow, actions: [] }, [heldLogRow]);
+  const logRow = selectedRow ?? heldLogView;
   const activeWorkflowId = (selectedRow === undefined ? undefined : queueScopeWorkflow(selectedRow, dayWire?.queueSurfaces ?? NO_QUEUE_ROWS)) ?? route.view?.workflow ?? chosenWorkflowId;
   const queueWorkflowAvailable = workflows.some(workflow => workflow.id === activeWorkflowId)
-    || queueRows.some(row => row.workflowId === activeWorkflowId && row.parent !== null);
+    || shownQueueRows.some(row => row.workflowId === activeWorkflowId && row.parent !== null);
   const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, profileTarget, catalog: workflowCatalog,
     now: clock.now, today, day, dayState,
     selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, profileTarget, workflowCatalog, clock, today, day, dayState, route, activeWorkflowId]);
@@ -508,17 +524,17 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
   const workflowLabels = useMemo(() => {
     const labels = new Map(workflowCatalog.map(workflow => [workflow.id, workflow.label]));
-    for (const row of dayWire?.queueSurfaces ?? []) {
+    for (const row of shownDay?.queueSurfaces ?? []) {
       if (row.parent !== null) labels.set(row.parent.workflowId, row.parent.label);
       for (const link of row.linkedRuns) labels.set(link.workflowId, link.label);
       if (row.surfaceKind === "operation") for (const member of row.recordMembers?.members ?? []) labels.set(member.target.workflowId, member.target.label);
     }
     return labels;
-  }, [workflowCatalog, dayWire]);
+  }, [workflowCatalog, shownDay]);
   const workflowLabelOf = useCallback((workflowId: string): string => workflowLabels.get(workflowId) ?? workflowId, [workflowLabels]);
   const scopedStatusCounts = useMemo(
-    () => workflowStatusCounts(dayWire?.workflowCounts ?? [], activeWorkflowId),
-    [dayWire, activeWorkflowId],
+    () => workflowStatusCounts(shownDay?.workflowCounts ?? [], activeWorkflowId),
+    [shownDay, activeWorkflowId],
   );
 
   /** Use the status vocabulary for filter text so labels and empty states agree. */
@@ -761,7 +777,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     (action: ActionDescriptorWire, target: ActionTarget): Promise<void> | void => runAction(action, target, "queue"),
     [runAction],
   );
-  const runLogAction = useCallback((action: ActionDescriptorWire, target: ActionTarget) => runAction(action, target, "run-detail"), [runAction]);
+  const freshLogRunId = selectedRow?.runId;
+  const runLogAction = useCallback((action: ActionDescriptorWire, target: ActionTarget) => {
+    if (action.kind === "command" && (freshLogRunId === undefined || String(freshLogRunId) !== target.runId)) return;
+    return runAction(action, target, "run-detail");
+  }, [runAction, freshLogRunId]);
+  const logAction = selectedRow === undefined ? undefined : runLogAction;
 
   /** Keyboard traversal must follow the same drawn order and attention bands. */
   /** Keep handler identity stable so unchanged callbacks do not defeat queue memoization. */
@@ -791,7 +812,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     void dispatchCommand(action, { runId: surface.runId, expectedVersion: action.expectedVersion }, { renameAnswer: next, source: "queue" });
   }, [dayWire, dispatchCommand, toast]);
   const { surfaces, outcomes, viewState, sortNowIso, queueHandlers, actionsOf } = useQueueWiring({
-    allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
+    allRows: shownDay?.queueSurfaces, attemptHistory: shownDay?.attemptHistory, rows: shownQueueRows, activeWorkflowId, kept: dayWire === undefined, filter, selectedRunId: route.run,
     openWells, now: clock.now, sort, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells,
     setBatchGrouping, runQueueAction, renameTitle: renameQueueTitle,
   });
@@ -880,9 +901,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     : workflows.find(workflow => workflow.id === activeWorkflowId)?.label ?? "Dashboard";
   useEffect(() => { document.title = `${pageName} — Relay`; }, [pageName]);
   const servedWorkflowCounts = useMemo(() => {
-    const childWorkflows = new Set(dayWire?.queueSurfaces.filter(row => row.parent !== null).map(row => row.workflowId));
-    return dayWire?.workflowCounts.filter(count => childWorkflows.has(count.workflowId) || workflowSource(count.workflowId, dataSources) === "served");
-  }, [dayWire, dataSources]);
+    const childWorkflows = new Set(shownDay?.queueSurfaces.filter(row => row.parent !== null).map(row => row.workflowId));
+    return shownDay?.workflowCounts.filter(count => childWorkflows.has(count.workflowId) || workflowSource(count.workflowId, dataSources) === "served");
+  }, [shownDay, dataSources]);
   const setLaunchOpen = launch.setOpen;
   const onRailSelect = useCallback((id: string) => { selectWorkflow(id); }, [selectWorkflow]);
   const harness = workflowComposition.harness;
@@ -1094,13 +1115,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
             <div className="relative min-h-0 min-w-0 flex-1">
             <div className="dashboard-panel-columns">
-              <div className="dashboard-queue-column">
+              <div className="dashboard-queue-column" aria-busy={keptDay === undefined ? undefined : true}>
                 <h1 className="sr-only">{workflowLabelOf(activeWorkflowId)} queue</h1>
-              {dayWire === undefined || !queueWorkflowAvailable ? (
-                dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && !streamDown ? <QueueSkeleton /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
+              {shownDay === undefined || !queueWorkflowAvailable ? (
+                dateError === undefined && dayResource.state !== "failed" && shownDay === undefined && !streamDown ? <QueueSkeleton /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   {dateError === undefined && dayResource.state === "failed" ? <FailureNotice sentence="Couldn't load the queue."
-                    action={{ label: "Retry", onClick: dayState.refresh }} /> : <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
-                    description={dateError ?? (dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />}
+                    action={{ label: "Retry", onClick: dayState.refresh }} /> : <EmptyState title={dateError !== undefined ? "Choose a valid date" : shownDay === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
+                    description={dateError ?? (shownDay === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />}
                 </PanelBody></Panel>
               ) : <QueuePanel
                 surfaces={surfaces}
@@ -1135,14 +1156,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
             }
           />
-                <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
+                <div role="group" aria-label="Log date controls" className="dashboard-log-date">{keptDay !== undefined && <KeptDayMark />}<DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
             <PanelBoundary resetKey={`${route.run ?? ""}:${logsAttempt}`} sentence="Couldn't show this run.">
             {route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
               LogPreview !== undefined && (logRow.parent === null || workflowComposition.harness?.logsChildRows === true)
-              ? <LogPreview selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} onAction={runLogAction} />
-              : <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}:${logsAttempt}`} onRetryLogs={() => setLogsAttempt(attempt => attempt + 1)} confirm={confirmLogDecision} onAction={runLogAction}
+              ? <LogPreview selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} onAction={logAction} />
+              : <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}:${logsAttempt}`} onRetryLogs={() => setLogsAttempt(attempt => attempt + 1)} confirm={confirmLogDecision} onAction={logAction}
                 reviewOpen={route.section === "review"} reviewFocus={route.view?.queueMember?.kind === "record" ? route.view.queueMember.record : undefined}
                 onOpenLinked={openRelatedRun} onReview={() => setRoute(current => ({ ...current, section: "review" }))} onLogs={() => setRoute(current => ({ ...current, section: "logs" }))}
                 initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
