@@ -6,7 +6,7 @@ import { Button, Dialog, DialogBody, DialogContent, DialogFooter, EmptyState, In
 import { AssistantServedActivity } from "./assistant-thread.js";
 import { publishAssistantModelChoice } from "./assistant-approval-model.js";
 import { assistantOpen, focusAssistantLauncher, useAssistantOpen } from "./assistant-launcher-model.js";
-import { chatAge, createLocalHubChatsPort, useHubChats, useHubPanelPosition, useLogsTop, type HubChatsPort } from "./hub-shell-model.js";
+import { chatAge, chatListView, createLocalHubChatsPort, useHubChats, useHubPanelPosition, useLogsTop, type HubChatsPort } from "./hub-shell-model.js";
 import { useHubAssistant } from "./hub-assistant-model.js";
 import "./hub-shell.css";
 import { useDashboardClient } from '../../state/client-context.js';
@@ -62,6 +62,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
   const returnFocus = useRef<HTMLElement | null>(null);
   const localChats = useMemo(() => history?.chats ?? createLocalHubChatsPort(), [history]);
   const model = useHubChats(chatsPort ?? localChats);
+  const chatList = chatListView(model.chats, query);
   const assistant = useHubAssistant((id, title) => { if (model.chats.some(chat => chat.id === id)) void model.rename(id, title); }, history);
   const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged, readModels: assistantOpened });
   const { models: catalog, chooseModel } = servedController;
@@ -100,7 +101,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
           event.preventDefault(); buttons[event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
         }}>
           {model.error && <p role="alert" className="hub-caption">{model.error}</p>}
-          {model.chats.length === 0 ? <div className="hub-empty"><strong>No chats yet</strong>Start a new chat to ask Relay for help.</div> : !model.chats.some(chat => chat.title.toLowerCase().includes(query.toLowerCase())) ? <div className="hub-empty">No matching chats.</div> : (["Today", "Yesterday", "Earlier"] as const).map(group => {
+          {chatList === "empty" ? <div className="hub-empty"><strong>No chats yet</strong>Start a new chat to ask Relay for help.</div> : chatList === "no-match" ? <div className="hub-empty">No matching chats.</div> : (["Today", "Yesterday", "Earlier"] as const).map(group => {
             const rows = model.chats.filter(chat => chat.group === group && chat.title.toLowerCase().includes(query.toLowerCase()));
             return rows.length > 0 && <section className="hub-chat-group" key={group}><h3>{group}</h3>{rows.map(chat => <div className="hub-chat-row" key={chat.id} data-current={chat.id === model.currentId} onKeyDown={event => {
               if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); edit("delete", chat.id); }

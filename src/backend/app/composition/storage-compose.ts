@@ -56,6 +56,9 @@ import { createNativeBrowserProbe } from "../../runtime/browser/native-browser.j
 import { requireStoppedPool, type WorkerPool } from "../../runtime/workers/worker-pool.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { acquireRecoveryRuntimeRestore,RuntimeAdmission as StorageAdmission,type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { reclaimStartupArtifactStages } from "../../storage/artifacts/content-addressed-artifact-writer.js";
+import { takeCanonicalCredentialStartupStageRepairs } from "../../storage/configuration/canonical-credential-store.js";
+import { reconcileStartupAuthorityStages } from "../../storage/sqlite/backup-service.js";
 import { AuthorityDatabase,AuthorityFormatUnsupportedError,doctorAuthorityStorage,OfflineAuthorityRestoreService,summarizeSpanAuthorityReconciliation } from "../../storage/sqlite/index.js";
 
 import { resumeAutomaticAuthorityRestore } from "../../storage/sqlite/offline-restore.js";
@@ -499,17 +502,27 @@ async function inspectAndUpgradeRegisteredPersonStores(workspace: string, lifeti
 
 async function prepareStartupUpgrades(workspace: string, lifetime: RuntimeLifetimeLock, hostFacts: HostConfigFacts,
   clock: Clock, standings: Map<string, PersonStartupStanding>) {
-  let registered = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? []
-    : machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready").map(row => row.profileId));
-  for (const profileId of registered) {
+  const { stateRoot, profiles } = await withStoppedMachineStorage(workspace, lifetime, async machine => ({ stateRoot: machine.stateRoot,
+    profiles: machine.requiresFlatStoreMigration() ? [] : machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready").map(row => row.profileId) }));
+  let repaired = takeCanonicalCredentialStartupStageRepairs(lifetime);
+  const reconcileStages = (machine: RuntimeAdmission, profileId: string) => {
+    const operation = machine.maintenanceOperation();
+    repaired += reclaimStartupArtifactStages(machine, profileId, operation);
+    repaired += reconcileStartupAuthorityStages(machine, profileId, operation);
+  };
+  for (const profileId of profiles) {
     try {
       await withStoppedMachineStorage(workspace, lifetime, async machine => {
+        reconcileStages(machine, profileId);
         logStartupUpgradeStage(workspace, clock, "inspection");
         AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
       });
     } catch (error) {
       if (hasUnprovedSourceClosure(error)) throw error;
-      try { await repairRegisteredPerson(workspace, lifetime, profileId, clock, error); }
+      try {
+        await repairRegisteredPerson(workspace, lifetime, profileId, clock, error);
+        await withStoppedMachineStorage(workspace, lifetime, async machine => { reconcileStages(machine, profileId); });
+      }
       catch (repair) {
         if (machineWideStartupFailure(repair)) throw new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: repair });
         const refusal = repair instanceof AuthorityFormatUnsupportedError || repair instanceof StartupProjectionRepairError ? repair
@@ -523,7 +536,14 @@ async function prepareStartupUpgrades(workspace: string, lifetime: RuntimeLifeti
     }
     advanceStartupStanding(standings, profileId, { type: "inspected" });
   }
-  registered = registered.filter(profileId => !isStartupHeld(standings, profileId));
+  if (repaired > 0) {
+    try {
+      appendLocalDebug({ stateRoot, build: buildVersion(), now: clock.now(),
+        event: { category: "boot", phase: "settled", area: "profile-startup-repair", reason: "unfinished-store-stages-cleared",
+          message: "Cleared unfinished storage files.", pinned: false } });
+    } catch { /* The debug log does not gate startup. */ }
+  }
+  const registered = profiles.filter(profileId => !isStartupHeld(standings, profileId));
   const pendingLogouts = await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
     for (const profileId of registered) if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", profileId))) {
       assertMaintenanceCustodyAvailable("backup-retirement");

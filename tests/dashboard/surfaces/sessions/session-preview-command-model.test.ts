@@ -66,7 +66,7 @@ describe("worker controls", () => {
     assert.equal(sent.length, 1, "nothing is resent"); assert.deepEqual(checked, sent);
     assert.equal(host.querySelectorAll('button[aria-label="Resume"]').length, 1);
     assert.doesNotMatch(host.textContent ?? "", /uncertain|Check outcome|unavailable/u);
-    assert.equal(host.querySelector('[role="alert"]'), null); assert.deepEqual(problems, []);
+    assert.equal(host.querySelector('[role="alert"]') === null, true); assert.deepEqual(problems, []);
   });
 
   it("settles a foreign or malformed reply from the read-back", async () => {
@@ -96,7 +96,7 @@ describe("worker controls", () => {
     assert.equal(host.querySelectorAll('button[aria-label="Resume"]').length, 0);
     assert.equal(firstPause(host)?.disabled, false, "the control works again without a reload");
     assert.doesNotMatch(host.textContent ?? "", /Lost response|No served effect|Check outcome/u);
-    assert.equal(host.querySelector('[role="alert"]'), null);
+    assert.equal(host.querySelector('[role="alert"]') === null, true);
     await act(async () => firstPause(host)?.click());
     assert.equal(sent.length, 2, "a new press sends a new command");
   });

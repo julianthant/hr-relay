@@ -8,7 +8,7 @@ import { openBoundDatabaseFixture } from "./admission-fixture.js";
 import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { manualClock, type TestClock } from "../../../src/rules/time/clock.js";
-import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-executor.js";
+import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-execution-write.js";
 import {
   createWriteSequencer,
   type ProductionWriteSequencer,

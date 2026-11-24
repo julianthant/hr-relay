@@ -167,7 +167,7 @@ afterEach_m1(_afterEachFixture0);
     await act_m1(async () => oldAttempt.focus());
     await render([row(5, true, 2, 3), ...rows], undefined, row(2).runId);
     const selected = document.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]');
-    assert_m1.equal(document.activeElement, selected);
+    assert_m1.equal(document.activeElement === selected, true);
     assert_m1.match(selected?.textContent ?? "", /#1.*Queued/u);
     assert_m1.equal(document.querySelector('[aria-label="Attempts for Ben"]')?.getAttribute("aria-expanded"), "true");
     assert_m1.equal(document.querySelectorAll('[data-demo-row-id]').length, 3);
@@ -291,7 +291,7 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     assert_m1.equal(document.querySelector(`tr[data-demo-row-id="${rows[1].runId}"] button`)?.getAttribute("aria-pressed"), "true");
     const retry = lookupRow(4, { itemId: rows[1].itemId, attempt: 2, startedAt: "2026-08-03T18:00:00.000Z" });
     await render([...rows, retry], handlers, rows[1].runId);
-    assert_m1.equal(document.querySelector('[data-queue-batch-id]'), group);
+    assert_m1.equal(document.querySelector('[data-queue-batch-id]') === group, true);
     assert_m1.equal(group.querySelectorAll('tr[data-demo-row-id]').length, 3);
     const trigger = group.querySelector<HTMLButtonElement>('button[aria-label="Attempts for Ben"]'); assert_m1.ok(trigger);
     await act_m1(async () => trigger.click());
@@ -299,7 +299,7 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     await act_m1(async () => prior.focus());
     const third = lookupRow(5, { itemId: rows[1].itemId, attempt: 3, startedAt: "2026-08-03T18:05:00.000Z" });
     await render([third, ...rows, retry], handlers, rows[1].runId);
-    assert_m1.equal(document.activeElement, prior);
+    assert_m1.equal(document.activeElement === prior, true);
     assert_m1.equal(trigger.getAttribute("aria-expanded"), "true");
     const latest = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes("#3")); assert_m1.ok(latest);
     selected.length = 0;
@@ -367,7 +367,7 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     assert_m1.equal(sent.length, 1);
     await act_m1(async () => reply());
     assert_m1.equal(button()?.disabled, false);
-    assert_m1.equal(button()?.querySelector(".animate-spin"), null);
+    assert_m1.equal(button()?.querySelector(".animate-spin") === null, true);
     await act_m1(async () => button()?.click());
     assert_m1.equal(button()?.disabled, true);
     await render([lookupRow(1, { rowRevision: 13, actions: [{ ...pause, expectedVersion: 13 }] })], handlers, row.runId);
@@ -380,7 +380,7 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     await render(rows, { onSelect: () => undefined }, rows[0].runId);
     const interactive = 'button, a[href], input, select, textarea, [role="button"], [role="checkbox"], [tabindex]';
     for (const control of document.querySelectorAll<HTMLElement>(interactive)) {
-      assert_m1.equal(control.parentElement?.closest(interactive) ?? null, null, control.outerHTML.slice(0, 120));
+      assert_m1.equal((control.parentElement?.closest(interactive) ?? null) === null, true, control.outerHTML.slice(0, 120));
     }
   });
 

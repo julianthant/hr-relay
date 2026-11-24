@@ -18,7 +18,7 @@ it('draws roster rows as a pick, and refuses stale authority', async () => {
     assert.match(host.textContent ?? '', /July 6 · Row 2/); assert.match(host.textContent ?? '', /Example, Person/);
     assert(confirm()?.disabled);
     await act(async () => radios()[0].click()); assert.equal(confirm()?.disabled, false);
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true);
     await act(async () => confirm()?.click()); assert.deepEqual(answers, [{ candidate: 'july/person-1' }]);
     await act(async () => root.render(createElement(LogDecisionBlock, { decision })));
     assert(radios().every(radio => radio.disabled)); assert(confirm()?.disabled);

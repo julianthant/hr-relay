@@ -17,7 +17,7 @@ describe('mounted frontend reliability contracts', () => {
   it('shows nothing for a refused save: its model toasts it once, with no button', async () => {
     const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'refused', message: 'Check the draft values. Nothing was sent.' } }));
     assert.equal(host.textContent, '');
-    assert.equal(host.querySelector('button'), null);
+    assert.equal(host.querySelector('button') === null, true);
   });
   it('retains saved status, distinguishes restart-required and shows nothing for an unconfirmed save', async () => {
     vi.useFakeTimers();
@@ -26,6 +26,6 @@ describe('mounted frontend reliability contracts', () => {
     assert.match(host.textContent ?? '', /Saved · Restart required/);
     await act(async () => root?.render(createElement(SettingsSaveFeedback, { save: { state: 'unconfirmed', message: 'Response unavailable' } })));
     assert.equal(host.textContent, '', 'its model reads the save back; nothing is shown inline');
-    assert.equal(host.querySelector('button'), null);
+    assert.equal(host.querySelector('button') === null, true);
   });
 });

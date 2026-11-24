@@ -46,7 +46,7 @@ describe("typed Settings catalog controls", () => {
   it("omits the actor label control while retaining the General settings", async () => {
     const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "general", settingsWithDistinctRuntimeValues); cleanups.push(mounted.close);
-    assert.equal(mounted.host.querySelector('[data-settings-path="actor.label"]'), null);
+    assert.equal(mounted.host.querySelector('[data-settings-path="actor.label"]') === null, true);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Operator identity|Operator label/u);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Setting identities|Using default|Revision 2/u);
     const annualRows = [...mounted.host.querySelectorAll('[data-settings-path^="annualDates."]')];
@@ -92,8 +92,8 @@ describe("typed Settings catalog controls", () => {
     assert.equal(h.commands.length, 1);
     assert.deepEqual(patchOf(h.commands[0]), { "browser.headless": { set: false }, "display.screenWidth": { set: 1280 }, "display.screenHeight": { set: 800 } });
     assert.equal(h.controller().dirtyCount, 0);
-    assert.equal(h.host.querySelector('[data-settings-path="features.debugScreenshots"]'), null);
-    assert.equal(h.host.querySelector('[data-settings-path="features.duoWebAuthn"]'), null);
+    assert.equal(h.host.querySelector('[data-settings-path="features.debugScreenshots"]') === null, true);
+    assert.equal(h.host.querySelector('[data-settings-path="features.duoWebAuthn"]') === null, true);
   });
   it("renders Performance timeouts as grouped, described controls with visible units", async () => {
     const { host } = await setup("performance");
@@ -114,7 +114,7 @@ describe("typed Settings catalog controls", () => {
     const crm = host.querySelector('[data-settings-path="timeouts.duoApprovalCrmSeconds"]'); assert.ok(crm);
     assert.equal(crm.querySelector("input")?.value, "60");
     assert.equal(crm.querySelector(".ds-unit-label")?.textContent, "seconds");
-    assert.equal(host.querySelector("select"), null);
+    assert.equal(host.querySelector("select") === null, true);
     assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Save changes"), false);
   });
   it("discards a pending Performance clear without an inline Undo control", async () => {
