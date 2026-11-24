@@ -31,7 +31,7 @@ export async function overrideNativeViewport(page: Page) {
     async resize(size: ViewportSize): Promise<void> {
       await session.send("Emulation.setDeviceMetricsOverride", { ...size, deviceScaleFactor: 0, mobile: false });
     },
-    async restore(): Promise<void> {
+    restore: async (): Promise<void> => {
       // Clearing the protocol override restores the current native size, including any OS resize during the operation.
       try { await session.send("Emulation.clearDeviceMetricsOverride"); }
       finally { await session.detach(); }
@@ -46,21 +46,21 @@ export function holdNativeViewport<Args extends unknown[], Result>(
     assertCurrent();
     if (page.viewportSize() !== null) return operation(...args);
     const viewport = await overrideNativeViewport(page);
-    let failure: { cause: unknown } | undefined;
+    let outcome: { state: "completed"; result: Result } | { state: "failed"; cause: unknown };
     try {
       assertCurrent();
       const size = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
       assertCurrent();
       await viewport.resize(size);
       assertCurrent();
-      return await operation(...args);
-    } catch (cause) { failure = { cause }; throw cause; }
-    finally {
-      try { await viewport.restore(); }
-      catch (restoration) {
-        if (failure === undefined) throw restoration;
-        throw new AggregateError([failure.cause, restoration], "Native viewport restoration failed", { cause: restoration });
-      }
+      outcome = { state: "completed", result: await operation(...args) };
+    } catch (cause) { outcome = { state: "failed", cause }; }
+    try { await viewport.restore(); }
+    catch (restoration) {
+      if (outcome.state === "completed") throw restoration;
+      throw new AggregateError([outcome.cause, restoration], "Native viewport restoration failed", { cause: restoration });
     }
+    if (outcome.state === "failed") throw outcome.cause;
+    return outcome.result;
   };
 }
