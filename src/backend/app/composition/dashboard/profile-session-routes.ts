@@ -14,6 +14,9 @@ CompleteProfileOnboardingRequestSchema, DuoReenrolStateSchema, ReopenProfileOnbo
 ConfirmProfileOnboardingDuoRequestSchema,DeleteProfileAccountRequestSchema,PROFILE_ONBOARDING_STATE,
 ProfileDetailsChangeRequestSchema,
 ProfileDetailsChangeResultSchema,
+ProfileDuoKeyChangeRequestSchema,
+ProfileDuoKeyChangeResponseSchema,
+ProfileDuoKeysReadSchema,
 ProfileLoginChangeResultSchema,
 ProfileLoginRequestSchema,
 profileAccount,
@@ -505,6 +508,19 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const request = ProfileDetailsChangeRequestSchema.parse(await c.req.json());
     const result = profileRuntime.session.changeDetails(current(c.req.raw).token, request);
     return c.json(ProfileDetailsChangeResultSchema.parse(result.state === "changed" ? result : { state: "refused", code: result.code }));
+  });
+  app.get("/api/v1/profile/account/duo-keys", c => {
+    const { token, profileId, epoch } = current(c.req.raw);
+    c.header("cache-control", "no-store");
+    return c.json(ProfileDuoKeysReadSchema.parse({ profileId, epoch, snapshot: profileRuntime.session.readDuoKeys(token) }));
+  });
+  app.post("/api/v1/profile/account/duo-keys", async c => {
+    const { token, profileId, epoch } = current(c.req.raw);
+    const request = ProfileDuoKeyChangeRequestSchema.parse(await c.req.json());
+    if (request.profileId !== profileId || request.epoch !== epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    c.header("cache-control", "no-store");
+    return c.json(ProfileDuoKeyChangeResponseSchema.parse({ profileId, epoch, commandId: request.change.commandId,
+      result: profileRuntime.session.changeDuoKey(token, request.change) }));
   });
   const serveDuoReenrol = async (c: Context, respond: (token: string, body: unknown) => unknown) => {
     const token = current(c.req.raw).token;

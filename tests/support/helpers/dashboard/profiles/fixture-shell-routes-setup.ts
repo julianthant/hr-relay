@@ -2,13 +2,14 @@ import { Hono } from "hono";
 import { serverLocalDay } from "../../../../../src/dashboard/surfaces/shell/date-navigation-model.js";
 import { CalendarQuerySchema, CalendarWireSchema } from "../../../../../src/models/dashboard/calendar.js";
 import type { FixtureDashboardProfile } from "../../../fixtures/dashboard/fixture-profile.js";
-import { FIXTURE_ACTIVE_PROFILE_STATE } from "./fixture-profile-setup.js";
+import { FIXTURE_ACTIVE_PROFILE_STATE, FIXTURE_DUO_KEYS } from "./fixture-profile-setup.js";
 import { isTerminalQueueStatus, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 
 export function createFixtureShellRoutesSetup() {
   function registerFixtureShellRoutes({ app, profile, dayWire = profile.day }: { app: Hono; profile: FixtureDashboardProfile; dayWire?: DashboardDayWire }): void {
 
     app.get("/api/v1/profile/state", c => c.json(FIXTURE_ACTIVE_PROFILE_STATE));
+    app.get("/api/v1/profile/account/duo-keys", c => c.json(FIXTURE_DUO_KEYS));
     app.get("/api/v1/calendar", (c) => {
       const { month, day } = CalendarQuerySchema.parse(Object.fromEntries(new URL(c.req.url).searchParams));
       const today = serverLocalDay(profile.bootstrap.serverClock);

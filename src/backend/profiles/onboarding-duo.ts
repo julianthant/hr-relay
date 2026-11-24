@@ -52,6 +52,7 @@ export interface DraftDuoPortalReceipt {
   readonly credentialId: string;
   readonly requestId: string;
   readonly acceptance: "portal-accepted" | "exact-credential-request";
+  readonly name?: string;
 }
 
 // Issued by the draft owner after observing the owned provider tab. No profile admission is exposed.

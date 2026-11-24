@@ -25,7 +25,8 @@ import { operatorFailureSentence,type ErrorCatalogCode } from "../../models/fail
 import { assertFinishedProfileOnboarding,deriveProfileNames,DuoReenrolOperationSchema,LogoutOperationSchema,ProfileAuthoritySnapshotSchema,ProfileNameValidationError,ProfileOperationSchema,profileDetailsPatch,type DuoReenrolOperation,type LogoutOperation,type ProfileDetailsChange,type ProfileRegistryRow,type ProfileAuthoritySnapshot,type ProfileOperation,type SignUpOperation } from "../../models/profiles/profile.js";
 import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
 import { DuoReenrolStateSchema,ProfileOnboardingStateSchema,profileAccount,type DuoReenrolState,type ProfileAccount,type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
-import type { DuoReenrolCommitIntent } from "../../models/config/duo-credential-store.js";
+import type { DuoKeyChange, DuoReenrolCommitIntent } from "../../models/config/duo-credential-store.js";
+import type { DuoKeyChangeResult } from "../../models/profiles/public-profile.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { systemClock,type Clock } from "../../rules/time/clock.js";
 import { noSymlinkAncestry,withOperationProof,type DirectoryIdentity } from "../storage/configuration/credential-safe-file.js";
@@ -827,6 +828,31 @@ export function createProfileSession(input: {
       }
     },
     closeOnboarding(): Promise<void> { return onboarding.close(); },
+    readDuoKeys(token: string) {
+      const session = requireSession(token);
+      if ("state" in session) throw new ProfileSessionRefusedError(session.code);
+      return duoStore(session.profileId).readSettings();
+    },
+    changeDuoKey(token: string, change: DuoKeyChange): DuoKeyChangeResult {
+      admission.assertWritable();
+      admission.lifetime.assertRuntimeAvailable();
+      return withProfileLock(machineRoot, () => {
+        const session = requireSession(token);
+        if ("state" in session) return { state: "refused", code: session.code };
+        if (reenrolmentFor(session.profileId) !== undefined) return { state: "refused", code: "PROFILE_DUO_REENROL_OPEN" };
+        const store = duoStore(session.profileId);
+        let outcome: ReturnType<typeof store.changeKey>;
+        try {
+          outcome = store.changeKey(change);
+        } catch (error) {
+          if (error instanceof DuoCredentialError && (error.code === "DUO_CREDENTIAL_CONFLICT" || error.code === "DUO_CREDENTIAL_BUSY")) {
+            return { state: "refused", code: error.code };
+          }
+          throw error;
+        }
+        return outcome === "name-in-use" ? { state: "name-in-use" } : { state: "changed", snapshot: store.readSettings() };
+      });
+    },
     /** Opens, or returns the open, Duo re-enrolment for the active session's Duo-ready profile; its old enrolment keeps signing. */
     beginDuoReenrol(token: string): DuoReenrolState {
       admission.assertWritable();
