@@ -77,12 +77,12 @@ export const SERIAL_STORAGE_FILES: readonly string[] = [
   "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
   "tests/backend/storage/maintenance/profile-inventory.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
 ];
 
 // Native files that passed on Linux (ci-pipeline-07 report): Ubuntu shards run them too; the macOS native shards still run them.
 export const LINUX_NATIVE_FILES: readonly string[] = [
   "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
-  "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts",
   "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
   "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { DsBodyScope, PageHeading, SearchInput, TakeoverFrame, TooltipProvider, dsFocus, useDemoTheme } from "../../../../../src/dashboard/ds/ui.js";
 import { WorkspaceRail } from "../../../../../src/dashboard/surfaces/shell/workspace-rail.js";
-import { MOCK_WORKFLOW_CATALOG } from "../../../../mocks/workflows/workflow-mock-catalog.js";
+import { MOCK_WORKFLOW_CATALOG } from "../../../fixtures/dashboard/workflow-mocks/workflow-mock-catalog.js";
 import type { LogStep } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import type { LogTimelineStage } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
 import type { InboxWiring } from "../../../../../src/dashboard/state/inbox-wiring-adapter.js";
@@ -18,7 +18,7 @@ export function SettingsSurface({ section, children }: { section: "General" | "P
 }
 
 const EMPTY_INBOX: InboxWiring = { state: { state: "ready", items: [], pinned: [] }, notice: "", control: () => Promise.resolve(false),
-  readAll: () => Promise.resolve(), open: () => undefined, onPublication: () => () => undefined };
+  readAll: () => Promise.resolve(), open: () => undefined, canAct: () => false, onPublication: () => () => undefined };
 export function LogsSurface({ title = "EID 10777012", status, toolbar, queueControls, children, steps, timeline = [], queueLabel = "NEEDS YOU · 1", content }: { title?: string; status: ReactNode; toolbar?: ReactNode; queueControls?: ReactNode; queueLabel?: string; children?: ReactNode; content?: ReactNode; steps: readonly LogStep[]; timeline?: readonly LogTimelineStage[] }) {
   const { theme } = useDemoTheme();
   const active = queueLabel.startsWith("ACTIVE");

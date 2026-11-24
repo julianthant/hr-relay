@@ -1,6 +1,6 @@
 import { default as assert } from "node:assert/strict";
 import { describe, it, vi } from "vitest";
-import { runtimeHelp, startRebuildRuntime as startRebuildRuntime_m0 } from "../../../../src/backend/app/composition/runtime-composition.js";
+import { startRebuildRuntime as startRebuildRuntime_m0 } from "../../../../src/backend/app/composition/runtime-composition.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { type WorkerLoopReport } from "../../../../src/backend/runtime/workers/worker-loop.js";
 
@@ -18,7 +18,7 @@ describe("dashboard readiness publication", () => {
       } },
       dashboardReady: () => { events.push("ready"); assert.ok(shutdown); shutdown(); },
     });
-    assert.deepEqual(events, ["listening", "subscribed", "ready", "stopped", "disposed"]);
+    assert.deepEqual(events, ["subscribed", "listening", "ready", "stopped", "disposed"]);
   });
 
   it("never announces readiness after failed composition", async () => {
@@ -105,12 +105,6 @@ describe("isolated runtime composition", () => {
       browserProfileRoot: ".tracker/data/browsers",
       browserSessionNamespace: "hrauto-rebuild",
     });
-    assert.match(runtimeHelp(rebuildRuntimeIsolation), /1g-spine/);
-
-    assert.match(
-      runtimeHelp(rebuildRuntimeIsolation),
-      /complete through 2j; active 3-workflow-migration/,
-    );
   });
 
   it("executes only the currently owned CLI surface and fails loud for future runtime work", async () => {
@@ -625,11 +619,17 @@ describe("isolated runtime composition", () => {
   it("defaults an empty argv to the help contract surface", async () => {
     const output: string[] = [];
     await startRebuildRuntime_m0({ isolation: rebuildRuntimeIsolation, args: [], write: (value) => output.push(value) });
-    assert.equal(output[0], runtimeHelp(rebuildRuntimeIsolation));
+    assert.equal(output.length, 1);
+    const help = output[0];
+    assert.ok(help);
+    assert.match(help, /^Relay foundation \(complete through 2j; active 3-workflow-migration\)/u);
+    assert.match(help, /^Commands:$/mu);
+    assert.match(help, /^ {2}dashboard .*1g-spine, port 3938/mu);
+    assert.match(help, /^ {2}worker <workflow-id> --pool-index <positive-int>/mu);
+    assert.doesNotMatch(help, /dry-run-scenario/u);
   });
 
-  it("rejects the removed dry-run CLI entry without advertising it", async () => {
-    assert.doesNotMatch(runtimeHelp(rebuildRuntimeIsolation), /dry-run-scenario/u);
+  it("rejects the removed dry-run CLI entry", async () => {
     for (const args of [["dry-run-scenario", "separations", "--subject", "finalization-canary"], ["dry-run-scenario", "--help"]]) {
       await assert.rejects(startRebuildRuntime_m0({ isolation: rebuildRuntimeIsolation, args }), /unknown rebuild command: dry-run-scenario/u);
     }
@@ -666,12 +666,12 @@ it("retains both replacement-owner lifetime and stop failures with the original 
   assert.equal(disposed, true);
 });
 
-it("closes the accepted dashboard owner if real shutdown subscription fails", async () => {
+it("composes no dashboard owner if real shutdown subscription fails", async () => {
   const primary = new Error("signal subscription failed");
-  let stopped = false;
+  let composed = false;
   await assert.rejects(startRebuildRuntime_m0({ isolation: rebuildRuntimeIsolation, args: ["dashboard"], write: () => undefined,
-    dashboard: async () => ({ port: 3938, stop: async () => { stopped = true; } }),
+    dashboard: async () => { composed = true; return { port: 3938, stop: async () => undefined }; },
     signals: { subscribe: () => { throw primary; } },
   }), error => error === primary);
-  assert.equal(stopped, true);
+  assert.equal(composed, false);
 });

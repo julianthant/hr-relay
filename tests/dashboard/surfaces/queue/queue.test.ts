@@ -6,8 +6,8 @@ import { act as act_m0,createElement as createElement_m0 } from 'react';
 import { createRoot as createRoot_m0,type Root as Root_m0 } from 'react-dom/client';
 import { it as it_m0 } from 'vitest';
 import { QueuePanel as QueuePanel_m0,type QueueHandlers as QueueHandlers_m0,type QueueViewState as QueueViewState_m0 } from '../../../../src/dashboard/surfaces/queue/queue.js';
-import { FIXTURE_NOW as FIXTURE_NOW_m0 } from '../../../mocks/helpers/fixture-identity.js';
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from '../../../mocks/helpers/fixture-queue.js';
+import { FIXTURE_NOW as FIXTURE_NOW_m0 } from '../../../support/helpers/dashboard/mock-world/fixture-identity.js';
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from '../../../support/helpers/dashboard/mock-world/fixture-queue.js';
 // @vitest-environment jsdom
 import assert_m1 from "node:assert/strict";
 import { createElement as createElement_m1 } from "react";
@@ -16,8 +16,8 @@ import { describe as describe_m1,it as it_m1 } from "vitest";
 import { orderMembers as orderMembers_m1,type QueueSurfaceWire as MemberSurfaceWire_m1 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueRow as QueueRow_m1 } from "../../../../src/dashboard/surfaces/queue/queue.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m1,type QueueSurfaceWire as QueueSurfaceWire_m1 } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_NOW as FIXTURE_NOW_m1 } from "../../../mocks/helpers/fixture-identity.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1 } from "../../../mocks/helpers/fixture-queue.js";
+import { FIXTURE_NOW as FIXTURE_NOW_m1 } from "../../../support/helpers/dashboard/mock-world/fixture-identity.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1 } from "../../../support/helpers/dashboard/mock-world/fixture-queue.js";
 
 import assert_m2 from "node:assert/strict";
 import { createElement as createElement_m2 } from "react";
@@ -147,13 +147,13 @@ describe_m1("approved mixed queue presentation", () => {
     const body = host.querySelector("[data-queue-body]");
     assert_m1.ok(body);
     assert_m1.equal(body.querySelector("[data-demo-row-title]")?.textContent, row.title);
-    assert_m1.equal(body.firstElementChild?.querySelector("svg:not(.lucide-flask-conical)"), null);
+    assert_m1.equal(body.firstElementChild?.querySelector("svg:not(.lucide-flask-conical)") === null, true);
     assert_m1.ok(body.querySelector("svg.lucide-flask-conical"));
     assert_m1.ok(host.textContent?.includes("Dry run"));
     assert_m1.ok(host.textContent?.includes("test"));
     assert_m1.ok(host.textContent?.includes("Done"));
-    assert_m1.equal(host.querySelector('[aria-label^="What is this row"]'), null);
-    assert_m1.equal(body.querySelector('[aria-label^="Attempts for"]'), null);
+    assert_m1.equal(host.querySelector('[aria-label^="What is this row"]') === null, true);
+    assert_m1.equal(body.querySelector('[aria-label^="Attempts for"]') === null, true);
     assert_m1.equal(host.querySelector('[aria-label^="Attempts for"]')?.textContent, "#1");
     const identity = [...host.querySelectorAll('span[title]')].find(element => element.getAttribute('title') === row.traceId);
     assert_m1.ok(identity);
@@ -176,7 +176,7 @@ describe_m1("approved mixed queue presentation", () => {
     assert_m1.ok(host.querySelector(".animate-spin")?.closest("[data-slot=badge]"));
     const absent = QueueSurfaceWireSchema_m1.parse({ ...row, pipeline: [], liveMessage: { state: "absent", reason: "No active step was recorded" } });
     const empty = render(absent);
-    assert_m1.equal(empty.querySelector("[data-queue-progress]"), null);
+    assert_m1.equal(empty.querySelector("[data-queue-progress]") === null, true);
     assert_m1.ok(!empty.textContent?.includes("0 / 0"));
   });
   it_m1("omits an unmeasured terminal duration and preserves measured zero", () => {
@@ -206,7 +206,7 @@ describe_m1("approved mixed queue presentation", () => {
     const review = render(single("awaiting-approval"));
     const parked = render(single("blocked"));
     assert_m1.ok(review.querySelector("[data-queue-body] .text-ui-info"));
-    assert_m1.equal(review.querySelector("[data-queue-body] [class*=ds-status-waiting-fg]"), null);
+    assert_m1.equal(review.querySelector("[data-queue-body] [class*=ds-status-waiting-fg]") === null, true);
     assert_m1.ok(parked.querySelector("[data-queue-body] [class*=ds-status-parked-fg]"));
   });
 });

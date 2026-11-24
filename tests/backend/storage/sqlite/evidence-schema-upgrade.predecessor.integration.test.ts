@@ -5,7 +5,7 @@ import { predecessorKualiEvidence } from "../../../support/helpers/backend/prede
 it("persists predecessor input, completed Kuali proof, linked result and receipt, then refuses them without stopped conversion", async () => {
   const f = await predecessorKualiEvidence();
   try {
-    const { buildRunEvidenceReceipt } = await import("../../../../src/backend/runs/provenance/evidence-receipt.js");
+    const { deriveRunEvidenceReceipt } = await import("../../../../src/backend/runs/provenance/evidence-receipt.js");
     const { separationsKualiFinalizationDescriptor: descriptor, separationsDescriptor } = await import("../../../support/helpers/registered-workflows.js");
     const { deriveSchemaHash } = await import("../../../../src/models/validation/schema-bound-value.js");
     const { KualiSavedFinalizationProofSchema } = await import("../../../../src/models/ui/kuali-separation-finalization.js");
@@ -13,7 +13,7 @@ it("persists predecessor input, completed Kuali proof, linked result and receipt
     assert.equal(proof.completionProof.schemaHash, "9c8d2c765c9eb480c1b37f7e58b050edb5f907ce1392ecbdfe8489f9f875b81c");
     assert.notEqual(proof.completionProof.schemaHash, deriveSchemaHash(KualiSavedFinalizationProofSchema, "output"));
     assert.notEqual(f.run.input.parsed.schemaHash, deriveSchemaHash(descriptor.canonicalInput, "output"));
-    assert.throws(() => buildRunEvidenceReceipt({ descriptor, run: f.run, result: f.result, checkpoints: f.checkpoints, writes: f.writes, gateResults: f.gates }), /canonical-input/u);
+    assert.throws(() => deriveRunEvidenceReceipt({ descriptor, run: f.run, result: f.result, checkpoints: f.checkpoints, writes: f.writes, gateResults: f.gates }), /canonical-input/u);
     const { collectEvidenceSchemaAdmissions } = await import("../../../../src/backend/storage/sqlite/evidence-schema-upgrade.js");
     const { evidenceSchemaSourceDigest } = await import("../../../../src/models/storage/evidence-schema-admission.js");
     const { canonicalJsonStringify } = await import("../../../../src/rules/validation/canonical-json.js");
@@ -25,8 +25,8 @@ it("persists predecessor input, completed Kuali proof, linked result and receipt
       assert.ok(proof); assert.equal(proof.sourceDigest, evidenceSchemaSourceDigest(owner, source));
       assert.equal(proof.sourceSchemaHash, oldHash); assert.equal(proof.currentSchemaHash, currentHash); return currentHash;
     };
-    const receipt = buildRunEvidenceReceipt({ descriptor, run: f.run, result: f.result, checkpoints: f.checkpoints, writes: f.writes, gateResults: f.gates,
-      schemaReader });
+    const receipt = deriveRunEvidenceReceipt({ descriptor, run: f.run, result: f.result, checkpoints: f.checkpoints, writes: f.writes, gateResults: f.gates,
+      schemaReader }).receipt;
     assert.deepEqual(receipt, f.receipt);
     const { descriptorRuntimeNodes, workflowTerminalResultExecution } = await import("../../../../src/workflow-kit/workflow.js");
     const { loadCheckpoint, CheckpointExpectationSchema } = await import("../../../../src/models/workflow/checkpoint.js");

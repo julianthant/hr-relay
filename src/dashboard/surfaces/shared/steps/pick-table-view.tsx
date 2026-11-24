@@ -18,9 +18,6 @@ export function PickTableView({ title, columns, rows, typed, chosen, onChoose, o
   chosen?: string; onChoose: (id: string) => void; onText: (value: string) => void; disabled?: boolean;
 }) {
   const last = columns.length - 1;
-  // The column with the longest values takes the leftover width and truncates; the rest never wrap.
-  const widest = (index: number) => Math.max(...rows.map(row => row.cells[index]?.value.length ?? 0));
-  const flex = columns.reduce((best, _, index) => widest(index) > widest(best) ? index : best, 0);
   const row = (id: string, label: string, cells: ReactNode) => {
     const selected = chosen === id;
     const pick = () => { if (!disabled) onChoose(id); };
@@ -33,15 +30,15 @@ export function PickTableView({ title, columns, rows, typed, chosen, onChoose, o
   };
   return <PageCard title={title} mode="Pick">
     <Table label={title}>
-      <THead><TR><TH className="w-9 pl-3"><span className="sr-only">Choose</span></TH>{columns.map((column, index) => <TH key={column.id} align={index === last ? "right" : "left"} className="text-caption font-normal normal-case whitespace-nowrap">{column.label}</TH>)}</TR></THead>
+      <THead><TR><TH className="w-9 pl-3"><span className="sr-only">Choose</span></TH>{columns.map((column, index) => <TH key={column.id} align={index === last ? "right" : "left"} className="text-caption font-normal normal-case [overflow-wrap:anywhere]">{column.label}</TH>)}</TR></THead>
       <TBody>
         {rows.map(item => row(item.id, item.label, columns.map((column, index) => {
           const cell = item.cells[index];
-          return <TD key={column.id} align={index === last ? "right" : "left"} title={cell?.value}
-            className={cn("tabular-nums whitespace-nowrap", index === flex && "w-full max-w-0 truncate", index === 0 ? "font-medium text-ui-primary" : cell?.attention ? "text-ui-warning" : "text-ui-secondary")}>{cell?.value}</TD>;
+          return <TD key={column.id} align={index === last ? "right" : "left"}
+            className={cn("tabular-nums [overflow-wrap:anywhere]", index === 0 ? "font-medium text-ui-primary" : cell?.attention ? "text-ui-warning" : "text-ui-secondary")}>{cell?.value}</TD>;
         })))}
         {typed && row(typed.id, typed.label, <>
-          <TD className="font-medium whitespace-nowrap text-ui-primary">{typed.label}</TD>
+          <TD className="font-medium text-ui-primary [overflow-wrap:anywhere]">{typed.label}</TD>
           <TD align="right" colSpan={Math.max(1, columns.length - 1)}><Input aria-label={typed.label} value={typed.value} placeholder={typed.placeholder} disabled={disabled}
             onChange={event => onText(event.target.value)} className="ml-auto h-7 w-36 text-right font-medium text-ui-info tabular-nums" /></TD>
         </>)}

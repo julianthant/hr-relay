@@ -33,7 +33,7 @@ export const separationLogs: readonly LogStep[] = [
     ], "Separation request verified", capture("kuali-request", "Separation request", "09:31:10", "Kuali", "browser")),
   ] },
   { id: "plan", time: "09:31:11", title: "Build separation plan", entries: [fields("plan-values", undefined, [
-    ["09:31:11", "Timecard window", "09/11/2026–09/25/2026", "compute"], ["09:31:12", "Template / reason", "UC_VOL_TERM · Resign – Accept Another Job", "compute"],
+    ["09:31:11", "Timecard window", "09/11/2026–09/25/2026", "compute"], ["09:31:12", "Template / reason", "Voluntary termination · Resign – Accept Another Job", "compute"],
   ])] },
   { id: "search-person", time: "09:31:14", title: "Search employee name", system: "UCPath", entries: [
     fields("person-search", "Person Organizational Summary", [["09:31:14", "Employee name", "Alex Morgan", "fill"]], undefined, capture("ucpath-person-search", "Employee search", "09:31:14", "UCPath", "fields")),
@@ -60,7 +60,7 @@ export const separationLogs: readonly LogStep[] = [
     ["09:32:13", "Employee ID", "DEMO-1042"], ["09:32:14", "Effective date", "09/26/2026"], ["09:32:15", "Matching transaction", "None"],
   ], "Create a new termination")] },
   { id: "file", time: "09:32:17", title: "File termination", system: "UCPath", entries: [
-    fields("create-template", "Smart HR transaction", [["09:32:17", "Template", "UC_VOL_TERM", "fill"], ["09:32:18", "Effective date", "09/26/2026", "fill"]], undefined, capture("ucpath-template", "Transaction fields", "09:32:18", "UCPath", "fields")),
+    fields("create-template", "Smart HR transaction", [["09:32:17", "Template", "Voluntary termination", "fill"], ["09:32:18", "Effective date", "09/26/2026", "fill"]], undefined, capture("ucpath-template", "Transaction fields", "09:32:18", "UCPath", "fields")),
     click("create-transaction", "09:32:20", "Create Transaction"),
     fields("transaction-person", "Transaction details", [["09:32:22", "Employee ID", "DEMO-1042", "fill"]], undefined, capture("ucpath-employee", "Employee ID", "09:32:22", "UCPath", "fields")),
     click("employee-tab", "09:32:23", "Tab · resolve employee"),

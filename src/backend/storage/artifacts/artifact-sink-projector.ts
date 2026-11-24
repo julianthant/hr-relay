@@ -9,10 +9,6 @@ import type { AuthorityRepositories } from "../sqlite/authority-database.js";
 import { ArtifactSinkConflictError, type ArtifactSink } from "./artifact-sink.js";
 
 
-export interface ArtifactSinkProjector {
-  projectOutbox(outboxIds: readonly string[]): Promise<Readonly<{ projected: number }>>;
-}
-
 export class ArtifactSinkBusyError extends Error {
   constructor(sinkId: string, lockPath: string) {
     super(`sink ${sinkId} is held by another projector (lock ${lockPath}); refusing to project concurrently`);
@@ -36,7 +32,7 @@ export interface ArtifactSinkProjectorOptions {
   readonly fault?: (point: "before-settlement" | "after-head" | "after-ack") => void;
 }
 
-export function createArtifactSinkProjector(options: ArtifactSinkProjectorOptions): ArtifactSinkProjector {
+export function createArtifactSinkProjector(options: ArtifactSinkProjectorOptions) {
   const withSinkLock = async <Result>(row: ArtifactOutboxStorageRecord, sink: ArtifactSink,
     work: (lockPath: string, assertCurrent: () => Promise<void>) => Promise<Result>): Promise<Result> => {
     options.assertCurrent?.(); await mkdir(options.lockDir, { recursive: true }); options.assertCurrent?.();

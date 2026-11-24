@@ -203,6 +203,9 @@ export async function auditScopedPlans(compareWholeStore = false): Promise<PlanA
   const closure = await seedCheckClosureStore({ activeRuns: true });
   try {
     closure.closeDatabase();
+    // Closing optimized the closure store at one row per table; those statistics would plan every growing table as tiny.
+    const stats = new DatabaseSync(closure.databasePath);
+    try { stats.exec("DELETE FROM sqlite_stat1"); } finally { stats.close(); }
     auditStore(fixture.path, KINDS.filter(kind => kind.store === "runs"), scans, routes, timings, compareWholeStore);
     auditStore(closure.databasePath, KINDS.filter(kind => kind.store === "closure"), scans, routes, timings, compareWholeStore);
     auditBuilding(fixture, scans, routes, timings);

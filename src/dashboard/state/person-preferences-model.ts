@@ -12,6 +12,7 @@ import { ordinaryReadbackState, checkedSettingsResult, settingsSaveFailure } fro
 import { ordinaryReadbackConfirms } from "../surfaces/settings/editor/settings-draft-model.js";
 import { readBack } from "../app/commands/command-readback.js";
 import { clearSettingsReads, settingsReadResource } from "./settings-read-model.js";
+import { dropKeptResults } from "./async-resource.js";
 
 type PreferencesBinding = Pick<DashboardCommandBinding, "scope" | "executor"> & { authority: Pick<DashboardCommandBinding["authority"], "epoch" | "now"> };
 
@@ -99,7 +100,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
         // The next connection reads the served value; a save cut off here is never left pending.
         if (state.state === "saving") publish({ value: state.value, state: "loading" }); };
     },
-    clear() { generation += 1; if (connection !== undefined) clearSettingsReads(connection.client); connection = undefined; document = undefined; state = { value: NEUTRAL_PERSON_PREFERENCES, state: "signed-out" }; },
+    clear() { generation += 1; if (connection !== undefined) { clearSettingsReads(connection.client); dropKeptResults(connection.client); } connection = undefined; document = undefined; state = { value: NEUTRAL_PERSON_PREFERENCES, state: "signed-out" }; },
   });
 }
 export type PersonPreferencesOwner = ReturnType<typeof createPersonPreferences>;

@@ -8,7 +8,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
-import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-executor.js";
+import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-execution-write.js";
 import {
   assertSequencerMintedMutationCapability,
   createWriteSequencer,

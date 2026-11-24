@@ -8,7 +8,7 @@ import { openBoundDatabaseFixture } from "./admission-fixture.js";
 import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { manualClock, type TestClock } from "../../../src/rules/time/clock.js";
-import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-executor.js";
+import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-execution-write.js";
 import {
   createWriteSequencer,
   type ProductionWriteSequencer,
@@ -476,26 +476,4 @@ export function compositionContext(
     dryRun,
     signal: new AbortController().signal,
   };
-}
-
-/** NOTHING about this transaction exists in the authority database. */
-export function compositionDurableFootprint(
-  harness: CompositionHarness,
-  system: "ucpath" | "kuali",
-  nodeId: string,
-  permanentKey: string,
-): Readonly<{ intent: unknown; checkpoint: unknown; outboxes: readonly unknown[] }> {
-  const intent = harness.database.authority.writeIntents.findByPermanentKey(system, permanentKey);
-  const checkpoint = harness.database.authority.runCheckpoints.latest(
-    COMPOSITION_WORKFLOW_ID,
-    COMPOSITION_ITEM_ID,
-    nodeId,
-  );
-  // Retain this shared fixture field for existing callers; its evidence is now
-  // immutable native confirmations, so zero-write assertions remain substantive.
-  const outboxes = harness.database.authority.timelineEvents.page({}).filter(
-    (event) => event.payload.kind === "operation-confirmed"
-      && event.payload.facts.writeIntentId === intent?.writeIntentId,
-  );
-  return { intent, checkpoint, outboxes };
 }

@@ -240,3 +240,20 @@ it("re-reads the sort instant when the selection or the order changes, and keeps
     assert.equal((await mounted.draw({ sort: "longest" })).sortNowIso, "2026-10-14T12:09:00.000Z");
   } finally { await mounted.close(); }
 });
+
+it("shows a kept day's rows with no control that acts until the fresh day lands", async () => {
+  const mounted = mountWiring({ kept: true, renameTitle: () => undefined });
+  try {
+    const kept = await mounted.draw();
+    assert.ok(kept.surfaces.length > 0);
+    assert.ok(kept.surfaces.every(surface => surface.actions.length === 0));
+    assert.equal(kept.queueHandlers.onAction, undefined);
+    assert.equal(kept.queueHandlers.onSetBatchGrouping, undefined);
+    assert.equal(kept.queueHandlers.onRenameTitle, undefined);
+    assert.ok(kept.queueHandlers.onSelect);
+    const fresh = await mounted.draw({ kept: false });
+    assert.ok(fresh.surfaces.some(surface => surface.actions.length > 0));
+    assert.ok(fresh.queueHandlers.onAction);
+    assert.ok(fresh.queueHandlers.onRenameTitle);
+  } finally { await mounted.close(); }
+});

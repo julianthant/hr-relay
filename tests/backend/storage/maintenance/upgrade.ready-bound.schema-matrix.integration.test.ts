@@ -36,6 +36,7 @@ it.each([9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] as const)("upgrades supporte
       else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else if (table === "run_results" || table === "run_receipts") assertUpgradedRunSettlementRows(table, after[table] ?? [], before);
+      else if (table === "run_search") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, ocr_subject_terms: null })));
       else assert.deepEqual(after[table]?.map(row => sourceVersion < 16 ? prePreferencesSettingsRow(table, row) : { ...row }), rows.map(row => ({ ...row })));
     }
     const fresh = f.machine.admitProfile(f.binding.profileId);

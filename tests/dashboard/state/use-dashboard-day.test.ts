@@ -7,8 +7,9 @@ import { afterEach,describe,it } from "vitest";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
 import type { DashboardClient,SubscriptionState } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { useDashboardDay,type DashboardDayState } from "../../../src/dashboard/state/use-dashboard-day.js";
+import { KEPT_DAYS_LIMIT,useDashboardDay,type DashboardDayState } from "../../../src/dashboard/state/use-dashboard-day.js";
 import { NotificationPublicationWireSchema } from "../../../src/models/dashboard/subscription.js";
+import { ProjectionCursorSchema } from "../../../src/rules/identity/ids.js";
 import { DashboardDayWireSchema,type DashboardDayWire } from "../../../src/models/dashboard/projection.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -131,7 +132,7 @@ describe("useDashboardDay — a stopped subscription", () => {
 it("isolates A -> B -> A days and actor epochs while retaining disconnected rows", async () => {
   const subscriptions: Parameters<DashboardClient["subscribeDay"]>[0][] = [];
   const client = { subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => {
-    subscriptions.push(input); return { close: () => undefined };
+    subscriptions.push(input); return { select: (_run: string | undefined) => undefined, close: () => undefined };
   } } as DashboardClient;
   const seen: DashboardDayState[] = [];
   function Probe({ day, epoch }: { day: string; epoch: object }) { seen.push(useDashboardDay(day, undefined, epoch)); return null; }
@@ -180,7 +181,7 @@ it("uses a stable token for settlements and ticks, replacing it on explicit same
 
 it("forwards only live publication callbacks belonging to the current day, actor epoch and client", async () => {
   const subscriptions: Parameters<DashboardClient["subscribeDay"]>[0][] = [];
-  const client = { subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => { subscriptions.push(input); return { close() {} }; } } as DashboardClient;
+  const client = { subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => { subscriptions.push(input); return { select: (_run: string | undefined) => undefined, close() {} }; } } as DashboardClient;
   let state: DashboardDayState | undefined;
   function Probe({ day, epoch, actor }: { day: string; epoch: object; actor: string }) { state = useDashboardDay(day, undefined, epoch, actor); return null; }
   const root = createRoot(document.createElement("div")); mounted = root;
@@ -188,11 +189,12 @@ it("forwards only live publication callbacks belonging to the current day, actor
   const render = async (day: string, currentEpoch = epoch, currentClient = client, actor = "local-operator") => {
     await act(async () => root.render(createElement(DashboardClientProvider, { client: currentClient, children: createElement(Probe, { day, epoch: currentEpoch, actor }) })));
   };
-  const publication = NotificationPublicationWireSchema.parse({ sourceId: "a".repeat(64), actorId: "local-operator", durable: "created", notification: {
+  const wire = NotificationPublicationWireSchema.parse({ sourceId: "a".repeat(64), actorId: "local-operator", durable: "created", notification: {
     kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1,
     publicationId: "b".repeat(64), trigger: "storage", readState: "unread", state: "unread", severity: "warning", title: "Storage health degraded",
     occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "storage-degraded" },
   } });
+  const publication = { publication: wire, listed: wire.notification, target: { kind: "storage" as const }, snapshotCursor: ProjectionCursorSchema.parse("pc:1") };
   await render(DAY);
   assert(state);
   const delivered: unknown[] = [];
@@ -228,4 +230,166 @@ it("opens one day stream under StrictMode's double mount", async () => {
   await act(async () => root.render(createElement(StrictMode, null, createElement(DashboardClientProvider, { client, children: createElement(Probe) }))));
   assert.equal(opened, 1);
   assert.equal(closed, 0);
+});
+
+describe("useDashboardDay — the last known day first", () => {
+  const OTHER_DAY = "2026-08-04";
+  const frame = (day: string, cursor: string): DashboardDayWire => DashboardDayWireSchema.parse({ ...EMPTY_DAY, day, snapshotCursor: cursor, monthCounts: [{ day, count: 0 }] });
+
+  async function mountDays() {
+    const subscriptions: { input: Parameters<DashboardClient["subscribeDay"]>[0]; closed: boolean }[] = [];
+    const client = { subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => {
+      const entry = { input, closed: false };
+      subscriptions.push(entry);
+      return { close: () => { entry.closed = true; } };
+    } } as DashboardClient;
+    const renders: { day: string; state: DashboardDayState }[] = [];
+    let duringRender: (() => void) | undefined;
+    function Probe({ day, epoch }: { day: string; epoch: object }) {
+      renders.push({ day, state: useDashboardDay(day, undefined, epoch, "local-operator") });
+      const during = duringRender; duringRender = undefined; during?.();
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    mounted = root;
+    const epoch = {};
+    const show = async (day: string, currentEpoch: object = epoch) => {
+      const from = renders.length;
+      await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe, { day, epoch: currentEpoch }) })));
+      return renders[from];
+    };
+    const serve = async (index: number, day: DashboardDayWire) => { await act(async () => subscriptions[index].input.onDay(day)); };
+    const state = async (index: number, connection: SubscriptionState) => { await act(async () => subscriptions[index].input.onState(connection)); };
+    return { subscriptions, renders, show, serve, state, latest: () => renders.at(-1)!.state, beforeCleanup: (act: () => void) => { duringRender = act; } };
+  }
+
+  it("renders a returning day's kept frame in the switch's first render, then the fresh frame", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    const first = frame(DAY, "pc:1");
+    await h.serve(0, first);
+    await h.show(OTHER_DAY);
+    assert.deepEqual(h.latest().day, { state: "loading" });
+    await h.serve(1, frame(OTHER_DAY, "pc:2"));
+    const back = await h.show(DAY);
+    assert.ok(back);
+    assert.equal(back.day, DAY);
+    assert.equal(back.state.day.state, "loading");
+    assert.deepEqual(back.state.day.state === "loading" ? back.state.day.kept : undefined, { value: first, at: "pc:1" });
+    const fresh = frame(DAY, "pc:3");
+    await h.serve(2, fresh);
+    const day = h.latest().day;
+    assert.equal(day.state, "loaded");
+    assert.equal(day.state === "loaded" ? day.value : undefined, fresh);
+  });
+
+  it("keeps a changed day at the change's cursor, so a return after an SSE change shows it at that position", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    const first = frame(DAY, "pc:1");
+    await h.serve(0, first);
+    const changed = { ...first, queueSurfaces: [] };
+    await act(async () => h.subscriptions[0].input.onDay(changed, "pc:4"));
+    await h.show(OTHER_DAY);
+    const back = await h.show(DAY);
+    assert.deepEqual(back?.state.day.state === "loading" ? back.state.day.kept : undefined, { value: changed, at: "pc:4" });
+  });
+
+  it("never paints a superseded day's response", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    await h.show(OTHER_DAY);
+    assert.equal(h.subscriptions[0].closed, true);
+    const count = h.renders.length;
+    await h.serve(0, frame(DAY, "pc:1"));
+    assert.equal(h.renders.length, count);
+    assert.deepEqual(h.latest().day, { state: "loading" });
+    await h.show(DAY);
+    assert.deepEqual(h.latest().day, { state: "loading" });
+  });
+
+  it("keeps a refreshed day on screen as display only until the fresh frame lands", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    const first = frame(DAY, "pc:1");
+    await h.serve(0, first);
+    await act(async () => h.latest().refresh());
+    const day = h.latest().day;
+    assert.equal(day.state, "loading");
+    assert.equal(day.state === "loading" ? day.kept?.value : undefined, first);
+  });
+
+  it("keeps nothing a superseded stream delivers between the next render and its cleanup", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    const first = frame(DAY, "pc:1");
+    await h.serve(0, first);
+    h.beforeCleanup(() => h.subscriptions[0].input.onDay(frame(DAY, "pc:9")));
+    await h.show(OTHER_DAY);
+    assert.equal(h.subscriptions[0].closed, true);
+    const back = await h.show(DAY);
+    assert.equal(back?.state.day.state === "loading" ? back.state.day.kept?.at : undefined, "pc:1");
+  });
+
+  it("forgets every kept frame on a stream reset before the request's first frame", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    await h.serve(0, frame(DAY, "pc:1"));
+    await h.show(OTHER_DAY);
+    await h.state(1, { state: "live" });
+    await h.state(1, { state: "connecting" });
+    const back = await h.show(DAY);
+    assert.deepEqual(back?.state.day, { state: "loading" });
+  });
+
+  it("forgets every kept frame on a stream reset", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    await h.serve(0, frame(DAY, "pc:1"));
+    await h.state(0, { state: "live" });
+    await h.show(OTHER_DAY);
+    await h.serve(1, frame(OTHER_DAY, "pc:2"));
+    await h.state(1, { state: "connecting" });
+    assert.deepEqual(h.latest().day, { state: "loading" });
+    const back = await h.show(DAY);
+    assert.deepEqual(back?.state.day, { state: "loading" });
+  });
+
+  it("names a new stream on each reset, and keeps it across frames and state changes in between", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    await h.serve(0, frame(DAY, "pc:1"));
+    const before = h.latest().stream;
+    assert.ok(before);
+    await h.state(0, { state: "live" });
+    await h.serve(0, frame(DAY, "pc:2"));
+    assert.equal(h.latest().stream, before, "frames on one stream share it");
+    await h.state(0, { state: "connecting" });
+    const after = h.latest().stream;
+    assert.ok(after);
+    assert.notEqual(after, before, "a reset names a new stream");
+    await h.serve(0, frame(DAY, "pc:3"));
+    assert.equal(h.latest().stream, after);
+  });
+
+  it("keeps nothing across a new sign-in epoch", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    await h.serve(0, frame(DAY, "pc:1"));
+    const next = await h.show(DAY, {});
+    assert.deepEqual(next?.state.day, { state: "loading" });
+  });
+
+  it("bounds the kept days", async () => {
+    const h = await mountDays();
+    const days = Array.from({ length: KEPT_DAYS_LIMIT + 1 }, (_, index) => `2026-07-${String(index + 1).padStart(2, "0")}`);
+    for (const [index, day] of days.entries()) {
+      await h.show(day);
+      await h.serve(index, frame(day, `pc:${index + 1}`));
+    }
+    const oldest = await h.show(days[0]);
+    assert.deepEqual(oldest?.state.day, { state: "loading" });
+    const newest = await h.show(days[1]);
+    assert.equal(newest?.state.day.state === "loading" ? newest.state.day.kept?.at : undefined, "pc:2");
+  });
 });

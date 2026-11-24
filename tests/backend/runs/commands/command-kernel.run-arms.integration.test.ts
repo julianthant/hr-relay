@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createKernelStubCommandFixtures } from "../../../support/helpers/backend/kernel-stub-command-fixtures.js";
 import { planStart } from "../../../../src/backend/runs/start/plan.js";
-import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
+import { queuedRunFixture } from "../../../support/fixtures/backend/queued-run.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { personLookupDescriptor, separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
@@ -259,7 +259,7 @@ function recoverySource(harness: Awaited<ReturnType<typeof protectedFixtures.cre
     assert.deepEqual(plan.refused, []);
     const planned = plan.planned[0];
     assert.ok(planned);
-    return buildQueuedRun({ descriptor: separationsDescriptor, runId: "11111111-1111-4111-8111-111111111111",
+    return queuedRunFixture({ descriptor: separationsDescriptor, runId: "11111111-1111-4111-8111-111111111111",
       itemId: planned.itemId, traceId: "se-120000-1111", rawInput: planned.rawInput, canonicalInput: planned.input,
       ingressSchemaHash: plan.ingressSchemaHash, ...harness.configIdentity, resolvedInstance: plan.resolvedInstance,
       shape: "single", priority: "bulk", dryRun: true, attempt: 1, runNumber: 1, appVersion: "0.1.0", now: NOW });

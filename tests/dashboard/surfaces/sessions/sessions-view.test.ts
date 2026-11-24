@@ -50,7 +50,7 @@ async function mount(synchronous = false) {
     const button = [...dialog().querySelectorAll("button")].find(node => node.textContent === "Add workers");
     assert.ok(button instanceof HTMLButtonElement);
     await settle(() => { button.focus(); button.click(); });
-    assert.equal(document.querySelector('[role="dialog"]'), null, "confirmation closes immediately");
+    assert.equal(document.querySelector('[role="dialog"]') === null, true, "confirmation closes immediately");
     assert.equal(calls, 1);
   };
   const transition = async (state: SessionPreviewOperation["state"]) => {
@@ -114,7 +114,7 @@ describe("Sessions confirmation focus", () => {
         assert.ok(cancel);
         await settle(() => cancel.click());
       } else await settle(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-      assert.equal(document.querySelector('[role="dialog"]'), null);
+      assert.equal(document.querySelector('[role="dialog"]') === null, true);
       assert.ok(document.activeElement === harness.trigger, "focus returns to the Add workers trigger");
       assert.equal(harness.calls(), 0);
     });

@@ -1,3 +1,4 @@
+import { runIndex } from "./isolated-history-store.js";
 import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { timelineEventFromRow } from "./timeline-repository.js";
@@ -61,10 +62,10 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
     const failures=failureSources.grouped,resolutions=failureSources.resolutions;
     const events=new Map<string,{cursor:number;startedAt:string|null;queueTitle:string|null}>();
     const byRun=new Map(runs.map(run=>[String(run.envelope.runId),run]));
-    const eventFilter = "json_extract(payload_json,'$.payload.event.t') IN ('run.queued','run.claimed')";
+    const eventFilter = "kind IN ('run.queued','run.claimed')";
     const eventRows = selected === undefined
       ? database.prepare(`SELECT * FROM timeline_events WHERE ${eventFilter} ORDER BY cursor`).all()
-      : database.prepare(`SELECT * FROM timeline_events WHERE run_id IN (SELECT value FROM json_each(?)) AND ${eventFilter} ORDER BY cursor`).all(ids);
+      : database.prepare(`SELECT * FROM timeline_events WHERE run_id IN (SELECT value FROM json_each(?)) AND ${eventFilter} ORDER BY run_id,cursor`).all(ids);
     for(const raw of eventRows) {
       const event=timelineEventFromRow(raw);
       if(event.scope.kind !== "run" || event.payload.kind !== "span"
@@ -77,7 +78,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
         queueTitle:prior.queueTitle ?? (span.t === "run.queued" ? span.title ?? null : null)});
     }
     const children = new Map<string, { runId: string; state: string; outcome: string | null }[]>();
-    const childRuns = selected === undefined ? runs : database.prepare("SELECT * FROM runs WHERE parent_id IN (SELECT value FROM json_each(?)) ORDER BY id").all(ids).map(runRecordFromRow);
+    const childRuns = selected === undefined ? runs : database.prepare(`SELECT * FROM runs ${runIndex(database, "runs_parent_idx")} WHERE parent_id IN (SELECT value FROM json_each(?)) ORDER BY parent_id,id`).all(ids).map(runRecordFromRow);
     for (const run of childRuns) {
       const parent = run.envelope.parent?.runId;
       if (parent === undefined) continue;
@@ -88,8 +89,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
     const dependencies = new Map<string, string[]>();
     const dependencyRows = selected === undefined
       ? database.prepare("SELECT * FROM delegation_dependencies ORDER BY id").all()
-      : database.prepare(`SELECT dependency.* FROM delegation_dependencies dependency JOIN run_delegations delegation ON delegation.id=dependency.delegation_id
-        WHERE delegation.parent_run_id IN (SELECT value FROM json_each(?)) ORDER BY dependency.id`).all(ids);
+      : database.prepare("SELECT * FROM delegation_dependencies WHERE parent_run_id IN (SELECT value FROM json_each(?)) ORDER BY parent_run_id,id").all(ids);
     for (const raw of dependencyRows) {
       const dependency=DependencyRecordSchema.parse(nativeOrdinaryRecordFromRow("delegation_dependencies",raw));
       const group = dependencies.get(dependency.parentRunId) ?? [];
@@ -143,7 +143,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
       for (;;) {
         const cursorClause = after === undefined ? "" : " AND (local_day>? OR (local_day=? AND id>?))";
         const cursorValues = after === undefined ? [] : [after.localDay, after.localDay, after.runId];
-        const candidates = database.prepare(`SELECT * FROM runs INDEXED BY runs_workflow_day_idx WHERE ${clauses.join(" AND ")}${cursorClause}
+        const candidates = database.prepare(`SELECT * FROM runs ${runIndex(database, "runs_workflow_day_idx")} WHERE ${clauses.join(" AND ")}${cursorClause}
           ORDER BY local_day,id LIMIT ?`).all(...values, ...cursorValues, query.limit + 1).map(runRecordFromRow);
         if (query.topLevel === true) {
           const missing = candidates.filter(run => !parents.has(run.envelope.runId));
@@ -175,7 +175,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
       if (day > today) throw new Error("calendar-future-day");
       const countRow = z.object({ day: z.iso.date(), count: z.number().int().positive() });
       const monthStart = `${month}-01`, monthEnd = `${month}-31`;
-      const counts = new Map(database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
+      const counts = new Map(database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs ${runIndex(database, "runs_day_idx")}
         WHERE parent_id IS NULL AND local_day BETWEEN ? AND ? AND local_day<=? GROUP BY local_day ORDER BY local_day`)
         .all(monthStart, monthEnd, today)
         .map(raw => { const row = countRow.parse(raw); return [row.day, row.count] as const; }));
@@ -184,7 +184,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
         SELECT min(local_day) AS first,max(local_day) AS last,
           max(CASE WHEN local_day<? THEN local_day END) AS previous,
           min(CASE WHEN local_day>? THEN local_day END) AS next
-        FROM runs INDEXED BY runs_day_idx WHERE parent_id IS NULL AND local_day<=?`).get(day, day, today));
+        FROM runs ${runIndex(database, "runs_day_idx")} WHERE parent_id IS NULL AND local_day<=?`).get(day, day, today));
       const days = new Set(counts.keys());
       for (const boundary of Object.values(roots)) if (boundary !== null) days.add(boundary);
       const dateBindings: string[] = [];
@@ -204,11 +204,11 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
         childDays = `AND (${relevant.join(" OR ")})`;
       }
       const parentRow = z.object({ parentId: RunIdSchema, childRunId: RunIdSchema });
-      const selectParents = database.prepare(`SELECT parent_id AS parentId,min(id) AS childRunId FROM runs INDEXED BY runs_parent_idx
+      const selectParents = database.prepare(`SELECT parent_id AS parentId,min(id) AS childRunId FROM runs ${runIndex(database, "runs_parent_idx")}
         WHERE parent_id IS NOT NULL AND parent_id>? AND local_day<=? ${childDays}
         GROUP BY parent_id ORDER BY parent_id LIMIT ?`);
       const selectEnvelope = database.prepare("SELECT envelope_json FROM runs WHERE id=?");
-      const selectLinkedCounts = database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
+      const selectLinkedCounts = database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs ${runIndex(database, "runs_day_idx")}
         WHERE id IN (SELECT value FROM json_each(?)) AND parent_id=? AND local_day<=? ${childDays} GROUP BY local_day ORDER BY local_day`);
       let afterParent = "";
       for (;;) {

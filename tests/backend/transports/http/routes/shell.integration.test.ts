@@ -333,7 +333,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(response.status, status);
     assert.equal((await json(response)).code, code);
-    assert.deepEqual(h.database.getMeta(), { ...before, authorityGeneration: Number(before.authorityGeneration) + 1 });
+    assert.deepEqual(h.database.getMeta(), before, "a debug-only fault advances no authority generation");
     assertHttpFaultOnly(h, beforeFault, 1);
   });
 
@@ -405,6 +405,33 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     } finally { await reader.cancel(); }
     assert.equal(h.hub.subscriberCount(), 0);
     assert.equal(timeline.highWaterMark(), before);
+  });
+
+  it("serves a run topic's panel in the snapshot and refuses a malformed run id", async () => {
+    const h = await harness({ profileFixture: profileFixtures.create });
+    const absent = "00000000-0000-4000-8000-0000000000aa";
+    const response = await h.app.request(`http://localhost/events/v1?topics=dashboard-day:${DAY},run:${absent}`, { headers: { host: "localhost" } });
+    assert.equal(response.status, 200);
+    assert.ok(response.body);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    try {
+      while (!text.includes('"type":"snapshot"')) {
+        const chunk = await reader.read();
+        assert.equal(chunk.done, false);
+        text += decoder.decode(chunk.value, { stream: true });
+      }
+    } finally { await reader.cancel(); }
+    const snapshot = text.split("\n\n").filter(block => block.includes('"type":"snapshot"'))
+      .map(block => DashboardStreamEnvelopeSchema.parse(JSON.parse(block.split("\n").filter(line => line.startsWith("data: ")).map(line => line.slice(6)).join("\n"))))[0];
+    if (snapshot?.type !== "snapshot") assert.fail("expected the handoff snapshot");
+    assert.deepEqual(snapshot.rows.map(row => ({ model: row.model, key: row.key, state: row.value.state })), [{ model: "run-panel", key: absent, state: "refused" }],
+      "a run authority does not hold is a refused panel, not a stream failure");
+
+    const malformed = await h.app.request(`http://localhost/events/v1?topics=dashboard-day:${DAY},run:not-a-run`, { headers: { host: "localhost" } });
+    assert.equal(malformed.status, 400);
+    assert.equal(h.hub.subscriberCount(), 0);
   });
 
   it("serves /events/v1 through the demand-driven bridge: an unread client is bounded to one reset-required and cancel closes the hub connection", async () => {

@@ -6,7 +6,7 @@ import {
 buildExplainRunView,
 renderExplainRun,
 } from "../../../../src/backend/runs/explain/explain-run.js";
-import { buildRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { buildRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import {
@@ -56,13 +56,13 @@ describe("idempotency-key privacy across operator projections", () => {
     const run = RunRecordSchema.parse(evidence.run);
     const checkpoints = RunCheckpointRecordSchema.array().parse(evidence.checkpoints);
 
-    const receipt = buildRunEvidenceReceipt({
+    const receipt = deriveRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       run,
       result: evidence.result,
       checkpoints,
       writes: [{ intent: parked, attempts: [] }],
-    });
+    }).receipt;
 
     const transaction = resolveLedgerLine(
       LedgerLinePointerSchema.parse({ system: "kuali", date: "2026-08-14", sequence: 0 }),

@@ -1,6 +1,5 @@
 import { IntakeOutcomeSkeleton, IntakeSkeleton } from "../shared/loading/loading.js";
 import { useIntakeWiringAdapter } from "../../state/intake-wiring-adapter.js";
-import { Checkbox as HeroCheckbox } from "@heroui/react";
 /** The spreadsheet intake workspace — ref data-intake-and-edit-data's upload → map → validate →
  * run, and ref dashboard-surfaces's surface contract . */
 import {
@@ -29,7 +28,8 @@ Badge,
 Banner,
 Button,
 Card,
-Checkbox,
+Switch,
+LockedValue,
 Chip,
 CountBadge,
 dsIcon,
@@ -71,6 +71,7 @@ import {
 correctionEditorLabel,
 correctionText,
 exclusionEditorLabel,
+abbreviated,
 headerCandidateOptionLabel,
 INTAKE_REVIEW_CONTROL_NAMES,
 INTAKE_REVIEW_COPY,
@@ -126,7 +127,14 @@ function ProblemNotice({ problem }: { problem: CommandProblem }) {
   if (problem.kind === "rejected") return <Notice tone="danger" title="Request refused" description={problem.message} />;
   if (problem.kind === "confirmation-required") return <Notice tone="warning" title="Confirmation required" description={problem.message} />;
   if (problem.kind === "conflict") return <Notice tone="warning" title="Session changed" description={problem.message} />;
-  return <Notice tone="danger" title="Command status unverified" description={problem.message} />;
+  return <Notice tone="danger" title="Result not confirmed" description={problem.message} />;
+}
+
+/** Why a picker cannot act now; a locked picker shows its value and this reason instead of a switched-off control. */
+function lockReason(session: IntakeSessionWire, busy: boolean): string | undefined {
+  if (session.state === "enqueued") return "This file already became runs.";
+  if (session.state === "discarded") return "This session was discarded.";
+  return busy ? "Waiting for the last change to finish." : undefined;
 }
 
 /* ── source band ──────────────────────────────────────────────────────────── */
@@ -153,6 +161,9 @@ function SourceBand({
   };
 
   const settled = session.headerRowIndex;
+  const locked = lockReason(session, busy);
+  const chosen = session.headerCandidates.find((candidate) => candidate.rowIndex === settled);
+  const headerChoiceText = chosen === undefined ? "No header row chosen" : headerCandidateOptionLabel(chosen);
 
   return (
     <section aria-label="Source file" className="flex flex-col gap-[var(--ds-space-base)]">
@@ -181,17 +192,15 @@ function SourceBand({
       <div className="flex flex-wrap items-end gap-[var(--ds-space-base)]">
         {session.sheets.length > 1 && (
           <Field label="Sheet" className="min-w-[var(--ds-w-session-card)]">
-            <Select
-              value={session.sheet}
-              disabled={busy || session.state === "enqueued" || session.state === "discarded"}
-              onChange={(event) => request({ sheet: event.currentTarget.value })}
-            >
-              {session.sheets.map((sheet) => (
-                <option key={sheet} value={sheet}>
-                  {sheet}
-                </option>
-              ))}
-            </Select>
+            {locked === undefined ? (
+              <Select value={session.sheet} onChange={(event) => request({ sheet: event.currentTarget.value })}>
+                {session.sheets.map((sheet) => (
+                  <option key={sheet} value={sheet}>
+                    {sheet}
+                  </option>
+                ))}
+              </Select>
+            ) : <LockedValue value={session.sheet} reason={locked} />}
           </Field>
         )}
         <Field
@@ -199,18 +208,19 @@ function SourceBand({
           description={headerReasonSentence(session.headerDiscoveryReason, settled)}
           className="min-w-[var(--ds-w-side-panel)]"
         >
-          <Select
-            value={settled === null ? "" : String(settled)}
-            disabled={busy || session.state === "enqueued" || session.state === "discarded"}
-            onChange={(event) => request({ headerRowIndex: Number(event.currentTarget.value) })}
-          >
-            {settled === null && <option value="">Pick the row that holds the headers</option>}
-            {session.headerCandidates.map((candidate) => (
-              <option key={candidate.rowIndex} value={String(candidate.rowIndex)}>
-                {headerCandidateOptionLabel(candidate)}
-              </option>
-            ))}
-          </Select>
+          {locked === undefined ? (
+            <Select
+              value={settled === null ? "" : String(settled)}
+              onChange={(event) => request({ headerRowIndex: Number(event.currentTarget.value) })}
+            >
+              {settled === null && <option value="">Pick the row that holds the headers</option>}
+              {session.headerCandidates.map((candidate) => (
+                <option key={candidate.rowIndex} value={String(candidate.rowIndex)}>
+                  {headerCandidateOptionLabel(candidate)}
+                </option>
+              ))}
+            </Select>
+          ) : <LockedValue value={headerChoiceText} reason={locked} />}
         </Field>
       </div>
 
@@ -310,7 +320,8 @@ function MappingGrid({
     );
   }
 
-  const locked = busy || session.state === "enqueued" || session.state === "discarded";
+  const pickerLock = lockReason(session, busy);
+  const locked = pickerLock !== undefined;
 
   return (
     <div className="overflow-x-auto">
@@ -339,7 +350,7 @@ function MappingGrid({
                     target={target}
                     bound={bound}
                     columns={session.columns}
-                    locked={locked}
+                    locked={pickerLock}
                     onPick={(sourceColumnId) => onConfirm(target.targetFieldId, sourceColumnId)}
                   />
                 </TD>
@@ -384,30 +395,30 @@ function BoundColumnCell({
   target: IntakeTarget;
   bound: DetectedColumn | undefined;
   columns: readonly DetectedColumn[];
-  locked: boolean;
+  locked: string | undefined;
   onPick: (sourceColumnId: string) => void;
 }) {
   return (
     <span className="flex min-w-[var(--ds-w-member-detail)] flex-col gap-[var(--ds-space-tight)]">
-      <Select
-
-        aria-label={`Source column for ${target.label}`}
-        value={bound?.sourceColumnId ?? ""}
-        disabled={locked}
-        onChange={(event) => {
-          const next = event.currentTarget.value;
-          // The empty option means unbound; do not imply an unsupported unbind action.
-          if (next.length === 0) return;
-          onPick(next);
-        }}
-      >
-        <option value="">— unbound —</option>
-        {columns.map((column) => (
-          <option key={column.sourceColumnId} value={column.sourceColumnId}>
-            {columnLabel(column)}
-          </option>
-        ))}
-      </Select>
+      {locked === undefined ? (
+        <Select
+          aria-label={`Source column for ${target.label}`}
+          value={bound?.sourceColumnId ?? ""}
+          onChange={(event) => {
+            const next = event.currentTarget.value;
+            // The empty option means unbound; do not imply an unsupported unbind action.
+            if (next.length === 0) return;
+            onPick(next);
+          }}
+        >
+          <option value="">— unbound —</option>
+          {columns.map((column) => (
+            <option key={column.sourceColumnId} value={column.sourceColumnId}>
+              {columnLabel(column)}
+            </option>
+          ))}
+        </Select>
+      ) : <LockedValue value={bound === undefined ? "— unbound —" : columnLabel(bound)} reason={locked} />}
       {bound !== undefined && bound.samples.length > 0 && (
         <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
           {bound.samples.slice(0, 3).join(" · ")}
@@ -546,11 +557,11 @@ function ValidationReview({
                 onCorrect={onCorrect}
                 onExclude={onExclude}
               />
-              <Checkbox
+              <Switch
                 checked={reviewed}
                 disabled={locked}
-                className="min-h-11 items-center [&>label]:min-h-11 [&>label]:justify-center"
-                onCheckedChange={(next) => onReviewed(next === true)}
+                className="min-h-11 items-center"
+                onCheckedChange={onReviewed}
                 label={reviewLabel}
                 description={INTAKE_REVIEW_COPY.reviewDescription}
               />
@@ -841,11 +852,11 @@ function ManifestRows({ manifestId, rows }: { manifestId: string; rows: readonly
               <TR key={row.sourceRow}>
                 <TD numeric align="right">{String(row.sourceRow)}</TD>
                 <TD><Badge tone={row.tone}>{row.disposition}</Badge></TD>
-                <TD numeric>{row.itemId ?? "—"}</TD>
+                <TD numeric>{row.itemId === undefined ? "—" : abbreviated(row.itemId)}</TD>
                 <TD numeric>{row.inputHash === undefined ? "—" : row.inputHash.slice(0, 10)}</TD>
                 <TD className="max-w-[var(--ds-w-member-detail)]">
                   <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
-                    <span className="min-w-0 flex-1 truncate">{row.parsedInput}</span>
+                    <span className="min-w-0 flex-1 break-words">{row.parsedInput}</span>
                     <IdentifierPopover
                       label={`Show full evidence for source row ${String(row.sourceRow)}`}
                       title={`Source row ${String(row.sourceRow)} evidence`}
@@ -927,10 +938,10 @@ function RerunMembership({
       ) : page.items.map((row) => (
         <div key={row.itemId} className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
           <span className={cn(dsText.body, dsText.nums, "min-w-0 flex-1 break-all text-[color:var(--ds-fg-secondary)]")}>
-            {row.itemId} · input {shortHash(row.inputHash)}…
+            {abbreviated(row.itemId)} · input {abbreviated(row.inputHash)}
           </span>
           <IdentifierPopover
-            label={`Show full membership evidence for item ${row.itemId}`}
+            label={`Show full membership evidence for item ${abbreviated(row.itemId)}`}
             title="Rerun membership evidence"
             facts={rerunMembershipDetailFacts(row)}
           />
@@ -954,14 +965,25 @@ function ChangedInputRows({
       <div className="max-w-full overflow-x-auto">
         <Table label="Changed input hashes">
           <THead>
-            <TR><TH>Item</TH><TH>Previous input hash</TH><TH>Current input hash</TH></TR>
+            <TR><TH>Item</TH><TH>Previous input hash</TH><TH>Current input hash</TH><TH>Evidence</TH></TR>
           </THead>
           <TBody>
             {page.items.map((change) => (
               <TR key={change.itemId}>
-                <TD numeric>{change.itemId}</TD>
-                <TD numeric>{change.beforeInputHash}</TD>
-                <TD numeric>{change.afterInputHash}</TD>
+                <TD numeric>{abbreviated(change.itemId)}</TD>
+                <TD numeric>{abbreviated(change.beforeInputHash)}</TD>
+                <TD numeric>{abbreviated(change.afterInputHash)}</TD>
+                <TD>
+                  <IdentifierPopover
+                    label={`Show full changed input evidence for item ${abbreviated(change.itemId)}`}
+                    title="Changed input evidence"
+                    facts={[
+                      { key: "item id", value: change.itemId },
+                      { key: "previous input hash", value: change.beforeInputHash },
+                      { key: "current input hash", value: change.afterInputHash },
+                    ]}
+                  />
+                </TD>
               </TR>
             ))}
           </TBody>
@@ -994,7 +1016,7 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
   if (stage.kind === "same-plan") {
     return (
       <section className="flex flex-col gap-[var(--ds-space-cozy)]">
-        <Notice sticky tone="warning" title="Already enqueued with this plan" description="Running it again files the same rows twice." />
+        <Notice sticky tone="warning" title="Plan already run" description="Rerunning repeats these rows." />
         <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
           <MetaLine items={[`manifest ${shortHash(stage.manifestId)}…`, `made ${formatTime(stage.createdAt)}`]} />
           <IdentifierPopover
@@ -1166,9 +1188,9 @@ function OutcomeBand({
           <MetaLine tone="faint" items={layoutMetaItems(session)} />
           {fingerprint !== undefined && (
             <IdentifierPopover
-              label="Show full layout fingerprint"
-              title="Layout fingerprint"
-              facts={[{ key: "fingerprint", value: fingerprint }]}
+              label="Show full layout ID"
+              title="Layout ID"
+              facts={[{ key: "layout", value: fingerprint }]}
             />
           )}
         </span>
@@ -1177,10 +1199,7 @@ function OutcomeBand({
       <span className="flex-1" />
 
       {supportsDryRun && (
-        <HeroCheckbox isSelected={dryRun} isDisabled={busy} onChange={onDryRun} className="flex cursor-pointer items-center gap-[var(--ds-space-tight)]">
-          <HeroCheckbox.Control><HeroCheckbox.Indicator /></HeroCheckbox.Control>
-          <HeroCheckbox.Content className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>Dry run</HeroCheckbox.Content>
-        </HeroCheckbox>
+        <Switch label="Dry run" checked={dryRun} disabled={busy} onCheckedChange={onDryRun} className="!min-h-0 !w-auto !py-0" />
       )}
 
       <Button
@@ -1192,9 +1211,9 @@ function OutcomeBand({
         {validated ? "Re-validate" : "Validate"}
       </Button>
       {session.reviewBinding !== undefined && session.state === "validated" && (
-        <Checkbox checked={confirmed} disabled={busy || blockers.length > 0}
+        <Switch checked={confirmed} disabled={busy || blockers.length > 0} className="!min-h-0 !w-auto !py-0"
           label={session.rerun === undefined ? "I confirm this reviewed plan" : `I confirm comparison with ${shortHash(session.rerun.intakeManifestId)}`}
-          onCheckedChange={next => onConfirm(next === true)} />
+          onCheckedChange={onConfirm} />
       )}
       <Button
         variant="primary"
@@ -1255,7 +1274,7 @@ function IntakeSessionWorkspace({
     }
     if (resource.state === "failed") {
       return (
-        <Notice sticky tone="danger" title="Intake session could not be read" description={resource.message} />
+        <Notice sticky tone="danger" title="Session not readable" description="Reload and try again." />
       );
     }
     const session = resource.session;
@@ -1268,7 +1287,7 @@ function IntakeSessionWorkspace({
         />
 
         {problem !== null && <ProblemNotice problem={problem} />}
-        {recovery !== null && <Button variant="secondary" disabled={pending !== null} onClick={recovery.retry}>Recover exact command</Button>}
+        {recovery !== null && <Button variant="secondary" disabled={pending !== null} onClick={recovery.retry}>Retry the last step</Button>}
 
         <Tabs
           value={tab ?? (session.validation.state === "validated" ? "review" : "mapping")}

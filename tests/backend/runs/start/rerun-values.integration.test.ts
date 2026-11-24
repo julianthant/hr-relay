@@ -24,7 +24,7 @@ import { descriptorRuntimeNodes, defineWorkflowDescriptor } from "../../../../sr
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
-import { buildFailureTerminalAuthorization } from "../../../../src/backend/runs/lifecycle/terminal-authorization.js";
+import { buildTerminalAuthorization } from "../../../../src/backend/runs/lifecycle/terminal-authorization.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { mappedReadDescriptor as originalMappedReadDescriptor,rerunValuesDeps,valueShapeHarness } from "../../../support/fixtures/rerun-values-fixtures.js";
@@ -669,7 +669,8 @@ describe("source-bound Rerun value read", () => {
         claimedAt: now, heartbeatAt: now, ...(state === "running" ? { currentNodeId: "later" } : {}) } }));
     const failure = buildNodeFailureRecord({ writes: [], run: running, failureId: h.ids.uuid(), nodeId: NodeIdSchema.parse("later"),
       taskId: later.uses.id, error: new Error("fixture later read failed"), occurredAt: now });
-    const authorization = buildFailureTerminalAuthorization({ run: running, authorizedAt: now, consequence: { kind: "failed", failure } });
+    const authorization = buildTerminalAuthorization({ run: running, authorizedAt: now, consequence: { kind: "failed", failure } });
+    assert.equal(authorization.kind, "failed");
     const run = requireLifecycleApplied(h.lifecycle.terminalize({ commandId: h.ids.uuid(), kind: "failure", terminal: { authorization, failure } }, h.descriptor));
     const protectedRun = { ...run, input: { ...run.input, parsed: { ...run.input.parsed, protectedBindings: [{
       kind: "test-data-local" as const, inputPath: "documentNumber" as const,

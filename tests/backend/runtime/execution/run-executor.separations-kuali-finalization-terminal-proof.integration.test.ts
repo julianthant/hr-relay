@@ -2,7 +2,8 @@ import { createFinalizationTerminalTestWorld } from "../../../support/helpers/ba
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
-import { executeClaimedRun, type RunExecutionAuthority } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { RunExecutionAuthority } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { deriveTerminalFailureDigest, RunTerminalEvidenceResultSchema } from "../../../../src/models/run/result.js";
 import { FINALIZE_NODE } from "../../../../src/workflows/separations/workflow.js";
 import { FINALIZATION_ITEM_ID, FINALIZATION_RUN_ID, type FinalizationHarness } from "../../../support/helpers/kuali-finalization-fixtures.js";

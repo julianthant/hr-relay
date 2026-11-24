@@ -7,9 +7,10 @@ import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { IDLE_REFRESH_MS } from "../../../../src/dashboard/surfaces/sessions/session-idle-model.js";
 import { useSessionPreviewCommands, type SessionPreviewCommandPort, type SessionPreviewRequest, type SessionPreviewResult } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import { SessionsView } from "../../../../src/dashboard/surfaces/sessions/sessions-view.js";
+import type { SessionsViewState } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { createFixtureSessionPort, previewSessionControl, sessionsSample } from "../../../support/fixtures/dashboard/sessions-sample.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
@@ -65,7 +66,7 @@ describe("worker controls", () => {
     assert.equal(sent.length, 1, "nothing is resent"); assert.deepEqual(checked, sent);
     assert.equal(host.querySelectorAll('button[aria-label="Resume"]').length, 1);
     assert.doesNotMatch(host.textContent ?? "", /uncertain|Check outcome|unavailable/u);
-    assert.equal(host.querySelector('[role="alert"]'), null); assert.deepEqual(problems, []);
+    assert.equal(host.querySelector('[role="alert"]') === null, true); assert.deepEqual(problems, []);
   });
 
   it("settles a foreign or malformed reply from the read-back", async () => {
@@ -95,7 +96,7 @@ describe("worker controls", () => {
     assert.equal(host.querySelectorAll('button[aria-label="Resume"]').length, 0);
     assert.equal(firstPause(host)?.disabled, false, "the control works again without a reload");
     assert.doesNotMatch(host.textContent ?? "", /Lost response|No served effect|Check outcome/u);
-    assert.equal(host.querySelector('[role="alert"]'), null);
+    assert.equal(host.querySelector('[role="alert"]') === null, true);
     await act(async () => firstPause(host)?.click());
     assert.equal(sent.length, 2, "a new press sends a new command");
   });
@@ -135,6 +136,20 @@ describe("worker controls", () => {
     scope = {}; await act(async () => root?.render(createElement(Harness)));
     assert.equal(commands!.operations[target], undefined);
     assert.deepEqual(problems, []);
+  });
+
+  it("keeps the held workers when another day loads under the snapshot it mounted with", async () => {
+    const loadingSnapshot = {}; const loadedSnapshot = {};
+    let snapshot = loadingSnapshot; let initial: SessionsViewState = { state: "loading" };
+    let commands: ReturnType<typeof useSessionPreviewCommands> | undefined;
+    const never = () => new Promise<SessionPreviewResult>(() => undefined);
+    const port: SessionPreviewCommandPort = { send: never, check: never };
+    function Harness() { commands = useSessionPreviewCommands(initial, SERVED_CATALOG, port, { snapshot, scope: {}, actorId: "local-operator" }); return null; }
+    await mount(createElement(Harness));
+    const rerender = () => act(async () => root?.render(createElement(TooltipProvider, null, createElement(Harness))));
+    snapshot = loadedSnapshot; initial = sessionsSample("active"); await rerender();
+    snapshot = loadingSnapshot; await rerender();
+    assert.equal(commands!.data.state, "ready");
   });
 
   it("the fixture port separates the lost response from the original command's read-back", async () => {

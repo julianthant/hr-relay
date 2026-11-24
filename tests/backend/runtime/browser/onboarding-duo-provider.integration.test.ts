@@ -7,15 +7,16 @@ import { PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../../src/models/config
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
+import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect } from "@playwright/test";
 import { chromium, type BrowserContext } from "playwright";
-import { it } from "vitest";
+import { beforeAll, it } from "vitest";
 import { z } from "zod";
-import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import { createProfileOnboardingDuoProvider, duoScreenSnapshot, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoBrowserOwner } from "../../../../src/backend/profiles/onboarding-duo.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -26,6 +27,19 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const FORM = `<!doctype html><form action="${SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="username"><label for="ssopassword">Password</label><input id="ssopassword" name="password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
+
+// The runner's first load of the staged MV3 extension is slow; paying it here keeps it out of each test's 5 s launch window.
+beforeAll(async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "onboarding-warm-"))), extension = join(root, "extension");
+  stageFastDuoExtension(realpathSync("fast-duo"), extension, PROFILE_ENROLLMENT_EXTENSION_MODE);
+  const context = await chromium.launchPersistentContext(join(root, "profile"), { channel: "chromium", headless: true,
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
+  try {
+    const worker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js"))
+      ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js") });
+    assert.ok(worker);
+  } finally { await context.close(); }
+});
 
 for (const pendingClose of [false, true]) it(pendingClose
   ? "real synthetic MV3 pending software-key attempt retains UNKNOWN across whole-window closure and reopen"
@@ -98,7 +112,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     let setup = context.pages()[0]; assert.ok(setup);
     assert.match(setup.url(), /^chrome-extension:\/\/[^/]+\/src\/options\.html$/);
     await expect(setup.locator("#editorTitle")).toHaveText("Set up Security key");
-    await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
+    await expect(setup.getByRole("heading", { name: "Relay sign-in method", exact: true })).toBeVisible();
     await expect(setup.locator(".brand small")).toHaveText("Relay sign-in setup");
     await expect(setup.locator("footer")).toHaveCount(0);
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId); assert.equal(launches, 1);
@@ -128,23 +142,20 @@ for (const pendingClose of [false, true]) it(pendingClose
     await profile.session.openOnboardingPortal(draft.token, draft.operationId); assert.equal(context.pages().length, 2);
     assert.equal(portal.url(), "https://duo.ucsd.edu/devices"); assert.equal(submissions, 0);
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
-    for (const method of ["key", "touch"] as const) {
-      const label = method === "key" ? "Security key" : "Touch ID";
-      await setup.locator(`.relay-method-card[data-method="${method}"]`).click();
-      await setup.getByRole("button", { name: `Set up ${label}`, exact: true }).click();
-      await expect(setup.getByRole("button", { name: "Cancel setup", exact: true })).toBeEnabled();
-      assert.equal(read().methods[method].state, "pending");
-      await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
-      await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
-      await expect(setup.getByRole("button", { name: `Set up ${label}`, exact: true })).toBeEnabled();
-      assert.equal(read().methods[method].state, "idle");
-    }
+    await setup.locator('.relay-method-card[data-method="key"]').click();
+    await setup.getByRole("button", { name: "Set up Security key", exact: true }).click();
+    await expect(setup.getByRole("button", { name: "Cancel setup", exact: true })).toBeEnabled();
+    assert.equal(read().methods.key.state, "pending");
+    await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
+    await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
+    await expect(setup.getByRole("button", { name: "Set up Security key", exact: true })).toBeEnabled();
+    assert.equal(read().methods.key.state, "idle");
     assert.equal(launches, 1); assert.equal(submissions, 0);
     await context.route("https://foreign.invalid/**", route => route.fulfill({ contentType: "text/html", body: "Foreign page" }));
     await portal.goto("https://foreign.invalid/");
     await assert.rejects(profile.session.openOnboardingPortal(draft.token, draft.operationId));
     assert.equal(submissions, 0); assert.equal(context.pages().length, 2);
-    await setup.getByRole("button", { name: "Set up Touch ID", exact: true }).click();
+    await setup.getByRole("button", { name: "Set up Security key", exact: true }).click();
     const portalFailure = "Relay could not trust this Duo page. Do not enter your password. Close the Duo tab, then try Show Duo again.";
     await expect(setup.locator("#message")).toHaveText(portalFailure);
     assert.equal(submissions, 0);
@@ -155,19 +166,19 @@ for (const pendingClose of [false, true]) it(pendingClose
     }));
     await expect(setup.locator("#message")).toHaveText(portalFailure);
     await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
-    await expect(setup.getByRole("button", { name: "Set up Touch ID", exact: true })).toBeEnabled();
+    await expect(setup.getByRole("button", { name: "Set up Security key", exact: true })).toBeEnabled();
     const methodsBeforeReopen = read().methods;
     await setup.close();
     await Promise.all([profile.session.showOnboardingBrowser(draft.token, draft.operationId), profile.session.showOnboardingBrowser(draft.token, draft.operationId)]);
     assert.equal(launches, 1); assert.equal(context.pages().length, 2);
     setup = context.pages().find(page => page !== portal)!; assert.ok(setup);
-    await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
+    await expect(setup.getByRole("heading", { name: "Relay sign-in method", exact: true })).toBeVisible();
     assert.equal(submissions, 0); assert.deepEqual(read().methods, methodsBeforeReopen);
     await context.close();
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
     assert.equal(launches, 2); assert.equal(context.pages().length, 1);
     assert.equal(submissions, 0); assert.deepEqual(read().methods, methodsBeforeReopen);
-    await expect(context.pages()[0].getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
+    await expect(context.pages()[0].getByRole("heading", { name: "Relay sign-in method", exact: true })).toBeVisible();
     if (pendingClose) {
       setup = context.pages()[0];
       await setup.locator('.relay-method-card[data-method="key"]').click();
@@ -206,7 +217,7 @@ for (const pendingClose of [false, true]) it(pendingClose
       const debugAdmission = machine.admitProfile(draft.profileId);
       try {
         AuthorityDatabase.withProfileOnboardingTimeline(debugAdmission, systemClock, repository => {
-          const events = repository.page({ after: 0, through: repository.highWaterMark(), limit: 500 });
+          const events = repository.debugPage({ after: 0, through: repository.debugHighWaterMark(), limit: 500 });
           const failure = events.find(entry => entry.payload.kind === "debug" && entry.payload.event.correlationId === captured.attemptId);
           assert.ok(failure); assert.equal(failure.payload.kind, "debug");
           if (failure.payload.kind !== "debug") throw new Error("onboarding debug event missing");
@@ -218,10 +229,8 @@ for (const pendingClose of [false, true]) it(pendingClose
       } finally { debugAdmission.release(); }
       assert.equal(retained.ceremonyObserved, true); assert.equal(retained.portalAccepted, false);
       assert.equal(retained.operatorConfirmed, false); assert.equal(retained.exactCredentialRequestObserved, false);
-      assert.equal(read().methods.touch.state, "idle"); assert.equal(submissions, 0);
+      assert.equal(submissions, 0);
       await expect(context.pages()[0].locator("#accountList")).toContainText("Not confirmed");
-      await profile.session.startOnboardingDuo(draft.token, draft.operationId, "touch");
-      assert.equal(read().methods.touch.state, "pending");
       assert.equal(read().methods.key.state, "unknown"); assert.equal(read().methods.key.attemptId, captured.attemptId); assert.equal(launches, 3);
       assert.deepEqual(await profile.session.cancelOnboarding(draft.token, draft.operationId), { state: "signed-out" });
       assert.ok(owner); const stale = owner; assert.throws(() => stale.assertCurrent());
@@ -246,7 +255,7 @@ for (const pendingClose of [false, true]) it(pendingClose
   if (failure !== undefined) throw new Error("onboarding fixture failed", { cause: failure });
 });
 
-for (const scenario of ["software", "abort", "timeout", "platform"] as const) it(`real enrollment bridge: ${scenario}`, async () => {
+for (const scenario of ["software", "abort", "timeout"] as const) it(`real enrollment bridge: ${scenario}`, async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "duo-enrollment-")));
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(root, file));
   const machine = acquireEntrypointAdmission(root, "exclusive", await runtimeLifetimeLock());
@@ -268,19 +277,15 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
     password: "synthetic-enrollment-password", createdAt: systemClock.now().toISOString() });
   assert.equal(draft.state, "onboarding");
   if (draft.state !== "onboarding") throw new Error("synthetic draft missing");
-  let failure: unknown;
+  let failure: unknown, finished = false;
   try {
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
     assert.ok(context);
     const page = await context.newPage();
     await page.goto("https://enrollment.duosecurity.com/");
-    const method = scenario === "platform" ? "touch" : "key";
-    await profile.session.startOnboardingDuo(draft.token, draft.operationId, method);
+    await profile.session.startOnboardingDuo(draft.token, draft.operationId, "key");
     await page.bringToFront();
     assert.equal(await page.evaluate(() => document.hasFocus()), true);
-    if (scenario === "platform") {
-      assert.equal(await page.evaluate(() => PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()), true);
-    }
     const outcome = await page.evaluate(async scenario => {
       const controller = new AbortController();
       if (scenario === "abort") window.addEventListener("message", event => {
@@ -294,9 +299,9 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
           challenge: new TextEncoder().encode("synthetic-enrollment-challenge"),
           user: { id: new TextEncoder().encode("synthetic-handle"), name: "synthetic-enrollment@ucsd.edu", displayName: "Synthetic Enrollment" },
           pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-          excludeCredentials: [{ type: "public-key", id: new Uint8Array([8, 9]), transports: ["usb", "internal"] }],
-          authenticatorSelection: { authenticatorAttachment: scenario === "platform" ? "platform" : "cross-platform",
-            residentKey: "discouraged", requireResidentKey: false, userVerification: scenario === "platform" ? "required" : "discouraged" },
+          excludeCredentials: [{ type: "public-key", id: new Uint8Array([8, 9]), transports: ["usb"] }],
+          authenticatorSelection: { authenticatorAttachment: "cross-platform",
+            residentKey: "discouraged", requireResidentKey: false, userVerification: "discouraged" },
           attestation: "direct", timeout: scenario === "timeout" ? 1 : 10000,
         } });
         if (!(credential instanceof PublicKeyCredential)) throw new Error("credential missing");
@@ -316,34 +321,51 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
       const restarted = profile.session.readOnboarding(draft.token, draft.operationId).methods.key;
       assert.equal(restarted.state, "pending"); assert.notEqual(restarted.attemptId, failed.attemptId);
     } else {
-      assert.deepEqual(outcome, { state: "created", attachment: scenario === "platform" ? "platform" : "cross-platform" });
-      const state = profile.session.readOnboarding(draft.token, draft.operationId).methods[method];
+      assert.deepEqual(outcome, { state: "created", attachment: "cross-platform" });
+      const state = profile.session.readOnboarding(draft.token, draft.operationId).methods.key;
       assert.equal(state.state, "pending"); assert.equal(state.ceremonyObserved, true); assert.equal(state.operatorConfirmed, false);
       await page.evaluate(heading => { const element = document.createElement("h2"); element.textContent = heading; document.body.append(element); },
-        scenario === "platform" ? "Added Touch ID (Chrome)" : "Added security key");
-      await expect.poll(() => profile.session.readOnboarding(draft.token, draft.operationId).methods[method].state).toBe("complete");
-      const done = profile.session.readOnboarding(draft.token, draft.operationId).methods[method];
+        "Added security key");
+      await expect.poll(() => profile.session.readOnboarding(draft.token, draft.operationId).methods.key.state).toBe("complete");
+      const done = profile.session.readOnboarding(draft.token, draft.operationId).methods.key;
       assert.equal(done.portalAccepted, true); assert.equal(done.operatorConfirmed, false);
     }
     const debugAdmission = machine.admitProfile(draft.profileId);
     try {
       AuthorityDatabase.withProfileOnboardingTimeline(debugAdmission, systemClock, repository => {
-        const events = repository.page({ after: 0, through: repository.highWaterMark(), limit: 500 });
+        const events = repository.debugPage({ after: 0, through: repository.debugHighWaterMark(), limit: 500 });
         const reasons = events.flatMap(entry => entry.payload.kind === "debug" && entry.payload.event.category === "duo" ? [entry.payload.event.reason] : []);
         assert.ok(reasons.includes("intercepted"));
-        if (scenario === "software" || scenario === "platform") {
+        if (scenario === "software") {
           for (const reason of ["forwarded", "backend-received", "replied"]) assert.ok(reasons.includes(reason), reason);
         } else assert.ok(reasons.includes(scenario === "abort" ? "aborted" : "timed-out"));
         assert.doesNotMatch(JSON.stringify(events), /synthetic-enrollment@ucsd.edu|synthetic-enrollment-password|synthetic-handle|synthetic-enrollment-challenge|privateKey|publicKey|stack/);
       });
     } finally { debugAdmission.release(); }
+    if (scenario === "software") {
+      const attemptId = profile.session.readOnboarding(draft.token, draft.operationId).methods.key.attemptId;
+      assert.ok(attemptId);
+      const ready = profile.session.confirmOnboardingDuo(draft.token, draft.operationId, "key", attemptId);
+      assert.ok(ready.state === "onboarding" && ready.step === "ready");
+      assert.equal(machine.readProfileRegistry().profiles.some(row => row.profileId === draft.profileId), false);
+      const active = await profile.session.completeOnboarding(draft.token, draft.operationId);
+      finished = true;
+      assert.equal(active.profileId, draft.profileId);
+      assert.equal(machine.readProfileRegistry().profiles.filter(row => row.profileId === draft.profileId).length, 1);
+      const owner = machine.admitProfile(draft.profileId);
+      let stored: unknown;
+      try { stored = createCanonicalCredentials(owner).readRecord("duo")?.value; } finally { owner.release(); }
+      const rows = z.strictObject({ credentials: z.array(z.looseObject({ state: z.string(), authenticator: z.looseObject({ transport: z.string() }).optional() })) })
+        .parse(stored).credentials;
+      assert.deepEqual(rows.map(row => [row.state, row.authenticator?.transport]), [["ready", "usb"]]);
+    }
   } catch (error) {
     failure = error;
     try {
       const debugAdmission = machine.admitProfile(draft.profileId);
       try {
         AuthorityDatabase.withProfileOnboardingTimeline(debugAdmission, systemClock, repository => {
-          const reasons = repository.page({ after: 0, through: repository.highWaterMark(), limit: 500 })
+          const reasons = repository.debugPage({ after: 0, through: repository.debugHighWaterMark(), limit: 500 })
             .flatMap(entry => entry.payload.kind === "debug" && entry.payload.event.category === "duo" ? [entry.payload.event.reason] : []);
           failure = new Error(`enrollment fixture ${scenario}: ${reasons.join(", ")}`, { cause: error });
         });
@@ -351,7 +373,7 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
     } catch (diagnosticError) { failure = new AggregateError([error, diagnosticError], "enrollment fixture and diagnostics failed"); }
   }
   try {
-    if (profile.session.readOnboarding(draft.token, draft.operationId).methods[scenario === "platform" ? "touch" : "key"].state === "unknown") {
+    if (!finished && profile.session.readOnboarding(draft.token, draft.operationId).methods.key.state === "unknown") {
       await assert.rejects(profile.close(), error => error instanceof RuntimeCustodyUncertainError
         && error.errors.some(cause => cause instanceof AggregateError && cause.message === "profile-onboarding-custody-unproved"));
     } else await profile.close();
@@ -361,6 +383,76 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
   try { machine.release(); }
   catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "enrollment fixture and admission cleanup failed"); }
   if (failure !== undefined) throw new Error("enrollment fixture failed", { cause: failure });
+});
+
+it("copy enrollment clicks the owned Duo tab after arming and records the Fast Duo security-key receipt", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "copy-duo-enrollment-")));
+  for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(root, file));
+  const machine = acquireEntrypointAdmission(root, "exclusive", await runtimeLifetimeLock());
+  const browserRoot = join(machine.stateRoot, "browsers", "onboarding");
+  mkdirSync(browserRoot, { recursive: true, mode: 0o700 });
+  const portal = "https://copy-enrollment.duosecurity.com/";
+  let context: BrowserContext | undefined;
+  const provider = createProfileOnboardingDuoProvider({
+    browserRoots: createBrowserRoots(machine), browserRoot, extensionDirectory: realpathSync("fast-duo"), clock: systemClock, closeProofMs: 5000, platform: "win32",
+    focus: { async captureRelay() { return undefined; }, async show() {}, async returnToRelay() { throw new Error("unexpected native Return"); } },
+    copySignin: { profile: "development", credentials() { throw new Error("unexpected SSO"); }, phone() { throw new Error("unexpected phone approval"); } },
+    launcher: { async launch(input) {
+      if (input.nativeOnly) return DEFAULT_BROWSER_LAUNCHER.launch(input);
+      context = await DEFAULT_BROWSER_LAUNCHER.launch({ ...input, headless: true });
+      await context.route("http*://**/*", async route => {
+        const url = route.request().url();
+        if (url === "https://duo.ucsd.edu/") await route.fulfill({ contentType: "text/html", body: `<script>location.replace(${JSON.stringify(portal)})</script>` });
+        else if (url === portal) await route.fulfill({ contentType: "text/html", body: `<!doctype html>
+          <main><button>Add a device</button></main><script>
+          const wizard = document.querySelector('main');
+          wizard.addEventListener('click', async ({target}) => {
+            if (target.textContent === 'Add a device') {
+              wizard.innerHTML = '<h1>Select an option</h1><button>Security key</button>';
+            } else if (target.textContent === 'Security key') {
+              wizard.innerHTML = '<h1>Set up your device</h1><button>Continue</button>';
+            } else if (target.textContent === 'Continue') {
+              wizard.textContent = 'Waiting for registration';
+              const credential = await navigator.credentials.create({publicKey: {
+                challenge: new TextEncoder().encode('synthetic-copy-enrollment-key'),
+                rp: {id: 'duosecurity.com', name: 'Synthetic Duo'},
+                user: {id: new TextEncoder().encode('synthetic-copy'), name: 'synthetic-copy@example.edu', displayName: 'Synthetic Copy'},
+                pubKeyCredParams: [{type: 'public-key', alg: -7}], timeout: 5000,
+                authenticatorSelection: {authenticatorAttachment: 'cross-platform', userVerification: 'discouraged'},
+              }});
+              if (!(credential instanceof PublicKeyCredential) || credential.authenticatorAttachment !== 'cross-platform') throw new Error('registration missing');
+              wizard.innerHTML = '<h1>Added security key</h1><button>Done</button>';
+            } else if (target.textContent === 'Done') {
+              wizard.innerHTML = '<button>Add a device</button>';
+            }
+          });</script>` });
+        else await route.abort();
+      });
+      return context;
+    } },
+  });
+  const profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock, onboardingDuo: provider });
+  let opening: ReturnType<typeof profile.session.openOnboardingPortal> | undefined;
+  try {
+    const draft = profile.session.signUp({ firstName: "Synthetic", lastName: "Copy", email: "synthetic-copy@example.edu",
+      password: "synthetic-copy-password", createdAt: systemClock.now().toISOString() });
+    if (draft.state !== "onboarding") throw new Error("fixture draft required");
+    opening = profile.session.openOnboardingPortal(draft.token, draft.operationId);
+    void opening.catch(() => undefined);
+    const read = () => profile.session.readOnboarding(draft.token, draft.operationId);
+    await Promise.race([opening, expect.poll(() => read().step, { timeout: 10_000 }).toBe("ready")]);
+    const ready = await opening;
+    assert.deepEqual(Object.keys(ready.methods), ["key"]);
+    assert.equal(ready.methods.key.state, "complete");
+    assert.equal(ready.methods.key.ceremonyObserved, true);
+    assert.equal(ready.methods.key.portalAccepted, true);
+  } finally {
+    try { await profile.close(); }
+    finally {
+      try { await context?.close(); await opening?.catch(() => undefined); }
+      finally { machine.release(); }
+    }
+  }
 });
 
 it("measures, centers and clamps the exact native setup normal window and executes owned app focus", async () => {
@@ -383,7 +475,7 @@ it("measures, centers and clamps the exact native setup normal window and execut
     await expect.poll(() => context.pages().some(page => page.url() === target.url)).toBe(true);
     const page = context.pages().find(page => page.url() === target.url); assert.ok(page);
     const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-    const initial = { methods: { key: idle, touch: idle } };
+    const initial = { methods: { key: idle } };
     const reply = worker.evaluate(async initial => {
       const owner: unknown = Reflect.get(globalThis, "relayOnboarding");
       if (typeof owner !== "object" || owner === null) throw new Error("fixture broker required");
@@ -557,7 +649,7 @@ for (const phase of ["prelaunch", "clean-setup", "unproved-setup", "foreign"] as
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("draft required");
     credential = signup.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
     const call = (action: string, extra = {}) => post(`onboarding/${action}`, { operationId: draft.operationId, ...extra });
-    assert.equal((await call("duo/start", { method: "touch" })).status, 200);
+    assert.equal((await call("duo/start", { method: "key" })).status, 200);
     const operationPath = join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
     const readOperation = () => SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
     const old = readOperation().onboarding?.attempts[0]; assert.ok(old); assert.equal(old.state, "unknown");
@@ -595,4 +687,55 @@ for (const phase of ["prelaunch", "clean-setup", "unproved-setup", "foreign"] as
     try { await runtime.stop(); machine.release(); } catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error]); }
   }
   if (failure !== undefined) throw failure instanceof Error ? failure : new Error("native-failed-replacement-control", { cause: failure });
+});
+
+const SNAPSHOT_SECRET = "value-sentinel";
+async function servedDuoScreen(pages: Record<string, string>): Promise<BrowserContext> {
+  const context = await (await chromium.launch({ headless: true })).newContext();
+  await context.route("http*://**/*", async route => {
+    const { origin, pathname } = new URL(route.request().url()), body = pages[`${origin}${pathname}`];
+    if (body === undefined) await route.abort(); else await route.fulfill({ contentType: "text/html", body });
+  });
+  return context;
+}
+
+it("records only the duo-error screen when an alert reflects a typed input value", async () => {
+  const context = await servedDuoScreen({ "https://api-test.duosecurity.com/frame/prompt": `<input id="code"><div role="alert" hidden></div>
+    <script>document.querySelector('#code').addEventListener('input', ({ target }) => { const alert = document.querySelector('[role=alert]'); alert.textContent = 'Invalid code ' + target.value; alert.hidden = false; });</script>` });
+  try {
+    const page = await context.newPage();
+    await page.goto(`https://api-test.duosecurity.com/frame/prompt?sid=${SNAPSHOT_SECRET}`);
+    await page.fill("#code", `${SNAPSHOT_SECRET}-typed`);
+    await expect(page.getByRole("alert")).toContainText(SNAPSHOT_SECRET);
+    assert.deepEqual(await duoScreenSnapshot(page), { screen: "duo-error", frames: ["duo"] });
+  } finally { await context.browser()?.close(); }
+});
+
+it("records non-HTTPS and opaque frames only as not-allowlisted and names the Duo screen", async () => {
+  const context = await servedDuoScreen({
+    "https://api-test.duosecurity.com/frame/prompt": `<h1>Check for a Duo Push</h1><p>Pushed a login request</p>
+      <iframe src="http://api-test.duosecurity.com/plain"></iframe><iframe srcdoc="<p>opaque</p>"></iframe><iframe src="https://elsewhere.example/x"></iframe>`,
+    "http://api-test.duosecurity.com/plain": "<button>Add a device</button>",
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("https://api-test.duosecurity.com/frame/prompt");
+    await expect.poll(() => page.frames().length).toBe(4);
+    assert.deepEqual(await duoScreenSnapshot(page), { screen: "push-sent", frames: ["duo", "not-allowlisted", "not-allowlisted", "not-allowlisted"] });
+  } finally { await context.browser()?.close(); }
+});
+
+it("records only the sso-page screen after a redirect", async () => {
+  const sso = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
+  const context = await servedDuoScreen({
+    "https://api-test.duosecurity.com/frame/prompt": `<script>location.replace(${JSON.stringify(`${sso}?execution=${SNAPSHOT_SECRET}`)})</script>`,
+    [sso]: `<form><label for="u">Username</label><input id="u"><button>Sign in</button></form>`,
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("https://api-test.duosecurity.com/frame/prompt");
+    await page.waitForURL(url => url.href.startsWith(sso));
+    await page.fill("#u", `${SNAPSHOT_SECRET}-user`);
+    assert.deepEqual(await duoScreenSnapshot(page), { screen: "sso-page", frames: ["ucsd-sso"] });
+  } finally { await context.browser()?.close(); }
 });

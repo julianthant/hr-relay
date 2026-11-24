@@ -22,6 +22,7 @@ import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.
 import { failure,HASH,NOW } from "../../../support/helpers/database-foundation/fixtures.js";
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { CHANGE_LOG_PAGE_ENTRIES } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -322,6 +323,29 @@ it("does not cache derived admission when a corruption rebuild rolls back", asyn
     finally { raw.close(); }
     assert.throws(() => f.db.rebuildRunSearchIndex({restart:true,limit:1}));
     assert.throws(() => f.service().search({q:"no-match"}),/run-search-index-rebuild-required/u);
+  } finally { await f.dispose(); }
+});
+
+it("refuses a build-prefix hole whose later build rows a peer logs on different change-log pages", async () => {
+  const f = await fixture();
+  try {
+    for (let seed = 4401; seed <= 4404; seed++) f.db.authority.runs.enqueue(runRecordOf({seed}));
+    const progress = f.db.rebuildRunSearchIndex({restart:true,limit:1});
+    assert.equal(progress.state,"building");
+    const admit = f.db.trackAuthorityTables(["runs"]);
+    admit();
+    const raw = new DatabaseSync(f.path);
+    try {
+      const build = raw.prepare("UPDATE run_search SET metadata_json=json_set(metadata_json,'$.buildGeneration',?) WHERE run_id=?");
+      raw.exec("BEGIN");
+      build.run(progress.sourceGeneration,runRecordOf({seed:4403}).envelope.runId);
+      // Unrelated entries push the second build row onto the next page.
+      raw.prepare(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?)
+        INSERT INTO authority_changes(table_name,row_key,op,keys_json) SELECT 'commands',json_array('filler-'||i),'update',json_array('command:filler-'||i) FROM n`).run(CHANGE_LOG_PAGE_ENTRIES);
+      build.run(progress.sourceGeneration,runRecordOf({seed:4404}).envelope.runId);
+      raw.exec("COMMIT");
+    } finally { raw.close(); }
+    assert.throws(() => admit(), (error: unknown) => error instanceof Error && error.cause instanceof Error && error.cause.message === "run-search-build-prefix-invalid");
   } finally { await f.dispose(); }
 });
 

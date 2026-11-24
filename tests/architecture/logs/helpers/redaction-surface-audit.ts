@@ -964,7 +964,7 @@ const COMPATIBILITY_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
   ['libraries[].sheets[].mappings[].fieldId', 'operator-authored'],
 ];
 
-export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
+const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
     ...[
       "options[].choices[].label", "options[].choices[].value", "options[].id", "options[].initial", "options[].initial.by", "options[].initial.otherwise",
@@ -990,7 +990,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
       ["wire/queue-surface", "recordMembers.members[]."],
       ["wire/dashboard-day", "queueSurfaces[].recordMembers.members[]."],
       ["wire/stream-envelope", "payload.queueSurfaces[].recordMembers.members[]."],
-      ["wire/stream-envelope", "payload.replacement.recordMembers.members[]."],
+      ["wire/stream-envelope", "day.replacement.recordMembers.members[]."],
     ] as const).flatMap(([surface, prefix]) => [
       { surface, path: `${prefix}title`, origin: "captured-hr-value" },
       { surface, path: `${prefix}target.label`, origin: "repository-authored" },
@@ -1001,8 +1001,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: "wire/dashboard-day", path: "queueSurfaces[].parent.title", origin: "captured-hr-value" },
     { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].parent.label", origin: "repository-authored" },
     { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].parent.title", origin: "captured-hr-value" },
-    { surface: "wire/stream-envelope", path: "payload.replacement.parent.label", origin: "repository-authored" },
-    { surface: "wire/stream-envelope", path: "payload.replacement.parent.title", origin: "captured-hr-value" },
+    { surface: "wire/stream-envelope", path: "day.replacement.parent.label", origin: "repository-authored" },
+    { surface: "wire/stream-envelope", path: "day.replacement.parent.title", origin: "captured-hr-value" },
     { surface: 'wire/bootstrap', path: 'workflows[].start.requiredWorkbookFields[]', origin: 'repository-authored' },
     ...['id', 'keyFieldId', 'writableFields[]'].map(path => ({ surface: 'wire/bootstrap', path: `workflows[].start.workbookReference.${path}`, origin: 'repository-authored' as const })),
     ...['id', 'keyFieldId'].map(path => ({ surface: 'wire/bootstrap', path: `workflows[].start.workbookCheck.${path}`, origin: 'repository-authored' as const })),
@@ -1072,7 +1072,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
       ['wire/dashboard-day', 'queueSurfaces[].actions[].'],
       ['wire/queue-surface', 'actions[].'],
       ['wire/stream-envelope', 'payload.queueSurfaces[].actions[].'],
-      ['wire/stream-envelope', 'payload.replacement.actions[].'],
+      ['wire/stream-envelope', 'day.replacement.actions[].'],
       ['wire/run-detail-section', 'payload.actions[].'],
       ['wire/run-detail-section', 'payload.value.actions[].'],
       ['wire/run-detail-section', 'payload.value.recovery.retry.'],
@@ -1450,6 +1450,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.remediation[].message", origin: "external-text" },
   { surface: "wire/run-detail-section", path: "payload.value.subject.expected.displayRedacted", origin: "declared-redacted" },
   { surface: "wire/run-detail-section", path: "payload.value.subject.observed.displayRedacted", origin: "declared-redacted" },
+  { surface: "wire/stream-envelope", path: "rows[].value.error.message", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.subject.reason", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.summary", origin: "external-text" },
   { surface: "wire/run-detail-section", path: "payload.value.warnings[].summary", origin: "external-text" },
@@ -1639,30 +1640,30 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].actions[].key", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].actions[].label", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].actions[].navigate.runId", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.actions[].confirm.body", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.actions[].confirm.confirmLabel", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.actions[].confirm.title", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.actions[].detail", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.actions[].key", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.actions[].label", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.actions[].navigate.runId", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.actions[].confirm.body", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.actions[].confirm.confirmLabel", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.actions[].confirm.title", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.actions[].detail", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.actions[].key", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.actions[].label", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.actions[].navigate.runId", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].warnings.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.appVersion.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.endedAt.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.gateOpenedAt.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.displayName.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.displayName.value", origin: "external-text" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.liveMessage.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.liveMessage.value", origin: "external-text" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.notStarting.summary", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.outcome.label", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.pipeline[].label", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.subtitle.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.subtitle.value", origin: "captured-hr-value" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.warnings.first", origin: "external-text" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.warnings.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.title", origin: "captured-hr-value" },
+  { surface: "wire/stream-envelope", path: "day.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.appVersion.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.endedAt.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.gateOpenedAt.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.displayName.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.displayName.value", origin: "external-text" },
+  { surface: "wire/stream-envelope", path: "day.replacement.liveMessage.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.liveMessage.value", origin: "external-text" },
+  { surface: "wire/stream-envelope", path: "day.replacement.notStarting.summary", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.outcome.label", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.pipeline[].label", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.subtitle.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.subtitle.value", origin: "captured-hr-value" },
+  { surface: "wire/stream-envelope", path: "day.replacement.warnings.first", origin: "external-text" },
+  { surface: "wire/stream-envelope", path: "day.replacement.warnings.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.title", origin: "captured-hr-value" },
   { surface: "wire/stream-envelope", path: "payload.workerCards[].currentRun.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.workerCards[].refusal.summary", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.workerCards[].browserRequirements.reason", origin: "repository-authored" },
@@ -1681,14 +1682,14 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].linkedRuns[].label", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].memberPreview.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].memberPreview.value", origin: "captured-hr-value" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.runNumber.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.session.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.facts.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.facts.value[].label", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.facts.value[].value", origin: "captured-hr-value" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.linkedRuns[].label", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.memberPreview.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.replacement.memberPreview.value", origin: "captured-hr-value" },
+  { surface: "wire/stream-envelope", path: "day.replacement.runNumber.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.session.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.facts.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.facts.value[].label", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.facts.value[].value", origin: "captured-hr-value" },
+  { surface: "wire/stream-envelope", path: "day.replacement.linkedRuns[].label", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.memberPreview.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "day.replacement.memberPreview.value", origin: "captured-hr-value" },
 
   { surface: "wire/bootstrap", path: "actor.label", origin: "operator-authored" },
   { surface: "wire/bootstrap", path: "featureAvailability[].availability.reason", origin: "repository-authored" },
@@ -1978,6 +1979,66 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "os/notification-projection", path: "title", origin: "repository-authored" },
   ]),
 );
+
+/** A `run-panel` stream row carries the run detail, the logs page and the panel sections the routes serve, so their leaves keep the routes' origins. */
+const RUN_PANEL_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = (() => {
+  const carried = new Set(decidableLeaves(DashboardStreamEnvelopeSchema).map(({ path }) => path));
+  const prefixes: readonly (readonly [string, string, string])[] = [
+    ["wire/run-detail", "", "rows[].value.detail."],
+    ["wire/run-detail-section", "", "rows[].value.sections[]."],
+    ["wire/run-detail-section", "payload.", "rows[].value.logs."],
+  ];
+  const derived = new Map<string, SurfaceLeafOrigin>();
+  for (const entry of ROUTE_LEAF_ORIGINS) {
+    for (const [surface, strip, prefix] of prefixes) {
+      if (entry.surface !== surface || !entry.path.startsWith(strip)) continue;
+      const path = `${prefix}${entry.path.slice(strip.length)}`;
+      if (carried.has(path)) derived.set(path, { ...entry, surface: "wire/stream-envelope", path });
+    }
+  }
+  return [...derived.values()];
+})();
+
+/** A publication's `listed` row is the notification wire its `publication.notification` is, and its `target` is what
+ * `GET /notifications/{id}/target` serves: a recovery or command result carries the command request and result it names. */
+const PUBLICATION_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = (() => {
+  const carried = new Set(decidableLeaves(DashboardStreamEnvelopeSchema).map(({ path }) => path));
+  const listed = ROUTE_LEAF_ORIGINS.flatMap(entry => entry.surface === "wire/stream-envelope" && entry.path.startsWith("publication.notification.")
+    ? [{ ...entry, path: `listed.${entry.path.slice("publication.notification.".length)}` }] : []);
+  const target: readonly (readonly [string, LeafOrigin])[] = [
+    ["days", "repository-authored"],
+    ["request.reason", "operator-authored"],
+    ["request.payload.reason", "operator-authored"],
+    ["request.payload.patch", "operator-authored"],
+    ["request.payload.displayName", "operator-authored"],
+    ["request.payload.correctedValue", "captured-hr-value"],
+    ["request.payload.entries.ucpathPassword.set", "protected-value"],
+    ["request.payload.entries.ucpathUserId.set", "protected-value"],
+    ["request.payload.fields.answers[].raw", "captured-hr-value"],
+    ["request.payload.fields.answers[].reason", "captured-hr-value"],
+    ["request.payload.fields.answers[].value", "captured-hr-value"],
+    ["request.payload.ocrApproval.selectedRecordIds[]", "repository-authored"],
+    ["request.payload.result.value", "captured-hr-value"],
+    ["request.payload.rowId", "captured-hr-value"],
+    ["request.payload.sheet", "captured-hr-value"],
+    ["request.payload.sheetId", "captured-hr-value"],
+    ["request.target.key", "captured-hr-value"],
+    ["request.target.typeId", "captured-hr-value"],
+    ["request.target.libraryId", "repository-authored"],
+    ["request.target.operationId", "repository-authored"],
+    ["result.entries", "protected-value"],
+    ["result.message", "captured-hr-value"],
+    ["result.workerStartup.detail", "external-text"],
+    ["result.workerStartup.message", "repository-authored"],
+    ["results[].detail", "repository-authored"],
+    ["results[].workerStartup.detail", "external-text"],
+    ["results[].workerStartup.message", "repository-authored"],
+  ];
+  return [...listed, ...target.map(([path, origin]) => ({ surface: "wire/stream-envelope", path: `target.${path}`, origin }))]
+    .filter(entry => carried.has(entry.path));
+})();
+
+export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze([...ROUTE_LEAF_ORIGINS, ...RUN_PANEL_LEAF_ORIGINS, ...PUBLICATION_LEAF_ORIGINS]);
 
 /* ── 7. module dispositions ───────────────────────────────────────────────── */
 

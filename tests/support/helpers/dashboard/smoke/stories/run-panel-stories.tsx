@@ -1,0 +1,232 @@
+/** Run panel stories: header, timeline, Logs, decision and failure cards, write states, captures, OCR review and the dry-run plan. */
+import type { ReactNode } from "react";
+import type { z } from "zod";
+import { WriteStateSchema } from "../../../../../../src/models/trust/failure.js";
+import { projectFailureDisplay } from "../../../../../../src/models/dashboard/failure-display.js";
+import type { RunDecisionType } from "../../../../../../src/models/dashboard/run-decision.js";
+import type { QueueStatusSchema } from "../../../../../../src/models/dashboard/projection.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../../src/models/failures/error-catalog.js";
+import { ErrorCodeSchema, IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
+import { Badge, Banner, Notice, FailureNotice } from "../../../../../../src/dashboard/ds/ui.js";
+import { LogPanel } from "../../../../../../src/dashboard/surfaces/run-detail/log-panel.js";
+import { RunStateChips } from "../../../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
+import { LogFeedPadding, LogSkeleton, LogTimelineSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
+import { FullDryRunPreview } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
+import type { DryRunPreviewStage } from "../../../../../../src/dashboard/surfaces/run-detail/logs/dry-run-preview-model.js";
+import type { AnsweredKind, LogDecision } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
+import type { LogEntry, LogScreenshot, LogStep } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import { pauseTimeline, type LogTimelineStage, type LogTimelineState } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
+import { RecordReview } from "../../../../../../src/dashboard/surfaces/run-detail/review/review.js";
+import type { RecordReviewProps } from "../../../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
+import { ReviewDialog } from "../../../../../../src/dashboard/surfaces/run-detail/review/review-dialog.js";
+import { logTimelineSample, separationLogs } from "../../../../fixtures/dashboard/log-preview/log-fixture.js";
+import { queueStoryRow } from "../../../../fixtures/dashboard/queue-row-story-surfaces.js";
+import {
+  REVIEW_CARDS, RUN_DECISIONS, withInlineCaptures, captureImage, captureOf, captureStep, decisionSteps, exampleDecision, exampleScenario,
+} from "../../../../fixtures/dashboard/run-panel-story-fixtures.js";
+import { defineSurface, type Story } from "../story-catalogue.js";
+import { StoryFrame } from "./story-frame.js";
+
+type QueueStatus = z.infer<typeof QueueStatusSchema>;
+type WriteState = z.infer<typeof WriteStateSchema>;
+type NoteTone = NonNullable<Extract<LogEntry, { kind: "note" }>["tone"]> | "plain";
+type CaptureKind = NonNullable<LogScreenshot["kind"]> | "plain";
+type PauseState = "paused" | "pause-pending";
+/** The cases `projectFailureDisplay` titles by error code, and every other code. */
+type FailureCase = "SUBJECT_MISMATCH" | "EMPLOYMENT_RECORD_MISMATCH" | "PROTECTED_SUBJECT_DISPLAY_REFUSED" | "DOCUMENT_READ_TIMEOUT" | "other";
+type CaptureProblem = "load-error" | "dimension-mismatch" | "unavailable";
+type LogsResource = "loading" | "refreshing" | "refresh-failed" | "load-failed" | "unavailable" | "empty" | "needs-duo";
+type ReviewCase = keyof typeof REVIEW_CARDS;
+type DryRunState = DryRunPreviewStage["state"];
+
+const noop = () => undefined;
+const READY = "section[aria-label='Selected run logs']";
+const DECISION_READY = "[data-decision-state]";
+
+interface PanelProps {
+  steps: readonly LogStep[];
+  timeline: readonly LogTimelineStage[];
+  status?: ReactNode;
+  toolbar?: ReactNode;
+  navigation?: ReactNode;
+  content?: ReactNode;
+  trailingContent?: ReactNode;
+  initialStepId?: string;
+}
+
+/** The Logs column as the dashboard lays it out, beside an empty queue column. */
+function PanelStory({ steps, timeline, ...rest }: PanelProps) {
+  return <StoryFrame><main className="flex min-h-0 flex-1 flex-col"><div className="dashboard-panel-columns">
+    <div className="dashboard-queue-column" />
+    <div className="dashboard-log-column">
+      <LogPanel title="Alex Morgan" steps={withInlineCaptures(steps)} timeline={timeline} onDecision={noop} onCancelRun={noop} {...rest} />
+    </div>
+  </div></main></StoryFrame>;
+}
+
+const panel = (title: string, props: PanelProps, ready = READY): Story => ({ title, ready, render: () => <PanelStory {...props} /> });
+
+const reading = logTimelineSample("reading");
+const readingSteps = separationLogs.slice(0, 6);
+
+/** The state of the run's own decision, in the steps and timeline a log fixture scenario pairs with it. */
+const exampleStory = (title: string, id: string): Story => {
+  const { steps, timeline } = exampleScenario(id);
+  return panel(title, { steps, timeline, initialStepId: steps.at(-1)?.id }, DECISION_READY);
+};
+const decisionStory = (title: string, value: LogDecision, timeline = logTimelineSample("waiting")): Story =>
+  panel(title, { steps: decisionSteps("run-decision-entry", value), timeline, initialStepId: "run-decision" }, DECISION_READY);
+
+const header = (status: QueueStatus, n: number): Story => panel(`Header of a ${status} run`, { steps: readingSteps, timeline: reading,
+  status: <RunStateChips row={queueStoryRow(status, 30 + n, status === "cancelled" ? { cancelledBy: "operator" } : {})} /> });
+const HEADER = {
+  queued: header("queued", 0), running: header("running", 1), cancelling: header("cancelling", 2), blocked: header("blocked", 3),
+  "awaiting-approval": header("awaiting-approval", 4), done: header("done", 5), failed: header("failed", 6), cancelled: header("cancelled", 7), partial: header("partial", 8),
+} satisfies Record<QueueStatus, Story>;
+
+function timelineAt(state: LogTimelineState): readonly LogTimelineStage[] {
+  return logTimelineSample("separation").map((stage, index): LogTimelineStage => {
+    if (index < 2) return stage;
+    const later = index > 2 ? (state === "cancelled" ? "cancelled" : state === "skipped" ? "skipped" : "pending") : state;
+    return { ...stage, state: later, ...(later === "completed" ? {} : { durationLabel: undefined }),
+      substeps: stage.substeps.map(substep => ({ id: substep.id, label: substep.label, state: later,
+        ...(later === "completed" && substep.durationLabel !== undefined ? { durationLabel: substep.durationLabel } : {}) })) };
+  });
+}
+const timelineStory = (state: LogTimelineState): Story => panel(`A timeline stage that is ${state}`, { steps: separationLogs.slice(0, 7), timeline: timelineAt(state) });
+const TIMELINE = {
+  completed: timelineStory("completed"), active: timelineStory("active"), waiting: timelineStory("waiting"), failed: timelineStory("failed"),
+  pending: timelineStory("pending"), skipped: timelineStory("skipped"), cancelled: timelineStory("cancelled"),
+} satisfies Record<LogTimelineState, Story>;
+
+const PAUSE = {
+  "pause-pending": panel("A run asked to pause at the next step", { steps: readingSteps, timeline: pauseTimeline(reading, "pause-pending") }),
+  paused: panel("A paused run", { steps: readingSteps, timeline: pauseTimeline(reading, "paused") }),
+} satisfies Record<PauseState, Story>;
+
+const DECISION: Record<RunDecisionType, Story> = {
+  "identity-mismatch": exampleStory("One matching person, awaiting approval", "review-identity"),
+  "pick-person": exampleStory("Several candidates to pick from", "review-candidates"),
+  "pick-row": decisionStory("Pick a workbook row", RUN_DECISIONS["pick-row"]),
+  "review-before-write": decisionStory("Review before the write", RUN_DECISIONS["review-before-write"]),
+  "write-parked": exampleStory("A write that may not have saved", "parked"),
+  "write-unknown": exampleStory("A saved write that could not be read back", "parked-read-back"),
+  "failed-retryable": exampleStory("A step failed before any write", "failure-no-write"),
+  "failed-after-write": exampleStory("A step failed after a write", "failure-committed"),
+  "member-failed": decisionStory("A group member failed", RUN_DECISIONS["member-failed"]),
+  "correct-value": exampleStory("A value to correct and retry", "employee-not-found"),
+  "workbook-row": decisionStory("Pick the row to write", RUN_DECISIONS["workbook-row"]),
+  "sign-in": decisionStory("The worker browser signed out", RUN_DECISIONS["sign-in"]),
+  paused: decisionStory("A paused run offers Resume", RUN_DECISIONS.paused),
+  stalled: decisionStory("A run that stopped responding", RUN_DECISIONS.stalled),
+  refused: decisionStory("A command the server refused", RUN_DECISIONS.refused),
+  cancelling: decisionStory("A run being cancelled", RUN_DECISIONS.cancelling),
+};
+
+/** The eight card states, each with the fixture that shows it. */
+const CARD: Record<LogDecision["state"], Story> = {
+  parked: exampleStory("A write waiting on the operator", "parked"),
+  failed: exampleStory("A failed step", "failure-no-write"),
+  review: exampleStory("A match to review", "review-identity"),
+  held: exampleStory("A decision currently unavailable", "review-held"),
+  unconfirmed: exampleStory("A continuation whose answer is uncertain", "transport-unknown"),
+  loading: { ...exampleStory("A card still loading", "loading"), slowFetch: { region: READY } },
+  recorded: exampleStory("A recorded capture", "screenshot-fields"),
+  resolved: exampleStory("A resolved card", "write-absent"),
+};
+
+const answered = (optionId: string, label: string): LogDecision => ({ ...exampleDecision("review-identity"),
+  answered: { optionId, label, at: IsoInstantSchema.parse("2026-08-03T16:41:05.000Z"), actor: { kind: "person", name: "Alex Rivera" } } });
+const ANSWERED = {
+  done: decisionStory("An approved match", answered("approve", "Approve match")),
+  retry: decisionStory("A step sent to retry", answered("retry", "Retry step")),
+  rejected: decisionStory("A rejected match", answered("reject", "Reject match")),
+  cancelled: decisionStory("A cancelled run", answered("cancel-run", "Cancel run")),
+} satisfies Record<AnsweredKind, Story>;
+
+const writeStory = (state: WriteState, id: string): Story => exampleStory(`A failure while the write is ${state}`, id);
+const WRITE = {
+  "not-attempted": writeStory("not-attempted", "failure-no-write"), prepared: writeStory("prepared", "failure-prepared"),
+  attempting: writeStory("attempting", "failure-attempting"), committed: writeStory("committed", "failure-committed"),
+  verified: writeStory("verified", "failure-verified"), unknown: writeStory("unknown", "failure-unknown"),
+} satisfies Record<WriteState, Story>;
+
+const failureCard = (code: string): LogDecision => {
+  const display = projectFailureDisplay({ code: ErrorCodeSchema.parse(code) });
+  return { title: display.title, state: "failed", message: display.observation, footer: "Alex Morgan · DEMO-1042", served: RUN_DECISIONS["member-failed"].served };
+};
+const FAILURE = {
+  SUBJECT_MISMATCH: decisionStory("Employee identity mismatch", failureCard("SUBJECT_MISMATCH"), logTimelineSample("failed")),
+  EMPLOYMENT_RECORD_MISMATCH: decisionStory("Employment record mismatch", failureCard("EMPLOYMENT_RECORD_MISMATCH"), logTimelineSample("failed")),
+  PROTECTED_SUBJECT_DISPLAY_REFUSED: decisionStory("Protected subject display refused", failureCard("PROTECTED_SUBJECT_DISPLAY_REFUSED"), logTimelineSample("failed")),
+  DOCUMENT_READ_TIMEOUT: decisionStory("Document read interrupted", failureCard("DOCUMENT_READ_TIMEOUT"), logTimelineSample("failed")),
+  other: decisionStory("A step stopped unexpectedly", failureCard("UNEXPECTED_PAGE_STATE"), logTimelineSample("failed")),
+} satisfies Record<FailureCase, Story>;
+
+const shot = (kind: CaptureKind) => captureOf(kind === "plain" ? undefined : kind, `${kind} capture`, kind === "form" ? 700 : 300);
+const captureStory = (kind: CaptureKind): Story => panel(`A ${kind} capture`, { steps: [captureStep(shot(kind))], timeline: reading }, "figure.log-capture");
+const CAPTURE = {
+  fields: captureStory("fields"), form: captureStory("form"), browser: captureStory("browser"), person: captureStory("person"), plain: captureStory("plain"),
+} satisfies Record<CaptureKind, Story>;
+
+const CAPTURE_PROBLEM = {
+  "load-error": panel("A screenshot that fails to load", { steps: [captureStep(captureOf("browser", "Broken capture", 300, "data:image/png;base64,AAAA"))], timeline: reading }, "[role='alert']"),
+  "dimension-mismatch": panel("A screenshot whose size differs from the record", { steps: [captureStep(captureOf("browser", "Wrong size", 300, captureImage(850, 420, "Wrong size")))], timeline: reading }, "[role='alert']"),
+  unavailable: exampleStory("A capture the run could not take", "screenshot-unavailable"),
+} satisfies Record<CaptureProblem, Story>;
+
+const entryStep = (entry: LogEntry): LogStep => ({ id: "entry", time: "09:31:00", title: "Find the Kuali action", system: "Kuali", entries: [entry] });
+const noteStory = (tone: NoteTone): Story => panel(`A ${tone} note`, { steps: [entryStep({ id: "note", kind: "note", time: "09:31:03", message: "Matching action found.", ...(tone === "plain" ? {} : { tone }) })], timeline: reading });
+const NOTE = { info: noteStory("info"), danger: noteStory("danger"), positive: noteStory("positive"), plain: noteStory("plain") } satisfies Record<NoteTone, Story>;
+
+const ENTRY = {
+  fields: panel("Fields the run read and filled", { steps: separationLogs.slice(0, 1), timeline: reading }),
+  click: panel("A click the run made", { steps: [entryStep({ id: "click", kind: "click", time: "09:31:03", label: "Go" })], timeline: reading }),
+  note: NOTE.info,
+  decision: DECISION["failed-retryable"],
+} satisfies Record<LogEntry["kind"], Story>;
+
+const LOGS_READ_FAILED = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_READ_FAILED_TITLE", {})).text;
+const LOGS_UNAVAILABLE = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_UNAVAILABLE_TITLE", {})).text;
+const LOGS = {
+  loading: { ...panel("Logs still loading", { steps: [], timeline: [], navigation: <LogTimelineSkeleton />, content: <LogFeedPadding><LogSkeleton /></LogFeedPadding> }), slowFetch: { region: READY } },
+  refreshing: panel("Logs refreshing", { steps: readingSteps, timeline: reading, toolbar: <Badge tone="neutral">Refreshing</Badge> }),
+  "refresh-failed": panel("Logs that could not refresh", { steps: readingSteps, timeline: reading,
+    toolbar: <Notice tone="danger" title={LOGS_READ_FAILED} description="Relay could not refresh these logs." /> }),
+  "load-failed": panel("Logs that could not load", { steps: [], timeline: [], content: <div className="p-4"><FailureNotice sentence="Couldn't load logs." action={{ label: "Retry", onClick: noop }} /></div> }),
+  unavailable: panel("Logs for a step that is gone", { steps: [], timeline: [], content: <Notice sticky tone="danger" title={LOGS_UNAVAILABLE}
+    description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> }),
+  empty: panel("A run that has logged nothing yet", { steps: [], timeline: logTimelineSample("empty") }),
+  "needs-duo": panel("A run waiting for the Duo sign-in", { steps: [], timeline: logTimelineSample("empty"),
+    navigation: <div className="px-3 py-2"><Banner tone="info" title="Approve the Duo sign-in"><span>Approve it on your phone to continue.</span></Banner></div> }),
+} satisfies Record<LogsResource, Story>;
+
+const preview = (state: DryRunState): Story => {
+  const stages: DryRunPreviewStage[] = [
+    { id: "read", label: "Read the request", state: "exercised", detail: "Request read" },
+    { id: "write", label: "File the termination", state, detail: state === "not-clicked" ? "Submit not clicked" : state === "skipped" ? "Not needed" : state === "unavailable" ? "Not exercised" : "Filled" },
+  ];
+  const content = <div className="mt-4 min-w-0 p-4"><FullDryRunPreview stages={stages} facts={[{ label: "Read the request", value: "Morgan, Alex", sample: true }]} /></div>;
+  return panel(`A dry-run plan with a ${state} step`, { steps: [], timeline: [], content }, "section[aria-label='Full dry-run preview'], [role='region'][aria-label='Full dry-run preview']");
+};
+const DRY_RUN = { exercised: preview("exercised"), "not-clicked": preview("not-clicked"), unavailable: preview("unavailable"), skipped: preview("skipped") } satisfies Record<DryRunState, Story>;
+
+const reviewStory = (title: string, cards: RecordReviewProps["cards"], extra: Partial<Parameters<typeof RecordReview>[0]> = {}): Story => ({
+  title, ready: "section[aria-label='OCR records']",
+  render: () => <StoryFrame><ReviewDialog open onOpenChange={noop} subject="Emergency Contact scan">
+    <RecordReview runId="run-1" subject="Alex Morgan" cards={cards} readOnly={false} discarded={false} selectedCount={cards.length}
+      onApprove={noop} onDiscard={noop} onEditField={noop} onCommit={noop} onChange={noop} {...extra} />
+  </ReviewDialog></StoryFrame>,
+});
+const REVIEW = {
+  ready: reviewStory("Records ready to approve", REVIEW_CARDS.ready),
+  unconfirmed: reviewStory("A record whose person is not confirmed", REVIEW_CARDS.unconfirmed, { approvalError: "Resolve the selected records before approval." }),
+  "needs-review": reviewStory("A record with a field that needs review", REVIEW_CARDS["needs-review"], { approvalError: "Resolve the selected records before approval." }),
+  approved: reviewStory("Records already approved", REVIEW_CARDS.approved, { readOnly: true, onApprove: undefined, onDiscard: undefined }),
+  empty: reviewStory("A review with no records", REVIEW_CARDS.empty),
+} satisfies Record<ReviewCase, Story>;
+
+export const RUN_PANEL_STORIES = defineSurface("run-panel", {
+  header: HEADER, timeline: TIMELINE, pause: PAUSE, logs: LOGS, decision: DECISION, card: CARD, answered: ANSWERED,
+  write: WRITE, failure: FAILURE, capture: CAPTURE, "capture-problem": CAPTURE_PROBLEM, entry: ENTRY, note: NOTE, "dry-run": DRY_RUN, review: REVIEW,
+});

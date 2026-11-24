@@ -377,10 +377,8 @@ export function createProfileSession(input: {
     if (operation.phase !== "publishing" || draft?.finish === undefined || completion === undefined
       || registration.operationId !== operation.operationId || registration.commandId !== operation.commandId || registration.writeId !== operation.writeId
       || completion.generation !== draft.generation || completion.finishId !== draft.finish.finishId || completion.finishedAt !== draft.finish.finishedAt) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-    for (const method of ["key", "touch"] as const) {
-      const receipt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
-      if (createHash("sha256").update(canonicalJsonStringify(receipt)).digest("hex") !== completion[method].receiptDigest) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-    }
+    const receipt = draft.attempts.findLast(entry => entry.generation === draft.generation);
+    if (createHash("sha256").update(canonicalJsonStringify(receipt)).digest("hex") !== completion.key.receiptDigest) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
   }
 
   function settleSignUp(operation: SignUpOperation, proof?: StartupRegistrationProof): string {
@@ -410,8 +408,8 @@ export function createProfileSession(input: {
   }
 
   function duoSetupState(draft: DuoDraft) {
-    const method = (name: "key" | "touch") => {
-      const attempt = draft.attempts.findLast(entry => entry.method === name && entry.generation === draft.generation);
+    const method = () => {
+      const attempt = draft.attempts.findLast(entry => entry.generation === draft.generation);
       if (draft.aborted) return { state: "unavailable" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
       const idle = input.onboardingDuo === undefined ? "unavailable" as const : "idle" as const;
       const state = attempt?.state === "closed" ? idle : attempt?.state ?? idle;
@@ -420,12 +418,11 @@ export function createProfileSession(input: {
         ...(attempt === undefined ? {} : { attemptId: attempt.attemptId }),
         ceremonyObserved: attempt?.ceremony !== undefined, portalAccepted: attempt?.portal?.acceptance === "portal-accepted",
         operatorConfirmed: attempt?.operatorConfirmedAt !== undefined,
-        ...(attempt?.ceremony?.mechanism === "native-platform" || attempt?.ceremony?.mechanism === "chromium-platform" ? { platformAuthenticator: attempt.ceremony.mechanism } : {}),
         exactCredentialRequestObserved: attempt?.portal?.acceptance === "exact-credential-request" };
     };
-    const methods = { key: method("key"), touch: method("touch") };
+    const methods = { key: method() };
     return { operationId: draft.operationId, profileId: draft.profileId,
-      step: methods.key.state === "complete" && methods.touch.state === "complete" ? "ready" as const : "duo" as const, methods, browser: onboarding.browserState(draft.operationId) };
+      step: methods.key.state === "complete" ? "ready" as const : "duo" as const, methods, browser: onboarding.browserState(draft.operationId) };
   }
 
   function onboardingState(operation: SignUpOperation): ProfileOnboardingState {
@@ -768,14 +765,12 @@ export function createProfileSession(input: {
     deleteOperation(aborted.operationId);
   }
 
-  /** The commit intent for exactly the credentials the draft's two proved attempts stored; anything else is a pre-effect refusal. */
+  /** The commit intent for exactly the credential the draft's proved security-key attempt stored; anything else is a pre-effect refusal. */
   function prepareDuoReenrolCommit(operation: DuoReenrolOperation): DuoReenrolCommitIntent {
     const draft = reenrolDraft(operation);
     onboarding.verifyProved(draft);
-    const proved = (["key", "touch"] as const).flatMap(method => {
-      const receipt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
-      return receipt?.ceremony === undefined || receipt.ceremony.mechanism === "native-platform" ? [] : [receipt.ceremony.credentialId];
-    });
+    const receipt = draft.attempts.findLast(entry => entry.generation === draft.generation);
+    const proved = receipt?.ceremony === undefined ? [] : [receipt.ceremony.credentialId];
     let intent: DuoReenrolCommitIntent;
     try { intent = duoStore(operation.profileId).prepareReenrolCommit(draft.accountId); }
     catch (error) {

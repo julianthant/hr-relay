@@ -18,7 +18,6 @@ export const ProfileIdSchema = z.uuid();
 export const ProfileOnboardingCompletionSchema = z.strictObject({
   generation: z.number().int().safe().positive(), finishId: z.uuid(), finishedAt: IsoInstantSchema,
   key: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), confirmation: z.enum(["operator", "portal-accepted", "exact-credential-request"]) }),
-  touch: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), softwareInterceptionDisabled: z.literal(true), operatorConfirmedAt: IsoInstantSchema.optional() }),
 });
 
 export const ProfileRegistryRowSchema = z.strictObject({
@@ -41,7 +40,7 @@ export const ProfileRegistryRowSchema = z.strictObject({
 export type ProfileRegistryRow = z.infer<typeof ProfileRegistryRowSchema>;
 
 export const ProfileRegistryDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(4),
+  schemaVersion: z.literal(5),
   installationId: z.uuid(),
   revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   profiles: z.array(ProfileRegistryRowSchema),
@@ -175,6 +174,8 @@ export const DuoDiagnosticExceptionTypeSchema = z.string().regex(/^[A-Za-z][A-Za
 export const DuoPortalDiagnosticCodeSchema = z.enum([
   "UCSD_SSO_SCOPE", "UCSD_SSO_FIELDS", "UCSD_SSO_REDIRECT_TIMEOUT", "UCSD_SSO_FORM_TIMEOUT", "ONBOARDING_DUO_FOCUS_FAILED",
   "UCSD_DUO_NAVIGATION_TIMEOUT", "UCSD_SSO_SUBMIT_TIMEOUT",
+  "copy-signin-duo-scope", "copy-signin-duo-gate-unavailable", "copy-signin-duo-phone-already-requested", "copy-signin-duo-push-unanswered",
+  "copy-signin-duo-device-list-unavailable", "copy-signin-duo-method-unavailable", "copy-signin-duo-receipt-unavailable",
 ]);
 export const DuoDiagnosticCodeSchema = z.enum([
   ...DuoPortalDiagnosticCodeSchema.options,
@@ -208,6 +209,20 @@ export const DuoDiagnosticCodeSchema = z.enum([
 export const DuoDiagnosticOperationSchema = z.enum(["browser-setup", "attempt-setup", "browser-request", "broker-request", "portal-open", "browser-focus", "browser-return",
   "close-attempt", "close-launch", "close-worker", "close-pages", "close-context", "close-callbacks", "close-pump", "close-native-proof"]);
 
+/** Known Duo screens, most specific first, and the fixed frame allowlist names a copy sign-in capture records. */
+export const DUO_SCREENS = ["duo-error", "trust-prompt", "push-sent", "device-list", "push-options", "other-options", "duo-gate", "sso-page", "unknown"] as const;
+export const DuoScreenSchema = z.enum(DUO_SCREENS);
+export const DuoFrameOriginSchema = z.enum(["duo", "ucsd-duo", "ucsd-sso", "not-allowlisted"]);
+export const COPY_DUO_FRAME_LIMIT = 32;
+export const CopyDuoScreenSchema = z.strictObject({
+  stage: z.enum(["gate", "push-options", "after-push"]),
+  screen: z.enum([...DUO_SCREENS, "capture-timeout"]),
+  frames: z.array(DuoFrameOriginSchema).max(COPY_DUO_FRAME_LIMIT),
+  framesTruncated: z.literal(true).optional(),
+});
+export type CopyDuoScreen = z.infer<typeof CopyDuoScreenSchema>;
+export const CopyDuoScreensSchema = z.array(CopyDuoScreenSchema).max(3);
+
 export const ProfileOnboardingDuoEventSchema = z.strictObject({
   stage: z.enum(["intercepted", "forwarded", "backend-received", "replied", "refused", "timed-out", "aborted", "platform-native", "platform-virtual", "slow-operation"]),
   requestId: z.uuid().optional(),
@@ -216,15 +231,15 @@ export const ProfileOnboardingDuoEventSchema = z.strictObject({
   exceptionType: DuoDiagnosticExceptionTypeSchema.optional(),
   operation: DuoDiagnosticOperationSchema.optional(),
   durationMs: z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  screens: CopyDuoScreensSchema.optional(),
 });
 export type ProfileOnboardingDuoEvent = z.infer<typeof ProfileOnboardingDuoEventSchema>;
 
 export const SignUpDuoAttemptSchema = z.strictObject({
-  attemptId: z.uuid(), generation: z.number().int().safe().positive(), method: z.enum(["key", "touch"]),
+  attemptId: z.uuid(), generation: z.number().int().safe().positive(), method: z.literal("key"),
   expiresAt: IsoInstantSchema, state: z.enum(["pending", "complete", "unknown", "closed"]),
   scope: DuoEnrollmentScopeSchema.optional(),
-  ceremony: z.strictObject({ credentialId: z.string().min(1), requestId: z.string().min(1),
-    mechanism: z.enum(["fast-duo", "native-platform", "chromium-platform"]), softwareInterceptionDisabled: z.boolean() }).optional(),
+  ceremony: z.strictObject({ credentialId: z.string().min(1), requestId: z.string().min(1) }).optional(),
   portal: z.strictObject({ credentialId: z.string().min(1), requestId: z.string().min(1),
     acceptance: z.enum(["portal-accepted", "exact-credential-request"]) }).optional(),
   operatorConfirmedAt: IsoInstantSchema.optional(),
@@ -298,17 +313,13 @@ export type DuoReenrolOperation = z.infer<typeof DuoReenrolOperationSchema>;
 
 export type SignUpOperation = z.infer<typeof SignUpOperationSchema>;
 
-/** Both methods of the draft's current generation proved under its own account, as sign-up and re-enrolment both require. */
+/** The security key of the draft's current generation proved under its own account, as sign-up and re-enrolment both require. */
 export function assertProvedDuoMethods(draft: Readonly<{ accountId: string; generation: number; attempts: readonly SignUpDuoAttempt[] }>): void {
-  for (const method of ["key", "touch"] as const) {
-    const attempt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
-    if (attempt?.state !== "complete" || attempt.scope?.accountId !== draft.accountId || attempt.providerClosedAt === undefined
-      || attempt.ceremony === undefined || attempt.portal !== undefined && attempt.ceremony.credentialId !== attempt.portal.credentialId
-      || attempt.operatorConfirmedAt === undefined && attempt.portal?.acceptance !== "portal-accepted" && !(method === "key" && attempt.portal?.acceptance === "exact-credential-request")
-      || (method === "key" ? attempt.ceremony.mechanism !== "fast-duo"
-        : (attempt.ceremony.mechanism !== "native-platform" && attempt.ceremony.mechanism !== "chromium-platform") || !attempt.ceremony.softwareInterceptionDisabled)) {
-      throw new Error("profile-onboarding-incomplete");
-    }
+  const attempt = draft.attempts.findLast(entry => entry.generation === draft.generation);
+  if (attempt?.state !== "complete" || attempt.scope?.accountId !== draft.accountId || attempt.providerClosedAt === undefined
+    || attempt.ceremony === undefined || attempt.portal !== undefined && attempt.ceremony.credentialId !== attempt.portal.credentialId
+    || attempt.operatorConfirmedAt === undefined && attempt.portal === undefined) {
+    throw new Error("profile-onboarding-incomplete");
   }
 }
 

@@ -1,8 +1,10 @@
 import { resolveWriteCommandTarget } from "../../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "../../backend/unused-worker-pool.js";
-import { createScriptedExecutor, SCRIPTED_WORKFLOW } from "../served-fixtures/seeded-scripted-executor.js";
+import { createScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
+import { SCRIPTED_WORKFLOWS, scriptedDescriptorOf } from "../served-fixtures/scripted-workflows.js";
 import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
 import { dataOriginViewsOf, gateNodeViewsOf, writeContractViewsOf } from "../../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
+import { readRunPanel } from "../../../../../src/backend/runs/queries/run-detail.js";
 import type { WorkerActivity } from "../../../../../src/backend/runtime/workers/worker-messages.js";
 import type { AnyWorkflowDescriptor } from "../../../../../src/workflow-kit/workflow.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../../fixtures/dashboard-stream-seams.js";
@@ -24,7 +26,7 @@ import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { uuidOf } from "../served-fixtures/seeded-lifecycle.js";
 import { join } from "node:path";
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
-import { composeNotificationRoutes } from "../../../../../src/backend/app/composition/dashboard/notification-wiring.js";
+import { composeNotificationPublications, composeNotificationRoutes } from "../../../../../src/backend/app/composition/dashboard/notification-wiring.js";
 import { ocrHostRun } from "../../../../../src/backend/runs/queries/ocr-record-members.js";
 import { createNotificationTargetQuery } from "../../../../../src/backend/runs/queries/notifications.js";
 import { createWorkbookIntakeBridge } from "../../../../../src/backend/runs/commands/workbook-intake-service.js";
@@ -62,6 +64,7 @@ import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../../
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../src/rules/identity/ids.js";
 import type { TestClock } from "../../../../../src/rules/time/clock.js";
 import { defineWorkflowRole } from "../../../../../src/workflow-kit/validation/module-role.js";
+import { protectedSecretSource } from "../../protected-secret-source.js";
 
 export function createSeededServicesSetup({ createFixtureDashboardApp }: {
 createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
@@ -77,7 +80,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
    descriptors: {resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined}; runIds: Record<string,string>;
   }) {
     const runReader = sqliteRunReader(database, clock);
-    const trust = createReceiptService({ database, runReader, descriptors: scripting === undefined ? [personLookupDescriptor] : [personLookupDescriptor, SCRIPTED_WORKFLOW] });
+    const trust = createReceiptService({ database, runReader, descriptors: scripting === undefined ? [personLookupDescriptor] : [personLookupDescriptor, ...SCRIPTED_WORKFLOWS.flatMap(script => [script.module, ...(script.children ?? [])]).map(module => module.descriptor).filter((descriptor, index, all) => descriptor.id !== personLookupDescriptor.id && all.findIndex(other => other.id === descriptor.id) === index)] });
 
 
     const doneReceipt = trust.ensureReceipt(runIds.doneRun);
@@ -88,6 +91,11 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       );
     }
 
+    const servedScripted = (workflowId: string) => {
+      const descriptor = scriptedDescriptorOf(workflowId);
+      return descriptor === undefined ? undefined : { ...descriptor, gateNodes: gateNodeViewsOf(descriptor),
+        writeContracts: writeContractViewsOf(descriptor), dataOrigins: dataOriginViewsOf({ descriptor, stores: taskStoreRegistry.stores }) };
+    };
     const runDetailDeps = { runReader, timeline: database.authority.timelineEvents,
       itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runReader }),
       stateRoot,
@@ -102,17 +110,14 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       },
       descriptors: {
         resolve: (workflowId: string) => workflowId === personLookupDescriptor.id ? personLookupDescriptor
-          : scripting !== undefined && workflowId === SCRIPTED_WORKFLOW.id ? { ...SCRIPTED_WORKFLOW, gateNodes: gateNodeViewsOf(SCRIPTED_WORKFLOW),
-            writeContracts: writeContractViewsOf(SCRIPTED_WORKFLOW),
-            dataOrigins: dataOriginViewsOf({ descriptor: SCRIPTED_WORKFLOW, stores: taskStoreRegistry.stores }) }
-          : undefined,
+          : scripting === undefined ? undefined : servedScripted(workflowId),
       },
       canonical: {
         reader: runReader,
         database,
         descriptors: {
           resolve: (workflowId: string) =>
-            (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
+            (workflowId === personLookupDescriptor.id ? personLookupDescriptor : scripting === undefined ? undefined : scriptedDescriptorOf(workflowId)),
         },
       },
       trust,
@@ -125,7 +130,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock,
       sync: { withDownload: () => { throw new WorkbookLibraryError("WORKBOOK_SYNC_LINK_REQUIRED"); } } });
     const scripted = scripting === undefined ? undefined : createScriptedExecutor({ database, clock, lifecycle, emitter: spans, library,
-      profilePath: scripting.profilePath, reportWorker: scripting.reportWorker, publish: () => { projection.ingestFromTimeline(); } });
+      profilePath: scripting.profilePath, reportWorker: scripting.reportWorker });
     // A scripted plan binds the active runtime config, as production plans do.
     const activeConfig = scripting === undefined ? undefined : database.authority.runtimeConfig.get();
     if (scripting !== undefined && activeConfig === undefined) throw new Error("the seeded authority holds no runtime config");
@@ -156,7 +161,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       authorityRead: database,
       descriptors,
       clock,
-      ...(scripting === undefined ? {} : { workbooks: library }),
+      ...(scripting === undefined ? {} : { workbooks: library, protectedSecrets: protectedSecretSource({ profileName: "Synthetic Timekeeper" }) }),
       ids: scripting === undefined ? { uuid: () => uuidOf(8000) } : sequentialIdFactory("8"),
       planTtlMs: 10 * 60 * 1000,
       configFingerprint: activeConfig?.configFingerprint ?? CONFIG_FINGERPRINT,
@@ -168,8 +173,9 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     const modules = productWorkflows === true
       ? READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module) || module.descriptor.capabilities?.review === true)
       : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }];
-    const productAppDeps = (): Pick<DashboardAppDeps, "notifications" | "workbooks" | "assistant"> => {
-      const { observer } = createTrustNotifications({ database, clock, ids: sequentialIdFactory("n"), reader: lifecycle });
+    const strictDescriptors = { resolve: (id: string) => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } };
+    const trustNotifications = productWorkflows === true ? createTrustNotifications({ database, clock, ids: sequentialIdFactory("b"), reader: lifecycle }) : undefined;
+    const productAppDeps = ({ observer }: NonNullable<typeof trustNotifications>): Pick<DashboardAppDeps, "notifications" | "workbooks" | "assistant"> => {
       const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
         host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)),
         command: commandId => database.authority.commands.readForNotice(commandId),
@@ -183,13 +189,22 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         history: input => database.authority.assistantHistory.apply(AssistantHistoryOperationSchema.parse(input), clock.now().toISOString()),
       };
       return {
-        notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: { resolve: id => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } }, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),
+        notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: strictDescriptors, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),
         workbooks: { library, intake: createWorkbookIntakeBridge(library, UNWIRED_INTAKE_SERVICE), workflows: modules.map(module => module.descriptor) },
         assistant,
       };
     };
-    const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
-    const productDeps = productWorkflows === true ? productAppDeps() : {};
+    const productDeps: Partial<ReturnType<typeof productAppDeps>> = trustNotifications === undefined ? {} : productAppDeps(trustNotifications);
+    const notificationRoutes = productDeps.notifications;
+    const hub = createDashboardStreamHub({
+      projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
+      runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
+      ...(trustNotifications === undefined || notificationRoutes === undefined ? {} : {
+        notificationPublications: composeNotificationPublications({
+          database, clock, lifecycle, descriptors: strictDescriptors, runDetailDeps, notificationInbox: trustNotifications.inbox, target: notificationRoutes.target }),
+        notificationStatus: { read: () => notificationRoutes.status(), onChange: listener => trustNotifications.observer.onStatusChange(listener) },
+      }),
+    });
     const app = createFixtureDashboardApp({
       ...productDeps,
       requestIdentity: createSoloRequestIdentityCheckpoint({
@@ -204,7 +219,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
           work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),
       },
-      preflight: healthyDashboardPreflightExecutor(clock),
+      preflight: { ...healthyDashboardPreflightExecutor(clock), read: () => ({ state: "present" as const, report: healthyDashboardPreflightReport(clock) }) },
       applicationLifecycle: createApplicationLifecycle({ database,
         requestQuit: () => { throw new Error("seeded fixture cannot quit the process"); },
         onFailure: error => { throw error; },
@@ -276,7 +291,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     });
 
 
-  return { app, hub, scripted };
+  return { app, hub, scripted, lifecycle, notificationInbox: trustNotifications?.inbox };
   }
 
   return { composeSeededServices };

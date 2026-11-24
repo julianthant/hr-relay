@@ -15,7 +15,7 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../../src/models/config/protected-settings.js";
 import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
-import { createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord, type ChatGptCredentialTransaction } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
+import { createChatGptCredentialRepository, type ChatGptCredentialRecord, type ChatGptCredentialTransaction } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { createBoundProfileFixture, createBoundProfileCredentialStore } from "../../../support/helpers/admission-fixture.js";
 
 async function fixture(afterRename?: () => void) {
@@ -41,7 +41,7 @@ it("valid uninitialized account reads create nothing and persistence encrypts pr
     const bytes = readFileSync(f.path);
     for (const secret of ["synthetic-access-secret", "synthetic-refresh-secret", "synthetic-id-secret", "synthetic@example.com"])
       assert.equal(bytes.includes(Buffer.from(secret)), false);
-    verifyChatGptCredentialStore({ admission: f.admission, stateRoot: f.root });
+    createChatGptCredentialRepository({ admission: f.admission, stateRoot: f.root }).read();
   } finally { await f.cleanup(); }
 });
 it("stale and skipped revisions refuse without changing confirmed ciphertext", async () => {
@@ -179,7 +179,7 @@ it("protected saves complete during an awaited account transaction and retain in
     assert.equal(store.read().revision, revision + 1); assert.deepEqual(f.repository.read(), f.record);
     release.resolve(); await account;
     assert.equal(store.read().revision, revision + 1); assert.deepEqual(f.repository.read(), { ...f.record, revision: 2 });
-    verifyChatGptCredentialStore({ admission: f.admission, stateRoot: f.root });
+    createChatGptCredentialRepository({ admission: f.admission, stateRoot: f.root }).read();
   } finally { release.resolve(); await account; await f.cleanup(); }
 });
 it("unknown stage and lock entries refuse without cleanup", async () => {

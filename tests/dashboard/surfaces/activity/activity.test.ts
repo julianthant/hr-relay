@@ -37,7 +37,7 @@ afterEach_m0(_afterEachFixture1);
       await act_m0(async () => root.render(createElement_m0(TooltipProvider_m1, null, createElement_m0(ActivityReport_m0, { useReport: useActivitySampleReport, today: ACTIVITY_SAMPLE_TODAY, range: activityRangeValue(ACTIVITY_SAMPLE_RANGE), onRange: () => {} }))));
       assert_m0.equal(host.querySelector('h1')?.textContent, 'Analytics');
       await click('button[aria-label="Show Separations details"]');
-      const open = [...host.querySelectorAll<HTMLAnchorElement>('a')].find(link => link.textContent?.trim() === 'Open runs'); assert_m0(open);
+      const open = [...host.querySelectorAll<HTMLButtonElement>('button')].find(link => link.textContent?.trim() === 'Open runs'); assert_m0(open);
       await act_m0(async () => open.click());
       assert_m0.equal(host.querySelectorAll('tbody tr').length, 2);
       await click('a[aria-label^="Open logs for"]');
@@ -61,7 +61,7 @@ afterEach_m0(_afterEachFixture1);
       const period = host.querySelector<HTMLInputElement>('fieldset input[type="radio"]:checked');
       assert_m0.equal(period?.value, '7d', 'the 7d preset is pressed');
       assert_m0.equal([...host.querySelectorAll('button')].filter(button => /Custom/.test(button.textContent ?? '')).length, 0, 'no Custom range menu');
-      assert_m0.equal(host.querySelector('[aria-label="Report date range"], input[type="date"], [aria-label^="Choose start date"]'), null, 'no date fields');
+      assert_m0.equal(host.querySelector('[aria-label="Report date range"], input[type="date"], [aria-label^="Choose start date"]') === null, true, 'no date fields');
     } finally { await act_m0(async () => root.unmount()); host.remove(); }
   });
 });

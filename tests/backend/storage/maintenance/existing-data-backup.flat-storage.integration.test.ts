@@ -24,15 +24,16 @@ import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-buil
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
+import { createHistoricalFlatProfileFixture as createFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 
-// The flat profile fixture proves its own closure with lsof before deleting its temp folder, so hosts
-// without lsof (Windows) skip every fixture case.
-const hasLsof = spawnSync("lsof", ["-v"], { stdio: "ignore" }).error === undefined;
-const fixtureIt = it.skipIf(!hasLsof);
-// Process closure is provable only on macOS (process-closure.ts); elsewhere backup closure refuses with
-// profile-process-closure-unproved before these cases reach the behaviour they check, so they skip there.
-const closureIt = it.skipIf(!hasLsof || process.platform !== "darwin");
+// The fixture uses lsof to prove closure before deleting its temporary profile.
+const fixtureIt = it.skipIf(process.platform === "win32");
+const closureIt = it.skipIf(process.platform !== "darwin");
+function createHistoricalFlatProfileFixture(...args: Parameters<typeof createFlatProfileFixture>) {
+  const probe = spawnSync("lsof", ["-v"], { stdio: "ignore", timeout: 5_000 });
+  if (probe.error !== undefined || probe.status !== 0) throw new Error("historical-flat-profile-lsof-unavailable", { cause: probe.error });
+  return createFlatProfileFixture(...args);
+}
 let previousUmask = process.umask();
 beforeEach(() => { previousUmask = process.umask(0o077); });
 afterEach(() => { process.umask(previousUmask); });

@@ -40,7 +40,7 @@ it('draws nothing while the list is first read: a busy region, no guessed search
   const frame = host.querySelector('[role="status"][aria-busy="true"][aria-label="Loading spreadsheets"]');
   assert.ok(frame);
   assert.equal(frame.childElementCount, 0);
-  assert.equal(host.querySelector('[data-slot="skeleton"], .ds-table-toolbar, .sv2-card, .sv2-row'), null);
+  assert.equal(host.querySelector('[data-slot="skeleton"], .ds-table-toolbar, .sv2-card, .sv2-row') === null, true);
 });
 
 it('shows an opening sheet\'s heading at once and a loading frame only where its grid will be', async () => {
@@ -66,10 +66,10 @@ it('keeps the opened sheet\'s heading mounted, focus included, when its workbook
     columnBindings: [{ id: 'email', sourceColumn: 0, sourceHeader: 'Email', fieldId: 'email', basis: 'manual' }],
     rows: [{ id: 'header', cells: [{ value: 'Email' }, { value: 'Name' }] }, { id: 'sample', cells: [{ value: 'avery@example.test' }, { value: 'Example, Avery' }] }] }] } };
   await render();
-  assert.equal(host.querySelector('[aria-label="Opening Roster.xlsx"]'), null);
+  assert.equal(host.querySelector('[aria-label="Opening Roster.xlsx"]') === null, true);
   assert.ok(host.querySelector('section[aria-label="Preview"]'), 'the grid replaced the loading frame');
-  assert.equal(host.querySelector('button[aria-label="Versions, now v2"]'), versions, 'the same heading node');
-  assert.equal(document.activeElement, versions);
+  assert.equal(host.querySelector('button[aria-label="Versions, now v2"]') === versions, true, 'the same heading node');
+  assert.equal(document.activeElement === versions, true);
 });
 
 it('holds the picked file\'s row as a loading frame while the file is read, with Next disabled', async () => {
@@ -121,5 +121,5 @@ it('offers Import inside an empty library', async () => {
 
 it('hides the search box in an empty library', async () => {
   wiring.catalog = []; await render();
-  assert.equal(host.querySelector('input[aria-label="Search spreadsheets"]'), null);
+  assert.equal(host.querySelector('input[aria-label="Search spreadsheets"]') === null, true);
 });

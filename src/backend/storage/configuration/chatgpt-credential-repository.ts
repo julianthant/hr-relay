@@ -88,8 +88,3 @@ export function createChatGptCredentialRepository(options: ChatGptCredentialRepo
   }
   return Object.freeze({ read, withLock });
 }
-
-export function verifyChatGptCredentialStore(options: ChatGptCredentialRepositoryOptions): void {
-  options.admission.assertExclusive();
-  createChatGptCredentialRepository(options).read();
-}

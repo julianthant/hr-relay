@@ -127,11 +127,8 @@ const SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
 ] as const;
 
 const TEST_ONLY_ENVIRONMENT_KEYS = [
-  "SESSIONS_BAR_RENDER_DIR", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN", "RELAY_TEST_NATIVE", "RELAY_TEST_TIME_SCALE", "RELAY_TEST_PROCESS_IMPORT",
+  "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN", "RELAY_TEST_NATIVE", "RELAY_TEST_TIME_SCALE", "RELAY_TEST_PROCESS_IMPORT",
   "RELAY_TEST_HOST",
-  "NOTIFICATIONS_MOCK_OUT", "NOTIFICATIONS_MOCK_THEMES", "NOTIFICATIONS_MOCK_WIDTH", "NOTIFICATIONS_MOCK_SCALE", "ONBOARDING_MOCK_OUT", "SPREADSHEET_MOCK_OUT", "AX_MOCK_OUT", "AX_MOCK_THEMES", "AX_MOCK_WIDTH", "AX_MOCK_ONLY", "AX_MOCK_SCALE", "STATUS_MOCK_OUT", "STATUS_MOCK_THEMES", "STATUS_MOCK_WIDTH", "STATUS_MOCK_ONLY", "STATUS_MOCK_SCALE", "LOGS_CARDS_OUT", "LOGS_CARDS_ONLY", "LOGS_CARDS_HEIGHT",
-  "CHECK_FIX_OUT", "FAILURE_NOTICE_MOCK_OUT", "NEEDS_DUO_MOCK_OUT", "REFERENCE_GATE_OUT", "SETTINGS_GENERAL_CHATGPT_MOCK_OUT", "SWEEP_FIXTURES_OUT",
-  "COMMAND_READBACK_MOCK_OUT", "TOASTS_TEXT_ONLY_MOCK_OUT", "RELAY_DASHBOARD_SKELETON_EVIDENCE",
   "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP",
 ] as const;
 
@@ -160,47 +157,12 @@ export const RETIRED_ENVIRONMENT_KEYS = deepFreeze(
 const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set(["RELAY_TEST_HOST"]);
 
 const TEST_ONLY_ENVIRONMENT_OWNERS = {
-  NODE_OPTIONS: ["playwright.mocks.config.ts", "tests/support/duo-ceremony-setup.ts", "tests/support/helpers/credential-keychain-fake.ts"],
+  NODE_OPTIONS: ["tests/support/duo-ceremony-setup.ts", "tests/support/helpers/credential-keychain-fake.ts"],
   RELAY_TEST_KEYCHAIN: ["tests/support/helpers/credential-keychain-fake.ts"],
   RELAY_TEST_NATIVE: ["vitest.config.ts", "tests/architecture/tooling/guard-manifest.test.ts"],
   RELAY_TEST_TIME_SCALE: ["tests/support/time-scale.ts"],
   RELAY_TEST_PROCESS_IMPORT: ["tests/support/compiled-process.ts", "tests/support/compiled-process-setup.ts"],
   RELAY_TEST_HOST: ["scripts/test/pc.ts"],
-  SESSIONS_BAR_RENDER_DIR: ["tests/mocks/sessions-bar-hover.test.ts"],
-  NOTIFICATIONS_MOCK_OUT: ["tests/mocks/notifications-mock.test.ts", "tests/mocks/notifications-sweep-decisions.test.ts", "tests/mocks/notifications-sweep.test.ts"],
-  NOTIFICATIONS_MOCK_THEMES: ["tests/mocks/notifications-mock.test.ts", "tests/mocks/notifications-sweep-decisions.test.ts", "tests/mocks/notifications-sweep.test.ts"],
-  NOTIFICATIONS_MOCK_WIDTH: ["tests/mocks/notifications-mock.test.ts"],
-  NOTIFICATIONS_MOCK_SCALE: ["tests/mocks/notifications-mock.test.ts", "tests/mocks/notifications-sweep-decisions.test.ts", "tests/mocks/notifications-sweep.test.ts"],
-  ONBOARDING_MOCK_OUT: ["tests/mocks/onboarding-mock.test.ts"],
-  COMMAND_READBACK_MOCK_OUT: ["tests/mocks/command-readback-mock.test.ts"],
-  TOASTS_TEXT_ONLY_MOCK_OUT: ["tests/mocks/toasts-text-only-mock.test.ts"],
-  RELAY_DASHBOARD_SKELETON_EVIDENCE: ["tests/smoke/dashboard-skeletons.smoke.ts"],
-  SPREADSHEET_MOCK_OUT: ["tests/mocks/spreadsheets-fills-mock.test.ts", "tests/mocks/spreadsheets-library-mock.test.ts"],
-  AX_MOCK_OUT: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
-  AX_MOCK_THEMES: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
-  AX_MOCK_WIDTH: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
-  AX_MOCK_ONLY: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
-  AX_MOCK_SCALE: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
-  STATUS_MOCK_OUT: ["tests/mocks/zz-status-mock.test.ts"],
-  STATUS_MOCK_THEMES: ["tests/mocks/zz-status-mock.test.ts"],
-  STATUS_MOCK_WIDTH: ["tests/mocks/zz-status-mock.test.ts"],
-  STATUS_MOCK_ONLY: ["tests/mocks/zz-status-mock.test.ts"],
-  STATUS_MOCK_SCALE: ["tests/mocks/zz-status-mock.test.ts"],
-  LOGS_CARDS_OUT: ["tests/mocks/zz-status-mock.test.ts"],
-  LOGS_CARDS_ONLY: ["tests/mocks/zz-status-mock.test.ts"],
-  LOGS_CARDS_HEIGHT: ["tests/mocks/zz-status-mock.test.ts"],
-  CHECK_FIX_OUT: ["tests/mocks/check-fix-destinations.test.ts"],
-  FAILURE_NOTICE_MOCK_OUT: ["tests/mocks/failure-notice-mock.test.ts"],
-  NEEDS_DUO_MOCK_OUT: ["tests/mocks/needs-duo-mock.test.ts"],
-  REFERENCE_GATE_OUT: ["tests/mocks/run-dialog-reference-gate.test.ts"],
-  SETTINGS_GENERAL_CHATGPT_MOCK_OUT: ["tests/mocks/settings-general-chatgpt-mock.test.ts"],
-  SWEEP_FIXTURES_OUT: [
-    "tests/mocks/sweep-fixtures-account-analytics.test.ts",
-    "tests/mocks/sweep-fixtures-ocr.test.ts",
-    "tests/mocks/sweep-fixtures-run-detail.test.ts",
-    "tests/mocks/sweep-fixtures-shell.test.ts",
-    "tests/mocks/sweep-fixtures-workbooks.test.ts",
-  ],
   TMPDIR: [
     "tests/support/private-temp-setup.ts",
     "tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts",
@@ -316,7 +278,6 @@ export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReader
   { key: DEVELOPMENT_DEBUG_MIRROR_ENV, paths: ["src/models/config/secrets.ts"] },
   { key: "SystemRoot", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
   { key: PARENT_BUILD_ID_ENV, paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
-  { key: "NODE_OPTIONS", paths: ["playwright.mocks.config.ts"] },
   { key: "RELAY_TEST_HOST", paths: ["scripts/test/pc.ts"] },
   { key: "RELAY_TEST_NATIVE", paths: ["vitest.config.ts"] },
 ]));

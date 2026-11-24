@@ -1,3 +1,6 @@
+import { buffer } from "node:stream/consumers";
+import { ARTIFACT_COLLECTION_MEDIA_TYPE } from "../../../src/models/artifacts/artifacts.js";
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { crmDocDownloadModule } from "../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -5,7 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import JSZip from "jszip";
 import { it } from "vitest";
-import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { deriveEvidenceEntryId } from "../../../src/models/trust/evidence-identity.js";
 import type { AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
@@ -212,7 +215,10 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
         [capturedDigests[1], "csv", "Sheet 1", ["row-1"]],
         [capturedDigests[0], "csv", "Sheet 1", ["row-1"]],
       ]);
-      assert.deepEqual(output.collection.files.map(file => file.relativePath), output.worksheets.map(sheet => sheet.relativePath));
+      assert.deepEqual(output.collection.files, output.worksheets.map(({ relativePath, artifact }) => ({ relativePath, artifact })));
+      assert.equal(output.collection.artifact.mediaType, ARTIFACT_COLLECTION_MEDIA_TYPE);
+      const manifestBytes = await buffer(await artifacts.open(output.collection.artifact));
+      assert.equal(manifestBytes.toString("utf8"), canonicalJsonStringify({ files: output.collection.files }));
       assert.deepEqual(output.worksheets.map(sheet => sheet.relativePath), [
         `${capturedDigests[1]}/Sheet 1/Sheet 1.zip`, `${capturedDigests[0]}/Sheet 1/Sheet 1.zip`,
       ]);
@@ -353,8 +359,8 @@ it("cites the document-rows verification, not an input fact, for the not-taken r
   const descriptor = crmDocDownloadModule.descriptor;
   const run = f.db.authority.runs.get(runId); assert.ok(run?.lifecycle.state === "terminal");
   const result = f.db.authority.runResults.get(runId); assert.ok(result);
-  const receipt = buildRunEvidenceReceipt({ descriptor, run, result, checkpoints: f.db.authority.runCheckpoints.listByItem(descriptor.id, itemId),
-    writes: [], gateResults: f.db.authority.gateResults.listByRun(runId) });
+  const receipt = deriveRunEvidenceReceipt({ descriptor, run, result, checkpoints: f.db.authority.runCheckpoints.listByItem(descriptor.id, itemId),
+    writes: [], gateResults: f.db.authority.gateResults.listByRun(runId) }).receipt;
   const decision = receipt.decisions.find(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", "not-run.document-row-choice"));
   assert.ok(decision?.kind === "branch" && decision.outcome === "not-taken");
   const verification = deriveEvidenceEntryId(receipt.receiptId, "verification", "node.document-rows");

@@ -21,7 +21,7 @@ export type DuoAssertionRequest = z.infer<typeof DuoAssertionRequestSchema>;
 export interface DuoPublicCredential {
   readonly credentialId: string;
   readonly rpId: "duosecurity.com";
-  readonly transport: "internal" | "usb";
+  readonly transport: "usb";
   readonly userHandle?: string;
   readonly isResidentCredential: boolean;
 }
@@ -31,19 +31,13 @@ export interface DuoAssertion {
   readonly signature: string;
   readonly credentialId: string;
   readonly userHandle: string | null;
-  readonly transport: "internal" | "usb";
-  readonly signCount: number;
-}
-export interface DuoPlatformCredential extends DuoPublicCredential {
-  readonly transport: "internal";
-  readonly privateKeyPkcs8: string;
+  readonly transport: "usb";
   readonly signCount: number;
 }
 export interface DuoSigningSource {
   assertCurrent(): void;
   identity(): Fingerprint;
   credentials(): readonly DuoPublicCredential[];
-  platformCredentials(): readonly DuoPlatformCredential[];
   sign(request: DuoAssertionRequest): Promise<DuoAssertion>;
 }
 
@@ -55,7 +49,7 @@ export function validateDuoKeyPair(privateKeyPkcs8: string, publicKeySpki: strin
 }
 
 export function createDuoAssertion(
-  material: Readonly<{ privateKeyPkcs8: string; credentialId: string; transport: "internal" | "usb"; userHandle?: string }>,
+  material: Readonly<{ privateKeyPkcs8: string; credentialId: string; transport: "usb"; userHandle?: string }>,
   request: DuoAssertionRequest,
   count: number,
 ): DuoAssertion {

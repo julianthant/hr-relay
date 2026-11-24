@@ -4,13 +4,17 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, matchesGlob } from "node:path";
 import { runInNewContext } from "node:vm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ciPlanSchema, createCiPlan, hasTimingArtifact, registeredTimingWorkflows, timingRunIds } from "../../../scripts/test/ci-plan.js";
 import { LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
 import type { CiPlan } from "../../../scripts/test/ci-plan.js";
+import { dialogsShareShape } from "../../support/helpers/dashboard/smoke/state-rules.js";
 import { START_STEP } from "../../../scripts/ci/full-run.js";
 
 const load = (name: string) => readFileSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url), "utf8");
+const development = load("development");
+const full = load("full");
+const pr = load("pr");
 const staging = load("staging");
 const production = load("production");
 const checks = load("checks");
@@ -34,153 +38,29 @@ function job(workflow: string, name: string): string {
 }
 const jobNames = (workflow: string) => [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([\w-]+):$/gmu)].map(match => match[1]);
 
-type GateJob = { name: string; status: string; conclusion: string | null };
-type GateRun = { id: number; status: string; created_at: string; html_url: string; event: string; head_branch: string;
-  head_sha: string; head_repository: { full_name: string } | null; jobs: GateJob[] };
-const headSha = "a".repeat(40);
 const taskBranch = "task/ci/demo";
 
-// Runs the development gate's lookup with a fake clock; `poll` returns every run GitHub could report on each poll.
-async function proofLookup(poll: (count: number) => GateRun[], head: { ref?: string; repo?: string } = {}) {
-  const source = job(load("development"), "development").match(/ {10}script: \|\n((?: {12}[^\n]*\n|\n)+)/u)?.[1];
-  assert.ok(source);
-  const branch = head.ref ?? taskBranch;
-  let clock = 0;
-  let polls = 0;
-  let current: GateRun[] = [];
-  const failures: string[] = [];
-  const infos: string[] = [];
-  const inspected: unknown[] = [];
-  await runInNewContext(`(async () => {${source.replace(/^ {12}/gmu, "")}\n})()`, {
-    context: { runId: 1, repo: { owner: "owner", repo: "relay" }, payload: { pull_request: {
-      head: { sha: headSha, ref: branch, repo: { full_name: head.repo ?? "owner/relay" } } } } },
-    github: {
-      paginate: async (operation: (args: Record<string, unknown>) => unknown, args: Record<string, unknown>) => operation(args),
-      rest: { actions: {
-        listWorkflowRuns: ({ workflow_id, event, branch: queried, head_sha }: Record<string, unknown>) => {
-          expect({ workflow_id, event, branch: queried, head_sha }).toEqual({ workflow_id: "development.yml",
-            event: branch.startsWith("task/") ? "push" : "pull_request", branch, head_sha: headSha });
-          current = poll(polls++);
-          return current;
-        },
-        listJobsForWorkflowRun: ({ run_id, filter }: Record<string, unknown>) => {
-          expect(filter).toBe("latest");
-          inspected.push(run_id);
-          return current.find(run => run.id === run_id)?.jobs ?? [];
-        },
-      } },
-    },
-    core: { info: (line: string) => infos.push(line), setFailed: (line: string) => failures.push(line) },
-    Date: { now: () => clock, parse: Date.parse },
-    setTimeout: (resolve: () => void, ms: number) => { clock += ms; resolve(); },
-    Promise,
-  });
-  return { failures, infos, inspected, minutes: clock / 60_000, polls };
-}
-
-// An eligible push run of the task branch at the head SHA unless `extra` changes its metadata.
-const proofRun = (id: number, proof: Partial<GateJob> | undefined, status = "completed", extra: Partial<GateRun> = {}): GateRun => ({
-  id, status, created_at: `2026-11-22T00:0${id}:00Z`, html_url: `https://example.test/runs/${id}`,
-  event: "push", head_branch: taskBranch, head_sha: headSha, head_repository: { full_name: "owner/relay" },
-  jobs: proof ? [{ name: "proof", status: "completed", conclusion: "success", ...proof }] : [{ name: "development", status, conclusion: null }],
-  ...extra,
-});
-const missing = `No Development push run on ${taskBranch} proves ${headSha}; push the branch to start one.`;
-
-describe("development fast check", () => {
-  const development = load("development");
-
-  it("tests task pushes and other pull requests, and gives task pull requests one gate job", () => {
-    expect(development).toContain("name: Development");
-    expect(development).toContain(`run-name: \${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && format('Full run {0}', github.sha) || github.event.pull_request.title || github.ref_name }}`);
-    expect(development).toContain("branches: [development]");
-    expect(development).toContain("push:\n    branches: ['task/**']");
-    expect(development).toContain("on:\n  # dev-auto dispatches the full run");
-    expect(development).toMatch(/\n {2}workflow_dispatch:\n {2}schedule:/u);
-    expect(development).not.toMatch(/ci-runners|workflow_dispatch:\n {4}inputs/u);
-    expect(jobNames(development)).toEqual(["decide", "checks", "proof", "development", "full-checks", "codeql", "dependencies", "full"]);
-    expect(job(development, "checks")).toContain("uses: ./.github/workflows/checks.yml");
-    expect(job(development, "checks")).toContain("kind: fast");
-    const runsChecks = (event_name: string, action: string | undefined, head_ref: string): unknown => runInNewContext(
-      job(development, "checks").match(/^ {4}if: \$\{\{ (.+) \}\}$/mu)?.[1] ?? "",
-      { github: { event_name, event: { action }, head_ref }, startsWith: (value: string, prefix: string) => value.startsWith(prefix) });
-    expect(runsChecks("push", undefined, "")).toBe(true);
-    expect(runsChecks("schedule", undefined, "")).toBe(false);
-    expect(runsChecks("workflow_dispatch", undefined, "")).toBe(false);
-    for (const head of ["fix/x", "chore/x"]) {
-      for (const action of ["opened", "synchronize", "reopened", "ready_for_review", "converted_to_draft"]) {
-        expect(runsChecks("pull_request", action, head)).toBe(true);
-      }
-      expect(runsChecks("pull_request", "edited", head)).toBe(false);
-    }
-    for (const action of ["opened", "edited", "synchronize"]) expect(runsChecks("pull_request", action, "task/ci/x")).toBe(false);
-    const proof = job(development, "proof");
-    expect(proof).toContain("needs: checks");
-    expect(proof).toContain("if: ${{ always() && needs.checks.result != 'skipped' }}");
-    expect(proof).toContain('scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"');
+describe("development task push", () => {
+  it("goes straight to shared checks and reports one required result on the pushed head", () => {
+    expect(development.split("\npermissions:\n")[0]).toContain("on:\n  push:\n    branches: ['task/**']\n");
+    expect(development).not.toMatch(/pull_request:|schedule:|workflow_dispatch:|ci-runners/u);
+    expect(jobNames(development)).toEqual(["checks", "development"]);
+    const call = job(development, "checks");
+    expect(call).toContain("uses: ./.github/workflows/checks.yml");
+    expect(call).toContain("kind: fast");
+    expect(call).not.toMatch(/^ {4}(?:if|needs):/mu);
     const gate = job(development, "development");
     expect(gate).toContain("name: development");
-    expect(gate).toContain("needs: proof");
-    expect(gate).toContain("if: ${{ always() && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}");
-    expect(gate).toContain("npm run names:check");
-    expect(gate).toContain('node scripts/ci/allowed-workflows.ts "$PR_BASE_SHA" "$PR_LABELS"');
-    expect(gate).toContain('git cat-file -e "$PR_BASE_SHA^{commit}"');
-    expect(gate).toContain('|| git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"');
-    expect(gate).toContain("is not available to fetch");
-    expect(gate.indexOf("git fetch")).toBeLessThan(gate.indexOf("allowed-workflows.ts"));
-    expect(gate).toContain("PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}");
-    expect(gate.indexOf("allowed-workflows.ts")).toBeLessThan(gate.indexOf("listWorkflowRuns"));
+    expect(gate).toContain("needs: checks");
+    expect(gate).toContain("if: ${{ !cancelled() }}");
+    expect(gate).toContain('scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"');
     expect(job(checks, "changes")).not.toContain("names:check");
-    expect(job(checks, "static")).toContain("if: github.event_name == 'pull_request' && inputs.kind != 'fast'");
   });
 
-  it("decides on the schedule and starts every full job only on the decision", () => {
-    expect(development).toContain("schedule:\n    - cron: '7,27,47 * * * *'");
-    const decide = job(development, "decide");
-    expect(decide).toContain("if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}");
-    expect(decide).toContain("checks: read");
-    expect(decide).toContain("sparse-checkout: scripts/ci");
-    expect(decide).toContain("decideFullRun({ github, context, now: Date.now() })");
-    expect(decide).toContain(`- name: ${START_STEP}\n        if: steps.decide.outputs.start == 'true'`);
-    for (const name of ["full-checks", "codeql", "dependencies"]) {
-      expect(job(development, name)).toContain("needs: decide");
-      expect(job(development, name)).toContain("if: ${{ needs.decide.outputs.start == 'true' }}");
-    }
-    expect(job(development, "full-checks")).toContain("kind: full");
-    expect(job(development, "full")).toContain("needs: [decide, full-checks, codeql, dependencies]");
-  });
-
-  it("passes the full gate only when every full job passed", () => {
-    const schedule = { event_name: "schedule" };
-    const ok = { decide: { result: "success", outputs: { start: "true" } }, "full-checks": { result: "success" },
-      codeql: { result: "success" }, dependencies: { result: "success" } };
-    const plan = planFor("portable");
-    expect(summary(development, "full", plan, ok, schedule)).toBe("success");
-    expect(summary(development, "full", plan, { ...ok, decide: { result: "success", outputs: { start: "false" } } }, schedule)).toBe("skipped");
-    for (const name of ["full-checks", "codeql", "dependencies"]) {
-      for (const result of ["failure", "cancelled", "skipped"]) {
-        expect(summary(development, "full", plan, { ...ok, [name]: { result } }, schedule)).toBe("failure");
-      }
-    }
-  });
-
-  it("lets an edited event queue behind the test run instead of cancelling it", () => {
+  it("scopes cancellation to newer pushes to the same task branch", () => {
     const header = development.split("\njobs:\n")[0];
-    const group = header.match(/^ {2}group: (.+)$/mu)?.[1];
-    assert.ok(group);
-    const key = (event_name: string, number: number | undefined, run_id: number, ref: string) => group.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) =>
-      String(runInNewContext(code, { github: { workflow: "Development", event_name, run_id, ref, event: { pull_request: { number } } },
-        contains: (list: string[], item: string) => list.includes(item), fromJSON: JSON.parse as (text: string) => string[] })));
-    expect(key("pull_request", 7, 1, "refs/pull/7/merge")).toBe(key("pull_request", 7, 2, "refs/pull/7/merge"));
-    expect(key("pull_request", 7, 1, "refs/pull/7/merge")).toBe("ci-Development-7");
-    expect(key("push", undefined, 1, "refs/heads/task/a/b")).toBe("ci-Development-refs/heads/task/a/b");
-    expect(key("schedule", undefined, 1, "refs/heads/development")).not.toBe(key("schedule", undefined, 2, "refs/heads/development"));
-    expect(key("workflow_dispatch", undefined, 1, "refs/heads/development")).not.toBe(key("workflow_dispatch", undefined, 2, "refs/heads/development"));
-    const cancel = header.match(/^ {2}cancel-in-progress: \$\{\{ (.+) \}\}$/mu)?.[1];
-    assert.ok(cancel);
-    const cancels = (action?: string): unknown => runInNewContext(cancel, { github: { event: { action } } });
-    expect(cancels("edited")).toBe(false);
-    for (const action of ["synchronize", "opened", undefined]) expect(cancels(action)).toBe(true);
+    expect(header).toContain("group: ci-${{ github.workflow }}-${{ github.ref }}");
+    expect(header).toContain("cancel-in-progress: true");
   });
 
   it("selects task-branch push shards like a pull request, refuses other pushes", () => {
@@ -210,9 +90,9 @@ describe("development fast check", () => {
   });
 
   it.each([
-    { draft: false, markdown: false, count: 11 },
-    { draft: true, markdown: false, count: 8 },
-    { draft: false, markdown: true, count: 6 },
+    { draft: false, markdown: false, count: 10 },
+    { draft: true, markdown: false, count: 7 },
+    { draft: false, markdown: true, count: 5 },
   ])("starts $count runner jobs for draft=$draft markdown=$markdown and no affected tests", ({ draft, markdown, count }) => {
     const plan = selectUsingAdapter("fast", "pull_request", "development", "task/ci/test",
       { ...filters, shared: markdown ? "false" : "true" }, draft);
@@ -222,23 +102,27 @@ describe("development fast check", () => {
       return !condition || expression(condition, needs, {}, "fast");
     });
     expect(started).toEqual(["changes", ...(!draft ? ["lint"] : []), "static", "privacy", ...(!markdown ? ["ubuntu"] : [])]);
-    // proof and development run in the calling workflow.
-    const runners = started.reduce((total, name) => total + (name === "ubuntu" ? plan.ubuntu.include.length : 1), 2);
+    // The required result runs in the calling workflow.
+    const runners = started.reduce((total, name) => total + (name === "ubuntu" ? plan.ubuntu.include.length : 1), 1);
     expect(runners).toBe(count);
     expect(plan.ubuntu.include.map(row => row.suite)).toEqual(markdown ? [] : draft
       ? ["unit", "unit", "unit"] : ["unit", "unit", "unit", "architecture", "architecture"]);
     for (const name of ["lint", "static", "privacy", "ubuntu"]) expect(job(checks, name)).toContain("needs: changes");
   });
 
-  it("executes the proof shell, rejecting failures, cancellations and missing results", () => {
+  it.each([
+    { workflow: development, resultJob: "development", needed: "checks" },
+    { workflow: pr, resultJob: "non-task-result", needed: "non-task-checks" },
+  ])("rejects failed, cancelled, skipped and missing proofs in $resultJob", ({ workflow, resultJob, needed }) => {
     const skipped = { result: "skipped" };
     for (const plan of [planFor("fast"), planFor("fast", { draft: true }),
       selectUsingAdapter("fast", "push", "", taskBranch, { ...filters, smoke: "true" })]) {
       const positive = { ...portableResults, lint: plan.lint ? portableResults.lint : skipped,
         integration: skipped, architecture: skipped, macos: skipped, "unit-proofs": skipped,
         unit: skipped, perf: skipped, smoke: plan.smoke ? portableResults.smoke : skipped };
-      const run = (result: string, outcomes: Record<string, { result: string }>) => summary(development, "proof", plan,
-        { checks: { result, outputs: { plan: JSON.stringify(plan), results: JSON.stringify(outcomes) } } });
+      const run = (result: string, outcomes: Record<string, { result: string }>) => summary(workflow, resultJob, plan,
+        { [needed]: { result, outputs: { plan: JSON.stringify(plan), results: JSON.stringify(outcomes) } } },
+        { event_name: "pull_request", head_ref: "fix/ci-pr", event: { action: "opened" } });
       expect(run("success", positive)).toBe("success");
       for (const result of ["failure", "cancelled"]) {
         expect(run(result, positive)).toBe("failure");
@@ -248,11 +132,22 @@ describe("development fast check", () => {
         expect(run("success", { ...positive, smoke: { result: "failure" } })).toBe("failure");
         expect(run("success", { ...positive, smoke: skipped })).toBe("failure");
       }
-      expect(run("skipped", positive)).toBe("skipped");
+      expect(run("skipped", positive)).toBe("failure");
       const missing: Record<string, { result: string }> = { ...positive };
       delete missing.static;
       expect(run("success", missing)).toBe("failure");
     }
+  });
+
+  it("rejects an independent gallery story that draws a cross-story dialog reference", async () => {
+    const page = {
+      viewportSize: () => ({ width: 1280, height: 720 }),
+      evaluate: vi.fn().mockResolvedValue([{ kind: "dialog:custom", variant: null, shape: {} }]),
+      context: vi.fn(), url: vi.fn(),
+    };
+    await expect(dialogsShareShape({
+      page, storyId: "queue/status/queued", story: { title: "Queued", render: () => null }, dialogShapes: new Map(),
+    })).rejects.toThrow("queue/status/queued draws dialog:custom with a cross-story reference");
   });
 
   it("runs the shared smoke command for browser inputs on task pushes", () => {
@@ -270,12 +165,18 @@ describe("development fast check", () => {
       "tests/support/helpers/credential-keychain-fake.ts"]) {
       expect(matches(file), file).toBe(true);
     }
-    for (const file of ["README.md", "tests/smoke/README.md", "tests/scripts/test/ci-plan.test.ts", "playwright.mocks.config.ts"]) {
+    for (const file of ["README.md", "tests/smoke/README.md", "tests/scripts/test/ci-plan.test.ts"]) {
       expect(matches(file), file).toBe(false);
     }
 
     const body = job(checks, "smoke");
-    expect(body).toMatch(/^ {6}- run: npm run test:smoke$/mu);
+    const changes = job(checks, "changes");
+    expect(changes).toContain("smoke-matrix: ${{ steps.smoke-matrix.outputs.matrix }}");
+    expect(changes).toContain("python3 tests/support/helpers/dashboard/smoke/smoke-lanes.py matrix");
+    expect(body).toContain("matrix: ${{ fromJSON(needs.changes.outputs.smoke-matrix) }}");
+    expect(body).toContain("SLOTS: ${{ strategy.job-total }}");
+    expect(body).toContain('run: npm run test:smoke -- --test-list "$RUNNER_TEMP/smoke-tests.txt"');
+    expect(body).toContain("-f tests/support/helpers/dashboard/smoke/verify-shard.jq");
     const condition = body.match(/^ {4}if: (.+)$/mu)?.[1];
     assert.ok(condition);
     for (const smoke of ["true", "false"]) {
@@ -284,84 +185,118 @@ describe("development fast check", () => {
     }
   });
 
-  it("requires this run's proof when it ran and looks one up otherwise", () => {
-    const steps = job(development, "development").split(/\n {6}- /u);
-    const own = steps.find(step => step.startsWith("name: Require this run's proof"));
-    const lookup = steps.find(step => step.startsWith("name: Find the proof for the pull request head"));
-    expect(own).toContain("if: needs.proof.result != 'skipped'");
-    expect(own).toContain('run: test "$PROOF_RESULT" = success');
-    expect(lookup).toContain("if: needs.proof.result == 'skipped'");
-    expect(job(development, "development")).toContain("timeout-minutes: 25");
+});
+
+describe("development pull requests", () => {
+  it("runs metadata on the requested PR events without polling workflow runs", () => {
+    expect(pr.split("\npermissions:\n")[0]).toContain("on:\n  pull_request:\n    branches: [development]\n"
+      + "    types: [opened, edited, synchronize, reopened, ready_for_review, labeled, unlabeled]");
+    expect(jobNames(pr)).toEqual(["metadata", "non-task-checks", "non-task-result"]);
+    expect(pr.split("\njobs:\n")[0]).not.toContain("concurrency:");
+    expect(pr).not.toMatch(/listWorkflowRuns|listJobsForWorkflowRun|setTimeout|\bsleep\b/u);
+    const metadata = job(pr, "metadata");
+    expect(metadata).toMatch(/^ {4}name: PR metadata$/mu);
+    expect(metadata).not.toMatch(/^\s*(?:if|needs):|npm ci|ci-plan\.ts/u);
+    expect(metadata).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}-metadata");
+    expect(metadata).toContain("cancel-in-progress: true");
+    expect(metadata).toContain("PR_BODY: ${{ github.event.pull_request.body }}");
+    expect(metadata).toContain('git cat-file -e "$PR_BASE_SHA^{commit}"');
+    expect(metadata).toContain('|| git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"');
+    expect(metadata).toContain("is not available to fetch");
+    expect(metadata.indexOf("git fetch")).toBeLessThan(metadata.indexOf("allowed-workflows.ts"));
   });
 
-  it("passes on the eligible push proof, ignoring pending and finished runs with other metadata", async () => {
-    const runs = [
-      proofRun(9, undefined, "in_progress", { event: "pull_request" }),
-      proofRun(8, {}, "completed", { event: "pull_request" }),
-      proofRun(7, {}, "completed", { head_branch: "task/ci/other" }),
-      proofRun(6, {}, "completed", { head_sha: "b".repeat(40) }),
-      proofRun(5, {}, "completed", { head_repository: { full_name: "fork/relay" } }),
-      proofRun(4, {}, "completed", { head_repository: null }),
-      proofRun(1, { status: "in_progress", conclusion: null }, "in_progress"),
-      proofRun(3, undefined),
-      proofRun(2, {}),
-    ];
-    const result = await proofLookup(() => runs);
-    expect(result.failures).toEqual([]);
-    expect(result.infos).toEqual([`Proof passed for ${headSha} in https://example.test/runs/2`]);
-    expect(result.inspected).toEqual([3, 2]);
-    expect(result.polls).toBe(1);
-  });
-
-  it("fails closed when only ineligible runs prove the head commit", async () => {
-    for (const extra of [{ event: "pull_request" }, { head_branch: "task/ci/other" }, { head_sha: "b".repeat(40) },
-      { head_repository: { full_name: "fork/relay" } }]) {
-      const result = await proofLookup(() => [proofRun(2, {}, "completed", extra), proofRun(3, undefined, "in_progress", { event: "pull_request" })]);
-      expect(result.failures).toEqual([missing]);
-      expect(result.inspected).toEqual([]);
-      expect(result.minutes).toBeLessThan(2);
+  it("keeps metadata-only events from superseding a non-Task fast result", () => {
+    const call = job(pr, "non-task-checks");
+    const result = job(pr, "non-task-result");
+    expect(call).toContain("uses: ./.github/workflows/checks.yml");
+    expect(call).toContain("kind: fast");
+    expect(call).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}-fast");
+    expect(call).toContain("cancel-in-progress: true");
+    const condition = call.match(/^ {4}if: (.+)$/mu)?.[1];
+    const resultCondition = result.match(/^ {4}if: (.+)$/mu)?.[1];
+    const name = result.match(/^ {4}name: (.+)$/mu)?.[1];
+    assert.ok(condition);
+    assert.ok(resultCondition);
+    assert.ok(name);
+    expect(result).toContain("needs: non-task-checks");
+    for (const head_ref of [taskBranch, "fix/ci-other", "chore/ci-other", "dependabot/npm_and_yarn/tool"]) {
+      for (const [action, rerun] of [
+        ["opened", true], ["synchronize", true], ["reopened", true], ["ready_for_review", true],
+        ["edited", false], ["labeled", false], ["unlabeled", false],
+      ] as const) {
+        const context = { head_ref, event: { action } };
+        const fast = rerun && head_ref !== taskBranch;
+        expect(expression(condition, {}, context)).toBe(fast);
+        expect(expression(resultCondition, {}, context)).toBe(fast);
+        expect(expression(name, {}, context)).toBe(fast ? "development" : "Non-task result");
+      }
     }
   });
 
-  it("refuses a pull request whose head is another repository without listing runs", async () => {
-    const result = await proofLookup(() => { throw new Error("must not list runs"); }, { repo: "fork/relay" });
-    expect(result.failures).toEqual(["Pull request head fork/relay is not owner/relay."]);
+  it.each([
+    { head: taskBranch, title: "CI: check metadata", body: "Update the gate.\r\n\r\nCloses #669\r\n", error: "" },
+    { head: "fix/ci-other", title: "CI: retain fast proof", body: "", error: "" },
+    { head: "chore/ci-other", title: "CI: keep chore metadata", body: "Updated the runners.", error: "" },
+    { head: "dependabot/npm_and_yarn/tool", title: "Dependencies: bump tool", body: "Automated dependency update.", error: "" },
+    { head: "feature/ci", title: "CI: check metadata", body: "Closes #669", error: "branch name" },
+    { head: taskBranch, title: "ci: use conventional title", body: "Closes #669", error: "pull request title" },
+    { head: taskBranch, title: "CI: check metadata", body: "", error: "pull request body" },
+    { head: taskBranch, title: "CI: check metadata",
+      body: "Summary.\n\nCloses #669\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n", error: "" },
+    { head: taskBranch, title: "CI: check metadata", body: "This Closes #669", error: "pull request body" },
+    { head: "fix/ci-other", title: "fix: conventional title", body: "", error: "pull request title" },
+    { head: "chore/ci-other", title: "chore: conventional title", body: "", error: "pull request title" },
+    { head: "dependabot/npm_and_yarn/tool", title: "Bump tool", body: "", error: "pull request title" },
+  ])("validates the shipped metadata command for $head with error=$error", ({ head, title, body, error }) => {
+    const step = job(pr, "metadata").split("\n      - name: Check the development pull request metadata\n")[1];
+    const script = step?.match(/^ {8}run: \|\n((?: {10}[^\n]*\n)+)/mu)?.[1];
+    assert.ok(script);
+    const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script], {
+      env: { ...process.env, NAMES_BASE: "development", NAMES_HEAD: head, NAMES_TITLE: title, PR_BODY: body }, encoding: "utf8",
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(error ? 1 : 0);
+    if (error) expect(result.stderr).toContain(error);
   });
+});
 
-  it("uses the pull request's own test run on edited non-task pull requests and ignores push runs", async () => {
-    const pull = { event: "pull_request", head_branch: "fix/x" };
-    const result = await proofLookup(() => [proofRun(4, {}, "completed", { head_branch: "fix/x" }),
-      proofRun(3, { conclusion: "skipped" }, "completed", pull), proofRun(2, { conclusion: "failure" }, "completed", pull)], { ref: "fix/x" });
-    expect(result.failures).toEqual([`Proof failure for ${headSha} in https://example.test/runs/2`]);
-    expect(result.inspected).toEqual([3, 2]);
-  });
-
-  it.each(["failure", "cancelled"])("fails when the newest eligible proof is %s, even if an older one passed", async conclusion => {
-    const result = await proofLookup(() => [proofRun(3, { conclusion }), proofRun(2, {})]);
-    expect(result.failures).toEqual([`Proof ${conclusion} for ${headSha} in https://example.test/runs/3`]);
-  });
-
-  it("waits for a running eligible push run and passes when its proof succeeds", async () => {
-    const result = await proofLookup(count => count < 3 ? [proofRun(2, undefined, "in_progress")] : [proofRun(2, {})]);
-    expect(result.failures).toEqual([]);
-    expect(result.polls).toBe(4);
-    expect(result.infos).toContain("Waiting for https://example.test/runs/2");
-  });
-
-  it("fails within about a minute when no eligible run proves the head commit", async () => {
-    for (const runs of [[], [proofRun(2, undefined)], [proofRun(2, { conclusion: "skipped" })]]) {
-      const result = await proofLookup(() => runs);
-      expect(result.failures).toEqual([missing]);
-      expect(result.minutes).toBeGreaterThanOrEqual(1);
-      expect(result.minutes).toBeLessThan(2);
+describe("development full run", () => {
+  it("decides only for scheduled and dispatched runs on development and starts full jobs only on the decision", () => {
+    expect(full.split("\npermissions:\n")[0]).toContain("on:\n  workflow_dispatch:\n  schedule:\n    - cron: '7,27,47 * * * *'");
+    expect(full).not.toMatch(/^ {2}(?:push|pull_request):/mu);
+    expect(jobNames(full)).toEqual(["decide", "full-checks", "codeql", "dependencies", "full"]);
+    const decide = job(full, "decide");
+    const condition = decide.match(/^ {4}if: (.+)$/mu)?.[1];
+    assert.ok(condition);
+    expect(expression(condition, {}, { ref: "refs/heads/development" })).toBe(true);
+    for (const ref of ["refs/heads/main", "refs/heads/staging", "refs/tags/development", "refs/heads/task/ci/demo"]) {
+      expect(expression(condition, {}, { ref })).toBe(false);
     }
+    expect(decide).toContain("checks: read");
+    expect(decide).toContain("sparse-checkout: scripts/ci");
+    expect(decide).toContain("decideFullRun({ github, context, now: Date.now() })");
+    expect(decide).toContain(`- name: ${START_STEP}\n        if: steps.decide.outputs.start == 'true'`);
+    for (const name of ["full-checks", "codeql", "dependencies"]) {
+      expect(job(full, name)).toContain("needs: decide");
+      expect(job(full, name)).toContain("if: ${{ needs.decide.outputs.start == 'true' }}");
+    }
+    expect(job(full, "full-checks")).toContain("kind: full");
+    expect(job(full, "full")).toContain("needs: [decide, full-checks, codeql, dependencies]");
   });
 
-  it("fails instead of waiting forever on a proof that never finishes", async () => {
-    const result = await proofLookup(() => [proofRun(2, { status: "in_progress", conclusion: null }, "in_progress")]);
-    expect(result.failures).toEqual(["Timed out waiting for https://example.test/runs/2"]);
-    expect(result.minutes).toBeGreaterThanOrEqual(20);
-    expect(result.minutes).toBeLessThan(21);
+  it("passes the full gate only when every full job passed", () => {
+    const schedule = { event_name: "schedule" };
+    const ok = { decide: { result: "success", outputs: { start: "true" } }, "full-checks": { result: "success" },
+      codeql: { result: "success" }, dependencies: { result: "success" } };
+    const plan = planFor("portable");
+    expect(summary(full, "full", plan, ok, schedule)).toBe("success");
+    expect(summary(full, "full", plan, { ...ok, decide: { result: "success", outputs: { start: "false" } } }, schedule)).toBe("skipped");
+    for (const name of ["full-checks", "codeql", "dependencies"]) {
+      for (const result of ["failure", "cancelled", "skipped"]) {
+        expect(summary(full, "full", plan, { ...ok, [name]: { result } }, schedule)).toBe("failure");
+      }
+    }
   });
 });
 
@@ -369,6 +304,7 @@ function expression(value: string, needs: unknown, context: Record<string, unkno
   return runInNewContext(value.replace(/\$\{\{(.*?)\}\}/gu, "$1").replaceAll("needs.*.result", "Object.values(needs).map(need => need.result)").replace(/\.([\w]+-[\w-]+)/gu, '["$1"]'), {
     needs, github: context, inputs: { kind }, fromJSON: JSON.parse, toJSON: JSON.stringify, always: () => true, cancelled: () => false,
     contains: (items: unknown[], item: string) => items.includes(item),
+    startsWith: (value: string, prefix: string) => value.startsWith(prefix),
   });
 }
 
@@ -380,11 +316,12 @@ function summary(workflow: string, name: string, plan: CiPlan, outcomes: Record<
   const condition = body.match(/^ {4}if: (.+)$/mu)?.[1];
   assert.ok(condition);
   if (!expression(condition, needs, context, plan.workflow)) return "skipped";
-  const env = Object.fromEntries([...body.matchAll(/^ {10}([A-Z_]+): (.+)$/gmu)].map(([, key, value]) => [key,
+  const proof = body.split("\n      - name: Require every fast proof\n")[1] ?? body;
+  const env = Object.fromEntries([...proof.matchAll(/^ {10}([A-Z_]+): (.+)$/gmu)].map(([, key, value]) => [key,
     value.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) => String(expression(code, needs, context, plan.workflow))) ]));
-  const verify = [...body.matchAll(/^ {8}run: (.+)$/gmu)].map((match) => match[1]).find((line) => line.includes("ci-plan.ts verify"));
+  const verify = [...proof.matchAll(/^ {8}run: (.+)$/gmu)].map((match) => match[1]).find((line) => line.includes("ci-plan.ts verify"));
   const script = verify
-    ?? body.match(/^ {8}run: \|\n((?: {10}[^\n]*\n|\n)+)/mu)?.[1]
+    ?? proof.match(/^ {8}run: \|\n((?: {10}[^\n]*\n|\n)+)/mu)?.[1]
     ?? body.match(/^ {8}run: (.+)$/mu)?.[1] ?? body.match(/^ {6}- run: (.+)$/mu)?.[1];
   assert.ok(script);
   const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script], {
@@ -495,7 +432,10 @@ describe("separate event and admitted proof workflows", () => {
     }
   });
 
-  it("keeps the three gated workflows and a separate opt-in evidence run", () => {
+  it("keeps six entry and reusable workflows", () => {
+    expect(readdirSync(new URL("../../../.github/workflows/", import.meta.url)).filter(name => /\.ya?ml$/u.test(name)).sort()).toEqual([
+      "checks.yml", "development.yml", "full.yml", "pr.yml", "production.yml", "staging.yml",
+    ]);
     const stagingTrigger = staging.split("\npermissions:\n")[0];
     const productionTrigger = production.split("\npermissions:\n")[0];
     expect(stagingTrigger).toContain("run-name: ${{ github.event.pull_request.title || github.event.head_commit.message }}");
@@ -523,6 +463,13 @@ describe("separate event and admitted proof workflows", () => {
     expect(job(checks, "lint")).toContain("if: ${{ fromJSON(needs.changes.outputs.plan).lint }}");
     expect(job(checks, "static")).toContain("run: npm run typecheck");
     expect(job(checks, "static")).not.toContain("npm run lint");
+  });
+
+  it("uses small runners for selection, metadata, and workflow results", () => {
+    for (const [workflow, name] of [
+      [checks, "changes"], [development, "development"], [pr, "metadata"], [pr, "non-task-result"], [full, "decide"], [full, "full"],
+      [staging, "staging"], [production, "production"],
+    ]) expect(job(workflow, name)).toContain("runs-on: ubuntu-slim");
   });
 
   it.each(["perf", "smoke"])("runs %s separately on Ubuntu with the integration-shard setup", name => {
@@ -694,7 +641,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(runsCodeql("push", "")).toBe(true);
     expect(runsCodeql("pull_request", "staging")).toBe(false);
     expect(runsCodeql("workflow_dispatch", "")).toBe(false);
-    for (const workflow of [production, load("development")]) {
+    for (const workflow of [production, full]) {
       expect(job(workflow, "codeql")).toContain("security-events: write");
       expect(job(workflow, "codeql")).toContain("github/codeql-action/init@v4");
       expect(job(workflow, "codeql")).toContain("github/codeql-action/analyze@v4");

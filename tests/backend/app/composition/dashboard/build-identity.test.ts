@@ -9,7 +9,7 @@ it("invalidates a mock bundle when an imported control fixture changes, without 
   const root = mkdtempSync(join(tmpdir(), "relay-mock-inputs-"));
   try {
     const fixture = "tests/support/helpers/dashboard/controls/example-preview.tsx";
-    for (const name of ["src/entry.ts", "config/dashboard-workflow-sources.json", "vite.dashboard.config.ts", "tsconfig.json", "package.json", "package-lock.json", "vite.mocks.config.ts", "tests/mocks/app-entry.tsx", "tests/mocks/helpers/workflow-composition.ts", "tests/mocks/workflows/workflow-mock-model.ts", fixture]) {
+    for (const name of ["src/entry.ts", "config/dashboard-workflow-sources.json", "vite.dashboard.config.ts", "tsconfig.json", "package.json", "package-lock.json", "vite.mocks.config.ts", "tests/support/helpers/dashboard/mock-world/app-entry.tsx", "tests/support/helpers/dashboard/mock-world/workflow-composition.ts", "tests/support/fixtures/dashboard/workflow-mocks/workflow-mock-model.ts", fixture]) {
       const path = join(root, name);
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, "initial input");

@@ -67,7 +67,7 @@ describe("classified log screenshot viewer", () => {
     assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /Screenshot could not be loaded/);
     assert.equal(document.querySelector(".log-capture-header")?.textContent, "UCPathFull form");
     assert.match(document.querySelector("figcaption")?.textContent ?? "", /Termination/u);
-    assert.equal(document.querySelector("img"), null);
+    assert.equal(document.querySelector("img") === null, true);
     await click("Retry screenshot");
     assert.ok(document.querySelector("img"));
     assert.equal(document.querySelector('[role="alert"]') === null, true);
@@ -105,8 +105,8 @@ describe("classified log screenshot viewer", () => {
   });
   it("has no capture controls for an empty group", async () => {
     await mount([]);
-    assert.equal(document.querySelector("button"), null);
-    assert.equal(document.querySelector("figure"), null);
+    assert.equal(document.querySelector("button") === null, true);
+    assert.equal(document.querySelector("figure") === null, true);
   });
   it("loads protected captures through the authenticated fetch and releases them on unmount", async () => {
     const release = vi.fn();

@@ -1,6 +1,7 @@
 // actions/github-script imports this file on its own Node runtime without npm ci, so it has no imports.
 
-const WORKFLOW = ".github/workflows/development.yml";
+const WORKFLOW_FILE = "full.yml";
+const WORKFLOW = `.github/workflows/${WORKFLOW_FILE}`;
 const SIX_HOURS = 6 * 60 * 60_000;
 const FULL_EVENTS = ["schedule", "workflow_dispatch"];
 export const START_STEP = "Start the full run";
@@ -30,7 +31,7 @@ export interface GitHub {
 }
 export interface Context { repo: Repo; runId: number; sha: string; payload: { pull_request?: PullRequest } }
 
-// A green full run is the `full` job of a scheduled or dispatched development.yml run at exactly this commit.
+// A green full run is the `full` job of a scheduled or dispatched full.yml run at exactly this commit.
 export async function greenFullRun(github: GitHub, repo: Repo, sha: string): Promise<Run | undefined> {
   const checks = await github.paginate<CheckRun>(github.rest.checks.listForRef,
     { ...repo, ref: sha, check_name: "full", filter: "all", per_page: 100 });
@@ -59,7 +60,7 @@ export async function decideFullRun({ github, context, now }: { github: GitHub; 
   if (busy.length === 0) return { start: true, reason: `Development ${sha} has no green full run and CI is idle.` };
   const recent: Run[] = [];
   for (const event of FULL_EVENTS) {
-    recent.push(...(await github.paginate<Run>(github.rest.actions.listWorkflowRuns, { ...repo, workflow_id: "development.yml",
+    recent.push(...(await github.paginate<Run>(github.rest.actions.listWorkflowRuns, { ...repo, workflow_id: WORKFLOW_FILE,
       event, created: `>=${new Date(now - SIX_HOURS).toISOString()}`, per_page: 100 })).filter(run => run.id !== context.runId));
   }
   for (const run of recent) {
