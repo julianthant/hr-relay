@@ -73,7 +73,7 @@ const StoppedPriorProfileContinuitySchema = z.discriminatedUnion("schemaVersion"
 const StoppedCurrentProfileContinuitySchema = PriorProfileContinuitySchema.extend({ schemaVersion: z.literal(3), duo: z.array(DuoContinuityRowSchema).max(10_000),
   completedRestores: z.array(CompletedRestoreCustodySchema).max(10_000).refine(rows => new Set(rows.map(row => row.operationId)).size === rows.length) })
   .refine(value => value.completedRestores.every(row => row.profile.installationId === value.installationId));
-const StoppedProfileRegistryRowV4Schema = ProfileRegistryRowSchema.extend({ registration: ProfileRegistryRowSchema.shape.registration.extend({
+const StoppedProfileRegistryRowV4Schema = ProfileRegistryRowSchema.omit({ relayEmail: true }).extend({ registration: ProfileRegistryRowSchema.shape.registration.extend({
   onboardingCompletion: ProfileOnboardingCompletionSchema.extend({ touch: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u),
     softwareInterceptionDisabled: z.literal(true), operatorConfirmedAt: ProfileOnboardingCompletionSchema.shape.finishedAt.optional() }).optional() }).optional() }) });
 const StoppedProfileRegistryDocumentV4Schema = ProfileRegistryDocumentSchema.extend({ schemaVersion: z.literal(4), profiles: z.array(StoppedProfileRegistryRowV4Schema) });
@@ -1839,9 +1839,13 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const next = ProfileRegistryDocumentSchema.parse(document);
       if (next.profiles.length !== before.profiles.length || next.profiles.some(row => {
         const original = before.profiles.find(prior => prior.profileId === row.profileId);
-        return original === undefined || canonicalJsonStringify({ ...row, lifecycle: original.lifecycle, lastSignedInAt: original.lastSignedInAt,
-          firstName: original.firstName, lastName: original.lastName, initials: original.initials, timekeeperName: original.timekeeperName,
-          timekeeperInitials: original.timekeeperInitials }) !== canonicalJsonStringify(original);
+        if (original === undefined) return true;
+        const { relayEmail: priorEmail, ...prior } = original;
+        const { relayEmail: nextEmail, ...next } = row;
+        return priorEmail !== nextEmail && nextEmail === undefined
+          || canonicalJsonStringify({ ...next, lifecycle: prior.lifecycle, lastSignedInAt: prior.lastSignedInAt,
+            firstName: prior.firstName, lastName: prior.lastName, initials: prior.initials, timekeeperName: prior.timekeeperName,
+            timekeeperInitials: prior.timekeeperInitials }) !== canonicalJsonStringify(prior);
       })) fail("profile-registry-registration-required");
       if (expected !== undefined && canonicalJsonStringify(before) !== canonicalJsonStringify(expected)
         || next.installationId !== before.installationId || next.revision !== before.revision + 1 || next.sessionGeneration < before.sessionGeneration) fail("profile-registry-publication-conflict");

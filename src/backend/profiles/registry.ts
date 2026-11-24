@@ -71,7 +71,7 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
     ensureRoot(profileId: string): string {
       return ensureProfileRoot(root, z.uuid().parse(profileId));
     },
-    update(profileId: string, patch: Partial<Pick<ProfileRegistryRow, "lastSignedInAt" | "lifecycle">> & ProfileDetailsPatch): ProfileRegistryRow {
+    update(profileId: string, patch: Partial<Pick<ProfileRegistryRow, "lastSignedInAt" | "lifecycle" | "relayEmail">> & ProfileDetailsPatch): ProfileRegistryRow {
       return withProfileLock(root, () => {
         const id = z.uuid().parse(profileId);
         const current = read();
