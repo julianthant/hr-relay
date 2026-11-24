@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { RunPanel } from "../../models/dashboard/subscription.js";
 import type { StartPlanWire } from "../../models/dashboard/start-plan.js";
 import { createRunLaunchService } from "../surfaces/run-start/run-launch-model.js";
-import { DashboardClientError } from "../client/errors.js";
 import type { DashboardClient } from "../client/index.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandExecutionScope } from "../app/commands/command-executor.js";
@@ -23,6 +23,7 @@ import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-mod
 import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
 import { formatDuration, formatTimeWithSeconds } from "../lib/date-format.js";
 import { plainStepLabel } from "./log-display.js";
+import { createKeptResults } from "./async-resource.js";
 import { REPLACED_READING, typedValuesEntry, usesTypedEntry } from "../surfaces/run-detail/logs/typed-values-model.js";
 import { SYSTEM_NAME } from "../surfaces/shared/status/system-chip-model.js";
 import { ucpathFoundPresentation, type UcpathFoundDecision, type UcpathFoundPresentation } from "../surfaces/run-detail/logs/ucpath-found-model.js";
@@ -66,12 +67,17 @@ function sameHeldOccurrence(envelope: DashboardCommandRequest, write: ParkedWrit
 }
 
 type RunReads = Pick<DashboardClient, "runDetail" | "runSection">;
+/** What a panel is checked against: the queue row's identity and revision. */
+type RowIdentity = Pick<LogSelection["row"], "runId" | "attempt" | "traceId" | "workflowId" | "rowRevision">;
 export interface RunLogSnapshot {
   readonly detail: RunDetailWire;
   readonly logs: NotePage;
   readonly sections: readonly RunDetailSectionResponse[];
   readonly unavailableEvidence: readonly string[];
 }
+
+/** The sections a run panel carries beside its detail and logs, each only when the detail declares it. */
+const PANEL_SECTIONS: readonly string[] = ["captures", "identity-gate", "parked-write", "failure", "workbook-writes"];
 
 export async function readRunLogs(client: RunReads, selection: LogSelection, signal: AbortSignal): Promise<RunLogSnapshot> {
   const { row } = selection;
@@ -97,14 +103,27 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
     if (next.section !== "logs") throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
     logs = appendLogPage(logs, cursor, next.payload);
   }
-  if (detail.captures !== undefined && detail.captures.state !== "error" && ((detail.captures.state === "available") !== detail.availableSections.includes("captures"))) throw new RunLogIdentityError("RUN_CAPTURE_CAPABILITY_MISMATCH");
-  if (logRowsOf(logs, "identity").some(log => log.kind !== "note" && (log.attempt > row.attempt || log.traceId !== row.traceId))) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_MISMATCH");
+  const unavailableEvidence = checkRunPanelLogs(row, detail, logs);
   signal.throwIfAborted();
-  const unavailableEvidence: string[] = [];
-  if (detail.captures?.state === "error") unavailableEvidence.push("Captures unavailable");
-  const sections = await Promise.all(detail.availableSections.filter(name => ["captures", "identity-gate", "parked-write", "failure", "workbook-writes"].includes(name)
+  const sections = await Promise.all(detail.availableSections.filter(name => PANEL_SECTIONS.includes(name)
     && (name !== "captures" || detail.captures?.state === "available"))
     .map(name => client.runSection(row.runId, name, undefined, signal)));
+  const snapshot = checkRunPanelSections(row, detail, logs, sections, unavailableEvidence);
+  if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError(snapshot);
+  return snapshot;
+}
+
+/** The checks a panel's detail and log must pass against the selected row, before its sections are looked at. */
+function checkRunPanelLogs(row: RowIdentity, detail: RunDetailWire, logs: NotePage): string[] {
+  if (detail.captures !== undefined && detail.captures.state !== "error" && ((detail.captures.state === "available") !== detail.availableSections.includes("captures"))) throw new RunLogIdentityError("RUN_CAPTURE_CAPABILITY_MISMATCH");
+  if (logRowsOf(logs, "identity").some(log => log.kind !== "note" && (log.attempt > row.attempt || log.traceId !== row.traceId))) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_MISMATCH");
+  const unavailableEvidence: string[] = [];
+  if (detail.captures?.state === "error") unavailableEvidence.push("Captures unavailable");
+  return unavailableEvidence;
+}
+
+/** The checks each section must pass against the detail and the selected row; returns the validated panel. */
+function checkRunPanelSections(row: RowIdentity, detail: RunDetailWire, logs: NotePage, sections: readonly RunDetailSectionResponse[], unavailableEvidence: string[]): RunLogSnapshot {
   for (const section of sections) {
     if (section.section === "workbook-writes" && section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_WORKBOOK_IDENTITY_MISMATCH");
     if (section.section === "workbook-writes" && section.payload.referenceChoices?.some(choice => choice.resolution.state === "available"
@@ -124,7 +143,6 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   }
   const snapshot: RunLogSnapshot = { detail, logs, sections, unavailableEvidence };
   validateRunLogSnapshot(snapshot);
-  if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError(snapshot);
   return snapshot;
 }
 
@@ -133,39 +151,21 @@ export const KEPT_RUN_LOGS_LIMIT = 20;
 
 /** The authority a kept snapshot was read under: a sign-in, profile or actor change discards everything kept. */
 interface RunLogAuthority { readonly epoch: object | undefined; readonly actorId: string | undefined }
-const keptRunLogs = new WeakMap<object, { authority: RunLogAuthority; runs: Map<string, RunLogSnapshot> }>();
-
-function keptFor(client: object, authority: RunLogAuthority): Map<string, RunLogSnapshot> {
-  let kept = keptRunLogs.get(client);
-  if (kept === undefined || kept.authority.epoch !== authority.epoch || kept.authority.actorId !== authority.actorId) {
-    kept = { authority, runs: new Map() };
-    keptRunLogs.set(client, kept);
-  }
-  return kept.runs;
-}
+const keptRunLogs = createKeptResults<RunLogSnapshot>(KEPT_RUN_LOGS_LIMIT);
 
 function keepRunLogs(client: object, authority: RunLogAuthority, snapshot: RunLogSnapshot): void {
-  const runs = keptFor(client, authority);
-  runs.delete(snapshot.detail.runId);
-  runs.set(snapshot.detail.runId, snapshot);
-  for (const oldest of runs.keys()) {
-    if (runs.size <= KEPT_RUN_LOGS_LIMIT) break;
-    runs.delete(oldest);
-  }
+  keptRunLogs.keep(client, [authority.epoch, authority.actorId], snapshot.detail.runId, { value: snapshot, at: snapshot.detail.rowRevision });
 }
 
-/** The last loaded logs of this exact run under this authority. A finished run's logs cannot change, so a kept
- * snapshot of the same attempt at the same or a newer revision is final and is never read again; any other kept value is stale. */
-export function keptRunLogsState(client: object, authority: RunLogAuthority, row: LogSelection["row"]): RunWiringState | undefined {
-  const runs = keptFor(client, authority);
-  const snapshot = runs.get(row.runId);
+/** The last loaded logs of this exact run under this authority, shown while the fresh read runs. Display only:
+ * it stays `loading`, so no decision reads it, and every visit reads the run again. */
+export function keptRunLogsState(client: object, authority: RunLogAuthority, row: RowIdentity): RunWiringState | undefined {
+  const snapshot = keptRunLogs.get(client, [authority.epoch, authority.actorId], row.runId)?.value;
   if (snapshot === undefined) return undefined;
   const { detail } = snapshot;
   const same = detail.header.traceId === row.traceId && detail.header.attempt === row.attempt && detail.header.workflowId === row.workflowId;
   if (!same) return undefined;
-  runs.delete(row.runId);
-  runs.set(row.runId, snapshot);
-  return detail.outcome.state === "terminal" && detail.rowRevision >= row.rowRevision ? { state: "loaded", snapshot } : { state: "loading", snapshot };
+  return { state: "loading", snapshot };
 }
 
 function validateRunLogSnapshot(snapshot: RunLogSnapshot): void {
@@ -585,6 +585,57 @@ function identityRefusalReason(cause: unknown): string {
   return "These logs don't match this run.";
 }
 
+/** The composite the stream carried for this run, held to the checks `readRunLogs` makes: detail against the row,
+ * log rows against the row, each section against the detail. A panel read after the row is ahead of it, and is shown. */
+function streamedRunSnapshot(row: RowIdentity, panel: Extract<RunPanel, { state: "available" }>): RunLogSnapshot {
+  const { detail, logs, sections } = panel;
+  if (detail.runId !== row.runId || detail.header.traceId !== row.traceId
+    || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
+  if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
+  if (logs.runId !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
+  logRowsOf(logs, "initial");
+  // The per-request reads asked for each declared section by name and checked its owner; the stream must carry exactly those.
+  const declared = detail.availableSections.filter(name => PANEL_SECTIONS.includes(name) && (name !== "captures" || detail.captures?.state === "available"));
+  const carried = new Set(sections.map(section => section.section));
+  if (carried.size !== sections.length || carried.size !== declared.length || declared.some(name => !carried.has(name))) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
+  for (const { payload } of sections) {
+    const owner = "runId" in payload ? payload.runId : "state" in payload && payload.state === "available" && "runId" in payload.value ? payload.value.runId : undefined;
+    if (owner !== undefined && owner !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
+  }
+  return checkRunPanelSections(row, detail, logs, sections, checkRunPanelLogs(row, detail, logs));
+}
+
+/** The failed state of a panel the server refused, worded as the route's refusal was. */
+function refusedPanelState(error: Extract<RunPanel, { state: "refused" }>["error"]): RunWiringState {
+  if (error.code === "LOGS_IDENTITY_REFUSED") return { state: "failed", retryable: false, diagnostic: error, error: identityRefusalReason(undefined) };
+  const catalog = error.code === "RUN_LOG_DISPLAY_VALUE_UNMAPPED" ? "RUN_LOG_DISPLAY_VALUE_UNMAPPED" : "DASHBOARD_READ_FAILED";
+  return { state: "failed", retryable: error.retryable, diagnostic: error, error: formatErrorCatalogFailure(createErrorCatalogFailure(catalog, {})).text };
+}
+
+/** What the run panel shows for the row: nothing yet, a refusal as the route would have answered it, a panel
+ * that has not caught up with the row, or the validated composite. */
+function streamedRunState(client: Pick<DashboardClient, "artifactUrl">, authority: RunLogAuthority, row: RowIdentity, panel: RunPanel | undefined, behind: boolean): RunWiringState {
+  if (panel === undefined) return keptRunLogsState(client, authority, row) ?? { state: "loading" };
+  if (panel.state === "refused") return refusedPanelState(panel.error);
+  try {
+    // A panel the stream delivered below its own day's row is invalid whatever row is rendered: the row on screen may
+    // still be the older one the panel matches.
+    if (behind) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
+    const snapshot = streamedRunSnapshot(row, panel);
+    // Logs projects this snapshot while it renders; a panel the projection refuses fails here, inside the subscribed
+    // panel, so the next valid value replaces it.
+    projectRunLogs(snapshot, client);
+    if (snapshot.detail.rowRevision >= row.rowRevision) return { state: "loaded", snapshot };
+    // A panel the row moved ahead of is catching up.
+    return { state: "loading", snapshot };
+  } catch (cause) {
+    // A panel that fails a check is failed whatever the row's revision, until the stream replaces it; only a validated
+    // older panel is loading. A log page the checks cannot read fails here too, not in the Logs error boundary.
+    if (cause instanceof RunLogIdentityError) return { state: "failed", retryable: false, diagnostic: cause, error: identityRefusalReason(cause) };
+    return { state: "failed", retryable: false, diagnostic: cause, error: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_READ_FAILED", {})).text };
+  }
+}
+
 interface GateCommandOwner {
   readonly client: DashboardClient;
   readonly runId: string;
@@ -619,23 +670,46 @@ export function runCommandRefreshesDay(view: CommandAttemptView, type: string): 
     && (type === "resolve-workbook-row" || type === "resolve-workbook-reference-row");
 }
 
+/** How long a landed command waits for the stream to carry its row before the day is reopened. */
+export const ROW_REVISION_WAIT_MS = 5000;
+
+/** The row version a command acted on, when its target names one for this run. `expectedRevision` belongs to a document
+ * (such as an OCR review), not to the run row, so it names no row to wait for. */
+export function commandRowRevision(envelope: DashboardCommandRequest, runId: string): number | undefined {
+  const target: unknown = "target" in envelope ? envelope.target : undefined;
+  if (typeof target !== "object" || target === null || !("runId" in target) || target.runId !== runId || !("expectedVersion" in target)) return undefined;
+  return typeof target.expectedVersion === "number" ? target.expectedVersion : undefined;
+}
+
+/** A landed command waits for its row past the revision it acted on. The row may already be there (stream first); a row that
+ * never arrives reopens the day rather than assuming the command took effect. */
+export function createRowWait(ms = ROW_REVISION_WAIT_MS) {
+  let timer: ReturnType<typeof setTimeout> | undefined, past = 0;
+  const stop = () => { clearTimeout(timer); timer = undefined; };
+  return {
+    /** `reopen` is the original command owner's; it is dropped with the wait when that owner is replaced. */
+    wait(actedOn: number, held: number, reopen: () => void) {
+      stop();
+      if (held > actedOn) return;
+      past = actedOn;
+      timer = setTimeout(() => { timer = undefined; reopen(); }, ms);
+    },
+    observe(held: number) { if (timer !== undefined && held > past) stop(); },
+    stop,
+  };
+}
+
 export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
   const { row } = selection;
-  // Every day frame re-serves the row as a new object, and a running run's revision moves with each worker heartbeat.
-  // A row of the same run that lands while the read is in flight must not restart it, or frequent frames keep Logs
-  // loading forever; the read lands, then a newer revision or a row that landed after it settled (a day refresh) reads again.
-  const readRow = useRef(row);
-  const reading = useRef(false);
-  const latestRow = useRef(row);
-  const settledRow = useRef(row);
-  latestRow.current = row;
-  const previous = readRow.current;
-  if (previous.runId !== row.runId || previous.attempt !== row.attempt || previous.traceId !== row.traceId || previous.workflowId !== row.workflowId
-    || !reading.current && (previous.rowRevision !== row.rowRevision || row !== settledRow.current && row !== previous)) readRow.current = row;
-  const servedRow = readRow.current;
-  const request = useMemo(() => ({ client, runId: servedRow.runId, revision: servedRow.rowRevision, day: binding?.authority.day, selection: { row: servedRow, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
-    epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
-  [client, servedRow, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
+  const rows = binding?.authority.dayState.rows;
+  const subscribeRows = useCallback((listener: () => void) => rows?.subscribe(listener) ?? (() => undefined), [rows]);
+  const panel = useSyncExternalStore(subscribeRows, () => rows?.runPanel(row.runId));
+  const authority = useMemo<RunLogAuthority>(() => ({ epoch: binding?.authority.epoch, actorId: binding?.scope.actorId }), [binding?.authority.epoch, binding?.scope.actorId]);
+  // A day frame re-serves the row as a new object; only its identity and revision change what the panel shows.
+  const { runId, attempt, traceId, workflowId, rowRevision } = row;
+  const behind = panel !== undefined && rows?.deliveredBehindRow(panel) === true;
+  const value = useMemo(() => streamedRunState(client, authority, { runId, attempt, traceId, workflowId, rowRevision }, panel, behind), [client, authority, runId, attempt, traceId, workflowId, rowRevision, panel, behind]);
+  useEffect(() => { if (value.snapshot !== undefined && value.state === "loaded") keepRunLogs(client, authority, value.snapshot); }, [client, authority, value]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),
   [client, row.runId, binding?.authority.day, binding?.authority.epoch, binding?.authority.dayState.request, binding?.scope]);
@@ -646,52 +720,13 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const bindingRef = useRef(binding);
   bindingRef.current = binding;
   const [command, setCommand] = useState<{ owner: GateCommandOwner; envelope: DashboardCommandRequest; state: RunCommandState; feedback?: string }>();
+  const rowWait = useMemo(() => createRowWait(), []);
+  const heldRevision = useRef(rowRevision);
+  heldRevision.current = rowRevision;
+  useEffect(() => { rowWait.observe(rowRevision); }, [rowWait, rowRevision]);
+  useEffect(() => () => rowWait.stop(), [rowWait, commandOwner]);
   const commandRef = useRef(command);
   commandRef.current = command;
-  const active = useRef(request);
-  active.current = request;
-  const refreshBudget = useMemo(() => ({ client, runId: row.runId, actorId: binding?.scope.actorId,
-    epoch: binding?.authority.epoch, day: binding?.authority.day, revisions: new Set<number>() }),
-  [client, row.runId, binding?.scope.actorId, binding?.authority.epoch, binding?.authority.day]);
-  const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>(() => ({ request, value: keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" } }));
-  const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
-    && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
-  const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
-    : sameRun && settled.value.snapshot ? { state: "loading", snapshot: settled.value.snapshot }
-    : keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" }, [settled, request, sameRun, client, servedRow]);
-  useEffect(() => {
-    if (request.dayState !== undefined && request.dayState !== "loaded") return;
-    if (keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, request.selection.row)?.state === "loaded") return;
-    const controller = new AbortController();
-    reading.current = true;
-    const ended = () => { reading.current = false; settledRow.current = latestRow.current; };
-    const read = () => void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
-      if (active.current === request && !controller.signal.aborted) { ended(); keepRunLogs(client, { epoch: request.epoch, actorId: request.actorId }, snapshot); setSettled({ request, value: { state: "loaded", snapshot } }); }
-    }, cause => {
-      if (active.current !== request || controller.signal.aborted) return;
-      ended();
-      if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && !refreshBudget.revisions.has(request.revision)) {
-        refreshBudget.revisions.add(request.revision);
-        setSettled({ request, value: { state: "loading", snapshot: cause.snapshot } });
-        request.refreshDay();
-        return;
-      }
-      const refused = cause instanceof RunLogIdentityError || (cause instanceof DashboardClientError && cause.code === "LOGS_IDENTITY_REFUSED");
-      const retryable = !refused && !(cause instanceof DashboardClientError && !cause.retryable && cause.kind !== "schema");
-      const error = refused ? identityRefusalReason(cause)
-        : cause instanceof DashboardClientError && cause.code === "RUN_LOG_DISPLAY_VALUE_UNMAPPED"
-        ? formatErrorCatalogFailure(createErrorCatalogFailure("RUN_LOG_DISPLAY_VALUE_UNMAPPED", {})).text
-        : cause instanceof DashboardClientError && cause.kind !== "schema"
-        ? formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_READ_FAILED", {})).text
-        : formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text;
-      setSettled(current => ({ request, value: { state: "failed", error, retryable, diagnostic: cause,
-        ...(cause instanceof RunLogSelectionBehindError ? { snapshot: cause.snapshot }
-          : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
-    });
-    // Start after the mount settles: a mount cancelled in the same tick sends nothing.
-    queueMicrotask(() => { if (!controller.signal.aborted) read(); });
-    return () => { controller.abort(); reading.current = false; };
-  }, [client, request, row.runId, refreshBudget]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
   const detail = value.snapshot?.detail;
   const batchRetry = batchMemberRetryAction(row);
@@ -825,7 +860,12 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         const currentBinding = bindingRef.current;
         if (currentBinding === undefined) return;
         currentBinding.feedback(outcome);
-        if (runCommandRefreshesDay(view, envelope.type)) currentBinding.authority.dayState.refresh();
+        if (!runCommandRefreshesDay(view, envelope.type)) return;
+        const actedOn = view.view === "landed" ? commandRowRevision(envelope, row.runId) : undefined;
+        if (actedOn === undefined) currentBinding.authority.dayState.refresh();
+        else rowWait.wait(actedOn, heldRevision.current, () => {
+          if (mounted.current && currentCommandOwner.current === commandOwner && bindingRef.current?.scope === binding.scope) binding.authority.dayState.refresh();
+        });
       } };
     if (envelope.family === "start" && launch !== undefined) {
       await launch.submit(envelope, binding, correctionCommand?.get(row.runId)?.plan, options.publish);
@@ -833,14 +873,22 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     }
     if (replay) await binding.executor.replay(envelope.commandId, options);
     else await binding.executor.execute(envelope, options);
-  }, [binding, client, commandOwner, launch, correctionCommand, row]);
+  }, [binding, client, commandOwner, launch, correctionCommand, row, rowWait]);
   const dispatch = useCallback((envelope: DashboardCommandRequest) => {
     commandRef.current = { owner: commandOwner, envelope, state: "pending" };
     void send(envelope);
   }, [commandOwner, send]);
+  // A decision needs the admitted day and a panel level with its queue row. While the day is loading, Logs shows a kept,
+  // display-only row, and the stream delivers a panel before the day it came with. A panel ahead of the queue row is
+  // shown, but every answer is checked against the row's revision. In either case no answer is offered, and a
+  // confirmation opened earlier sends nothing.
+  const answerable = value.state === "loaded" && value.snapshot?.detail.rowRevision.valueOf() === row.rowRevision.valueOf()
+    && binding?.authority.dayState.day.state === "loaded";
+  const currentAnswerable = useRef(answerable);
+  currentAnswerable.current = answerable;
   const dispatchIfDecisionCurrent = useRef<(envelope: DashboardCommandRequest) => void>(() => undefined);
   dispatchIfDecisionCurrent.current = (envelope: DashboardCommandRequest) => {
-    if (mounted.current && currentCommandOwner.current === commandOwner && value.state === "loaded" && matchesDecision(envelope)
+    if (mounted.current && currentCommandOwner.current === commandOwner && answerable && matchesDecision(envelope)
       && (!(envelope.family === "run" && envelope.type === "retry") || bindingRef.current?.authority.dayState.day.state === "loaded")
       && !(commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) {
       dispatch(envelope);
@@ -865,7 +913,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   /** The served option this answer names, or undefined when the decision no longer serves it. */
   const servedOption = (decision: Readonly<{ options: readonly DecisionOptionWire[] }> | undefined, option: DecisionOptionWire) => decision?.options.find(candidate => candidate.id === option.id);
   const onDecision = useCallback((id: string, picked: DecisionOptionWire, answer: LogDecisionAnswer) => {
-    if (value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) return;
+    if (!currentAnswerable.current || value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) return;
     const workbooks = value.snapshot.sections.find(section => section.section === "workbook-writes");
     const reference = workbooks?.section === "workbook-writes" ? workbooks.payload.referenceChoices?.find(choice => workbookReferenceChoiceId(choice) === id) : undefined;
     if (reference !== undefined) {
@@ -940,7 +988,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
           if (currentCommandOwner.current !== commandOwner) return;
           const envelope = DashboardCommandRequestSchema.parse({ ...launch.prepareFinal(plan), source: "run-detail" });
           correctionCommand?.set(row.runId, { envelope, sourceVersion: row.rowRevision, source: served.failureId, plan });
-          if (currentDecisionMatches.current(envelope)) showConfirm(envelope, true);
+          if (currentAnswerable.current && currentDecisionMatches.current(envelope)) showConfirm(envelope, true);
         }).catch(() => {
           if (currentCommandOwner.current !== commandOwner) return;
           binding.feedback({ kind: "refused", commandId: crypto.randomUUID(), reason: "not-attempted",
@@ -1005,7 +1053,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         if (currentCommandOwner.current !== commandOwner) return;
         const envelope = DashboardCommandRequestSchema.parse({ ...launch.prepareFinal(plan), source: "run-detail" });
         correctionCommand?.set(row.runId, { envelope, sourceVersion: row.rowRevision, source: gate.gateRef, plan });
-        if (!currentDecisionMatches.current(envelope)) return;
+        if (!currentAnswerable.current || !currentDecisionMatches.current(envelope)) return;
         confirm({ action: { ...descriptor, label: correction.confirm.confirmLabel, confirm: correction.confirm }, target: { runId: row.runId, expectedVersion: row.rowRevision },
           subject: row.title, traceId: String(row.traceId), workflowLabel: selection.workflowLabel, source: "run-detail", commandId: envelope.commandId,
           requestedAt: envelope.requestedAt, triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null },
@@ -1060,12 +1108,12 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     && (command.state !== "refused" || newest === undefined || newest.request.commandId === command.envelope.commandId) ? command : retainedCommand;
   const replayEnvelope = currentCommand?.state === "uncertain" ? currentCommand.envelope : undefined;
   const replay = useCallback(() => { if (replayEnvelope !== undefined) void send(replayEnvelope, true); }, [replayEnvelope, send]);
-  return { ...value, onDecision: value.state === "loaded" && binding !== undefined && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onDecision : undefined,
-    onChildRetry: value.state === "loaded" && binding?.authority.dayState.day.state === "loaded" && detail?.childRetry !== undefined
+  return { ...value, onDecision: answerable && binding !== undefined && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onDecision : undefined,
+    onChildRetry: answerable && binding?.authority.dayState.day.state === "loaded" && detail?.childRetry !== undefined
       && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onChildRetry : undefined,
-    onBatchMemberRetry: value.state === "loaded" && binding?.authority.dayState.day.state === "loaded" && batchRetry !== undefined
+    onBatchMemberRetry: answerable && binding?.authority.dayState.day.state === "loaded" && batchRetry !== undefined
       && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onBatchMemberRetry : undefined,
-    onUcpathDecision: value.state === "loaded" && binding !== undefined && parked?.section === "parked-write"
+    onUcpathDecision: answerable && binding !== undefined && parked?.section === "parked-write"
       && parked.payload.actions.some(action => action.kind === "command" && action.command === "check-parked-write")
       && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onUcpathDecision : undefined,
     command: currentCommand, replay: replayEnvelope === undefined || replayEnvelope.family === "run" && replayEnvelope.type === "retry" && binding?.authority.dayState.day.state !== "loaded" ? undefined : replay };

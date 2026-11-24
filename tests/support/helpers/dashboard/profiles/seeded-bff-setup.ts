@@ -11,15 +11,19 @@ import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_AT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
-import { seed } from "../served-fixtures/seeded-lifecycle.js";
+import { addRunningNote, finishRunningStep, parkRunningRunAtGate, seed, seededDoneNotificationEvent, startQueuedRun, type SeedWorld } from "../served-fixtures/seeded-lifecycle.js";
 
-import { SCRIPTED_WORKFLOW, type ScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
+import { type ScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
+import { scriptedDescriptorOf } from "../served-fixtures/scripted-workflows.js";
 import { FIXTURE_ACTIVE_PROFILE_STATE } from "./fixture-profile-setup.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 import { join } from "node:path";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
+import { composeDashboardTimeline } from "../../../../../src/backend/app/composition/dashboard/timeline.js";
+import type { StartupCleanup } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
+import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -39,16 +43,34 @@ export interface SeededServer {
   readonly baseUrl: string;
   readonly day: string;
   readonly runIds: Readonly<Record<string, string>>;
-  /** Drives Work-Study runs through the real executor; present only when started with `scriptedRuns`. */
+  /** Drives scripted runs through the real executor; present only when started with `scriptedRuns`. */
   readonly scripted: ScriptedExecutor;
+  /** One real event at a time on the running server; each returns after the projection has taken it. */
+  readonly drive: SeededDrive;
   close(): Promise<void>;
+}
+
+export interface SeededDrive {
+  /** The seeded queued run is claimed and moved to running; answers its run id. */
+  startQueuedRun(): string;
+  /** The same start, seen between two production polls: the claim span is folded, the later
+   * transitions are not reconciled, so the run's detail is ahead of its queue row. */
+  startQueuedRunAheadOfItsRow(): string;
+  /** The running run's open task span ends; answers its run id. */
+  finishRunningStep(): string;
+  /** The running Person Lookup run takes the parked-gate lifecycle at its task node `cross-verify`; answers its run id. */
+  parkRunningRunAtGate(): string;
+  /** The running run gets a note and nothing else: no span event, so no queue row moves; answers its run id. */
+  addRunningNote(message: string): string;
+  /** A notification is published through the inbox and reaches every open stream. Product app only. */
+  publishNotification(): Promise<void>;
 }
 
 const retainedSeededFixtureOwners = new Set<object>();
 
 export function createSeededBffSetup({ seedRuntimeConfig, composeFixtureServices, assertServedBundle, dateNavigationReader, seedDateNavigation }: {
 seedRuntimeConfig: (database: AuthorityDatabase, clock: Clock) => void;
-composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub" | "scripted">;
+composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub" | "scripted" | "lifecycle" | "notificationInbox">;
 assertServedBundle: typeof BundleTypes.assertServedBundle;
 dateNavigationReader: typeof DateNavigationServerTypes.dateNavigationReader;
 seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
@@ -104,7 +126,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
   }
 
   async function startSeededServer(
-    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog. */ productApp?: boolean; /** Opt-in, with productApp: Work-Study runs execute on a script the test holds. */ scriptedRuns?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
+    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog. */ productApp?: boolean; /** Opt-in, with productApp: Runs of the scripted workflows execute on a script the test holds. */ scriptedRuns?: boolean; /** Opt-in: ordinary settings save for real and ride the stream. */ liveSettings?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
   ): Promise<SeededServer> {
     // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
@@ -140,7 +162,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     seedRuntimeConfig(database, clock);
     const descriptors = {
       resolve: (workflowId: string) => workflowId === WORKFLOW_ID ? personLookupDescriptor
-        : input.scriptedRuns === true && workflowId === SCRIPTED_WORKFLOW.id ? SCRIPTED_WORKFLOW : undefined,
+        : input.scriptedRuns === true ? scriptedDescriptorOf(workflowId) : undefined,
     };
     const projection = createRunQueueProjection({
       timeline: database.authority.timelineEvents,
@@ -176,7 +198,8 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       pid: 4242,
     });
 
-    const spans: ReturnType<typeof createTimelineEmitter> = Object.freeze({
+    // Scripted runs publish only through the production timeline watcher, composed below.
+    const spans: ReturnType<typeof createTimelineEmitter> = input.scriptedRuns === true ? timelineWriter : Object.freeze({
       emit: (event: unknown): void => {
         timelineWriter.emit(event);
         database.afterAuthorityCommit(() => projection.ingestFromTimeline());
@@ -184,8 +207,9 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     });
     const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
 
-    const runIds = seed({ database, spans, notes, clock, authorityPath: join(stateRoot, "state.db"),
-      workers });
+    const world: SeedWorld = { database, spans, notes, clock, authorityPath: join(stateRoot, "state.db"),
+      workers, leaveQueueEmpty: input.scriptedRuns === true };
+    const runIds = seed(world);
     if (input.dateNavigation === true) {
       const source = runIds.runningRun;
       if (source === undefined) throw new Error("date-proof-source-run-missing");
@@ -193,10 +217,33 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     }
 
     const selectionServices = await input.prepareSelection?.({database,clock,root});
-    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true,
+    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true,liveSettings:input.liveSettings===true,
       scripting: input.scriptedRuns === true ? { profilePath: profile.path, reportWorker: (workerId, activity) => { workers.set(workerId, activity); } } : undefined});
     held.services = services;
-    const { app, hub, scripted } = services;
+    const { app, hub, scripted, notificationInbox } = services;
+    // What the production poll does after a commit: fold the timeline, then reconcile authority no span reports.
+    const settle = <Result>(result: Result): Result => {
+      projection.ingestFromTimeline();
+      projection.reconcileWorkerAuthority();
+      return result;
+    };
+    const drive: SeededDrive = Object.freeze({
+      startQueuedRun: () => settle(startQueuedRun(world)),
+      startQueuedRunAheadOfItsRow: () => startQueuedRun(world),
+      finishRunningStep: () => settle(finishRunningStep(world)),
+      parkRunningRunAtGate: () => settle(parkRunningRunAtGate(world)),
+      addRunningNote: (message: string) => settle(addRunningNote(world, message)),
+      publishNotification: async () => {
+        if (notificationInbox === undefined) throw new Error("the seeded server publishes notifications only as the product app");
+        await notificationInbox.publish(seededDoneNotificationEvent());
+      },
+    });
+    const watcherCleanups: StartupCleanup[] = [];
+    if (input.scriptedRuns === true) {
+      composeDashboardTimeline({ database, clock, projection, startupCleanups: watcherCleanups, admission: profile.admission,
+        lifecycle: services.lifecycle, loggingRepository: database.authority.timelineEvents,
+        debugEvents: createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: "test" }) });
+    }
 
     const server: Server = createServer((req, res) => {
       void (async (): Promise<void> => {
@@ -246,6 +293,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
         if (scripted === undefined) throw new Error("start the seeded server with scriptedRuns to drive runs");
         return scripted;
       },
+      drive,
       close: (): Promise<void> => {
         if (closePromise !== undefined) return closePromise;
         closePromise = (async () => {
@@ -256,6 +304,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
           });
           hub.close();
           await scripted?.close();
+          for (const cleanup of watcherCleanups.reverse()) await cleanup();
         } catch (error) {
           held.primary = error;
           throw retainAuthoritySourceClosure([error], { admission: { held, workers } });

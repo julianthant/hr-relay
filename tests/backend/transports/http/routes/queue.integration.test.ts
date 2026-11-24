@@ -228,11 +228,13 @@ afterEach(cleanupOriginalFixture);
     ]);
     assert.equal(payload.nextCursor.state, "absent");
 
-    // The SSE hub serves the same snapshot the query returned.
+    // The SSE hub serves the day the query returns, stamped with the connection's own cursor.
+    const currentDay = await json(await h.app.request(`/api/v1/dashboard?day=${DAY}`));
     const connection = await h.hub.connect({ day: DAY });
     const snapshot = connection.initial[1];
     if (snapshot.type !== "snapshot" || snapshot.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
-    expect(snapshot.payload).toEqual(day);
+    assert.notEqual(snapshot.cursor, currentDay.snapshotCursor);
+    expect(snapshot.payload).toEqual({ ...currentDay, snapshotCursor: snapshot.cursor });
     connection.close();
   });
 

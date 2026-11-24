@@ -17,16 +17,16 @@ it("links a dashboard report to a known run and leaves absent run identities unl
           code: "DASHBOARD_UNHANDLED_ERROR", message: "Synthetic failure", ...(runId === undefined ? {} : { runId }) }),
       });
       assert.equal(response.status, 201, await response.text());
-      const record = f.db.authority.timelineEvents.page({}).find(row => row.payload.kind === "debug" && row.payload.event.correlationId === reportId);
+      const record = f.db.authority.timelineEvents.debugPage({}).find(row => row.payload.kind === "debug" && row.payload.event.correlationId === reportId);
       assert.ok(record);
       if (runId === f.run.envelope.runId) {
         assert.deepEqual(record.scope, { kind: "run", runId });
         assert.equal(record.workflow, "person-lookup");
-        assert.ok(f.db.authority.timelineEvents.page({ runId }).some(row => row.eventId === record.eventId));
+        assert.ok(f.db.authority.timelineEvents.debugPage({ runId }).some(row => row.eventId === record.eventId));
       } else {
         assert.deepEqual(record.scope, { kind: "client", clientId: "browser" });
         assert.equal(record.workflow, undefined);
-        assert.equal(f.db.authority.timelineEvents.page({ runId: f.run.envelope.runId }).some(row => row.eventId === record.eventId), false);
+        assert.equal(f.db.authority.timelineEvents.debugPage({ runId: f.run.envelope.runId }).some(row => row.eventId === record.eventId), false);
       }
     }
   } finally { await f.dispose(); }
@@ -48,7 +48,7 @@ it("forwards the currently open run through the typed client's report path", asy
       const reportId = randomUUID();
       await client.reportError({ reportId, clientId: "browser", release: "test", route: "/", surface: "app",
         code: "DASHBOARD_UNHANDLED_ERROR", message: "Synthetic failure" });
-      const record = f.db.authority.timelineEvents.page({}).find(row => row.payload.kind === "debug" && row.payload.event.correlationId === reportId);
+      const record = f.db.authority.timelineEvents.debugPage({}).find(row => row.payload.kind === "debug" && row.payload.event.correlationId === reportId);
       assert.ok(record);
       assert.deepEqual(record.scope, runId === undefined ? { kind: "client", clientId: "browser" } : { kind: "run", runId });
     }

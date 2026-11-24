@@ -54,12 +54,14 @@ interface SeedSpec {
   readonly title: string;
   readonly shape?: Shape;
   readonly parentSeed?: number;
+  /** The run is already queued; start it instead of enqueueing another. */
+  readonly enqueued?: boolean;
 }
 
 
 /* ── the seeded world ────────────────────────────────────────────────────── */
 
-interface SeedWorld {
+export interface SeedWorld {
   readonly database: AuthorityDatabase;
   readonly authorityPath: string;
   readonly clock: Clock;
@@ -67,6 +69,8 @@ interface SeedWorld {
   readonly workers: Map<string, WorkerActivity>;
   readonly spans: ReturnType<typeof createTimelineEmitter>;
   readonly notes: ReturnType<typeof createNoteTimelineWriter>;
+  /** Leaves out the rows that stay queued, so a scripted Person Lookup run is the oldest queued one a worker claims. */
+  readonly leaveQueueEmpty?: boolean;
 }
 
 
@@ -149,17 +153,14 @@ function startRunning(world: SeedWorld, spec: SeedSpec, poolIndex: number, nodeI
     world.workers.set(slot.workerId, { state: "idle" });
   }
   const { workerId } = testWorkerLifetime(world.database, WORKFLOW_ID, poolIndex);
-  enqueueRun(world, spec);
-  const claimed = world.database.authority.runs.claimNext({
-    workflow: WORKFLOW_ID,
-    workerId, now: SEEDED_NOW,
-  });
+  if (spec.enqueued !== true) enqueueRun(world, spec);
+  const claimed = world.database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: SEEDED_NOW });
   if (claimed.state !== "claimed") {
     throw new Error(`seed ${String(spec.seed)} was not claimed by ${workerId}: ${claimed.state}`);
   }
   const runId = claimed.run.envelope.runId;
   if (runId !== uuidOf(spec.seed)) {
-    throw new Error(`claimNext took ${runId}, not the just-enqueued ${uuidOf(spec.seed)}`);
+    throw new Error(`claimNext took ${runId}, not ${uuidOf(spec.seed)}`);
   }
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
   const claimFields = { workerId, claimedAt: SEEDED_NOW, heartbeatAt: SEEDED_NOW };
@@ -536,19 +537,21 @@ export function seed(world: SeedWorld): Record<string, string> {
   if (cancelTransition.state !== "applied") throw new Error("cancel transition was refused");
   reportWorker(world, claimOf(cancelled).workerId);
 
-  // The group and its members, then the row that must stay queued — enqueued
-  // last so no claimNext above could have taken them.
-  enqueueRun(world, { seed: 30, title: "Onboarding packet — 3 people", shape: "operation" });
-  const memberSeeds = [31, 32, 33];
-  for (const memberSeed of memberSeeds) {
-    enqueueRun(world, {
-      seed: memberSeed,
-      title: `Member ${String(memberSeed - 30)}`,
-      shape: "operation-member",
-      parentSeed: 30,
-    });
+  if (world.leaveQueueEmpty !== true) {
+    // The group and its members, then the row that must stay queued — enqueued
+    // last so no claimNext above could have taken them.
+    enqueueRun(world, { seed: 30, title: "Onboarding packet — 3 people", shape: "operation" });
+    const memberSeeds = [31, 32, 33];
+    for (const memberSeed of memberSeeds) {
+      enqueueRun(world, {
+        seed: memberSeed,
+        title: `Member ${String(memberSeed - 30)}`,
+        shape: "operation-member",
+        parentSeed: 30,
+      });
+    }
+    enqueueRun(world, { seed: 1, title: "EID 10873698 — queued" });
   }
-  enqueueRun(world, { seed: 1, title: "EID 10873698 — queued" });
 
   return {
     queuedRun: uuidOf(1),
@@ -563,3 +566,64 @@ export function seed(world: SeedWorld): Record<string, string> {
     failureId,
   };
 }
+
+
+/* ── drive: one event at a time on the seeded world, through the seed's own transitions ── */
+
+const QUEUED_SEED = 1;
+const RUNNING_SEED = 2;
+const DONE_SEED = 3;
+const DRIVE_POOL_INDEX = 6;
+
+function seededRun(world: SeedWorld, seedNumber: number): RunRecord {
+  const run = world.database.authority.runs.get(uuidOf(seedNumber));
+  if (run === undefined) throw new Error(`seeded run ${uuidOf(seedNumber)} is absent`);
+  return run;
+}
+
+/** Run starting: the seeded queued run is claimed and moved to running. Among rows queued at one instant claimNext takes the lowest id, which is this run. */
+export function startQueuedRun(world: SeedWorld): string {
+  return startRunning(world, { seed: QUEUED_SEED, title: "EID 10873698 — queued", enqueued: true }, DRIVE_POOL_INDEX, "searching").envelope.runId;
+}
+
+/** Step finishing: the running run's open task span ends. */
+export function finishRunningStep(world: SeedWorld): string {
+  const run = seededRun(world, RUNNING_SEED);
+  const traceId = run.envelope.traceId;
+  world.spans.emit({
+    t: "span.ended", kind: "task", ts: SEEDED_NOW, workflow: WORKFLOW_ID, runId: run.envelope.runId, attempt: 1, traceId,
+    spanPath: `${traceId}/searching#1`, outcome: "done",
+  });
+  return run.envelope.runId;
+}
+
+/** The seed's own park: the running Person Lookup run takes the `parked-gate` lifecycle at its task node `cross-verify`.
+ * Person Lookup declares no gate; the scripted executor parks a Work-Study run at the gate its workflow declares. */
+export function parkRunningRunAtGate(world: SeedWorld): string {
+  const run = seededRun(world, RUNNING_SEED);
+  world.spans.emit({
+    t: "gate.opened", ts: SEEDED_NOW, workflow: WORKFLOW_ID, runId: run.envelope.runId, attempt: 1, traceId: run.envelope.traceId,
+    spanPath: `${run.envelope.traceId}/cross-verify#1`, gate: "cross-verify",
+  });
+  const parked = world.database.authority.runs.transition({
+    runId: run.envelope.runId, expectedVersion: run.version, claim: claimOf(run),
+    lifecycle: { state: "parked-gate", gateId: "cross-verify", resumeAt: "cross-verify", parkedAt: SEEDED_NOW },
+    now: SEEDED_NOW,
+  });
+  if (parked.state !== "applied") throw new Error(`the running run did not park at its gate: ${parked.state}`);
+  reportWorker(world, claimOf(run).workerId);
+  return run.envelope.runId;
+}
+
+/** A note-only commit: the running run gets a note and no span event, so no queue row moves. */
+export function addRunningNote(world: SeedWorld, message: string): string {
+  const run = seededRun(world, RUNNING_SEED);
+  note(world, run, "step", message);
+  return run.envelope.runId;
+}
+
+/** The notification event a publication drive sends: the seeded done run, verified. */
+export function seededDoneNotificationEvent(): { kind: "verified-done"; runId: string; workflowId: string } {
+  return { kind: "verified-done", runId: uuidOf(DONE_SEED), workflowId: WORKFLOW_ID };
+}
+

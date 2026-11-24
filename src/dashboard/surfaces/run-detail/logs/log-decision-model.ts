@@ -2,11 +2,16 @@ import type { CandidateTableWire, DecisionAnswerWire, DecisionOptionWire, RunDec
 import type { FailureDisplaySchema } from "../../../../models/dashboard/failure-display.js";
 import type { LogScreenshot } from "./log-feed-model.js";
 import type { z } from "zod";
+import { createContext } from "react";
 
 type FailureDisplayWire = z.infer<typeof FailureDisplaySchema>;
 
 /** What the operator entered for one served option: a picked row, a typed value, a date or text. */
 export type LogDecisionAnswer = Readonly<{ candidate?: string; typed?: string; date?: string; text?: string }>;
+
+type ServedDraft = Readonly<{ selected: string | undefined; answers: Readonly<Record<string, LogDecisionAnswer>> }>;
+/** A windowed log unmounts steps scrolled away; the feed keeps each served decision's draft so it comes back as the operator left it. */
+export const ServedDraftsContext = createContext<Map<string, ServedDraft> | undefined>(undefined);
 export type LogDecision = Readonly<{
   title: string;
   state: "parked" | "failed" | "review" | "held" | "unconfirmed" | "loading" | "recorded" | "resolved";

@@ -14,8 +14,8 @@ import { createRunQueueProjectionTestWorld } from "../../support/helpers/backend
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { seedPersonLookupPresentation } from "../../support/fixtures/person-lookup-presentation.js";
 import { uuidOf } from "../../support/helpers/backend/dashboard-harness.js";
-import { FIXTURE_BOOTSTRAP } from "../../mocks/helpers/fixture-bootstrap.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_BOOTSTRAP } from "../../support/helpers/dashboard/mock-world/fixture-bootstrap.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -61,7 +61,7 @@ it("shows the selected day's runs by start time and keeps that day when an attem
   const client = { ...transport,
     bootstrap: async () => FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, descriptorHash: current.descriptorHash }),
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
-      input.onDay(w.projection.buildDashboardDayWire(input.day)); input.onState({ state: "live" }); return { close() {} };
+      input.onDay(w.projection.buildDashboardDayWire(input.day)); input.onState({ state: "live" }); return { select() {}, close() {} };
     },
   };
   window.history.replaceState(null, "", `/?day=${selectedDay}`);

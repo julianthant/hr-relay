@@ -9,7 +9,7 @@ import { restoreNewestPersonBackup } from "../../../../src/backend/app/compositi
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { createChatGptCredentialRepository,verifyChatGptCredentialStore,type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
+import { createChatGptCredentialRepository,type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
@@ -35,7 +35,7 @@ it("signed-out credential cleanup preserves current custody", async () => {
       for (const file of entry.files) assert.equal(readFileSync(join(entry.directory, file.name)).equals(file.bytes), true);
     }
     profile.machine.assertExclusive();
-    verifyChatGptCredentialStore({ admission: profile.admission, stateRoot: profile.stateRoot });
+    createChatGptCredentialRepository({ admission: profile.admission, stateRoot: profile.stateRoot }).read();
   } finally { await service.close(); await profile.close(); }
 });
 

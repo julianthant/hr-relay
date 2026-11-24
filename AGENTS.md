@@ -43,9 +43,7 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
 
 ## Testing instructions
 
-- Tests, typecheck and lint run in GitHub Actions. Locally, run only the integration test files
-  your issue names or you add or change, by name, one at a time. `npm run privacy:check` is light
-  and may run.
+- Run tests, typecheck and lint in GitHub Actions only.
 - Pushing a `task/**` branch runs the Development fast plan on that commit. Wait on it with
   `gh run watch <run-id> --exit-status`; the green run at your SHA is the reviewer's evidence.
 - Never commit a failure caused by the change; a demonstrated base failure may proceed with its
@@ -61,10 +59,10 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
     static, privacy and selected unit shards. A `task/**` PR runs only the `development` gate:
     names, the workflow allowlist and the push run's `proof` at the PR head SHA. Edited PRs rerun
     the gate only.
-  - Every 20 minutes Development decides in seconds whether to start the full run on the
-    development head: all suites, 30 integration shards, perf, smoke, native macOS, CodeQL and
-    npm audit. It starts only when that head has no green full run and CI is idle or no full run
-    started in the last six hours.
+  - Every 20 minutes dev-auto asks Development whether to start a full run on the development
+    head. The run covers all suites, 30 integration shards, perf, smoke, native macOS, CodeQL and
+    npm audit. It starts when that head has no green full run and either CI is idle or no full
+    run started in the last six hours.
   - Staging PRs from `development` and staging-to-main releases run the portable Ubuntu suites plus
     static, privacy, perf and smoke, and pass only on the green full run of the head's exact
     content. The main-to-staging sync needs no full run.
@@ -75,8 +73,7 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
     manual releases skip those jobs. Only the operator starts full-release CI; agents never dispatch or
     rerun CI workflows.
 - Keep `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` out of Ubuntu shards, retaining
-  release coverage. Local integration runs skip those files unless `RELAY_TEST_NATIVE=1`. Add new
-  native proofs to `scripts/test/ci-files.ts`. Never run macOS-native proofs on the PC.
+  release coverage. Add new native proofs to `scripts/test/ci-files.ts`.
 - Refresh `scripts/test/ci-durations.json` when job end times spread more than a minute.
 - Docs-only changes need link, whitespace and affected generated-output checks and any tests that
   parse the edited documents; prose alone needs no runtime suite.
@@ -86,6 +83,7 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
 - Give each piece of work one name and use it everywhere. A feature is `<area>-<deliverable>`; the
   area is a screen name, a workflow ID, or a non-screen area such as `storage`, `workers` or `ci`.
   A ticket is `<feature> / <lane>`; a lane is one to three words, unique within its feature.
+- Any open Task with no open blocker is ready. Readiness is independent of dates.
 
 | Thing | Name |
 | --- | --- |
@@ -94,28 +92,35 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
 | Chore | `chore/<area>-<change>`: tooling, tests or docs with no product change; from `origin/development`, one PR into `development` |
 | Hotfix | `hotfix/<area>-<symptom>`: from `main`, one PR into `main` titled `Hotfix: <what it fixes>`; the same commits reach `development` through a `fix/*` PR |
 | Design | `design/<area>`: mock with real components for operator approval, never merged |
-| Worktree | `.worktrees/<feature>.<lane>`; the feature's own checkout is `.worktrees/<feature>` |
+| Worktree | `.worktrees/<feature>.<lane>` |
 | PR title | `<Area>: <what the operator gets>` |
 | Spec | `.work/specs/<feature>.md` |
 | Evidence | `.work/evidence/<feature>/<lane>/`, deleted when the ticket merges |
 
-- Use no other branch prefix. Keep the main checkout on a clean `development` and work only in
-  worktrees. A ticket lives on one machine with its tests; work moves between machines only as
-  pushed branches. Leave no stash behind: commit to the ticket branch.
-- Push your `task/**` branch without asking. Open its PR into `development` only after the
-  reviewer clears its SHA; remove its worktree and branch in the same step.
+- Use no other branch prefix. Keep the main checkout clean and do ticket work in task worktrees.
+  The production release tool checks out the verified release tag in the main checkout. Keep each
+  ticket on one machine and move work between machines only as pushed branches. Commit to the
+  ticket branch before handing it off.
+- Fetch and merge `origin/development` immediately before the final Task push. Push your
+  `task/**` branch and wait for green CI at its exact SHA before review. Open the Task PR after
+  the reviewer clears that SHA. Remove the worktree and branch after the PR merges.
 - Separate backend and UI lanes for one area; merge the backend first.
-- `main` is released production, `staging` operator-preview integration, `development` the
-  feature integration base. Task, fix and chore branches reach `development` through a PR whose
-  body says `Closes #<issue>`, with auto-merge on the required checks. `staging` receives PRs from
-  `development` only, one coherent batch at a time. Never push directly to `main` or `staging`.
-  Merge the latest base into your branch; never rebase or force-push. Never merge a PR by hand.
+- `main` is released production, `staging` is operator preview, and `development` integrates
+  Tasks. Task, fix and chore branches reach `development` through a PR whose body says
+  `Closes #<issue>`, with auto-merge on the required checks. Use PRs for docs and roadmap changes
+  too. Never push directly to `development`, `staging` or `main`. Never rebase, force-push or
+  merge a PR by hand.
 - Workflow behavior PRs wait for a live dry run and operator sign-off. Required check names live
   in [repository governance](docs/repository-governance.md).
 - Refer repairs requiring workflow/CI configuration edits, HR write-path changes, weakened guards
   or expanded scope to the operator.
-- Release only on the operator's explicit go: merge `staging` into `main` with a merge commit,
-  then sync `main` back into `staging`.
+- Open the milestone's `development` to `staging` PR when its Features are merged and the exact
+  `development` head has a green full run. If the head changes, require a green full run for the
+  new SHA. File a blocking Bug for a red full run and link its repair.
+- Release only on the operator's explicit go. Use the [release command](scripts/release/README.md)
+  to merge `staging` into `main`, publish the release tag and open the `main` to `staging` sync PR.
+- Update the isolated staging and development copies on the operator's request with
+  `npm run profile:staging` and `npm run profile:development`.
 
 ## Security considerations
 

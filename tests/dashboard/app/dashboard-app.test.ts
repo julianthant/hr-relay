@@ -9,11 +9,12 @@ import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/applic
 import { CommandRequestSchema, deriveSettingsCommandFingerprint, ProtectedSettingsCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { URL as FileURL } from "node:url";
 // @vitest-environment jsdom
-import { FIXTURE_EDITABLE_SETTINGS as FIXTURE_EDITABLE_SETTINGS_m1 } from "../../mocks/helpers/fixture-settings.js";
-import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_EDITABLE_SETTINGS as FIXTURE_EDITABLE_SETTINGS_m1 } from "../../support/helpers/dashboard/mock-world/fixture-settings.js";
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 // @vitest-environment jsdom
 
 import assert_m1 from "node:assert/strict";
+import { loadLazyPages } from "../../support/helpers/dashboard/lazy-pages.js";
 import { act as act_m1,createElement as createElement_m1,type ReactNode as ReactNode_m1 } from "react";
 import { createRoot as createRoot_m1,type Root as Root_m1 } from "react-dom/client";
 import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1,vi as vi_m1 } from "vitest";
@@ -39,8 +40,8 @@ import { DashboardApp as DashboardApp_m2 } from '../../../src/dashboard/app/dash
 import { createDashboardClient as createDashboardClient_m2 } from '../../../src/dashboard/client/index.js';
 import { DashboardClientProvider as DashboardClientProvider_m2 } from '../../../src/dashboard/state/client-context.js';
 import { DashboardDayWireSchema as DashboardDayWireSchema_m2,type DashboardDayWire as DashboardDayWire_m2 } from '../../../src/models/dashboard/projection.js';
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m2 } from '../../mocks/helpers/fixture-queue.js';
-import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m2 } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m2 } from '../../support/helpers/dashboard/mock-world/fixture-queue.js';
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m2 } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { WORKFLOW_SOURCES } from "../../../src/dashboard/app/workflow-sources.js";
 import { createFixtureBff as createFixtureBff_m2 } from '../../support/helpers/dashboard/fixture-bff.js';
 
@@ -180,7 +181,7 @@ function appClient(): DashboardClient_m1 {
     subscribeDay: (input: Parameters<DashboardClient_m1["subscribeDay"]>[0]) => {
       input.onDay(APP_DAY);
       input.onState({ state: "live" });
-      return { close: () => undefined };
+      return { select() {}, close: () => undefined };
     },
     calendar: (input: Parameters<DashboardClient_m1["calendar"]>[0]) => Promise.resolve(CALENDAR(input)),
 
@@ -207,6 +208,7 @@ async function mountDashboard(search: string): Promise<void> {
     await Promise.resolve();
     await Promise.resolve();
   });
+  await loadLazyPages();
 }
 
 async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
@@ -215,6 +217,7 @@ async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
     await Promise.resolve();
     await Promise.resolve();
   });
+  await loadLazyPages();
 }
 
 async function moveHistory(direction: "back" | "forward"): Promise<void> {
@@ -372,7 +375,7 @@ describe_m1("served sign-up Finish", () => {
     await act_m1(async () => { await assert_m1.rejects(client.bootstrap()); });
     await vi_m1.waitFor(() => {
       assert_m1.equal(resumes, 1); assert_m1.ok(document.querySelector(".dashboard-shell"));
-      assert_m1.equal(document.querySelector(".hub-onboarding"), null);
+      assert_m1.equal(document.querySelector(".hub-onboarding") === null, true);
     });
     assert_m1.equal(refusedReads, 1);
     assert_m1.deepEqual(await client.readProfileSession(), { ...active, epoch: 2 });
@@ -514,7 +517,7 @@ describe_m1("served sign-up Finish", () => {
 
   it_m1("moves to login when the published sign-up cannot start the dashboard", async () => {
     const method = { state: "complete" as const, ceremonyObserved: true, portalAccepted: true, operatorConfirmed: false, exactCredentialRequestObserved: false };
-    const ready = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
+    const ready = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method } };
     let finished = false;
     const client = { ...appClient(), readProfileSession: async () => finished ? { state: "signed-out" as const, signUpRequired: false } : ready,
       completeProfileOnboarding: async () => { finished = true; return PublicProfileStateSchema.parse({ state: "error", code: "INTERNAL_FAILURE" }); } };
@@ -585,8 +588,7 @@ afterEach_m1(_afterEachFixture0);
     const frame = frameOf("Settings");
     assert_m1.equal(document.activeElement === frame, true);
     assert_m1.equal(
-      document.querySelector('section[aria-label="UI catalog"]'),
-      null,
+      document.querySelector('section[aria-label="UI catalog"]') === null, true,
       "the catalog must no longer mount a frame of its own",
     );
     assert_m1.doesNotMatch(frame.textContent ?? "", /UI catalog|No such settings section/u);
@@ -594,8 +596,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal([...frame.querySelectorAll("a")].some(link => link.textContent?.trim() === "UI catalog"), false);
     assert_m1.equal(takeFirstTab(frame).getAttribute("aria-label"), "Close settings");
     assert_m1.equal(
-      document.querySelector('[aria-label="Close the UI catalog"]'),
-      null,
+      document.querySelector('[aria-label="Close the UI catalog"]') === null, true,
       "a section may not carry a second exit from the page that contains it",
     );
   });
@@ -616,8 +617,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(
       [...document.querySelectorAll("button")].find(
         (button) => button.textContent?.trim() === "Import spreadsheet",
-      ),
-      undefined,
+      ) === undefined, true,
       "the toolbar's Import spreadsheet door is retired — the Run Modal carries the handoff",
     );
   });
@@ -640,7 +640,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.ok(notifications instanceof HTMLButtonElement);
     assert_m1.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
     await press(notifications);
-    assert_m1.equal(frameOf("Settings"), frame, "opening notifications preserves the runtime draft owner");
+    assert_m1.equal(frameOf("Settings") === frame, true, "opening notifications preserves the runtime draft owner");
     assert_m1.equal(input.dataset.value, value, "browser appearance and notification controls preserve runtime edits");
     await press(notifications);
     const sectionLink = (label: string): HTMLAnchorElement => {
@@ -779,15 +779,17 @@ function servedSessionMocks(workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITI
   for (const id of Object.keys(WORKFLOW_SOURCES)) assert_m2.equal(composition.sources[id], registered.has(id) ? "served" : "hidden", id);
   return Object.freeze({ ...composition, sessionsHarness: undefined });
 }
-async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof MOCK_WORKFLOW_COMPOSITION_m2; accountless?: boolean } = {}) {
+async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof MOCK_WORKFLOW_COMPOSITION_m2; accountless?: boolean; preferences?: ReturnType<typeof createPersonPreferences> } = {}) {
   const { app } = createFixtureBff_m2();
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
   const requests: { url: string; resume?: string | null }[] = [];
   let open = true;
   const publish = (stream: ReadableStreamDefaultController<Uint8Array>, message: unknown) => stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(message)}\n\n`));
+  let cursor = 0;
   const snapshot = (stream: ReadableStreamDefaultController<Uint8Array>, day: DashboardDayWire_m2) => {
+    cursor = Number(String(day.snapshotCursor).slice('pc:'.length));
     publish(stream, { type: 'hello', wireVersion: 1, descriptorHash: day.descriptorHash, projectionGeneration: day.projectionGeneration, cursor: day.snapshotCursor });
-    publish(stream, { type: 'snapshot', topic: 'dashboard-day', cursor: day.snapshotCursor, payload: day });
+    publish(stream, { type: 'snapshot', topic: 'dashboard-day', rows: [], cursor: day.snapshotCursor, position: 0, payload: day });
   };
   const client = createDashboardClient_m2({ baseUrl: 'http://fault.test', fetchImpl: async (url, init) => {
     const headers = new Headers(init?.headers);
@@ -816,15 +818,24 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
     return app.request(url, init);
   } });
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE_m2.day}${options.search ? `&${options.search}` : ""}`);
-  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const preview = options.preferences ?? createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement('div'); document.body.append(host); root = createRoot_m2(host);
   const workflowComposition = options.workflowComposition ?? MOCK_WORKFLOW_COMPOSITION_m2;
   await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { workflowComposition, previewPreferences: preview }) })));
   await settle(); disposers.push(() => { open = false; });
   return { host, requests, streams,
     deliver: async (day: DashboardDayWire_m2, index = streams.length - 1) => { await act_m2(async () => snapshot(streams[index], day)); await settle(); },
+    /** A malformed envelope stops the subscription for good. */
+    stop: async () => { await act_m2(async () => publish(streams.at(-1)!, "malformed")); await settle(); },
     disconnect: async () => { await act_m2(async () => streams.at(-1)!.error(new Error('Synthetic disconnect'))); await settle(); },
-    stale: async (day: DashboardDayWire_m2) => { await act_m2(async () => publish(streams.at(-1)!, { type: 'snapshot', topic: 'dashboard-day', cursor: day.snapshotCursor, payload: day })); await settle(); },
+    /** The settings row the hub sends after an ordinary commit, as a rows-only change. */
+    settingsRow: (value: unknown) => {
+      const stream = streams.at(-1); assert_m2(stream, 'no stream to carry the settings row');
+      cursor += 1;
+      publish(stream, { type: 'change', topic: 'dashboard-day', after: `pc:${String(cursor - 1)}`, cursor: `pc:${String(cursor)}`, position: 0,
+        rows: [{ model: 'settings', key: 'editable', value: { state: 'available', value } }] });
+    },
+    stale: async (day: DashboardDayWire_m2) => { await act_m2(async () => publish(streams.at(-1)!, { type: 'snapshot', topic: 'dashboard-day', rows: [], cursor: day.snapshotCursor, position: 0, payload: day })); await settle(); },
   };
 }
 it_m2("renders an authenticated child workflow without a public launch source", async () => {
@@ -895,7 +906,12 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
       commands.push(body);
       const command = CommandRequestSchema.parse(body);
-      return Promise.resolve(settlement === "confirmed" ? Response.json(authority.execute(command)) : Response.json(settlement === "conflict"
+      if (settlement === "confirmed") {
+        const reply = authority.execute(command);
+        h.settingsRow(authority.read());
+        return Promise.resolve(Response.json(reply));
+      }
+      return Promise.resolve(Response.json(settlement === "conflict"
         ? { state: "conflict", commandId: command.commandId, currentVersion: 0, message: "Synthetic conflict" }
         : { state: "rejected", commandId: command.commandId, code: "invalid-value", message: "Synthetic refusal" }));
     } });
@@ -928,6 +944,25 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     }
     assert_m2.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent === "Retry exact attempt"), false);
     await settle(); assert_m2.equal(commands.length, 1, "a settled save is never retried");
+  });
+
+  it_m2("ends a display preference save at once when the stream stops while it waits for its row", async () => {
+    const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
+    const preferences = createPersonPreferences("person");
+    let commands = 0;
+    const h = await mount({ preferences, settingsRead: authority.read, command: body => {
+      commands += 1;
+      return Promise.resolve(Response.json(authority.execute(CommandRequestSchema.parse(body))));
+    } });
+    assert_m2.equal(preferences.snapshot().state, "ready");
+    let saving: ReturnType<typeof preferences.change> | undefined;
+    await act_m2(async () => { saving = preferences.change({ "preferences.animations": { set: !preferences.snapshot().value.animations } }); });
+    await settle();
+    assert_m2.equal(commands, 1); assert_m2.equal(preferences.snapshot().state, "saving");
+    await h.stop();
+    assert_m2.equal(preferences.snapshot().state, "ready", "the stop ends the wait, not its bound");
+    assert_m2.equal(await saving, false);
+    assert_m2.ok(liveToasts().some(node => /Settings weren't saved/u.test(node.textContent ?? "")));
   });
 
   for (const landed of [true, false]) it_m2(`reads a lost credentials save back without resending it (${landed ? "landed" : "not landed"}) and the next save reaches Relay`, async () => {

@@ -1,6 +1,7 @@
 /** The operator's rules for every dashboard state. Each rule is one named function that returns what it found
  * wrong, with its own failure message; the check loop runs all of them on every story. */
 import { expect, type Page } from "@playwright/test";
+import { usesIndependentDialogReferences } from "./gallery-shards.js";
 import { BANNED_PATTERNS, BANNED_PHRASES, BANNED_TERMS, WORD_LIMITS, type StateRuleName } from "./state-rule-limits.js";
 import { DIALOG_REFERENCE_SURFACE, DIALOG_REFERENCE_VARIANTS } from "./story-catalogue.js";
 import type { Story } from "./story-catalogue.js";
@@ -173,6 +174,9 @@ function measureDialogs(): DialogShape[] {
         const name = title !== null && part.contains(title) ? "header" : part.matches("footer, [data-slot$=\"footer\"]") ? "footer" : "body";
         shape[`${name} padding`] ??= getComputedStyle(part).padding;
       }
+      // A form or layout wrapper around the parts is not the body: read the design system's own body.
+      const body = dialog.querySelector('[data-slot="dialog-body"]');
+      if (body !== null) shape["body padding"] = getComputedStyle(body).padding;
       const size = dialog.getAttribute("data-size");
       const variant = size === null ? null : `${size}${dialog.hasAttribute("data-band") ? "-band" : ""}`;
       return { kind: [dialog.getAttribute("role"), variant ?? dialog.getAttribute("data-slot") ?? ""].join(":"), variant, shape };
@@ -180,7 +184,7 @@ function measureDialogs(): DialogShape[] {
 }
 
 /** The design system's own dialog of this size, drawn alone in a second page at the same viewport. */
-async function designSystemDialogShape(page: Page, variant: string): Promise<DialogShape["shape"]> {
+async function designSystemDialogShape(page: Pick<Page, "context" | "url">, variant: string): Promise<DialogShape["shape"]> {
   const reference = await page.context().newPage();
   try {
     await reference.goto(new URL("/", page.url()).href);
@@ -198,10 +202,17 @@ async function designSystemDialogShape(page: Page, variant: string): Promise<Dia
   }
 }
 
-export async function dialogsShareShape({ page, storyId, story, dialogShapes }: StateRuleContext): Promise<readonly string[]> {
+type DialogRuleContext = Pick<StateRuleContext, "storyId" | "story" | "dialogShapes"> & {
+  readonly page: Pick<Page, "viewportSize" | "evaluate" | "context" | "url">;
+};
+
+export async function dialogsShareShape({ page, storyId, story, dialogShapes }: DialogRuleContext): Promise<readonly string[]> {
   const viewport = page.viewportSize();
   const found: string[] = [];
   for (const { kind, variant, shape } of await page.evaluate(measureDialogs)) {
+    if ((variant === null || !DIALOG_REFERENCE_VARIANTS.includes(variant)) && usesIndependentDialogReferences(storyId)) {
+      throw new Error(`${storyId} draws ${kind} with a cross-story reference. Move its story group to the shared-reference gallery shard.`);
+    }
     const key = `${kind} at ${String(viewport?.width)}x${String(viewport?.height)}`;
     let reference = dialogShapes.get(key);
     // A dialog built on the design system is held to the design system's own dialog of that size.
@@ -317,7 +328,10 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
   // A control drawn as a 1px box (a hidden radio or checkbox) shows its focus on the label that stands in for it.
   const stoodInFor = (element: Element): readonly Element[] => {
     const box = element.getBoundingClientRect();
-    if (!(element instanceof HTMLInputElement) || box.width > 1 && box.height > 1) return [element];
+    // A switch's input is laid over its whole row at opacity 0 so the row takes the click; the ring a keyboard user sees
+    // is drawn on the visible control beside it (WCAG 2.4.7 asks that a ring be visible, not that it sit on the input).
+    const overlay = element instanceof HTMLInputElement && getComputedStyle(element).opacity === "0";
+    if (!(element instanceof HTMLInputElement) || box.width > 1 && box.height > 1 && !overlay) return [element];
     return [...element.labels ?? []].flatMap(label => [label, ...label.querySelectorAll("*")]).filter(part => part !== element);
   };
   const look = (element: Element): string => JSON.stringify(stoodInFor(element).map(part => {
@@ -347,8 +361,11 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
       const shown = stoodInFor(element).filter(part => { const partBox = part.getBoundingClientRect(); return partBox.width > 1 && partBox.height > 1; });
       if (shown.length === 0) continue;
       if (element.matches(':disabled, [aria-disabled="true"]') || element.closest('[inert], [aria-hidden="true"]') !== null) continue;
-      // A bare tabindex="-1" region is a focus target for scripts, not a control.
-      if (element.getAttribute("tabindex") === "-1" && !element.matches('a[href], button, input, select, textarea, [role]')) continue;
+      // A tab list hands its Tab stop to the active tab, so the tabs are the stops; the list counts as reached only while that tab can take focus.
+      if (element.getAttribute("role") === "tablist" && element.querySelector('[role="tab"][aria-selected="true"]:not(:disabled, [aria-disabled="true"])') !== null) continue;
+      // A bare tabindex="-1" region is a focus target for scripts, not a control. So is a dialog's own surface: WCAG 2.4.3
+      // (Focus Order) has focus move into the dialog, which needs it programmatically focusable, and 2.1.1 asks for no Tab stop on it.
+      if (element.getAttribute("tabindex") === "-1" && !element.matches('a[href], button, input, select, textarea, [role]:not([role="dialog"], [role="alertdialog"])')) continue;
       const index = String(controls.length);
       element.setAttribute("data-state-rule-control", index);
       element.setAttribute("data-state-rule-look", look(element));
@@ -398,8 +415,14 @@ export async function namedAndFocusable({ page }: StateRuleContext): Promise<rea
       if (widgets.get(stop.index) !== true) continue;
       for (const key of ["ArrowRight", "ArrowDown"]) {
         for (let moves = 0; moves < members; moves += 1) {
+          const before = (await page.evaluate(focusProbe, { step: "stop" })).stop.index;
           await page.keyboard.press(key);
-          const moved = (await page.evaluate(focusProbe, { step: "stop" })).stop;
+          // A widget may move focus a tick after the key (Radix does); give it a moment before reading where focus went.
+          let moved = (await page.evaluate(focusProbe, { step: "stop" })).stop;
+          for (let waited = 0; waited < 10 && moved.index === before; waited += 1) {
+            await page.waitForTimeout(20);
+            moved = (await page.evaluate(focusProbe, { step: "stop" })).stop;
+          }
           if (moved.index === null || rings.has(moved.index)) break;
           rings.set(moved.index, moved.ring);
         }

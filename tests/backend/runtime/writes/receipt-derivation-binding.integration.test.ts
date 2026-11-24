@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { afterEach,describe,it } from "vitest";
 import {
-buildRunEvidenceReceipt,
+deriveRunEvidenceReceipt,
 type ReceiptBuildInput
 } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
-import { diffReceipts } from "../../../../src/backend/runtime/writes/receipt-derivation-binding.js";
+import { evaluateReceiptRederivation } from "../../../../src/backend/runtime/writes/receipt-derivation-binding.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import { kualiReceiptEvidence } from "../../../support/fixtures/receipt-run-fixtures.js";
@@ -32,19 +32,21 @@ function runUnderMovedClosure(patch: Readonly<{
 }
 
 function receiptFrom(overrides: Partial<ReceiptBuildInput> = {}): RunEvidenceReceipt {
-  return buildRunEvidenceReceipt({ descriptor, ...kualiReceiptEvidence(), ...overrides });
+  return deriveRunEvidenceReceipt({ descriptor, ...kualiReceiptEvidence(), ...overrides }).receipt;
 }
 
 /* ── (a) the stranded receipt: a moved closure re-derives byte-identically ── */
 
 describe("receipt derivation binding — a moved closure does not strand a receipt", () => {
 
-  it("changes NOTHING else when only the closure moved", () => {
-    assert.deepEqual(
-      diffReceipts(receiptFrom(), receiptFrom({ run: runUnderMovedClosure() })).map(({ path }) => path),
-      ["descriptorFingerprint"],
-      "a closure move touched a fact about the run",
-    );
+  it("attributes the only changed path to the run identity", () => {
+    const run = RunRecordSchema.parse(runUnderMovedClosure());
+    const binding = evaluateReceiptRederivation({
+      run, descriptor, stored: receiptFrom(), derived: receiptFrom({ run }), checks: [],
+    });
+    assert.equal(binding.state, "incompatible");
+    assert.equal(binding.moved, "declared-evidence");
+    assert.match(binding.checks[0]?.detail ?? "", /1 path\(s\) moved, owned by run-identity \(1 path\(s\), e\.g\. descriptorFingerprint:/u);
   });
 });
 

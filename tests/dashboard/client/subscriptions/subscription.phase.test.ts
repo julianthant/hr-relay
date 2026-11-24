@@ -6,7 +6,7 @@ import { DashboardClientError } from "../../../../src/dashboard/client/errors.js
 import * as dayState from "../../../../src/dashboard/client/queries/day-state.js";
 import { subscribeDashboardDay, type SubscriptionState } from "../../../../src/dashboard/client/subscriptions/subscription.js";
 import type { DashboardTransport, SseMessage, StreamHandle } from "../../../../src/dashboard/client/transport.js";
-import type { NotificationPublicationWire } from "../../../../src/models/dashboard/subscription.js";
+import type { NotificationArrival } from "../../../../src/models/dashboard/subscription.js";
 import { type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
 
 const DAY = "2026-08-03";
@@ -29,15 +29,23 @@ function hello(cursor: string, projectionGeneration = 7): Record<string, unknown
 }
 
 function snapshotEnvelope(cursor: string, surfaces: readonly Record<string, unknown>[], projectionGeneration = 7): Record<string, unknown> {
-  return { type: "snapshot", topic: "dashboard-day", cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
+  return { type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
+}
+
+/** The cursor a change follows when nothing was skipped: the one before its own. */
+function cursorBefore(cursor: string): string {
+  return `pc:${String(Math.max(1, Number(cursor.slice(3)) - 1))}`;
 }
 
 function replacePatch(cursor: string, rowRevision: number): Record<string, unknown> {
   return {
-    type: "patch",
+    type: "change",
+    rows: [],
     topic: "dashboard-day",
     cursor,
-    payload: {
+    after: cursorBefore(cursor),
+    position: 0,
+    day: {
       operation: "replace-queue-surface",
       target: { runId: RUN_ID, rowRevision },
       replacement: surfaceOf(rowRevision),
@@ -47,10 +55,13 @@ function replacePatch(cursor: string, rowRevision: number): Record<string, unkno
 
 function removePatch(cursor: string, runId: string): Record<string, unknown> {
   return {
-    type: "patch",
+    type: "change",
+    rows: [],
     topic: "dashboard-day",
     cursor,
-    payload: {
+    after: cursorBefore(cursor),
+    position: 0,
+    day: {
       operation: "remove-queue-surface",
       target: { runId, rowRevision: 1 },
       reason: "the run was deleted from the queue",
@@ -58,9 +69,30 @@ function removePatch(cursor: string, runId: string): Record<string, unknown> {
   };
 }
 
+const PUBLISHED_ROW = {
+  kind: "notification",
+  notificationId: "00000000-0000-4000-8000-000000000111",
+  actorId: "local-operator",
+  channel: "ping",
+  count: 1,
+  publicationId: "b".repeat(64),
+  trigger: "storage",
+  readState: "unread",
+  state: "unread",
+  severity: "warning",
+  title: "Storage health degraded",
+  occurredAt: "2026-08-03T17:00:00Z",
+  revision: 1,
+  context: { state: "not-applicable" },
+  sourceEvent: { state: "available", kind: "storage-degraded" },
+};
+
 function publicationEnvelope(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     type: "notification-publication",
+    cursor: "pc:5",
+    listed: PUBLISHED_ROW,
+    target: { kind: "storage" },
     day: DAY,
     descriptorHash: HASH_D,
     projectionGeneration: 7,
@@ -68,23 +100,7 @@ function publicationEnvelope(overrides: Record<string, unknown> = {}): Record<st
       sourceId: "a".repeat(64),
       actorId: "local-operator",
       durable: "created",
-      notification: {
-        kind: "notification",
-        notificationId: "00000000-0000-4000-8000-000000000111",
-        actorId: "local-operator",
-        channel: "ping",
-        count: 1,
-        publicationId: "b".repeat(64),
-        trigger: "storage",
-        readState: "unread",
-        state: "unread",
-        severity: "warning",
-        title: "Storage health degraded",
-        occurredAt: "2026-08-03T17:00:00Z",
-        revision: 1,
-        context: { state: "not-applicable" },
-        sourceEvent: { state: "available", kind: "storage-degraded" },
-      },
+      notification: PUBLISHED_ROW,
     },
     ...overrides,
   };
@@ -103,7 +119,7 @@ interface Harness {
   readonly streams: FakeStream[];
   readonly days: DashboardDayWire[];
   readonly states: SubscriptionState[];
-  readonly publications: NotificationPublicationWire[];
+  readonly publications: NotificationArrival[];
   readonly scheduled: number[];
   runScheduled(): void;
   close(): void;
@@ -113,7 +129,7 @@ function subscribe(withPublications = false): Harness {
   const streams: FakeStream[] = [];
   const days: DashboardDayWire[] = [];
   const states: SubscriptionState[] = [];
-  const publications: NotificationPublicationWire[] = [];
+  const publications: NotificationArrival[] = [];
   const scheduled: number[] = [];
   let pending: (() => void) | undefined;
 
@@ -243,7 +259,9 @@ describe("dashboard day subscription phase", () => {
   it("stops a greeted snapshot or patch whose cursor the schema rejects, without publishing or reconnecting", () => {
     const snapshot = {
       type: "snapshot",
+      rows: [],
       topic: "dashboard-day",
+      position: 0,
       cursor: "pc:0",
       payload: dayOf([surfaceOf(3)], "pc:1"),
     };
@@ -399,6 +417,7 @@ describe("dashboard day subscription phase", () => {
     }
     harness.streams[0].push(publicationEnvelope({
       publication: { ...publication, actorId: "other-operator", notification: { ...notification, actorId: "other-operator" } },
+      listed: { ...notification, actorId: "other-operator" },
     }));
     assertStopped(harness, /notification-publication-actor-mismatch/);
     assert.equal(harness.publications.length, 0);
@@ -413,7 +432,36 @@ describe("dashboard day subscription phase", () => {
     harness.streams[0].push(publicationEnvelope());
     harness.streams[0].push(publicationEnvelope());
     assert.equal(harness.publications.length, 1);
-    assert.equal(harness.publications[0].sourceId, "a".repeat(64));
+    assert.equal(harness.publications[0].publication.sourceId, "a".repeat(64));
+    assert.deepEqual(harness.publications[0].target, { kind: "storage" });
+    assert.equal(harness.publications[0].listed.notificationId, PUBLISHED_ROW.notificationId);
+    assert.deepEqual(harness.states.at(-1), { state: "live" });
+    harness.close();
+  });
+
+  it("admits publications replayed after health: live on a resume without moving the held cursor (section 5 example)", async () => {
+    const harness = subscribe(true);
+    harness.streams[0].push(hello("pc:19"));
+    harness.streams[0].push(snapshotEnvelope("pc:19", []));
+    harness.streams[0].push({ type: "health", state: "live" });
+    harness.streams[0].push({ type: "change", topic: "dashboard-day", cursor: "pc:20", after: "pc:19", position: 0, rows: [] });
+    harness.streams[0].push(publicationEnvelope({ cursor: "pc:21" }));
+    assert.equal(harness.publications.length, 1);
+    harness.streams[0].eof();
+    await tick();
+    harness.runScheduled();
+    assert.equal(harness.streams[1].lastEventId, "pc:20", "a publication does not move the cursor the stream resumes from");
+    harness.streams[1].push(hello("pc:22"));
+    harness.streams[1].push({ type: "health", state: "live" });
+    harness.streams[1].push(publicationEnvelope({ cursor: "pc:21" }));
+    assert.equal(harness.publications.length, 1, "s1 was already admitted");
+    const s2 = publicationEnvelope({ cursor: "pc:22" });
+    const s2Publication = s2.publication;
+    if (typeof s2Publication !== "object" || s2Publication === null) throw new Error("publication fixture is missing");
+    harness.streams[1].push({ ...s2, publication: { ...s2Publication, sourceId: "c".repeat(64) } });
+    assert.equal(harness.publications.length, 2);
+    harness.streams[1].push({ type: "change", topic: "dashboard-day", cursor: "pc:23", after: "pc:20", position: 0, rows: [] });
+    assert.equal(harness.streams.length, 2, "the handoff after the replay is no gap");
     assert.deepEqual(harness.states.at(-1), { state: "live" });
     harness.close();
   });
@@ -423,7 +471,9 @@ describe("dashboard day subscription phase", () => {
     harness.streams[0].push(hello("pc:1"));
     harness.streams[0].push({
       type: "snapshot",
+      rows: [],
       topic: "dashboard-day",
+      position: 0,
       cursor: "pc:1",
       payload: { ...dayOf([surfaceOf(1)], "pc:1"), day: "2026-08-02" },
     });
@@ -440,7 +490,7 @@ describe("dashboard day subscription phase", () => {
         ...dayOf([], "pc:1"),
         [field]: field === "descriptorHash" ? "e".repeat(64) : 8,
       };
-      harness.streams[0].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload });
+      harness.streams[0].push({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: "pc:1", payload });
       assertStopped(harness, /day-stream-authority-mismatch/);
       assert.equal(harness.days.length, 0);
       harness.close();
@@ -452,7 +502,9 @@ describe("dashboard day subscription phase", () => {
     harness.streams[0].push(hello("pc:1"));
     harness.streams[0].push({
       type: "snapshot",
+      rows: [],
       topic: "dashboard-day",
+      position: 0,
       cursor: "pc:1",
       payload: dayOf([], "pc:2"),
     });

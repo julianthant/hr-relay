@@ -8,11 +8,11 @@ import { useServedView } from "../../state/served-clock.js";
 import "./notifications-panel.css";
 
 type Open = (item: NotificationItem) => void;
-type RowActions = Readonly<{ onControl: (id: string, control: NotificationControl) => void; onDismiss: (id: string) => void }>;
+type RowActions = Readonly<{ onControl: (id: string, control: NotificationControl) => void; onDismiss: (id: string) => void; canAct: (id: string) => boolean }>;
 
 /** Hover and focus replace the time with icon actions: read/unread, plus Dismiss outside Priority. */
-function RowActionButton({ label, icon, onClick }: { label: string; icon: ReactNode; onClick: () => void }) {
-  return <Tooltip side="bottom" content={label}><IconButton label={label} title="" size="xs" icon={icon} onClick={onClick} /></Tooltip>;
+function RowActionButton({ label, icon, onClick, disabled }: { label: string; icon: ReactNode; onClick: () => void; disabled: boolean }) {
+  return <Tooltip side="bottom" content={label}><IconButton label={label} title="" size="xs" icon={icon} onClick={onClick} disabled={disabled} /></Tooltip>;
 }
 
 /** The age ticks here, so a minute passing re-renders only this text. */
@@ -25,7 +25,7 @@ function NotificationAge({ item }: { item: NotificationItem }) {
 /** Codex rows: the unread dot left of the title, the time right of it, the workflow and run, then a two-line grey line below. */
 function NotificationRow({ item, active, onOpen, actions }: { item: NotificationItem; active: boolean; onOpen: Open; actions: RowActions }) {
   return <li className="notification-row">
-    <button type="button" aria-current={active || undefined} className={cn("notification-item", dsFocus)} onClick={() => onOpen(item)}>
+    <button type="button" aria-current={active || undefined} className={cn("notification-item", dsFocus)} onClick={() => onOpen(item)} disabled={!actions.canAct(item.id)}>
       <span className="notification-item-head">
         {!item.read && <span aria-hidden className="notification-unread-dot" />}
         <span className="notification-item-title">{item.title}</span>
@@ -37,8 +37,8 @@ function NotificationRow({ item, active, onOpen, actions }: { item: Notification
       {item.detail !== "" && <span className="notification-item-line">{item.detail}</span>}
     </button>
     <span className="notification-item-actions">
-      <RowActionButton label={item.read ? "Mark as unread" : "Mark as read"} icon={item.read ? <Mail aria-hidden className={dsIcon.md} /> : <MailOpen aria-hidden className={dsIcon.md} />} onClick={() => actions.onControl(item.id, item.read ? "unread" : "read")} />
-      {!item.priority && <RowActionButton label="Dismiss" icon={<X aria-hidden className={dsIcon.md} />} onClick={() => actions.onDismiss(item.id)} />}
+      <RowActionButton label={item.read ? "Mark as unread" : "Mark as read"} icon={item.read ? <Mail aria-hidden className={dsIcon.md} /> : <MailOpen aria-hidden className={dsIcon.md} />} onClick={() => actions.onControl(item.id, item.read ? "unread" : "read")} disabled={!actions.canAct(item.id)} />
+      {!item.priority && <RowActionButton label="Dismiss" icon={<X aria-hidden className={dsIcon.md} />} onClick={() => actions.onDismiss(item.id)} disabled={!actions.canAct(item.id)} />}
     </span>
   </li>;
 }
@@ -56,13 +56,15 @@ function dayGroups(items: readonly NotificationItem[]) {
   return days.map(day => ({ day, items: items.filter(item => itemDay(item) === day) }));
 }
 
-/** The sidebar body while the bell is pressed: Priority (when shown), then day groups. The sidebar header stays the workflow view's. */
-export function NotificationsPanel({ state, activeId, showPriority, onShowPriority, dismissed, onDismiss, onControl, onReadAll, onOpen, onBack, notice }: {
+/** The sidebar body while the bell is pressed: Priority (when shown), then day groups. The sidebar header stays the workflow view's.
+ * An item `canAct` refuses shows its controls disabled; Dismiss hides an item only once its mark-read is accepted. */
+export function NotificationsPanel({ state, activeId, showPriority, onShowPriority, dismissed, onDismiss, onControl, canAct, onReadAll, onOpen, onBack, notice }: {
   state: NotificationsState; activeId: string; showPriority: boolean; onShowPriority: (show: boolean) => void; dismissed: readonly string[]; onDismiss: (id: string) => void;
-  onControl: (id: string, control: NotificationControl) => void; onReadAll: () => void; onOpen: Open; onBack: () => void; notice: string;
+  onControl: (id: string, control: NotificationControl) => void | Promise<boolean>; canAct: (id: string) => boolean; onReadAll: () => void; onOpen: Open; onBack: () => void; notice: string;
 }) {
   const items = (state.state === "ready" ? state.items : []).filter(item => !dismissed.includes(item.id));
-  const actions: RowActions = { onControl, onDismiss: id => { onControl(id, "read"); onDismiss(id); } };
+  const actions: RowActions = { onControl: (id, control) => { void onControl(id, control); }, canAct,
+    onDismiss: id => { void Promise.resolve(onControl(id, "read")).then(accepted => { if (accepted !== false) onDismiss(id); }); } };
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || document.querySelector('[role="dialog"], [role="menu"]')) return;
@@ -76,7 +78,7 @@ export function NotificationsPanel({ state, activeId, showPriority, onShowPriori
       <DropdownMenuGroup><DropdownMenuLabel>Show</DropdownMenuLabel>
       <DropdownMenuItem role="menuitemcheckbox" aria-checked={showPriority} className="pr-[34px]" onClick={() => onShowPriority(!showPriority)}>Priority section<span className="ds-menu-indicator">{showPriority && <Check aria-hidden className="ds-menu-check" />}</span></DropdownMenuItem></DropdownMenuGroup>
       <DropdownMenuSeparator />
-      <DropdownMenuItem disabled={!items.some(item => !item.read)} onClick={onReadAll}>Mark all as read</DropdownMenuItem>
+      <DropdownMenuItem disabled={!items.some(item => !item.read && canAct(item.id))} onClick={onReadAll}>Mark all as read</DropdownMenuItem>
     </DropdownMenuContent></DropdownMenu>;
   const groups = [
     ...(showPriority ? [{ label: "Priority", items: items.filter(item => item.priority), empty: "Nothing needs attention" }] : []),

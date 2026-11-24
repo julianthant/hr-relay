@@ -1,19 +1,14 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
-import { applicationDataWorkspace, rebuildRuntimeIsolation } from "../../src/backend/app/config/runtime-isolation.js";
-import { acquireEntrypointAdmission } from "../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAlreadyRunningError, acquireRuntimeLifetimeLock, type RuntimeLifetimeLock } from "../../src/backend/storage/admission/lifetime-lock.js";
-import { createCredentialStore } from "../../src/backend/storage/configuration/credential-store.js";
-import { importIsolatedWorkbookLibrary } from "../../src/backend/storage/maintenance/isolated-library-import.js";
-import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
-import { parseBackupManifestFile } from "../../src/backend/storage/sqlite/backup-service.js";
 import { hasUnprovedSourceClosure } from "../../src/backend/storage/source-closure.js";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
+import { RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
 import { systemClock } from "../../src/rules/time/clock.js";
 
 const CopyProfileSchema = z.enum(["staging", "development"]);
@@ -32,6 +27,7 @@ interface ImportOptions {
 export async function importProfileLibrary(options: ImportOptions, lock: RuntimeLifetimeLock) {
   const { targetWorkspace, sourceWorkspace } = options;
   const sourceProfile = z.uuid().parse(options.sourceProfile);
+  const { applicationDataWorkspace, rebuildRuntimeIsolation } = await import("../../src/backend/app/config/runtime-isolation.js");
   const production = applicationDataWorkspace(undefined, "production");
   const offset = relative(production, targetWorkspace);
   if (lock.port === runtimeProfiles.production.lockPort || targetWorkspace === sourceWorkspace
@@ -42,9 +38,10 @@ export async function importProfileLibrary(options: ImportOptions, lock: Runtime
   if (!existsSync(join(targetWorkspace, ".tracker", "control", "installation.json"))) {
     throw new ProfileCopyRefusedError("destination-signup-required", "Start the copy, finish its own Duo signup, stop it, then rerun.");
   }
+  const { importIsolatedProfileData, parseIsolatedImportBackupManifest } = await import("../../src/backend/storage/maintenance/isolated-library-import.js");
   const directory = join(sourceWorkspace, rebuildRuntimeIsolation.stateRoot, "profiles", sourceProfile, "backups", "authority");
   const backups = (existsSync(directory) ? readdirSync(directory) : []).filter(name => name.endsWith(".sqlite.manifest.json"))
-    .map(name => ({ name, manifest: parseBackupManifestFile(join(directory, name)) }))
+    .map(name => ({ name, manifest: parseIsolatedImportBackupManifest(join(directory, name)) }))
     .sort((a, b) => Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt)
       || b.manifest.authorityGeneration - a.manifest.authorityGeneration || b.name.localeCompare(a.name));
   const newest = backups[0];
@@ -54,6 +51,11 @@ export async function importProfileLibrary(options: ImportOptions, lock: Runtime
     throw new ProfileCopyRefusedError("source-backup-mismatch", "The newest backup does not match the chosen production profile.");
   }
 
+  const [{ acquireEntrypointAdmission }, { createCredentialStore }, { AuthorityDatabase }] = await Promise.all([
+    import("../../src/backend/storage/admission/bootstrap-admission.js"),
+    import("../../src/backend/storage/configuration/credential-store.js"),
+    import("../../src/backend/storage/sqlite/authority-database.js"),
+  ]);
   const machine = acquireEntrypointAdmission(targetWorkspace, "exclusive", lock);
   try {
     const { activeProfileId } = machine.readProfileRegistry();
@@ -65,7 +67,7 @@ export async function importProfileLibrary(options: ImportOptions, lock: Runtime
         path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "isolated-library-import",
       }, systemClock, undefined, undefined, undefined, credentials);
       try {
-        return await importIsolatedWorkbookLibrary(admission, database, {
+        return await importIsolatedProfileData(admission, database, {
           source: { manifestPath: join(directory, newest.name), binding }, destination: admission.profileBinding,
         });
       } finally { database.close(); }
@@ -136,7 +138,10 @@ export async function runProfileCopy(options: ProfileCopyOptions): Promise<strin
       throw new ProfileCopyRefusedError("profile-launcher-missing", `${ref} must contain the ${profile} dashboard launcher before it can be used as an isolated copy.`);
     }
     syncWorktree(options.copyPath, sha, git, options.gitFor ?? gitIn);
-    const install = options.install ?? (directory => { execFileSync("npm", ["ci"], { cwd: directory, stdio: "inherit" }); });
+    const install = options.install ?? (directory => {
+      if (process.platform === "win32") execSync("npm ci", { cwd: directory, stdio: "inherit" });
+      else execFileSync("npm", ["ci"], { cwd: directory, stdio: "inherit" });
+    });
     install(options.copyPath);
     const imported = sourceProfile === undefined ? undefined : await importProfileLibrary({ ...options, sourceProfile }, lock);
     return [
@@ -146,6 +151,7 @@ export async function runProfileCopy(options: ProfileCopyOptions): Promise<strin
       `data: ${options.targetWorkspace}`,
       imported === undefined ? "workbooks: finish isolated Duo signup, stop the copy, then rerun with --source-person <production profile UUID>"
         : `workbooks: ${String(imported.created)} created, ${String(imported.refreshed)} refreshed, ${String(imported.unchanged)} unchanged, ${String(imported.keptLocal)} kept local (backup generation ${String(imported.sourceBackup.authorityGeneration)})`,
+      ...(imported === undefined ? [] : [`history: ${String(imported.history.runs)} runs, ${String(imported.history.timeline_events)} timeline events, ${String(imported.history.notifications)} notifications`]),
       `start: npm run dashboard:${profile}   (in ${options.copyPath})`,
     ].join("\n");
   } catch (error) {
@@ -159,6 +165,9 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
   const { positionals, values } = parseArgs({ allowPositionals: true, options: { "source-person": { type: "string" } } });
   const [profile] = z.tuple([CopyProfileSchema]).parse(positionals);
   const sourceProfile = z.uuid().optional().parse(values["source-person"]);
+  // Runtime isolation and key custody bind the profile at module initialization.
+  process.env[RUNTIME_PROFILE_ENV] = profile;
+  const { applicationDataWorkspace } = await import("../../src/backend/app/config/runtime-isolation.js");
   const copyPath = join(homedir(), "Projects", profile === "staging" ? "hr-relay-staging" : "hr-relay-dev");
   process.stdout.write(`${await runProfileCopy({
     profile, copyPath, sourceProfile, repository: fileURLToPath(new URL("../..", import.meta.url)),

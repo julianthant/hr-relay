@@ -71,7 +71,7 @@ export function stoppedWorkerToasts(day: DashboardDayWire, workflowLabel: (workf
     const none = workers.length === 0 && day.workerAuthority.state === "present" && !day.workerAuthority.members.some(member => member.workflow === workflowId);
     const runs = waiting.filter(row => row.workflowId === workflowId && (!none || row.surfaceKind !== "preview")).length;
     if (runs === 0 || (stopped === undefined && !none)) return [];
-    return [{ tone: "warning" as const, title: stopped === undefined ? `${workflowLabel(workflowId)} has no worker. Add one in Sessions.`
+    return [{ tone: "warning" as const, title: stopped === undefined ? `${workflowLabel(workflowId)} has no worker. Open Sessions.`
       : `${workflowLabel(workflowId)} worker ${WORKER_STOP_REASON_LABEL[stopped]}. Retry it in Sessions.` }];
   });
 }

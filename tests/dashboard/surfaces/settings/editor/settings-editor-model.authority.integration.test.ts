@@ -10,7 +10,15 @@ import { useEditableSettings } from "../../../../../src/dashboard/surfaces/setti
 import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../../../../src/models/dashboard/settings-editor.js";
 import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
 import { FixtureCommandBinding } from "../../../../support/helpers/dashboard/command-binding.js";
+import { dropKeptResults } from "../../../../../src/dashboard/state/async-resource.js";
+import { createDashboardClient, createRowStore, type RowStoreWriter } from "../../../../../src/dashboard/client/index.js";
+import { StreamRowSchema } from "../../../../../src/models/dashboard/subscription.js";
 import { syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
+
+/** What the server's hub sends after an ordinary settings commit: the editable document as the settings row. */
+function deliverSettingsRow(rows: RowStoreWriter, document: EditableSettingsWire): void {
+  rows.apply([StreamRowSchema.parse({ model: "settings", key: "editable", value: { state: "available", value: document } })]);
+}
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -27,6 +35,7 @@ async function setup() {
   const writes: unknown[] = [];
   const client = { editableSettings: () => read(),
     executeCommand: (request: unknown) => { writes.push(request); throw new Error("unexpected write"); } } as unknown as DashboardClient;
+  const rows = createRowStore();
   let controller: ReturnType<typeof useEditableSettings> | undefined;
   function Harness({ actorId, descriptorFingerprint }: { actorId: string; descriptorFingerprint: string }) {
     controller = useEditableSettings({ actorId, descriptorFingerprint });
@@ -36,11 +45,11 @@ async function setup() {
   cleanups.push(() => { act(() => root.unmount()); host.remove(); });
   const render = async (currentClient = client, actorId = "local-operator", descriptorFingerprint = "d".repeat(64), requestKey = 0) => {
     await act(async () => root.render(createElement(DashboardClientProvider, { client: currentClient,
-      children: createElement(FixtureCommandBinding, { actorId, requestKey,
+      children: createElement(FixtureCommandBinding, { actorId, requestKey, rows,
         children: createElement(Harness, { actorId, descriptorFingerprint }) }) })));
   };
   await render();
-  return { authority, initial, newer, client, writes, render,
+  return { authority, initial, newer, client, writes, render, deliver: () => deliverSettingsRow(rows, authority.read()),
     controller: () => { assert.ok(controller); return controller; },
     setRead(value: typeof read) { read = value; } };
 }
@@ -200,7 +209,7 @@ for (const outcome of ["success", "failure"] as const) it(`settles editable and 
 
 it("does not let an older refresh poison a newer authoritative command readback", async () => {
   const h = await setup();
-  await h.render({ ...h.client, executeCommand: (request: unknown) => Promise.resolve(h.authority.execute(request)) });
+  await h.render({ ...h.client, executeCommand: (request: unknown) => { const result = h.authority.execute(request); h.deliver(); return Promise.resolve(result); } });
   const old = Promise.withResolvers<EditableSettingsWire>(); let reads = 0;
   h.setRead(() => ++reads === 1 ? old.promise : Promise.resolve(h.authority.read()));
   await act(async () => h.controller().update("actor.label", "New authoritative value"));
@@ -209,4 +218,162 @@ it("does not let an older refresh poison a newer authoritative command readback"
   await act(async () => old.resolve(h.newer));
   assert.equal(h.controller().readProblem, undefined); assert.equal(h.controller().locked, false);
   const editor = h.controller().editor; assert.ok(editor.state === "loaded"); assert.equal(editor.document.revision, h.authority.read().revision);
+});
+
+for (const trigger of ["section return", "stream reset"] as const) {
+  it(`a ${trigger} locks the editor while it reads again, then settles on the fresh one`, async () => {
+    const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
+    const first = authority.read();
+    authority.apply({ "actor.label": { set: "Fresher saved values" } });
+    const fresh = authority.read();
+    let read = () => Promise.resolve(first);
+    const client = { editableSettings: () => read(), executeCommand: () => { throw new Error("unexpected write"); } } as unknown as DashboardClient;
+    let controller: ReturnType<typeof useEditableSettings> | undefined;
+    function Harness({ view }: { view: string }) { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view }); return null; }
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    cleanups.push(() => { act(() => root.unmount()); host.remove(); });
+    const render = (view: string) => act(async () => root.render(createElement(DashboardClientProvider, { client,
+      children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: 0, children: createElement(Harness, { view }) }) })));
+    await render("general");
+    await vi.waitFor(() => assert.equal(controller?.locked, false));
+    const shown = controller?.editor.state === "loaded" ? controller.editor.document : undefined;
+    assert.ok(shown);
+    let settle!: (value: EditableSettingsWire) => void;
+    read = () => new Promise(resolve => { settle = resolve; });
+    if (trigger === "section return") await render("paths");
+    else await act(async () => { dropKeptResults(client); });
+    assert.equal(controller?.locked, true, "a kept document decides nothing");
+    assert.equal(controller?.refreshing, true);
+    if (trigger === "section return") assert.equal(controller?.editor.state === "loaded" ? controller.editor.document : undefined, shown, "a section return keeps the document on screen");
+    else assert.equal(controller?.editor.state, "loading", "nothing read before a stream reset shows after it");
+    await act(async () => { settle(fresh); });
+    await vi.waitFor(() => assert.equal(controller?.locked, false));
+    assert.equal(controller?.editor.state === "loaded" ? controller.editor.document.revision : undefined, fresh.revision);
+    assert.equal(controller?.refreshing, false);
+  });
+}
+
+for (const order of ["outgoing first", "incoming first"] as const) {
+  it(`two overlapping section visits each settle only their own read (${order})`, async () => {
+    const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
+    const shown = authority.read();
+    authority.apply({ "actor.label": { set: "General's read" } });
+    const general = authority.read();
+    authority.apply({ "actor.label": { set: "Paths' read" } });
+    const paths = authority.read();
+    const settles: ((value: EditableSettingsWire) => void)[] = [];
+    let read = () => Promise.resolve(shown);
+    const client = { editableSettings: () => read(), executeCommand: () => { throw new Error("unexpected write"); } } as unknown as DashboardClient;
+    let controller: ReturnType<typeof useEditableSettings> | undefined;
+    function Harness({ view }: { view: string }) { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view }); return null; }
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    cleanups.push(() => { act(() => root.unmount()); host.remove(); });
+    const render = (view: string) => act(async () => root.render(createElement(DashboardClientProvider, { client,
+      children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: 0, children: createElement(Harness, { view }) }) })));
+    await render("paths");
+    await vi.waitFor(() => assert.equal(controller?.locked, false));
+    read = () => new Promise(resolve => { settles.push(resolve); });
+    await render("general");
+    await render("paths");
+    assert.equal(settles.length, 2, "the return to Paths starts its own read instead of reusing General's");
+    const label = () => controller?.leaves.find(leaf => leaf.path === "actor.label")?.settingsValue;
+    if (order === "outgoing first") {
+      await act(async () => { settles[0](general); });
+      assert.equal(controller?.locked, true, "General's read does not unlock Paths");
+      assert.notEqual(label(), "General's read");
+      await act(async () => { settles[1](paths); });
+    } else {
+      await act(async () => { settles[1](paths); });
+      await vi.waitFor(() => assert.equal(controller?.locked, false));
+      await act(async () => { settles[0](general); });
+    }
+    await vi.waitFor(() => assert.equal(controller?.locked, false));
+    assert.equal(label(), "Paths' read");
+    assert.equal(controller?.editor.state === "loaded" ? controller.editor.document.revision : undefined, paths.revision);
+  });
+}
+
+it("closing Settings mid-read retires that visit's read: a reopen reads again and settles only on its own reply", async () => {
+  const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
+  const closed = authority.read();
+  authority.apply({ "actor.label": { set: "Reopened read" } });
+  const reopened = authority.read();
+  const settles: ((value: EditableSettingsWire) => void)[] = [];
+  const client = { editableSettings: () => new Promise<EditableSettingsWire>(resolve => { settles.push(resolve); }), executeCommand: () => { throw new Error("unexpected write"); } } as unknown as DashboardClient;
+  let controller: ReturnType<typeof useEditableSettings> | undefined;
+  function Harness() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view: "general" }); return null; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  cleanups.push(() => { act(() => root.unmount()); host.remove(); });
+  const render = (open: boolean) => act(async () => root.render(createElement(DashboardClientProvider, { client,
+    children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: 0, children: open ? createElement(Harness) : null }) })));
+  await render(true);
+  assert.equal(settles.length, 1);
+  await render(false);
+  await render(true);
+  assert.equal(settles.length, 2, "the reopened Settings reads again instead of reusing the closed visit's read");
+  await act(async () => { settles[0](closed); });
+  assert.equal(controller?.locked, true, "the closed visit's reply unlocks nothing");
+  assert.notEqual(controller?.editor.state === "loaded" ? controller.editor.document.revision : undefined, closed.revision);
+  await act(async () => { settles[1](reopened); });
+  await vi.waitFor(() => assert.equal(controller?.locked, false));
+  assert.equal(controller?.editor.state === "loaded" ? controller.editor.document.revision : undefined, reopened.revision);
+});
+
+it.each([
+  { navigation: "switching sections", closed: false, requestKey: 0 },
+  { navigation: "closing Settings", closed: true, requestKey: 0 },
+  { navigation: "closing Settings and changing the dashboard day", closed: true, requestKey: 1 },
+])("reads back an unknown save reply after $navigation and frees the command lock", async ({ closed, requestKey }) => {
+  const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
+  const commands: unknown[] = [];
+  const rows = createRowStore();
+  let reads = 0;
+  let reply: (request: unknown) => Promise<unknown> = request => Promise.resolve(authority.execute(request));
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
+    if (url.endsWith("/settings/editable")) {
+      reads += 1;
+      return new Response(JSON.stringify(authority.read()), { status: 200 });
+    }
+    if (url.endsWith("/commands") && typeof init?.body === "string") {
+      const request: unknown = JSON.parse(init.body); commands.push(request);
+      const result = await reply(request);
+      deliverSettingsRow(rows, authority.read());
+      return new Response(JSON.stringify(result), { status: 200 });
+    }
+    throw new Error("unexpected-settings-test-request");
+  } });
+  const feedback = vi.fn();
+  const onSaved = vi.fn();
+  const onSaveProblem = vi.fn();
+  let controller: ReturnType<typeof useEditableSettings> | undefined;
+  function Harness({ view }: { view: string }) { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view, onSaved, onSaveProblem }); return null; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  cleanups.push(() => { act(() => root.unmount()); host.remove(); });
+  const render = (view?: string, requestKey = 0) => act(async () => root.render(createElement(DashboardClientProvider, { client,
+    children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, feedback, rows, children: view === undefined ? null : createElement(Harness, { view }) }) })));
+  const label = () => controller?.leaves.find(leaf => leaf.path === "actor.label")?.settingsValue;
+  await render("general");
+  await vi.waitFor(() => assert.equal(controller?.locked, false));
+  let lose!: () => void;
+  reply = request => { authority.execute(request); return new Promise((_, reject) => { lose = () => reject(new Error("lost reply")); }); };
+  await act(async () => { controller?.update("actor.label", "Sent from General"); });
+  await act(async () => { controller?.submit(); });
+  await vi.waitFor(() => assert.equal(commands.length, 1));
+  await render(closed ? undefined : "paths", requestKey);
+  const readsBeforeReply = reads;
+  await act(async () => { lose(); });
+  if (closed) {
+    await vi.waitFor(() => assert.equal(reads, readsBeforeReply + 1, "the unknown reply started a readback while Settings was closed"), { timeout: 5000, interval: 50 });
+    assert.equal(feedback.mock.calls.length, 0);
+    assert.equal(onSaved.mock.calls.length, 0);
+    assert.equal(onSaveProblem.mock.calls.length, 0);
+    await render("general", requestKey);
+  }
+  await vi.waitFor(() => { assert.equal(label(), "Sent from General", "the read-back shows the stored write"); assert.equal(controller?.dirtyCount, 0); assert.equal(controller?.locked, false); }, { timeout: 5000, interval: 50 });
+  reply = request => Promise.resolve(authority.execute(request));
+  await act(async () => { controller?.update("actor.label", "Next edit", true); });
+  await vi.waitFor(() => {
+    assert.equal(commands.length, 2, "the reservation was released, so the next edit reaches Relay");
+    assert.equal(label(), "Next edit");
+  }, { timeout: 5000, interval: 50 });
 });

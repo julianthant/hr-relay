@@ -9,6 +9,8 @@ import type { Clock } from "../../rules/time/clock.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { privateEqual } from "../../rules/validation/private-equal.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { runtimeProfiles } from "../../models/config/define-runtime-isolation.js";
+import { runtimeProfile } from "../app/config/runtime-isolation.js";
 import { type RuntimeAdmission } from "../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
 import { createChatGptCredentialRepository, ChatGptCredentialError, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions, type ChatGptCredentialTransaction } from "../storage/configuration/chatgpt-credential-repository.js";
@@ -565,6 +567,10 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   async function renewCredentials(transaction: ChatGptCredentialTransaction, assertCurrent: () => void, signal?: AbortSignal, diagnostic?: ChatGptInferenceDiagnostic): Promise<ChatGptCredentialRecord> {
     const epoch = lifecycle.epoch;
     assertCurrent();
+    const port = options.admission.lifetime.port;
+    if (runtimeProfile !== "production" || port === runtimeProfiles.staging.lockPort || port === runtimeProfiles.development.lockPort) {
+      throw fault("CHATGPT_AUTH_UNAVAILABLE");
+    }
     let current = transaction.read();
     if (current?.session == null || current.registration === null || current.clientId === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
     if (needsRefresh(current)) {

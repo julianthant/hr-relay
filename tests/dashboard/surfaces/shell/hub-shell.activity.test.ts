@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
+import { loadLazyPages } from "../../../support/helpers/dashboard/lazy-pages.js";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
 import { AssistantLauncher } from "../../../../src/dashboard/surfaces/shell/assistant-launcher.js";
@@ -32,6 +33,7 @@ async function mount(read: () => Promise<AssistantActivityWire>) {
   const button = (label: string) => { const found = document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`); assert.ok(found, label); return found; };
   const openHistory = async () => {
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Assistant"]')?.click());
+    await loadLazyPages();
     await act(async () => button("History").click());
   };
   const openActivity = async () => {

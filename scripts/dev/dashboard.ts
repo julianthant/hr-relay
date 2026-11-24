@@ -13,6 +13,7 @@ import {
 } from "../../src/backend/transports/http/frontend-owner.js";
 
 import { RuntimeProfileSchema, type RuntimeProfile } from "../../src/models/config/define-runtime-isolation.js";
+import { CopyDuoScreensSchema, type CopyDuoScreen } from "../../src/models/profiles/profile.js";
 
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 const STARTUP_PROGRESS_MS = 30_000;
@@ -21,6 +22,7 @@ interface Managed {
   readonly name: string;
   readonly child: ChildProcess;
   closed: boolean;
+  signalSent?: NodeJS.Signals;
 }
 
 export interface DashboardLauncherOptions {
@@ -29,11 +31,16 @@ export interface DashboardLauncherOptions {
   readonly frontendOwnerFile?: string;
   readonly signals?: EventEmitter;
   readonly writeError?: (message: string) => void;
+  readonly copySignin?: Readonly<{ backendEntry: string; fixtureWorkspace?: string; ready(launchNonce: string): void; phone(): void; screens?(screens: readonly CopyDuoScreen[]): void }>;
 }
 
 export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise<number> {
   const mode = options.mode ?? "dashboard";
   const profile = options.profile ?? readRuntimeProfile();
+  const copySignin = options.copySignin;
+  if (copySignin !== undefined && (profile !== "staging" && profile !== "development" || mode !== "dashboard")) {
+    throw new Error("copy-signin-profile-refused");
+  }
   const frontendOwnerFile = options.frontendOwnerFile ?? join(repositoryRoot, "node_modules", ".cache", "relay-dashboard", profile === "production" ? "frontend-owner" : `frontend-owner-${profile}`);
   const writeError = options.writeError ?? ((message: string) => { process.stderr.write(message); });
   let launchNonce: string;
@@ -45,7 +52,8 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     writeError('[dashboard] Start npm run backend first and wait for "listening".\n');
     return Promise.resolve(1);
   }
-  const childEnvironment = { ...process.env, [RUNTIME_PROFILE_ENV]: profile, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce, [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" };
+  const childEnvironment = { ...process.env, [RUNTIME_PROFILE_ENV]: profile, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce, [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1",
+    ...(copySignin === undefined ? {} : { DEBUG: undefined, PWDEBUG: undefined, NODE_DEBUG: undefined }) };
   const signals = options.signals ?? process;
   const managed: Managed[] = [];
   let stopping = false;
@@ -83,8 +91,9 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     result = code;
     forwardedSignal = signal;
     stopProgress();
-    for (const { child, closed } of managed) {
-      if (!closed && child.exitCode === null && child.signalCode === null) child.kill(signal);
+    for (const item of managed) {
+      const { child, closed } = item;
+      if (!closed && child.exitCode === null && child.signalCode === null && child.kill(signal)) item.signalSent = signal;
     }
     completeIfClosed();
   }
@@ -108,6 +117,7 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
         writeError(`\n[dashboard] ${name} stopped (${how}); stopping the rest.\n`);
         stop("SIGTERM", code ?? 1);
       } else if (result === 0) {
+        if (name === "web" && code === 143 && item.signalSent === "SIGTERM") return;
         if (code !== null && code !== 0) result = code;
         else if (signal !== null && signal !== forwardedSignal) result = 1;
       }
@@ -127,17 +137,30 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     launchWeb();
     return done;
   }
-  const backend = launch("bff", ["--conditions=development", "--import", "tsx", fileURLToPath(new URL("./secure-env-bootstrap.ts", import.meta.url)), "cli", "dashboard"], true);
+  const backend = launch("bff", ["--conditions=development", "--import", "tsx",
+    copySignin?.backendEntry ?? fileURLToPath(new URL("./secure-env-bootstrap.ts", import.meta.url)),
+    ...(copySignin === undefined ? ["cli", "dashboard"] : ["--owned-backend", profile, ...(copySignin.fixtureWorkspace === undefined ? [] : [copySignin.fixtureWorkspace])])], true);
   progress = setInterval(() => {
     if (stopping || ready) return;
     writeError("[dashboard] still starting (preparing saved data)...\n");
   }, STARTUP_PROGRESS_MS);
   backend.on("message", (message: unknown) => {
+    if (!stopping && copySignin !== undefined && message !== null && typeof message === "object"
+      && "type" in message && message.type === "relay-copy-signin-phone") {
+      copySignin.phone();
+      return;
+    }
+    if (!stopping && copySignin !== undefined && message !== null && typeof message === "object"
+      && "type" in message && message.type === "relay-copy-signin-screens" && "screens" in message) {
+      const screens = CopyDuoScreensSchema.safeParse(message.screens);
+      if (screens.success) copySignin.screens?.(screens.data);
+      return;
+    }
     if (stopping || ready || message === null || typeof message !== "object"
       || !("type" in message) || message.type !== "hrauto-dashboard-ready") return;
     ready = true;
     stopProgress();
-    if (mode === "dashboard") launchWeb();
+    if (mode === "dashboard") { launchWeb(); copySignin?.ready(launchNonce); }
     else {
       try {
         mkdirSync(dirname(frontendOwnerFile), { recursive: true });

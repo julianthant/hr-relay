@@ -122,23 +122,25 @@ it("announces inspection before checking current-schema registration twice with 
   }
 });
 
-it("shares full inspection of an unchanged backup while verifying the manifest binding and backup bytes on each read", async () => {
+it("shares full inspection across backup publication while verifying the manifest binding and backup bytes on each read", async () => {
   const fixture = await readyBoundEight(), operation = fixture.acquireRestore();
   try {
     const owner = await fixture.machine.forStoppedProfileUpgrade(profileBrowserClosure, fixture.claim, operation, systemClock, hostFacts);
     try {
       const closure = await prepareStoppedBackupClosure(profileBrowserClosure, owner, operation, systemClock, fixture.processLockRoot);
-      const backup = await backupStoppedAuthority(closure, owner, fixture.stateRoot, systemClock, fixture.processLockRoot, operation, "schema-migration");
-      const manifest = backup.manifests[0];
-      assert.ok(manifest);
-      const path = join(fixture.stateRoot, "backups", "authority", manifest.backupFileName);
-      const manifestPath = path + ".manifest.json";
       const sql = vi.spyOn(DatabaseSync.prototype, "prepare");
+      const checks = () => sql.mock.calls.filter(([query]) => query === "PRAGMA quick_check(1)").length;
       try {
         await AuthorityDatabase.withUpgradeInspections(async () => {
+          const backup = await backupStoppedAuthority(closure, owner, fixture.stateRoot, systemClock, fixture.processLockRoot, operation, "schema-migration");
+          const manifest = backup.manifests[0];
+          assert.ok(manifest);
+          const path = join(fixture.stateRoot, "backups", "authority", manifest.backupFileName);
+          const manifestPath = path + ".manifest.json";
+          assert.equal(checks(), 2);
           const stopped = verifyStoppedBackupManifestAtPath(owner, manifestPath);
           assert.deepEqual(await verifyBackupManifestAtPath(owner, manifestPath), stopped);
-          assert.equal(sql.mock.calls.filter(([query]) => query === "PRAGMA quick_check(1)").length, 1);
+          assert.equal(checks(), 2);
           const saved = readFileSync(manifestPath);
           const foreignId = "00000000-0000-4000-8000-000000000001";
           writeFileSync(manifestPath, JSON.stringify({ ...manifest, profileId: foreignId, verification: { ...manifest.verification, profileId: foreignId } }));

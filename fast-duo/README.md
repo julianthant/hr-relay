@@ -35,13 +35,9 @@ before success. Closing setup clears that state.
 
 Enrollment binds the exact account, tab, frame, document, Duo origin and RP ID.
 Software registration waits for backend persistence and ceremony acknowledgments.
-Platform discovery prepares the verified top-level Duo page before replying to
-Duo's availability check. Touch ID uses Chromium's emulated internal platform
-authenticator on macOS and Windows. Its key and observed registration counter
-enter canonical encrypted custody. Each login re-adds ready internal keys through
-the owned private CDP pipe. Native signatures are disabled after enrollment and
-for login replicas; the backend signer and current ceremony lease retain counter
-and assertion authority. No hardware probe or native-to-emulated retry is used.
+Duo's platform availability check answers false and platform enrollment refuses:
+the security key is Relay's only Duo method. The backend signer and current
+ceremony lease retain counter and assertion authority.
 A captured
 key becomes usable only after the required confirmation or exact credential
 request; request aborts, timeouts and scoped refusals retain UNKNOWN before another

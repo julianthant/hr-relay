@@ -15,6 +15,11 @@ vi.mock("../../../../src/rules/time/clock.js", async importOriginal => {
   let elapsedMs = 0;
   return { ...actual, systemClock: { ...actual.systemClock, monotonicMs: () => elapsedMs += 51 } };
 });
+// Sign-up and sign-in verify at one cheaper scrypt cost; this file proves the evidence upgrade, not the password hash.
+vi.mock("node:crypto", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:crypto")>();
+  return { ...actual, scryptSync: (...[password, salt, length, options]: Parameters<typeof actual.scryptSync>) => actual.scryptSync(password, salt, length, { ...options, N: 2 ** 10 }) };
+});
 
 const CLOCK = manualClock(new Date("2026-08-14T10:00:00.000Z"));
 const tables = ["runs", "run_results", "run_checkpoints", "write_intents", "write_attempts", "gate_results", "run_delegations", "commands", "command_audits", "run_receipts", "timeline_events", "delegation_dependencies", "run_failures"] as const;
@@ -41,6 +46,14 @@ function conversions(path: string) {
   const database = new DatabaseSync(path, { readOnly: true });
   try { return database.prepare("SELECT payload_json FROM database_upgrades WHERE json_extract(payload_json,'$.evidenceSchemas.id')='profile-name-domain'").all(); }
   finally { database.close(); }
+}
+
+async function countFullVerifications(startup: () => Promise<void>): Promise<number> {
+  const sql = vi.spyOn(DatabaseSync.prototype, "prepare");
+  try {
+    await startup();
+    return sql.mock.calls.filter(([query]) => query === "PRAGMA quick_check(1)").length;
+  } finally { sql.mockRestore(); }
 }
 
 for (const interrupted of [false, true]) it(`upgrades real retained predecessor Kuali evidence through startup${interrupted ? " after an interrupted committed conversion" : ""}, preserving every frozen row and a second startup`, async () => {
@@ -76,7 +89,9 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
       assert.equal(conversions(f.path).length, 1);
       assert.deepEqual(readFileSync(protectedPath), oldCredentials); assert.deepEqual(frozenRows(f.path), before);
     }
-    await startup();
+    const checks = await countFullVerifications(startup);
+    // Each of the three authority images and its independently produced backup gets one check.
+    if (!interrupted) assert.equal(checks, 6);
     assert.equal(conversions(f.path).length, 1); assert.deepEqual(frozenRows(f.path), before);
     const credentials = readFileSync(protectedPath), journal = conversions(f.path), backups = readdirSync(join(f.stateRoot, "backups", "authority")).sort();
     assert.notDeepEqual(credentials, oldCredentials);

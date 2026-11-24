@@ -1,12 +1,12 @@
 import type { UcpathFoundPresentation, UcpathFoundDecision } from "./ucpath-found-model.js";
 import { SkeletonText } from "../../shared/loading/loading.js";
-import { useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { Check, ImageOff } from "lucide-react";
 import { Badge, Table, THead, TBody, TR, TH, TD, Button, DateInput, Field, Input } from "../../../ds/ui.js";
 import type { DecisionOptionWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
 import { formatTime } from "../../../lib/date-format.js";
 import { DecisionCard, DecisionChoice } from "./decision-card.js";
-import { answeredOutcome, choiceOptions, decisionAnswerValid, recommendedOption, TYPED_ROW, type LogDecision, type LogDecisionAnswer } from "./log-decision-model.js";
+import { answeredOutcome, choiceOptions, decisionAnswerValid, recommendedOption, ServedDraftsContext, TYPED_ROW, type LogDecision, type LogDecisionAnswer } from "./log-decision-model.js";
 import { LogScreenshots } from "./log-screenshots.js";
 import { PickTable } from "./pick-table.js";
 import "./log-presentation.css";
@@ -53,8 +53,11 @@ function DecisionBody({ decision, fieldLabel }: { decision: LogDecision; fieldLa
 /** One served decision as a DecisionCard: its options, hints, recommended option and inputs all come from the wire. */
 function ServedDecision({ decision, served, onAnswer, onCancel }: { decision: LogDecision; served: RunDecisionWire; onAnswer?: DecisionAnswerHandler; onCancel?: () => void }) {
   const choices = choiceOptions(served);
-  const [selected, setSelected] = useState(recommendedOption(served)?.id);
-  const [answers, setAnswers] = useState<Readonly<Record<string, LogDecisionAnswer>>>({});
+  const drafts = useContext(ServedDraftsContext);
+  const draftKey = JSON.stringify(served);
+  const [selected, setSelected] = useState(() => drafts?.get(draftKey)?.selected ?? recommendedOption(served)?.id);
+  const [answers, setAnswers] = useState(() => drafts?.get(draftKey)?.answers ?? {});
+  useEffect(() => { drafts?.set(draftKey, { selected, answers }); }, [drafts, draftKey, selected, answers]);
   const option = choices.find(candidate => candidate.id === selected) ?? recommendedOption(served);
   const answer = option === undefined ? {} : answers[option.id] ?? (option.input?.kind === "text" && option.input.prefill !== undefined ? { text: option.input.prefill } : {});
   const disabled = onAnswer === undefined;

@@ -10,6 +10,8 @@ export function useQueueWiring(input: Readonly<{
   attemptHistory?: DashboardDayWire["attemptHistory"];
   rows: readonly QueueSurfaceWire[];
   activeWorkflowId: string;
+  /** The rows are a kept copy of an earlier frame: they show, but no control on them acts until the fresh day lands. */
+  kept?: boolean;
   filter: readonly StatusBucket[];
   selectedRunId: string | undefined;
   selectedMember?: QueueMemberSelection;
@@ -25,7 +27,7 @@ export function useQueueWiring(input: Readonly<{
   runQueueAction: NonNullable<QueueHandlers["onAction"]>;
   renameTitle?: QueueHandlers["onRenameTitle"];
 }>) {
-  const { allRows, attemptHistory, rows, activeWorkflowId, filter, selectedRunId, openWells, now, sort,
+  const { allRows, attemptHistory, rows, activeWorkflowId, kept = false, filter, selectedRunId, openWells, now, sort,
     selectRun, openRelatedRun, selectedMember, openMember, onWells, setBatchGrouping,
     runQueueAction, renameTitle } = input;
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
@@ -61,12 +63,12 @@ export function useQueueWiring(input: Readonly<{
       if (!included.has(surface.runId)) return [];
       const timing = metadata?.get(surface.runId);
       if (metadata !== undefined && timing === undefined) throw new Error("queue run has no selected-day attempt metadata");
-      const actions = surface.actions.filter((action) => action.kind !== "command" || action.command !== "archive");
+      const actions = kept ? [] : surface.actions.filter((action) => action.kind !== "command" || action.command !== "archive");
       if (timing === undefined && actions.length === surface.actions.length) return [surface];
       return [{ ...surface, ...(timing === undefined ? {} : { startedAt: timing.startedAt, endedAt: timing.endedAt }), actions }];
     });
     return filterQueueSurfaces(scoped, filter);
-  }, [allRows, attemptHistory, rows, activeWorkflowId, filter]);
+  }, [allRows, attemptHistory, rows, activeWorkflowId, kept, filter]);
 
   const outcomes = useMemo((): ReadonlyMap<string, QueueBusinessOutcome> => new Map(
     surfaces.flatMap(surface => surface.outcome === undefined ? [] : [[surface.runId, surface.outcome] as const]),
@@ -92,10 +94,9 @@ export function useQueueWiring(input: Readonly<{
 
   const queueHandlers = useMemo(
     (): QueueHandlers => ({
-      onSetBatchGrouping: setBatchGrouping,
+      ...(kept ? {} : { onSetBatchGrouping: setBatchGrouping, onAction: runQueueAction }),
       onSelect: runId => selectRun(runId),
       ...(openMember === undefined ? {} : { onOpenMember: openMember }),
-      onAction: runQueueAction,
       onToggleWell: (runId) => {
         const next = new Set(openWells);
         if (next.has(runId)) next.delete(runId);
@@ -104,9 +105,9 @@ export function useQueueWiring(input: Readonly<{
       },
       onOpenParent: openRelatedRun,
       onOpenLinked: openRelatedRun,
-      ...(renameTitle === undefined ? {} : { onRenameTitle: renameTitle }),
+      ...(renameTitle === undefined || kept ? {} : { onRenameTitle: renameTitle }),
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, openRelatedRun, openMember, renameTitle],
+    [kept, setBatchGrouping, selectRun, runQueueAction, openWells, onWells, openRelatedRun, openMember, renameTitle],
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);

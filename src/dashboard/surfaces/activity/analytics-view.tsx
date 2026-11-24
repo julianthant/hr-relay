@@ -1,6 +1,6 @@
 import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Fragment, useState, type CSSProperties } from "react";
-import { BodySection, Button, ButtonLink, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, RankedList, SegmentedChoice, dsIcon, type DsStatus } from "../../ds/ui.js";
+import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, RankedList, SegmentedChoice, dsIcon, type DsStatus } from "../../ds/ui.js";
 import { ChartHeading, KeyFigures, SmallLine, StackedBars } from "./analytics-charts.js";
 import type { ActivityDateRange } from "./activity-model.js";
 import { analyticsBuckets, analyticsClock, analyticsPeriodLabel, bucketCounts, finished, rankedTimes, rowTypicalSeconds, shiftDate, shiftRange, type AnalyticsData, type AnalyticsWorkflow } from "./analytics-model.js";
@@ -56,7 +56,7 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns, 
   const noun = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
   const toggle = (id: string) => setOpen(current => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next; });
   return <div className="ds-body-stack mt-2">
-    <BodySection title="Runs" description={`${totals.done + totals.failed} finished runs${workflow === "all" ? ` · ${data.running} still open` : ""}`}>
+    <BodySection title="Runs" description={`${noun(finished(totals), "run", "runs")} in this period${workflow === "all" ? ` · ${data.running} open now` : ""}`}>
       <StackedBars label="Runs per day" days={days} series={series} unit={["run", "runs"]}
         header={<div className="mb-4 flex items-center justify-between gap-3"><span className="text-control">{analyticsPeriodLabel(range)}</span>
           <span className="flex items-center gap-1"><IconButton size="xs" label="Previous period" icon={<ChevronLeft aria-hidden className={dsIcon.md} />} onClick={() => onRange(shiftRange(range, -1))} /><IconButton size="xs" label="Next period" icon={<ChevronRight aria-hidden className={dsIcon.md} />} onClick={() => onRange(shiftRange(range, 1))} /></span></div>}
@@ -71,7 +71,7 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns, 
           const isOpen = open.has(row.id), total = finished(row);
           const percent = (n: number) => total === 0 ? "—" : `${Math.round(n / total * 100)}%`;
           const details: readonly { label: string; values: readonly (readonly [string, string])[] }[] = [
-            { label: "Outcome", values: [["Done", percent(row.done)], ["Failed", percent(row.failed)], ["Waiting", percent(row.attention)]] },
+            { label: "Outcome", values: [["Done", percent(row.done)], ["Failed", percent(row.failed)], ["Needs attention", percent(row.attention)]] },
             ...(row.failedAt.length === 0 ? [] : [{ label: "Failed at", values: row.failedAt.map(step => [step.label, String(step.runs)] as const) }]),
           ];
           const cols = Math.max(...details.map(detail => detail.values.length));
@@ -84,7 +84,7 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns, 
               <dl style={{ "--usage-cols": cols + 1 } as CSSProperties}>
                 {details.map(detail => <Fragment key={detail.label}><dt>{detail.label}</dt>{detail.values.map(([name, figure]) => <dd key={name}>{name} <span className="tabular-nums">{figure}</span></dd>)}{Array.from({ length: cols - detail.values.length }, (_, index) => <dd key={index} aria-hidden />)}</Fragment>)}
               </dl>
-              {onOpenRuns && <ButtonLink href="#" variant="ghost" size="sm" className={openRunsLocked ? "mt-3 pointer-events-none opacity-45" : "mt-3"} aria-disabled={openRunsLocked || undefined} tabIndex={openRunsLocked ? -1 : undefined} iconAfter={<ArrowUpRight aria-hidden className={dsIcon.md} />} onClick={event => { event.preventDefault(); if (!openRunsLocked) onOpenRuns(row.id); }}>Open runs</ButtonLink>}
+              {onOpenRuns && <Button variant="ghost" size="sm" className="mt-3" disabled={openRunsLocked} iconAfter={<ArrowUpRight aria-hidden className={dsIcon.md} />} onClick={() => onOpenRuns(row.id)}>Open runs</Button>}
             </td></tr>}
           </Fragment>;
         })}</tbody>

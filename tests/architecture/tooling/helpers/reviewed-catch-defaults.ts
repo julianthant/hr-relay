@@ -48,12 +48,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "statements": [
       {
         "kind": "try",
-        "sha256": "d829b3bec1a13f0d2c76ce2c9cce158832bca04ed078efb78ffef6b95148fd15",
+        "sha256": "55b1cd67b096a2180af59efbb2f2b54955f255998b96df19a0cd9c0acc4dde53",
         "occurrences": 1
       },
       {
         "kind": "promise",
-        "sha256": "21939e260f26d984c93603c198248d2a5888919a6957d47ac5d305c3f4bcaa58",
+        "sha256": "6fd70e8524795dd44d893c0924dcc4ed3f45f4270b02f981be7c9f3f308d129c",
         "occurrences": 1
       }
     ]
@@ -93,7 +93,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
-    "reason": "Only ENOENT denotes no diagnostic stage directory (empty inventory, zero reclaimed stages or bytes) or an already absent captured file; all other errors rethrow. EEXIST verifies exact winner bytes; custody and cleanup failures throw or aggregate.",
+    "reason": "Only ENOENT denotes no diagnostic stage directory (empty inventory, zero reclaimed stages or bytes), an already absent captured file, or a stage a concurrent capture disposed after its bundle settled, which is no longer pending; all other errors rethrow. EEXIST verifies exact winner bytes; custody and cleanup failures throw or aggregate.",
     "statements": [
       {
         "kind": "try",
@@ -108,6 +108,11 @@ export const REVIEWED_CATCH_DEFAULTS = [
       {
         "kind": "try",
         "sha256": "561d6c2837ad01ac131c22b623f6114c6b60c107301eb624574080c9ba7cd4ef",
+        "occurrences": 1
+      },
+      {
+        "kind": "try",
+        "sha256": "8bacb3f2ccc0f1cfd35a669053ab410b6db5ed13ef3944b88e2662f363184006",
         "occurrences": 1
       }
     ]

@@ -1,0 +1,22 @@
+import type { Clock } from "../../../../../src/rules/time/clock.js";
+import { dateNavigationReader, seedDateNavigation } from "./date-navigation-server.js";
+import { AuthorityDatabase } from "../../synthetic-storage-admission.js";
+import { seedInitialSettingsRuntimeConfig } from "../../../fixtures/operator-command-fixtures.js";
+import { assertServedBundle } from "./bundle.js";
+import { composeSeededServices } from "./seeded-services.js";
+import { createSeededBffSetup } from "../profiles/seeded-bff-setup.js";
+
+export type { SeededServer } from "../profiles/seeded-bff-setup.js";
+
+export const {
+  SEEDED_COVERAGE_GAPS,
+  startSeededServer
+} = createSeededBffSetup( {
+  seedRuntimeConfig: (database: AuthorityDatabase, clock: Clock) => seedInitialSettingsRuntimeConfig(database, clock),
+  composeFixtureServices: (input) => { const { app, hub, scripted, lifecycle, notificationInbox } = composeSeededServices(input); return { app, hub, scripted, lifecycle, notificationInbox }; },
+  assertServedBundle,
+  dateNavigationReader,
+  seedDateNavigation
+});
+
+export { SEEDED_APP_VERSION,SEEDED_AT,SEEDED_DAY,SEEDED_NOW } from "../served-fixtures/seeded-identity.js";

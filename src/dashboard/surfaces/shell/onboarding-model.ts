@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 export type OnboardingStep = "login" | "signup" | "duo" | "ready";
 export type OnboardingDetails = { firstName: string; lastName: string; email: string; password: string };
 export type OnboardingErrors = Partial<Record<keyof OnboardingDetails, string>>;
-export type DuoMethods = { key: boolean; touch: boolean };
+export type DuoMethods = { key: boolean };
 export type DuoConfirmationScope = Readonly<Pick<ConfirmProfileOnboardingDuoRequest, "operationId" | "method" | "attemptId"> & {
   profileId: ProfileOnboardingState["profileId"]; generation: number; authorityScope: object | undefined;
 }>;
@@ -15,7 +15,7 @@ export type DuoConfirmationScope = Readonly<Pick<ConfirmProfileOnboardingDuoRequ
 export interface ServedOnboardingPort {
   readonly onboarding?: ProfileOnboardingState;
   readonly unavailable?: boolean;
-  /** Set when the draft is a re-enrolment of the signed-in profile: `complete` switches to the new devices and `cancel` keeps the old ones. */
+  /** Set when the draft is a re-enrolment of the signed-in profile: `complete` switches to the new key and `cancel` keeps the old ones. */
   readonly reenrol?: true;
   readonly authorityScope?: object;
   readonly readRevision?: number;
@@ -77,14 +77,14 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
 }
 
 export const duoMethodLabels = Object.freeze({ idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Not confirmed", unavailable: "Unavailable" });
-export function duoMethodPresentation(method: keyof DuoMethods, state: keyof typeof duoMethodLabels) {
+export function duoMethodPresentation(state: keyof typeof duoMethodLabels) {
   const failed = state === "unknown" || state === "unavailable";
   return {
     note: state === "complete" ? "This sign-in method is verified. No further enrollment is needed."
       : state === "unknown" ? "Relay could not confirm this attempt. In Duo, open Manage devices and remove any device you do not recognize, then start over."
       : failed ? "Relay cannot set up this method from here. Return to Relay to check setup."
-      : state === "pending" ? method === "key" ? "Waiting for Duo security key enrollment." : "Waiting for Duo to add Touch ID."
-      : method === "key" ? "Fast Duo creates the software key only when Duo requests it." : "Choose Touch ID or Windows Hello in Duo.",
+      : state === "pending" ? "Waiting for Duo security key enrollment."
+      : "Fast Duo creates the software key only when Duo requests it.",
     track: [
       { label: "Started", tone: state === "idle" ? "off" : "complete" },
       { label: failed ? "Not confirmed" : "Added in Duo", tone: failed ? "failed" : state === "idle" ? "off" : state },
@@ -94,11 +94,8 @@ export function duoMethodPresentation(method: keyof DuoMethods, state: keyof typ
 }
 
 export function duoSummary(methods: DuoMethods, draft?: ProfileOnboardingState): string {
-  if (draft) return `Security key: ${duoMethodLabels[draft.methods.key.state]} · Touch ID: ${duoMethodLabels[draft.methods.touch.state]}`;
-  if (methods.key && methods.touch) return "Security key and Touch ID ready";
-  if (methods.key) return "Security key ready · Touch ID not added";
-  if (methods.touch) return "Touch ID ready · Security key not added";
-  return "Security key and Touch ID not added";
+  if (draft) return `Security key: ${duoMethodLabels[draft.methods.key.state]}`;
+  return methods.key ? "Security key ready" : "Security key not added";
 }
 
 const SIGN_IN_SENTENCES: Readonly<Record<string, string>> = Object.freeze({
@@ -345,7 +342,7 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
     catch { if (request === generation.current) setUnavailable(true); }
     finally { if (request === generation.current) setPending(false); }
   };
-  return { methods: { key: draft?.methods.key.state === "complete", touch: draft?.methods.touch.state === "complete" },
+  return { methods: { key: draft?.methods.key.state === "complete" },
     connected: draft !== undefined && !port?.unavailable, unavailable: unavailable || port?.unavailable || draft?.methods[method].state === "unknown" || draft?.methods[method].state === "unavailable", listening: pending || draft?.methods[method].state === "pending", method, setMethod(next: ProfileOnboardingMethod) { if (next !== current.current.method) generation.current++; setMethod(next); }, matchesConfirmation,
     dismissConfirmation(scope: DuoConfirmationScope) { if (scope.generation === generation.current) generation.current++; },
     returnToParent() { const opener = window.opener as WindowProxy | null; opener?.focus(); },

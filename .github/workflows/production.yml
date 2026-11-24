@@ -85,7 +85,7 @@ jobs:
     name: production
     needs: [checks, codeql, dependencies, full-proof]
     if: ${{ always() && github.event_name != 'push' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       - env:
           EVENT: ${{ github.event_name }}

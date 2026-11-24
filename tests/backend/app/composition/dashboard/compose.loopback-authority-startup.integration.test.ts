@@ -201,14 +201,11 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         credential = result.headers.get("x-relay-session") ?? credential;
         return PublicProfileStateSchema.parse(await result.json());
       };
-      for (const method of ["key", "touch"] as const) {
-        const started = await onboarding("duo/start", { operationId: draft.operationId, method });
-        assert.equal(started.state, "onboarding");
-        if (started.state !== "onboarding") throw new Error("onboarding method did not start");
-        const attemptId = started.methods[method].attemptId; assert.ok(attemptId);
-        const confirmed = await onboarding("duo/confirm", { operationId: draft.operationId, method, attemptId, operatorConfirmed: true });
-        assert.equal(confirmed.state, "onboarding");
-      }
+      const startedKey = await onboarding("duo/start", { operationId: draft.operationId, method: "key" });
+      if (startedKey.state !== "onboarding") throw new Error("onboarding method did not start");
+      const attemptId = startedKey.methods.key.attemptId; assert.ok(attemptId);
+      const confirmed = await onboarding("duo/confirm", { operationId: draft.operationId, method: "key", attemptId, operatorConfirmed: true });
+      assert.equal(confirmed.state, "onboarding");
       const active = await onboarding("complete", { operationId: draft.operationId }); assert.equal(active.state, "active");
       if (active.state !== "active") throw new Error("actual signup required");
       assert.equal(machine.readProfileRegistry().profiles.length, 1);

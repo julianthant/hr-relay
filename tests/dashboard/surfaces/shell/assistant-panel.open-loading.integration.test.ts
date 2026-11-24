@@ -68,7 +68,7 @@ it("shows skeleton title, model chip and transcript while history loads, never t
     release(); await settle(); await settle();
     const loaded = shell.host.querySelector("#hub-panel-assistant"); assert.ok(loaded);
     assert.equal(loaded.querySelector(".hub-chat-title")?.textContent, "Filed forms");
-    assert.equal(loaded.querySelector("[data-slot='skeleton']"), null);
+    assert.equal(loaded.querySelector("[data-slot='skeleton']") === null, true);
   } finally { release(); await shell.close(); }
 });
 
@@ -82,7 +82,7 @@ it("renders a served reply's bullets and bold as a list and strong text, and lea
     assert.equal(log.querySelector("strong")?.textContent, "Next steps:");
     assert.doesNotMatch(log.textContent ?? "", /\*\*|^- /mu);
     assert.match(log.textContent ?? "", /\{\{link\}\} ~~gone~~/u);
-    assert.equal(log.querySelector("button"), null, "no link buttons in served replies");
+    assert.equal(log.querySelector("button") === null, true, "no link buttons in served replies");
   } finally { await shell.close(); }
 });
 

@@ -1,7 +1,9 @@
-import { runtimeProfile } from "../../app/config/runtime-isolation.js";
+import { copySigninFixtureWorkspace, runtimeProfile } from "../../app/config/runtime-isolation.js";
 import type { RuntimeProfile } from "../../../models/config/define-runtime-isolation.js";
 import { Entry } from "@napi-rs/keyring";
 import { createHash, randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { privateEqual } from "../../../rules/validation/private-equal.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -30,10 +32,32 @@ function keyBytes(secret: string): Buffer {
   return bytes;
 }
 
-export function createCredentialKeyCustody(store: CredentialSecretStore = {
+export const osCredentialSecretStore: CredentialSecretStore = {
   get: name => new Entry("Relay", name).getPassword(),
   set: (name, secret) => { new Entry("Relay", name).setPassword(secret); },
   delete: name => { new Entry("Relay", name).deletePassword(); },
+};
+
+/** A bound copy sign-in fixture keeps its keys inside its own workspace, so fixture runs never touch the OS keychain. */
+export function fixtureCredentialSecretStore(workspace: string): CredentialSecretStore {
+  const directory = join(workspace, ".tracker", "fixture-keychain");
+  const file = (name: string) => join(directory, createHash("sha256").update(name).digest("hex"));
+  return {
+    get(name) { return existsSync(file(name)) ? readFileSync(file(name), "utf8") : null; },
+    set(name, secret) { mkdirSync(directory, { recursive: true, mode: 0o700 }); writeFileSync(file(name), secret, { mode: 0o600 }); },
+    delete(name) { rmSync(file(name), { force: true }); },
+  };
+}
+
+export function selectedCredentialSecretStore(): CredentialSecretStore {
+  const fixture = copySigninFixtureWorkspace();
+  return fixture === undefined ? osCredentialSecretStore : fixtureCredentialSecretStore(fixture);
+}
+
+export function createCredentialKeyCustody(store: CredentialSecretStore = {
+  get: name => selectedCredentialSecretStore().get(name),
+  set: (name, secret) => { selectedCredentialSecretStore().set(name, secret); },
+  delete: name => { selectedCredentialSecretStore().delete(name); },
 }, profile: RuntimeProfile = runtimeProfile) {
   const account = (binding: Binding) => `${profile === "production" ? "" : profile + ":"}${binding.installationId}:${binding.profileId}`;
   function get(binding: Binding): string | null {

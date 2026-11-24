@@ -1,7 +1,8 @@
 import type { WorkbookCompatibility, WorkbookLibraryEntry, WorkbookLibrarySyncStatus } from '../../../../models/dashboard/workbook-library.js';
 import { ERROR_CATALOG } from '../../../../models/failures/error-catalog.js';
 import { spreadsheetField } from '../../../../models/fields/workbook-fields.js';
-import { cellText, type EditableSheet } from '../../../../rules/spreadsheets/workbook-io.js';
+import { cellText } from '../../../../rules/spreadsheets/cell-text.js';
+import type { EditableSheet } from '../../../../rules/spreadsheets/workbook-io.js';
 import { columnName } from '../spreadsheet-editor-model.js';
 import { setSpreadsheetColumnField, spreadsheetHeaderRow } from '../spreadsheet-column-import-model.js';
 import { formatDayTime } from '../../../lib/date-format.js';

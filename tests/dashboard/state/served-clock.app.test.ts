@@ -13,13 +13,16 @@ import { createServedClock, ServedClockContext } from "../../../src/dashboard/st
 import { SessionPanel } from "../../../src/dashboard/surfaces/sessions/session-panel.js";
 import { NotificationsPanel } from "../../../src/dashboard/surfaces/notifications/notifications-view.js";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../mocks/helpers/fixture-day.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../mocks/helpers/fixture-start.js";
-import { servedFixtureSources } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../support/helpers/dashboard/mock-world/fixture-day.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../support/helpers/dashboard/mock-world/fixture-start.js";
+import { servedFixtureSources } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
+import { createRowStore } from "../../../src/dashboard/client/index.js";
+import { serveReadyNotificationStatus } from "../../support/helpers/dashboard/serve-run-panel.js";
+import { LocalDateSchema } from "../../../src/rules/identity/ids.js";
 
 // LoadedApp resolves the date selection once per render, so this counts its renders.
 const appRenders = vi.hoisted(() => ({ count: 0 }));
@@ -60,7 +63,7 @@ it("ten ticks re-render no part of a collapsed Sessions panel", async () => {
   const client = createDashboardClient({ baseUrl: "http://sessions.test", fetchImpl: async () => { throw new Error("no request is expected"); } });
   const scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
   const binding = { client, executor: new CommandExecutor(() => scope), scope, day: FIXTURE_DAY_WIRE.day, now: () => FIXTURE_NOW,
-    dayState: { subscribePublications: () => () => {}, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh() {} } };
+    dayState: { rows: createRowStore(), subscribePublications: () => () => {}, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh() {} } };
   const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
   const catalog = buildWorkflowCatalog(served, servedFixtureSources(served));
   const clock = createServedClock(FIXTURE_NOW);
@@ -84,7 +87,10 @@ it("ten minutes of ticks re-render LoadedApp never, while the open inbox's age a
     readState: "unread", state: "unread", occurredAt, revision: 1, kind: "notification", trigger: "failed", severity: "error", title: "Run failed",
     context: { state: "available", subject: "Canonical history", workflow: "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId } });
   const client = { ...transport, bootstrap: async () => boot,
-    notificationSnapshot: async () => [notification], notificationStatus: async () => ({ state: "ready" as const, pending: 0 }) };
+    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
+      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: [notification] }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" });
+      return { select() {}, close() {} };
+    } };
   fakeClock();
   const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(PRODUCT_WORKFLOW_COMPOSITION.sources) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
@@ -111,7 +117,7 @@ it("ten ticks re-render neither an open Sessions panel nor its worker cards, whi
   const elapsed = () => [...host.querySelectorAll("article footer > span:first-child")].map(span => span.textContent).join("|");
   for (const day of [FIXTURE_DAY_WIRE, { ...FIXTURE_DAY_WIRE, workerCards: [], unavailableWorkerCards: [] }]) {
     const binding = { client, executor: new CommandExecutor(() => scope), scope, day: FIXTURE_DAY_WIRE.day, now: () => FIXTURE_NOW,
-      dayState: { subscribePublications: () => () => {}, request: scope.dayRequest, day: { state: "loaded" as const, value: day }, connection: { state: "live" as const }, refresh() {} } };
+      dayState: { rows: createRowStore(), subscribePublications: () => () => {}, request: scope.dayRequest, day: { state: "loaded" as const, value: day }, connection: { state: "live" as const }, refresh() {} } };
     await act(async () => root?.render(createElement(ServedClockContext.Provider, { value: clock }, createElement(TooltipProvider, null, createElement(ToastProvider, null,
       createElement(SessionPanel, { catalog, binding, open: true, onOpenChange() {} }))))));
     await act(async () => {});
@@ -133,7 +139,7 @@ it("an updated notification shows its new age at once, even when the label it ha
   root = createRoot(host);
   const draw = (occurredAt: string) => act(async () => root?.render(createElement(ServedClockContext.Provider, { value: clock }, createElement(TooltipProvider, null,
     createElement(NotificationsPanel, { state: { state: "ready", items: [item(occurredAt)], pinned: [] }, activeId: "", showPriority: false, onShowPriority() {},
-      dismissed: [], onDismiss() {}, onControl() {}, onReadAll() {}, onOpen() {}, onBack() {}, notice: "" })))));
+      dismissed: [], onDismiss() {}, onControl() {}, canAct: () => true, onReadAll() {}, onOpen() {}, onBack() {}, notice: "" })))));
   const age = () => host.querySelector(".notification-item-age")?.textContent;
   await draw(at(-70));
   assert.equal(age(), "1 min ago");

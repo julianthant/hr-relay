@@ -853,6 +853,7 @@ export function Tabs({
 }) {
   return (
     <ShadcnTabs
+      activationMode="manual"
       value={value}
       onValueChange={onValueChange}
       className={cn("flex min-h-0 min-w-0 flex-col", className)}

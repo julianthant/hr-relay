@@ -1,4 +1,4 @@
-import { registerFixturePreflightRoutes } from "../../../../mocks/helpers/fixture-preflight-routes.js";
+import { registerFixturePreflightRoutes } from "../mock-world/fixture-preflight-routes.js";
 import { wireError } from "../../../fixtures/dashboard/fixture-wire-error.js";
 import { Hono } from "hono";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -75,10 +75,13 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
     dayWire: DashboardDayWire = FIXTURE_DAY_WIRE,
     cursor = "pc:1",
   ): DashboardStreamEnvelope {
+    // The server's hub sends the observer status with every snapshot; the fixture observer is always ready.
     return DashboardStreamEnvelopeSchema.parse({
       type: "snapshot",
+      rows: [{ model: "notification-status", key: "local-operator", value: { state: "available", value: { state: "ready", pending: 0 } } }],
       topic: "dashboard-day",
       cursor,
+      position: 0,
       payload: dayWire,
     });
   }

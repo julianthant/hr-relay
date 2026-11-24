@@ -29,17 +29,19 @@ it("publishes a peer commit on the next tick while an earlier publication is sti
     parkedAt: f.clock.now().toISOString(), resumeAt: "collect" } });
   const first = seedRun(f, gate(1));
   const release = Promise.withResolvers<void>();
+  const read = vi.fn(() => readNotificationSources(f.db, f.reader));
   const publish = vi.fn(f.inbox.publish.bind(f.inbox)).mockImplementationOnce(async (event, source) => {
     await release.promise;
     return f.inbox.publish(event, source);
   });
-  const observer = createNotificationObserver({ inbox: { publish }, read: () => readNotificationSources(f.db, f.reader),
-    health: async () => {} });
+  const observer = createNotificationObserver({ inbox: { publish }, read, health: async () => {} });
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   const timer = startNotificationPolling(f.db, f.clock, { ...observer, healthDueAt: () => Infinity });
   try {
     await vi.advanceTimersByTimeAsync(0);
     expect(publish).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(read).toHaveBeenCalledTimes(1);
     const second = seedRun({ ...f, db: peer }, gate(2));
     await vi.advanceTimersByTimeAsync(1000);
     const links = () => f.inbox.list("local-operator").flatMap(row => row.links);
@@ -121,6 +123,12 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
   const pollBackground = projection.pollBackground.bind(projection);
   const poll = vi.spyOn(projection, "pollBackground");
   const synchronousIngest = vi.spyOn(projection, "ingestFromTimeline");
+  let revisionReads = 0;
+  const track = database.trackAuthorityTables.bind(database);
+  vi.spyOn(database, "trackAuthorityTables").mockImplementation((tables, mode) => {
+    const revision = track(tables, mode);
+    return () => { revisionReads += 1; return revision(); };
+  });
   const lease = database.authority.duoCeremonyLeases.acquire({ credentialKey: "a".repeat(64), workerId: f.workerId,
     system: "crm", now: clock.now().toISOString(), ttlMs: 3000 });
   expect(lease.state).toBe("acquired");
@@ -132,17 +140,35 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
   };
   try {
     const debug = () => debugEvents.emit({ category: "boot", phase: "settled", correlationId: randomUUID(), area: "timeline", reason: "fixture" });
-    const first = debug().record;
+    debug();
     const runtime = composeDashboardTimeline({ database, clock, projection, startupCleanups, admission: f.profile.admission,
       lifecycle: f.service, loggingRepository, debugEvents });
     const startupCursor = projection.cursor();
     await runtime.settled();
     expect(projection.cursor()).toBe(startupCursor);
     poll.mockClear();
-    tick(1000);
-    expect(poll).not.toHaveBeenCalled();
-
+    revisionReads = 0;
+    tick(500);
     debug();
+    tick(250);
+    expect(poll).not.toHaveBeenCalled();
+    expect(revisionReads).toBe(0);
+
+    execFileSync(process.execPath, ["--input-type=module", "-e", `
+      import { DatabaseSync } from "node:sqlite";
+      const db = new DatabaseSync(process.argv[1]);
+      const copy = db.prepare("INSERT INTO debug_events(id,workflow,run_id,worker_id,occurred_at,recorded_at,retention_date,pinned,payload_json) SELECT 'peer-'||id,workflow,run_id,worker_id,occurred_at,recorded_at,retention_date,pinned,payload_json FROM debug_events ORDER BY cursor DESC LIMIT 1").run();
+      db.prepare("DELETE FROM debug_events WHERE id LIKE 'peer-%'").run();
+      db.close();
+      if (copy.changes !== 1) throw new Error("expected one committed peer debug row");
+    `, f.profile.path]);
+    tick(250);
+    expect(poll).not.toHaveBeenCalled();
+    expect(revisionReads).toBe(0);
+
+    runtime.noteWriter.emitNote({ workflow: "person-lookup", address: { workerId: f.workerId, spanPath: f.workerId }, level: "step", message: "fixture" });
+    const first = loggingRepository.page({ after: loggingRepository.highWaterMark() - 1 })[0];
+    expect(first?.payload.kind).toBe("note");
     tick(250);
     expect(poll).toHaveBeenCalledTimes(1);
     await runtime.settled();
@@ -153,7 +179,7 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
       const { changes } = db.prepare("DELETE FROM timeline_events WHERE id=?").run(process.argv[2]);
       db.close();
       if (changes !== 1) throw new Error("expected one committed timeline deletion");
-    `, f.profile.path, first.eventId]);
+    `, f.profile.path, first?.eventId ?? ""]);
     tick(250);
     expect(poll).toHaveBeenCalledTimes(2);
     await runtime.settled();
@@ -206,6 +232,15 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
     expect(leaseChanges).toEqual(["snapshot"]);
     expect(poll).toHaveBeenCalledTimes(5);
 
+    const touched: string[][] = [];
+    const off = projection.onChange(change => { if (change.kind === "runs") touched.push([...change.runIds]); });
+    runtime.noteWriter.emitNote({ workflow, address: { runId, attempt, traceId, spanPath: traceId }, level: "step", message: "fixture" });
+    tick(250);
+    await runtime.settled();
+    off();
+    expect(touched).toEqual([[runId]]);
+    expect(poll).toHaveBeenCalledTimes(6);
+
     const captured = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
     poll.mockImplementationOnce((read, now) => pollBackground(async request => {
       const page = await read(request);
@@ -239,7 +274,7 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
     const nextId = randomUUID();
     createTimelineEmitter({ repository: loggingRepository, clock, uuid: () => nextId }).emit(observation);
     tick(250);
-    expect(poll).toHaveBeenCalledTimes(8);
+    expect(poll).toHaveBeenCalledTimes(9);
     projection.ingestFromTimeline();
     await runtime.settled();
     expect(projection.runLogSnapshot(runId).entries.map(entry => entry.line.file.path)).toEqual([

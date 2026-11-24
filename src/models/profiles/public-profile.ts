@@ -23,12 +23,13 @@ export const ProfileLoginChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
 ]);
 /** The signed-in person's account values; the timekeeper name and timekeeper initials are stored and changed independently. */
-export const ProfileAccountSchema = z.strictObject({ name: z.string(), initials: ProfileRegistryRowSchema.shape.initials,
+export const ProfileAccountSchema = z.strictObject({ username: ProfileRegistryRowSchema.shape.relayEmail, name: z.string(), initials: ProfileRegistryRowSchema.shape.initials,
   timekeeper: ProfileRegistryRowSchema.shape.timekeeperName, timekeeperInitials: ProfileRegistryRowSchema.shape.timekeeperInitials,
   lastSignedInAt: ProfileRegistryRowSchema.shape.lastSignedInAt });
 export type ProfileAccount = z.infer<typeof ProfileAccountSchema>;
-export function profileAccount(row: ProfileRegistryRow): ProfileAccount {
-  return ProfileAccountSchema.parse({ name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName,
+export function profileAccount(row: ProfileRegistryRow, identify: (email: string) => "unknown" | { readonly profileId: string }): ProfileAccount {
+  const owner = row.relayEmail === undefined ? "unknown" : identify(row.relayEmail);
+  return ProfileAccountSchema.parse({ ...(owner !== "unknown" && owner.profileId === row.profileId && { username: row.relayEmail }), name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName,
     timekeeperInitials: row.timekeeperInitials, lastSignedInAt: row.lastSignedInAt });
 }
 /** A details change names at least one value; each value is checked by `profileDetailsPatch`, whose refusal states the reason. */
@@ -48,7 +49,7 @@ export function isRelayUsername(value: string): boolean { return /^[^\s@]+@ucsd\
 export const DeleteProfileAccountRequestSchema = z.strictObject({ confirmed: z.literal(true),
   expectedProfileId: ProfileIdSchema, expectedEpoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
 export type DeleteProfileAccountRequest = z.infer<typeof DeleteProfileAccountRequestSchema>;
-export const ProfileOnboardingMethodSchema = z.enum(["key", "touch"]);
+export const ProfileOnboardingMethodSchema = z.enum(["key"]);
 export type ProfileOnboardingMethod = z.infer<typeof ProfileOnboardingMethodSchema>;
 export const ProfileOnboardingMethodStateSchema = z.strictObject({
   state: z.enum(["unavailable", "idle", "pending", "complete", "unknown"]),
@@ -57,7 +58,6 @@ export const ProfileOnboardingMethodStateSchema = z.strictObject({
   portalAccepted: z.boolean(),
   operatorConfirmed: z.boolean(),
   exactCredentialRequestObserved: z.boolean(),
-  platformAuthenticator: z.enum(["native-platform", "chromium-platform"]).optional(),
 });
 export type ProfileOnboardingMethodState = z.infer<typeof ProfileOnboardingMethodStateSchema>;
 export const PROFILE_ONBOARDING_STATE = "onboarding";
@@ -72,14 +72,14 @@ export type ProfileOnboardingBrowser = z.infer<typeof ProfileOnboardingBrowserSc
 const DuoSetupFields = {
   operationId: z.uuid(), profileId: ProfileIdSchema,
   step: z.enum(["duo", "ready"]),
-  methods: z.strictObject({ key: ProfileOnboardingMethodStateSchema, touch: ProfileOnboardingMethodStateSchema }),
+  methods: z.strictObject({ key: ProfileOnboardingMethodStateSchema }),
   browser: ProfileOnboardingBrowserSchema,
 };
 function refineDuoSetup(value: Readonly<{ step: "duo" | "ready"; methods: Readonly<Record<ProfileOnboardingMethod, ProfileOnboardingMethodState>> }>, context: z.RefinementCtx): void {
-  const complete = value.methods.key.state === "complete" && value.methods.touch.state === "complete";
+  const complete = value.methods.key.state === "complete";
   if ((value.step === "ready") !== complete) context.addIssue({ code: "custom", message: "profile-onboarding-readiness-invalid" });
-  for (const [name, method] of Object.entries(value.methods)) {
-    const confirmed = method.operatorConfirmed || method.portalAccepted || name === "key" && method.exactCredentialRequestObserved;
+  for (const method of Object.values(value.methods)) {
+    const confirmed = method.operatorConfirmed || method.portalAccepted || method.exactCredentialRequestObserved;
     if (method.state === "complete" && (!method.ceremonyObserved || !confirmed)) {
       context.addIssue({ code: "custom", message: "profile-onboarding-method-incomplete" });
     }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, it, vi } from "vitest";
-import { createSettingsRead, settingsReadResource } from "../../../src/dashboard/state/settings-read-model.js";
+import { createSettingsRead, SETTINGS_READS_LIMIT, settingsReadResource } from "../../../src/dashboard/state/settings-read-model.js";
+import { dropKeptResults } from "../../../src/dashboard/state/async-resource.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 
 afterEach(() => { vi.useRealTimers(); });
@@ -52,4 +53,38 @@ it("aborts an unfinished read when its owner leaves, keeps the retained value an
   assert.equal(resource.snapshot().state, "loaded"); assert.equal(resource.snapshot().value, 5);
   assert.equal(await resource.read(() => Promise.resolve(6), "SETTINGS_INITIAL_READ_UNAVAILABLE"), 6);
   assert.ok(await first instanceof Error);
+});
+it("bounds one client's kept reads, forgetting the least recently used idle read first", () => {
+  const client = {}, authority = {};
+  const first = settingsReadResource<number>(client, authority, "c", "read-0");
+  first.accept(0);
+  const shown = settingsReadResource<number>(client, authority, "c", "read-1");
+  shown.accept(1);
+  const unsubscribe = shown.subscribe(() => undefined);
+  for (let index = 2; index <= SETTINGS_READS_LIMIT; index += 1) settingsReadResource<number>(client, authority, "c", `read-${String(index)}`).accept(index);
+  assert.equal(settingsReadResource<number>(client, authority, "c", "read-0").snapshot().value, undefined, "the oldest idle read is forgotten");
+  assert.equal(first.snapshot().state, "idle");
+  assert.equal(settingsReadResource<number>(client, authority, "c", "read-1"), shown, "a read on screen is never evicted");
+  assert.equal(shown.snapshot().value, 1);
+  unsubscribe();
+});
+it("a stream reset forgets kept reads nothing shows, and reads the one on screen again, showing nothing from before it", async () => {
+  const client = {}, authority = {};
+  const kept = settingsReadResource<number>(client, authority, "c", "kept");
+  kept.accept(1);
+  const shown = settingsReadResource<number>(client, authority, "c", "shown");
+  let served = 2;
+  const unsubscribe = shown.subscribe(() => undefined);
+  assert.equal(await shown.read(async () => served, "SETTINGS_INITIAL_READ_UNAVAILABLE"), 2);
+  const stale = shown.stale();
+  served = 3;
+  dropKeptResults(client);
+  assert.equal(kept.snapshot().state, "idle");
+  assert.notEqual(settingsReadResource<number>(client, authority, "c", "kept"), kept);
+  assert.equal(settingsReadResource<number>(client, authority, "c", "shown"), shown);
+  assert.equal(shown.snapshot().state, "loading");
+  assert.equal(shown.snapshot().value, undefined, "nothing read before the reset shows after it");
+  assert.equal(shown.stale(), stale + 1);
+  await vi.waitFor(() => assert.deepEqual(shown.snapshot(), { state: "loaded", value: 3 }));
+  unsubscribe();
 });

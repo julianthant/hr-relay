@@ -129,7 +129,7 @@ describe('Activity drilldown records and navigation', () => {
       await act(async () => input.focus());
       const searched: ActivityBrowse = { ...initial, query: 'Jordan', page: 0 };
       await act(async () => root.render(createElement(ActivityDrilldown, { report: value, selection: searched, onSelection })));
-      assert.equal(document.activeElement, input); assert.equal(input.value, 'Jordan');
+      assert.equal(document.activeElement === input, true); assert.equal(input.value, 'Jordan');
       const result = activityDrilldown(value.runs, searched); if (result.state !== 'loaded') throw new Error('filtered-run-missing');
       assert.match(host.querySelector('[role="status"]')?.textContent ?? '', new RegExp(`${result.matches.length} of 24 completed runs`));
       await act(async () => host.querySelector<HTMLAnchorElement>('tbody a[aria-label^="Open logs for"]')!.click());

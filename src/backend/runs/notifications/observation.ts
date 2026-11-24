@@ -21,6 +21,14 @@ export function createNotificationObserver(deps: {
   const active = new Map<string, Promise<void>>();
   // A nonempty queue without a publisher is waiting to retry its first occurrence.
   const needsRetry = () => queues.size > active.size;
+  const statusListeners = new Set<() => void>();
+  let reported = canonicalJsonStringify({ state: "ready", pending: 0 });
+  const statusMoved = (): void => {
+    const next = canonicalJsonStringify(status());
+    if (next === reported) return;
+    reported = next;
+    for (const listener of [...statusListeners]) listener();
+  };
 
   const observeSources = (changed?: () => boolean): Promise<void> | undefined => {
     if (stopped) return;
@@ -57,8 +65,10 @@ export function createNotificationObserver(deps: {
         }
         active.delete(key);
         if (queue.size === 0) queues.delete(key);
+        statusMoved();
       }));
     }
+    statusMoved();
     if (active.size > 0) return Promise.all(active.values()).then(() => {});
   };
   const observe = (): Promise<void> => {
@@ -68,6 +78,7 @@ export function createNotificationObserver(deps: {
       const publications = observeSources();
       if (publications !== undefined) await publications;
       try { await deps.health(); healthFailure = undefined; } catch { healthFailure = "NOTIFICATION_OBSERVATION_FAILED"; }
+      statusMoved();
     })().finally(() => { running = undefined; });
     return running;
   };
@@ -77,9 +88,14 @@ export function createNotificationObserver(deps: {
     if (code !== undefined) return { state: "failed", code, pending };
     return { state: drained ? "stopped" : "ready", pending };
   };
-  return Object.freeze({ observe, observeSources, status, async stop() {
+  const onStatusChange = (listener: () => void): (() => void) => {
+    statusListeners.add(listener);
+    return () => { statusListeners.delete(listener); };
+  };
+  return Object.freeze({ observe, observeSources, status, onStatusChange, async stop() {
     stopped = true;
     await Promise.all([running, ...active.values()]);
     drained = true;
+    statusMoved();
   } });
 }

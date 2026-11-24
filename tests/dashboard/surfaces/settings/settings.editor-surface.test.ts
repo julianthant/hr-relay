@@ -1,4 +1,4 @@
-import { FIXTURE_EDITABLE_SETTINGS } from "../../../mocks/helpers/fixture-settings.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/helpers/dashboard/mock-world/fixture-settings.js";
 import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
 import { syntheticSettingsAuthority } from "../../../support/helpers/dashboard/settings-harness.js";
@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { act,createElement, type ComponentProps } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it,vi } from "vitest";
-import { createDashboardClient,type DashboardClient } from "../../../../src/dashboard/client/index.js";
+import { createDashboardClient,createRowStore,type DashboardClient,type RowStoreWriter } from "../../../../src/dashboard/client/index.js";
+import { StreamRowSchema } from "../../../../src/models/dashboard/subscription.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
@@ -20,6 +21,8 @@ const DOCUMENT = FIXTURE_EDITABLE_SETTINGS;
 
 let root: Root | undefined;
 let host: HTMLElement | undefined;
+/** The stream's rows for the page `settingsClient` serves: each applied ordinary save delivers its settings row. */
+let streamRows: RowStoreWriter | undefined;
 const authorities: Awaited<ReturnType<typeof syntheticSettingsAuthority>>[] = [];
 
 afterEach(async () => {
@@ -30,12 +33,15 @@ afterEach(async () => {
   for (const authority of authorities.splice(0)) await authority.close();
   root = undefined;
   host = undefined;
+  streamRows = undefined;
 });
 
 async function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "lost" = "confirmed") {
   const authority = await syntheticSettingsAuthority();
   authorities.push(authority);
   let stored = false;
+  const rows = createRowStore();
+  streamRows = rows;
   let release!: () => void;
   const responseReady = mode === "held" ? new Promise<void>(resolve => { release = resolve; }) : Promise.resolve();
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
@@ -54,6 +60,9 @@ async function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "
       }
       const result = authority.execute(request);
       stored = true;
+      if (result.state === "applied" && result.settingsRevision !== undefined) {
+        rows.apply([StreamRowSchema.parse({ model: "settings", key: "editable", value: { state: "available", value: authority.read() } })]);
+      }
       await responseReady;
       return new Response(JSON.stringify(result), { status: 200 });
     }
@@ -71,7 +80,7 @@ async function mountSettingsPage(client: DashboardClient, section: string,
   await act(async () => {
     root = createRoot(element);
     root.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
-      children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso,
+      children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso, ...(streamRows === undefined ? {} : { rows: streamRows }),
         children: createElement(SettingsPage, { profileName, onClose: () => undefined,
           section, actorId: "local-operator",
           descriptorFingerprint: "d".repeat(64), onSection,
@@ -105,10 +114,10 @@ describe("editable Settings surface", () => {
     assert.match(host.textContent ?? "", /Timekeeper nameSynthetic Middle Operator/u);
     assert.match(host.textContent ?? "", /Timekeeper initialsSMO/u);
     assert.doesNotMatch(host.textContent ?? "", /Historical Activity pseudonym/u);
-    assert.equal(host.querySelector('input[name="timekeeperName"]'), null);
-    assert.equal(host.querySelector('input[name="activityPersonPseudonym"]'), null);
-    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper name"]'), null);
-    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper initials"]'), null);
+    assert.equal(host.querySelector('input[name="timekeeperName"]') === null, true);
+    assert.equal(host.querySelector('input[name="activityPersonPseudonym"]') === null, true);
+    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper name"]') === null, true);
+    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper initials"]') === null, true);
     assert.equal(host.querySelectorAll("input").length, 3, "navigation search and the two UCPath credentials remain editable");
   });
 
@@ -198,7 +207,7 @@ describe("editable Settings surface", () => {
     assert.ok(navigation instanceof HTMLInputElement);
     assert.equal(navigation.disabled, false);
     await act(async () => { navigation.focus(); });
-    assert.equal(document.activeElement, navigation, "the editable control accepts keyboard focus");
+    assert.equal(document.activeElement === navigation, true, "the editable control accepts keyboard focus");
     await act(async () => {
       // React's controlled-input tracker requires the native setter bypass here.
       const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
@@ -271,7 +280,7 @@ describe("editable Settings surface", () => {
     host = await mountSettingsPage(transport.client, "general");
     vi.useFakeTimers();
     const datePath = `annualDates.FY${String(DOCUMENT.currentFiscalYear)}.jobEndDate`;
-    assert.equal(host.querySelector('[data-settings-path="display.viewport"]'), null);
+    assert.equal(host.querySelector('[data-settings-path="display.viewport"]') === null, true);
     assert.equal(host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Hidden");
     assert.equal(host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 0);
     const date = host.querySelector(`[data-settings-path="${datePath}"] .ds-date-picker`);
@@ -314,7 +323,7 @@ describe("editable Settings surface", () => {
     await act(async () => { field.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); }); await wait();
     assert.equal(applied.length, 0, "blur does not write the dialog draft");
     await act(async () => { document.body.querySelector('[role="dialog"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); }); await wait();
-    assert.equal(document.body.querySelector('[role="dialog"]'), null);
+    assert.equal(document.body.querySelector('[role="dialog"]') === null, true);
     assert.equal(applied.length, 0, "Escape discards without a write");
     field = await open();
     assert.equal(field.value, "", "the discarded draft is gone");

@@ -6,7 +6,7 @@ import { testRunLifecycle, testWorkerPorts, testRunService } from "../../fixture
 import assert from "node:assert/strict";
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
-import { type WriteSequencerContext } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { type WriteSequencerContext } from "../../../../src/backend/runtime/execution/run-execution-write.js";
 import { withBoundRunConfigFingerprint, type WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWriteSequencer, type ProductionWriteSequencer, type TransactionDryRunPreview, type WriteSequencerHooks } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { type RunRecord } from "../../../../src/models/run/record.js";

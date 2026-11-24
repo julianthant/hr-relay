@@ -8,6 +8,7 @@ import { FAILURE_NOTE_REMOVAL_MIGRATION } from "./failure-note-removal-migration
 import { ASSISTANT_ATTACHMENTS_MIGRATION } from "./assistant-attachments.js";
 import { ASSISTANT_GRANT_RETIREMENT_MIGRATION, RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
 import { CHANGE_LOG_MIGRATION } from "./authority-change-log.js";
+import { DEBUG_EVENTS_MIGRATION } from "./timeline-repository.js";
 import { OCR_REVIEW_MIGRATION } from "./ocr-review.js";
 import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
@@ -43,6 +44,9 @@ export const UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = upgradea
 export const OPENABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = openableAuthoritySchemaVersions;
 /** Runs stored before this version may omit buildId. Later versions keep the strict envelope. */
 export const BUILD_ID_ENVELOPE_SCHEMA_VERSION = 22;
+export const OCR_SEARCH_TERMS_SCHEMA_VERSION = 41;
+export const OCR_SEARCH_TERMS_BACKFILL_ID = "run-search-ocr-subject-terms:v1";
+export const OCR_SEARCH_TERMS_COLUMN_SQL = "ALTER TABLE run_search ADD COLUMN ocr_subject_terms TEXT";
 /** Migration 22 deletes every run approved before envelopes carried a build id, through the native run deletion. */
 export const PRE_BUILD_RUN_DELETION_ID = "pre-build-run-deletion:v1";
 /** Migration 24 drops durable worker custody; the pool holds it in memory. */
@@ -178,6 +182,34 @@ const SCHEMA_38_QUERY_INDEXES = deepFreeze({
 
 /** The current query indexes exercised by the store query plan test. */
 export const QUERY_INDEXES = deepFreeze({ ...SCHEMA_37_QUERY_INDEXES, ...SCHEMA_38_QUERY_INDEXES });
+
+/** Migration 40 indexes the lookups that scanned on an operator-sized store and the foreign keys whose parent rows are deleted. */
+export const LIST_INDEX_SCHEMA_VERSION = 40;
+export const LIST_INDEXES = deepFreeze({
+  commands_child_idx: { on: "commands(parent_id) WHERE parent_id IS NOT NULL",
+    serves: "the scoped command-group check a dashboard read runs after a peer write; commands_parent_idx counts the parentless rows and is not chosen" },
+  runs_owned_idx: { on: "runs(owner_worker_id,created_at,id) WHERE owner_worker_id IS NOT NULL", serves: "runs.listByWorker" },
+  runs_queue_order_idx: { on: "runs(CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id)",
+    serves: "the run list page's position rebuild in queue order" },
+  runs_workflow_queue_order_idx: { on: "runs(workflow,CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id)",
+    serves: "the workflow-filtered run list page's position rebuild in queue order" },
+  gates_run_idx: { on: "gate_results(run_id,created_at,id)", serves: "gateResults.listByRun" },
+  notifications_actor_idx: { on: "notifications(actor_id,created_at,id)", serves: "notifications.listByActor" },
+  run_batches_workflow_idx: { on: "run_batches(workflow,started_at,id)", serves: "runSessions.listByWorkflow" },
+  failures_fingerprint_idx: { on: "run_failures(fingerprint,created_at,id)", serves: "failures.listByFingerprint and countByFingerprint" },
+  ocr_approved_run_idx: { on: "ocr_approved_snapshots(run_id,created_at,id)", serves: "a run's approved OCR snapshots and the run foreign key" },
+  dependencies_parent_run_idx: { on: "delegation_dependencies(parent_run_id,created_at,id)", serves: "delegationDependencies.listByParentRun on every worker heartbeat" },
+  dependencies_parent_order_idx: { on: "delegation_dependencies(parent_run_id,id)", serves: "the queue list's dependencies for a page of runs" },
+  debug_events_run_idx: { on: "debug_events(run_id) WHERE run_id IS NOT NULL", serves: "run deletion's removal of the run's debug events" },
+  diagnostics_failure_idx: { on: "diagnostic_snapshots(failure_id)", serves: "the failure foreign key when run deletion removes a failure" },
+  receipts_failure_idx: { on: "run_receipts(failure_id)", serves: "the failure foreign key when run deletion removes a failure" },
+  attachments_conversation_idx: { on: "assistant_attachments(conversation_id)", serves: "the cascade when an expired conversation is deleted" },
+});
+/** The dependency's parent run, kept in its record, becomes an indexed generated column; the record stays the source. */
+export const LIST_INDEX_MIGRATION = deepFreeze({ version: LIST_INDEX_SCHEMA_VERSION, statements: [
+  "ALTER TABLE delegation_dependencies ADD COLUMN parent_run_id TEXT GENERATED ALWAYS AS (json_extract(payload_json,'$.parentRunId')) VIRTUAL",
+  ...Object.entries(LIST_INDEXES).map(([name, index]) => `CREATE INDEX ${name} ON ${index.on}`),
+] });
 
 export const SQLITE_MIGRATIONS = deepFreeze([
   { version: 1, statements: [`CREATE TABLE database_states (
@@ -1148,6 +1180,9 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     "DROP INDEX runs_queued_idx",
     ...Object.entries(SCHEMA_38_QUERY_INDEXES).map(([name, index]) => `CREATE INDEX ${name} ON ${index.on}`),
   ] },
+  DEBUG_EVENTS_MIGRATION,
+  LIST_INDEX_MIGRATION,
+  { version: OCR_SEARCH_TERMS_SCHEMA_VERSION, statements: [OCR_SEARCH_TERMS_COLUMN_SQL, `SELECT '${OCR_SEARCH_TERMS_BACKFILL_ID}'`] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
@@ -1172,6 +1207,7 @@ export function migrationTableNames(version: number): readonly (AuthorityTableNa
     && (version >= 17 || !name.startsWith("ocr_"))
     && (version >= 25 || name !== "workflow_workbook_selections")
     && (version >= WORKBOOK_PAYLOAD_MIGRATION.version || name !== "workbook_payloads")
+    && (version >= DEBUG_EVENTS_MIGRATION.version || name !== "debug_events")
     && (version >= 18 || !["workbook_library_state", "workbook_library_actions", "workbook_library_snapshots"].includes(name))
     && (version >= 13 || !["workbook_creations", "workbook_types", "workbook_operations"].includes(name)))];
   // The retired grant table keeps its registry position (after settings) so predecessor content fingerprints are unchanged.

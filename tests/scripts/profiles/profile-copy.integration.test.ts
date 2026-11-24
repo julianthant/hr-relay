@@ -1,10 +1,13 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, it, expect } from "vitest";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { acquireRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { importProfileLibrary, resolveSourceRef, runProfileCopy, type Git } from "../../../scripts/profiles/profile-copy.js";
@@ -12,6 +15,9 @@ import { createBackupFixtures } from "../../support/helpers/storage/backup-fixtu
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
+import { runRecordOf } from "../../support/helpers/backend/dashboard-harness.js";
+import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { credentialKeychainTestEnvironment, FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -31,6 +37,9 @@ it("imports the newest production workbook library into the independently signed
   library.create({ name: "Example roster", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [],
     rows: [{ id: "row", cells: [{ value: "Example" }] }] }] });
   await takeBackup(source);
+  const queued = runRecordOf({ seed: 596, enqueuedAt: systemClock.now().toISOString() });
+  if (source.database.authority.runtimeConfig.get() === undefined) source.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  source.database.authority.runs.enqueue(queued);
   library.create({ name: "Latest workbook", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "Latest" }] }] }] });
   const backup = await takeBackup(source);
   const binding = destination.admission.profileBinding, sourceProfile = source.admission.profileBinding.profileId;
@@ -43,7 +52,13 @@ it("imports the newest production workbook library into the independently signed
   const imported = await importProfileLibrary(options, lock);
   expect(imported.sourceBackup.backupFileName).toBe(backup.manifest.backupFileName);
   expect(imported.created).toBe(2);
+  expect(imported.history.runs).toBe(1);
   expect((await importProfileLibrary(options, lock)).unchanged).toBe(2);
+
+  const schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION + 1;
+  writeFileSync(backup.manifestPath, JSON.stringify({ ...backup.manifest, schemaVersion,
+    verification: { ...backup.manifest.verification, schemaVersion } }));
+  await expect(importProfileLibrary(options, lock)).rejects.toMatchObject({ reason: "source-schema-newer" });
 
   const machine = acquireEntrypointAdmission(destinationWorkspace, "exclusive", lock);
   try {
@@ -54,12 +69,59 @@ it("imports the newest production workbook library into the independently signed
         systemClock, undefined, undefined, undefined, credentials);
       try {
         expect(database.getMeta()).toMatchObject(binding);
+        expect(database.authority.runs.get(queued.envelope.runId)).toBeUndefined();
+        const history = database.dashboardHistory();
+        expect(history.authority.runs.get(queued.envelope.runId)?.lifecycle).toMatchObject({ state: "terminal", outcome: "discarded" });
+        expect(history.authority.runs.listNonTerminal()).toEqual([]);
         expect(database.authority.workbooks.catalog().map(entry => entry.name).sort()).toEqual(["Example roster", "Latest workbook"]);
       } finally { database.close(); }
     } finally { admission.release(); }
   } finally { machine.release(); }
   expect(source.database.getMeta().authorityGeneration).toBe(generation);
   expect(binding.installationId).not.toBe(source.admission.profileBinding.installationId);
+});
+
+it("imports into a signed-in staging copy whose key exists only under the staging account", async () => {
+  const home = workspace();
+  const data = process.platform === "win32" ? home : join(home, "Library", "Application Support");
+  const sourceWorkspace = join(data, "Relay"), targetWorkspace = join(data, "Relay-staging");
+  for (const path of [sourceWorkspace, targetWorkspace]) mkdirSync(path, { recursive: true, mode: 0o700 });
+  const source = await openCurrentWorld({ workspace: sourceWorkspace });
+  await takeBackup(source);
+  const destination = await createBoundProfileFixture({ workspace: targetWorkspace });
+  cleanups.push(() => destination.close());
+  const { installationId, profileId } = destination.admission.profileBinding;
+  const account = `Relay:${installationId}:${profileId}`;
+  const env = credentialKeychainTestEnvironment({ ...process.env, HOME: home, USERPROFILE: home, LOCALAPPDATA: home });
+  env.RELAY_TEST_KEYCHAIN = JSON.stringify(FakeKeyringEntry.snapshot()
+    .map(([name, key]) => [name === account ? `Relay:staging:${installationId}:${profileId}` : name, key]));
+  delete env.RELAY_RUNTIME_PROFILE;
+  await destination.closeController();
+
+  const preload = join(home, "profile-copy-preload.mjs");
+  writeFileSync(preload, `
+    import childProcess from "node:child_process";
+    import os from "node:os";
+    import { syncBuiltinESMExports } from "node:module";
+    const user = os.userInfo();
+    os.userInfo = () => ({ ...user, homedir: process.env.HOME });
+    childProcess.execSync = command => {
+      if (command !== "npm ci") throw new Error("Unexpected shell command in profile copy fixture");
+    };
+    childProcess.execFileSync = (command, args) => {
+      if (command === "npm" && args[0] === "ci") return;
+      if (command !== "git") throw new Error("Unexpected command in profile copy fixture");
+      if (args[2] === "show") return JSON.stringify({ scripts: { "dashboard:staging": "fixture" } });
+      return args[2] === "rev-parse" ? "0123abc" : "";
+    };
+    syncBuiltinESMExports();
+  `);
+  const entry = fileURLToPath(new URL("../../../scripts/profiles/profile-copy.ts", import.meta.url));
+  const result = spawnSync(process.execPath, ["--import", "tsx", "--import", pathToFileURL(preload).href, entry, "staging", "--source-person",
+    source.admission.profileBinding.profileId], { env, encoding: "utf8", timeout: 20_000 });
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain("workbooks: 0 created, 0 refreshed, 0 unchanged, 0 kept local");
 });
 
 it("follows the two environment branches and fetches from origin", () => {

@@ -33,22 +33,6 @@ export interface TerminalAuthorizationInput {
   readonly consequence: TerminalConsequence;
 }
 
-export function buildFailureTerminalAuthorization(
-  input: TerminalAuthorizationInput & { readonly consequence: { readonly kind: "failed" } },
-): FailureTerminalAuthorizationRecord {
-  const record = buildTerminalAuthorization(input);
-  if (record.kind !== "failed") throw new Error("failure authorization arm produced a non-failed record");
-  return record;
-}
-
-export function buildSuccessTerminalAuthorization(
-  input: TerminalAuthorizationInput & { readonly consequence: { readonly kind: "done" } },
-): SuccessTerminalAuthorizationRecord {
-  const record = buildTerminalAuthorization(input);
-  if (record.kind !== "done") throw new Error("success authorization arm produced a non-done record");
-  return record;
-}
-
 export function buildTerminalAuthorization(
   input: TerminalAuthorizationInput,
 ): FailureTerminalAuthorizationRecord | SuccessTerminalAuthorizationRecord {

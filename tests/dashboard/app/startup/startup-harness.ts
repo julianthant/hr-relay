@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { createFixtureBff } from "../../../support/helpers/dashboard/fixture-bff.js";
-import { FIXTURE_DAY_WIRE } from "../../../mocks/helpers/fixture-queue.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE } from "../../../support/helpers/dashboard/mock-world/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { DashboardApp } from "../../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
@@ -22,7 +22,7 @@ export function dashboardServer() {
     const body = new ReadableStream<Uint8Array>({ start(controller) {
       const send = (message: unknown) => controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(message)}\n\n`));
       send({ type: "hello", wireVersion: 1, descriptorHash: day.descriptorHash, projectionGeneration: day.projectionGeneration, cursor: day.snapshotCursor });
-      send({ type: "snapshot", topic: "dashboard-day", cursor: day.snapshotCursor, payload: day });
+      send({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: day.snapshotCursor, payload: day });
       init?.signal?.addEventListener("abort", () => { try { controller.close(); } catch { /* already closed */ } }, { once: true });
     } });
     return new Response(body, { headers: { "content-type": "text/event-stream" } });

@@ -64,11 +64,11 @@ it('resets the workflow filter to All when the selected workflow leaves the peri
   assert.doesNotMatch(document.body.textContent, /No workflow activity in this period/);
 });
 
-it('counts a parked run as open, not as finished', async () => {
+it('counts the chart\'s runs in the header and labels open runs as a separate count', async () => {
   if (data.state !== 'loaded') throw new Error('sample not loaded');
   const [first] = data.report.analytics.workflows; assert(first);
   await render({ ...data, report: { ...data.report, analytics: { ...data.report.analytics, running: 1, workflows: [{ ...first, done: 0, failed: 0, attention: 1 }] } } });
-  assert.match(document.body.textContent, /0 finished runs · 1 still open/);
+  assert.match(document.body.textContent, /1 run in this period · 1 open now/);
 });
 
 const days = (count: number) => Array.from({ length: count }, (_, index) => `2026-09-${String(20 + index)}`);
@@ -95,7 +95,7 @@ it('draws Messages and Actions, with the served counts', async () => {
 it('shows no tools section and no not-recorded line, since neither is recorded', async () => {
   await render(withAssistant([1], [1]));
   assert.equal(headings().includes('Tools used'), false);
-  assert.equal(document.querySelector('figure[aria-label="Tool calls per day"]'), null);
+  assert.equal(document.querySelector('figure[aria-label="Tool calls per day"]') === null, true);
   assert.doesNotMatch(document.body.textContent, /not recorded yet/);
 });
 
@@ -104,13 +104,13 @@ it('shows each assistant section empty when the range has no assistant use', asy
   assert.match(document.body.textContent, /No messages in this period/);
   assert.match(document.body.textContent, /No actions proposed in this period/);
   assert.doesNotMatch(document.body.textContent, /not recorded yet/);
-  assert.equal(document.querySelector('figure[aria-label="Messages per day"]'), null);
-  assert.equal(document.querySelector('figure[aria-label="Proposed actions per day"]'), null);
+  assert.equal(document.querySelector('figure[aria-label="Messages per day"]') === null, true);
+  assert.equal(document.querySelector('figure[aria-label="Proposed actions per day"]') === null, true);
 });
 
 it('leaves the run sections as they were', async () => {
   await render(withAssistant([1], [1]));
-  assert.match(document.body.textContent, /finished runs/);
+  assert.match(document.body.textContent, /\d+ runs? in this period/);
   assert(document.querySelector('figure[aria-label="Runs per day"]'));
   assert(document.querySelector('table[aria-label="Workflows"]'));
 });
@@ -128,7 +128,7 @@ it('offers one Retry beneath a plain sentence when the report cannot be shown', 
 it('says one plain sentence for an empty period and keeps the period control', async () => {
   await render(activitySample(ACTIVITY_SAMPLE_RANGE, 'empty'));
   assert.match(document.body.textContent, /No runs in this period/);
-  assert.doesNotMatch(document.body.textContent, /0 finished runs|Open a row to see what went wrong/);
+  assert.doesNotMatch(document.body.textContent, /0 runs in this period|Open a row to see what went wrong/);
   assert([...document.querySelectorAll('fieldset legend')].some(item => item.textContent === 'Report period'));
 });
 
@@ -156,10 +156,10 @@ it('while the report loads, shows a busy region and no guessed sections', async 
   const frame = document.querySelector('[role="status"][aria-busy="true"][aria-label="Loading analytics report"]');
   assert(frame);
   assert.equal(frame.childElementCount, 0);
-  assert.equal(document.querySelector('[data-slot="skeleton"]'), null);
+  assert.equal(document.querySelector('[data-slot="skeleton"]') === null, true);
 });
 
-const openRuns = () => [...document.querySelectorAll('a')].filter(link => link.textContent?.includes('Open runs'));
+const openRuns = () => [...document.querySelectorAll('button')].filter(link => link.textContent?.includes('Open runs'));
 
 it('while another range loads, keeps the last report under its own period with Export and Open runs locked', async () => {
   if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); }
@@ -170,16 +170,15 @@ it('while another range loads, keeps the last report under its own period with E
   const expand = document.querySelector<HTMLButtonElement>('table[aria-label="Workflows"] button[aria-expanded="false"]'); assert(expand);
   await act(async () => expand.click());
   const [link] = openRuns(); assert(link);
-  assert.equal(link.getAttribute('aria-disabled'), null);
+  assert.equal(link.disabled, false);
   await act(async () => link.click());
   assert.equal(opened.length, 1);
-  assert.equal(document.querySelector('[data-analytics-stale]'), null);
+  assert.equal(document.querySelector('[data-analytics-stale]') === null, true);
   assert.equal(button().disabled, false);
   await act(async () => root?.render(createElement(ActivityView, { ...props, range: next, blocked: true })));
   assert(document.querySelector('table[aria-label="Workflows"] button[aria-expanded="true"]'));
-  assert.deepEqual(openRuns(), [link]);
-  assert.equal(link.getAttribute('aria-disabled'), 'true');
-  assert.equal(link.tabIndex, -1);
+  assert.deepEqual(openRuns().map(run => run === link), [true]);
+  assert.equal(link.disabled, true);
   await act(async () => link.click());
   assert.equal(opened.length, 1);
   assert.equal(button().disabled, true);
@@ -190,9 +189,9 @@ it('while another range loads, keeps the last report under its own period with E
   assert.equal(mark.classList.contains('invisible'), false);
   assert.match(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
   assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(next)));
-  assert.equal(document.querySelector('[aria-label="Loading analytics report"]'), null);
+  assert.equal(document.querySelector('[aria-label="Loading analytics report"]') === null, true);
   await act(async () => root?.render(createElement(ActivityView, { ...props, range: ACTIVITY_SAMPLE_RANGE })));
-  assert.deepEqual(openRuns(), [link]);
+  assert.deepEqual(openRuns().map(run => run === link), [true]);
   assert.equal(link.getAttribute('aria-disabled'), null);
   await act(async () => link.click());
   assert.equal(opened.length, 2);
@@ -212,5 +211,24 @@ it('a held empty report names its own period until the chosen period arrives', a
   await act(async () => root?.render(createElement(ActivityView, { ...props, data: activitySample(next, 'empty'), range: next })));
   assert.match(document.body.textContent, /No runs in this period/);
   assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
-  assert.equal(document.querySelector('[data-analytics-stale]'), null);
+  assert.equal(document.querySelector('[data-analytics-stale]') === null, true);
+});
+
+it('agrees on one run total across the header, the legend and the table for the seeded day', async () => {
+  await render(data);
+  const header = /(\d+) runs? in this period/.exec(document.body.textContent ?? '');
+  assert(header, 'the Runs header counts runs');
+  const legend = [...document.querySelectorAll('ul[aria-label="Key figures"] li')].reduce((n, item) => n + Number(/^(\d+) ·/.exec(item.lastElementChild?.textContent ?? '')?.[1]), 0);
+  const table = [...document.querySelectorAll('table[aria-label="Workflows"] tbody tr:not([data-open]) td:nth-child(3)')].reduce((n, cell) => n + Number(cell.textContent), 0);
+  assert.equal(Number(header[1]), legend);
+  assert.equal(legend, table);
+  assert(legend > 0);
+  await act(async () => (document.querySelector('button[aria-expanded]') as HTMLButtonElement).click());
+  assert.doesNotMatch(document.body.textContent ?? '', /Waiting/);
+  assert.match(document.body.textContent ?? '', /Needs attention/);
+});
+
+it('opens runs with a real button', async () => {
+  await render(data);
+  assert.equal(document.querySelector('a[href="#"]') === null, true);
 });

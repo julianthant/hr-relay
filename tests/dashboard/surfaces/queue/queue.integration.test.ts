@@ -4,7 +4,7 @@ import { act,createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,it,vi } from "vitest";
-import { queryQueueSummaries } from "../../../../src/backend/runs/queries/run-summaries.js";
+import { queryQueueSummaries } from "../../../../src/backend/runs/queries/queue-summaries.js";
 import {
 groupQueueAttempts,
 partition,
@@ -204,7 +204,7 @@ describe("Queue consumes the served day boundary", () => {
       assert.equal(name.type, "button");
       assert.equal(name.tabIndex, 0);
       name.focus();
-      assert.equal(document.activeElement, name);
+      assert.equal(document.activeElement === name, true);
       opened.length = 0;
       await act(async () => name.click());
       assert.deepEqual(opened, [String(member.runId)]);
@@ -333,12 +333,12 @@ describe("Queue consumes the served day boundary", () => {
         if (settle === "blur") field.blur();
         else field.dispatchEvent(new KeyboardEvent("keydown", { key: settle, bubbles: true }));
       });
-      assert.equal(input(), null);
+      assert.equal(input() === null, true);
     };
     try {
       await act(async () => root.render(draw()));
       await act(async () => title()?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
-      assert.equal(input(), null);
+      assert.equal(input() === null, true);
       await act(async () => root.render(draw((runId, name) => renamed.push([runId, name]))));
       await edit("  April contacts  ", "Enter");
       await edit("Ignored", "Escape");
@@ -457,7 +457,7 @@ describe("Queue consumes the served day boundary", () => {
       await act(async () => { open.click(); });
       assert.deepEqual(selections, [queued.runId]);
       await act(async () => { root.render(draw(QueueSurfaceWireSchema.parse({ ...queued, actions: [] }))); });
-      assert.equal(host.querySelector('button[aria-label^="Cancel run"]'), null);
+      assert.equal(host.querySelector('button[aria-label^="Cancel run"]') === null, true);
       assert.equal(calls.length, 1);
     } finally {
       await act(async () => { root.unmount(); });

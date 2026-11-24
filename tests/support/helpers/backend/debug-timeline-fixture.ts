@@ -6,6 +6,6 @@ export function debugTimelineFixture() {
       const existing = records.find(row => row.eventId === record.eventId);
       if (existing !== undefined) return { state: "existing", record: existing };
       records.push(record); return { state: "inserted", record }; },
-    get: id => records.find(row => row.eventId === id), page: () => records, highWaterMark: () => records.length, pruneBefore: () => 0, confirmedActionHeads: () => [], lastWorkerClaim: () => undefined };
+    get: id => records.find(row => row.eventId === id), page: () => records, highWaterMark: () => records.length, pruneBefore: () => 0, debugPage: () => records, debugHighWaterMark: () => records.length, pruneDebugBefore: () => 0, confirmedActionHeads: () => [], lastWorkerClaim: () => undefined };
   return { records, repository };
 }

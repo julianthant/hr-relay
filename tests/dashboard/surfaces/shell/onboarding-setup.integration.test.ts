@@ -10,7 +10,7 @@ import { OnboardingSetup } from "../../../../src/dashboard/surfaces/shell/onboar
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
 const draft = (browser: object) => ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
-  profileId: "00000000-0000-4000-8000-000000000003", step: "duo", methods: { key: idle, touch: idle }, browser });
+  profileId: "00000000-0000-4000-8000-000000000003", step: "duo", methods: { key: idle }, browser });
 
 async function mount(onboarding: ReturnType<typeof draft>, over: Partial<ServedOnboardingPort> = {}) {
   const never = () => Promise.reject(new Error("unused"));
@@ -43,7 +43,7 @@ it("tells the operator the setup browser was closed and offers Reopen; a healthy
     assert.ok(closed.button("Reopen"));
   } finally { await closed.close(); }
   const open = await mount(draft({ state: "open", generation: 1 }));
-  try { assert.equal(open.button("Reopen"), undefined); } finally { await open.close(); }
+  try { assert.equal(open.button("Reopen") === undefined, true); } finally { await open.close(); }
 });
 
 it("shows one plain failure and disables Add this device when the status read fails, with re-enrolment wording", async () => {
