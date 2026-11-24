@@ -24,6 +24,13 @@ export function createLocalHubChatsPort(): HubChatsPort {
     async create() { const chat: HubChat = { id: `new-${++sequence}`, title: "New chat", minutes: 0, group: "Today" }; chats = [chat, ...chats]; return chat; },
   };
 }
+/** What the chat list shows: the saved chats, nothing saved yet, or nothing the search matches. */
+export type ChatListView = "listed" | "empty" | "no-match";
+export function chatListView(chats: readonly HubChat[], query: string): ChatListView {
+  if (chats.length === 0) return "empty";
+  const needle = query.toLowerCase();
+  return chats.some(chat => chat.title.toLowerCase().includes(needle)) ? "listed" : "no-match";
+}
 export function chatAge(minutes: number): string {
   if (minutes < 1) return "Just now";
   if (minutes < 60) return `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
