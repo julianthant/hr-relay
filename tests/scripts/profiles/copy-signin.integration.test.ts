@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { basename, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { afterEach, expect, it, vi } from "vitest";
@@ -30,8 +30,10 @@ const { applicationDataWorkspace, rebuildRuntimeIsolation, runtimeProfile } = aw
 const { acquireEntrypointAdmission } = await import("../../../src/backend/storage/admission/bootstrap-admission.js");
 const { RuntimeLifetimeLock } = await import("../../../src/backend/storage/admission/lifetime-lock.js");
 const { createCredentialKeyCustody } = await import("../../../src/backend/storage/configuration/credential-key-custody.js");
+const { readPrivateFile } = await import("../../../src/backend/storage/configuration/credential-safe-file.js");
 const duo = await import("../../../src/backend/runtime/browser/onboarding-duo-provider.js");
 const { runtimeProfiles } = await import("../../../src/models/config/define-runtime-isolation.js");
+const { SignUpOperationSchema } = await import("../../../src/models/profiles/profile.js");
 
 const copySignin = { profile: "development" as const,
   credentials(): never { throw new Error("UCPath credentials read during composition"); },
@@ -81,7 +83,7 @@ const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const credentials = {
   RELAY_EMAIL: "relay-email-sentinel@example.test",
   RELAY_PASSWORD: "relay-password-sentinel",
-  UCPATH_USERNAME: "ucpath-username-sentinel",
+  UCPATH_USERNAME: "ucpath-username-sentinel@ucsd.edu",
   UCPATH_PASSWORD: "ucpath-password-sentinel",
 };
 // HOME moves to the fixture, so Playwright keeps the installed browsers explicitly.
@@ -89,14 +91,25 @@ const browsers = chromium.executablePath().split(`${sep}chromium-`)[0];
 const sentinels = Object.values(credentials);
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
-function leaks(text: string, root: string, skip: string): string[] {
+function leaks(text: string, root: string, envFile: string, operationPath: string): string[] {
+  const file = readPrivateFile(operationPath, { label: "lock", maxBytes: 1_048_576 });
+  if (file === undefined) throw new Error("copy sign-in operation is missing");
+  const content = new TextDecoder("utf-8", { fatal: true }).decode(file.bytes);
+  const { operationId, relay } = SignUpOperationSchema.parse(JSON.parse(content));
+  if (basename(operationPath) !== `${operationId}.json` || relay?.email !== credentials.RELAY_EMAIL) {
+    throw new Error("copy sign-in operation has the wrong identity or Relay email");
+  }
+  const relayField = `"relay":${JSON.stringify(relay)}`;
+  if (!content.includes(relayField)) throw new Error("copy sign-in operation lacks the expected Relay field encoding");
+  // Mask the permitted email in memory and scan the rest of the operation's original bytes.
+  const operationBytes = Buffer.from(content.replace(relayField, `"relay":${JSON.stringify({ ...relay, email: "" })}`));
   const found = sentinels.filter(value => text.includes(value)).map(() => "output");
   const walk = (directory: string): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (entry.isFile() && path !== skip) {
-        const bytes = readFileSync(path);
+      else if (entry.isFile() && path !== envFile) {
+        const bytes = path === operationPath ? operationBytes : readFileSync(path);
         for (const value of sentinels) if (bytes.includes(value)) found.push(path);
       }
     }
@@ -134,10 +147,20 @@ it.skipIf(process.platform === "win32")("keeps sign-in secrets out of the real l
     expect(JSON.parse(readFileSync(join(workspace, ".tracker", "fixture-sso-submission.json"), "utf8"))).toEqual({
       username: sha256(credentials.UCPATH_USERNAME), password: sha256(credentials.UCPATH_PASSWORD) });
     expect(existsSync(join(workspace, ".tracker", "data", "browsers", "onboarding"))).toBe(true);
-    expect(leaks(output, root, envFile)).toEqual([]);
-    // The scan reports a secret the launcher prints or writes anywhere under the fixture.
-    writeFileSync(join(workspace, "leak.txt"), credentials.UCPATH_PASSWORD);
-    expect(leaks(`${output}${credentials.RELAY_EMAIL}`, root, envFile)).toEqual(["output", join(workspace, "leak.txt")]);
+    const operations = join(workspace, rebuildRuntimeIsolation.stateRoot, "machine", "operations");
+    const names = readdirSync(operations).filter(name => name.endsWith(".json"));
+    const [name] = names;
+    if (names.length !== 1 || name === undefined) throw new Error("expected exactly one copy sign-in operation");
+    const operationPath = join(operations, name);
+    expect(leaks(output, root, envFile, operationPath)).toEqual([]);
+
+    const leakPath = join(workspace, "leak.txt");
+    writeFileSync(leakPath, credentials.UCPATH_PASSWORD);
+    const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
+    writeFileSync(operationPath, `${JSON.stringify({ ...operation, firstName: credentials.RELAY_EMAIL,
+      lastName: credentials.RELAY_PASSWORD })}\n`);
+    expect(leaks(`${output}${credentials.RELAY_EMAIL}`, root, envFile, operationPath).sort())
+      .toEqual(["output", leakPath, operationPath, operationPath].sort());
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 120_000);
 
