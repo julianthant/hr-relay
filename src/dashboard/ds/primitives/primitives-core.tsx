@@ -121,6 +121,7 @@ export const Button = forwardRef<HTMLButtonElement, DsButtonProps>(
     return (
       <ShadcnButton
         ref={ref}
+        data-variant={variant ?? "secondary"}
         type={props.type ?? "button"}
         aria-busy={busy ? "true" : undefined}
         disabled={disabled || loading}
