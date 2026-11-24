@@ -126,19 +126,21 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-`development.yml` (`Development`) calls `checks.yml` with kind `fast` on `task/**` pushes and
-non-task pull requests: plan, lint, static, privacy, three unit shards, two architecture shards
-and the affected integration shards (at most eight). It starts no perf,
-smoke or macOS job. `proof` folds the shard results and fails failed or cancelled dependencies.
-The `development` gate checks names and the workflow allowlist on pull requests, then requires
-this run's `proof` or, for `task/**` and edited pull requests, the `proof` of another run at the
-head SHA.
+`development.yml` (`Development`) calls `checks.yml` with kind `fast` on `task/**` pushes.
+`pr.yml` (`Pull request`) calls it for fix, chore and Dependabot heads into development. The
+fast plan selects lint, static, privacy, three unit shards, two architecture shards and the
+affected integration shards (at most eight). Browser-facing Task pushes also select smoke.
+The `development` result verifies the plan and fails for failed or cancelled dependencies.
+`PR metadata` checks names and the workflow allowlist on all development PRs and the closing
+line on Task PRs. Task PRs use the `development` result from the push at the head SHA.
+`full.yml` (`Full`) runs the schedule and dispatch decisions for development and calls
+`checks.yml` with kind `full` when the decision starts a run.
 `staging.yml` (`Staging`) runs only on pull requests from `development` into `staging` and admits
 `checks.yml` with kind `portable`; its `staging` gate needs `names` and `checks`.
 `production.yml` (`Production`) keeps main pull requests, CodeQL on main pushes and operator
 manual starts with a required title. It calls `checks.yml` with kind `release`; the `production`
 gate refuses failed/cancelled checks and pull request heads other than `staging` or `hotfix/*`.
-All three call the same test job definitions and typed selection/result/timing policy in
+The callers share the same test job definitions and typed selection/result/timing policy in
 `scripts/test/ci-plan.ts`, retaining explicit budgets.
 The root check rules own platform placement and release authorization.
 `scripts/test/ci-files.ts` names the native
@@ -439,15 +441,17 @@ reaching CI and spending a full run. Allowed branches are `main`, `staging`, `de
 `dependabot/*`, or `task/<kebab>/<kebab>`. Only `development` (or `main`, the release sync) targets `staging`. A pull request title must be `<Area>: <text>`. A conventional title such as
 `feat(ci): add names check` is rejected. An origin branch that already matches
 `task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
-`.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. Staging runs that command in its first job; Development combines it with planning in
-`checks.yml`, and every other started job waits on it. `pull_request` includes `edited`, so a
-title change at the same head runs the check again. `--all` lists off-pattern local branches and
-linked worktrees without deleting them.
+`.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. Staging runs that command in its first
+job. On development PRs, the independent `PR metadata` job runs it and requires a final
+`Closes #<issue>` line for Task heads. Title and body edits at the same head rerun the check.
+`--all` lists off-pattern local branches and linked worktrees without deleting them.
 
 `allowed-workflows` (`tests/architecture/tooling/allowed-workflows.test.ts`) exercises the check in
-the shared static CI job. Pull requests may add workflow YAML only at the four approved paths
-`checks.yml`, `development.yml`, `staging.yml`, and `production.yml` under `.github/workflows/`.
-Adding any other workflow requires `needs-human` on the pull request.
+`PR metadata` job and in the shared static CI job for portable and release pull requests.
+The approved paths under `.github/workflows/` are `checks.yml`, `development.yml`, `full.yml`,
+`pr.yml`, `staging.yml` and `production.yml`. Adding another workflow requires `needs-human` on
+the pull request and a reviewed update to the exact workflow layout assertion. Applying or
+removing a label reruns the metadata check on development PRs.
 
 Removal names where the invariant goes and updates its inventory entry and consumers in the same
 change. The manifest protects against accidental removal or glob orphaning. It cannot prevent a
