@@ -27,8 +27,12 @@ const fill = (label: string, value: string) => async (page: Page): Promise<void>
 const openRow = (name: string) => async (page: Page): Promise<void> => { await page.locator(`li[aria-label="${name}"]`).click(); };
 const choose = (label: string) => async (page: Page): Promise<void> => { await page.locator("label", { hasText: label }).first().click(); };
 const backToLibrary = async (page: Page): Promise<void> => { await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button").first().click(); };
-/** Waits out running color transitions, so a button pressed a moment ago is measured at its final fill. */
-const still = async (page: Page): Promise<void> => { await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => undefined)))); };
+/** The button just pressed is still under the pointer, which fills it in its hover color; move the pointer off it and let the fill settle,
+ * so the story is measured at the button's resting accent. */
+const still = async (page: Page): Promise<void> => {
+  await page.mouse.move(1, 1);
+  await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => undefined))));
+};
 const loaded = async (page: Page): Promise<void> => { await page.locator('ul[aria-label="Spreadsheets"]').waitFor(); };
 /** Opens a row's actions menu and chooses one. */
 const menu = (item: string, sheet = SHEET) => then(loaded, click(`Actions for ${sheet}`), click(item, "menuitem"));
