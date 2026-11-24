@@ -128,4 +128,3 @@ it("cancels a sign-up draft whose stored Duo record still holds a platform row",
   for (const path of [f.headPath, f.profileRoot, f.operationPath, f.duoPath]) assert.equal(existsSync(path), false, path);
   assert.equal(f.nativeKey.getPassword(), null);
 });
-
