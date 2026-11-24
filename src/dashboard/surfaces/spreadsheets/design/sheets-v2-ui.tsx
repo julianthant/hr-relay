@@ -23,7 +23,7 @@ const WORKFLOW_ICONS: Readonly<Record<string, LucideIcon>> = { 'Person Lookup': 
 export const WorkflowIcon = ({ name }: { name: string }) => { const Icon = WORKFLOW_ICONS[name]; return Icon ? <Icon aria-hidden className={`${dsIcon.md} shrink-0`} /> : null; };
 export const Tag = ({ children, onRemove, workflow }: { children: string; onRemove?: () => void; workflow?: boolean }) => {
   const Icon = workflow ? WORKFLOW_ICONS[children] : undefined;
-  return <Chip icon={Icon && <Icon aria-hidden className={dsIcon.sm} />} onRemove={onRemove} removeLabel="Remove tag">{children}</Chip>;
+  return <Chip className="sv2-tag" icon={Icon && <Icon aria-hidden className={dsIcon.sm} />} onRemove={onRemove} removeLabel="Remove tag">{children}</Chip>;
 };
 /** Chips for a spreadsheet: the automatic workflow chip first, then its own tags. */
 export const SheetChips = ({ sheet }: { sheet: Sheet }) => <>{tagsOf(sheet).map(tag => <Tag key={tag} workflow={tag === sheet.workflow}>{tag}</Tag>)}</>;
