@@ -422,12 +422,14 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     })();
     return session.close;
   }
+  // Copy sign-in policy applies only to the sign-up browser; Duo re-enrollment keeps ordinary Open Duo behaviour.
+  const copySetup = (session: OwnedBrowser) => options.copySignin !== undefined && session.owner.readState().state === PROFILE_ONBOARDING_STATE;
   async function ownedPage(session: OwnedBrowser, url: string, install = false): Promise<Page> {
     const { context, worker } = session;
     if (!context || !worker) throw new ProfileOnboardingDuoProviderError("unavailable", "worker");
     const token = randomUUID(), marker = `${install ? "about:blank" : url}#relay-target=${token}`;
     const opened = context.waitForEvent("page", { predicate: page => page.waitForURL(marker, { waitUntil: "commit", timeout: options.closeProofMs }).then(() => true, () => false), timeout: options.closeProofMs });
-    const [page, raw] = await Promise.all([opened, workerCall(worker, install ? "browserInstall" : "browserPage", install ? [token, options.copySignin !== undefined] : [marker])]);
+    const [page, raw] = await Promise.all([opened, workerCall(worker, install ? "browserInstall" : "browserPage", install ? [token, copySetup(session)] : [marker])]);
     const target = z.strictObject({ tabId: z.number().int().nonnegative(), windowId: z.number().int().nonnegative(), url: z.literal(marker) }).parse(raw);
     browserCurrent(session);
     if (page.url() !== target.url) throw new ProfileOnboardingDuoProviderError("refused", "scope");
@@ -619,7 +621,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         browserCurrent(session);
         const landing = await waitForUcsdDuoSignIn(page, () => browserCurrent(session), options.closeProofMs);
         browserCurrent(session);
-        if (options.copySignin !== undefined && session.owner.readState().state === PROFILE_ONBOARDING_STATE) {
+        if (options.copySignin !== undefined && copySetup(session)) {
           session.enrollingCopy = true;
           try { await enrollCopy(session, page, landing, options.copySignin); }
           finally { delete session.enrollingCopy; }
@@ -634,7 +636,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     const opening = session.portalOpening;
     try { await opening; }
     catch (error) {
-      if (options.copySignin === undefined && session.portalOpening === opening) delete session.portalOpening;
+      if (!copySetup(session) && session.portalOpening === opening) delete session.portalOpening;
       if (session.portal && trustedPortalUrl(session.portal.url())) await focusPage(session, session.portal);
       throw error;
     }

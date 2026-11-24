@@ -11,7 +11,7 @@ import type { BrowserContext, Page, Worker } from "playwright";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
-import { ProfileOnboardingStateSchema } from "../../../../src/models/profiles/public-profile.js";
+import { DuoReenrolStateSchema, ProfileOnboardingStateSchema } from "../../../../src/models/profiles/public-profile.js";
 
 interface CopyPortalFixture {
   buttons(): readonly string[];
@@ -92,6 +92,7 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false, copyPort
   const listeners: (() => void)[] = [];
   const calls: string[] = [];
   const workerCalls: string[] = [];
+  const installArgs: unknown[][] = [];
   const selectedPages: string[] = [];
   let documentCurrent = true;
   let driftAfter: string | undefined;
@@ -108,7 +109,7 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false, copyPort
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
       workerCalls.push(input.method);
       if (input.method === "install") { clock.advanceMonotonic(installDurationMs); if (installFailure) throw installFailure; startupEntered?.(); await startupHold; if (failInstall) throw new Error("synthetic arm initialization failed"); return; }
-      if (input.method === "browserInstall") { clock.advanceMonotonic(browserSetupDurationMs); if (browserSetupFailure) throw browserSetupFailure; const url = `about:blank#relay-target=${String(input.args[0])}`; const page = makePage(url); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return { tabId: pages.length, windowId: 1, url }; }
+      if (input.method === "browserInstall") { installArgs.push(input.args); clock.advanceMonotonic(browserSetupDurationMs); if (browserSetupFailure) throw browserSetupFailure; const url = `about:blank#relay-target=${String(input.args[0])}`; const page = makePage(url); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return { tabId: pages.length, windowId: 1, url }; }
       if (input.method === "browserPage") { const page = makePage(String(input.args[0])); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return { tabId: pages.length, windowId: 1, url: String(input.args[0]) }; }
       if (input.method === "browserSelect") { if (selectionFailure) throw selectionFailure; const page = pages[Number(input.args[0]) - 1]; assert.ok(page); assert.equal(input.args[1], 1); selectedPages.push(page.url()); focusCount++; return; }
       if (input.method === "browserFocus") { windowFocusCount++; return; }
@@ -219,7 +220,7 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false, copyPort
     return result;
   }
   return { seedRoot(other = owner) { return browserRoots.beginSignupLaunch({ profileId: other.profileId, profileRoot: browserRoot, credentialFingerprint: null,
-      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), contextClosed: () => closed, observed: () => observed, revoke: () => { current = false; },
+      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, installArgs, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), contextClosed: () => closed, observed: () => observed, revoke: () => { current = false; },
     events, selectedPages,
     sendBrowser(kind: string) {
       const id = randomUUID(), request = { id, kind };
@@ -732,6 +733,24 @@ describe("draft Duo provider", () => {
       assert.equal(w.launches(), 2);
       assert.equal(w.portalPages(), 0);
       assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
+  it.each([
+    { state: "duo-reenrol", copySetup: false, portalPages: 2 },
+    { state: "onboarding", copySetup: true, portalPages: 1 },
+  ] as const)("with copy options, a $state browser installs copy setup $copySetup and opens the portal $portalPages times after a failure", async ({ state, copySetup, portalPages }) => {
+    const w = world("darwin", { copyPortal: { buttons: () => [], click() {}, phone() {}, async wait() {} } });
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const parsed = (state === "onboarding" ? ProfileOnboardingStateSchema : DuoReenrolStateSchema).parse({ browser: { state: "open", generation: 1 },
+      state, operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", methods: { key: idle } });
+    w.owner.readState = () => parsed;
+    try {
+      await w.provider.showBrowser(w.owner);
+      assert.deepEqual(w.installArgs.map(args => args[1]), [copySetup]);
+      await assert.rejects(w.provider.openPortal(w.owner));
+      await assert.rejects(w.provider.openPortal(w.owner));
+      assert.equal(w.portalPages(), portalPages);
     } finally { await w.cleanup(); }
   });
 
