@@ -186,7 +186,7 @@ const BREAK_SETS = {
   PATH: breaks("no-banned-text"),
   /** Save is not the accent while the Account edit dialog shows a refusal. */
   ACCENT: breaks("primary-button-accent"),
-  /** The sidebar section buttons, "Clear search" and "Close settings" while the search is open, and a toast's "Dismiss notification" have no keyboard stop. */
+  /** The sidebar section buttons, and "Clear search" and "Close settings" while the search is open, have no keyboard stop. */
   FOCUS: breaks("named-and-focusable"),
   /** FOCUS, and the Downloads row shows a file path. */
   FOCUS_AND_PATH: breaks("named-and-focusable", "no-banned-text"),
@@ -244,9 +244,9 @@ const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleNam
   "action/name-not-saved": BREAK_SETS.FOCUS,
   "action/password-changed": BREAK_SETS.FOCUS,
   "action/password-not-confirmed": BREAK_SETS.FOCUS,
-  "notice/restart-required": BREAK_SETS.FOCUS_AND_PATH,
-  "notice/setting-unavailable": BREAK_SETS.FOCUS_AND_PATH,
-  "runtime/restart-required": BREAK_SETS.FOCUS_AND_PATH,
+  "notice/restart-required": BREAK_SETS.PATH,
+  "notice/setting-unavailable": BREAK_SETS.PATH,
+  "runtime/restart-required": BREAK_SETS.PATH,
   "save-combo/replayed": BREAK_SETS.FOCUS_AND_PATH,
   "save-combo/restart-required": BREAK_SETS.FOCUS_AND_PATH,
   "save/applied": BREAK_SETS.FOCUS_AND_PATH,
