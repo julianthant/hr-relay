@@ -5,8 +5,10 @@ import { z } from "zod";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import {
   DashboardStreamEnvelopeSchema,
+  StreamRowSchema,
   type DashboardStreamEnvelope,
   type NotificationPublicationWire,
+  type StreamRow,
 } from "../../../models/dashboard/subscription.js";
 import { RunIdSchema } from "../../../rules/identity/ids.js";
 import { applyDashboardDayPatch } from "../queries/day-state.js";
@@ -78,6 +80,27 @@ function streamFailure(reason: unknown): DashboardClientError {
     message: `the day stream ended in an unclassified stream rejection: ${reason instanceof Error ? reason.message : String(reason)}`,
     cause: reason,
   });
+}
+
+const RowsCarrierSchema = z.looseObject({ rows: z.array(z.unknown()) });
+const PanelRowKeySchema = z.looseObject({ model: z.literal("run-panel"), key: RunIdSchema });
+
+/** An envelope whose invalid run-panel rows are replaced by a refusal of that panel, so one bad panel is shown as
+ * refused in its own view while the day part of the envelope is still validated and applied. A row that names no
+ * run refuses the open run's panel; with no run open it is dropped, as the store would drop it. */
+function isolateInvalidPanels(raw: unknown, openRun: string | undefined): unknown {
+  const carrier = RowsCarrierSchema.safeParse(raw);
+  if (!carrier.success) return raw;
+  const rows = carrier.data.rows.flatMap((row): unknown[] => {
+    if (StreamRowSchema.safeParse(row).success) return [row];
+    const named = PanelRowKeySchema.safeParse(row);
+    const key = named.success ? named.data.key : openRun;
+    if (key === undefined) return [];
+    const refused: StreamRow = StreamRowSchema.parse({ model: "run-panel", key, value: { state: "refused",
+      error: { state: "error", code: "LOGS_IDENTITY_REFUSED", message: "run panel failed validation", retryable: false } } });
+    return [refused];
+  });
+  return { ...carrier.data, rows };
 }
 
 export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): DashboardDaySubscription {
@@ -160,7 +183,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
         if (!currentStream(identity, stream)) return;
         let envelope: DashboardStreamEnvelope;
         try {
-          envelope = DashboardStreamEnvelopeSchema.parse(JSON.parse(message.data));
+          envelope = DashboardStreamEnvelopeSchema.parse(isolateInvalidPanels(JSON.parse(message.data), run));
         } catch (error) {
           stop(protocolError(`malformed stream envelope: ${error instanceof Error ? error.message : String(error)}`));
           return;

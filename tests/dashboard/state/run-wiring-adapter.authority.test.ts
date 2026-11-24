@@ -575,6 +575,27 @@ describe("served Logs decision authority", () => {
       assert.equal(h.state?.state, "failed"); assert.equal(h.state?.retryable, false);
     });
 
+    it("fails a panel whose screenshot names another capture session inside the mounted Logs, and recovers on the next valid panel", async () => {
+      const SESSION = "20000000-0000-4000-8000-000000000001", OTHER_SESSION = "20000000-0000-4000-8000-000000000002";
+      const captured = (sessionId: string) => { const base = page(); const rows = (base.rows ?? []).map(row => row.kind === "note"
+        ? { ...row, note: { ...row.note, screenshot: { bundleId: NOTE, artifactId: FOREIGN, sessionId } } } : row);
+        return NotePageSchema.parse({ ...base, rows, notes: rows.flatMap(row => row.kind === "note" ? [row.note] : []) }); };
+      const captures = RunDetailSectionResponseSchema.parse({ section: "captures", payload: { runId: RUN, artifacts: [{
+        artifact: { mediaKind: "image", mediaType: "image/png", artifactId: FOREIGN, sha256: "a".repeat(64), byteLength: 1, sensitivity: "restricted", redaction: "restricted-access", width: 1280, height: 720 },
+        origins: [{ bundleId: NOTE, originKind: "operator-request", capturedAt: AT, browserCapture: { nodeId: "first", attempt: 1, sessionId: SESSION } }] }] } });
+      const imaging = { artifactUrl: (id: string) => `/artifacts/${id}`, fetchAuthenticatedResource: () => new Promise<never>(() => undefined) } as unknown as DashboardClient;
+      const h = await harness(imaging, undefined, true, false);
+      await serveRunPanel(h.rows, none, RUN, { state: "available", detail: withCaptures(3), logs: captured(OTHER_SESSION), sections: [captures] });
+      await h.render(selectionAt(3));
+      assert.equal(h.state?.state, "failed"); assert.equal(h.state?.retryable, false);
+      assert.ok(document.body.textContent?.includes("These logs don't match this run."), document.body.textContent ?? "");
+      assert.equal(document.querySelector("img, [aria-label='Browser capture']") !== null || document.body.textContent?.includes("Capture") === true, false, "nothing of the refused panel is drawn");
+      await act(async () => serveRunPanel(h.rows, none, RUN, { state: "available", detail: withCaptures(3), logs: captured(SESSION), sections: [captures] }));
+      assert.equal(h.state?.state, "loaded");
+      assert.ok(document.body.textContent?.includes("Capture"), `the same mounted Logs shows the next valid panel: ${document.body.textContent ?? ""}`);
+      assert.equal(document.body.textContent?.includes("These logs don't match this run."), false);
+    });
+
     it("shows a validated older panel as loading once the row moves ahead", async () => {
       const h = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [capturesOf(RUN)] });
       await h.render(selectionAt(4));

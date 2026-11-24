@@ -6,6 +6,11 @@ import { subscribeDashboardDay } from "../../../../src/dashboard/client/subscrip
 import type { DashboardTransport, SseMessage, StreamHandle } from "../../../../src/dashboard/client/transport.js";
 import { StreamRowSchema, type StreamRow } from "../../../../src/models/dashboard/subscription.js";
 
+import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { FIXTURE_IDS } from "../../../mocks/helpers/fixture-queue.js";
+import { createFixtureBff } from "../../../support/helpers/dashboard/fixture-bff.js";
+import { readRunPanel } from "../../../support/helpers/dashboard/serve-run-panel.js";
+
 const DAY = "2026-08-03";
 const HASH_D = "d".repeat(64);
 const RUN_A = "3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b";
@@ -127,5 +132,47 @@ describe("subscription run panel rows", () => {
     h.opened[1]?.push(hello("pc:5"));
     h.opened[1]?.push(change("pc:6", "pc:5", [refusal(RUN_A, "late")]));
     assert.equal(h.rows.runPanel(RUN_A), undefined, "a row for a run that is not open is never held");
+  });
+});
+
+describe("an invalid run panel in a day envelope", () => {
+  async function servedPanel() {
+    const { app } = createFixtureBff();
+    const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
+    return { key: FIXTURE_IDS.openGateRun, panel: await readRunPanel(client, FIXTURE_IDS.openGateRun) };
+  }
+
+  it("refuses the panel whose logs name another run, keeps the queue live, and recovers on the next valid panel", async () => {
+    const { key, panel } = await servedPanel();
+    const h = harness(key);
+    const stream = h.opened[0];
+    stream?.push(hello("pc:5"));
+    stream?.push({ type: "health", state: "live" });
+    const foreign = { model: "run-panel", key, value: { ...panel, logs: { ...panel.logs, runId: RUN_B } } };
+    assert.equal(StreamRowSchema.safeParse(foreign).success, false, "the wire schema rejects this panel");
+    stream?.push({ ...snapshot("pc:5", []), rows: [foreign] });
+    assert.equal(h.states.includes("stopped"), false, "the day stream is not stopped");
+    assert.equal(h.order.length, 1, "the day in the same envelope is applied");
+    const refused = h.rows.runPanel(key);
+    assert.equal(refused?.state, "refused");
+    assert.equal(refused?.state === "refused" ? refused.error.code : "", "LOGS_IDENTITY_REFUSED");
+
+    // The queue keeps taking days on the same connection, and the next valid panel replaces the refusal.
+    stream?.push(snapshot("pc:6", []));
+    assert.equal(h.order.length, 2, "a later day is still applied");
+    stream?.push(change("pc:7", "pc:6", [StreamRowSchema.parse({ model: "run-panel", key, value: panel })]));
+    assert.equal(h.rows.runPanel(key)?.state, "available");
+    assert.equal(h.opened.length, 1, "nothing reconnected");
+    assert.equal(h.states.at(-1), "live");
+  });
+
+  it("refuses the open run's panel for a row that names no run, and still stops on an invalid day", () => {
+    const h = harness(RUN_A);
+    h.opened[0]?.push(hello("pc:5"));
+    h.opened[0]?.push({ ...snapshot("pc:5", []), rows: [{ model: "run-panel", value: { state: "available" } }] });
+    assert.equal(h.rows.runPanel(RUN_A)?.state, "refused");
+    assert.equal(h.order.length, 1);
+    h.opened[0]?.push({ ...snapshot("pc:6", []), payload: { day: DAY } });
+    assert.equal(h.states.at(-1), "stopped", "the day envelope itself is still validated");
   });
 });

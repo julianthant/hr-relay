@@ -614,7 +614,7 @@ function refusedPanelState(error: Extract<RunPanel, { state: "refused" }>["error
 
 /** What the run panel shows for the row: nothing yet, a refusal as the route would have answered it, a panel
  * that has not caught up with the row, or the validated composite. */
-function streamedRunState(client: object, authority: RunLogAuthority, row: RowIdentity, panel: RunPanel | undefined, behind: boolean): RunWiringState {
+function streamedRunState(client: Pick<DashboardClient, "artifactUrl">, authority: RunLogAuthority, row: RowIdentity, panel: RunPanel | undefined, behind: boolean): RunWiringState {
   if (panel === undefined) return keptRunLogsState(client, authority, row) ?? { state: "loading" };
   if (panel.state === "refused") return refusedPanelState(panel.error);
   try {
@@ -622,6 +622,9 @@ function streamedRunState(client: object, authority: RunLogAuthority, row: RowId
     // still be the older one the panel matches.
     if (behind) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
     const snapshot = streamedRunSnapshot(row, panel);
+    // Logs projects this snapshot while it renders; a panel the projection refuses fails here, inside the subscribed
+    // panel, so the next valid value replaces it.
+    projectRunLogs(snapshot, client);
     if (snapshot.detail.rowRevision >= row.rowRevision) return { state: "loaded", snapshot };
     // A panel the row moved ahead of is catching up.
     return { state: "loading", snapshot };
