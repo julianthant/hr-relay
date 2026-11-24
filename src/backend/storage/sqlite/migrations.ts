@@ -44,6 +44,9 @@ export const UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = upgradea
 export const OPENABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = openableAuthoritySchemaVersions;
 /** Runs stored before this version may omit buildId. Later versions keep the strict envelope. */
 export const BUILD_ID_ENVELOPE_SCHEMA_VERSION = 22;
+export const OCR_SEARCH_TERMS_SCHEMA_VERSION = 41;
+export const OCR_SEARCH_TERMS_BACKFILL_ID = "run-search-ocr-subject-terms:v1";
+export const OCR_SEARCH_TERMS_COLUMN_SQL = "ALTER TABLE run_search ADD COLUMN ocr_subject_terms TEXT";
 /** Migration 22 deletes every run approved before envelopes carried a build id, through the native run deletion. */
 export const PRE_BUILD_RUN_DELETION_ID = "pre-build-run-deletion:v1";
 /** Migration 24 drops durable worker custody; the pool holds it in memory. */
@@ -1179,6 +1182,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   ] },
   DEBUG_EVENTS_MIGRATION,
   LIST_INDEX_MIGRATION,
+  { version: OCR_SEARCH_TERMS_SCHEMA_VERSION, statements: [OCR_SEARCH_TERMS_COLUMN_SQL, `SELECT '${OCR_SEARCH_TERMS_BACKFILL_ID}'`] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,

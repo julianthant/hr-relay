@@ -47,10 +47,11 @@ function fake({ runs = [], busy = {}, foreignChecks = [], commits = {} }: Fake) 
             steps: [{ name: START_STEP, conclusion: run?.started ? "success" : "skipped" }] }];
         }),
         listWorkflowRuns: method("runs", ({ workflow_id, event, created }) => {
-          expect(workflow_id).toBe("development.yml");
+          expect(workflow_id).toBe("full.yml");
           expect(["schedule", "workflow_dispatch"]).toContain(event);
           const since = Date.parse(String(created).slice(2));
-          return runs.filter(run => run.event === event && Date.parse(run.created_at) >= since).map(run => ({ ...run, html_url: `https://example.test/runs/${run.id}` }));
+          return runs.filter(run => run.path.split("@")[0] === ".github/workflows/full.yml"
+            && run.event === event && Date.parse(run.created_at) >= since).map(run => ({ ...run, html_url: `https://example.test/runs/${run.id}` }));
         }),
         listWorkflowRunsForRepo: method("busy", ({ status }) => (busy[String(status)] ?? []).map(id => ({ id }))),
       },
@@ -75,7 +76,7 @@ function fake({ runs = [], busy = {}, foreignChecks = [], commits = {} }: Fake) 
   return { github, calls };
 }
 
-const scheduled = (id: number, extra: Partial<FakeRun> = {}): FakeRun => ({ id, event: "schedule", path: ".github/workflows/development.yml",
+const scheduled = (id: number, extra: Partial<FakeRun> = {}): FakeRun => ({ id, event: "schedule", path: ".github/workflows/full.yml",
   head_sha: sha, created_at: hours(1), started: true, full: "success", ...extra });
 const context = (pull_request?: Context["payload"]["pull_request"]): Context => ({ repo, runId: 99, sha, payload: { pull_request } });
 const decide = (fixture: Fake) => decideFullRun({ github: fake(fixture).github, context: context(), now });
@@ -127,16 +128,17 @@ describe("scheduled full-run decision", () => {
     expect((await decideFullRun({ github, context: context(), now })).start).toBe(false);
   });
 
-  it("ignores success claims that are not the scheduled development full job at this commit", async () => {
+  it("ignores success claims outside the standalone full workflow at this commit", async () => {
     const forged = [
       scheduled(1, { event: "push", started: false }),
       scheduled(2, { path: ".github/workflows/staging.yml", started: false }),
       scheduled(3, { repo: "fork/relay", started: false }),
+      scheduled(4, { path: ".github/workflows/development.yml" }),
     ];
     const foreignChecks = [{ sha, id: 7, conclusion: "success", slug: "other-app" }];
-    expect(await decide({ runs: forged, foreignChecks })).toMatchObject({ start: true });
-    expect(await greenFullRun(fake({ runs: [scheduled(4, { path: ".github/workflows/development.yml@refs/heads/development" })] }).github, repo, sha))
-      .toMatchObject({ id: 4 });
+    expect(await decide({ runs: forged, foreignChecks, busy: { in_progress: [5] } })).toMatchObject({ start: true });
+    expect(await greenFullRun(fake({ runs: [scheduled(5, { path: ".github/workflows/full.yml@refs/heads/development" })] }).github, repo, sha))
+      .toMatchObject({ id: 5 });
   });
 
   it("lets API failures fail the decision instead of starting or skipping silently", async () => {
