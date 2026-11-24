@@ -402,7 +402,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     if (!context || !worker) throw new ProfileOnboardingDuoProviderError("unavailable", "worker");
     const token = randomUUID(), marker = `${install ? "about:blank" : url}#relay-target=${token}`;
     const opened = context.waitForEvent("page", { predicate: page => page.waitForURL(marker, { waitUntil: "commit", timeout: options.closeProofMs }).then(() => true, () => false), timeout: options.closeProofMs });
-    const [page, raw] = await Promise.all([opened, workerCall(worker, install ? "browserInstall" : "browserPage", [install ? token : marker])]);
+    const [page, raw] = await Promise.all([opened, workerCall(worker, install ? "browserInstall" : "browserPage", install ? [token, options.copySignin !== undefined] : [marker])]);
     const target = z.strictObject({ tabId: z.number().int().nonnegative(), windowId: z.number().int().nonnegative(), url: z.literal(marker) }).parse(raw);
     browserCurrent(session);
     if (page.url() !== target.url) throw new ProfileOnboardingDuoProviderError("refused", "scope");

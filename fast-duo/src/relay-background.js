@@ -220,6 +220,8 @@ if (typeof chrome !== 'undefined') {
   let relay;
   let browserInstalled = false;
   let browserStopped = false;
+  // Copy sign-in never hands a WebAuthn request back to the browser, so no native prompt can appear.
+  let copySetup = false;
   let setupWindowId;
   let setupTabId;
   let waiter;
@@ -261,8 +263,9 @@ if (typeof chrome !== 'undefined') {
         ...(message.attemptId === undefined ? {} : { attemptId: message.attemptId }) }).then(value => ({ relaySetup: true, profile: value }));
   }
   globalThis.relayOnboarding = Object.freeze({
-    async browserInstall(token) {
-      if (browserInstalled || browserStopped || !/^[0-9a-f-]{36}$/i.test(token)) throw new Error('ONBOARDING_DUO_REVOKED');
+    async browserInstall(token, copy = false) {
+      if (browserInstalled || browserStopped || !/^[0-9a-f-]{36}$/i.test(token) || typeof copy !== 'boolean') throw new Error('ONBOARDING_DUO_REVOKED');
+      copySetup = copy;
       await chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
       browserInstalled = true;
       const url = 'about:blank#relay-target=' + token;
@@ -389,7 +392,7 @@ if (typeof chrome !== 'undefined') {
       }
       return relay.receive(message, sender);
     };
-    work().then(result => sendResponse({ success: true, result }), async error => {
+    work().then(result => sendResponse({ success: true, result: copySetup && result?.passThrough ? { ok: false } : result }), async error => {
       if (browserInstalled && !browserStopped && sender.id === chrome.runtime.id && isDuoOrigin(sender.url)
         && (message.request?.rpId === 'duosecurity.com' || message.type === 'RELAY_DUO_EVENT')) {
         try { await browserCall({ kind: 'event', event: relayFailureEvent(error, Math.max(0, performance.now() - started)) }); }
