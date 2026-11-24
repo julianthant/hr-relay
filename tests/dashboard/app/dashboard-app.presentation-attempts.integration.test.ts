@@ -14,8 +14,8 @@ import { createRunQueueProjectionTestWorld } from "../../support/helpers/backend
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { seedPersonLookupPresentation } from "../../support/fixtures/person-lookup-presentation.js";
 import { uuidOf } from "../../support/helpers/backend/dashboard-harness.js";
-import { FIXTURE_BOOTSTRAP } from "../../mocks/helpers/fixture-bootstrap.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_BOOTSTRAP } from "../../support/helpers/dashboard/mock-world/fixture-bootstrap.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

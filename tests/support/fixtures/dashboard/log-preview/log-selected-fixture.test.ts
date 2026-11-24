@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { continuedLookupTimeline,selectedLogPresentation,selectedLogSample } from "./log-selected-fixture.js";
-import { FIXTURE_DAY_WIRE,FIXTURE_IDS } from "../../../../mocks/helpers/fixture-queue.js";
+import { FIXTURE_DAY_WIRE,FIXTURE_IDS } from "../../../helpers/dashboard/mock-world/fixture-queue.js";
 describe("frontend presentation producers", () => {
   it("updates selected-run context without inventing action history or unmeasured durations", () => {
     const row = FIXTURE_DAY_WIRE.queueSurfaces.find(item => item.runId === FIXTURE_IDS.runningRun);

@@ -1,5 +1,5 @@
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
@@ -77,7 +77,7 @@ it('uses injected wall time for countdown and confirmed refresh without advancin
 });
 
 it('retains the original held refresh across its own version move, cancels Remove immediately, and rearms from exact ack time only', async () => {
-  const { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } = await import('../../../mocks/helpers/fixture-day.js');
+  const { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } = await import('../../../support/helpers/dashboard/mock-world/fixture-day.js');
   const { DashboardDayWireSchema } = await import('../../../../src/models/dashboard/projection.js');
   const { sessionsFromDay } = await import('../../../../src/dashboard/surfaces/sessions/sessions-view-model.js');
   const base = FIXTURE_DAY_WIRE.workerCards[1];

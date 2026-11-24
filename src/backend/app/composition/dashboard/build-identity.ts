@@ -41,8 +41,8 @@ const INPUT_FILES = [
   "package-lock.json",
 ] as const;
 
-const MOCK_INPUT_ROOTS = ["tests/support/helpers/dashboard/controls", "tests/mocks/workflows"] as const;
-const MOCK_INPUT_FILES = ["vite.mocks.config.ts", "tests/mocks/app-entry.tsx", "tests/mocks/helpers/workflow-composition.ts"] as const;
+const MOCK_INPUT_ROOTS = ["tests/support/helpers/dashboard/controls", "tests/support/fixtures/dashboard/workflow-mocks"] as const;
+const MOCK_INPUT_FILES = ["vite.mocks.config.ts", "tests/support/helpers/dashboard/mock-world/app-entry.tsx", "tests/support/helpers/dashboard/mock-world/workflow-composition.ts"] as const;
 
 export function computeDashboardBuildInputDigest(repoRoot: string, buildScript: DashboardBuildCommand = DASHBOARD_BUILD_COMMAND): string {
   const root = resolve(repoRoot);
