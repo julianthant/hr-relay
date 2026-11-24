@@ -46,7 +46,7 @@ describe("Start run without a reference-spreadsheet check", () => {
       await settleAll();
       const alerts = [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "");
       assert.deepEqual(alerts, ["Reference spreadsheets can't be checked.Retry"], dialog.text());
-      assert.equal(document.querySelector('section[aria-label="Input"]'), null);
+      assert.equal(document.querySelector('section[aria-label="Input"]') === null, true);
       assert.equal(dialog.disabled("Continue"), true);
       assert.doesNotMatch(dialog.text(), /WORKBOOK_COMPATIBILITY|Page unavailable/u);
       const before = served.reads();

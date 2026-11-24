@@ -134,7 +134,7 @@ describe("the Run dialog's Checks step", () => {
     assert.equal(((section?.textContent ?? "").match(/Checking/gu) ?? []).length, 1, "the Checks section says Checking once");
     assert.equal(document.body.querySelectorAll('[aria-label="Checking"] .ds-run-row').length, 8);
     await act(async () => { pending.resolve(h.readiness([PASSING])); });
-    assert.equal(document.body.querySelector('[aria-label="Checking"]'), null);
+    assert.equal(document.body.querySelector('[aria-label="Checking"]') === null, true);
   });
 
   it("draws a failed check's fix as a button beside a Failed status, with its whole summary readable", async () => {
@@ -159,7 +159,7 @@ describe("the Run dialog's Checks step", () => {
     assert.equal(reads.length, 1);
     await dialog.press("Add password");
     await dialog.rerender({ onFixCheck: () => undefined, hidden: true });
-    assert.equal(document.body.querySelector('[role="dialog"]'), null, "the dialog is not drawn behind Settings");
+    assert.equal(document.body.querySelector('[role="dialog"]') === null, true, "the dialog is not drawn behind Settings");
     assert.deepEqual(h.closed, [], "hiding is not closing");
     await dialog.rerender({ onFixCheck: () => undefined, hidden: false });
     assert.equal(reads.length, 2, "the checks run again after Settings");
@@ -179,7 +179,7 @@ describe("the Run dialog's Checks step", () => {
     await dialog.press("Add password");
     await dialog.rerender({ onFixCheck: () => undefined, hidden: true });
     await dialog.rerender({ onFixCheck: () => undefined, hidden: false });
-    assert.equal(document.activeElement, fixButton("Add password"));
+    assert.equal(document.activeElement === fixButton("Add password"), true);
   });
 
   it("shows one Ready to start line when every check is ready", async () => {
@@ -201,7 +201,7 @@ describe("the Run dialog's Checks step", () => {
     assert.ok(region?.textContent?.includes("Checking"));
     await act(async () => { pending.resolve(h.readiness([PASSING, UNFIXABLE])); });
     const after = document.body.querySelector('section[aria-label="Checks"] [role="status"]');
-    assert.equal(after, region, "the same live region is updated, not replaced");
+    assert.equal(after === region, true, "the same live region is updated, not replaced");
     assert.match(after?.textContent ?? "", /1 check needs fixing/u);
   });
 });
