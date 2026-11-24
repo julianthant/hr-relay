@@ -39,7 +39,7 @@ export const WIDE_WORKER: SessionWorker = { ...SESSION_WORKER_BY_STATE.running, 
   { id: "servicenow", label: "SNow", name: "ServiceNow", state: "ready" }, { id: "sharepoint", label: "SP", name: "SharePoint", state: "starting" },
 ] };
 
-/** An idle worker with nothing to say is a tally row; a crowded pool mixes rows and cards. */
+/** Idle workers with nothing to say: each is a card, like every other worker. */
 export const QUIET_IDLE: readonly SessionWorker[] = [0, 1, 2].map(index => ({ ...SESSION_WORKER_BY_STATE.idle, id: `worker-quiet-${index}`, label: `Worker ${index + 9}`,
   workflowId: index % 2 === 0 ? "person-lookup" : "separations", workflow: index % 2 === 0 ? "Person Lookup" : "Separations" }));
 

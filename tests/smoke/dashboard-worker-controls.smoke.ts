@@ -80,7 +80,7 @@ test("worker add and remove settle after delayed or refused replies and clear on
   await dashboard.open();
   const add = page.getByRole("group", { name: "Session actions" }).getByRole("button", { name: "Add workers" });
   const dialog = page.getByRole("dialog", { name: "Add workers" });
-  const worker = page.getByRole("listitem", { name: "Worker 99 · Separations" });
+  const worker = page.getByRole("article", { name: "Worker 99 · Separations" });
   const remove = worker.getByRole("button", { name: "Remove worker" });
   const toasts = page.locator('[data-slot="toast-title"]');
   const adding = page.locator("li[aria-busy]");

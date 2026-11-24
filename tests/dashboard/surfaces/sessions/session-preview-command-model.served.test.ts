@@ -589,7 +589,7 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
       await act(async () => render());
       assert.doesNotMatch(host.textContent ?? "", /No current claimed run|Run timeline is not served|No steps are served|states unavailable/);
       assert.equal(host.querySelector('[role="progressbar"]') === null, true);
-      if (state === "idle") { assert.match(host.textContent ?? "", /Idle/); assert.doesNotMatch(host.textContent ?? "", /No run assigned/); }
+      if (state === "idle") { assert.match(host.textContent ?? "", /Idle/); assert.match(host.textContent ?? "", /No run assigned/); }
       if (state === "starting") assert.match(host.textContent ?? "", /Starting.*No run assigned/s);
       if (state === "failed") assert(host.textContent?.includes("Its run is no longer on record."));
     }
