@@ -101,7 +101,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
       const style = getComputedStyle(viewport);
       const scrollTarget = targetEntryId && step.header === false ? target : section;
       viewport.scrollTop += scrollTarget.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop || "0");
-      target.focus({ preventScroll: true });
+      (target.querySelector<HTMLElement>("form[aria-label][tabindex=\"-1\"]") ?? target).focus({ preventScroll: true });
       jumpFrame.current = undefined;
     }); };
     land(JUMP_FRAMES);

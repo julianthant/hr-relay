@@ -78,8 +78,8 @@ export function LogSkeleton() {
 /** The pipeline stage strip while a run's logs load: four stage labels over their bars, as the loaded strip draws them. */
 export function LogTimelineSkeleton() {
   return <nav aria-hidden className="shrink-0 border-b border-ui-stroke bg-ui-panel px-4 py-2">
-    <ol className="m-0 flex list-none gap-1 p-0">{Array.from({ length: 4 }, (_, index) => <li key={index} className="min-w-0 flex-1"><span className="flex w-full flex-col gap-1 px-0.5 py-1">
-      <span className="flex items-center gap-1.5 text-caption"><Skeleton className="size-1.5 rounded-full" /><SkeletonText className="w-16 text-caption" /></span><Skeleton className="h-2.5 w-full" />
+    <ol className="m-0 grid list-none gap-1 p-0 [grid-template-columns:repeat(auto-fit,minmax(6rem,1fr))]">{Array.from({ length: 4 }, (_, index) => <li key={index} className="min-w-0"><span className="flex w-full flex-col gap-1 px-0.5 py-1">
+      <span className="flex min-h-12 items-start gap-1.5 text-caption"><Skeleton className="mt-1 size-1.5 rounded-full" /><SkeletonText className="w-16 text-caption" /></span><Skeleton className="h-2.5 w-full" />
     </span></li>)}</ol>
   </nav>;
 }
