@@ -2,7 +2,7 @@ import { createCredentialPersistenceFixtures } from "../../support/helpers/crede
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { randomUUID } from "node:crypto";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { executeSettingsCommand } from "../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../src/backend/runs/commands/settings-service.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/models/config/protected-settings.js";

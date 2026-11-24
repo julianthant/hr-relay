@@ -17,7 +17,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";

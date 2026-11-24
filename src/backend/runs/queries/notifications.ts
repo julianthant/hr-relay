@@ -45,7 +45,7 @@ export function createNotificationTargetQuery(deps: {
       const current = deps.read(link.runId);
       if (current.state !== "present") return refused("run-unavailable");
       const host = deps.host?.(current.run);
-      if (host !== undefined) return NotificationTargetSchema.parse({ kind: "run", runId: host.envelope.runId, day: searchPartitionDay(new Date(host.envelope.enqueuedAt)) });
+      if (host !== undefined) return NotificationTargetSchema.parse({ kind: "run", runId: host.envelope.runId, day: searchPartitionDay(new Date(host.envelope.enqueuedAt)), linkedRunId: link.runId });
       const day = searchPartitionDay(new Date(current.run.envelope.enqueuedAt));
       if (link.kind === "failure") {
         const failure = deps.failure(link.failureId);

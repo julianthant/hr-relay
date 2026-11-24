@@ -13,7 +13,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameS
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";

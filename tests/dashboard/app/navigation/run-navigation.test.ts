@@ -20,7 +20,7 @@ const failureSection = FIXTURE_FAILURE_SECTIONS[runId].failure;
 if (failureSection.section !== "failure" || failureSection.payload.state !== "available") throw new Error("failure fixture missing");
 const failureId = failureSection.payload.value.failureId;
 const day = FIXTURE_DAY_WIRE.day;
-const origin = { start: true, day: "2026-08-04", settings: "general", archive: "", view: { notifications: true, search: true, preview: "ocr", records: "previous" } };
+const origin = { start: true, day: "2026-08-04", settings: "general", archive: "", view: { search: true, preview: "ocr", records: "previous" } };
 const clients = () => ({ dashboardDay: vi.fn(async () => FIXTURE_DAY_WIRE), runDetail: vi.fn(async () => detail), runSection: vi.fn(async () => failureSection) });
 const target: Extract<NotificationTarget, { kind: "run" }> = { kind: "run", runId, day };
 

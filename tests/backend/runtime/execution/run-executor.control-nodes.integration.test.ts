@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { afterAll,afterEach,describe,it } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/gate-command.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import type { ChildRunExecutor, RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { createGateSourceRuntime,type GateSourceDelivery,type GateSourceEnvelope } from "../../../../src/backend/runtime/gates/gate-source-runtime.js";
