@@ -13,7 +13,7 @@ import {
 import { ProjectionGenerationSchema, WireErrorSchema } from "../../../../models/dashboard/primitives.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { RunQueueProjection, RunQueueProjectionChange } from "../../../runs/projections/run-queue-projection.js";
-import { LOCAL_OPERATOR_ACTOR_ID, ProjectionCursorSchema, type RunId } from "../../../../rules/identity/ids.js";
+import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID, ProjectionCursorSchema, type RunId } from "../../../../rules/identity/ids.js";
 import type { NotificationInbox, NotificationPublication } from "../../../runs/notifications/inbox.js";
 import type { NotificationObservationStatus } from "../../../runs/notifications/observation.js";
 import type { NotificationTarget } from "../../../../models/notifications/notification-target.js";
@@ -239,7 +239,7 @@ export class DashboardStreamHub {
     const cursorValue = cursorNumber(cursor);
     if (cursorValue === undefined) throw new Error(`projection produced a malformed cursor: ${cursor}`);
     const unstamped: UnstampedPublication = Object.freeze({
-      type: "notification-publication", cursor, descriptorHash: this.#projection.descriptorSetHash(),
+      type: "notification-publication", cursor, descriptorHash: FingerprintSchema.parse(this.#projection.descriptorSetHash()),
       projectionGeneration: ProjectionGenerationSchema.parse(this.#projection.generation()), publication: wire, listed, target,
     });
     this.#retain({ cursorNumber: cursorValue, kind: "publication", publication: unstamped });
