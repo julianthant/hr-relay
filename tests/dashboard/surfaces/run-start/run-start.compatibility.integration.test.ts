@@ -15,7 +15,7 @@ import { DashboardClientProvider } from "../../../../src/dashboard/state/client-
 import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 
 const h = createRunStartDialogHarness();
 let routedRoot: Root | undefined;

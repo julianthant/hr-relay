@@ -9,7 +9,7 @@ import { type DashboardClient } from "../../../../src/dashboard/client/index.js"
 import { START_DOOR_ABSENCE } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-day.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-day.js";
 
 {
 const { cleanup, openDialog, stubClient, WORKFLOW_ID, TYPED, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName } = createRunStartDialogHarness();

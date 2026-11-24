@@ -1,4 +1,4 @@
-import { FIXTURE_EDITABLE_SETTINGS } from "../../../mocks/helpers/fixture-settings.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/helpers/dashboard/mock-world/fixture-settings.js";
 import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
 import { syntheticSettingsAuthority } from "../../../support/helpers/dashboard/settings-harness.js";

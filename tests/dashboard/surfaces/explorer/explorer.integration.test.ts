@@ -9,8 +9,8 @@ import { WorkflowExplorer } from "../../../../src/dashboard/surfaces/explorer/ex
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { FIXTURE_EXPLORER_WIRE } from "../../../mocks/helpers/fixture-explorer.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../../support/helpers/dashboard/mock-world/fixture-explorer.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 class ResizeObserverStub { observe() {} disconnect() {} unobserve() {} }
