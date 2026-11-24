@@ -99,8 +99,10 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
         startupUnchanged: current !== undefined && current === startupWorkers };
     };
     pending = projection.pollBackground(request => reader.read(request), now, workerRevisionState).then(expiry => {
-      if (expiry === undefined) key = { state: "retry" };
-      else leaseExpiry = expiry;
+      if (expiry === undefined) {
+        key = { state: "retry" };
+        checkAfterRead = true;
+      } else leaseExpiry = expiry;
     }).catch((error: unknown) => {
       if (stopped) return;
       // A normal commit can supersede paged worker facts while the admitted timeline remains live.
