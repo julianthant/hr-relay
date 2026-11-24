@@ -202,35 +202,8 @@ const NOTICE = {
   "setting-unavailable": scene("A search target that is not on the page", { host: { searchTarget: "nothing.here" }, play: loaded, story: { ready: 'text=/Setting unavailable/' } }),
 } satisfies Record<Notice, Story>;
 
-/** Rules today's Settings breaks, each recorded against the dashboard-audit-fixes feature (#532), whose tickets fix them; never loosened. */
-const AUDIT_FIXES = "#532";
-const breaks = (...rules: readonly StateRuleName[]): Readonly<Partial<Record<StateRuleName, string>>> => Object.fromEntries(rules.map(rule => [rule, AUDIT_FIXES]));
-const BREAK_SETS = {
-  /** The Tab walk reaches no control while a toast is on screen. */
-  FOCUS: breaks("named-and-focusable"),
-} as const;
-
-/** By `<state type>/<member>`. */
-const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleName, string>>>>> = {
-  "save/saving": BREAK_SETS.FOCUS,
-  "notice/opened-for-check": BREAK_SETS.FOCUS,
-  "action/duo-not-opened": BREAK_SETS.FOCUS,
-  "action/name-not-saved": BREAK_SETS.FOCUS,
-  "action/password-changed": BREAK_SETS.FOCUS,
-  "action/password-not-confirmed": BREAK_SETS.FOCUS,
-  "save-combo/replayed": BREAK_SETS.FOCUS,
-  "save-combo/restart-required": BREAK_SETS.FOCUS,
-  "save/applied": BREAK_SETS.FOCUS,
-  "save/conflict": BREAK_SETS.FOCUS,
-  "save/refused": BREAK_SETS.FOCUS,
-  "save/unconfirmed": BREAK_SETS.FOCUS,
-};
-const SETTINGS_TABLES = defineSurface("settings", {
+export const SETTINGS_STORIES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
   save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
 });
 
-export const SETTINGS_STORIES = SETTINGS_TABLES.map(entry => {
-  const known = KNOWN_BREAKS[entry.id.slice("settings/".length)];
-  return known === undefined ? entry : { ...entry, story: { ...entry.story, knownFailures: known } };
-});
