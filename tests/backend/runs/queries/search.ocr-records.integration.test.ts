@@ -107,7 +107,7 @@ it("ranks hosted OCR identity matches on the host across dates and reads the lat
   assert.equal(search.search({ q: eid, facets: { day: earlierDay } }).totalMatches, 0);
   await assertOpensRun(f, { q: eid }, hostId);
 
-  const other = runRecordOf({ seed: 5250, workflow: "example", enqueuedAt: earlier.toISOString() });
+  const other = runRecordOf({ seed: 4250, workflow: "example", enqueuedAt: earlier.toISOString() });
   database.authority.runs.enqueue(other);
   const page = search.search({ q: "example", limit: 1 });
   assert.equal(page.totalMatches, 2);
