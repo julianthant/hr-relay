@@ -76,8 +76,10 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const workerTables = ["runs", "deleted_runs", "worker_slots", "worker_pools", "run_batches", "auth_leases", "write_intents"] as const;
   const revision = database.trackAuthorityTables(["timeline_events", ...workerTables], "poll-hint");
   const startupWorkerRevision = database.trackAuthorityTables(workerTables, "poll-hint");
+  const startupTimelineRevision = database.trackAuthorityTables(["timeline_events"], "poll-hint");
   let key: string | { state: "retry" } = JSON.stringify(database.capturedChangeKey());
   const startupWorkers = startupWorkerRevision();
+  let startupTimeline = startupTimelineRevision();
   let observed = revision();
   let lastWall = clock.nowMs(), leaseExpiry = Infinity;
   let safetyAt = clock.monotonicMs() + 60_000;
@@ -89,17 +91,19 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
   const reader = createDashboardBackgroundReader(admission, database);
-  let pending: Promise<void> | undefined, stopped = false, checkAfterRead = false;
+  let pending: Promise<void> | undefined, stopped = false, checkAfterRead = false, initialRead = true;
   const startRead = (now: number, workersChangedDuringStartup?: () => boolean) => {
     pending = projection.pollBackground(request => reader.read(request), now, workersChangedDuringStartup).then(expiry => {
       if (expiry === undefined) key = { state: "retry" };
       else leaseExpiry = expiry;
     }).catch((error: unknown) => {
+      if (stopped) return;
       // A normal commit can supersede paged worker facts while the admitted timeline remains live.
       if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") key = { state: "retry" };
       else projection.backgroundReadFailed(error);
     }).finally(() => {
       pending = undefined;
+      initialRead = false;
       if (checkAfterRead && !stopped) {
         checkAfterRead = false;
         check();
@@ -121,6 +125,12 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       }
       if (pending !== undefined) {
         checkAfterRead = true;
+        // Initial worker validation can take longer than the timeline's publication deadline.
+        if (initialRead && !degraded && current !== key) {
+          const nextTimeline = startupTimelineRevision();
+          if (nextTimeline === undefined || nextTimeline !== startupTimeline) projection.ingestFromTimeline();
+          startupTimeline = nextTimeline;
+        }
         return;
       }
       lastWall = now;
@@ -140,8 +150,8 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const stopTimeline = async () => {
     stopped = true;
     clearInterval(timelineTimer);
+    await reader.close({ cancelPending: true });
     await settled();
-    await reader.close();
   };
   startupCleanups.push(stopTimeline);
   return { noteWriter, timelineTimer, diagnosticRetentionTimer, settled, stopTimeline };

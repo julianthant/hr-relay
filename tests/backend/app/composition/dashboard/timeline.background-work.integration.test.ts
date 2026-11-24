@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { Worker } from "node:worker_threads";
 import { expect, it, vi } from "vitest";
 import { admitFixtureSlot } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
@@ -71,7 +72,6 @@ it("closes the timeline on an operator-sized synthetic store without using its c
     console.info("Timeline cold-read and stop timings", { runs: runCount, notes: runCount * notesPerRun,
       firstReadMs: first.readMs(), stopMs, stoppedReadMs: cold.readMs() });
     expect(cold.readMs()).toBeUndefined();
-    database.close();
   } finally {
     for (const cleanup of startupCleanups.reverse()) await cleanup();
     vi.restoreAllMocks();
@@ -115,6 +115,104 @@ it("replays a count-neutral background task step across a dashboard reconnect", 
   } finally {
     hub.close();
     for (const cleanup of startupCleanups.reverse()) await cleanup();
+    vi.useRealTimers();
+    await f.dispose();
+  }
+});
+
+it("folds a peer timeline commit on the next tick while the first worker page is pending", async () => {
+  const f = await trustWorld();
+  const { database, world: { clock } } = f;
+  const projection = createOperatorProjection({ database, reader: f.service, clock, stateRoot: f.profile.stateRoot,
+    appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, descriptors: { resolve: () => personLookupDescriptor },
+    ledger: createTransactionHistory(database.authority) });
+  const loggingRepository = database.authority.timelineEvents;
+  const startupCleanups: StartupCleanup[] = [];
+  const release = Promise.withResolvers<void>();
+  const poll = projection.pollBackground.bind(projection);
+  vi.spyOn(projection, "pollBackground").mockImplementationOnce((read, now, changed) => poll(async request => {
+    await release.promise;
+    return read(request);
+  }, now, changed));
+  const peer = new DatabaseSync(f.profile.path);
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    const run = f.create(824), { workflow, runId, traceId, attempt } = run.envelope;
+    createNoteTimelineWriter({ repository: loggingRepository, clock }).emitNote({ workflow,
+      address: { runId, traceId, attempt, spanPath: traceId }, level: "step", message: "Initial note" });
+    const runtime = composeDashboardTimeline({ database, clock, projection, startupCleanups, admission: f.profile.admission,
+      lifecycle: f.service, loggingRepository, debugEvents: createDebugEventWriter({ repository: loggingRepository, clock, build: "test" }) });
+    const touched: string[][] = [];
+    const unsubscribe = projection.onChange(change => { if (change.kind === "runs") touched.push([...change.runIds]); });
+    const eventId = randomUUID(), started = performance.now();
+    expect(peer.prepare(`INSERT INTO timeline_events(id,workflow,run_id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
+      SELECT ?,workflow,run_id,kind,occurred_at,recorded_at,retention_date,retention_class,
+        json_set(payload_json,'$.eventId',?,'$.cursor',(SELECT seq+1 FROM sqlite_sequence WHERE name='timeline_events'))
+      FROM timeline_events WHERE run_id=? AND kind='note'`).run(eventId, eventId, runId).changes).toBe(1);
+    vi.advanceTimersByTime(250);
+    expect(touched).toEqual([[runId]]);
+    expect(250 + performance.now() - started).toBeLessThanOrEqual(1000);
+    release.resolve();
+    await runtime.settled();
+    expect(touched).toEqual([[runId]]);
+    expect(projection.health().state).toBe("live");
+    unsubscribe();
+  } finally {
+    release.resolve();
+    for (const cleanup of startupCleanups.reverse()) await cleanup();
+    peer.close();
+    vi.useRealTimers();
+    await f.dispose();
+  }
+});
+
+it("recovers after a background worker exits and stops cleanly after the replacement exits", async () => {
+  const f = await trustWorld();
+  const { database, world: { clock } } = f;
+  const projection = createOperatorProjection({ database, reader: f.service, clock, stateRoot: f.profile.stateRoot,
+    appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, descriptors: { resolve: () => personLookupDescriptor },
+    ledger: createTransactionHistory(database.authority) });
+  const loggingRepository = database.authority.timelineEvents;
+  const startupCleanups: StartupCleanup[] = [];
+  const post = Worker.prototype.postMessage;
+  const workers = new Set<Worker>();
+  let hold = false;
+  const intercept = vi.spyOn(Worker.prototype, "postMessage").mockImplementation(function (this: Worker, ...args) {
+    if (args[0] !== null) {
+      workers.add(this);
+      if (hold) return;
+    }
+    post.apply(this, args);
+  });
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    const runtime = composeDashboardTimeline({ database, clock, projection, startupCleanups, admission: f.profile.admission,
+      lifecycle: f.service, loggingRepository, debugEvents: createDebugEventWriter({ repository: loggingRepository, clock, build: "test" }) });
+    await runtime.settled();
+    const generation = projection.generation();
+    const crash = async () => {
+      const worker = [...workers].at(-1);
+      expect(worker).toBeDefined();
+      if (worker === undefined) throw new Error("expected an active fixture worker");
+      hold = true;
+      clock.advanceMonotonic(60_000);
+      vi.advanceTimersByTime(250);
+      await worker.terminate();
+      await runtime.settled();
+      expect(projection.health()).toMatchObject({ state: "degraded", lastError: expect.stringContaining("dashboard-background-worker-exited") });
+      hold = false;
+    };
+    await crash();
+    vi.advanceTimersByTime(250);
+    await runtime.settled();
+    expect(workers.size).toBe(2);
+    expect(projection.health().state).toBe("live");
+    expect(projection.generation()).toBeGreaterThan(generation);
+    await crash();
+    await expect(runtime.stopTimeline()).resolves.toBeUndefined();
+  } finally {
+    for (const cleanup of startupCleanups.reverse()) await cleanup();
+    intercept.mockRestore();
     vi.useRealTimers();
     await f.dispose();
   }

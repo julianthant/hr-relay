@@ -4267,6 +4267,11 @@ export class AuthorityDatabase implements Disposable {
     } catch (error) { reader.close(); throw error; }
   }
 
+  timelineCursorOffset(): number {
+    this.#assertOpen();
+    return this.#historyCursorOffset;
+  }
+
   /** Proves this open store is the person's own state.db, opened by exactly this live, exclusive admission. */
   assertOpenedByExclusive(admission: RuntimeAdmission): void {
     if (this.#admission !== admission) throw new Error("authority-database-owner-mismatch");
