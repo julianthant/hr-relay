@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "vitest";
-import { runAccountsUpgradeProof, type UpgradeProofDependencies } from "../../../scripts/proof/accounts-upgrade-receipt.js";
+import { copySnapshots, runAccountsUpgradeProof, type UpgradeProofDependencies } from "../../../scripts/proof/accounts-upgrade-receipt.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import type { PublicProfileState } from "../../../src/models/profiles/public-profile.js";
 
 const profileId = "a52de557-89f5-4471-93bc-9d033951a769";
@@ -85,6 +89,35 @@ function fixture(options: {
 }
 
 describe("accounts upgrade proof receipt", () => {
+  it("reads the selected profile from the machine registry when the control witness also exists", () => {
+    const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-upgrade-snapshot-")));
+    try {
+      const state = join(workspace, rebuildRuntimeIsolation.stateRoot);
+      const machine = join(state, "machine");
+      const credentials = join(state, "profiles", profileId, "credentials");
+      const control = join(workspace, ".tracker", "control");
+      for (const directory of [machine, credentials, control]) mkdirSync(directory, { recursive: true, mode: 0o700 });
+      const at = "2026-01-01T00:00:00.000Z";
+      const row = {
+        profileId, relayEmail, firstName: "Proof", lastName: "Operator", initials: "PO", timekeeperName: "Proof Operator",
+        timekeeperInitials: "PO", createdAt: at, lastSignedInAt: at, credentialState: "saved", duoState: "ready", lifecycle: "ready",
+        registration: { operationId: otherProfile, commandId: otherProfile, writeId: otherProfile, credentialRevision: 1 },
+      };
+      writeFileSync(join(control, "profile-registry.json"), JSON.stringify({
+        schemaVersion: 7, installationId: otherProfile, revision: 1, digest: "a".repeat(64), generation: 1, operations: [],
+      }), { mode: 0o600 });
+      writeFileSync(join(machine, "profiles.json"), JSON.stringify({
+        schemaVersion: 5, installationId: otherProfile, revision: 1, profiles: [row], sessionGeneration: 1, activeProfileId: profileId,
+      }), { mode: 0o600 });
+      writeFileSync(join(machine, "profile-verifiers.json"), "verifier file", { mode: 0o600 });
+      writeFileSync(join(credentials, "protected.json"), "protected file", { mode: 0o600 });
+
+      assert.deepEqual(copySnapshots(workspace)(profileId), {
+        selected: profileId, row, protectedBytes: Buffer.from("protected file"), verifierBytes: Buffer.from("verifier file"),
+      });
+    } finally { rmSync(workspace, { recursive: true }); }
+  });
+
   it("proves admission and independent password changes and restores both copy passwords", async () => {
     const copy = fixture();
     const receipt = await runAccountsUpgradeProof(build, copy.dependencies);

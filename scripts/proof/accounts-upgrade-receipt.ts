@@ -235,16 +235,17 @@ function privateBytes(path: string, label: "lock" | "protected.json", maxBytes: 
   return file.bytes;
 }
 
-function copySnapshots(workspace: string) {
+export function copySnapshots(workspace: string) {
   const state = join(workspace, rebuildRuntimeIsolation.stateRoot);
+  const machine = join(state, "machine");
   return (profileId: string): Snapshot => {
     const id = z.uuid().parse(profileId);
-    const registry = RegistrySchema.parse(JSON.parse(privateBytes(join(workspace, ".tracker", "control", "profile-registry.json"), "lock", 1_048_576).toString("utf8")));
+    const registry = RegistrySchema.parse(JSON.parse(privateBytes(join(machine, "profiles.json"), "lock", 1_048_576).toString("utf8")));
     const [row, duplicate] = registry.profiles.filter(candidate => candidate.profileId === id);
     requireProof(row !== undefined && duplicate === undefined, "COPY_AUTHORITY_CHANGED");
     return { selected: registry.activeProfileId, row,
       protectedBytes: privateBytes(join(state, "profiles", id, "credentials", "protected.json"), "protected.json", 25 * 1024 * 1024),
-      verifierBytes: privateBytes(join(state, "machine", "profile-verifiers.json"), "lock", 1_048_576) };
+      verifierBytes: privateBytes(join(machine, "profile-verifiers.json"), "lock", 1_048_576) };
   };
 }
 
