@@ -12,7 +12,7 @@ import { OcrApprovalReferenceSchema } from "../../models/workflows/ocr/result.js
 import { deriveSchemaHash } from "../../models/validation/schema-bound-value.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { correctedOcrRecord } from "../surfaces/run-detail/review/review-model.js";
-import { commandRowRevision, createRowWait } from "./run-wiring-adapter.js";
+import { createRowWait } from "./run-wiring-adapter.js";
 import { checkedCommandResult } from "../client/commands/shared-commands.js";
 
 type ReviewState = Readonly<{ state: "loading" | "loaded" | "failed"; page?: ReviewPage; error?: string }>;
@@ -135,7 +135,6 @@ export function reviewAttemptState(outcome: CommandOutcome): "uncertain" | "conf
 }
 export function useOcrReviewEditor(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined) {
   const resource = useRunReview(client, selection, binding);
-  const runId = selection.row.runId;
   const memory = useMemo(() => reviewMemory(client, selection.row.runId, binding?.authority.epoch, binding?.scope.actorId, binding?.authority.day),
     [client, selection.row.runId, binding?.authority.epoch, binding?.scope.actorId, binding?.authority.day]);
   const subscribe = useCallback((notify: () => void) => { memory.listeners.add(notify); return () => { memory.listeners.delete(notify); }; }, [memory]);
@@ -145,7 +144,7 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
   const heldRevision = useRef(selection.row.rowRevision);
   heldRevision.current = selection.row.rowRevision;
   useEffect(() => { memory.rowWait?.observe(selection.row.rowRevision); }, [memory, selection.row.rowRevision]);
-  useEffect(() => () => memory.rowWait?.stop(), [memory]);
+  useEffect(() => () => memory.rowWait?.stop(), [memory, binding?.scope]);
   const { attempt, draft } = memory;
   const page = resource.page, review = page?.ocr;
   const fresh = resource.state === "loaded" && binding?.scope.client === client && binding.authority.dayState.day.state === "loaded"
@@ -159,6 +158,7 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
     const start = memory.binding;
     if (start === undefined || start.scope.client !== client || memory.attempt?.state === "pending") return;
     memory.attempt = { request, captured, state: "pending", text: "Pending" };
+    const actedOn = heldRevision.current;
     publishReview(memory);
     const options = { scope: start.scope, readback: (input: DashboardCommandRequest) => verifyOcrReviewEffect(client, input) };
     let outcome = check ? await start.executor.check(request.commandId, { ...options, observe: async input => {
@@ -191,13 +191,12 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
     publishReview(memory);
     if (memory.listeners.size > 0) {
       memory.binding?.feedback(outcome);
-      if (confirmed) {
-        const actedOn = commandRowRevision(request, runId);
-        if (actedOn === undefined) memory.binding?.authority.dayState.refresh();
-        else (memory.rowWait ??= createRowWait(() => memory.binding?.authority.dayState.refresh())).wait(actedOn, heldRevision.current);
-      }
+      // The run row the command acted on is the one this editor held when it was sent; the OCR revision is another counter.
+      if (confirmed) (memory.rowWait ??= createRowWait()).wait(actedOn, heldRevision.current, () => {
+        if (memory.binding?.scope === start.scope) start.authority.dayState.refresh();
+      });
     }
-  }, [client, memory, runId]);
+  }, [client, memory]);
   const save = useCallback(() => {
     if (!fresh || !dirty || blocked || conflict || draft === undefined || page === undefined || review === undefined || binding === undefined
       || draft.revision !== review.revision.revision || attempt?.state === "refused") return;

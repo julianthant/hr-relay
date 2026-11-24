@@ -673,21 +673,22 @@ export function runCommandRefreshesDay(view: CommandAttemptView, type: string): 
 /** How long a landed command waits for the stream to carry its row before the day is reopened. */
 export const ROW_REVISION_WAIT_MS = 5000;
 
-/** The revision a command acted on, when it names one; a command without it has no row to wait for. */
+/** The row version a command acted on, when its target names one for this run. `expectedRevision` belongs to a document
+ * (such as an OCR review), not to the run row, so it names no row to wait for. */
 export function commandRowRevision(envelope: DashboardCommandRequest, runId: string): number | undefined {
   const target: unknown = "target" in envelope ? envelope.target : undefined;
-  if (typeof target !== "object" || target === null || !("runId" in target) || target.runId !== runId) return undefined;
-  const revision = "expectedVersion" in target ? target.expectedVersion : "expectedRevision" in target ? target.expectedRevision : undefined;
-  return typeof revision === "number" ? revision : undefined;
+  if (typeof target !== "object" || target === null || !("runId" in target) || target.runId !== runId || !("expectedVersion" in target)) return undefined;
+  return typeof target.expectedVersion === "number" ? target.expectedVersion : undefined;
 }
 
 /** A landed command waits for its row past the revision it acted on. The row may already be there (stream first); a row that
  * never arrives reopens the day rather than assuming the command took effect. */
-export function createRowWait(reopen: () => void, ms = ROW_REVISION_WAIT_MS) {
+export function createRowWait(ms = ROW_REVISION_WAIT_MS) {
   let timer: ReturnType<typeof setTimeout> | undefined, past = 0;
   const stop = () => { clearTimeout(timer); timer = undefined; };
   return {
-    wait(actedOn: number, held: number) {
+    /** `reopen` is the original command owner's; it is dropped with the wait when that owner is replaced. */
+    wait(actedOn: number, held: number, reopen: () => void) {
       stop();
       if (held > actedOn) return;
       past = actedOn;
@@ -719,11 +720,11 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const bindingRef = useRef(binding);
   bindingRef.current = binding;
   const [command, setCommand] = useState<{ owner: GateCommandOwner; envelope: DashboardCommandRequest; state: RunCommandState; feedback?: string }>();
-  const rowWait = useMemo(() => createRowWait(() => bindingRef.current?.authority.dayState.refresh()), []);
+  const rowWait = useMemo(() => createRowWait(), []);
   const heldRevision = useRef(rowRevision);
   heldRevision.current = rowRevision;
   useEffect(() => { rowWait.observe(rowRevision); }, [rowWait, rowRevision]);
-  useEffect(() => () => rowWait.stop(), [rowWait]);
+  useEffect(() => () => rowWait.stop(), [rowWait, commandOwner]);
   const commandRef = useRef(command);
   commandRef.current = command;
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
@@ -862,7 +863,9 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         if (!runCommandRefreshesDay(view, envelope.type)) return;
         const actedOn = view.view === "landed" ? commandRowRevision(envelope, row.runId) : undefined;
         if (actedOn === undefined) currentBinding.authority.dayState.refresh();
-        else rowWait.wait(actedOn, heldRevision.current);
+        else rowWait.wait(actedOn, heldRevision.current, () => {
+          if (mounted.current && currentCommandOwner.current === commandOwner && bindingRef.current?.scope === binding.scope) binding.authority.dayState.refresh();
+        });
       } };
     if (envelope.family === "start" && launch !== undefined) {
       await launch.submit(envelope, binding, correctionCommand?.get(row.runId)?.plan, options.publish);

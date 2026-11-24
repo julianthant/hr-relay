@@ -6,7 +6,7 @@ import { TooltipProvider } from "../../../src/dashboard/ds/ui.js";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { createDashboardClient, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
-import { readRunLogs, projectRunLogs, useRunWiring } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { readRunLogs, projectRunLogs, useRunWiring, ROW_REVISION_WAIT_MS } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
 import { LogPreview } from "../../support/fixtures/dashboard/log-preview/log-preview.js";
@@ -411,8 +411,14 @@ describe("served Logs wiring", () => {
       assert.deepEqual(envelope.payload, { decision: "approved", gateRef: gate.gateRef, optionRef: gate.options[1].ref });
     }
     matched = true; assert.ok(state?.replay);
-    await act(async () => state?.replay?.());
-    assert.equal(sent.length, 2); assert.deepEqual(sent[1], envelope); assert.equal(feedback.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 0);
+    vi.useFakeTimers();
+    try {
+      await act(async () => state?.replay?.());
+      assert.equal(sent.length, 2); assert.deepEqual(sent[1], envelope); assert.equal(feedback.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 0);
+      // The row never arrives: the day is reopened once the wait ends, not before.
+      await act(async () => { vi.advanceTimersByTime(ROW_REVISION_WAIT_MS - 1); }); assert.equal(refreshed, 0);
+      await act(async () => { vi.advanceTimersByTime(1); }); assert.equal(refreshed, 1);
+    } finally { vi.useRealTimers(); }
   });
   it("shows exact one-click target and served basis before approval, then requires matched readback", async () => {
     const h = commandBindingFixture();
@@ -454,8 +460,17 @@ describe("served Logs wiring", () => {
     if (envelope.family === "gate") assert.deepEqual(envelope.payload, { decision: "approved", gateRef: gate.gateRef, optionRef: gate.options[0].ref });
     matched = true;
     const replay = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Replay exact decision"); assert.ok(replay);
-    await act(async () => replay.click());
-    assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 0); assert.deepEqual(sent[1], envelope);
+    vi.useFakeTimers();
+    try {
+      await act(async () => replay.click());
+      assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 0); assert.deepEqual(sent[1], envelope);
+      // A replacement authority takes the editor before the row arrives: the settled command's timeout reopens nothing for it.
+      const replacement: DashboardCommandBinding = { ...binding, scope: { ...scope } };
+      await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: replacement,
+        children: createElement(LogSample, { selection: selected }) }) })));
+      await act(async () => { vi.advanceTimersByTime(ROW_REVISION_WAIT_MS * 2); });
+      assert.equal(refreshed, 0);
+    } finally { vi.useRealTimers(); }
   });
   for (const transition of ["identical", "command-revision", "run-roundtrip", "keyed-run-roundtrip", "unmounted", "foreign-scope"] as const) it(`isolates pending command ownership and feedback through ${transition} replacement`, async () => {
     const h = commandBindingFixture();
