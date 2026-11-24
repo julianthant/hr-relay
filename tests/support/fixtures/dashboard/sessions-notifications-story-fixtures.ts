@@ -93,19 +93,19 @@ export const POPOVER_WAITING = notice("popover-waiting", { title: "Run waiting",
 export const POPOVER_DONE = notice("popover-done", { title: "Run completed", workflow: "Separations", subject: "Separation 5017", detail: "Completed and verified.", tone: "positive", read: true, day: "Today", age: "2 hr ago" });
 export const POPOVER_STORAGE = notice("popover-storage", { kind: "storage", title: "Storage needs attention", detail: "Relay could not save everything. Reopen Relay before starting more work.", tone: "warning", count: 213, action: "", age: "4 days ago" });
 export const POPOVER_GONE = notice("popover-gone", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10101010", detail: "The browser screenshot could not be captured or saved.", tone: "danger", read: true, gone: true, day: "Monday", age: "8 days ago" });
-export const POPOVER_LONG = notice("popover-long", { title: "Kronos could not verify the timecard for this separation", workflow: "Separations", subject: "Featherstonehaugh-Montgomery, Alexandria Josephine · EID 10555002",
+export const POPOVER_LONG = notice("popover-long", { title: "Run failed", workflow: "Separations", subject: "Featherstonehaugh-Montgomery, Alexandria Josephine · EID 10554120",
   detail: "Kronos could not verify the timecard. Review it, then enter the confirmed separation dates manually. The Kuali separation document stays open until the dates are confirmed, and nothing was written to UCPath.", tone: "danger", age: "59 min ago" });
 export const POPOVER_FEW: NotificationsState = notificationsReady(POPOVER_FAILED, POPOVER_WAITING, POPOVER_DONE);
 export const POPOVER_MANY: NotificationsState = notificationsReady(
   POPOVER_FAILED, POPOVER_WAITING,
   notice("many-1", { title: "Run failed", workflow: "Separations", subject: "Separation 5015", detail: "The Kuali separation document could not be opened.", tone: "danger", count: 4, age: "1 hr ago" }),
-  notice("many-2", { title: "Run failed", workflow: "Work-Study", subject: "EID 10555003", detail: "UCPath sign-in failed.", tone: "danger", count: 2, age: "3 hr ago" }),
+  notice("many-2", { title: "Run failed", workflow: "Work-Study", subject: "EID 10777012", detail: "UCPath sign-in failed.", tone: "danger", count: 2, age: "3 hr ago" }),
   POPOVER_STORAGE,
   POPOVER_DONE,
-  notice("many-3", { title: "Run completed", workflow: "Person Lookup", subject: "EID 10555004", detail: "Completed and verified.", tone: "positive", read: true, day: "Today", age: "5 hr ago" }),
+  notice("many-3", { title: "Run completed", workflow: "Person Lookup", subject: "EID 10333015", detail: "Completed and verified.", tone: "positive", read: true, day: "Today", age: "5 hr ago" }),
   notice("many-4", { title: "Run failed", workflow: "Onboarding", subject: "Okafor, Ines", detail: "CRM hire data could not be verified.", tone: "danger", read: true, count: 5, day: "Yesterday", age: "1 day ago" }),
   notice("many-5", { title: "Run completed", workflow: "Onboarding", subject: "Morrow, Bea", detail: "Completed and verified.", tone: "positive", read: true, day: "Yesterday", age: "1 day ago" }),
-  notice("many-6", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10555005", detail: "The browser screenshot could not be captured or saved.", tone: "danger", read: true, count: 12, day: "Friday", age: "4 days ago" }),
+  notice("many-6", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10221844", detail: "The browser screenshot could not be captured or saved.", tone: "danger", read: true, count: 12, day: "Friday", age: "4 days ago" }),
   notice("many-7", { title: "Run waiting", workflow: "Onboarding", subject: "Okafor, Ines", detail: "Waiting for hire review.", tone: "warning", read: true, day: "Friday", age: "4 days ago" }),
   POPOVER_GONE,
 );
