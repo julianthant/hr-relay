@@ -121,7 +121,7 @@ const KNOWN_BREAKS = {
    "detail/mapping-failed": ["named-and-focusable", "primary-button-accent"],
   "import/dialog": ["named-and-focusable"],
    "import/sharepoint": ["named-and-focusable"],
-   "import/sharepoint-refused": ["named-and-focusable", "word-limits"],
+   "import/sharepoint-refused": ["named-and-focusable"],
     "outcome/cloned": ["named-and-focusable"],
    "outcome/deleted": ["named-and-focusable"],
    "outcome/linked": ["named-and-focusable"],

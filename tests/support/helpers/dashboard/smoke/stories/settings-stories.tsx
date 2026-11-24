@@ -202,28 +202,8 @@ const NOTICE = {
   "setting-unavailable": scene("A search target that is not on the page", { host: { searchTarget: "nothing.here" }, play: loaded, story: { ready: 'text=/Setting unavailable/' } }),
 } satisfies Record<Notice, Story>;
 
-/** Measured at both widths with the app's Sessions-bar inset on the frame: the bottom-centre toast still covers the "Runs" toolbar (the save, restart and notice stories) or the "Workflow configuration" title and group (the credentials and account-action stories). The overlap is real, so these stay recorded. */
-const TOAST_STORIES: ReadonlySet<string> = new Set([
-  "settings/action/name-not-saved",
-  "settings/action/password-changed",
-  "settings/action/password-not-confirmed",
-  "settings/credentials/unknown",
-  "settings/notice/restart-required",
-  "settings/notice/setting-unavailable",
-  "settings/runtime/restart-required",
-  "settings/save-combo/replayed",
-  "settings/save-combo/restart-required",
-  "settings/save/applied",
-  "settings/save/conflict",
-  "settings/save/refused",
-  "settings/save/unconfirmed",
-]);
-
-const SETTINGS_TABLES = defineSurface("settings", {
+export const SETTINGS_STORIES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
   save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
 });
 
-export const SETTINGS_STORIES = SETTINGS_TABLES.map(entry => TOAST_STORIES.has(entry.id)
-  ? { ...entry, story: { ...entry.story, knownFailures: { "toast-text-only": "#532" } } }
-  : entry);
