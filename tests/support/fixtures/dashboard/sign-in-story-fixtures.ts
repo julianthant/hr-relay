@@ -56,4 +56,4 @@ export function sceneStubPort(scene: SignInScene): ServedOnboardingPort {
   });
 }
 
-export const SIGN_IN_DETAILS = [["First name", "Ana"], ["Last name", "Lee"], ["Work email", "ana.lee@ucsd.edu"], ["Password", "fixture-password"]] as const;
+export const SIGN_IN_DETAILS = [["First name", "Ana"], ["Last name", "Lee"], ["Work email", "ana.lee@ucsd.edu"], ["Password", "fixture-password"], ["UCPath username", "ana-sso"], ["UCPath password", "fixture-ucpath-password"]] as const;

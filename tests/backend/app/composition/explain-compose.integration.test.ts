@@ -1,5 +1,5 @@
 import * as profileCredentials from "../../../../src/backend/storage/configuration/credential-store.js";
-import { createProfileFixtureSet, createSyntheticProfileSession, finishProfileOnboarding, installationAdmission, profileFixtureStorageAdmission, releaseAdmissionFixture, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, createSyntheticProfileSession, finishProfileOnboarding, installationAdmission, profileFixtureStorageAdmission, releaseAdmissionFixture, type BoundProfileStorageFixture, withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { TargetNotFoundError } from "../../../../src/backend/runs/commands/refusals.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -70,7 +70,7 @@ async function addSecondProfile(profile: BoundProfileStorageFixture): Promise<st
   const session = createSyntheticProfileSession({ admission: profile.machine, machineRoot: profile.machine.stateRoot, activity: { hasUnquiescedWork: () => false } });
   try {
     registry.advanceSession(null);
-    const draft = session.signUp({ firstName: "Second", lastName: "Example", email: "second@ucsd.edu", password: "disposable-fixture-password", createdAt: "2026-10-02T12:00:00.000Z" });
+    const draft = session.signUp(withFixtureUcpath({ firstName: "Second", lastName: "Example", email: "second@ucsd.edu", password: "disposable-fixture-password", createdAt: "2026-10-02T12:00:00.000Z" }));
     assert.equal(draft.state, "onboarding");
     const active = await finishProfileOnboarding(session, draft);
     assert.equal(active.state, "active");

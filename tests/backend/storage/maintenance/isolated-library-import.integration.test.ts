@@ -213,6 +213,12 @@ it("refuses ambiguous identities, unbound stores, the source's own installation 
   await refuses("destination-store-unbound", request(source, backup.manifestPath, shared), shared);
   assert.equal(shared.database.authority.workbooks.catalog().length, 0);
 
+  const manifestBytes = readFileSync(backup.manifestPath);
+  writeFileSync(backup.manifestPath, JSON.stringify({ ...backup.manifest, schemaVersion: 7,
+    verification: { ...backup.manifest.verification, schemaVersion: 7 } }));
+  try { await refuses("source-schema-upgrade-unsupported", valid); }
+  finally { writeFileSync(backup.manifestPath, manifestBytes); }
+
   const backupPath = join(dirname(backup.manifestPath), backup.manifest.backupFileName);
   const bytes = readFileSync(backupPath);
   bytes[bytes.length - 1] ^= 0xff;

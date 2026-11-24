@@ -150,7 +150,12 @@ for (const { family, actions } of COMMAND_FAMILY_REGISTRY) {
 export interface CommandAuthority {
   readonly evidenceSchemaHash?: EvidenceSchemaReader;
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
+  /** Runs `publish` after the enclosing authority transaction commits; a rollback drops it. */
+  afterAuthorityCommit?(publish: () => void): void;
 }
+
+/** An ordinary settings commit, with the revision and fingerprint its reply carries. */
+export type SettingsCommitted = (committed: Readonly<{ revision: number; settingsFingerprint: string }>) => void;
 
 export interface WorkflowDescriptorResolver {
   resolve(workflowId: string): AnyWorkflowDescriptor | undefined;
@@ -282,6 +287,8 @@ export interface CommandKernelDependencies {
   readonly configIdentity: RunConfigIdentity;
   /** The strict settings-file CAS executor. An active settings command cannot exist without it. */
   readonly settings?: SettingsApplicationExecutor;
+  /** Hears each committed ordinary settings change; protected settings, refusals, rollbacks and replays emit nothing. */
+  readonly settingsCommitted?: SettingsCommitted;
   readonly authorityProfileId?: string;
   readonly authorityInstallationId?: string;
   readonly prepareAssistantModelPreference?: (request: z.infer<typeof AssistantModelPreferenceCommandRequestSchema>) => Promise<() => true>;
@@ -2607,7 +2614,7 @@ function replay(
 
 /** The same settings command path is used by the BFF and stopped migration. */
 export function executeSettingsCommand(
-  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "settings">,
+  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "settings" | "settingsCommitted">,
   input: unknown,
 ): CommandResult {
   const request = CommandRequestSchema.parse(input);
@@ -2650,9 +2657,18 @@ export function executeSettingsCommand(
       const auditId = dependencies.ids.uuid();
       repositories.commandAudits.insert({ auditId, request: journalRequest, result: application.result,
         completedAt: now, versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });
-      if (application.settingsCurrent !== undefined) repositories.settingsCurrent.advance({
-        ...application.settingsCurrent, commandId: request.commandId, auditId, committedAt: now,
-      });
+      if (application.settingsCurrent !== undefined) {
+        repositories.settingsCurrent.advance({
+          ...application.settingsCurrent, commandId: request.commandId, auditId, committedAt: now,
+        });
+        const committed = dependencies.settingsCommitted;
+        if (committed !== undefined) {
+          const { authority } = dependencies;
+          if (authority.afterAuthorityCommit === undefined) throw new Error("settings-commit-publication-unavailable");
+          const { revision, settingsFingerprint } = application.settingsCurrent;
+          authority.afterAuthorityCommit(() => committed({ revision, settingsFingerprint }));
+        }
+      }
       return application.result;
     });
     return result;

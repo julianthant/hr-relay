@@ -418,6 +418,7 @@ for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses s
     if (replacement === "other-profile") {
       const draft = PublicProfileStateSchema.parse(await (await tabB.post("sign-up", {
         firstName: "Other", lastName: "Fixture", email: "other@ucsd.edu", password: "disposable-fixture-password",
+        ucpathUsername: "other@ucsd.edu", ucpathPassword: "disposable-fixture-password",
       })).json());
       assert.ok(draft.state === "onboarding");
       const started = PublicProfileStateSchema.parse(await (await tabB.post("onboarding/duo/start", { operationId: draft.operationId, method: "key" })).json());

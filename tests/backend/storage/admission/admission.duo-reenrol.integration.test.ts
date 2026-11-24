@@ -10,7 +10,7 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { DuoReenrolOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { finishProfileOnboarding, syntheticOnboardingDuo, withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 
 const AT = "2026-10-21T12:00:00.000Z";
@@ -26,8 +26,8 @@ it("lets a stopped repair claim a profile whose re-enrolment is uncommitted, and
   const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(), admission: machine, clock, hostFacts: { primaryDisplay: null } });
   let opened: { operationId: string; profileId: string };
   try {
-    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp({ firstName: "Synthetic", lastName: "Operator",
-      email: "repair@ucsd.edu", password: "synthetic-repair-password", createdAt: AT }));
+    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(withFixtureUcpath({ firstName: "Synthetic", lastName: "Operator",
+      email: "repair@ucsd.edu", password: "synthetic-repair-password", createdAt: AT })));
     assert.ok(active.state === "active");
     opened = runtime.session.beginDuoReenrol(active.token);
   } finally { await runtime.close("shutdown"); machine.release(); }

@@ -33,7 +33,7 @@ import { SETTINGS_SCHEMA_HASH,derivePersistedSettingsFingerprint,deriveRawSettin
 import { SettingsCommandRequestSchema,deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { boundProfileCredentials,createBoundProfileFixture,readAuthenticatedCredentialFixture,syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { boundProfileCredentials,createBoundProfileFixture,readAuthenticatedCredentialFixture,syntheticOnboardingDuo, withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
 
 const hostFacts = { primaryDisplay: null };
@@ -269,8 +269,8 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts, onboardingDuo: syntheticOnboardingDuo() });
     await runtime.session.recoverOnboarding();
     assert.equal(existsSync(movedOperation), false); assert.equal(existsSync(stateRoot), false);
-    const resumed = runtime.session.signUp({ firstName: operation.firstName, lastName: operation.lastName, createdAt: operation.createdAt,
-      email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+    const resumed = runtime.session.signUp(withFixtureUcpath({ firstName: operation.firstName, lastName: operation.lastName, createdAt: operation.createdAt,
+      email: "fixture@ucsd.edu", password: "disposable-fixture-password" }));
     assert.equal(resumed.state, "onboarding");
     assert.notEqual("profileId" in resumed ? resumed.profileId : undefined, operation.profileId);
   } finally { layout.mockRestore(); await runtime?.close(); machine?.release(); await profile.close(); await lifetime.close(); rmSync(target, { recursive: true, force: true }); }

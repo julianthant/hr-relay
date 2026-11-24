@@ -3,7 +3,7 @@ import { advanceProfileRegistryDocument } from "../../../../src/models/profiles/
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { SignUpOperationSchema, LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
-import { finishProfileOnboarding, readyProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
+import { finishProfileOnboarding, readyProfileOnboarding, withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
@@ -57,7 +57,7 @@ for (const boundary of ["before-admission", "before-commit"] as const)
     const f = await fixture();
     let database: AuthorityDatabase | undefined, owner: RuntimeAdmission | undefined;
     try {
-      const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
+      const active = await finishProfileOnboarding(f.session, f.session.signUp(withFixtureUcpath(f.fields))); assert.ok(active.state === "active");
       owner = f.machine.admitProfile(active.profileId);
       database = AuthorityDatabase.open(owner, { path: join(owner.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" },
         undefined, undefined, undefined, undefined, createCredentialStore({ admission: owner, stateRoot: owner.stateRoot }));
@@ -104,7 +104,7 @@ it("boots a genuine machine without a dummy database, then creates a bound canon
     assert.equal(existsSync(join(f.machine.stateRoot, "state.db")), false);
     assert.equal(f.registry.read().activeProfileId, null);
     assert.throws(() => AuthorityDatabase.open(f.machine, { path: join(f.machine.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
-    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields));
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(withFixtureUcpath(f.fields)));
     assert.ok(active.state === "active");
     const claim = active.profileId;
     assert.throws(() => Reflect.apply(f.machine.admitProfile.bind(f.machine), f.machine, [{ profileId: claim, phase: "runtime" }]), /Invalid input: expected string/u);
@@ -128,7 +128,7 @@ it("boots a genuine machine without a dummy database, then creates a bound canon
 it("refuses profile effects after logout starts while retaining existing drain custody", async () => {
   const f = await fixture();
   try {
-    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(withFixtureUcpath(f.fields))); assert.ok(active.state === "active");
     const claim = active.profileId, child = f.machine.admitProfile(claim);
     const store = createCredentialStore({ admission: child, stateRoot: child.stateRoot,
       });
@@ -142,7 +142,7 @@ it("refuses profile effects after logout starts while retaining existing drain c
     assert.throws(() => AuthorityDatabase.open(child, { path: join(child.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-storage-claim-generation-changed/u);
     const refused = f.session.readFile(active.token, "absent");
     assert.ok("state" in refused && refused.state === "refused");
-    assert.equal((await finishProfileOnboarding(f.session, f.session.signUp({ ...f.fields, email: "sam@ucsd.edu" }))).state, "refused");
+    assert.equal((await finishProfileOnboarding(f.session, f.session.signUp(withFixtureUcpath({ ...f.fields, email: "sam@ucsd.edu" })))).state, "refused");
     child.release();
   } finally { await f.cleanup(); }
 });
@@ -152,7 +152,7 @@ it("rejects restored registry bytes against installation control continuity", as
   try {
     const path = join(f.machine.stateRoot, "machine", "profiles.json");
     const initial = readFileSync(path);
-    assert.equal((await finishProfileOnboarding(f.session, f.session.signUp(f.fields))).state, "active");
+    assert.equal((await finishProfileOnboarding(f.session, f.session.signUp(withFixtureUcpath(f.fields)))).state, "active");
     writeFileSync(path, initial, { mode: 0o600 });
     assert.throws(() => f.machine.readProfileRegistry(), /profile-registry-continuity-mismatch/u);
   } finally { await f.cleanup(); }
@@ -188,7 +188,7 @@ it("rejects fabricated pending operations and modified persisted setup fields be
 it("rejects foreign canonical binding and hardlink or symlink database substitution before writable opening", async () => {
   const f = await fixture();
   try {
-    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(withFixtureUcpath(f.fields))); assert.ok(active.state === "active");
     const claim = active.profileId, child = f.machine.admitProfile(claim);
     const path = join(child.stateRoot, "state.db"), held = `${path}.held`;
     const raw = new DatabaseSync(path);
@@ -210,7 +210,7 @@ it("rejects foreign canonical binding and hardlink or symlink database substitut
 it("binds real pending logout snapshots to the exact native operation and refuses ordinary credential effects", async () => {
   const f = await fixture();
   try {
-    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active"); f.busy();
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(withFixtureUcpath(f.fields))); assert.ok(active.state === "active"); f.busy();
     const result = f.session.logOut(active.token, { at: "2026-09-06T12:01:00.000Z" }); assert.ok(result.state === "cancelling" && result.operationId !== undefined);
     const operationId = result.operationId;
     assert.throws(() => Reflect.apply(f.machine.admitProfileSettlement.bind(f.machine), f.machine, [{ operationId }]), /Invalid input: expected string/u);
@@ -258,7 +258,7 @@ it("publishes ready only through genuine canonical Finish custody and rechecks d
   const f = await fixture();
   let setup: RuntimeAdmission | undefined;
   try {
-    const draft = f.session.signUp(f.fields); assert.ok(draft.state === "onboarding");
+    const draft = f.session.signUp(withFixtureUcpath(f.fields)); assert.ok(draft.state === "onboarding");
     assert.equal(f.registry.read().profiles.length, 0);
     assert.equal(createProfileVerifiers(f.machine.stateRoot).identify(f.fields.email), "unknown");
     const ready = await readyProfileOnboarding(f.session, draft);
@@ -345,7 +345,7 @@ it("publishes ready only through genuine canonical Finish custody and rechecks d
 it("refuses a concurrent healthy observation change and performs healthy registry reads without durable mutex writes", async () => {
   const f = await fixture();
   try {
-    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(withFixtureUcpath(f.fields))); assert.ok(active.state === "active");
     const current = f.registry.read();
     const realOpen = fs.openSync;
     const profilePath = join(f.machine.stateRoot, "machine", "profiles.json");
@@ -459,7 +459,7 @@ it.each(["held", "released"] as const)("observes healthy profile evidence across
 it("refuses actual pending profile operation publication crossing a healthy observation", async () => {
   const f = await fixture();
   try {
-    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.equal(active.state, "active");
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(withFixtureUcpath(f.fields))); assert.equal(active.state, "active");
     const profilesPath = join(f.machine.stateRoot, "machine", "profiles.json");
     const verifiers = createProfileVerifiers(f.machine.stateRoot);
     const emailKey = verifiers.emailKeyFor("second@example.edu");
@@ -483,7 +483,7 @@ it("refuses actual pending profile operation publication crossing a healthy obse
 it("refuses profile publication crossing the captured operations listing", async () => {
   const f = await fixture();
   try {
-    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.equal(active.state, "active");
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(withFixtureUcpath(f.fields))); assert.equal(active.state, "active");
     const directory = join(f.machine.stateRoot, "machine", "operations");
     const emailKey = createProfileVerifiers(f.machine.stateRoot).emailKeyFor("second@example.edu");
     const read = fs.readdirSync;
@@ -556,7 +556,7 @@ it("retains the actual protected source FD and controller after genuine fixture 
 it("revokes setup effects when its captured session generation changes but keeps cleanup custody", async () => {
   const f = await fixture();
   try {
-    const draft = f.session.signUp(f.fields);
+    const draft = f.session.signUp(withFixtureUcpath(f.fields));
     assert.ok(draft.state === "onboarding");
     const setup = f.machine.admitProfile(draft.profileId);
     const path = join(setup.stateRoot, "state.db"), before = readFileSync(path);

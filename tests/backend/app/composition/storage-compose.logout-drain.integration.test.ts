@@ -11,7 +11,7 @@ import { ProfileSessionRefusedError } from "../../../../src/backend/profiles/pro
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
-import { createBoundProfileFixture, finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, finishProfileOnboarding, syntheticOnboardingDuo, withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -218,8 +218,8 @@ it("forgets the signing-out person's ChatGPT account and leaves another person's
   };
   const connect = (repository: ReturnType<typeof repositoryFor>) => repository.withLock(async transaction => { transaction.replace(connected, null); });
   const signUp = async (email: string) => {
-    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp({ firstName: "Fixture", lastName: "Operator", email,
-      password: "disposable-fixture-password", createdAt: clock.now().toISOString() }));
+    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(withFixtureUcpath({ firstName: "Fixture", lastName: "Operator", email,
+      password: "disposable-fixture-password", createdAt: clock.now().toISOString() })));
     if (active.state !== "active") throw new Error("actual signup required"); return active;
   };
   const logOut = async (token: string, profileId: string) => {

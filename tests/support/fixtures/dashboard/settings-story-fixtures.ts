@@ -1,6 +1,6 @@
 /** Settings fixtures for the state gallery: an in-page server that answers the Settings reads and the save commands, so the real
  * page, editor and command executor run unchanged. Browser-safe. */
-import { createDashboardClient, type DashboardClient } from "../../../../src/dashboard/client/index.js";
+import { createDashboardClient, createRowStore, type DashboardClient, type RowStoreWriter } from "../../../../src/dashboard/client/index.js";
 import { mergeSettingsPatch, derivePersistedSettingsFingerprint, type SettingsPatch } from "../../../../src/models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, type ProtectedSettingsName } from "../../../../src/models/config/protected-settings.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../../src/models/dashboard/settings-editor.js";
@@ -38,6 +38,8 @@ export interface SettingsStoryServer {
   readonly client: DashboardClient;
   /** Every command the page sent, as parsed JSON. */
   readonly commands: readonly unknown[];
+  /** The stream's rows: each applied ordinary save delivers its settings row here before its reply, as the server's hub does. */
+  readonly rows: RowStoreWriter;
 }
 
 const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -54,6 +56,7 @@ export function settingsStoryServer(options: SettingsStoryServerOptions = {}): S
   const stored = new Map<ProtectedSettingsName, string>(credentials === "saved" ? [["ucpathUserId", "jordan.lee"], ["ucpathPassword", "story-password"]] : []);
   let reads = 0;
   const commands: unknown[] = [];
+  const rows = createRowStore();
 
   const document = (): EditableSettingsWire => {
     const entry = (name: ProtectedSettingsName) => ({ valueId: CREDENTIAL_IDS[name], updatedAt: UPDATED_AT });
@@ -102,6 +105,7 @@ export function settingsStoryServer(options: SettingsStoryServerOptions = {}): S
         record(ordinary.data.payload.patch);
         revision += 1;
         restart = restart || save === "restart";
+        rows.apply([{ model: "settings", key: "editable", value: { state: "available", value: document() } }]);
         return json({ state: save === "replayed" ? "already-applied" : "applied", commandId, affectedTargets: [{ family: "settings", revision }],
           restartRequired: restart, settingsRevision: revision, settingsFingerprint: derivePersistedSettingsFingerprint(settings) });
       }
@@ -117,5 +121,5 @@ export function settingsStoryServer(options: SettingsStoryServerOptions = {}): S
     }
     return json({ code: "NOT_SERVED" }, 404);
   };
-  return { client: createDashboardClient({ baseUrl: BASE_URL, fetchImpl }), commands };
+  return { client: createDashboardClient({ baseUrl: BASE_URL, fetchImpl }), commands, rows };
 }
