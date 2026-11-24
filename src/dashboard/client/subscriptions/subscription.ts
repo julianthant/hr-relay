@@ -297,7 +297,8 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     // A publication has no `after` and never moves the held cursor; a replay of one already admitted is dropped here.
     if (published.has(envelope.publication.sourceId)) return;
     published.add(envelope.publication.sourceId);
-    deps.publications.onPublication({ publication: envelope.publication, listed: envelope.listed, target: envelope.target });
+    deps.publications.onPublication({ publication: envelope.publication, listed: envelope.listed, target: envelope.target,
+      snapshotCursor: baseline.held.snapshot.snapshotCursor });
   }
 
   function applySnapshot(envelope: EnvelopeOf<"snapshot">): void {

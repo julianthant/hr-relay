@@ -122,8 +122,10 @@ const NotificationPublicationEnvelopeSchema = z.strictObject({
   if (!holds || listed.actorId !== actorId) context.addIssue({ code: "custom", path: ["listed"], message: "a publication's listed row must hold its notification" });
 });
 
-/** A publication as the client admits it: the row and the destination the server resolved for it. */
-export type NotificationArrival = Readonly<{ publication: NotificationPublicationWire; listed: NotificationWire; target: NotificationTarget }>;
+/** A publication as the client admits it: the row, the destination the server resolved for it, and the `snapshotCursor` of the day
+ * the stream held when it arrived, which the day's next snapshot replaces. */
+export type NotificationArrival = Readonly<{ publication: NotificationPublicationWire; listed: NotificationWire; target: NotificationTarget;
+  snapshotCursor: z.infer<typeof ProjectionCursorSchema> }>;
 
 export const DashboardStreamEnvelopeSchema = z.union([
   HelloEnvelopeSchema,

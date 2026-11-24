@@ -88,12 +88,25 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, { refuseCommands = fals
     const bell = host.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell, host.querySelector('button[aria-label^="Notifications"]')?.getAttribute("aria-label") ?? "no bell");
     await act(async () => bell.click()); await settle();
   };
+  /** A snapshot at a new cursor and then a publication of `row`, delivered together so React renders them in one batch. */
+  const snapshotThenPublication = async (row: NotificationWire) => {
+    const { day: streamed, push } = stream();
+    const snapshotAt = `pc:${cursor + 1}`, publishedAt = `pc:${cursor + 2}`; cursor += 2;
+    await act(async () => {
+      push({ type: "snapshot", topic: "dashboard-day", cursor: snapshotAt, position: 0, rows: [statusRow(READY)],
+        payload: { ...FIXTURE_DAY_WIRE, day: streamed, snapshotCursor: snapshotAt, notifications: [NOTIFICATION] } });
+      push({ type: "notification-publication", cursor: publishedAt, day: streamed, descriptorHash: FIXTURE_DAY_WIRE.descriptorHash, projectionGeneration: FIXTURE_DAY_WIRE.projectionGeneration,
+        publication: { sourceId: "b".repeat(64), actorId: row.actorId, durable: "created", notification: row }, listed: row,
+        target: { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: streamed } });
+    });
+    await settle();
+  };
   const open = () => { const found = host.querySelector<HTMLButtonElement>("li.notification-row button.notification-item"); assert(found, "open"); return found; };
   const control = (label: string) => { const found = host.querySelector<HTMLButtonElement>(`li.notification-row button[aria-label="${label}"]`); assert(found, label); return found; };
   const listed = () => [...host.querySelectorAll(".notification-item-title")].map(title => title.textContent);
   const notice = () => host.querySelector(".notification-notice")?.textContent ?? "";
   const targetReads = () => requested.filter(path => path.endsWith("/target")).length;
-  return { host, opened, commands, greet, change, openBell, open, control, listed, notice, targetReads };
+  return { host, opened, commands, greet, change, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
 }
 
 it("shows a first snapshot whose status could not be read as display-only rows, then restores the controls when a change delivers it", async () => {
@@ -140,6 +153,18 @@ it("turns the controls off when a status update cannot be read, and back on when
   assert.equal(m.open().disabled, false);
   await act(async () => m.open().click()); await settle();
   assert.equal(m.targetReads(), 1, "Open reads the row's target once the status is back");
+});
+
+it("keeps a publication that arrives in the same delivery as the snapshot before it", async () => {
+  const m = await mount();
+  await m.greet(READY);
+  await m.openBell();
+  const published = NotificationWireSchema.parse({ ...NOTIFICATION, notificationId: "00000000-0000-4000-8000-000000000222", publicationId: "c".repeat(64),
+    title: "Second run completed", occurredAt: "2026-08-03T17:05:00Z" });
+
+  await m.snapshotThenPublication(published);
+
+  assert.deepEqual(m.listed(), ["Second run completed", "Run completed"], "the publication stands over the snapshot the stream accepted before it");
 });
 
 it("keeps a dismissed row in the list when its mark-read is refused", async () => {
