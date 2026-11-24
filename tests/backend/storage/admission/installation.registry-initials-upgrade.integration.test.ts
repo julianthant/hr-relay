@@ -21,7 +21,7 @@ function writeRegistry(paths: { registry: string; control: string }, document: u
   writeFileSync(paths.control, JSON.stringify({ ...witness, digest: createHash("sha256").update(canonicalJsonStringify(document)).digest("hex") }));
 }
 
-/** A stopped machine with two profiles, rewritten to the version 3 registry an older build left: no timekeeperInitials, marker 8. */
+/** A stopped machine with two profiles in the version 3 format, without initials or Relay email. */
 async function versionThreeMachine() {
   const world = await createProfileSessionWorld();
   const session = world.open();
@@ -36,7 +36,8 @@ async function versionThreeMachine() {
   const paths = { registry: join(world.machineRoot, "machine", "profiles.json"), marker: join(world.machineRoot, "machine", "profile-registry-version.json"),
     control: join(workspace, ".tracker", "control", "profile-registry.json"), intent: join(workspace, ".tracker", "control", "registry-initials-upgrade.json") };
   const current = DocumentSchema.parse(JSON.parse(readFileSync(paths.registry, "utf8")));
-  const prior = { ...current, schemaVersion: 3, profiles: current.profiles.map(({ timekeeperInitials: _seeded, ...row }) => row) };
+  const prior = { ...current, schemaVersion: 3,
+    profiles: current.profiles.map(({ relayEmail: _relayEmail, timekeeperInitials: _seeded, ...row }) => row) };
   writeRegistry(paths, prior);
   writeFileSync(paths.marker, JSON.stringify({ schemaVersion: 8 }));
   const expected = { ...prior, schemaVersion: 5, profiles: prior.profiles.map(row => ({ ...row, timekeeperInitials: row.profileId === sam.profileId ? "SO" : "LRD" })) };
@@ -71,6 +72,14 @@ describe("profile registry version 3 to 4 upgrade, then on to 5", () => {
     startup(machine);
     assert.deepEqual([machine.paths.registry, machine.paths.control, machine.paths.marker].map(path => readFileSync(path)), files);
     assertUpgraded(machine);
+  });
+
+  it("refuses Relay email in a version 3 registry row", async () => {
+    const machine = await versionThreeMachine();
+    writeRegistry(machine.paths, { ...machine.prior, profiles: machine.prior.profiles.map(row =>
+      row.profileId === machine.alex.profileId ? { ...row, relayEmail: "alex@ucsd.edu" } : row) });
+    assert.throws(() => startup(machine), /Unrecognized key:.*relayEmail/u);
+    assert.equal(existsSync(machine.paths.intent), false);
   });
 
   for (const [file, moment] of [["registry", "before"], ["control", "before"], ["marker", "before"], ["marker", "after"]] as const) {
