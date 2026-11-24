@@ -74,8 +74,8 @@ const COMBINATION = {
   stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }),
   wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER)),
   "adding-empty": bar("A worker being added to an empty panel, shown as a pending row", ready(), { operations: ADDING }, { ready: "li[aria-busy]", knownFailures: ADD_LOCKED }),
-  adding: bar("A worker being added beside an idle row", ready(QUIET_IDLE[0] as SessionWorker), { operations: ADDING }, { ready: "li[aria-busy]", knownFailures: ADD_LOCKED }),
-  removing: bar("An idle row being removed, the status reads Removing", ready(QUIET_IDLE[0] as SessionWorker), { operations: { [(QUIET_IDLE[0] as SessionWorker).id]: { request: { id: "remove-1", target: (QUIET_IDLE[0] as SessionWorker).id, action: "remove" }, state: "pending", message: "Remove requested…" } } }, { ready: 'text="Removing"' }),
+  adding: bar("A worker being added beside an idle row", ready(QUIET_IDLE[0]), { operations: ADDING }, { ready: "li[aria-busy]", knownFailures: ADD_LOCKED }),
+  removing: bar("An idle row being removed, the status reads Removing", ready(QUIET_IDLE[0]), { operations: { [(QUIET_IDLE[0]).id]: { request: { id: "remove-1", target: (QUIET_IDLE[0]).id, action: "remove" }, state: "pending", message: "Remove requested…" } } }, { ready: 'text="Removing"' }),
   "add-workers": bar("The Add workers dialog", ready(SESSION_WORKER_BY_STATE.running), {}, { ready: '[role="dialog"]',
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } }),
 } satisfies Record<string, Story>;
@@ -84,7 +84,7 @@ const COMBINATION = {
 const TOAST = {
   collapsed: withToast("A result toast over the collapsed bar", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle), false),
   empty: withToast("A result toast over the empty panel", ready()),
-  "one-row": withToast("A result toast over one idle row", ready(QUIET_IDLE[0] as SessionWorker)),
+  "one-row": withToast("A result toast over one idle row", ready(QUIET_IDLE[0])),
   several: withToast("A result toast over cards and rows", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE)),
 } satisfies Record<string, Story>;
 

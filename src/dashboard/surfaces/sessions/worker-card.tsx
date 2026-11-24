@@ -48,7 +48,7 @@ export function IdleWorkerRow({ worker, countdown, operation, disabled = false, 
   return <li aria-label={`${worker.label} · ${worker.workflow}`} className="list-none rounded-md bg-[var(--ds-worker-card-bg)] px-3">
     <div className="flex min-h-8 items-center justify-between gap-3">
       <span className="min-w-0 truncate text-control" title={worker.workflow}>{worker.workflow}</span>
-      <span className="flex shrink-0 items-center gap-2"><span className={cn("inline-flex items-center gap-1.5 text-caption", sessionStateColor(worker.state))}>{removing ? <Loader2 aria-hidden className="size-3 animate-spin" /> : countdown ? <IdleRefreshRing countdown={countdown} /> : null}{removing ? "Removing" : SESSION_STATE_LABELS[worker.state]}</span>
+      <span className="flex shrink-0 items-center gap-2"><span className={cn("inline-flex items-center gap-1.5 text-caption", sessionStateColor(worker.state))}>{removing ? <Loader2 aria-hidden className="size-3 animate-spin motion-reduce:animate-none" /> : countdown ? <IdleRefreshRing countdown={countdown} /> : null}{removing ? "Removing" : SESSION_STATE_LABELS[worker.state]}</span>
         <IconActionButton tone="muted" label="Remove worker" disabled={locked} icon={<Trash2 aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, "remove")} /></span>
     </div>
     {!removing && <WorkerOperationNote operation={operation} />}
