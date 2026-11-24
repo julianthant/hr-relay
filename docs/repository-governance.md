@@ -4,8 +4,8 @@ The [Conventions](../AGENTS.md#conventions) own branch naming. The [root Git ins
 
 ## Branch protection
 
-`development` requires the `development` check and accepts feature, fix, chore and Dependabot
-pull requests. Feature, fix and chore branches start from `origin/development` and open one pull
+`development` requires `development` and `PR metadata` and accepts Task, fix, chore and Dependabot
+pull requests. Task, fix and chore branches start from `origin/development` and open one pull
 request into `development`. Auto-merge uses merge commits, with no up-to-date rule.
 `staging` receives one pull request from `development` per coherent batch, with the `staging`
 check and no up-to-date rule. A red full check is repaired through a pull request into `development`.
@@ -14,7 +14,7 @@ force pushes and deletion; squash and rebase merging are disabled. Drafts cannot
 
 | Branch | Required CI check names |
 | --- | --- |
-| `development` | `development` |
+| `development` | `development`, `PR metadata` |
 | `staging` | `staging` |
 | `main` | `production` |
 
@@ -25,33 +25,38 @@ the operator; red required checks prevent merging.
 
 ## Workflows and checks
 
-`Development` (`development.yml`), `Staging` (`staging.yml`) and `Production` (`production.yml`)
-share the test jobs in `checks.yml`, with kinds `fast` (Development), `full` (the scheduled
-Development run), `portable` (Staging and staging-to-main releases) and `release` (hotfix and
-manual releases). Development and Staging run on pull requests to their named branches. Production runs on pull
-requests into `main`, operator manual starts with a required title, and pushes to `main` for
-CodeQL only. Pull request runs are titled with their pull request title.
+`Development` (`development.yml`) runs the `fast` plan in `checks.yml` on `task/**` pushes.
+`Pull request` (`pr.yml`) runs on pull requests into `development` and calls the same plan for
+fix, chore and Dependabot heads. `Full` (`full.yml`) calls the `full` plan. `Staging`
+(`staging.yml`) runs the `portable` plan on pull requests into `staging`. `Production`
+(`production.yml`) runs on pull requests into `main` and operator manual starts, with `portable`
+for staging releases and `release` for hotfix and manual releases. Production also runs CodeQL
+on pushes to `main`. Pull request runs are titled with their pull request title.
 
-A Development run for a `task/**` push or a non-task pull request runs plan, lint, static
-(typecheck and build), privacy, three unit shards, two architecture shards, the integration
-shards `scripts/test/affected-tests.ts` selects (at most eight five-minute shards), `proof` and the `development` gate. It starts no perf, smoke
-or macOS job. Drafts keep plan, static, privacy and selected unit shards only. Path filters may
-omit unit and architecture suites, including all suites for Markdown-only changes. `proof` folds
-the shard results into one result; it requires successful selected shards, exactly skipped
-omitted work and all mandatory checks. A `task/**` pull request runs only the `development` gate:
-names, the workflow allowlist, then the `proof` of the push run at the pull request head SHA. It
-waits up to twenty minutes for a running proof and fails after a minute when no run exists. An
-edited pull request reruns only that gate and reuses the last proof at its head SHA.
+The fast plan selects lint, static (typecheck and build), privacy, three unit shards, two
+architecture shards and the integration shards `scripts/test/affected-tests.ts` selects (at most
+eight five-minute shards). Browser-facing Task changes also run smoke. Non-Task drafts keep plan,
+static, privacy and selected unit shards. Path filters may omit unit and architecture suites,
+including all suites for Markdown-only changes. The `development` result verifies successful
+selected shards, exactly skipped omitted work and all mandatory checks.
 
-Every 20 minutes Development's `decide` job reads GitHub through `scripts/ci/full-run.ts` and
-starts the full run only when the development head has no green full run and either no other run
-is queued or in progress or no full run started in the last six hours. A running full run keeps CI
+On each development pull request, the independent `PR metadata` job checks the head name, title
+and workflow allowlist. A Task body must also include `Closes #<issue>` on its own line. Metadata runs on open,
+edit, synchronization, reopen, ready for review and label changes. Only the metadata job uses a
+runner on Task PR events. Their `development` result comes from the push at the PR head SHA.
+Non-Task PRs get the `development` result from fast checks on open, synchronization, reopen and
+ready for review. Edits and label changes rerun metadata alone.
+
+The scheduled or dispatched Full workflow runs `decide` only on `development`. It reads GitHub
+through `scripts/ci/full-run.ts` and starts the full checks only when the development head has no
+green full run and either no other run is queued or in progress or no full run started in the last
+six hours. A running full run keeps CI
 busy, so full runs never overlap; a failed head retries on the next idle tick. Otherwise nothing
 else runs. The full run, titled `Full run <sha>`, runs the
 `full` plan (every unit, architecture and integration shard, lint, static, privacy, perf, smoke
 and five macOS native shards), CodeQL and `npm audit --omit=dev --audit-level=high`. Its `full`
 job folds those results and writes the SHA and verdict to the run summary. A green full run is
-that job's success in a scheduled `development.yml` run at exactly that commit.
+that job's success in a scheduled or dispatched `full.yml` run at exactly that commit.
 
 Staging and staging-to-main releases run the full portable check: three unit shards, two architecture shards, thirty
 integration shards, lint, static, privacy, perf and smoke. Ready Staging and Production pull
@@ -82,11 +87,13 @@ The `staging` gate needs `names`, `checks` and `full-proof`; `production` needs 
 `codeql`, `dependencies` and `full-proof`, requires `full-proof` for `staging` heads and `codeql`
 for `hotfix/*` heads, and refuses any other head.
 Gates fail for any failed or cancelled dependency. Shared proof verification rejects missing
-outcomes and requires exactly skipped results for legitimate omissions. The Development caller
-runs its own `development` gate with the shared plan and job results;
-the fast kind skips the shared `unit` job and suite summaries. Other kinds retain both.
+outcomes and requires exactly skipped results for legitimate omissions. The fast callers verify
+the shared plan and job results in their `development` gate. The fast kind skips the shared
+`unit` job and suite summaries. Other kinds retain both.
 
-Each pull request has its own workflow/PR concurrency key; a newer push cancels its older run.
+Development PRs use separate per-PR concurrency groups for metadata and fast checks. Staging
+and Production use per-workflow, per-PR concurrency keys. New Task pushes supersede older pushes
+on the same branch.
 Development has no shared runner lane, so four ten-job runs fit the forty runner slots side by
 side. Staging admits its complete reusable call through the `ci-runners` FIFO; Production uses
 `release-runners`. Each queues with `queue: max` and `cancel-in-progress: false`, holding proofs,
