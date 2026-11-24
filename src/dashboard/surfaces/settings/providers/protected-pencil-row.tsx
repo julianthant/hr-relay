@@ -23,7 +23,10 @@ export function ProtectedPencilRow({ editor, name, label, thing, description, on
   const stored = authority.state === "available" ? authority.entries[name] : undefined;
   const shown = stored === undefined ? "Not set" : name === "ucpathUserId" ? formatSetting(stored.value) : "••••••••";
   const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
-  const canRemove = stored !== undefined || credentials.draft[name]?.kind === "set";
+  const operation = credentials.draft[name];
+  const canRemove = stored !== undefined || operation?.kind === "set";
+  const typed = operation?.kind === "set" ? operation.raw.trim() : "";
+  const changed = typed !== "" && !(name === "ucpathUserId" && stored !== undefined && typed === formatSetting(stored.value));
   const close = (): void => { credentials.reset(name); setOpen(false); };
   return <div data-settings-path={`protected.${name}`}>
     <ResultRow label={label} value={<span className="inline-flex items-center justify-end gap-3">
@@ -33,9 +36,9 @@ export function ProtectedPencilRow({ editor, name, label, thing, description, on
     <Dialog open={open} onOpenChange={next => { if (!next) close(); }}>
       <DialogContent size="sm" className="settings-edit-dialog" title={`Edit ${thing}`} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
         <DialogBody><ProtectedSettingField editor={editor} name={name} description={description} onRemove={onRemove} inDialog /></DialogBody>
-        <DialogFooter meta={canRemove ? <Button variant="ghost" aria-label={`Remove ${thing}`} className="settings-edit-remove" disabled={disabled} onClick={() => onRemove(stored !== undefined, thing)}>Remove</Button> : undefined}>
+        <DialogFooter meta={canRemove ? <Button variant="dangerText" aria-label={`Remove ${thing}`} disabled={disabled} onClick={() => onRemove(stored !== undefined, thing)}>Remove</Button> : undefined}>
           <Button variant="secondary" onClick={close}>Cancel</Button>
-          <Button variant="primary" onClick={() => { credentials.submit(); setOpen(false); }}>Save</Button>
+          <Button variant="primary" disabled={disabled || !changed} onClick={() => { credentials.submit(); setOpen(false); }}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
