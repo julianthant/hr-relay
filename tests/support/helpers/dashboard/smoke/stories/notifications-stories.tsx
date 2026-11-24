@@ -1,11 +1,16 @@
 /** Notification stories: the real bell, panel and alert toasts on fixture notices, one story per panel state, tone, source, bell state and toast. */
 import { useEffect, useState } from "react";
+import { PanelLeft, Search } from "lucide-react";
+import { EmptyState, IconButton, Panel, PanelBody } from "../../../../../../src/dashboard/ds/ui.js";
+import { NotificationsPopover, type NotificationsShow } from "../../../../../../src/dashboard/surfaces/notifications/notifications-popover.js";
 import { NotificationBell, NotificationsPanel } from "../../../../../../src/dashboard/surfaces/notifications/notifications-view.js";
+import { WorkflowRail } from "../../../../../../src/dashboard/surfaces/shell/workflow-rail.js";
 import { useNotificationAlert } from "../../../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
 import type { NotificationItem, NotificationKind, NotificationsState } from "../../../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import {
-  BACKFILL_GAP_NOTICE, MIXED_NOTICES, NOTICE_BY_KIND, NOTICE_BY_TONE, STORAGE_DEGRADED_NOTICE, notificationsReady,
+  BACKFILL_GAP_NOTICE, MIXED_NOTICES, NOTICE_BY_KIND, NOTICE_BY_TONE, POPOVER_FEW, POPOVER_LONG_NOTICES, POPOVER_MANY, STORAGE_DEGRADED_NOTICE, notificationsReady,
 } from "../../../../fixtures/dashboard/sessions-notifications-story-fixtures.js";
+import { SHELL_STORY_COUNTS_IDLE, SHELL_STORY_WORKFLOWS } from "../../../../fixtures/dashboard/shell-story-fixtures.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import { StoryFrame } from "./story-frame.js";
 
@@ -73,4 +78,33 @@ const TOAST = {
   info: toast(NOTICE_BY_TONE.info, 'text=/^Relay repaired a saved file/'),
 } satisfies Record<NotificationItem["tone"], Story>;
 
-export const NOTIFICATIONS_STORIES = defineSurface("notifications", { panel: PANEL_STATE, tone: TONE, kind: KIND, combination: COMBINATION, bell: BELL, toast: TOAST });
+/** The bell's popover over the dashboard: the rail, the bell in its header, and an idle queue and Logs behind it. */
+function PopoverScene({ state, show: initial = "all" }: { state: NotificationsState; show?: NotificationsShow }) {
+  const [show, setShow] = useState(initial);
+  const emptyPanel = (title: string, description?: string) => <Panel className="min-h-0 flex-1"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState title={title} description={description} /></PanelBody></Panel>;
+  return <StoryFrame>
+    <aside aria-label="Workspace" className="workspace-rail ui-theme-scope"><header className="workspace-rail-header"><h2>Relay</h2><div className="workspace-rail-actions">
+      <IconButton variant="ghost" size="sm" label="Collapse sidebar" title="" icon={<PanelLeft aria-hidden className="size-4" />} />
+      <NotificationsPopover state={state} open onOpenChange={noop} show={show} onShow={setShow} onReadAll={noop} onOpen={noop} onControl={noop} onDismiss={noop} canAct={() => true} />
+      <IconButton variant="ghost" size="sm" label="Search" title="" icon={<Search aria-hidden className="size-4" />} />
+    </div></header><div className="workspace-rail-body"><WorkflowRail workflows={SHELL_STORY_WORKFLOWS} counts={SHELL_STORY_COUNTS_IDLE} active="person-lookup" onSelect={noop} collapsed={false} /></div></aside>
+    <main className="flex min-h-0 flex-1 flex-col"><div className="dashboard-panel-columns"><div className="dashboard-queue-column"><h1 className="sr-only">Person Lookup queue</h1>{emptyPanel("No runs on this day")}</div>
+      <div className="dashboard-log-column">{emptyPanel("No run open", "Select a run from the queue to open its logs.")}</div></div></main>
+  </StoryFrame>;
+}
+const POPOVER_SURFACE = '[aria-label="Notifications"][role="dialog"]';
+const popover = (title: string, state: NotificationsState, extra: Partial<Story> = {}, show?: NotificationsShow): Story => ({ title, ready: POPOVER_SURFACE, render: () => <PopoverScene state={state} {...(show === undefined ? {} : { show })} />, ...extra });
+const POPOVER = {
+  empty: popover("The popover with no notifications", notificationsReady()),
+  few: popover("The popover with a few notifications", POPOVER_FEW),
+  grouped: popover("The popover with many grouped notifications", POPOVER_MANY),
+  long: popover("The popover with long titles, names and text", POPOVER_LONG_NOTICES),
+  hover: popover("A row hovered: its actions appear and nothing moves", POPOVER_FEW, { play: page => page.locator(".notice-row").first().hover() }),
+  "read-unread": popover("Read and unread notifications together", POPOVER_MANY),
+  unread: popover("Only unread notifications", POPOVER_MANY, {}, "unread"),
+  "all-read": popover("Unread chosen with everything read", notificationsReady({ ...NOTICE_BY_TONE.positive, day: "Today" }), {}, "unread"),
+  loading: popover("The popover while notifications load", { state: "loading" }, { slowFetch: { region: '[aria-label="Loading notifications"]' } }),
+  unavailable: popover("The popover when notifications cannot be read", { state: "unavailable", reason: "Try again in a moment." }),
+} satisfies Record<string, Story>;
+
+export const NOTIFICATIONS_STORIES = defineSurface("notifications", { popover: POPOVER, panel: PANEL_STATE, tone: TONE, kind: KIND, combination: COMBINATION, bell: BELL, toast: TOAST });

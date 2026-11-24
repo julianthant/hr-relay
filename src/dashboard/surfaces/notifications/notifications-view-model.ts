@@ -23,6 +23,8 @@ export type NotificationItem = Readonly<{
   day?: string;
   /** When it happened; the shown age ticks from it. Without it the age stays as served. */
   at?: string;
+  /** The run or failure it pointed at was deleted: the item says so and offers Dismiss. */
+  gone?: boolean;
 }>;
 
 /** Whole minutes, hours, then days since `at`. */
