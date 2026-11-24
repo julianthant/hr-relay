@@ -144,6 +144,32 @@ for (const view of Object.keys(DECLARED_GATE_BASELINE) as View[]) {
   });
 }
 
+// A landed command waits for its row on the stream: the press costs its command and the readback of its effect, and the
+// stream is not reopened to find the row.
+scriptedTest("an answered gate: the stream is not reopened for the row", async ({ dashboard, failures, page, seeded }) => {
+  failures.allow(SEEDED_PREFERENCE_WRITE, "the seeded backend cannot save the chosen workflow");
+  const seen = watchRequests(page);
+  await dashboard.open();
+  await dashboard.openWorkflow("Work-Study");
+  const runId = await startScriptedRun(seededRequestOver(seeded.baseUrl), SEEDED_NOW, "10812345", seeded.scripted.reviewReference());
+  const run = await seeded.scripted.drive(runId);
+  const row = page.locator(`[data-demo-row-id="${runId}"]`).first();
+  await expect(row).toContainText("Running");
+  await dashboard.openRun(runId);
+  expect(await run.advance()).toMatchObject({ at: "settled", outcome: { state: "parked-gate" } });
+  const approve = dashboard.runPanel.getByRole("button", { name: "Continue anyway", exact: true });
+  await expect(approve).toBeVisible();
+  await quiet(page, seen, 2_000);
+  seen.length = 0;
+
+  await approve.click();
+
+  await expect(row, "the queue row shows the answer").not.toContainText(PARKED);
+  await quiet(page, seen);
+  expect(seen.filter(request => request === "POST /api/v1/commands"), "one command").toHaveLength(1);
+  expect(seen, "the stream is not reopened and the day is not read again").not.toContain(STREAM);
+});
+
 /** One envelope a run-topic stream received, with its arrival time. */
 interface Received { readonly envelope: DashboardStreamEnvelope; readonly at: number }
 
