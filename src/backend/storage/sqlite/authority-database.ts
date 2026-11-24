@@ -7202,7 +7202,7 @@ export class AuthorityDatabase implements Disposable {
         listByRun: (runId: string) => {
           const rows = this.#database.prepare(`
             SELECT * FROM gate_results
-            WHERE json_extract(payload_json, '$.runId') = ?
+            WHERE run_id = ?
             ORDER BY created_at, id
           `).all(RunIdSchema.parse(runId));
           return Object.freeze(rows.map((row) => this.#parseNativeRow("gate_results",row,GateResultRecordSchema)));
@@ -7945,7 +7945,7 @@ export class AuthorityDatabase implements Disposable {
           this.#database.prepare(`INSERT INTO canonical_run_page_state VALUES(1,?,?,total_changes()+1,?)`).run(key.authorityGeneration, key.dataVersion, workflow ?? null);
           this.#temporaryProjectionChanges += this.#rawChangeKey().totalChanges - key.totalChanges;
         }
-        return Object.freeze(this.#database.prepare(`SELECT r.* FROM canonical_run_page p JOIN runs r ON r.id=p.run_id
+        return Object.freeze(this.#database.prepare(`SELECT r.* FROM canonical_run_page p CROSS JOIN runs r ON r.id=p.run_id
           WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));
       },
       // Either representation can reveal active membership when a row's state has drifted.

@@ -62,7 +62,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
     const failures=failureSources.grouped,resolutions=failureSources.resolutions;
     const events=new Map<string,{cursor:number;startedAt:string|null;queueTitle:string|null}>();
     const byRun=new Map(runs.map(run=>[String(run.envelope.runId),run]));
-    const eventFilter = "json_extract(payload_json,'$.payload.event.t') IN ('run.queued','run.claimed')";
+    const eventFilter = "kind IN ('run.queued','run.claimed')";
     const eventRows = selected === undefined
       ? database.prepare(`SELECT * FROM timeline_events WHERE ${eventFilter} ORDER BY cursor`).all()
       : database.prepare(`SELECT * FROM timeline_events WHERE run_id IN (SELECT value FROM json_each(?)) AND ${eventFilter} ORDER BY cursor`).all(ids);
@@ -78,7 +78,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
         queueTitle:prior.queueTitle ?? (span.t === "run.queued" ? span.title ?? null : null)});
     }
     const children = new Map<string, { runId: string; state: string; outcome: string | null }[]>();
-    const childRuns = selected === undefined ? runs : database.prepare("SELECT * FROM runs WHERE parent_id IN (SELECT value FROM json_each(?)) ORDER BY id").all(ids).map(runRecordFromRow);
+    const childRuns = selected === undefined ? runs : database.prepare(`SELECT * FROM runs ${runIndex(database, "runs_parent_idx")} WHERE parent_id IN (SELECT value FROM json_each(?)) ORDER BY id`).all(ids).map(runRecordFromRow);
     for (const run of childRuns) {
       const parent = run.envelope.parent?.runId;
       if (parent === undefined) continue;
