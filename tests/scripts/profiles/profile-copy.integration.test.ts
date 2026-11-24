@@ -7,6 +7,7 @@ import { afterEach, it, expect } from "vitest";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { acquireRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { importProfileLibrary, resolveSourceRef, runProfileCopy, type Git } from "../../../scripts/profiles/profile-copy.js";
@@ -53,6 +54,11 @@ it("imports the newest production workbook library into the independently signed
   expect(imported.created).toBe(2);
   expect(imported.history.runs).toBe(1);
   expect((await importProfileLibrary(options, lock)).unchanged).toBe(2);
+
+  const schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION + 1;
+  writeFileSync(backup.manifestPath, JSON.stringify({ ...backup.manifest, schemaVersion,
+    verification: { ...backup.manifest.verification, schemaVersion } }));
+  await expect(importProfileLibrary(options, lock)).rejects.toMatchObject({ reason: "source-schema-newer" });
 
   const machine = acquireEntrypointAdmission(destinationWorkspace, "exclusive", lock);
   try {

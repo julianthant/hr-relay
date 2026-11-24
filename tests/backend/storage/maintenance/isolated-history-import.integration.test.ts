@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { copyFileSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
@@ -19,7 +20,7 @@ import { importedLibraryId, importIsolatedProfileData } from "../../../../src/ba
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
@@ -82,9 +83,13 @@ it.each([CURRENT_AUTHORITY_SCHEMA_VERSION, 36])("imports schema %i runs, history
   };
   const before = privateFiles();
   expect(before.length).toBeGreaterThan(2);
-  const report = await importIsolatedProfileData(copy.admission, copy.database, { source: { manifestPath,
+  const refresh = () => importIsolatedProfileData(copy.admission, copy.database, { source: { manifestPath,
     binding: admission.profileBinding }, destination: copy.admission.profileBinding }, clock);
+  const upgradeScratch = () => readdirSync(tmpdir()).filter(name => name.startsWith(`${readonlyAuthorityCopyPrefix}${process.pid}-import-`));
+  const scratchBefore = upgradeScratch();
+  const report = await refresh();
   expect(backupFiles()).toEqual(beforeImport);
+  expect(upgradeScratch()).toEqual(scratchBefore);
   expect(privateFiles()).toEqual(before);
   expect(report.created).toBe(1);
   const libraryId = importedLibraryId(admission.profileBinding, copy.admission.profileBinding, workbook.libraryId);
@@ -108,6 +113,14 @@ it.each([CURRENT_AUTHORITY_SCHEMA_VERSION, 36])("imports schema %i runs, history
   expect(copy.database.authority.writeAttempts.get(WriteAttemptIdSchema.parse(fixture.attempt.writeAttemptId))).toBeUndefined();
   expect(copy.database.authority.runCheckpoints.listByItem(ledger.workflowId, ledger.itemId)).toEqual([]);
   expect(() => history.withAuthorityTransaction(() => undefined)).toThrow("isolated-history-read-only");
+  if (schemaVersion === 36) {
+    copy.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    const run = runRecordOf({ seed: 598, enqueuedAt: clock.now().toISOString() });
+    copy.database.authority.runs.enqueue({ ...run, envelope: { ...run.envelope, runId: ledger.runId } });
+    await expect(refresh()).rejects.toThrow("isolated-history-local-id-collision: runs");
+    expect(upgradeScratch()).toEqual(scratchBefore);
+    expect(backupFiles()).toEqual(beforeImport);
+  }
 });
 
 it("refreshes imported runs beside copy-created runs and starts the dashboard on a schema-39 archive with no imported work or outbound requests", async () => {
