@@ -146,6 +146,5 @@ test("Downloads can save after a theme change without reopening Settings", async
     await expect(page.locator('[data-settings-path="paths.downloadsDir"] .ds-path-value')).toHaveAttribute("aria-label", pickedPath);
   });
   const result = CommandResultSchema.parse(await (await pathSave).json());
-  test.fail(true, "#532: The ordinary editor saves against its stale revision after a theme change.");
   expect(result).toMatchObject({ state: "applied" });
 });
