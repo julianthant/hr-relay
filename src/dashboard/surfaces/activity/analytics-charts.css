@@ -9,5 +9,3 @@
 .ds-chart-tip { position: absolute; z-index: 10; box-sizing: border-box; width: 256px; padding: 8px 12px; border-radius: 12px; pointer-events: none; }
 .ds-chart-tip-rows { margin: 0; padding: 4px 0 0; list-style: none; border-top: 1px solid var(--chart-tip-edge); }
 .ds-chart-tip-rows li { display: flex; height: 20px; align-items: center; gap: 8px; }
-/* The ranking is read-only: no drag handle. */
-.ds-analytics-ranked .ds-ranked-handle { display: none; }
