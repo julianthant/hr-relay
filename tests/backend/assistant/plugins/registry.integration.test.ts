@@ -21,7 +21,7 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { AssistantInferenceRequestSchema } from "../../../../src/models/dashboard/assistant.js";

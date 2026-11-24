@@ -301,7 +301,7 @@ Log in, sign-up, Duo and ready share one 440px column whose left edge and title 
 ## Data screens and notifications
 
 - Spreadsheets: in the dark theme a workbook cell fill is drawn as an 18% tint with the normal text colour; the light theme draws it in full.
-- Analytics: Runs is the one chart, stacked bars in the Done, Failed and Needs attention status colours. Typical time per workflow is a ranked list with thin neutral bars; Messages is a small neutral line. Counts and times in one row come from the same runs.
+- Analytics: Runs is the one chart, stacked bars in the Done, Failed and Needs attention status colours, under five figures that double as its legend. Each Workflows row carries a thin result bar in the same colours; Messages and Proposed actions are small neutral lines. Counts and times in one row come from the same runs.
 - Notifications: items of the same kind and subject fold into one with a count and the latest time. Every item names its workflow and run and shows a relative time.
 
 ## Motion

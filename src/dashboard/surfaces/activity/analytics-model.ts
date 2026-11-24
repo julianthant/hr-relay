@@ -41,14 +41,6 @@ export const SMALL_LINE_HEIGHT = 48;
 /** A row's typical time describes the runs its counts describe: with no run in the period there is no time. */
 export const rowTypicalSeconds = (row: AnalyticsWorkflow): number | null => finished(row) === 0 ? null : row.typicalSeconds;
 
-/** Workflows ranked by typical time, longest first, each bar scaled to the longest; a workflow with no time ranks last with an empty bar. */
-export function rankedTimes(rows: readonly AnalyticsWorkflow[]): { id: string; label: string; seconds: number | null; share: number }[] {
-  const timed = rows.map(row => ({ id: row.id, label: row.label, seconds: rowTypicalSeconds(row) }));
-  const longest = Math.max(0, ...timed.map(row => row.seconds ?? 0));
-  return timed.map(row => ({ ...row, share: longest === 0 || row.seconds === null ? 0 : row.seconds / longest }))
-    .sort((a, b) => (b.seconds ?? -1) - (a.seconds ?? -1) || a.label.localeCompare(b.label));
-}
-
 /** One bar per day up to a month, then 7-day bars, then wider bars so a period never draws more than 32. Time per workflow is the mean of its daily typical times; a bucket with no timed run is null. */
 export function analyticsBuckets(range: ActivityDateRange, workflows: readonly AnalyticsWorkflow[]): AnalyticsBucket[] {
   const total = rangeDays(range);

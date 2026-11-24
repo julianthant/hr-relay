@@ -6,7 +6,7 @@ import { syntheticOnboardingDuo, finishProfileOnboarding, boundProfileCredential
 import assert from "node:assert/strict";
 import * as accounts from "../../../../src/backend/accounts/chatgpt-account-service.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { randomUUID } from "node:crypto";

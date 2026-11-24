@@ -21,7 +21,7 @@ All source paths in this table are relative to `src/dashboard/`.
 | Logs | `surfaces/run-detail/log-panel.tsx`, `logs/log-sample.tsx` | Served ordered logs; the harness injects sample logs through `DashboardHarness.LogPreview` from `tests/support/fixtures/dashboard/log-preview/` |
 | OCR Records | `surfaces/run-detail/review/review.tsx` | Authenticated review revisions, edit/gate authority and source-page manifest; explicit previews supply local records |
 | Run and Rerun | `surfaces/run-start/run-launch.tsx` | Catalog and planner/client for served launches |
-| Notifications | `surfaces/notifications/notifications-view.tsx`, workspace rail | App preview destinations with rail-local read state |
+| Notifications | `surfaces/notifications/notifications-popover.tsx`, opened from the workspace rail bell | App preview destinations with rail-local read state |
 | Sessions | `surfaces/sessions/session-panel.tsx`, `sessions-view.tsx` | The served day through `createSessionPreviewPort`; the harness supplies `sessionsSampleHarness` |
 | Settings | `surfaces/settings/settings.tsx` | Typed editor, protected authority, readiness, storage, and local preferences |
 | ChatGPT account | `surfaces/settings/general/chatgpt-account.tsx` | `ChatGptAccountContext` default memory preview port |
@@ -43,7 +43,7 @@ bootstrap shows The dashboard could not start and the client's error. Invalid vi
 show Invalid navigation link with Open dashboard. Missing destinations show Destination unavailable.
 
 The workspace rail contains the product heading, notification bell, search entry, and workflow
-rail. Opening notifications replaces the workflow list within that rail. The main region has
+rail. The bell opens notifications in a popover anchored to it; the rail keeps the workflow list. The main region has
 `id="dashboard-main-region"` and programmatic focus; Skip to content bypasses navigation.
 The shell includes `StorageBanner` above the main content on dashboard and takeover views. It
 appears for unavailable authority and links to Settings rather than performing repair.
@@ -382,9 +382,11 @@ workflow, and age. Empty inbox, no failures, nothing needing attention, and all 
 separate filtered states.
 
 The rail reads one `InboxWiring`; the harness supplies sample notifications derived from current queue rows by `useNotificationsSampleInbox`, with read flags in memory. Read is separate from urgency resolution. Opening a valid target marks read and
-closes the inbox; a missing target reports refusal without navigating to an approximate workflow.
-Escape returns focus to the bell unless an inner dialog/menu owns it. A removed read control
-restores focus to a reachable filter. A ping uses the shared toast; the bell opens the inbox.
+closes the popover; a target that cannot open raises a toast without navigating to an approximate workflow, and a deleted run says so
+on its own row. A storage notice opens Settings > General. Repeats fold into one row with a count: a failure folds across runs for the
+same workflow, person and failure text, with its repeating notice; every other event folds per run. Unread failures and waits sit under
+Needs you and fall into their day once read. Escape or a click outside closes the popover and returns focus to the bell. A ping uses
+the shared toast; the bell opens the inbox.
 
 Durable delivery, read state, and full cross-day search still need producer replacement. The typed
 notification snapshot/status/target queries and command families exist, but the mounted inbox does

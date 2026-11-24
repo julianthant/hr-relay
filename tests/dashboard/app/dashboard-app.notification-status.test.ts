@@ -30,7 +30,7 @@ const statusRow = (value: typeof READY | typeof UNAVAILABLE) => ({ model: "notif
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
 
 /** The app on `?day=`, its day stream answered by envelopes the test pushes; every other read is the fixture BFF's. */
-async function mount(day: string = FIXTURE_DAY_WIRE.day, { refuseCommands = false } = {}) {
+async function mount(day: string = FIXTURE_DAY_WIRE.day) {
   const { app } = createFixtureBff();
   const opened: { day: string; push: (envelope: unknown) => void }[] = [];
   const commands: string[] = [];
@@ -45,7 +45,6 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, { refuseCommands = fals
     if (path === "/api/v1/commands") {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); commands.push(command.type);
-      if (refuseCommands) return Response.json({ state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: false }, { status: 409 });
       if (command.type === "notification-read" && served.kind === "notification") served = NotificationWireSchema.parse({ ...served, readState: "read", state: "read", revision: served.revision + 1 });
       return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId: NOTIFICATION.notificationId }] });
     }
@@ -101,10 +100,10 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, { refuseCommands = fals
     });
     await settle();
   };
-  const open = () => { const found = host.querySelector<HTMLButtonElement>("li.notification-row button.notification-item"); assert(found, "open"); return found; };
-  const control = (label: string) => { const found = host.querySelector<HTMLButtonElement>(`li.notification-row button[aria-label="${label}"]`); assert(found, label); return found; };
-  const listed = () => [...host.querySelectorAll(".notification-item-title")].map(title => title.textContent);
-  const notice = () => host.querySelector(".notification-notice")?.textContent ?? "";
+  const open = () => { const found = document.querySelector<HTMLButtonElement>("li.notice-row button.notice-main"); assert(found, "open"); return found; };
+  const control = (label: string) => { const found = document.querySelector<HTMLButtonElement>(`li.notice-row button[aria-label="${label}"]`); assert(found, label); return found; };
+  const listed = () => [...document.querySelectorAll(".notice-title")].map(title => title.textContent);
+  const notice = () => document.querySelector(".notice-status")?.textContent ?? "";
   const targetReads = () => requested.filter(path => path.endsWith("/target")).length;
   return { host, opened, commands, greet, change, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
 }
@@ -116,14 +115,12 @@ it("shows a first snapshot whose status could not be read as display-only rows, 
   assert.deepEqual(m.listed(), ["Run completed"], "the day's rows show while the status is unavailable");
   assert.match(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, true);
-  assert.equal(m.control("Dismiss").disabled, true);
   assert.equal(m.open().disabled, true, "Open cannot act or take focus while the status is unavailable");
 
   await m.change(READY);
 
   assert.doesNotMatch(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, false);
-  assert.equal(m.control("Dismiss").disabled, false);
   assert.equal(m.open().disabled, false);
   await act(async () => m.control("Mark as read").click()); await m.change(READY);
   assert.deepEqual(m.commands, ["notification-read"]);
@@ -142,7 +139,6 @@ it("turns the controls off when a status update cannot be read, and back on when
   assert.deepEqual(m.listed(), ["Run completed"], "the held rows stay");
   assert.match(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, true);
-  assert.equal(m.control("Dismiss").disabled, true);
   assert.equal(m.open().disabled, true, "Open cannot act or take focus while the status is unavailable");
   assert.deepEqual(m.commands, []);
 
@@ -167,15 +163,6 @@ it("keeps a publication that arrives in the same delivery as the snapshot before
   assert.deepEqual(m.listed(), ["Second run completed", "Run completed"], "the publication stands over the snapshot the stream accepted before it");
 });
 
-it("keeps a dismissed row in the list when its mark-read is refused", async () => {
-  const m = await mount(FIXTURE_DAY_WIRE.day, { refuseCommands: true });
-  await m.greet(READY);
-  await m.openBell();
-  await act(async () => m.control("Dismiss").click()); await m.change(READY);
-  assert.deepEqual(m.commands, ["notification-read"]);
-  assert.deepEqual(m.listed(), ["Run completed"], "Dismiss hides a row only once its mark-read is accepted");
-});
-
 for (const link of ["2099-01-01", "not-a-date"]) it(`loads the inbox from today's stream on a cold link to ${link}`, async () => {
   const m = await mount(link);
   assert.equal(m.opened.length, 1, "the queue date opens no stream, the inbox opens one");
@@ -190,15 +177,4 @@ for (const link of ["2099-01-01", "not-a-date"]) it(`loads the inbox from today'
   assert.deepEqual(m.commands, ["notification-read"]);
   assert.equal(m.control("Mark as unread").disabled, false, "the accepted mark-read's readback shows the row as read");
   assert.doesNotMatch(m.notice(), /could not|replaced/iu);
-});
-
-for (const link of ["2099-01-01", "not-a-date"]) it(`dismisses a row through today's stream on a cold link to ${link}`, async () => {
-  const m = await mount(link);
-  await m.greet(READY);
-  await m.openBell();
-
-  await act(async () => m.control("Dismiss").click()); await settle();
-
-  assert.deepEqual(m.commands, ["notification-read"]);
-  assert.deepEqual(m.listed(), [], "Dismiss hides the row once its mark-read is accepted");
 });

@@ -12,7 +12,8 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../../src/models/config/settings.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { createCredentialStore } from "../synthetic-storage-admission.js";
-import { executeSettingsCommand, type CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
+import type { CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService, type CreateRunRequest, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";

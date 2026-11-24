@@ -12,6 +12,11 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
   return Object.freeze({ text, parameters });
 }
 
+/** The first sentence of a failure text: what a notification shows. The whole text stays on the run. */
+export function shortFailureText(text: string): string {
+  return /^.*?[.!?](?=\s|$)/su.exec(text)?.[0] ?? text;
+}
+
 export const ERROR_CATALOG = Object.freeze({
   DELEGATION_CONFIG_UNAVAILABLE: catalogEntry("Saved settings could not be checked, so the next workflow stopped.", EmptyParametersSchema),
   AMBIGUOUS_ACTION_LIST_MATCH: catalogEntry("More than one Kuali Action List item matches this document.", EmptyParametersSchema),
