@@ -138,7 +138,7 @@ const DELETE = {
 } satisfies Record<DeleteAccountPresentation["state"], Story>;
 
 /** Typing leaves focus in the search box; a click on the sidebar title puts the keyboard walk back at the top of the page, as a user's Tab would start. */
-const find = (query: string): Scene["play"] => then(type("Search settings", query), async page => { await page.getByRole("heading", { name: "Settings", exact: true }).click(); });
+const find = (query: string): ((page: Page) => Promise<void>) => then(type("Search settings", query), async page => { await page.getByRole("heading", { name: "Settings", exact: true }).click(); });
 const SEARCH = {
   results: scene("Search with matching settings", { play: then(loaded, find("browser")), story: { ready: '[role="status"]:has-text("found")' } }),
   none: scene("Search with no matching setting", { play: then(loaded, find("zzzz")), story: { ready: 'text="No settings found"' } }),
@@ -185,7 +185,7 @@ const breaks = (...rules: readonly StateRuleName[]): Readonly<Partial<Record<Sta
 const BREAK_SETS = {
   /** Save is not the accent while the Account edit dialog shows a refusal. */
   ACCENT: breaks("primary-button-accent"),
-  /** The sidebar section buttons, and "Clear search" and "Close settings" while the search is open, have no keyboard stop. */
+  /** The Tab walk reaches nothing while a toast stands in front; #710 owns the toast stop. */
   FOCUS: breaks("named-and-focusable"),
   /** FOCUS, and Save is not the accent while the dialog shows a refusal. */
   FOCUS_ACCENT: breaks("named-and-focusable", "primary-button-accent"),
