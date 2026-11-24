@@ -42,13 +42,14 @@ it("renders the collapsed rail as the initials of each workflow with the full na
   assert.equal(host.querySelector<HTMLButtonElement>('button[aria-current="page"]')?.getAttribute("aria-label"), "OCR");
 });
 
-it("renders the expanded rail under category headings: one initials row per workflow, selected row announced", async () => {
+it("renders the expanded rail under category headings: one plain text row per workflow, an icon on each category heading, selected row announced", async () => {
   const groups = workflowNavigationGroups(entries);
   const host = await mount(createElement(TooltipProvider, null, createElement(WorkflowNavigation, { groups, active: "ocr", onSelect: () => undefined, label: "Workflows" })));
   assert.deepEqual([...host.querySelectorAll("h3")].map(heading => heading.textContent), groups.map(group => group.label));
   const rows = [...host.querySelectorAll<HTMLButtonElement>("li > button")];
   assert.equal(rows.length, entries.length);
-  for (const [index, row] of rows.entries()) assert.equal(row.querySelector(".workflow-rail-initials")?.textContent, workflowInitials(rows[index].getAttribute("aria-label") ?? ""));
+  for (const row of rows) { assert.ok(!row.querySelector("svg")); assert.ok(!row.querySelector(".workflow-rail-initials")); }
+  for (const heading of host.querySelectorAll("h3")) assert.ok(heading.querySelector("svg"));
   assert.equal(host.querySelector('button[aria-current="page"] .truncate')?.textContent, "OCR");
 });
 
