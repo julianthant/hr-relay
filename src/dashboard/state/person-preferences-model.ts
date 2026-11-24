@@ -54,17 +54,31 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       const previous = state.value;
       publish({ value: resolvePersonPreferences(mergeSettingsPatch({ preferences: previous }, patch).preferences), state: "saving" });
       let readback: EditableSettingsWire | undefined;
+      const rows = binding.authority.dayState?.rows;
+      // The reply landed but no row answered it: the save ends unresolved, with no read of Settings.
+      let joinFailed = false;
       const outcome = await binding.executor.execute(command, { scope: binding.scope,
         readback: async (_request, reply) => {
           const result = checkedSettingsResult(command, reply);
-          const read = async () => EditableSettingsWireSchema.parse(await active.client.editableSettings());
-          // A row that cannot answer leaves the readback to a read of Settings.
           const revision = result.state === "applied" || result.state === "already-applied" ? result.settingsRevision : undefined;
-          readback = revision === undefined ? await read() : await settingsRowAt(binding.authority.dayState?.rows, revision).catch(read);
+          // A binding without the stream reads Settings.
+          if (revision === undefined || rows === undefined) readback = EditableSettingsWireSchema.parse(await active.client.editableSettings());
+          else {
+            try { readback = await settingsRowAt(rows, revision, () => active.current().authority.dayState?.connection.state === "stopped"); }
+            catch (error) { joinFailed = true; throw error; }
+          }
           const verification = ordinaryReadbackState(command, result, readback);
           return { state: verification === "confirmed" ? "matched" : verification === "superseded" ? "conflict" : "mismatch", evidence: readback };
         } });
       if (started !== generation) return false;
+      if (joinFailed) {
+        binding.executor.resolve(command.commandId, false, binding.scope);
+        // The last held row shows, or the value before the change.
+        const held = rows?.settings()?.document;
+        if (held !== undefined && (document === undefined || held.revision > document.revision)) document = held;
+        publish({ value: held === undefined ? previous : preferencesFromSettings(held), state: "ready", problem: settingsSaveFailure().title });
+        return false;
+      }
       // An unknown outcome is settled by reading the served value back, never shown to the operator.
       if (outcome.kind !== "confirmed" && commandAttemptView(outcome).view === "unknown") {
         readback = await readBack(async () => EditableSettingsWireSchema.parse(await active.client.editableSettings()), served => ordinaryReadbackConfirms(served, patch)) ?? readback;

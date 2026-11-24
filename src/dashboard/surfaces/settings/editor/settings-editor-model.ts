@@ -119,15 +119,22 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     return () => { active = false; };
     // A section return and a stream reset read again; the shown document stays, locked, until the fresh one lands.
   }, [refresh, resource, setEditor, stale]);
+  /** `document`, keeping the shown protected snapshot when it is newer: protected settings keep their own reads. */
+  const keepProtected = useCallback((document: EditableSettingsWire): EditableSettingsWire => {
+    const shown = resource.snapshot().value?.protectedSettings;
+    return shown?.state === "available" && document.protectedSettings.state === "available" && shown.readback.revision > document.protectedSettings.readback.revision
+      ? { ...document, protectedSettings: shown } : document;
+  }, [resource]);
   // A row above the shown document replaces it; with nothing shown, only once the editor's own read has failed.
   useEffect(() => {
     const document = streamed?.document;
     if (document === undefined || streamed?.unavailable === true || generation.current !== request) return;
     const shown = resource.snapshot().value;
     if (shown === undefined ? editor.state !== "failed" : document.revision <= shown.revision) return;
-    acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined);
-  }, [streamed, request, resource, editor.state, setEditor]);
-  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
+    const accepted = keepProtected(document);
+    acceptedRequest.current = request; resource.accept(accepted); setEditor({ state: "loaded", document: accepted }); setReadProblem(undefined);
+  }, [streamed, request, resource, editor.state, setEditor, keepProtected]);
+  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && reportedReadProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
     const leaf = leaves.find(candidate => candidate.path === path);
@@ -178,6 +185,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     try {
       if (binding === undefined || command.requestedBy !== binding.scope.actorId) { failed(sent); return; }
       let readDocument: EditableSettingsWire | undefined;
+      // The reply landed but no row answered it: the save ends unresolved, with no read of Settings.
+      let joinFailed = false;
       const saved = (replayed: boolean) => {
         settle(sent);
         input.onSaved?.(settingsSaveNotice(leaves.filter(leaf => leaf.path in command.payload.patch).map(leaf => leaf.path.startsWith("urls.") ? `${routePresentation(leaf).name} routes` : settingTitle(leaf)), replayed, readDocument?.runtimeStatus.state === "restart-required"));
@@ -188,9 +197,9 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
           const result = checkedSettingsResult(command, reply);
           if ((result.state !== "applied" && result.state !== "already-applied") || result.settingsRevision === undefined) throw new Error("settings-result-unconfirmed");
           const rows = stream.current.rows;
-          // A row that cannot answer leaves the readback to a read of Settings.
-          readDocument = await settingsRowAt(rows, result.settingsRevision, () => stream.current.rows !== rows || stream.current.stopped, rowWaiters.current)
-            .catch(() => refresh(false));
+          try {
+            readDocument = keepProtected(await settingsRowAt(rows, result.settingsRevision, () => stream.current.rows !== rows || stream.current.stopped, rowWaiters.current));
+          } catch (error) { joinFailed = true; throw error; }
           const readback = ordinaryReadbackState(command, result, readDocument);
           return { state: readback === "confirmed" ? "matched" : readback === "superseded" ? "conflict" : "mismatch", evidence: readDocument };
         },
@@ -198,6 +207,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
           if (commandLife.current !== commandOwner) return;
           binding.feedback(outcome);
           if (readDocument !== undefined) {
+            // A protected save may have landed while this readback waited.
+            readDocument = keepProtected(readDocument);
             acceptedRequest.current = currentRequest.current; resource.accept(readDocument); setEditor({ state: "loaded", document: readDocument }); setReadProblem(undefined);
           }
           const next = commandSaveState(outcome);
@@ -208,6 +219,19 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       };
       const outcome = await binding.executor.execute(command, options);
       if (commandSaveState(outcome).state !== "unconfirmed") return;
+      if (joinFailed) {
+        // Frees the lock so the next edit reaches Relay; the editor shows the last held row and the save problem.
+        binding.executor.resolve(command.commandId, false, binding.scope);
+        if (commandLife.current !== commandOwner) return;
+        const held = stream.current.rows?.settings()?.document;
+        const shown = resource.snapshot().value;
+        if (held !== undefined && (shown === undefined || held.revision > shown.revision)) {
+          const accepted = keepProtected(held);
+          acceptedRequest.current = currentRequest.current; resource.accept(accepted); setEditor({ state: "loaded", document: accepted });
+        }
+        failed(sent, true);
+        return;
+      }
       // Release the command reservation even if the editor that sent it has closed.
       const served = await readBack<EditableSettingsWire | undefined>(() => binding.executor.isCurrentAuthority(binding.scope) ? refresh(false) : Promise.resolve(undefined),
         document => document === undefined || ordinaryReadbackConfirms(document, command.payload.patch));

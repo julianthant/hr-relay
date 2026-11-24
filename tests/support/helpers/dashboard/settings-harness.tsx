@@ -90,9 +90,12 @@ export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof 
     return ["credentials", "protected-store", "provider-env", "runtime-isolation"].includes(sectionId)
       ? createElement(SettingsAuthoritySection, { profileName: "Synthetic Operator", editor, sectionId }) : createElement(EditableSettingsSection, { editor, sectionId });
   }
-  const render = async (sectionId: string, show = true, requestKey = 0): Promise<void> => { await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, rows, children: show ? createElement(Harness, { sectionId }) : null }) })); }); };
+  let shown = section;
+  const render = async (sectionId: string, show = true, requestKey = 0, stopped = false): Promise<void> => { shown = sectionId; await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, rows, stopped, children: show ? createElement(Harness, { sectionId }) : null }) })); }); };
   await render(section);
-  return { host, commands, requests, notices, problems, ports, client, rows, render, controller: () => { if (editor === undefined) throw new Error("settings-not-mounted"); return editor; },
+  /** Ends the stream the rows came from, as a subscription that has stopped. */
+  const stop = (): Promise<void> => render(shown, true, 0, true);
+  return { host, commands, requests, notices, problems, ports, client, rows, render, stop, controller: () => { if (editor === undefined) throw new Error("settings-not-mounted"); return editor; },
     close: () => { act(() => root.unmount()); host.remove(); } };
 }
 export async function settingsAction(action: () => void): Promise<void> { await act(async () => { action(); }); }

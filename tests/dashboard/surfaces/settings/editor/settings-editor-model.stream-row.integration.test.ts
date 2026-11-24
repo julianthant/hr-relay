@@ -71,8 +71,8 @@ describe("an ordinary save's readback joins its reply to the stream's settings r
     assert.equal(h.commands.length, 1, "a superseded save is never resent");
   });
 
-  it("falls back to reading Settings when the row arrives unavailable, then unlocks on the next good row", async () => {
-    const h = await setup(); const reads = settingsReads(h);
+  it("ends unresolved when the row arrives unavailable, keeps the held display, and unlocks on the next good row", async () => {
+    const h = await setup(); const reads = settingsReads(h); const before = labelValue(h);
     const read = h.ports.read;
     const release = holdRows(h);
     await save(h, "Unavailable row");
@@ -80,31 +80,106 @@ describe("an ordinary save's readback joins its reply to the stream's settings r
     h.ports.read = () => { throw new Error("synthetic-sensitive-server-message"); };
     release();
     h.ports.read = read;
-    await settled(() => assert.equal(h.controller().dirtyCount, 0));
-    assert.ok(settingsReads(h) > reads, "an unresolved readback reads Settings");
-    assert.equal(labelValue(h), "Unavailable row");
-    assert.deepEqual(h.problems, []); assert.equal(h.commands.length, 1);
+    await settled(() => assert.deepEqual(h.problems, [FAILURE]));
+    assert.equal(settingsReads(h), reads, "an unresolved save reads no Settings");
+    assert.equal(labelValue(h), before, "the held document stays");
+    assert.equal(h.controller().dirtyCount, 0); assert.equal(h.commands.length, 1); assert.deepEqual(h.notices, []);
     assert.equal(h.controller().locked, true, "an unavailable row keeps the editor display-only");
     await settingsAction(() => h.ports.deliver());
+    assert.equal(labelValue(h), "Unavailable row", "the next good row shows what landed");
     assert.equal(h.controller().locked, false);
     assert.doesNotMatch(h.host.textContent ?? "", /synthetic-sensitive-server-message/u);
   });
 
-  it(`stops waiting for the row after ${String(SETTINGS_ROW_WAIT_MS)} ms and reads Settings`, async () => {
-    const h = await setup(); const reads = settingsReads(h);
+  it(`ends unresolved after ${String(SETTINGS_ROW_WAIT_MS)} ms without a row, reading no Settings, and frees the next edit`, async () => {
+    const h = await setup(); const reads = settingsReads(h); const before = labelValue(h);
     holdRows(h);
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     await save(h, "Never streamed");
     await vi.advanceTimersByTimeAsync(SETTINGS_ROW_WAIT_MS - 1);
     assert.equal(h.commands.length, 1);
-    assert.equal(settingsReads(h), reads, "the wait is still open");
+    assert.deepEqual(h.problems, [], "the wait is still open");
     assert.equal(h.controller().dirtyCount, 1);
     await vi.advanceTimersByTimeAsync(1);
-    // vi.waitFor advances the fake clock through the HTTP readback's waits.
+    await settled(() => assert.deepEqual(h.problems, [FAILURE]));
+    assert.equal(settingsReads(h), reads);
+    assert.equal(labelValue(h), before, "the last held row shows");
+    assert.equal(h.controller().dirtyCount, 0); assert.equal(h.commands.length, 1);
+    vi.useRealTimers();
+    // The held row is behind the store, so the next edit waits for a fresh row first.
+    await settingsAction(() => h.ports.deliver());
+    await save(h, "Next draft");
+    await settled(() => assert.equal(h.commands.length, 2));
+  });
+
+  it("waits through a stream reset for the snapshot's row", async () => {
+    const h = await setup(); const reads = settingsReads(h);
+    const release = holdRows(h);
+    await save(h, "Across a reset");
+    await settled(() => assert.equal(h.commands.length, 1));
+    await settingsAction(() => h.rows.reset());
+    await settingsAction(() => undefined);
+    assert.equal(h.controller().dirtyCount, 1, "a reset does not end the wait");
+    assert.deepEqual(h.problems, []);
+    release();
     await settled(() => assert.equal(h.controller().dirtyCount, 0));
-    assert.ok(settingsReads(h) > reads);
-    assert.equal(labelValue(h), "Never streamed");
+    assert.equal(labelValue(h), "Across a reset");
+    assert.deepEqual(h.problems, []); assert.equal(settingsReads(h), reads);
+  });
+
+  it("ends unresolved at once when the stream stops while the save waits", async () => {
+    const h = await setup();
+    holdRows(h);
+    await save(h, "Stream stopped");
+    await settled(() => assert.equal(h.commands.length, 1));
+    assert.equal(h.controller().dirtyCount, 1);
+    await h.stop();
+    await settled(() => assert.deepEqual(h.problems, [FAILURE]));
+    assert.deepEqual(h.notices, []); assert.equal(h.commands.length, 1);
+  });
+
+  it("recovers a lost reply by reading Settings back", async () => {
+    const h = await setup();
+    h.ports.execute = request => { h.authority.execute(request); throw new Error("synthetic-response-lost"); };
+    await save(h, "Lost reply");
+    await settled(() => assert.equal(labelValue(h), "Lost reply"));
     assert.deepEqual(h.problems, []); assert.equal(h.commands.length, 1);
+  });
+});
+
+const protectedRevision = (h: Harness): number | undefined => {
+  const editor = h.controller().editor;
+  if (editor.state !== "loaded" || editor.document.protectedSettings.state !== "available") return undefined;
+  return editor.document.protectedSettings.readback.revision;
+};
+
+describe("protected settings beside the ordinary row", () => {
+  it("keeps protected edits ready while the ordinary row is unavailable", async () => {
+    const h = await setup();
+    const read = h.ports.read;
+    h.ports.read = () => { throw new Error("synthetic-sensitive-server-message"); };
+    await settingsAction(() => h.ports.deliver());
+    h.ports.read = read;
+    assert.equal(h.controller().locked, true);
+    assert.equal(h.controller().protectedEditor.locked, false, "protected settings keep their own reads");
+  });
+
+  it("keeps a newer protected snapshot when an ordinary row carries an older one", async () => {
+    const h = await setup();
+    const older = h.authority.read().protectedSettings;
+    assert.equal(h.authority.protectedApply({ sharepointOnboardingRosterUrl: { set: "https://example.test/roster" } }).state, "applied");
+    const newer = h.authority.read().protectedSettings;
+    assert(older.state === "available" && newer.state === "available");
+    assert.ok(newer.readback.revision > older.readback.revision);
+    await settingsAction(() => h.controller().reload());
+    await settled(() => assert.equal(protectedRevision(h), newer.readback.revision));
+    assert.equal(h.authority.apply({ "actor.label": { set: "Other session" } }).state, "applied");
+    const read = h.ports.read;
+    h.ports.read = () => ({ ...h.authority.read(), protectedSettings: older });
+    await settingsAction(() => h.ports.deliver());
+    h.ports.read = read;
+    assert.equal(labelValue(h), "Other session");
+    assert.equal(protectedRevision(h), newer.readback.revision, "the ordinary row never moves protected settings back");
   });
 });
 
