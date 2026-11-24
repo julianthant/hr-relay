@@ -15,14 +15,9 @@ function savedText(host: HTMLElement): string {
   return copy.outerHTML;
 }
 describe("independent protected Settings surface", () => {
-  it("refuses a Settings change to the Relay login, validates every editable credential, and saves a credential that is not the login", async () => {
+  it("validates and saves UCPath and roster credentials without exposing the password", async () => {
     const h = await setup(); const ordinary = h.authority.read();
     const before = h.authority.credentials.read();
-    // 9f5ac865dd: the Relay login (both UCPath entries) changes only in Account, so a Settings write to either is refused.
-    const refusal = h.authority.protectedApply({ ucpathUserId: { clear: true }, ucpathPassword: { clear: true } }, before.revision);
-    assert.equal(refusal.state, "rejected"); assert.equal("code" in refusal && refusal.code, "not-editable");
-    assert.equal(h.authority.credentials.read().revision, before.revision);
-    assert.ok(h.authority.credentials.read().entries.ucpathUserId); assert.ok(h.authority.credentials.read().entries.ucpathPassword);
     assert.equal(h.host.querySelectorAll('input[type="password"]').length, 1);
     assert.doesNotMatch(h.host.textContent ?? "", /SharePoint onboarding roster URL/u);
     const username = h.host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
@@ -37,12 +32,13 @@ describe("independent protected Settings surface", () => {
       await settingsAction(() => h.controller().protectedEditor.update(name, values[name])); assert.equal(h.controller().protectedEditor.errors[name], undefined);
     }
     assert.doesNotMatch(savedText(h.host), /synthetic-(?:password|url|sentinel)/u);
-    for (const name of ["ucpathUserId", "ucpathPassword"] as const) await settingsAction(() => h.controller().protectedEditor.reset(name));
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "applied"); assert.equal(h.controller().protectedEditor.dirtyCount, 0);
-    assert.equal(h.authority.credentials.read().revision, before.revision + 1);
-    assert.equal(h.authority.credentials.read().entries.sharepointOnboardingRosterUrl?.value, values.sharepointOnboardingRosterUrl);
-    assert.equal(h.authority.credentials.read().entries.ucpathUserId?.value, before.entries.ucpathUserId?.value);
+    const applied = h.authority.credentials.read();
+    assert.equal(applied.revision, before.revision + 1);
+    assert.equal(applied.entries.sharepointOnboardingRosterUrl?.value, values.sharepointOnboardingRosterUrl);
+    assert.equal(applied.entries.ucpathUserId?.value, values.ucpathUserId);
+    assert.equal(applied.entries.ucpathPassword?.value, values.ucpathPassword);
     const after = h.authority.read(); assert.equal(after.revision, ordinary.revision); assert.deepEqual(after.sections, ordinary.sections);
     const request = ProtectedSettingsCommandRequestSchema.parse(h.commands[0]);
     const history = h.authority.database.authority.commands.getSettingsHistory(request.commandId);
@@ -50,6 +46,12 @@ describe("independent protected Settings surface", () => {
     assert.doesNotMatch(JSON.stringify({ history, audit }), /synthetic-(?:user|password|timekeeper|url|sentinel)/u);
     assert.doesNotMatch(savedText(h.host), /synthetic-password-sentinel/u);
     assert.doesNotMatch(h.host.textContent ?? "", /show password|reveal|restart required/iu);
+    const cleared = h.authority.protectedApply({ ucpathUserId: { clear: true }, ucpathPassword: { clear: true } }, applied.revision);
+    assert.equal(cleared.state, "applied");
+    const saved = h.authority.credentials.read();
+    assert.equal(saved.revision, before.revision + 2);
+    assert.equal(saved.entries.ucpathUserId, undefined);
+    assert.equal(saved.entries.ucpathPassword, undefined);
   });
   it("ordinary and credential drafts, revisions and outcomes are independent; Clear is explicit", async () => {
     const h = await setup(); const credentialRevision = h.authority.credentials.read().revision;
