@@ -54,6 +54,7 @@ it('shows pinned spreadsheets in a Pinned group first, with their tags', async (
   await render();
   const lists = [...host.querySelectorAll('ul[aria-label]')].map(list => list.getAttribute('aria-label'));
   assert.deepEqual(lists, ['Pinned', 'Spreadsheets']);
+  assert.deepEqual([...host.querySelectorAll('h2')].map(heading => heading.textContent), ['Pinned', 'Created']);
   assert.ok(host.querySelector('ul[aria-label="Pinned"] li[aria-label="Roster.xlsx"]'));
   assert.ok(host.querySelector('ul[aria-label="Spreadsheets"] li[aria-label="Keys.xlsx"]'));
   assert.match(host.querySelector('li[aria-label="Roster.xlsx"]')?.textContent ?? '', /Fall/u);
@@ -83,6 +84,23 @@ it('offers the operator tags in the tag filter', async () => {
   await render();
   await click(host.querySelector('button[aria-label="Filter by tag"]'));
   assert.ok(byText('[role="menuitemcheckbox"]', 'Fall'));
+});
+
+it('keeps the tag filter and clears a selection whose only tag was removed', async () => {
+  await render();
+  await click(host.querySelector('button[aria-label="Filter by tag"]'));
+  await click(byText('[role="menuitemcheckbox"]', 'Fall'));
+  assert.equal(host.querySelector('button[aria-label="Filter by tag"]')?.textContent, 'Fall');
+  assert.ok(!host.querySelector('li[aria-label="Keys.xlsx"]'));
+  wiring.catalog = [make('roster', 'Roster.xlsx', { pinned: true, tags: [] }), make('keys', 'Keys.xlsx', { pinned: false, tags: [] })];
+  await render();
+  const trigger = host.querySelector('button[aria-label="Filter by tag"]');
+  assert.equal(trigger?.textContent, 'All tags');
+  assert.ok(host.querySelector('li[aria-label="Roster.xlsx"]') && host.querySelector('li[aria-label="Keys.xlsx"]'));
+  wiring.catalog = [make('roster', 'Roster.xlsx', { pinned: true, tags: ['Fall'] }), make('keys', 'Keys.xlsx', { pinned: false, tags: [] })];
+  await render();
+  assert.equal(host.querySelector('button[aria-label="Filter by tag"]')?.textContent, 'All tags');
+  assert.ok(host.querySelector('li[aria-label="Roster.xlsx"]') && host.querySelector('li[aria-label="Keys.xlsx"]'));
 });
 
 it('shows a toast when the command is refused', async () => {

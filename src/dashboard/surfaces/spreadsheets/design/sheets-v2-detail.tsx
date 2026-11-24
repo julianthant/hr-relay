@@ -35,7 +35,7 @@ export function SheetDetailGrid({ sheet, document, fields, onMap }: { sheet: She
 /** The grid of a sheet that is still opening: its toolbar and card at a large sheet's settled size. */
 export function SheetDetailGridSkeleton({ name }: { name: string }) {
   return <LoadingRegion label={`Opening ${name}`}><div aria-hidden>
-    <div className="ds-toolbar-row mb-2 flex items-center gap-2"><Skeleton className={`h-[var(--ds-row-control-h)] min-w-0 flex-1 ${dsRadius.lg}`} /><Skeleton className={`h-[var(--ds-row-control-h)] w-24 ${dsRadius.lg}`} /></div>
+    <div className="ds-toolbar-row mb-2 flex items-center gap-2"><Skeleton className="h-8 min-w-0 flex-1 rounded-full" /><Skeleton className={`h-[var(--ds-row-control-h)] w-24 ${dsRadius.lg}`} /></div>
     <div className="h-[min(58vh,440px)] overflow-hidden sv2-card border border-ui-stroke">
       <div className="bg-ui-table px-2.5 py-1.5 ds-text-meta"><SkeletonText className="w-2/5" /></div>
       {Array.from({ length: 16 }, (_, row) => <div key={row} className="border-t border-ui-stroke px-2.5 py-1 ds-text-body"><SkeletonText className={row % 2 ? "w-3/5" : "w-4/5"} /></div>)}
