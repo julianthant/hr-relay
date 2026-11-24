@@ -337,14 +337,11 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   };
 }
 
+/** Progress is the pending row in the panel; only the settled result is a toast. */
 export function useSessionAddFeedback(operation?: SessionPreviewOperation) {
-  const { toast, dismiss } = useToasts();
+  const { toast } = useToasts();
   useEffect(() => {
-    if (operation?.state === 'pending') {
-      const id = toast({ tone: 'info', title: operation.message, duration: 0 });
-      return () => dismiss(id);
-    }
     if (operation?.state === 'confirmed') toast({ tone: 'success', title: operation.message });
     if (operation?.state === 'refused') toast({ tone: 'danger', title: "Couldn't add workers", description: operation.message, duration: 6000 });
-  }, [operation, toast, dismiss]);
+  }, [operation, toast]);
 }

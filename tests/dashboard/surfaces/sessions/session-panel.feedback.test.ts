@@ -25,7 +25,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, success and refusal in toasts and settles a %s add without the operator", async outcome => {
+it.each(["normal", "refused", "uncertain"] as const)("shows add progress in the panel and success and refusal in toasts and settles a %s add without the operator", async outcome => {
   vi.useFakeTimers();
   window.history.replaceState(null, "", `/?sessionsPreview=empty${outcome === "normal" ? "" : `&workerCommandPreview=${outcome}`}`);
   const host = document.createElement("div"); document.body.append(host);
@@ -40,8 +40,9 @@ it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, succes
   await act(async () => { confirm.focus(); confirm.click(); });
   assert.equal(document.querySelector('[role="dialog"]') === null, true);
   assert.doesNotMatch(panel.textContent ?? "", /Adding workers|Workers added/);
-  assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 1);
-  assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Adding workers…");
+  assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 0, "progress is never a toast");
+  assert.equal(panel.querySelectorAll('ul[aria-label="Workers being added"] li[aria-busy]').length, 1, "the panel shows one pending row");
+  assert.doesNotMatch(panel.textContent ?? "", /No workers yet/);
   assert.equal(trigger.disabled, true);
   await act(async () => vi.advanceTimersByTimeAsync(600));
   assert.doesNotMatch(panel.textContent ?? "", /Adding workers|Workers added/);
@@ -63,7 +64,7 @@ it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, succes
   assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, outcome === "uncertain" ? 0 : 1, "rerender does not repeat confirmed feedback");
 });
 
-it("dismisses add progress when the panel unmounts and ignores its late settlement", async () => {
+it("drops add progress when the panel unmounts and ignores its late settlement", async () => {
   vi.useFakeTimers();
   window.history.replaceState(null, "", "/?sessionsPreview=empty");
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -74,7 +75,8 @@ it("dismisses add progress when the panel unmounts and ignores its late settleme
   await act(async () => trigger.click());
   const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === "Add workers"); assert(confirm instanceof HTMLButtonElement);
   await act(async () => confirm.click());
-  assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Adding workers…");
+  assert.equal(document.querySelector('[data-slot="toast-title"]') === null, true, "progress is never a toast");
+  assert.equal(host.querySelectorAll('li[aria-busy]').length, 1);
   shown = false; await act(async () => render());
   assert.equal(document.querySelector('[data-slot="toast-title"]') === null, true);
   await act(async () => vi.advanceTimersByTimeAsync(600));

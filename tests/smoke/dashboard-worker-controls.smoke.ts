@@ -83,7 +83,7 @@ test("worker add and remove settle after delayed or refused replies and clear on
   const worker = page.getByRole("listitem", { name: "Worker 99 · Separations" });
   const remove = worker.getByRole("button", { name: "Remove worker" });
   const toasts = page.locator('[data-slot="toast-title"]');
-  const adding = toasts.filter({ hasText: "Adding workers…" });
+  const adding = page.locator("li[aria-busy]");
   const failedAdd = toasts.filter({ hasText: "Couldn't add workers" });
   const success = toasts.filter({ hasText: "Workers added" });
 

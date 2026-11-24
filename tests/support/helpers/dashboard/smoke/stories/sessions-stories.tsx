@@ -60,6 +60,8 @@ const OPERATION = {
   refused: bar("A control Relay refused", ready(SESSION_WORKER_BY_STATE.running), { operations: { [SESSION_WORKER_BY_STATE.running.id]: SESSION_OPERATION_BY_STATE.refused } }),
 } satisfies Record<SessionPreviewOperation["state"], Story>;
 
+const ADDING: Readonly<Record<string, SessionPreviewOperation>> = { add: { request: { id: "add-1", target: "add", action: "add", workflow: "separations", count: 1, ordinal: 1 }, state: "pending", message: "Adding workers…" } };
+
 /** The combinations a person meets: a closed bar, an empty pool, a mixed pool, a stale day, a wide card and the Add workers dialog. */
 const COMBINATION = {
   closed: bar("The bar collapsed, counts only", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle), { open: false }),
@@ -69,6 +71,8 @@ const COMBINATION = {
   "all-states": bar("One worker in every state", ready(...Object.values(SESSION_WORKER_BY_STATE))),
   stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }),
   wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER)),
+  "adding-empty": bar("A worker being added to an empty panel, shown as a pending row", ready(), { operations: ADDING }, { ready: "li[aria-busy]" }),
+  adding: bar("A worker being added beside an idle row", ready(QUIET_IDLE[0] as SessionWorker), { operations: ADDING }, { ready: "li[aria-busy]" }),
   "add-workers": bar("The Add workers dialog", ready(SESSION_WORKER_BY_STATE.running), {}, { ready: '[role="dialog"]',
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } }),
 } satisfies Record<string, Story>;
