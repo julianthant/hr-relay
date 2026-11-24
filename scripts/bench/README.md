@@ -2,7 +2,7 @@
 
 Run this on the Mac from a Relay checkout that contains the rig. Use Node 26 and install the
 checkout's dependencies and Playwright Chromium first. Stop the development copy dashboard.
-The development copy must have its own enrolled profile and populated [imported run history](../profiles/README.md).
+The development copy must have one enrolled profile and populated [imported run history](../profiles/README.md).
 Use that import command to prepare the copy. It carries history from a verified backup and leaves
 browser roots, tokens, and locks with their original installation. The benchmark keeps the copy's
 own sign-in session available for subsequent runs. Prepare the copy with the operator present for
@@ -44,6 +44,6 @@ both runs from the exact target SHA, their ranges, and the verdict on #485. Each
   inconclusive even when its numbers meet the targets.
 
 The two-run verdict identifies any missed limit of zero stalls and less than 2% thread CPU.
-If a comparison shows a gap, use an extra profiling run to identify the underlying limiter
-before attributing an improvement. The report keeps that attribution inconclusive until it is
-profiled. The two-run threshold verdict and RSS endpoints are the measurements for #485 and #415.
+A base comparison reports no measurable difference when the ranges overlap. If a range shows
+a gap, use an extra profiling run to identify the underlying limiter before attributing an
+improvement. The two-run threshold verdict and RSS endpoints are the measurements for #485 and #415.

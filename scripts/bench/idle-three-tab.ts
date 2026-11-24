@@ -46,7 +46,14 @@ export function summarizeIdleRuns(runs: readonly [IdleMetrics, IdleMetrics]) {
     repeatability: errors > 0 ? "inconclusive" : passes(runs[0]) === passes(runs[1]) && flat(runs[0]) === flat(runs[1]) ? "consistent" : "mixed", errors };
 }
 
-function serveBackendProbe(path: string): void {
+export function compareIdleRuns(base: ReturnType<typeof summarizeIdleRuns>, target: ReturnType<typeof summarizeIdleRuns>) {
+  if (base.errors > 0 || target.errors > 0) return "inconclusive";
+  const metrics = ["stallCount", "longestStallMs", "totalStallMs", "busyPercent"] as const;
+  const separated = metrics.some(metric => base.ranges[metric][1] < target.ranges[metric][0] || target.ranges[metric][1] < base.ranges[metric][0]);
+  return separated ? "inconclusive-until-limiter-profiled" : "no-measurable-difference";
+}
+
+export function serveBackendProbe(path: string) {
   let start: { iso: string; monotonicMs: number; cpu: ReturnType<typeof process.threadCpuUsage>; rss: number } | undefined;
   let timer: NodeJS.Timeout | undefined, last = 0;
   const stalls = { count: 0, longestMs: 0, totalMs: 0 };
@@ -84,10 +91,10 @@ function serveBackendProbe(path: string): void {
       } else connection.end("refused");
     });
   });
-  server.listen(path).unref();
+  return server.listen(path).unref();
 }
 
-function probe(path: string, command: "start" | "finish", signal: AbortSignal): Promise<string> {
+export function probe(path: string, command: "start" | "finish", signal: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const socket = connect({ path }, () => { socket.end(command); });
     const abort = () => { socket.destroy(new Error("idle-benchmark-interrupted")); };
@@ -184,7 +191,7 @@ async function runBenchmark() {
     const report = { schemaVersion: 1, sampleIntervalMs: sampleMs, requestedWindowMs: windowMs, stallThresholdMs: stallMs,
       threadBusyLimitPercent: busyLimit, rssFlatToleranceBytes: rssFlatBytes, logicalCpus: availableParallelism(), node: process.version,
       target: result, ...(comparison === undefined ? {} : { base: comparison }),
-      comparison: comparison === undefined ? "not-requested" : "inconclusive-until-limiter-profiled" };
+      comparison: comparison === undefined ? "not-requested" : compareIdleRuns(comparison.verdict, result.verdict) };
     const output = join(process.cwd(), `idle-three-tab-${target.slice(0, 12)}-${systemClock.nowMs().toString()}.json`);
     writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600, flag: "wx" });
     process.stdout.write(`Idle benchmark result written to ${output}\n`);
@@ -202,6 +209,8 @@ async function runBenchmark() {
       checkoutGit(checkout, ["cat-file", "-e", `${sha}:scripts/profiles/copy-signin.ts`]);
       checkoutGit(checkout, ["checkout", "--detach", sha]);
       if (checkoutGit(checkout, ["rev-parse", "HEAD"]) !== sha) throw new Error("idle-benchmark-sha-mismatch");
+      const dependencies = lstatSync(join(checkout, "node_modules"), { throwIfNoEntry: false });
+      if (dependencies !== undefined && !dependencies.isDirectory()) throw new Error("idle-benchmark-copy-dependencies-refused");
       execFileSync("npm", ["ci"], { cwd: checkout, stdio: "inherit" });
     } finally { await lock.close(); }
     const runs = [await runOnce(sha), await runOnce(sha)] as const;
@@ -218,7 +227,10 @@ async function runBenchmark() {
       process.env.NODE_OPTIONS = `--import=tsx --import=${import.meta.url}`;
       return await withHeadlessCopySignin(async session => {
         const digest = createHash("sha256");
-        for await (const chunk of createReadStream(archiveRoot(session.stateRoot))) digest.update(chunk);
+        for await (const chunk of createReadStream(archiveRoot(session.stateRoot))) {
+          if (!Buffer.isBuffer(chunk)) throw new Error("idle-benchmark-history-read-invalid");
+          digest.update(chunk);
+        }
         const current = digest.digest("hex");
         inputDigest ??= current;
         if (inputDigest !== current) throw new Error("idle-benchmark-imported-history-changed");

@@ -44,7 +44,7 @@ async function enrolledProfile(workspace: string, beforeStart?: (profile: CopyPr
     const admission = acquireEntrypointAdmission(workspace, "shared", lock);
     try {
       const { profiles, activeProfileId, installationId } = admission.readProfileRegistry();
-      const row = activeProfileId === null && profiles.length === 1 ? profiles[0] : profiles.find(item => item.profileId === activeProfileId);
+      const row = profiles.length === 1 && (activeProfileId === null || profiles[0].profileId === activeProfileId) ? profiles[0] : undefined;
       if (row?.lifecycle !== "ready" || row.credentialState !== "saved" || row.duoState !== "ready" || row.registration.onboardingCompletion === undefined) {
         throw new CopySigninError("copy-signin-headless-enrollment-required");
       }
@@ -59,7 +59,9 @@ async function enrolledProfile(workspace: string, beforeStart?: (profile: CopyPr
     } finally { admission.release(); }
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      throw new CopySigninError("copy-signin-headless-enrollment-required");
+      const refused = new CopySigninError("copy-signin-headless-enrollment-required");
+      refused.cause = error;
+      throw refused;
     }
     throw error;
   } finally { await lock.close(); }
@@ -84,15 +86,18 @@ export async function withHeadlessCopySignin<T>(use: (session: HeadlessCopySessi
   const workspace = applicationDataWorkspace(undefined, profile);
   const selected = await enrolledProfile(workspace, options.beforeStart);
   const checkout = developmentCopyCheckout();
-  const requireHead = () => {
-    if (options.expectedSha !== undefined && checkoutGit(checkout, ["rev-parse", "HEAD"]) !== options.expectedSha) {
+  const head = checkoutGit(checkout, ["rev-parse", "HEAD"]);
+  const requireHead = (expected: string) => {
+    if (head !== expected || checkoutGit(checkout, ["rev-parse", "HEAD"]) !== expected) {
       throw new CopySigninError("copy-signin-headless-sha-changed");
     }
   };
-  requireHead();
+  requireHead(options.expectedSha ?? head);
   const launcherEntry = join(checkout, "scripts", "dev", "dashboard.ts");
   if (realpathSync(launcherEntry) !== launcherEntry) throw new CopySigninError("copy-signin-headless-worktree-refused");
-  const launcher: unknown = await import(pathToFileURL(launcherEntry).href);
+  const launcherUrl = pathToFileURL(launcherEntry);
+  launcherUrl.searchParams.set("sha", head);
+  const launcher: unknown = await import(launcherUrl.href);
   const { runDevDashboard: start } = z.object({ runDevDashboard: z.custom<typeof runDevDashboard>(fn => typeof fn === "function") }).parse(launcher);
   const backendEntry = join(checkout, "scripts", "profiles", "copy-signin.ts");
   if (realpathSync(backendEntry) !== backendEntry) throw new CopySigninError("copy-signin-headless-worktree-refused");
@@ -105,12 +110,13 @@ export async function withHeadlessCopySignin<T>(use: (session: HeadlessCopySessi
     .finally(() => { stop.abort(new CopySigninError("copy-signin-headless-dashboard-stopped")); });
   signal.addEventListener("abort", halt, { once: true });
   let context: BrowserContext | undefined;
-  let completed = false;
+  let result: T;
+  let dashboardStatus: number;
   try {
     signal.throwIfAborted();
     const nonce = await Promise.race([ready.promise, finished.then(() => { throw signal.reason instanceof Error ? signal.reason : new CopySigninError("copy-signin-headless-dashboard-stopped"); })]);
     await waitForFrontend(ports.frontendPort, nonce, signal);
-    requireHead();
+    requireHead(head);
     const origin = `http://127.0.0.1:${String(ports.frontendPort)}`;
     const browserDirectory = join(workspace, "copy-signin-browser");
     mkdirSync(browserDirectory, { mode: 0o700, recursive: true });
@@ -120,6 +126,7 @@ export async function withHeadlessCopySignin<T>(use: (session: HeadlessCopySessi
       args: ["--no-proxy-server", "--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"],
     });
     context.once("close", () => { stop.abort(new CopySigninError("copy-signin-headless-browser-stopped")); });
+    signal.throwIfAborted();
     await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort("blockedbyclient"));
     await context.routeWebSocket(/.*/u, socket => {
       if (new URL(socket.url()).origin === origin.replace("http:", "ws:")) socket.connectToServer();
@@ -157,16 +164,16 @@ export async function withHeadlessCopySignin<T>(use: (session: HeadlessCopySessi
       localStorage.setItem(key, value);
     }, { origin, key: resumeKey, value: z.string().min(1).parse(proof) });
     signal.throwIfAborted();
-    const result = await use({ context, page, origin, signal, ...selected });
+    result = await use({ context, page, origin, signal, ...selected });
     signal.throwIfAborted();
-    completed = true;
-    return result;
   } finally {
     signal.removeEventListener("abort", halt);
     try { await context?.close(); }
     finally {
       halt();
-      if (await finished !== 0 && completed) throw new CopySigninError("copy-signin-headless-dashboard-stopped");
+      dashboardStatus = await finished;
     }
   }
+  if (dashboardStatus !== 0) throw new CopySigninError("copy-signin-headless-dashboard-stopped");
+  return result;
 }
