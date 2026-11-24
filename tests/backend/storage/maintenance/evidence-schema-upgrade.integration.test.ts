@@ -48,6 +48,14 @@ function conversions(path: string) {
   finally { database.close(); }
 }
 
+async function countFullVerifications(startup: () => Promise<void>): Promise<number> {
+  const sql = vi.spyOn(DatabaseSync.prototype, "prepare");
+  try {
+    await startup();
+    return sql.mock.calls.filter(([query]) => query === "PRAGMA quick_check(1)").length;
+  } finally { sql.mockRestore(); }
+}
+
 for (const interrupted of [false, true]) it(`upgrades real retained predecessor Kuali evidence through startup${interrupted ? " after an interrupted committed conversion" : ""}, preserving every frozen row and a second startup`, async () => {
   const f = await predecessorSeparationsRerun();
   assert.ok(f.writes.some(intent => intent.status === "committed"));
@@ -81,7 +89,9 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
       assert.equal(conversions(f.path).length, 1);
       assert.deepEqual(readFileSync(protectedPath), oldCredentials); assert.deepEqual(frozenRows(f.path), before);
     }
-    await startup();
+    const checks = await countFullVerifications(startup);
+    // Each of the three authority images and its independently produced backup gets one check.
+    if (!interrupted) assert.equal(checks, 6);
     assert.equal(conversions(f.path).length, 1); assert.deepEqual(frozenRows(f.path), before);
     const credentials = readFileSync(protectedPath), journal = conversions(f.path), backups = readdirSync(join(f.stateRoot, "backups", "authority")).sort();
     assert.notDeepEqual(credentials, oldCredentials);

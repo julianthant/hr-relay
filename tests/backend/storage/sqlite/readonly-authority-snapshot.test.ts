@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import { createReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { createReadonlyAuthoritySnapshot, withReusableReadonlyAuthoritySnapshots } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 
 for (const fault of ["writable", "hardlink", "foreign-owner"] as const) {
   it(`refuses a ${fault} snapshot source before starting its observer`, () => {
@@ -31,3 +31,36 @@ for (const fault of ["writable", "hardlink", "foreign-owner"] as const) {
     } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); fs.rmSync(root, { recursive: true }); }
   });
 }
+
+it("shares an unchanged stopped copy, rechecks replaced sources and closes each copy after its last reader", async () => {
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "private-snapshot-reuse-"));
+  const path = join(root, "source.db");
+  fs.writeFileSync(path, "original", { mode: 0o600 });
+  try {
+    const freshPath = await withReusableReadonlyAuthoritySnapshots(async () => {
+      const first = createReadonlyAuthoritySnapshot(path);
+      const peer = createReadonlyAuthoritySnapshot(path);
+      try {
+        assert.equal(first.path, peer.path);
+        peer.dispose();
+        assert.throws(peer.assertUnchanged, /snapshot-closed/u);
+        assert.equal(fs.readFileSync(first.path, "utf8"), "original");
+
+        const replacement = join(root, "replacement");
+        fs.writeFileSync(replacement, "changed", { mode: 0o600 });
+        fs.renameSync(replacement, path);
+        assert.throws(first.assertUnchanged, /source-changed/u);
+        const fresh = createReadonlyAuthoritySnapshot(path);
+        try {
+          assert.notEqual(fresh.path, first.path);
+          assert.equal(fs.readFileSync(fresh.path, "utf8"), "changed");
+          assert.equal(fs.existsSync(first.path), true);
+          first.dispose();
+          assert.equal(fs.existsSync(first.path), false);
+          return fresh.path;
+        } finally { fresh.dispose(); }
+      } finally { peer.dispose(); first.dispose(); }
+    });
+    assert.equal(fs.existsSync(freshPath), false);
+  } finally { fs.rmSync(root, { recursive: true }); }
+});

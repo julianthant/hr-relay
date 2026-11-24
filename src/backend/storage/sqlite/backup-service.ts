@@ -29,7 +29,7 @@ import { z } from "zod";
 import { AuthorityUpgradeRecordSchema, type AuthorityUpgradeRecord } from "../../../models/config/authority.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { type Clock, systemClock } from "../../../rules/time/clock.js";
-import { inspectAuthorityBackupReadOnly, inspectOpenDatabase, type AuthorityBackupSourceReadOnly, type BackupCopyInspection } from "./backup-inspection.js";
+import { inspectOpenDatabase, inspectVerifiedBackupCopyReadOnly, type AuthorityBackupSourceReadOnly, type BackupCopyInspection } from "./backup-inspection.js";
 import { inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
@@ -126,7 +126,7 @@ export function parseBackupManifestFile(manifestPath: string): AuthorityBackupMa
 type BackupCopyInspector = (copyAdmission: RuntimeAdmission, backupPath: string, schemaVersion: number) => BackupCopyInspection | Promise<BackupCopyInspection>;
 
 export function verifyBackupManifestAtPath(admissionInput: RuntimeAdmission, manifestPathInput: string): Promise<VerifiedBackup> {
-  return verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => inspectAuthorityBackupReadOnly(copy, backupPath, schemaVersion));
+  return verifyManifest(admissionInput, manifestPathInput, inspectVerifiedBackupCopyReadOnly);
 }
 
 /** verifyBackupManifestAtPath with the full inspection on a worker thread, for a caller that must keep the event loop running. */
@@ -225,7 +225,7 @@ function assertExpectedBackupSource(expected: AuthorityBackupExpectedSource,
   }
 }
 
-function assertBackupInspection(manifest: StoppedAuthorityBackupManifest, inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>,
+function assertBackupInspection(manifest: StoppedAuthorityBackupManifest, inspection: BackupCopyInspection,
   expected: AuthorityBackupExpectedSource): void {
   assertExpectedBackupSource(expected, manifest);
   assertExpectedBackupSource(expected, inspection);
@@ -242,13 +242,13 @@ export function verifyStoppedBackupManifestAtPath(admissionInput: RuntimeAdmissi
   admission.assertStateRoot(manifestPath);
   return verifyStoppedManifest(manifestPath, admission.authorityBackupExpectedSource(), path => admission.assertStateRoot(path), (backupPath, manifest) => {
     const copy = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
-    try { return inspectAuthorityBackupReadOnly(copy, backupPath, manifest.schemaVersion); }
+    try { return inspectVerifiedBackupCopyReadOnly(copy, backupPath, manifest.schemaVersion); }
     finally { copy.release(); }
   });
 }
 
 function verifyStoppedManifest(manifestPath: string, expected: AuthorityBackupExpectedSource, assertPath: (path: string) => void,
-  inspect: (path: string, manifest: StoppedAuthorityBackupManifest) => ReturnType<typeof inspectAuthorityBackupReadOnly>): VerifiedBackup {
+  inspect: (path: string, manifest: StoppedAuthorityBackupManifest) => BackupCopyInspection): VerifiedBackup {
   const file = readPrivateFile(manifestPath, { label: "lock", maxBytes: 64_000 });
   if (file === undefined) throw new Error("profile-maintenance-backup-manifest-required");
   const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes));
@@ -511,12 +511,12 @@ export class AuthorityBackupService {
       this.#admission.assertAuthorityBackupWrite(this.#directory);
       const inspectedDigest = await sha256File(temporaryBackupPath);
       const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, inspectedDigest);
-      let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
+      let inspection: BackupCopyInspection;
       try {
         const schemaVersion = this.#source.getMeta().schemaVersion;
         inspection = this.#purpose === "in-session"
           ? await inspectAuthorityBackupOffThread(copyAdmission, temporaryBackupPath, schemaVersion, { ...(this.#signal === undefined ? {} : { signal: this.#signal }) })
-          : inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath, schemaVersion);
+          : inspectVerifiedBackupCopyReadOnly(copyAdmission, temporaryBackupPath, schemaVersion);
       }
       finally { copyAdmission.release(); }
       assertExpectedBackupSource(expected, inspection);
