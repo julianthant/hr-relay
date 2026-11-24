@@ -93,7 +93,7 @@ import { createOcrReviewRepository } from "./ocr-review.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { createGeneratedArtifactRepository,generatedArtifactFromRow } from "./generated-artifacts.js";
 import { createImportedArtifactRepositories,importedArtifactFromRow } from "./imported-artifacts.js";
-import { isNativeOrdinaryTable,isNativeRecordIntegrityFailure,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
+import { initialFailureColumns,initialNotificationColumns,isNativeOrdinaryTable,isNativeRecordIntegrityFailure,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
 import { deletionArtifactValues,executeNativeRunDeletion,prepareNativeRunDeletion } from "./native-run-deletion.js";
 import { createNotificationMetadataRepositories,validateNotificationMetadata } from "./notification-publications.js";
 import { createReadonlyAuthoritySnapshot,readonlyAuthorityImage,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
@@ -5728,12 +5728,12 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #insertFailure(record: FailureRecord): void {
-    const json = canonicalJsonStringify(record);
+    const columns = initialFailureColumns(record);
     this.#authorityWrite("run_failures", () => {
       const result = this.#database.prepare(`
         INSERT INTO run_failures (id, run_id, fingerprint, code, resolution_json, resolution_version, payload_json, created_at)
-        VALUES (?, ?, ?, ?, '{"status":"unresolved","version":1}', 1, ?, ?)
-      `).run(record.failureId, record.runId, record.fingerprint, record.code, json, record.occurredAt);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(...Object.values(columns));
       return { result: undefined, changes: sqliteChanges(result.changes) };
     });
   }
@@ -6409,22 +6409,18 @@ export class AuthorityDatabase implements Disposable {
 
   #buildNotificationRepository(): AuthorityRepositories["notifications"] {
     const write = (record: NotificationRecord, mode: "insert" | "update"): void => {
-      const json = canonicalJsonStringify(record);
       const result = mode === "insert"
         ? this.#database.prepare(`
             INSERT INTO notifications
               (id, actor_id, dedupe_fingerprint, status, seen_count, version, run_id, payload_json, publications_json, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)
-          `).run(
-            record.notificationId, record.actorId, record.dedupeFingerprint,
-            record.status, record.count, record.version, record.links.find(link => "runId" in link)?.runId ?? null, json, record.createdAt, record.updatedAt,
-          )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(...Object.values(initialNotificationColumns(record)))
         : this.#database.prepare(`
             UPDATE notifications
             SET status = ?, seen_count = ?, version = ?, payload_json = ?, updated_at = ?
             WHERE id = ? AND version = ?
           `).run(
-            record.status, record.count, record.version, json, record.updatedAt,
+            record.status, record.count, record.version, canonicalJsonStringify(record), record.updatedAt,
             record.notificationId, record.version - 1,
           );
       const changes = sqliteChanges(result.changes);

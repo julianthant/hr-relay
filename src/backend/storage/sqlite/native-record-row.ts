@@ -7,11 +7,26 @@ import { WriteIntentRecordSchema } from "../../../rules/write-safety/write-safet
 import { validateNotificationPublicationArray } from "./notification-publications.js";
 import { z } from "zod";
 import { RunCheckpointRecordSchema, checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
-import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
+import { NotificationRecordSchema, type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { deriveCheckpointOutputDigest } from "../../../models/run/result.js";
 import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "./storage-records.js";
+import type { FailureRecord } from "../../../models/trust/failure.js";
 import { FailureResolutionSchema } from "../../../models/trust/failure-resolution.js";
 import { type AuthorityTableName } from "../../../models/config/authority.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+
+export function initialFailureColumns(record: FailureRecord) {
+  return { id: record.failureId, run_id: record.runId, fingerprint: record.fingerprint, code: record.code,
+    resolution_json: '{"status":"unresolved","version":1}', resolution_version: 1,
+    payload_json: canonicalJsonStringify(record), created_at: record.occurredAt };
+}
+
+export function initialNotificationColumns(record: NotificationRecord) {
+  return { id: record.notificationId, actor_id: record.actorId, dedupe_fingerprint: record.dedupeFingerprint,
+    status: record.status, seen_count: record.count, version: record.version,
+    run_id: record.links.find(link => "runId" in link)?.runId ?? null, payload_json: canonicalJsonStringify(record),
+    publications_json: "[]", created_at: record.createdAt, updated_at: record.updatedAt };
+}
 
 const FieldValueSchema = z.union([z.string(), z.number()]);
 const readNativeRecord = createNativeRecordReadMemo<unknown>();

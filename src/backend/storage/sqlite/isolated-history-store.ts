@@ -1,14 +1,23 @@
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { join } from "node:path";
 import { lstatSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { SpanEventWireSchema, type SpanEventWire } from "../../../models/events/types.js";
+import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { NotificationRecordSchema, type NotificationRecord } from "../../../models/notifications/notifications.js";
+import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
+import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
 import type { IsoInstant } from "../../../rules/identity/ids.js";
 import type { ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
+import { deriveStableUuid } from "../../../rules/identity/stable-uuid.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, OCR_SEARCH_TERMS_COLUMN_SQL } from "./migrations.js";
-import { openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
+import { initialFailureColumns, initialNotificationColumns } from "./native-record-row.js";
+import { backupReadOnlyDatabase, openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
 import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
-import { backfillRunSearchOcrSubjects } from "./run-search-index.js";
+import { backfillRunSearchOcrSubjects, copySeedSearchColumns } from "./run-search-index.js";
+import { timelineEventColumns } from "./timeline-repository.js";
 import { privatePathRejects } from "../private-path.js";
 
 export function historyArchivePath(stateRoot: string): string {
@@ -43,6 +52,10 @@ export function runIndex(database: DatabaseSync, name: "runs_day_idx" | "runs_wo
 }
 
 export function writeHistoryArchive(source: DatabaseSync, path: string, binding: ProfileDatabaseBinding, at: IsoInstant) {
+  return materializeHistoryArchive(source, path, binding, at);
+}
+
+function materializeHistoryArchive(source: DatabaseSync, path: string, binding: ProfileDatabaseBinding, at?: IsoInstant) {
   const archive = new DatabaseSync(path);
   try {
     archive.exec("BEGIN");
@@ -50,13 +63,13 @@ export function writeHistoryArchive(source: DatabaseSync, path: string, binding:
     archive.prepare("INSERT INTO history_header VALUES(1,?,?,?)").run(CURRENT_AUTHORITY_SCHEMA_VERSION, binding.installationId, binding.profileId);
     const counts: Record<string, number> = {};
     for (const [name, where] of tables) {
-      const select = source.prepare(`SELECT * FROM ${name}${where}`);
+      const select = source.prepare(`SELECT * FROM ${name}${at === undefined ? " WHERE 0" : where}`);
       const columns = select.columns().map(column => Column.parse(column.name));
       archive.exec(`CREATE TABLE ${name} (${columns.join(",")})`);
       const insert = archive.prepare(`INSERT INTO ${name} VALUES(${columns.map(() => "?").join(",")})`);
       let count = 0;
       for (let row of select.iterate()) {
-        if (name === "runs" && row.state !== "terminal") {
+        if (at !== undefined && name === "runs" && row.state !== "terminal") {
           const record = { ...runRecordFromRow(row) };
           delete record.cancelRequested;
           delete record.pause;
@@ -75,6 +88,98 @@ export function writeHistoryArchive(source: DatabaseSync, path: string, binding:
     backfillRunSearchOcrSubjects(archive);
     archive.exec("COMMIT");
     return counts;
+  } finally { archive.close(); }
+}
+
+export const COPY_HISTORY_SEED_BUILD = sha256Hex("relay-copy-seed");
+
+export type CopyHistorySeed = Readonly<{
+  fromDay: string;
+  build(runs: readonly RunRecord[]): Readonly<{
+    runs: readonly Readonly<{ run: RunRecord; failure?: FailureRecord; events: readonly SpanEventWire[] }>[];
+    notifications: readonly NotificationRecord[];
+  }>;
+}>;
+
+export async function cloneHistoryArchive(path: string, stage: string): Promise<boolean> {
+  if (lstatSync(path, { throwIfNoEntry: false }) === undefined) return false;
+  assertArchiveFile(path);
+  await backupReadOnlyDatabase(path, stage, 5000);
+  return true;
+}
+
+const SeedMemberSchema = z.strictObject({ kind: z.enum(["run", "notification"]), id: z.uuid() });
+
+function removePreviousSeed(archive: DatabaseSync): void {
+  archive.exec(`CREATE TABLE IF NOT EXISTS copy_seed_members(kind TEXT NOT NULL CHECK(kind IN ('run','notification')),
+    id TEXT NOT NULL, PRIMARY KEY(kind,id)) STRICT`);
+  for (const raw of archive.prepare("SELECT kind,id FROM copy_seed_members").iterate()) {
+    const { kind, id } = SeedMemberSchema.parse(raw);
+    if (kind === "run") {
+      const run = runRecordFromRow(archive.prepare("SELECT * FROM runs WHERE id=?").get(id));
+      if (run.envelope.buildId !== COPY_HISTORY_SEED_BUILD || run.displayName?.startsWith("Synthetic ") !== true) throw new Error("copy-seed-run-membership-mismatch");
+    } else {
+      const row = z.object({ payload_json: z.string() }).parse(archive.prepare("SELECT payload_json FROM notifications WHERE id=?").get(id));
+      if (!NotificationRecordSchema.parse(JSON.parse(row.payload_json)).title.startsWith("Synthetic ")) throw new Error("copy-seed-notification-membership-mismatch");
+    }
+  }
+  for (const table of ["run_search", "timeline_events", "run_failures", "runs"] as const) {
+    archive.exec(`DELETE FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"} IN (SELECT id FROM copy_seed_members WHERE kind='run')`);
+  }
+  archive.exec("DELETE FROM notifications WHERE id IN (SELECT id FROM copy_seed_members WHERE kind='notification'); DELETE FROM copy_seed_members");
+}
+
+export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding: ProfileDatabaseBinding, cloned: boolean, seed: CopyHistorySeed) {
+  if (!cloned) materializeHistoryArchive(local, path, binding);
+  const archive = new DatabaseSync(path);
+  try {
+    archive.exec("BEGIN IMMEDIATE");
+    removePreviousSeed(archive);
+    const from = z.iso.date().parse(seed.fromDay);
+    const existing = [archive, local].flatMap(database => database.prepare("SELECT * FROM runs WHERE local_day>=?").all(from).map(runRecordFromRow));
+    const population = seed.build(existing);
+    let { cursor } = z.strictObject({ cursor: z.number().int().nonnegative() }).parse(
+      archive.prepare("SELECT coalesce(max(cursor),0) AS cursor FROM timeline_events").get());
+    const membership = archive.prepare("INSERT INTO copy_seed_members(kind,id) VALUES(?,?)");
+    const insert = (table: "runs" | "run_search" | "run_failures" | "timeline_events" | "notifications", columns: Record<string, SQLInputValue>) => {
+      const key = table === "run_search" ? "run_id" : "id";
+      if (archive.prepare(`SELECT 1 FROM ${table} WHERE ${key}=? LIMIT 1`).get(columns[key]) !== undefined) throw new Error(`copy-seed-id-collision: ${table}`);
+      const keys = Object.keys(columns);
+      archive.prepare(`INSERT INTO ${table} (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...Object.values(columns));
+    };
+    const byWorkflow: Record<string, number> = {};
+    for (const row of population.runs) {
+      const run = RunRecordSchema.parse(row.run), { runId, workflow } = run.envelope;
+      if (run.envelope.buildId !== COPY_HISTORY_SEED_BUILD || !run.envelope.dryRun || run.displayName?.startsWith("Synthetic ") !== true || run.envelope.parent !== undefined) throw new Error("copy-seed-run-invalid");
+      const failure = row.failure === undefined ? undefined : FailureRecordSchema.parse(row.failure);
+      if (failure !== undefined && (failure.runId !== runId || run.lifecycle.state !== "terminal" || run.lifecycle.failureId !== failure.failureId)) throw new Error("copy-seed-failure-owner-mismatch");
+      insert("runs", runRecordColumns(run));
+      if (failure !== undefined) insert("run_failures", initialFailureColumns(failure));
+      let queued: z.infer<typeof TimelineEventRecordSchema> | undefined;
+      for (const [index,event] of SpanEventWireSchema.array().parse(row.events).entries()) {
+        const record = TimelineEventRecordSchema.parse({ schemaVersion: 1, cursor: ++cursor,
+          eventId: deriveStableUuid("relay-copy-seed-event", `${runId}/${String(index)}`), workflow,
+          scope: { kind: "run", runId }, occurredAt: event.ts, recordedAt: event.ts,
+          retentionDate: event.ts.slice(0, 10), payload: { kind: "span", event }, source: { kind: "native" } });
+        if (event.t === "run.queued") {
+          if (queued !== undefined) throw new Error("copy-seed-duplicate-queue-event");
+          queued = record;
+        }
+        insert("timeline_events", timelineEventColumns(record));
+      }
+      if (queued === undefined) throw new Error("copy-seed-queue-event-missing");
+      insert("run_search", copySeedSearchColumns(run, queued, failure?.code ?? null));
+      membership.run("run", runId);
+      byWorkflow[workflow] = (byWorkflow[workflow] ?? 0) + 1;
+    }
+    for (const input of population.notifications) {
+      const notice = NotificationRecordSchema.parse(input);
+      if (!notice.title.startsWith("Synthetic ")) throw new Error("copy-seed-notification-invalid");
+      insert("notifications", initialNotificationColumns(notice));
+      membership.run("notification", notice.notificationId);
+    }
+    archive.exec("COMMIT");
+    return { runs: population.runs.length, byWorkflow, notifications: population.notifications.length };
   } finally { archive.close(); }
 }
 
@@ -111,9 +216,13 @@ export function checkStagedHistory(localPath: string, archivePath: string, bindi
   } finally { local.close(); }
 }
 
-function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
+function assertArchiveFile(path: string) {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.nlink !== 1 || privatePathRejects(path, stat, "private")) throw new Error("isolated-history-unsafe");
+}
+
+function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
+  assertArchiveFile(path);
   upgradeHistoryArchive(path, binding);
   const url = pathToFileURL(path);
   url.search = "mode=ro&immutable=1";
