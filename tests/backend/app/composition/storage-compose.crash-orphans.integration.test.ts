@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { it } from "vitest";
 import { composeProfileRuntime, initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -219,4 +220,34 @@ it.skipIf(process.platform === "win32")("keeps the startup refusal for an unreco
     assert.equal(readFileSync(unknown, "utf8"), "unrecognized credential sibling");
     assert.deepEqual(readFileSync(current), bytes);
   } finally { await restart?.close(); await profile.close(); }
+});
+
+it.skipIf(process.platform === "win32")("keeps an unsafe backup stage without holding another person's store", async () => {
+  const first = await createBoundProfileFixture(), clock = manualClock(new Date(now));
+  let restart: RuntimeLifetimeLock | undefined;
+  try {
+    createProfileRegistry(first.machine).advanceSession(null);
+    first.admission.release();
+    first.machine.release();
+    const second = await createBoundProfileFixture({ workspace: first.workspace, lifetime: first.lifetime, email: "second@ucsd.edu" });
+    await second.closeController();
+    await first.closeController();
+    const backupRoot = join(second.stateRoot, "backups", "authority");
+    mkdirSync(backupRoot, { mode: 0o700, recursive: true });
+    const unsafe = join(backupRoot, `.authority-${randomUUID()}.sqlite.tmp`);
+    const authority = readFileSync(second.path);
+    symlinkSync(second.path, unsafe);
+
+    restart = await RuntimeLifetimeLock.acquire(first.lifetime.port);
+    await initializeRegisteredPersonStores(first.workspace, restart, hostFacts, clock);
+    const machine = acquireEntrypointAdmission(first.workspace, "shared", restart);
+    const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts });
+    try {
+      const signIn = (email: string) => runtime.session.signIn({ email, password: "disposable-fixture-password", at: now });
+      assert.throws(() => signIn("second@ucsd.edu"), { code: "STORAGE_AUTOMATIC_REPAIR_REFUSED" });
+      assert.equal(signIn("fixture@ucsd.edu").state, "active");
+    } finally { await runtime.close("shutdown"); machine.release(); }
+    assert.equal(lstatSync(unsafe).isSymbolicLink(), true);
+    assert.deepEqual(readFileSync(second.path), authority);
+  } finally { await restart?.close(); await first.close(); }
 });

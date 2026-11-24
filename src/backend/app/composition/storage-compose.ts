@@ -502,33 +502,27 @@ async function inspectAndUpgradeRegisteredPersonStores(workspace: string, lifeti
 
 async function prepareStartupUpgrades(workspace: string, lifetime: RuntimeLifetimeLock, hostFacts: HostConfigFacts,
   clock: Clock, standings: Map<string, PersonStartupStanding>) {
-  let registered = await withStoppedMachineStorage(workspace, lifetime, async machine => {
-    if (machine.requiresFlatStoreMigration()) return [];
-    const registered = machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready");
+  const { stateRoot, profiles } = await withStoppedMachineStorage(workspace, lifetime, async machine => ({ stateRoot: machine.stateRoot,
+    profiles: machine.requiresFlatStoreMigration() ? [] : machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready").map(row => row.profileId) }));
+  let repaired = takeCanonicalCredentialStartupStageRepairs(lifetime);
+  const reconcileStages = (machine: RuntimeAdmission, profileId: string) => {
     const operation = machine.maintenanceOperation();
-    let repaired = takeCanonicalCredentialStartupStageRepairs(lifetime);
-    for (const { profileId } of registered) {
-      repaired += reconcileStartupAuthorityStages(machine, profileId, operation);
-      repaired += reclaimStartupArtifactStages(machine, profileId, operation);
-    }
-    if (repaired > 0) {
-      try {
-        appendLocalDebug({ stateRoot: machine.stateRoot, build: buildVersion(), now: clock.now(),
-          event: { category: "boot", phase: "settled", area: "profile-startup-repair", reason: "unfinished-store-stages-cleared",
-            message: `Cleared ${repaired} unfinished storage ${repaired === 1 ? "file" : "files"}.`, pinned: false } });
-      } catch { /* Storage repair has already completed. */ }
-    }
-    return registered.map(row => row.profileId);
-  });
-  for (const profileId of registered) {
+    repaired += reclaimStartupArtifactStages(machine, profileId, operation);
+    repaired += reconcileStartupAuthorityStages(machine, profileId, operation);
+  };
+  for (const profileId of profiles) {
     try {
       await withStoppedMachineStorage(workspace, lifetime, async machine => {
+        reconcileStages(machine, profileId);
         logStartupUpgradeStage(workspace, clock, "inspection");
         AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
       });
     } catch (error) {
       if (hasUnprovedSourceClosure(error)) throw error;
-      try { await repairRegisteredPerson(workspace, lifetime, profileId, clock, error); }
+      try {
+        await repairRegisteredPerson(workspace, lifetime, profileId, clock, error);
+        await withStoppedMachineStorage(workspace, lifetime, async machine => { reconcileStages(machine, profileId); });
+      }
       catch (repair) {
         if (machineWideStartupFailure(repair)) throw new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: repair });
         const refusal = repair instanceof AuthorityFormatUnsupportedError || repair instanceof StartupProjectionRepairError ? repair
@@ -542,7 +536,14 @@ async function prepareStartupUpgrades(workspace: string, lifetime: RuntimeLifeti
     }
     advanceStartupStanding(standings, profileId, { type: "inspected" });
   }
-  registered = registered.filter(profileId => !isStartupHeld(standings, profileId));
+  if (repaired > 0) {
+    try {
+      appendLocalDebug({ stateRoot, build: buildVersion(), now: clock.now(),
+        event: { category: "boot", phase: "settled", area: "profile-startup-repair", reason: "unfinished-store-stages-cleared",
+          message: `Cleared ${repaired} unfinished storage ${repaired === 1 ? "file" : "files"}.`, pinned: false } });
+    } catch { /* The debug log does not gate startup. */ }
+  }
+  const registered = profiles.filter(profileId => !isStartupHeld(standings, profileId));
   const pendingLogouts = await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
     for (const profileId of registered) if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", profileId))) {
       assertMaintenanceCustodyAvailable("backup-retirement");
