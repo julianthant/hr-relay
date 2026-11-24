@@ -133,8 +133,9 @@ it("replays a count-neutral background task step across a dashboard reconnect", 
     clock.advanceMonotonic(60_000);
     vi.advanceTimersByTime(250);
     await captured.promise;
+    let next: ReturnType<typeof f.create>;
     try {
-      const next = f.create(826);
+      next = f.create(826);
       writer.emit(runQueuedSpanEvent({ run: next, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Next queued run" }));
       projection.ingestFromTimeline();
       expect(publications).toEqual(["snapshot", "snapshot"]);
@@ -147,7 +148,35 @@ it("replays a count-neutral background task step across a dashboard reconnect", 
     const afterCommand = await hub.connect({ day, lastEventId: commandCursor, lastProjectionGeneration });
     expect(afterCommand.initial.map(event => event.type)).toEqual(["hello", "health", "change"]);
     expect(detected).not.toHaveBeenCalled();
+
+    const now = clock.now().toISOString(), workerId = f.workerId;
+    const claim = database.authority.runs.claimNext({ workflow, workerId, now });
+    if (claim.state !== "claimed") throw new Error("fixture run was not claimed");
+    const claimIdentity = { workerId, claimGeneration: claim.run.claimGeneration };
+    const claimTimes = { workerId, claimedAt: now, heartbeatAt: now };
+    const validating = database.authority.runs.transition({ runId: next.envelope.runId, expectedVersion: claim.run.version, claim: claimIdentity, now,
+      lifecycle: { state: "validating", ...claimTimes } });
+    if (validating.state !== "applied") throw new Error("fixture run did not enter validation");
+    expect(database.authority.runs.transition({ runId: next.envelope.runId, expectedVersion: validating.run.version, claim: claimIdentity, now,
+      lifecycle: { state: "running", currentNodeId: "searching", ...claimTimes } }).state).toBe("applied");
+    vi.advanceTimersByTime(250);
+    await runtime.settled();
+    const running = await afterCommand.next();
     afterCommand.close();
+    expect(running).toMatchObject({ type: "snapshot", payload: { queueSurfaces: expect.arrayContaining([
+      expect.objectContaining({ runId: next.envelope.runId, status: "running" }),
+    ]) } });
+    if (running?.type !== "snapshot") throw new Error("worker authority did not publish running status");
+
+    const address = { ts: now, workflow, runId: next.envelope.runId, attempt: next.envelope.attempt, traceId: next.envelope.traceId };
+    writer.emit({ ...address, t: "run.claimed", workerId, spanPath: address.traceId });
+    writer.emit({ ...address, t: "span.started", kind: "task", spanPath: `${address.traceId}/searching#1`, parentSpanPath: address.traceId, name: "searching" });
+    vi.advanceTimersByTime(250);
+    await runtime.settled();
+    const afterClaim = await hub.connect({ day, lastEventId: running.cursor, lastProjectionGeneration });
+    expect(afterClaim.initial.map(event => event.type)).toEqual(["hello", "health", "change", "change"]);
+    expect(detected).not.toHaveBeenCalled();
+    afterClaim.close();
   } finally {
     hub.close();
     for (const cleanup of startupCleanups.reverse()) await cleanup();

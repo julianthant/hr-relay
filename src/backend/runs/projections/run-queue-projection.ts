@@ -358,7 +358,7 @@ export class RunQueueProjection {
   readonly #deps: RunQueueProjectionDeps;
   #foldState = new TimelineFoldState();
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
-  readonly #notifiedRows = new Map<string, { status: string; surface: string }>();
+  readonly #notifiedRows = new Map<string, { status: QueueSurfaceWire["status"]; surface?: string }>();
   readonly #dayCache = new Map<string, CachedQueueDay>();
 
   #timelineCursor = 0;
@@ -475,7 +475,8 @@ export class RunQueueProjection {
       workerChanged ||= affected.workerChanged;
     }
     const affected = { runIds: [...runIds], workerChanged };
-    const carried = queueRevisions > 0 ? this.#notify(affected, queueRevisions > 1, workerFactsCaptured) : { snapshot: false, runIds: [] };
+    const forceSnapshot = queueRevisions > 1 && (!workerFactsCaptured || workerChanged || runIds.size !== 1);
+    const carried = queueRevisions > 0 ? this.#notify(affected, forceSnapshot, workerFactsCaptured) : { snapshot: false, runIds: [] };
     const uncarried = carried.snapshot ? [] : [...touched].filter(runId => !carried.runIds.includes(runId));
     if (uncarried.length > 0) this.#emit({ kind: "runs", runIds: uncarried, position: this.#timelineCursor });
   }
@@ -589,6 +590,16 @@ export class RunQueueProjection {
 
   #publishBackgroundSnapshot(): void {
     this.#emit({ kind: "snapshot", cursor: this.takeCursor(), position: this.#timelineCursor });
+  }
+
+  /** Worker authority can publish a run's new status before its spans arrive. */
+  recordPublishedDay(day: DashboardDayWire): void {
+    for (const { runId, status, startedAt } of day.queueSurfaces) {
+      const previous = this.#notifiedRows.get(runId);
+      if (previous !== undefined && previous.status !== status && searchPartitionDay(new Date(startedAt)) === day.day) {
+        this.#notifiedRows.set(runId, { status });
+      }
+    }
   }
 
   #degrade(lastError: string): void {
