@@ -115,9 +115,10 @@ const plan = (database: DatabaseSync, sql: string) => database.prepare(`EXPLAIN 
   .map(row => z.object({ detail: z.string() }).parse(row).detail).join("\n");
 
 /** The shipped statements the list index migration serves, picked out of the store's source and its traced reads, and the index each plan must use. */
+/** Selector, required plan, and for a plan that keeps a temporary sort the bound that keeps the sort small. */
 const PINNED_PLANS: readonly (readonly [RegExp, RegExp, string?])[] = [
   [/^SELECT id, request_json, parent_id FROM commands WHERE id IN \(SELECT value FROM json_each\(\?1\)\) OR parent_id IN \(SELECT value FROM json_each\(\?1\)\)/u,
-    /SEARCH commands USING INDEX commands_child_idx \(parent_id=\?\)/u, "the OR of three keyed lookups merges a handful of rows into id order"],
+    /SEARCH commands USING INDEX commands_child_idx \(parent_id=\?\)/u, "bounded: it orders only the command groups the peer commits since this connection's last read changed, the rows the check re-derives"],
   [/^SELECT \* FROM timeline_events WHERE run_id IN \(SELECT value FROM json_each\(\?\)\) AND kind IN \('run\.queued','run\.claimed'\) ORDER BY run_id,cursor$/u,
     /SEARCH timeline_events USING INDEX timeline_run_idx \(run_id=\?\)/u],
   [/^SELECT \* FROM runs INDEXED BY runs_parent_idx WHERE parent_id IN \(SELECT value FROM json_each\(\?\)\) ORDER BY parent_id,id$/u,
@@ -161,7 +162,7 @@ async function shippedStatements(): Promise<readonly string[]> {
 }
 
 describe("list index plans", () => {
-  it("plans each shipped list and lookup it serves through its index, with no temporary sort", async () => {
+  it("plans each shipped list and lookup it serves through its index, with no temporary sort unless its pin names the bound", async () => {
     const shipped = await shippedStatements();
     const database = new DatabaseSync(":memory:");
     try {
