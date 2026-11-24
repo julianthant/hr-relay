@@ -159,6 +159,22 @@ it("frees the lock of a save whose stream was replaced, even after its connectio
   assert.equal(await saving, false);
   assert.equal(a.unresolved(), false);
 });
+it("ends a save's row wait and frees its lock at once when its connection closes, with no stream change", async () => {
+  const w = world(); const a = w.select("A", true); await ready(a.owner);
+  const saving = a.owner.change({ "preferences.animations": { set: false } });
+  await vi.waitFor(() => assert.equal(w.people.get("A")?.revision, 2));
+  assert.equal(a.unresolved(), true, "the save waits for its row");
+  a.close();
+  await vi.waitFor(() => assert.equal(a.unresolved(), false));
+  assert.equal(await saving, false); assert.equal(a.owner.snapshot().state, "loading");
+  const late = world(); const b = late.select("B", true); await ready(b.owner);
+  const sent = Promise.withResolvers<void>(); const reply = Promise.withResolvers<void>();
+  late.write(() => { sent.resolve(); return reply.promise; });
+  const second = b.owner.change({ "preferences.animations": { set: false } }); await sent.promise;
+  b.close(); reply.resolve();
+  await vi.waitFor(() => assert.equal(b.unresolved(), false));
+  assert.equal(await second, false);
+});
 it("keeps a newer protected snapshot when a delayed settings row carries an older one", async () => {
   const w = world(); const a = w.select("A", true); await ready(a.owner);
   const saving = a.owner.change({ "preferences.animations": { set: false } });

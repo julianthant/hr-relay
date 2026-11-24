@@ -33,6 +33,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
   let document: EditableSettingsWire | undefined;
   const listeners = new Set<() => void>();
   const rowWaiters = new Set<() => void>();
+  const recheckRows = () => { for (const check of [...rowWaiters]) check(); };
   const publish = (next: PersonPreferencesState) => { state = next; for (const listener of listeners) listener(); };
   const fail = (problem: string) => publish({ value: state.value, state: "failed", problem });
   const port: PersonPreferencesPort = {
@@ -65,7 +66,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
           // A binding without the stream reads Settings.
           if (revision === undefined || rows === undefined) readback = EditableSettingsWireSchema.parse(await active.client.editableSettings());
           else {
-            const ended = () => { const day = active.current().authority.dayState; return day?.rows !== rows || day.connection.state === "stopped"; };
+            const ended = () => { if (connection !== active) return true; const day = active.current().authority.dayState; return day?.rows !== rows || day.connection.state === "stopped"; };
             try { readback = await settingsRowAt(rows, revision, ended, rowWaiters); }
             catch (error) { joinFailure = error; throw error; }
           }
@@ -120,12 +121,12 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       accept();
       void resource.read(async () => EditableSettingsWireSchema.parse(await client.editableSettings()), "SETTINGS_INITIAL_READ_UNAVAILABLE")
         .catch(() => { if (started === generation) fail(operatorFailureSentence("SETTINGS_INITIAL_READ_UNAVAILABLE")); });
-      return () => { unsubscribe(); generation += 1; connection = undefined; document = undefined; resource.reset();
+      return () => { unsubscribe(); generation += 1; connection = undefined; document = undefined; resource.reset(); recheckRows();
         // The next connection reads the served value; a save cut off here is never left pending.
         if (state.state === "saving") publish({ value: state.value, state: "loading" }); };
     },
     /** The day stream's rows or connection changed: a save waiting for its row checks again. */
-    streamChanged() { for (const check of [...rowWaiters]) check(); },
+    streamChanged: recheckRows,
     clear() { generation += 1; if (connection !== undefined) { clearSettingsReads(connection.client); dropKeptResults(connection.client); } connection = undefined; document = undefined; state = { value: NEUTRAL_PERSON_PREFERENCES, state: "signed-out" }; },
   });
 }
