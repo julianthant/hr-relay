@@ -50,7 +50,7 @@ it("keeps the worker cards it last read while another day loads, marked as updat
   assert.equal(host.querySelector('[aria-busy="true"]') === null, true, "no skeleton for a day that is still loading");
   assert.equal(host.querySelector("[data-sessions-stale]")?.textContent, "Updating");
   assert.deepEqual(workerButtons(host).filter(button => !button.disabled).map(button => button.getAttribute("aria-label")), []);
-  assert.equal(addWorkers(host), null, "Add workers is hidden while the day loads");
+  assert.equal(addWorkers(host) === null, true, "Add workers is hidden while the day loads");
   await render({ state: "loaded", value: FIXTURE_DAY_WIRE });
   assert.equal(host.querySelector("[data-sessions-stale]") === null, true);
   assert.equal(addWorkers(host)?.disabled, false);
@@ -62,5 +62,5 @@ it("shows the loading placeholder, without Add workers, when a day loads and non
   assert.equal(host.querySelectorAll("article").length, 0);
   assert.equal(host.querySelector('[role="status"][aria-label="Loading sessions"]')?.getAttribute("aria-busy"), "true");
   assert.equal(host.querySelector("[data-sessions-stale]") === null, true);
-  assert.equal(addWorkers(host), null);
+  assert.equal(addWorkers(host) === null, true);
 });
