@@ -8,10 +8,10 @@ import { createDashboardClient } from "../../../../src/dashboard/client/index.js
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
 import { createServedOnboardingPort } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 import type { OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
-import { authenticateDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import type { PublicProfileState } from "../../../../src/models/profiles/public-profile.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
-import { readAuthenticatedCredentialFixture, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { publicProfileShellFixture } from "../../../support/helpers/backend/public-profile-shell.js";
 
 
@@ -54,16 +54,20 @@ it("signs up through the real form with both pairs, stores the UCPath pair and s
     const confirmed = await client.confirmProfileOnboardingDuo({ operationId: draft.operationId, method: "key", attemptId: started.methods.key.attemptId ?? "", operatorConfirmed: true });
     assert.ok(confirmed.state === "onboarding" && confirmed.step === "ready");
     const active = await client.completeProfileOnboarding({ operationId: draft.operationId }); assert.ok(active.state === "active", JSON.stringify(active));
-    const stored = authenticateDocument(readAuthenticatedCredentialFixture(fixture.machine.stateRoot, active.profileId)) as { record: { entries: Record<string, { value: string } | undefined> } };
-    assert.equal(stored.record.entries.ucpathUserId?.value, ucpath.username);
-    assert.equal(stored.record.entries.ucpathPassword?.value, ucpath.password);
     const fresh = createDashboardClient({ baseUrl: `http://127.0.0.1:${runtime.port}` });
     assert.equal((await fresh.signInProfile({ email: ucpath.username, password: ucpath.password })).state, "refused");
     assert.equal((await fresh.signInProfile({ email: relay.email, password: ucpath.password })).state, "refused");
     assert.equal((await fresh.signInProfile(relay)).state, "active");
+    await runtime.stop(); runtime = undefined;
+    const owner = fixture.machine.admitProfile(active.profileId);
+    try {
+      const stored = createCredentialStore({ admission: owner, stateRoot: owner.stateRoot }).read().entries;
+      assert.equal(stored.ucpathUserId?.value, ucpath.username);
+      assert.equal(stored.ucpathPassword?.value, ucpath.password);
+    } finally { owner.release(); }
   } finally {
     await act(async () => root.unmount()); host.remove();
-    for (const key of keys) { const original = originals.get(key); if (original === undefined) Reflect.deleteProperty(globalThis, key); else Reflect.set(globalThis, key, original); }
+    for (const key of keys) { const original: unknown = originals.get(key); if (original === undefined) Reflect.deleteProperty(globalThis, key); else Reflect.set(globalThis, key, original); }
     await runtime?.stop(); fixture.machine.release(); rmSync(fixture.root, { recursive: true, force: true });
   }
 });
