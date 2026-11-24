@@ -5,7 +5,7 @@ import { describe,it } from "vitest";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { subscribeDashboardDay,type SubscriptionState } from "../../../../src/dashboard/client/subscriptions/subscription.js";
 import type { DashboardTransport,SseMessage,StreamHandle } from "../../../../src/dashboard/client/transport.js";
-import { NotificationPublicationWireSchema, type NotificationPublicationWire } from "../../../../src/models/dashboard/subscription.js";
+import { NotificationPublicationWireSchema, type NotificationArrival } from "../../../../src/models/dashboard/subscription.js";
 import { type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
 
 const DAY = "2026-08-03";
@@ -92,7 +92,7 @@ interface Harness {
   close(): void;
 }
 
-function subscribe(onPublication?: (publication: NotificationPublicationWire) => void): Harness {
+function subscribe(onPublication?: (arrival: NotificationArrival) => void): Harness {
   const streams: FakeStream[] = [];
   const days: DashboardDayWire[] = [];
   const cursors: (string | undefined)[] = [];
@@ -515,15 +515,16 @@ it("resets a high cursor on same-generation descriptor replacement and publishes
   h.close();
 });
 
+const PUBLISHED_ROW = {
+  kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1,
+  publicationId: "b".repeat(64), trigger: "storage", readState: "unread", state: "unread", severity: "warning", title: "Storage health degraded",
+  occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "storage-degraded" },
+};
 function publicationEnvelope(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { type: "notification-publication", day: DAY, descriptorHash: HASH_D, projectionGeneration: 7,
-    publication: { sourceId: "a".repeat(64), actorId: "local-operator", durable: "created", notification: {
-      kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1,
-      publicationId: "b".repeat(64), trigger: "storage", readState: "unread", state: "unread", severity: "warning", title: "Storage health degraded",
-      occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "storage-degraded" },
-    } }, ...overrides };
+  return { type: "notification-publication", cursor: "pc:2", day: DAY, descriptorHash: HASH_D, projectionGeneration: 7, listed: PUBLISHED_ROW, target: { kind: "storage" },
+    publication: { sourceId: "a".repeat(64), actorId: "local-operator", durable: "created", notification: PUBLISHED_ROW }, ...overrides };
 }
-function startPublications(onPublication: (publication: NotificationPublicationWire) => void): Harness {
+function startPublications(onPublication: (arrival: NotificationArrival) => void): Harness {
   const h = subscribe(onPublication);
   h.streams[0].push(hello("pc:1"));
   h.streams[0].push(snapshotEnvelope("pc:1", []));
@@ -532,7 +533,7 @@ function startPublications(onPublication: (publication: NotificationPublicationW
 }
 describe("committed publication transport", () => {
   it("delivers explicit publications once without deriving them from baseline or resnapshots", () => {
-    const publications: NotificationPublicationWire[] = [], h = startPublications(value => publications.push(value));
+    const publications: NotificationArrival[] = [], h = startPublications(value => publications.push(value));
     assert.equal(publications.length, 0);
     h.streams[0].push(publicationEnvelope()); h.streams[0].push(publicationEnvelope());
     assert.equal(publications.length, 1);
@@ -541,7 +542,7 @@ describe("committed publication transport", () => {
     h.close();
   });
   it("ignores superseded and closed stream callbacks and does not toast reconnect snapshots", async () => {
-    const publications: NotificationPublicationWire[] = [], h = startPublications(value => publications.push(value));
+    const publications: NotificationArrival[] = [], h = startPublications(value => publications.push(value));
     h.streams[0].eof(); await tick(); h.runScheduled();
     h.streams[0].push(publicationEnvelope());
     assert.equal(publications.length, 0);
@@ -556,8 +557,8 @@ describe("committed publication transport", () => {
     const publication = NotificationPublicationWireSchema.parse(publicationEnvelope().publication);
     for (const overrides of [{ day: "2026-08-02" }, { descriptorHash: "c".repeat(64) }, { projectionGeneration: 8 },
       { publication: { ...publication, actorId: "other-operator" } },
-      { publication: { ...publication, actorId: "other-operator", notification: { ...publication.notification, actorId: "other-operator" } } }]) {
-      const publications: NotificationPublicationWire[] = [], h = startPublications(value => publications.push(value));
+      { publication: { ...publication, actorId: "other-operator", notification: { ...publication.notification, actorId: "other-operator" } }, listed: { ...publication.notification, actorId: "other-operator" } }]) {
+      const publications: NotificationArrival[] = [], h = startPublications(value => publications.push(value));
       h.streams[0].push(publicationEnvelope(overrides));
       assert.equal(publications.length, 0);
       assert.equal(h.states.at(-1)?.state, "stopped"); h.close();

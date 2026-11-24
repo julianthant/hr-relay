@@ -55,7 +55,7 @@ export const RUN_DECISIONS: Readonly<Record<RunDecisionType, LogDecision>> = {
   paused: decision("Run paused", "held", projectDecision("paused", [rowAction("resume", "resume"), rowAction("cancel-run", "cancel")])),
   stalled: decision("Run not responding", "held", projectDecision("stalled", [rowAction("recover", "recover-run"), rowAction("cancel-run", "cancel")]),
     "No step has finished in 10 minutes."),
-  refused: decision("Command refused", "failed", RunDecisionWireSchema.parse({ type: "refused", title: "Command refused", options: [] }),
+  refused: decision("Request refused", "failed", RunDecisionWireSchema.parse({ type: "refused", title: "Request refused", options: [] }),
     "The run changed before Relay could send this. Reload and try again."),
   cancelling: decision("Cancelling", "recorded", projectDecision("cancelling", []), "Relay stops after the current step."),
 };

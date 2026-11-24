@@ -1,9 +1,9 @@
 /** The selected day's server state, and nothing else.
  * One subscription per day (ref frontend-backend-integration: one global stream, not a connection */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { NotificationPublicationWire } from "../../models/dashboard/subscription.js";
+import type { NotificationArrival } from "../../models/dashboard/subscription.js";
 import type { DashboardDayWire } from "../../models/dashboard/projection.js";
-import type { SubscriptionState } from "../client/index.js";
+import { createRowStore, type RowStore, type SubscriptionState } from "../client/index.js";
 import { protocolError } from "../client/errors.js";
 import { createKeptResults, dropKeptResults, failed, loaded, loadingWith, type AsyncResource } from "./async-resource.js";
 import { useDashboardClient } from "./client-context.js";
@@ -14,7 +14,9 @@ export interface DashboardDayState {
   readonly stream?: object;
   readonly day: AsyncResource<DashboardDayWire>;
   readonly connection: SubscriptionState;
-  readonly subscribePublications: (listener: (publication: NotificationPublicationWire) => void) => () => void;
+  /** The whole read-model values the stream carries for the open run. */
+  readonly rows: RowStore;
+  readonly subscribePublications: (listener: (arrival: NotificationArrival) => void) => () => void;
   readonly refresh: () => void;
 }
 
@@ -22,7 +24,13 @@ export interface DashboardDayState {
 export const KEPT_DAYS_LIMIT = 8;
 const keptDays = createKeptResults<DashboardDayWire>(KEPT_DAYS_LIMIT);
 
-export function useDashboardDay(day: string | undefined, nowIso?: string, authorityEpoch?: object, actorId?: string): DashboardDayState {
+/** The last frame this page kept for the day under this authority, if any. */
+export function keptDayFrame(client: object, authorityEpoch: object | undefined, actorId: string | undefined, day: string): DashboardDayWire | undefined {
+  return keptDays.get(client, [authorityEpoch, actorId], day)?.value;
+}
+
+/** `run` is the run whose panel rides the stream; changing it reopens the stream once and keeps the day. */
+export function useDashboardDay(day: string | undefined, nowIso?: string, authorityEpoch?: object, actorId?: string, run?: string): DashboardDayState {
   const client = useDashboardClient();
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision(value => value + 1), []);
@@ -30,22 +38,26 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
   // A new object per request, including A → B → A; the render guard runs before effects. The kept frame is
   // read here, during render, so the frame that switches the day already shows that day's kept copy.
   const request = useMemo(() => {
-    const listeners = new Set<(publication: NotificationPublicationWire) => void>();
+    const listeners = new Set<(arrival: NotificationArrival) => void>();
     const kept = day === undefined ? undefined : keptDays.get(client, [authorityEpoch, actorId], day);
-    return { client, day, revision, authorityEpoch, actorId, kept,
-      subscribePublications: (listener: (publication: NotificationPublicationWire) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-      publishPublication: (publication: NotificationPublicationWire) => { for (const listener of listeners) listener(publication); },
+    return { rows: createRowStore(), client, day, revision, authorityEpoch, actorId, kept,
+      subscribePublications: (listener: (arrival: NotificationArrival) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+      publishPublication: (arrival: NotificationArrival) => { for (const listener of listeners) listener(arrival); },
     };
   }, [client, day, revision, authorityEpoch, actorId]);
   const activeRequest = useRef(request);
   activeRequest.current = request;
   const subscribePublications = request.subscribePublications;
+  const rows = request.rows;
+  const selectedRun = useRef(run);
+  selectedRun.current = run;
+  const subscriptionRef = useRef<{ select: (run: string | undefined) => void } | undefined>(undefined);
   const [result, setResult] = useState<{ request: typeof request; value: DashboardDayState }>();
   useEffect(() => {
     let active = true;
     let shown = request.kept;
     let stream = {};
-    let value: DashboardDayState = { request, stream, day: loadingWith(shown), connection: { state: "connecting" }, refresh, subscribePublications };
+    let value: DashboardDayState = { request, stream, day: loadingWith(shown), connection: { state: "connecting" }, rows, refresh, subscribePublications };
     // Whether this stream has served a frame or reported itself up; connecting again after either is a reset.
     let opened = false;
     const owns = (): boolean => active && activeRequest.current === request;
@@ -54,17 +66,17 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
     if (day === undefined) return () => { active = false; };
     let subscription: { close: () => void } | undefined;
     // Subscribe once the mount has settled: a mount cancelled in the same tick opens no stream.
-    queueMicrotask(() => { if (!active) return; subscription = client.subscribeDay({
-      day,
-      ...(actorId === undefined ? {} : { publications: { actorId, onPublication: (publication: NotificationPublicationWire) => {
+    queueMicrotask(() => { if (!active) return; subscription = subscriptionRef.current = client.subscribeDay({
+      day, rows, ...(selectedRun.current === undefined ? {} : { run: selectedRun.current }),
+      ...(actorId === undefined ? {} : { publications: { actorId, onPublication: (arrival: NotificationArrival) => {
         if (!active || activeRequest.current !== request) return;
-        request.publishPublication(publication);
+        request.publishPublication(arrival);
       } } }),
       onDay: (next, cursor = next.snapshotCursor) => {
         if (!active) return;
         if (next.day !== day) {
           const error = protocolError("day-request-identity-mismatch");
-          value = { request, stream, day: failed(error), connection: { state: "stopped", error }, refresh, subscribePublications };
+          value = { request, stream, day: failed(error), connection: { state: "stopped", error }, rows, refresh, subscribePublications };
         } else {
           opened = true;
           // A superseded stream can still deliver between the next render and this effect's cleanup; it keeps nothing.
@@ -84,13 +96,14 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
         }
         if (connection.state !== "connecting" && connection.state !== "stopped") opened = true;
         value = { request, stream, day: connection.state === "stopped" && connection.error !== undefined
-          ? failed(connection.error) : connection.state === "connecting" ? loadingWith(shown) : value.day, connection, refresh, subscribePublications };
+          ? failed(connection.error) : connection.state === "connecting" ? loadingWith(shown) : value.day, connection, rows, refresh, subscribePublications };
         publish();
       },
     }); });
-    return () => { active = false; subscription?.close(); };
-  }, [client, day, actorId, authorityEpoch, request, refresh, subscribePublications]);
-  const current = result?.request === request ? result.value : { request, day: loadingWith(request.kept), connection: { state: "connecting" as const }, refresh, subscribePublications };
+    return () => { active = false; subscription?.close(); subscriptionRef.current = undefined; };
+  }, [client, day, actorId, authorityEpoch, request, refresh, subscribePublications, rows]);
+  useEffect(() => { subscriptionRef.current?.select(run); }, [run]);
+  const current = result?.request === request ? result.value : { request, day: loadingWith(request.kept), connection: { state: "connecting" as const }, rows, refresh, subscribePublications };
   useEffect(() => {
     if (current.day.state !== "loaded" || nowIso === undefined) return;
     const pending = current.day.value.notifications

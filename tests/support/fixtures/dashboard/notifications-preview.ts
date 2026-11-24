@@ -75,6 +75,7 @@ const scenario = () => loadedScenario ??= mockParam("notificationsPreview") ?? "
 export function sampleInbox(state: NotificationsState, base: NotificationsState, setReads: Dispatch<SetStateAction<Readonly<Record<string, boolean>>>>): InboxWiring {
   return {
     state, notice: "",
+    canAct: () => true,
     onPublication: () => () => undefined,
     async control(id, action) { if (action !== "read" && action !== "unread") return false; setReads(current => ({ ...current, [id]: action === "read" })); return true; },
     async readAll() { if (base.state === "ready") setReads(current => ({ ...current, ...Object.fromEntries(base.items.map(item => [item.id, true])) })); },

@@ -5,10 +5,14 @@ import { z } from "zod";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import {
   DashboardStreamEnvelopeSchema,
+  StreamRowSchema,
   type DashboardStreamEnvelope,
-  type NotificationPublicationWire,
+  type NotificationArrival,
+  type StreamRow,
 } from "../../../models/dashboard/subscription.js";
+import { RunIdSchema } from "../../../rules/identity/ids.js";
 import { applyDashboardDayPatch } from "../queries/day-state.js";
+import type { RowStoreWriter } from "./row-store.js";
 import { DashboardClientError, protocolError } from "../errors.js";
 import type { DashboardTransport, StreamHandle } from "../transport.js";
 
@@ -43,13 +47,20 @@ export interface DashboardDaySubscriptionDeps {
   /** `cursor` is the stream position the day was served at: its snapshot cursor, or the last change applied to it. */
   readonly onDay: (day: DashboardDayWire, cursor?: string) => void;
   readonly onState: (state: SubscriptionState) => void;
-  readonly publications?: Readonly<{ actorId: string; onPublication: (publication: NotificationPublicationWire) => void }>;
+  /** The run whose panel rides the stream; `select` changes it. */
+  readonly run?: string;
+  /** Where the stream's rows are held. */
+  readonly rows?: RowStoreWriter;
+  /** Each publication once by `sourceId`, with the target the server resolved for it. */
+  readonly publications?: Readonly<{ actorId: string; onPublication: (arrival: NotificationArrival) => void }>;
   /** Injectable reconnect timer; defaults to setTimeout. */
   readonly schedule?: (delayMs: number, run: () => void) => () => void;
   readonly reconnectDelayMs?: number;
 }
 
 export interface DashboardDaySubscription {
+  /** Names the run whose panel the stream carries, or none. The stream reopens once, resuming from the held cursor. */
+  select(run: string | undefined): void;
   close(): void;
 }
 
@@ -72,6 +83,30 @@ function streamFailure(reason: unknown): DashboardClientError {
   });
 }
 
+const RowsCarrierSchema = z.looseObject({ rows: z.array(z.unknown()) });
+/** A row that is identifiably one run's panel: the row's own shape, model and key are valid and its value says which
+ * panel state it is. Only what that value carries may then be wrong. */
+const IdentifiedPanelRowSchema = z.strictObject({ model: z.literal("run-panel"), key: RunIdSchema,
+  value: z.looseObject({ state: z.enum(["available", "refused"]) }) });
+
+/** An envelope in which each identifiable run panel whose value fails validation is replaced by a refusal of that
+ * panel: the bad panel is shown as refused in its own view while the day part is still validated and applied.
+ * Any other invalid row — not an object, another model, a bad key or panel state — is left for the envelope's own
+ * validation to refuse as a protocol error. */
+function isolateInvalidPanels(raw: unknown): unknown {
+  const carrier = RowsCarrierSchema.safeParse(raw);
+  if (!carrier.success) return raw;
+  const rows = carrier.data.rows.map((row): unknown => {
+    if (StreamRowSchema.safeParse(row).success) return row;
+    const identified = IdentifiedPanelRowSchema.safeParse(row);
+    if (!identified.success) return row;
+    const refused: StreamRow = StreamRowSchema.parse({ model: "run-panel", key: identified.data.key, value: { state: "refused",
+      error: { state: "error", code: "LOGS_IDENTITY_REFUSED", message: "run panel failed validation", retryable: false } } });
+    return refused;
+  });
+  return { ...carrier.data, rows };
+}
+
 export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): DashboardDaySubscription {
   const day = z.iso.date().parse(deps.day);
   const schedule = deps.schedule
@@ -86,6 +121,12 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
   let baseline: Baseline = {};
   let nextIdentity = 0;
   const published = new Set<string>();
+  const runOf = (value: string | undefined): string | undefined => {
+    const parsed = value === undefined ? undefined : RunIdSchema.safeParse(value);
+    return parsed?.success === true ? parsed.data : undefined;
+  };
+  let run = runOf(deps.run);
+  deps.rows?.open(run);
 
   /** The only writer of `phase`, and the only caller of `onState`. */
   function enter(next: StreamPhase, shown?: SubscriptionState): void {
@@ -110,7 +151,9 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       && phase.stream === stream;
   }
 
+  /** Every reset, gap and new generation ends here: the held day and every panel read before it are gone. */
   function clearHeld(): void {
+    deps.rows?.reset();
     baseline = baseline.authority === undefined ? {} : { authority: baseline.authority };
   }
 
@@ -137,14 +180,14 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     const generation = baseline.authority?.generation;
     const lastProjectionGeneration = lastEventId === undefined || generation === undefined ? undefined : generation;
     const identity = ++nextIdentity;
-    const stream = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}`, {
+    const stream = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}${run === undefined ? "" : `,run:${run}`}`, {
       ...(lastEventId === undefined ? {} : { lastEventId }),
       ...(lastProjectionGeneration === undefined ? {} : { lastProjectionGeneration }),
       onMessage: (message) => {
         if (!currentStream(identity, stream)) return;
         let envelope: DashboardStreamEnvelope;
         try {
-          envelope = DashboardStreamEnvelopeSchema.parse(JSON.parse(message.data));
+          envelope = DashboardStreamEnvelopeSchema.parse(isolateInvalidPanels(JSON.parse(message.data)));
         } catch (error) {
           stop(protocolError(`malformed stream envelope: ${error instanceof Error ? error.message : String(error)}`));
           return;
@@ -193,6 +236,11 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     return Number(match[1]);
   }
 
+  /** The revision of each queue row in the day a delivered panel is checked against. */
+  function revisionIn(held: DashboardDayWire): (runId: string) => number | undefined {
+    return runId => held.queueSurfaces.find(row => row.runId === runId)?.rowRevision;
+  }
+
   function applyHello(envelope: EnvelopeOf<"hello">): void {
     if (phase.phase !== "open" && phase.phase !== "greeted") return;
     const current = phase;
@@ -201,16 +249,20 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       envelope.projectionGeneration !== previous.generation || envelope.descriptorHash !== previous.descriptorHash
     );
     const held = differs ? undefined : baseline.held;
+    // A new projection generation or descriptor: no panel read under the old one may answer a decision.
+    if (differs) deps.rows?.reset();
     baseline = {
       authority: { generation: envelope.projectionGeneration, descriptorHash: envelope.descriptorHash },
       ...(held === undefined ? {} : { held }),
     };
-    enter({
-      phase: "greeted",
-      identity: current.identity,
-      stream: current.stream,
-      health: current.phase === "greeted" ? current.health : "pending",
-    });
+    const health = current.phase === "greeted" ? current.health : "pending";
+    enter({ phase: "greeted", identity: current.identity, stream: current.stream, health });
+    // The held day and its kept copies came from the old generation: report a reset so the mounted day drops them,
+    // then the health the stream still has.
+    if (differs && phase.phase === "greeted") {
+      deps.onState({ state: "connecting" });
+      if (health !== "pending") deps.onState({ state: health });
+    }
   }
 
   function applyHealth(envelope: EnvelopeOf<"health">): void {
@@ -242,9 +294,11 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       stop(protocolError("notification-publication-actor-mismatch"));
       return;
     }
+    // A publication has no `after` and never moves the held cursor; a replay of one already admitted is dropped here.
     if (published.has(envelope.publication.sourceId)) return;
     published.add(envelope.publication.sourceId);
-    deps.publications.onPublication(envelope.publication);
+    deps.publications.onPublication({ publication: envelope.publication, listed: envelope.listed, target: envelope.target,
+      snapshotCursor: baseline.held.snapshot.snapshotCursor });
   }
 
   function applySnapshot(envelope: EnvelopeOf<"snapshot">): void {
@@ -272,6 +326,8 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       authority,
       held: { snapshot: envelope.payload, cursorNumber: cursor, cursorId: envelope.cursor },
     };
+    // Rows land before the day, so a view never holds a day row newer than the panel that came with it.
+    deps.rows?.apply(envelope.rows, revisionIn(envelope.payload));
     deps.onDay(envelope.payload, envelope.cursor);
   }
 
@@ -308,6 +364,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       ...(authority === undefined ? {} : { authority }),
       held: { snapshot: next, cursorNumber: cursor, cursorId: envelope.cursor },
     };
+    deps.rows?.apply(envelope.rows, revisionIn(next));
     if (envelope.day !== undefined) deps.onDay(next, envelope.cursor);
   }
 
@@ -342,5 +399,14 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
 
   enter(phase, { state: "connecting" });
   openStream(false);
-  return Object.freeze({ close: (): void => stop() });
+  function select(value: string | undefined): void {
+    const next = runOf(value);
+    if (next === run || phase.phase === "stopped") return;
+    run = next;
+    deps.rows?.open(run);
+    // A waiting subscription opens with the new topics; an open one reopens at once, resuming from the held cursor.
+    if (phase.phase !== "waiting") openStream(true);
+  }
+
+  return Object.freeze({ select, close: (): void => stop() });
 }

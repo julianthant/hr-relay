@@ -3,7 +3,7 @@ import { afterEach, it, vi } from "vitest";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { BackfillGapObservationSchema } from "../../../../../src/backend/runs/notifications/backfill-gap.js";
 import { createNotificationInbox, type NotificationPublication } from "../../../../../src/backend/runs/notifications/inbox.js";
-import { NotificationPublicationWireSchema } from "../../../../../src/models/dashboard/subscription.js";
+import { NotificationPublicationWireSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import { notificationWireOf, notificationSourceEventOf } from "../../../../../src/models/dashboard/projection.js";
 import { ActorIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
@@ -12,23 +12,25 @@ import { sseSerialize } from "../../../../../src/backend/transports/http/subscri
 
 const worlds: DashboardWorld[] = [], hubs: DashboardStreamHub[] = [];
 afterEach(async () => { for (const hub of hubs.splice(0)) hub.close(); for (const world of worlds.splice(0)) await world.dispose(); });
+const STORAGE_TARGET = { kind: "storage" } as const;
 const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
-async function setup() {
+async function setup(options: Readonly<{ retention?: number; maxPending?: number }> = {}) {
   const world = await makeWorld(); worlds.push(world);
   const inbox = createNotificationInbox({ authority: world.database, clock: world.clock, ids: sequentialIdFactory("f"), runReader: world.runReader, actorId: "local-operator" });
   const projected: NotificationPublication[] = [];
   let listener: ((publication: NotificationPublication) => void) | undefined;
-  const hub = createDashboardStreamHub({ projection: world.projection, maxPending: 2, retention: 1,
+  const hub = createDashboardStreamHub({ projection: world.projection, maxPending: options.maxPending ?? 2, retention: options.retention ?? 1,
     backfillGaps: { detected: async input => { await inbox.publish(event); return { published: false, gap: BackfillGapObservationSchema.parse(input) }; } },
     notificationPublications: { subscribe: callback => { listener = callback; const close = inbox.onPublication(callback); return () => { listener = undefined; close(); }; }, project: publication => {
       projected.push(publication);
-      return NotificationPublicationWireSchema.parse({ sourceId: publication.sourceId, actorId: publication.notification.actorId, durable: publication.durable,
+      const wire = NotificationPublicationWireSchema.parse({ sourceId: publication.sourceId, actorId: publication.notification.actorId, durable: publication.durable,
         notification: notificationWireOf(publication.notification, world.clock.nowMs(), { state: "not-applicable" }, notificationSourceEventOf(publication.notification, { actorId: publication.notification.actorId, notificationId: publication.notification.notificationId, event: publication.event, adopted: false })) });
-    } },
+      return { publication: wire, listed: wire.notification };
+    }, target: () => STORAGE_TARGET },
   }); hubs.push(hub);
   return { world, inbox, hub, projected, broadcast: (publication: NotificationPublication) => listener?.(publication) };
 }
-it("delivers only live committed publications; baseline, reconnect and resnapshot contain no publication", async () => {
+it("delivers committed publications at their own cursor with their target; a baseline or a resume at the head replays none", async () => {
   const { world, inbox, hub } = await setup();
   await inbox.publish(event);
   const connection = await hub.connect({ day: DAY });
@@ -43,7 +45,9 @@ it("delivers only live committed publications; baseline, reconnect and resnapsho
   assert.equal(publication.publication.notification.sourceEvent?.state, "available");
   assert.equal(publication.descriptorHash, world.projection.descriptorSetHash());
   assert.equal(publication.projectionGeneration, world.projection.generation());
-  assert.equal(sseSerialize(publication).startsWith("id:"), false);
+  assert.deepEqual(publication.target, STORAGE_TARGET);
+  assert.equal(publication.cursor, world.projection.cursor());
+  assert.equal(sseSerialize(publication).startsWith(`id: ${publication.cursor}`), true);
   connection.close();
   const reconnect = await hub.connect({ day: DAY, lastEventId: world.projection.cursor(), lastProjectionGeneration: world.projection.generation() });
   assert.equal(reconnect.initial.some(envelope => envelope.type === "notification-publication"), false);
@@ -120,4 +124,57 @@ it("keeps verified completion publications eligible despite the legacy no-channe
   const publication = await connection.next(); assert(publication?.type === "notification-publication");
   assert.equal(publication.publication.notification.sourceEvent?.state, "available");
   assert.equal(publication.publication.notification.channel, "inbox");
+});
+
+/** `type`, and the cursor and source of a publication, for the order a connection is answered in. */
+const shapeOf = (envelope: DashboardStreamEnvelope): string => envelope.type === "notification-publication"
+  ? `publication ${envelope.cursor} ${envelope.publication.sourceId.slice(0, 1)}` : envelope.type === "health" ? `health ${envelope.state}` : envelope.type;
+
+it("replays the publications above a resumed cursor after health: live, then hands off at a new cursor (section 5 example)", async () => {
+  const { world, inbox, hub } = await setup({ retention: 256, maxPending: 64 });
+  const first = await hub.connect({ day: DAY });
+  const held = world.projection.cursor();
+  assert.equal(first.initial.at(-1)?.type, "health");
+  await inbox.publish(event, { identity: "1".repeat(64), occurredAt: world.clock.now().toISOString() });
+  const s1 = await first.next(); assert(s1?.type === "notification-publication");
+  first.close();
+  await inbox.publish(event, { identity: "2".repeat(64), occurredAt: world.clock.now().toISOString() });
+  const s2Cursor = world.projection.cursor();
+
+  const resumed = await hub.connect({ day: DAY, lastEventId: held, lastProjectionGeneration: world.projection.generation() });
+
+  const sourceOf = (envelope: DashboardStreamEnvelope | undefined) => envelope?.type === "notification-publication" ? envelope.publication.sourceId : undefined;
+  const replayed = resumed.initial.filter(envelope => envelope.type === "notification-publication");
+  assert.deepEqual(resumed.initial.map(envelope => envelope.type), ["hello", "health", "notification-publication", "notification-publication", "change"]);
+  assert.deepEqual(resumed.initial[1], { type: "health", state: "live" });
+  assert(replayed[0]?.type === "notification-publication" && replayed[1]?.type === "notification-publication");
+  assert.equal(replayed[0].cursor, s1.cursor, "the replay keeps the publication's cursor");
+  assert.equal(sourceOf(replayed[0]), s1.publication.sourceId);
+  assert.deepEqual(replayed[0].target, s1.target, "and its target");
+  assert.deepEqual(replayed[0].listed, s1.listed);
+  assert.equal(replayed[1].cursor, s2Cursor);
+  const handoff = resumed.initial[4]; assert(handoff?.type === "change");
+  assert.equal(handoff.after, held, "the handoff follows the presented cursor; publications do not move it");
+  assert.equal(handoff.day, undefined);
+  assert(Number(handoff.cursor.slice(3)) > Number(s2Cursor.slice(3)));
+  resumed.close();
+});
+
+it("answers a fresh connect with its snapshot before health: live and replays no publication", async () => {
+  const { inbox, hub, world } = await setup({ retention: 256, maxPending: 64 });
+  await inbox.publish(event, { identity: "1".repeat(64), occurredAt: world.clock.now().toISOString() });
+  const connection = await hub.connect({ day: DAY });
+  assert.deepEqual(connection.initial.map(shapeOf), ["hello", "snapshot", "health live"]);
+  connection.close();
+});
+
+it("turns a resume below an evicted publication into a snapshot", async () => {
+  const { world, inbox, hub } = await setup({ retention: 1, maxPending: 64 });
+  const first = await hub.connect({ day: DAY });
+  const held = world.projection.cursor();
+  first.close();
+  for (const identity of ["1", "2"]) await inbox.publish(event, { identity: identity.repeat(64), occurredAt: world.clock.now().toISOString() });
+  const resumed = await hub.connect({ day: DAY, lastEventId: held, lastProjectionGeneration: world.projection.generation() });
+  assert.deepEqual(resumed.initial.map(shapeOf), ["hello", "snapshot", "health live"]);
+  resumed.close();
 });

@@ -181,7 +181,7 @@ function appClient(): DashboardClient_m1 {
     subscribeDay: (input: Parameters<DashboardClient_m1["subscribeDay"]>[0]) => {
       input.onDay(APP_DAY);
       input.onState({ state: "live" });
-      return { close: () => undefined };
+      return { select() {}, close: () => undefined };
     },
     calendar: (input: Parameters<DashboardClient_m1["calendar"]>[0]) => Promise.resolve(CALENDAR(input)),
 

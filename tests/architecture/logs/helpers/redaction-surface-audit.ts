@@ -1999,7 +1999,46 @@ const RUN_PANEL_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = (() => {
   return [...derived.values()];
 })();
 
-export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze([...ROUTE_LEAF_ORIGINS, ...RUN_PANEL_LEAF_ORIGINS]);
+/** A publication's `listed` row is the notification wire its `publication.notification` is, and its `target` is what
+ * `GET /notifications/{id}/target` serves: a recovery or command result carries the command request and result it names. */
+const PUBLICATION_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = (() => {
+  const carried = new Set(decidableLeaves(DashboardStreamEnvelopeSchema).map(({ path }) => path));
+  const listed = ROUTE_LEAF_ORIGINS.flatMap(entry => entry.surface === "wire/stream-envelope" && entry.path.startsWith("publication.notification.")
+    ? [{ ...entry, path: `listed.${entry.path.slice("publication.notification.".length)}` }] : []);
+  const target: readonly (readonly [string, LeafOrigin])[] = [
+    ["days", "repository-authored"],
+    ["request.reason", "operator-authored"],
+    ["request.payload.reason", "operator-authored"],
+    ["request.payload.patch", "operator-authored"],
+    ["request.payload.displayName", "operator-authored"],
+    ["request.payload.correctedValue", "captured-hr-value"],
+    ["request.payload.entries.ucpathPassword.set", "protected-value"],
+    ["request.payload.entries.ucpathUserId.set", "protected-value"],
+    ["request.payload.fields.answers[].raw", "captured-hr-value"],
+    ["request.payload.fields.answers[].reason", "captured-hr-value"],
+    ["request.payload.fields.answers[].value", "captured-hr-value"],
+    ["request.payload.ocrApproval.selectedRecordIds[]", "repository-authored"],
+    ["request.payload.result.value", "captured-hr-value"],
+    ["request.payload.rowId", "captured-hr-value"],
+    ["request.payload.sheet", "captured-hr-value"],
+    ["request.payload.sheetId", "captured-hr-value"],
+    ["request.target.key", "captured-hr-value"],
+    ["request.target.typeId", "captured-hr-value"],
+    ["request.target.libraryId", "repository-authored"],
+    ["request.target.operationId", "repository-authored"],
+    ["result.entries", "protected-value"],
+    ["result.message", "captured-hr-value"],
+    ["result.workerStartup.detail", "external-text"],
+    ["result.workerStartup.message", "repository-authored"],
+    ["results[].detail", "repository-authored"],
+    ["results[].workerStartup.detail", "external-text"],
+    ["results[].workerStartup.message", "repository-authored"],
+  ];
+  return [...listed, ...target.map(([path, origin]) => ({ surface: "wire/stream-envelope", path: `target.${path}`, origin }))]
+    .filter(entry => carried.has(entry.path));
+})();
+
+export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze([...ROUTE_LEAF_ORIGINS, ...RUN_PANEL_LEAF_ORIGINS, ...PUBLICATION_LEAF_ORIGINS]);
 
 /* ── 7. module dispositions ───────────────────────────────────────────────── */
 

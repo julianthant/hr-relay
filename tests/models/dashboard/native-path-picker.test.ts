@@ -23,17 +23,15 @@ async function mount(pickSettingsPath: DashboardClient["pickSettingsPath"], onSe
 }
 
 describe("native Paths picker control", () => {
-  it("shows the full accessible path, selects one file, and leaves cancellation untouched", async () => {
+  it("shows the folder or file name only, selects one file, and leaves cancellation untouched", async () => {
     const selected: string[] = [];
     const requests: unknown[] = [];
     let response: NativePathPickerResponse = { state: "selected", field: "paths.i9CheckTrackerPath", path: "/tmp/private/new.json" };
     const surface = await mount(request => { requests.push(request); return Promise.resolve(response); }, path => selected.push(path));
     const value = surface.querySelector(".ds-path-value");
-    assert.equal(value?.getAttribute("aria-label"), "/tmp/private/duo.json");
+    assert.equal(value?.textContent, "duo.json");
+    assert.equal(value?.getAttribute("aria-label"), null);
     assert.equal(value?.getAttribute("title"), null);
-    assert.equal((value as HTMLElement | null)?.tabIndex, 0);
-    assert.equal(value?.querySelector(".sr-only")?.textContent, "/tmp/private/duo.json");
-    assert.equal(value?.querySelector(".ds-path-basename")?.textContent, "duo.json");
     const button = surface.querySelector('button[aria-label="Change Duo credential file"]');
     if (!(button instanceof HTMLButtonElement)) throw new Error("picker button missing");
     await act(async () => { button.click(); await Promise.resolve(); });

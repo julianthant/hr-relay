@@ -10,18 +10,16 @@ import { defineSurface, type Story } from "../story-catalogue.js";
 import { StoryFrame } from "./story-frame.js";
 
 const noop = () => undefined;
-/** A notice title longer than the rail is cut off sideways instead of wrapping. */
-const CLIPPED = { knownFailures: { "fits-viewport": "#532" } } as const;
 const PANEL = '[aria-label="Notification list"]';
 
 interface PanelOptions { readonly showPriority?: boolean; readonly dismissed?: readonly string[]; readonly notice?: string }
 const panel = (title: string, state: NotificationsState, { showPriority = true, dismissed = [], notice = "" }: PanelOptions = {}, extra: Partial<Story> = {}): Story => ({ title, ready: PANEL,
   render: () => <StoryFrame><aside aria-label="Workspace" className="workspace-rail ui-theme-scope" data-notifications-open="true"><div className="workspace-rail-body">
-    <NotificationsPanel state={state} activeId="" showPriority={showPriority} onShowPriority={noop} dismissed={dismissed} onDismiss={noop} onControl={noop} onReadAll={noop} onOpen={noop} onBack={noop} notice={notice} />
+    <NotificationsPanel state={state} activeId="" showPriority={showPriority} onShowPriority={noop} dismissed={dismissed} onDismiss={noop} onControl={noop} canAct={() => true} onReadAll={noop} onOpen={noop} onBack={noop} notice={notice} />
   </div></aside></StoryFrame>, ...extra });
 
 const PANEL_STATE = {
-  ready: panel("The panel with Priority and day groups", MIXED_NOTICES, {}, CLIPPED),
+  ready: panel("The panel with Priority and day groups", MIXED_NOTICES, {}),
   loading: panel("The panel while notifications load", { state: "loading" }, {}, { slowFetch: { region: '[aria-label="Loading notifications"]' } }),
   unavailable: panel("The panel when notifications cannot be read", { state: "unavailable", reason: "Notification data could not be loaded." }, {}, { ready: '[role="alert"]' }),
 } satisfies Record<NotificationsState["state"], Story>;
@@ -33,19 +31,19 @@ const TONE = {
 
 const kind = (item: NotificationItem, extra: Partial<Story> = {}): Story => panel(`A ${item.kind ?? "plain"} notice`, notificationsReady(item), {}, extra);
 const KIND = {
-  storage: kind(NOTICE_BY_KIND.storage), chatgpt: kind(NOTICE_BY_KIND.chatgpt, CLIPPED), run: kind(NOTICE_BY_KIND.run), command: kind(NOTICE_BY_KIND.command, CLIPPED),
+  storage: kind(NOTICE_BY_KIND.storage), chatgpt: kind(NOTICE_BY_KIND.chatgpt), run: kind(NOTICE_BY_KIND.run), command: kind(NOTICE_BY_KIND.command),
 } satisfies Record<NotificationKind, Story>;
 
 const COMBINATION = {
-  "storage-degraded": panel("Relay could not save everything", notificationsReady(STORAGE_DEGRADED_NOTICE), {}, CLIPPED),
-  "backfill-gap": panel("Notification history is incomplete", notificationsReady(BACKFILL_GAP_NOTICE, NOTICE_BY_TONE.positive), { notice: "Notification history is incomplete. Check the affected work." }, CLIPPED),
+  "storage-degraded": panel("Relay could not save everything", notificationsReady(STORAGE_DEGRADED_NOTICE), {}),
+  "backfill-gap": panel("Notification history is incomplete", notificationsReady(BACKFILL_GAP_NOTICE, NOTICE_BY_TONE.positive), { notice: "Notification history is incomplete. Check the affected work." }),
   "priority-clear": panel("Nothing in Priority", notificationsReady({ ...NOTICE_BY_TONE.positive, day: "Today" })),
-  "priority-hidden": panel("Priority section switched off", MIXED_NOTICES, { showPriority: false }, CLIPPED),
+  "priority-hidden": panel("Priority section switched off", MIXED_NOTICES, { showPriority: false }),
   empty: panel("No notifications at all", notificationsReady()),
   "all-read": panel("Every notice read", { state: "ready", pinned: [], items: MIXED_NOTICES.state === "ready" ? MIXED_NOTICES.items.map(item => ({ ...item, read: true })) : [] }),
   repeated: panel("A failure folded from three repeats", notificationsReady({ ...NOTICE_BY_TONE.danger, count: 3 })),
   dismissed: panel("The only notice dismissed", notificationsReady(NOTICE_BY_TONE.positive), { dismissed: [NOTICE_BY_TONE.positive.id] }),
-  refused: panel("A destination that could not be opened", MIXED_NOTICES, { notice: "That run is no longer available." }, { ready: '[role="status"]', ...CLIPPED }),
+  refused: panel("A destination that could not be opened", MIXED_NOTICES, { notice: "That run is no longer available." }, { ready: '[role="status"]' }),
 } satisfies Record<string, Story>;
 
 type BellState = "read" | "unread" | "open" | "loading" | "unavailable";
@@ -72,7 +70,7 @@ const TOAST = {
   danger: toast(NOTICE_BY_TONE.danger, 'text=/^Run failed/'),
   warning: toast(NOTICE_BY_TONE.warning, 'text=/^Run waiting for you/'),
   positive: toast(NOTICE_BY_TONE.positive, 'text=/^Run completed/'),
-  info: toast(NOTICE_BY_TONE.info, 'text=/^Relay repaired a saved file/', { knownFailures: { "word-limits": "#532" } }),
+  info: toast(NOTICE_BY_TONE.info, 'text=/^Relay repaired a saved file/'),
 } satisfies Record<NotificationItem["tone"], Story>;
 
 export const NOTIFICATIONS_STORIES = defineSurface("notifications", { panel: PANEL_STATE, tone: TONE, kind: KIND, combination: COMBINATION, bell: BELL, toast: TOAST });
