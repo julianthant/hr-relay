@@ -8,9 +8,9 @@ import { createDashboardClient, type DashboardClient } from "../../../src/dashbo
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
-import { FIXTURE_BOOTSTRAP } from "../../mocks/helpers/fixture-bootstrap.js";
-import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_BOOTSTRAP } from "../../support/helpers/dashboard/mock-world/fixture-bootstrap.js";
+import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { operatorFailureSentence } from "../../../src/models/failures/error-catalog.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

@@ -109,7 +109,6 @@ jobs:
               - 'tests/**/*.test.ts'
               - '!tests/**/*.integration.test.ts'
               - '!tests/architecture/**'
-              - '!tests/mocks/**'
               - '!tests/perf/**'
             integration:
               - 'tests/**/*.integration.test.ts'

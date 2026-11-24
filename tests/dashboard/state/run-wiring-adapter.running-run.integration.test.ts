@@ -26,7 +26,7 @@ import type { QueueSurfaceWire } from "../../../src/models/dashboard/projection.
 import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { ActorIdSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 import { defineTask } from "../../../src/workflow-kit/task.js";
-import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
+import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { createRunExecutorTestWorld, registryWithUcpathSearch } from "../../support/helpers/backend/run-executor-world.js";
 import { happySessionHarness, personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
 import { personLookupModule } from "../../support/helpers/registered-workflows.js";
