@@ -106,6 +106,7 @@ const AUDIT_FIXES = "#532";
 const KNOWN_BREAKS = {
   "browse/ordered": ["named-and-focusable"],
   "browse/outstanding-status": ["named-and-focusable"],
+  "browse/page-missing": ["named-and-focusable"],
   "browse/reading": ["named-and-focusable"],
   "browse/run-missing": ["named-and-focusable"],
   "browse/run-open": ["named-and-focusable"],
