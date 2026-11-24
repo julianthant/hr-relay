@@ -59,7 +59,7 @@ helpers that hide test registrations behind a helper-style name.
 | Integration | `<module>.integration.test.ts`; Vitest `integration` | Real isolated SQLite, sockets, processes, browser adapters, and composed execution. |
 | Architecture | `tests/architecture/**/*.test.ts`; Vitest `architecture` | Repository-wide boundaries, registries, source/AST checks, and negative controls. Some guards also exercise real adapters. |
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
-| Mock scenes | `tests/mocks/`; `npm run mocks` | `/ui-mock` frames rendered from the mock build. Not a test gate; CI never runs it. |
+| State gallery | `tests/smoke/dashboard-states.gallery.ts` | A frame and the state rules for every story; run by the `smoke` job. |
 | Performance | `tests/perf/**/*.test.ts`; Vitest `perf` via `npm run test:perf`. `tests/perf/dashboard-benchmark.ts` via `npm run perf:dashboard`. | Fixture performance checks outside coverage, deterministic structural counters, and separately reported host-dependent timings. |
 
 A test that opens a database, including `:memory:`, starts a process or socket, drives a browser,
@@ -95,12 +95,12 @@ Cloud runs and coverage select unit, integration and architecture.
 
 | Project | Include | Exclude |
 | --- | --- | --- |
-| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/architecture/**`, `tests/mocks/**`, `tests/perf/**` |
+| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/architecture/**`, `tests/perf/**` |
 | `integration` | `tests/**/*.integration.test.ts` | `tests/perf/**` |
 | `architecture` | `tests/architecture/**/*.test.ts` | None |
 | `perf` | `tests/perf/**/*.test.ts` | None |
 
-`tests/mocks/` is outside Vitest. There is no scenario project or current `tests/scenario/`
+There is no scenario project or current `tests/scenario/`
 corpus. Scenario declarations retained in workflow/contracts are graph metadata, not execution
 results. Role-derived scenario paths do not prove that a file exists.
 
@@ -535,29 +535,12 @@ The coverage exclusion list is empty. The manifest verifies its serialized SHA-2
 must not exist or match files. An active owner must exist and match files. Owners must be exact, independent paths,
 with nonempty reasons. An exclusion cannot silently grow into a parent scope.
 
-## 7. Mock scenes
+## 7. State gallery
 
-`npm run mocks` runs Playwright through `playwright.mocks.config.ts` to render `/ui-mock` scenes.
-It is not a test gate; CI never runs it.
-
-The lane uses headless Chromium, 1280×720, device scale factor 1, no mobile/touch emulation,
-`fullyParallel: true`, two workers, zero retries, and a **120,000 ms** test timeout. Default scenes
-use `graphite-warm` with `data-demo-theme="dark"`. Explicit interaction cases may exercise other
-supported desktop conditions.
-
-`tests/mocks/helpers/global-setup.ts` builds or verifies the mock bundle once before workers.
-`helpers/bundle.ts` owns `dist/mock-dashboard` and its input/output stamp.
-`helpers/workflow-composition.ts` explicitly selects fixture or seeded composition. BFFs use
-owned temporary state and ephemeral ports, not live runtime ports or HR state. A fixture must
-contain the exact state its assertion claims to cover.
-
-Outputs live under ignored `tests/mocks/.output/`.
-
-The mock runner child uses runner containment with an inactivity bound of **180,000 ms** without
-stdout/stderr. A stall fails, preserves diagnostics, and stops the group with TERM then KILL.
-Continuous output can defeat an inactivity bound; it does not prove progress. Inner deadlines
-remain unchanged. [The mock scene runner](../../src/dashboard/MOCKS.md) owns scene rules; [frontend/backend integration](frontend-backend-integration.md) owns wiring
-acceptance.
+The mock scenes and `npm run mocks` are retired. Every dashboard state is a story in the gallery under
+`tests/smoke/`, run by the `smoke` job; [the gallery guide](../../src/dashboard/MOCKS.md) owns its rules, the
+retired-scene table and the shared mock fixtures under `tests/support/`. [Frontend/backend integration](frontend-backend-integration.md)
+owns wiring acceptance.
 
 ## 8. Behavior and safety test owners
 

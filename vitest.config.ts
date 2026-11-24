@@ -12,7 +12,6 @@ export const REBUILD_UNIT_TEST_INCLUDE = ["tests/**/*.test.ts"] as const;
 const UNIT_EXCLUDE_GLOBS = [
   "tests/**/*.integration.test.ts",
   "tests/architecture/**",
-  "tests/mocks/**",
   "tests/perf/**",
 ] as const;
 export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts"] as const;

@@ -4,7 +4,7 @@ import { createAwaitingQueueFixtures } from "../../../support/helpers/dashboard/
 import assert_m0 from 'node:assert/strict';
 import { describe as describe_m0,it as it_m0 } from 'vitest';
 import { queueDisplayGroups as queueDisplayGroups_m0,visibleQueueKeys as visibleQueueKeys_m0 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from "../../../mocks/helpers/fixture-queue.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from "../../../support/helpers/dashboard/mock-world/fixture-queue.js";
 
 import assert_m1 from "node:assert/strict";
 import { describe as describe_m1,it as it_m1 } from "vitest";
@@ -26,7 +26,7 @@ checkedByYouCount as checkedByYouCount_m3,
 toggleCheckedByYou as toggleCheckedByYou_m3,
 type QueueSurfaceWire as MemberSurfaceWire_m3
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m3 } from "../../../mocks/helpers/fixture-day.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m3 } from "../../../support/helpers/dashboard/mock-world/fixture-day.js";
 
 import assert_m4 from "node:assert/strict";
 import { describe as describe_m4,it as it_m4 } from "vitest";
@@ -49,7 +49,7 @@ type OperationSurfaceWire as OperationSurfaceWire_m5,
 type QueueSurfaceWire as QueueSurfaceWire_m5
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m5 } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m5 } from "../../../mocks/helpers/fixture-day.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m5 } from "../../../support/helpers/dashboard/mock-world/fixture-day.js";
 
 
 {
