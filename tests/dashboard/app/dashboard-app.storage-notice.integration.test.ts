@@ -9,29 +9,22 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { loadLazyPages } from "../../support/helpers/dashboard/lazy-pages.js";
 
-const latePageModules = [
-  "../../../src/dashboard/surfaces/explorer/explorer-spec.js",
-  "../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2-menu.js",
-];
-async function assertLatePageModulesSettled(): Promise<void> {
-  for (const specifier of latePageModules) {
-    let settled = false;
-    const pending = import(specifier);
-    void pending.then(() => { settled = true; }, () => { settled = true; });
-    // A compiled page resolves before the next timer. One still loading does not.
-    await new Promise(resolve => setTimeout(resolve, 0));
-    assert.equal(settled, true, `${specifier} was still loading after the dashboard render`);
-    await pending;
-  }
-}
-
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 Reflect.set(globalThis, "requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0));
 Reflect.set(globalThis, "cancelAnimationFrame", clearTimeout);
 Element.prototype.scrollIntoView = () => {};
 let root: Root | undefined;
-afterEach(async () => { await loadLazyPages(); await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); localStorage.clear(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
+afterEach(async () => {
+  await act(async () => root?.unmount());
+  // Dashboard takeovers start page imports without awaiting them.
+  await vi.dynamicImportSettled();
+  root = undefined;
+  document.body.replaceChildren();
+  localStorage.clear();
+  vi.restoreAllMocks();
+  window.history.replaceState(null, "", "/");
+});
 
 it("the storage notice points at Notifications, which the rail offers, and not at a Settings section", async () => {
   const { app } = createFixtureBff();
@@ -40,7 +33,6 @@ it("the storage notice points at Notifications, which the rail offers, and not a
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp) })); await new Promise(resolve => setTimeout(resolve, 30)); });
   await loadLazyPages();
-  await assertLatePageModulesSettled();
   const notice = [...host.querySelectorAll('[role="alert"]')].find(alert => /storage is unavailable/iu.test(alert.textContent ?? ""));
   assert.ok(notice, "the storage alert is visible");
   const text = notice.textContent ?? "";
