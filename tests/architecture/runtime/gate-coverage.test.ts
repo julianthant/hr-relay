@@ -31,7 +31,7 @@ const rootTypeScriptConfigFiles = tsconfig.include
 
 const EXACT_GATE_COMMANDS = {
   typecheck: "node --max-old-space-size=6144 node_modules/typescript/bin/tsc --noEmit",
-  lint: "node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js --cache --cache-strategy content --cache-location node_modules/.cache/eslint/ src tests scripts vitest.config.ts vite.dashboard.config.ts vite.mocks.config.ts --max-warnings 0",
+  lint: "lint() { node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js --cache --cache-strategy content --cache-location node_modules/.cache/eslint/ --max-warnings 0 \"$@\"; }; lint src scripts vitest.config.ts vite.dashboard.config.ts vite.mocks.config.ts || exit $?; for dir in tests/*/; do lint \"$dir\" || exit $?; done; lint tests/*.ts || exit $?",
   test: "vitest run --project unit --project integration --project architecture --project perf",
   "test:coverage": "vitest run --coverage --project unit --project integration --project architecture",
   "test:perf": "vitest run --project perf --passWithNoTests=false",
@@ -78,9 +78,12 @@ describe("gate coverage", () => {
     const lint = pkg.scripts.lint ?? "";
     assert.match(lint, /--max-warnings 0/,
       "npm run lint must carry --max-warnings 0; without it new warnings accumulate invisibly");
-    for (const root of AUTHORED_ROOTS) {
+    for (const root of ["src", "scripts"] as const) {
       assert.match(lint, new RegExp(`(^|\\s)${root}(\\s|$)`), `lint must target ${root}`);
     }
+    // A new tests directory or top-level test file has to be linted without editing this command.
+    assert.match(lint, /tests\/\*\//, "lint must visit every tests directory");
+    assert.match(lint, /tests\/\*\.ts/, "lint must visit top-level test files");
     assert.doesNotMatch(
       Object.values(pkg.scripts).join("\n"),
       /--no-error-on-unmatched-pattern/,
