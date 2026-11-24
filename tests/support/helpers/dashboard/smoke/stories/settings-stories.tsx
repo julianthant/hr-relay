@@ -188,8 +188,7 @@ const DUO_KEYS = {
   unavailable: duoKeys("Duo security keys unavailable", "unavailable", 'text="Duo keys unavailable"'),
   "one-key": duoKeys("One Duo security key", WORK_KEY, 'text="Work security key"'),
   "several-keys": duoKeys("Several Duo security keys", [...WORK_KEY, { id: "b".repeat(64), shortId: "bC34de56", addedAt: "2026-09-02T12:00:00.000Z" }], 'text="Key bC34de56"'),
-  rename: { ...duoKeys("Rename a Duo security key", WORK_KEY, 'text="Rename security key"', then(click("Rename Work security key"), type("Name", "Office security key"))),
-    knownFailures: { "dialogs-share-shape": "#749" } },
+  rename: duoKeys("Rename a Duo security key", WORK_KEY, 'text="Rename security key"', then(click("Rename Work security key"), type("Name", "Office security key"))),
   "confirm-removal": duoKeys("Confirm removal of a Duo security key", WORK_KEY, 'text="Remove security key?"', click("Remove Work security key")),
   "last-key-removed": duoKeys("The last Duo security key was removed", WORK_KEY, 'text="Not set up"', then(click("Remove Work security key"), finishDuoRemoval)),
 } satisfies Record<DuoKeysStory, Story>;
