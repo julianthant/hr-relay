@@ -40,7 +40,7 @@ it.each(workbookFormats.flatMap(format => (["run", "terminal-run", "plan", "cons
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else if (table === "run_results" || table === "run_receipts") assertUpgradedRunSettlementRows(table, after[table] ?? [], before);
-      else if (table === "run_search") assert.deepEqual(after[table], rows.map(row => ({ ...row, ocr_subject_terms: null })));
+      else if (table === "run_search") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, ocr_subject_terms: null })));
       else assert.deepEqual(after[table], rows, table);
     }
   } finally { await f.close(); }
