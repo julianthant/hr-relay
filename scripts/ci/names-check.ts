@@ -198,8 +198,8 @@ function main(): void {
     const problem = titleProblem(request.title ?? "");
     if (problem) reject(problem);
   }
-  if (request.closingLine && !/(?:^|\n)Closes #[1-9][0-9]*\s*$/u.test(readFileSync(0, "utf8"))) {
-    reject(report("PR_BODY", 'pull request body must end with "Closes #<issue>"'));
+  if (request.closingLine && !/^Closes #[1-9][0-9]*[ \t]*\r?$/mu.test(readFileSync(0, "utf8"))) {
+    reject(report("PR_BODY", 'pull request body must include "Closes #<issue>" on its own line'));
   }
   if (request.worktree !== undefined) {
     const problem = worktreeProblem(request.worktree);

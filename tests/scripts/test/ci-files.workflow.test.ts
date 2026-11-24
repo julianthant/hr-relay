@@ -121,7 +121,8 @@ describe("development task push", () => {
         integration: skipped, architecture: skipped, macos: skipped, "unit-proofs": skipped,
         unit: skipped, perf: skipped, smoke: plan.smoke ? portableResults.smoke : skipped };
       const run = (result: string, outcomes: Record<string, { result: string }>) => summary(workflow, resultJob, plan,
-        { [needed]: { result, outputs: { plan: JSON.stringify(plan), results: JSON.stringify(outcomes) } } });
+        { [needed]: { result, outputs: { plan: JSON.stringify(plan), results: JSON.stringify(outcomes) } } },
+        { event_name: "pull_request", head_ref: "fix/ci-pr", event: { action: "opened" } });
       expect(run("success", positive)).toBe("success");
       for (const result of ["failure", "cancelled"]) {
         expect(run(result, positive)).toBe("failure");
@@ -191,12 +192,13 @@ describe("development pull requests", () => {
     expect(pr.split("\npermissions:\n")[0]).toContain("on:\n  pull_request:\n    branches: [development]\n"
       + "    types: [opened, edited, synchronize, reopened, ready_for_review, labeled, unlabeled]");
     expect(jobNames(pr)).toEqual(["metadata", "non-task-checks", "non-task-result"]);
-    expect(pr).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}");
-    expect(pr).toContain("cancel-in-progress: true");
+    expect(pr.split("\njobs:\n")[0]).not.toContain("concurrency:");
     expect(pr).not.toMatch(/listWorkflowRuns|listJobsForWorkflowRun|setTimeout|\bsleep\b/u);
     const metadata = job(pr, "metadata");
     expect(metadata).toMatch(/^ {4}name: PR metadata$/mu);
     expect(metadata).not.toMatch(/^\s*(?:if|needs):|npm ci|ci-plan\.ts/u);
+    expect(metadata).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}-metadata");
+    expect(metadata).toContain("cancel-in-progress: true");
     expect(metadata).toContain("PR_BODY: ${{ github.event.pull_request.body }}");
     expect(metadata).toContain('git cat-file -e "$PR_BASE_SHA^{commit}"');
     expect(metadata).toContain('|| git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"');
@@ -204,11 +206,13 @@ describe("development pull requests", () => {
     expect(metadata.indexOf("git fetch")).toBeLessThan(metadata.indexOf("allowed-workflows.ts"));
   });
 
-  it("reserves the development name for the push result on Task PRs and runs fast checks for other heads", () => {
+  it("keeps metadata-only events from superseding a non-Task fast result", () => {
     const call = job(pr, "non-task-checks");
     const result = job(pr, "non-task-result");
     expect(call).toContain("uses: ./.github/workflows/checks.yml");
     expect(call).toContain("kind: fast");
+    expect(call).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}-fast");
+    expect(call).toContain("cancel-in-progress: true");
     const condition = call.match(/^ {4}if: (.+)$/mu)?.[1];
     const resultCondition = result.match(/^ {4}if: (.+)$/mu)?.[1];
     const name = result.match(/^ {4}name: (.+)$/mu)?.[1];
@@ -217,10 +221,16 @@ describe("development pull requests", () => {
     assert.ok(name);
     expect(result).toContain("needs: non-task-checks");
     for (const head_ref of [taskBranch, "fix/ci-other", "chore/ci-other", "dependabot/npm_and_yarn/tool"]) {
-      const task = head_ref === taskBranch;
-      expect(expression(condition, {}, { head_ref })).toBe(!task);
-      expect(expression(resultCondition, {}, { head_ref })).toBe(!task);
-      expect(expression(name, {}, { head_ref })).toBe(task ? "Non-task result" : "development");
+      for (const [action, rerun] of [
+        ["opened", true], ["synchronize", true], ["reopened", true], ["ready_for_review", true],
+        ["edited", false], ["labeled", false], ["unlabeled", false],
+      ] as const) {
+        const context = { head_ref, event: { action } };
+        const fast = rerun && head_ref !== taskBranch;
+        expect(expression(condition, {}, context)).toBe(fast);
+        expect(expression(resultCondition, {}, context)).toBe(fast);
+        expect(expression(name, {}, context)).toBe(fast ? "development" : "Non-task result");
+      }
     }
   });
 
@@ -232,7 +242,9 @@ describe("development pull requests", () => {
     { head: "feature/ci", title: "CI: check metadata", body: "Closes #669", error: "branch name" },
     { head: taskBranch, title: "ci: use conventional title", body: "Closes #669", error: "pull request title" },
     { head: taskBranch, title: "CI: check metadata", body: "", error: "pull request body" },
-    { head: taskBranch, title: "CI: check metadata", body: "Closes #669\nMore text", error: "pull request body" },
+    { head: taskBranch, title: "CI: check metadata",
+      body: "Summary.\n\nCloses #669\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n", error: "" },
+    { head: taskBranch, title: "CI: check metadata", body: "This Closes #669", error: "pull request body" },
     { head: "fix/ci-other", title: "fix: conventional title", body: "", error: "pull request title" },
     { head: "chore/ci-other", title: "chore: conventional title", body: "", error: "pull request title" },
     { head: "dependabot/npm_and_yarn/tool", title: "Bump tool", body: "", error: "pull request title" },
