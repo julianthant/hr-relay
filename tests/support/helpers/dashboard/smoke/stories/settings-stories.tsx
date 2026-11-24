@@ -184,26 +184,14 @@ const breaks = (...rules: readonly StateRuleName[]): Readonly<Partial<Record<Sta
 const BREAK_SETS = {
   /** The Downloads row shows a file path. */
   PATH: breaks("no-banned-text"),
-  /** The notice sits over the page's headings. */
-  TOAST: breaks(),
-  /** The Account edit dialog draws no body padding. */
-  DIALOG_PADDING: breaks(),
-  /** DIALOG_PADDING, and Save is not the accent while the dialog shows a refusal. */
-  DIALOG_PADDING_ACCENT: breaks("primary-button-accent"),
-  /** The search field and an open notice leave controls with no keyboard stop. */
+  /** Save is not the accent while the Account edit dialog shows a refusal. */
+  ACCENT: breaks("primary-button-accent"),
+  /** The page's search field and notice leave controls with no keyboard stop. */
   FOCUS: breaks("named-and-focusable"),
   /** FOCUS, and the Downloads row shows a file path. */
   FOCUS_AND_PATH: breaks("named-and-focusable", "no-banned-text"),
-  /** FOCUS, and the Account edit dialog draws no body padding. */
-  FOCUS_DIALOG_PADDING: breaks("named-and-focusable"),
-  /** FOCUS_DIALOG_PADDING, and Save is not the accent while the dialog shows a refusal. */
-  FOCUS_DIALOG_PADDING_ACCENT: breaks("named-and-focusable", "primary-button-accent"),
-  /** FOCUS, and the toast sits over the page's headings. */
-  FOCUS_TOAST: breaks("named-and-focusable"),
-  /** PATH, and the notice or toast sits over the page's headings. */
-  PATH_TOAST: breaks("no-banned-text"),
-  /** FOCUS_AND_PATH, and the notice or toast sits over the page's headings. */
-  FOCUS_PATH_TOAST: breaks("named-and-focusable", "no-banned-text"),
+  /** FOCUS, and Save is not the accent while the dialog shows a refusal. */
+  FOCUS_ACCENT: breaks("named-and-focusable", "primary-button-accent"),
 } as const;
 
 /** The toast sits at the bottom centre over the page body, where the page draws a toolbar group or a section title. */
@@ -212,6 +200,8 @@ const TOAST_STORIES: ReadonlySet<string> = new Set([
   "settings/action/password-changed",
   "settings/action/password-not-confirmed",
   "settings/credentials/unknown",
+  "settings/notice/restart-required",
+  "settings/notice/setting-unavailable",
   "settings/runtime/restart-required",
   "settings/save-combo/replayed",
   "settings/save-combo/restart-required",
@@ -244,29 +234,25 @@ const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleNam
   "search/none": BREAK_SETS.FOCUS_AND_PATH,
   "search/results": BREAK_SETS.FOCUS_AND_PATH,
   "section/general": BREAK_SETS.PATH,
-  "credentials/unknown": BREAK_SETS.TOAST,
-  "dialog/change-password": BREAK_SETS.DIALOG_PADDING,
-  "dialog/edit-name": BREAK_SETS.DIALOG_PADDING,
-  "dialog/edit-username": BREAK_SETS.DIALOG_PADDING,
-  "dialog/change-password-refused": BREAK_SETS.DIALOG_PADDING_ACCENT,
-  "dialog/edit-name-refused": BREAK_SETS.DIALOG_PADDING_ACCENT,
-  "dialog/edit-username-refused": BREAK_SETS.DIALOG_PADDING_ACCENT,
+  "dialog/change-password-refused": BREAK_SETS.ACCENT,
+  "dialog/edit-name-refused": BREAK_SETS.ACCENT,
+  "dialog/edit-username-refused": BREAK_SETS.ACCENT,
   "notice/opened-for-check": BREAK_SETS.FOCUS,
   "search/reading": BREAK_SETS.FOCUS,
   "search/unavailable": BREAK_SETS.FOCUS,
   "action/duo-not-opened": BREAK_SETS.FOCUS,
-  "action/name-not-saved": BREAK_SETS.FOCUS_TOAST,
-  "action/password-changed": BREAK_SETS.FOCUS_TOAST,
-  "action/password-not-confirmed": BREAK_SETS.FOCUS_TOAST,
-  "notice/restart-required": BREAK_SETS.PATH_TOAST,
-  "notice/setting-unavailable": BREAK_SETS.PATH_TOAST,
-  "runtime/restart-required": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save-combo/replayed": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save-combo/restart-required": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save/applied": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save/conflict": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save/refused": BREAK_SETS.FOCUS_PATH_TOAST,
-  "save/unconfirmed": BREAK_SETS.FOCUS_PATH_TOAST,
+  "action/name-not-saved": BREAK_SETS.FOCUS,
+  "action/password-changed": BREAK_SETS.FOCUS,
+  "action/password-not-confirmed": BREAK_SETS.FOCUS,
+  "notice/restart-required": BREAK_SETS.FOCUS_AND_PATH,
+  "notice/setting-unavailable": BREAK_SETS.FOCUS_AND_PATH,
+  "runtime/restart-required": BREAK_SETS.FOCUS_AND_PATH,
+  "save-combo/replayed": BREAK_SETS.FOCUS_AND_PATH,
+  "save-combo/restart-required": BREAK_SETS.FOCUS_AND_PATH,
+  "save/applied": BREAK_SETS.FOCUS_AND_PATH,
+  "save/conflict": BREAK_SETS.FOCUS_AND_PATH,
+  "save/refused": BREAK_SETS.FOCUS_AND_PATH,
+  "save/unconfirmed": BREAK_SETS.FOCUS_AND_PATH,
 };
 const SETTINGS_TABLES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
