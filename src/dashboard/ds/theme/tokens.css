@@ -2062,5 +2062,3 @@ body[data-demo-theme],
 [data-size="sm"][role="dialog"] { --ds-dialog-title-size: 16px; --ds-dialog-title-lh: 24px; }
 [data-size="sm"][role="dialog"] > header { align-items: center; padding-bottom: var(--ds-space-base); }
 [data-size="sm"][role="dialog"] > header h2 { font-weight: 500; }
-/* :where keeps these defaults below a caller's own utility classes. */
-:where([data-size="sm"][role="dialog"] [data-slot="dialog-body"]) { padding-block: var(--ds-space-base) var(--ds-space-cozy); }
