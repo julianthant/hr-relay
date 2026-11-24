@@ -9,7 +9,7 @@ import { basename,dirname,join,relative,resolve } from "node:path";
 import { createNativeBrowserProbe,NativeBrowserClosureUnprovedError } from "../runtime/browser/native-browser.js";
 
 import { z } from "zod";
-import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema } from "../../models/config/protected-settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema,ProtectedValueSchemas } from "../../models/config/protected-settings.js";
 import { resolveConfigWithProvenance } from "../app/config/resolve.js";
 import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding-duo-provider.js";
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
@@ -486,20 +486,28 @@ export function createProfileSession(input: {
     readonly lastName: string;
     readonly email: string;
     readonly password: string;
+    readonly ucpathUsername?: string;
+    readonly ucpathPassword?: string;
     readonly createdAt: string;
   }, names: ReturnType<typeof deriveProfileNames>): OnboardingProfileSession | ProfileRefusal {
     admission.assertWritable();
     const selection = registry.read();
     if (selection.profiles.some(row => row.lifecycle === "cancelling") || readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_LOGOUT_INCOMPLETE");
     if (selection.activeProfileId !== null) return refusal("PROFILE_SIGN_UP_OTHER_SIGNED_IN");
-    const emailKey = verifiers.emailKeyFor(fields.email);
     if (readOperations().some(entry => entry.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
+    const username = ProtectedValueSchemas.ucpathUserId.safeParse(fields.ucpathUsername);
+    const password = ProtectedValueSchemas.ucpathPassword.safeParse(fields.ucpathPassword);
+    if (!username.success || !password.success || !z.email().safeParse(username.data.trim()).success || !/@ucsd\.edu$/iu.test(username.data.trim())) {
+      return refusal("PROFILE_SIGN_IN_REFUSED");
+    }
     const identified = verifiers.identify(fields.email);
     if (identified !== "unknown" && registry.read().profiles.some((row) => row.profileId === identified.profileId)) {
       return refusal("PROFILE_OTHER_EMAIL");
     }
+    const { emailKey, salt, passwordVerifier } = verifiers.derive(fields.email, fields.password);
     let operation = admission.beginProfileSignUp({
-      emailKey, firstName: names.firstName, lastName: names.lastName, createdAt: IsoInstantSchema.parse(fields.createdAt), commandFingerprint: "a".repeat(64),
+      emailKey, relay: { email: fields.email, salt, passwordVerifier },
+      firstName: names.firstName, lastName: names.lastName, createdAt: IsoInstantSchema.parse(fields.createdAt), commandFingerprint: "a".repeat(64),
     });
     if (operation.onboarding === undefined || operation.phase !== "applying" && !(operation.phase === "publishing" && operation.onboarding.finish !== undefined)) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
     if (operation.onboarding.abort !== undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
@@ -529,8 +537,8 @@ export function createProfileSession(input: {
           writeId: operation.writeId,
           updatedAt: operation.createdAt,
           entries: {
-            ucpathUserId: { set: fields.email },
-            ucpathPassword: { set: fields.password },
+            ucpathUserId: { set: username.data },
+            ucpathPassword: { set: password.data },
           },
         }));
         if (applied.state !== "applied" && !store.ownsCommandId(operation.commandId)) {
@@ -545,8 +553,8 @@ export function createProfileSession(input: {
     }
     if (store.ownsCommandId(operation.commandId)) {
       const current = store.read().entries;
-      const same = current.ucpathUserId?.value === fields.email
-        && current.ucpathPassword?.value === fields.password;
+      const same = current.ucpathUserId?.value === username.data
+        && current.ucpathPassword?.value === password.data;
       if (!same) return refusal("PROFILE_SIGN_IN_REFUSED");
     }
     return issueOnboardingSession(operation);

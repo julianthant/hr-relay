@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { ToastProvider } from "../../../../../src/dashboard/ds/ui.js";
-import { RelayLoginRows, type ProfileLoginChangeResult, type RelayLogin } from "../../../../../src/dashboard/surfaces/settings/account/account-settings.js";
+import { AccountSettings, RelayLoginRows, type ProfileLoginChangeResult, type RelayLogin } from "../../../../../src/dashboard/surfaces/settings/account/account-settings.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -206,10 +206,44 @@ describe("Settings > Account Relay login rows", () => {
     assert.equal(document.body.querySelector('[role="dialog"] [role="alert"]')?.textContent, ERROR_CATALOG.PROFILE_CURRENT_PASSWORD_REFUSED.text);
   });
 
-  it("shows an unreadable username without an edit control", async () => {
+  it("shows a missing username as shown after the next sign-in, with the pencil on", async () => {
     await mount(login({ username: undefined }));
-    assert.match(rowText(), /Not set/u);
-    assert.equal(host?.querySelector('button[aria-label="Edit username"]') === null, true);
+    assert.match(rowText(), /Shown after your next sign-in/u);
+    assert.equal(button("Edit username").disabled, false);
     assert.equal(button("Change Relay password").disabled, false);
+  });
+
+  it("ends a username change whose read-back is absent as not confirmed, not as not changed", async () => {
+    await mount(login({ changeUsername: async () => { throw new Error("reply lost"); }, readUsername: async () => undefined }));
+    await click("Edit username");
+    await type("currentPassword", "pw");
+    await type("newUsername", "new.name@ucsd.edu");
+    await click("Save");
+    await vi.waitFor(async () => { await settle(); assert.match(document.body.textContent ?? "", /Relay username change not confirmed/u); }, { timeout: 5000, interval: 50 });
+    assert.doesNotMatch(document.body.textContent ?? "", /Relay username not changed/u);
+  });
+
+  it("shows the served username on the Account page when it opens, so a changed username survives leaving and returning", async () => {
+    const values = { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: "2026-09-13T12:00:00.000Z", username: "old.name@ucsd.edu" };
+    const page = { values, details: async () => ({ state: "refused", code: "PROFILE_INITIALS_REFUSED" }) as never, readAccount: async () => ({ ...values, username: "new.name@ucsd.edu" }), login: { changePassword: async () => changed, changeUsername: async () => changed } };
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root?.render(createElement(ToastProvider, { children: createElement(AccountSettings, { page, username: values.username, ucpath: null, deleteAccount: null }) })));
+    await settle();
+    assert.match(rowText(), /Username.*new\.name@ucsd\.edu/u);
+    assert.doesNotMatch(rowText(), /old\.name@ucsd\.edu/u);
+  });
+
+  it("shows the served username on the Account page when it opens, and none when the served account has none", async () => {
+    const values = { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: "2026-09-13T12:00:00.000Z", username: "old.name@ucsd.edu" };
+    const page = { values, details: async () => ({ state: "refused", code: "PROFILE_INITIALS_REFUSED" }) as never, readAccount: async () => ({ name: values.name, initials: values.initials, timekeeper: values.timekeeper, timekeeperInitials: values.timekeeperInitials, lastSignedInAt: values.lastSignedInAt }), login: { changePassword: async () => changed, changeUsername: async () => changed } };
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root?.render(createElement(ToastProvider, { children: createElement(AccountSettings, { page, username: values.username, ucpath: null, deleteAccount: null }) })));
+    await settle();
+    assert.match(rowText(), /UsernameShown after your next sign-in/u);
+    assert.doesNotMatch(rowText(), /old\.name@ucsd\.edu/u);
   });
 });

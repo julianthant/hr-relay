@@ -96,9 +96,10 @@ export async function driveCopySignin(profile: CopyProfile, dashboard: ProfileDa
         throw new CopySigninError("copy-signin-resume-refused");
       }
       if (state.logoutIncomplete === true) throw new CopySigninError("copy-signin-logout-incomplete");
-      const { RELAY_EMAIL: email, RELAY_PASSWORD: password } = credentials();
+      const { RELAY_EMAIL: email, RELAY_PASSWORD: password, UCPATH_USERNAME: ucpathUsername, UCPATH_PASSWORD: ucpathPassword } = credentials();
       state = state.signUpRequired === true
-        ? await dashboard.signUpProfile({ email, password, firstName: profile === "development" ? "Development" : "Staging", lastName: "Operator" })
+        ? await dashboard.signUpProfile({ email, password, firstName: profile === "development" ? "Development" : "Staging", lastName: "Operator",
+          ucpathUsername, ucpathPassword })
         : await dashboard.signInProfile({ email, password });
     }
     if (state.state === "onboarding") {
