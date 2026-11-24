@@ -82,6 +82,8 @@ interface FakeStream {
 interface Harness {
   readonly streams: FakeStream[];
   readonly days: DashboardDayWire[];
+  /** The stream position each delivered day was served at. */
+  readonly cursors: (string | undefined)[];
   readonly states: SubscriptionState[];
   /** Every reconnect delay `subscribeDashboardDay` asked the scheduler for. */
   readonly scheduled: number[];
@@ -93,6 +95,7 @@ interface Harness {
 function subscribe(onPublication?: (publication: NotificationPublicationWire) => void): Harness {
   const streams: FakeStream[] = [];
   const days: DashboardDayWire[] = [];
+  const cursors: (string | undefined)[] = [];
   const states: SubscriptionState[] = [];
   const scheduled: number[] = [];
   let pending: (() => void) | undefined;
@@ -140,7 +143,7 @@ function subscribe(onPublication?: (publication: NotificationPublicationWire) =>
     transport,
     day: DAY,
     ...(onPublication === undefined ? {} : { publications: { actorId: "local-operator", onPublication } }),
-    onDay: (day) => days.push(day),
+    onDay: (day, cursor) => { days.push(day); cursors.push(cursor); },
     onState: (state) => states.push(state),
     schedule: (delayMs, run) => {
       scheduled.push(delayMs);
@@ -154,6 +157,7 @@ function subscribe(onPublication?: (publication: NotificationPublicationWire) =>
   return {
     streams,
     days,
+    cursors,
     states,
     scheduled,
     runScheduled: () => {
@@ -203,6 +207,13 @@ describe("dashboard day subscription — cursor idempotence", () => {
     assert.equal(h.days.length, 2);
     assert.equal(h.streams.length, 1);
     assert.equal(h.scheduled.length, 0);
+    h.close();
+  });
+
+  it("serves each day with the cursor it was served at: the snapshot's, then each applied change's", () => {
+    const h = liveAtCursorTwo();
+    assert.equal(h.days[1].snapshotCursor, "pc:1", "a patched day keeps its snapshot cursor");
+    assert.deepEqual(h.cursors, ["pc:1", "pc:2"]);
     h.close();
   });
 
