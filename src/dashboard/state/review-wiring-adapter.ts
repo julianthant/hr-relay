@@ -12,6 +12,7 @@ import { OcrApprovalReferenceSchema } from "../../models/workflows/ocr/result.js
 import { deriveSchemaHash } from "../../models/validation/schema-bound-value.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { correctedOcrRecord } from "../surfaces/run-detail/review/review-model.js";
+import { commandRowRevision, createRowWait } from "./run-wiring-adapter.js";
 import { checkedCommandResult } from "../client/commands/shared-commands.js";
 
 type ReviewState = Readonly<{ state: "loading" | "loaded" | "failed"; page?: ReviewPage; error?: string }>;
@@ -102,6 +103,7 @@ interface ReviewMemory {
   confirmed?: { revision: number; approved: boolean };
   discardedRecords?: readonly string[];
   binding?: DashboardCommandBinding;
+  rowWait?: ReturnType<typeof createRowWait>;
   version: number;
   listeners: Set<() => void>;
 }
@@ -133,12 +135,17 @@ export function reviewAttemptState(outcome: CommandOutcome): "uncertain" | "conf
 }
 export function useOcrReviewEditor(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined) {
   const resource = useRunReview(client, selection, binding);
+  const runId = selection.row.runId;
   const memory = useMemo(() => reviewMemory(client, selection.row.runId, binding?.authority.epoch, binding?.scope.actorId, binding?.authority.day),
     [client, selection.row.runId, binding?.authority.epoch, binding?.scope.actorId, binding?.authority.day]);
   const subscribe = useCallback((notify: () => void) => { memory.listeners.add(notify); return () => { memory.listeners.delete(notify); }; }, [memory]);
   const snapshot = useCallback(() => memory.version, [memory]);
   useSyncExternalStore(subscribe, snapshot, snapshot);
   useEffect(() => { memory.binding = binding; }, [memory, binding]);
+  const heldRevision = useRef(selection.row.rowRevision);
+  heldRevision.current = selection.row.rowRevision;
+  useEffect(() => { memory.rowWait?.observe(selection.row.rowRevision); }, [memory, selection.row.rowRevision]);
+  useEffect(() => () => memory.rowWait?.stop(), [memory]);
   const { attempt, draft } = memory;
   const page = resource.page, review = page?.ocr;
   const fresh = resource.state === "loaded" && binding?.scope.client === client && binding.authority.dayState.day.state === "loaded"
@@ -184,9 +191,13 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
     publishReview(memory);
     if (memory.listeners.size > 0) {
       memory.binding?.feedback(outcome);
-      if (confirmed) memory.binding?.authority.dayState.refresh();
+      if (confirmed) {
+        const actedOn = commandRowRevision(request, runId);
+        if (actedOn === undefined) memory.binding?.authority.dayState.refresh();
+        else (memory.rowWait ??= createRowWait(() => memory.binding?.authority.dayState.refresh())).wait(actedOn, heldRevision.current);
+      }
     }
-  }, [client, memory]);
+  }, [client, memory, runId]);
   const save = useCallback(() => {
     if (!fresh || !dirty || blocked || conflict || draft === undefined || page === undefined || review === undefined || binding === undefined
       || draft.revision !== review.revision.revision || attempt?.state === "refused") return;

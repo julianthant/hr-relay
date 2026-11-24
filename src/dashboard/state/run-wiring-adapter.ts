@@ -670,6 +670,34 @@ export function runCommandRefreshesDay(view: CommandAttemptView, type: string): 
     && (type === "resolve-workbook-row" || type === "resolve-workbook-reference-row");
 }
 
+/** How long a landed command waits for the stream to carry its row before the day is reopened. */
+export const ROW_REVISION_WAIT_MS = 5000;
+
+/** The revision a command acted on, when it names one; a command without it has no row to wait for. */
+export function commandRowRevision(envelope: DashboardCommandRequest, runId: string): number | undefined {
+  const target: unknown = "target" in envelope ? envelope.target : undefined;
+  if (typeof target !== "object" || target === null || !("runId" in target) || target.runId !== runId) return undefined;
+  const revision = "expectedVersion" in target ? target.expectedVersion : "expectedRevision" in target ? target.expectedRevision : undefined;
+  return typeof revision === "number" ? revision : undefined;
+}
+
+/** A landed command waits for its row past the revision it acted on. The row may already be there (stream first); a row that
+ * never arrives reopens the day rather than assuming the command took effect. */
+export function createRowWait(reopen: () => void, ms = ROW_REVISION_WAIT_MS) {
+  let timer: ReturnType<typeof setTimeout> | undefined, past = 0;
+  const stop = () => { clearTimeout(timer); timer = undefined; };
+  return {
+    wait(actedOn: number, held: number) {
+      stop();
+      if (held > actedOn) return;
+      past = actedOn;
+      timer = setTimeout(() => { timer = undefined; reopen(); }, ms);
+    },
+    observe(held: number) { if (timer !== undefined && held > past) stop(); },
+    stop,
+  };
+}
+
 export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
   const { row } = selection;
   const rows = binding?.authority.dayState.rows;
@@ -691,6 +719,11 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const bindingRef = useRef(binding);
   bindingRef.current = binding;
   const [command, setCommand] = useState<{ owner: GateCommandOwner; envelope: DashboardCommandRequest; state: RunCommandState; feedback?: string }>();
+  const rowWait = useMemo(() => createRowWait(() => bindingRef.current?.authority.dayState.refresh()), []);
+  const heldRevision = useRef(rowRevision);
+  heldRevision.current = rowRevision;
+  useEffect(() => { rowWait.observe(rowRevision); }, [rowWait, rowRevision]);
+  useEffect(() => () => rowWait.stop(), [rowWait]);
   const commandRef = useRef(command);
   commandRef.current = command;
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
@@ -826,7 +859,10 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         const currentBinding = bindingRef.current;
         if (currentBinding === undefined) return;
         currentBinding.feedback(outcome);
-        if (runCommandRefreshesDay(view, envelope.type)) currentBinding.authority.dayState.refresh();
+        if (!runCommandRefreshesDay(view, envelope.type)) return;
+        const actedOn = view.view === "landed" ? commandRowRevision(envelope, row.runId) : undefined;
+        if (actedOn === undefined) currentBinding.authority.dayState.refresh();
+        else rowWait.wait(actedOn, heldRevision.current);
       } };
     if (envelope.family === "start" && launch !== undefined) {
       await launch.submit(envelope, binding, correctionCommand?.get(row.runId)?.plan, options.publish);
@@ -834,7 +870,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     }
     if (replay) await binding.executor.replay(envelope.commandId, options);
     else await binding.executor.execute(envelope, options);
-  }, [binding, client, commandOwner, launch, correctionCommand, row]);
+  }, [binding, client, commandOwner, launch, correctionCommand, row, rowWait]);
   const dispatch = useCallback((envelope: DashboardCommandRequest) => {
     commandRef.current = { owner: commandOwner, envelope, state: "pending" };
     void send(envelope);

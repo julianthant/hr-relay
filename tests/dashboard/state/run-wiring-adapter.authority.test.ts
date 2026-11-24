@@ -76,7 +76,7 @@ for (const outcome of ["applied", "lost", "refused", "mismatch"] as const) it(`r
   assert.deepEqual(sent[0].target, { runId: RUN, expectedVersion: 3 });
   await act(async () => release?.());
   assert.equal(h.state?.command?.state, outcome === "applied" ? "settled" : outcome === "refused" ? "refused" : "uncertain", JSON.stringify(h.outcomes));
-  assert.equal(h.refreshed, Number(outcome === "applied"));
+  assert.equal(h.refreshed, 0);
   if (outcome === "lost") {
     assert.ok(h.state?.replay); await act(async () => h.state?.replay?.());
     assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
@@ -147,7 +147,7 @@ it("dispatches the served child retry once and checks its replacement before ref
   assert.equal(h.state?.onChildRetry, undefined);
   assert.equal(sent[0].type, "retry"); assert.deepEqual(sent[0].target, { runId: RUN, expectedVersion: 3 });
   await act(async () => release?.());
-  assert.equal(h.state?.command?.state, "settled"); assert.equal(h.refreshed, 1);
+  assert.equal(h.state?.command?.state, "settled"); assert.equal(h.refreshed, 0);
   assert.equal(h.state?.onChildRetry, undefined);
 });
 
@@ -182,7 +182,7 @@ it.each(["same-child", "changed-revision", "root-run"] as const)("reconciles a l
   await act(async () => h.state?.replay?.());
   if (sourceState === "same-child") {
     assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
-    assert.equal(h.outcomes.at(-1)?.kind, "confirmed"); assert.equal(h.state?.command, undefined); assert.equal(h.refreshed, 1);
+    assert.equal(h.outcomes.at(-1)?.kind, "confirmed"); assert.equal(h.state?.command, undefined); assert.equal(h.refreshed, 0);
   } else {
     assert.equal(sent.length, 1); assert.equal(h.state?.command?.state, "uncertain"); assert.equal(h.refreshed, 0);
   }
@@ -222,7 +222,7 @@ it("continues a reference choice inline and retains its exact uncertain command 
   await h.render(selected, 1); assert.equal(h.state?.command?.state, 'uncertain'); assert.ok(h.state?.replay);
   replay = true; await act(async () => h.state?.replay?.());
   assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
-  assert.equal(h.state?.command?.state, 'settled'); assert.equal(h.refreshed, 1);
+  assert.equal(h.state?.command?.state, 'settled'); assert.equal(h.refreshed, 0);
 });
 
 function selectionAt(revision: number): LogSelection {
@@ -870,7 +870,7 @@ describe("served parked-write Logs decisions", () => {
     const { occurrenceKeyDigest, ...writeTarget } = expected.writeTarget!;
     assert.deepEqual(request.target, { runId: RUN, expectedVersion: 3, ...writeTarget });
     assert.deepEqual(request.payload, { occurrenceKeyDigest, ...(transactionId === undefined ? {} : { transactionId }) });
-    assert.equal(h.state?.command?.state, "settled"); assert.equal(h.refreshed, 1);
+    assert.equal(h.state?.command?.state, "settled"); assert.equal(h.refreshed, 0);
   });
 
   it("sends nothing for Saved without its transaction number when the system issues one", async () => {
@@ -931,7 +931,7 @@ describe("served parked-write Logs decisions", () => {
     await h.render(selectionAt(3), 1);
     assert.equal(h.state?.command?.state, "uncertain"); assert.ok(h.state?.replay);
     replay = true; await act(async () => h.state?.replay?.());
-    assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]); assert.equal(h.state?.command?.state, "settled"); assert.equal(h.refreshed, 1);
+    assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]); assert.equal(h.state?.command?.state, "settled"); assert.equal(h.refreshed, 0);
   });
 
   it("retains an uncertain attempt but refuses to replay it after a new intent generation", async () => {
