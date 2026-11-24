@@ -5,7 +5,8 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 

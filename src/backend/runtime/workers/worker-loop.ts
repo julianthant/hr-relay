@@ -25,17 +25,19 @@ import type { NoteTimelineWriter } from "../../storage/events/note-timeline-writ
 import { emitOptionalDiagnostic } from "../../logs/debug-events.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
+import { executeClaimedRun } from "../execution/run-executor.js";
 import {
-  executeClaimedRun,
   RunControlAbortError,
   RunExecutionOutcomeSchema,
-  type ChildRunExecutor,
-  type RunArtifactProjector,
-  type RunExecutionAuthority,
   type RunExecutionOutcome,
-  type RunProviderWiring,
-  type WriteSequencer,
-} from "../execution/run-executor.js";
+} from "../execution/run-execution-outcome.js";
+import type {
+  ChildRunExecutor,
+  RunArtifactProjector,
+  RunExecutionAuthority,
+} from "../execution/run-execution-contract.js";
+import type { RunProviderWiring } from "../execution/run-execution-task.js";
+import type { WriteSequencer } from "../execution/run-execution-write.js";
 import {
   browserSessionSpanPath,
   ExecutorSpanEventSchema,
@@ -63,7 +65,7 @@ type WorkerClaimRequest = Readonly<{
 }>;
 
 export interface WorkerRunResources {
- readonly publishCheckpoint?: import("../execution/run-executor.js").RunExecutorDependencies["publishCheckpoint"];
+ readonly publishCheckpoint?: import("../execution/run-execution-contract.js").RunExecutorDependencies["publishCheckpoint"];
  readonly sessionFactory: WorkerBrowserSessionFactory;
  readonly duoCeremony: DuoCeremonyGateFactory;
  readonly taskDeadlineMs: number;
@@ -75,7 +77,7 @@ const PREFLIGHT_RETRY_CAP_MS = 60_000;
 const WORKER_REPORT_OUTCOME_LIMIT = 32;
 
 export interface WorkerLoopDependencies {
-  readonly debugEvents?: import("../execution/run-executor.js").RunExecutorDependencies["debugEvents"];
+  readonly debugEvents?: import("../execution/run-execution-contract.js").RunExecutorDependencies["debugEvents"];
  readonly resourcesForRun?: (run:RunRecord)=>WorkerRunResources;
  readonly idleCadence?: ()=>number;
   readonly workflowId: WorkflowId;
