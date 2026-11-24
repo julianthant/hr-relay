@@ -312,7 +312,11 @@ it("closing Settings mid-read retires that visit's read: a reopen reads again an
   assert.equal(controller?.editor.state === "loaded" ? controller.editor.document.revision : undefined, reopened.revision);
 });
 
-it.each(["switching sections", "closing Settings"] as const)("reads back an unknown save reply after %s and frees the command lock", async navigation => {
+it.each([
+  { navigation: "switching sections", closed: false, requestKey: 0 },
+  { navigation: "closing Settings", closed: true, requestKey: 0 },
+  { navigation: "closing Settings and changing the dashboard day", closed: true, requestKey: 1 },
+])("reads back an unknown save reply after $navigation and frees the command lock", async ({ closed, requestKey }) => {
   const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
   const commands: unknown[] = [];
   let reads = 0;
@@ -335,8 +339,8 @@ it.each(["switching sections", "closing Settings"] as const)("reads back an unkn
   function Harness({ view }: { view: string }) { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view, onSaved, onSaveProblem }); return null; }
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   cleanups.push(() => { act(() => root.unmount()); host.remove(); });
-  const render = (view?: string) => act(async () => root.render(createElement(DashboardClientProvider, { client,
-    children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: 0, feedback, children: view === undefined ? null : createElement(Harness, { view }) }) })));
+  const render = (view?: string, requestKey = 0) => act(async () => root.render(createElement(DashboardClientProvider, { client,
+    children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, feedback, children: view === undefined ? null : createElement(Harness, { view }) }) })));
   const label = () => controller?.leaves.find(leaf => leaf.path === "actor.label")?.settingsValue;
   await render("general");
   await vi.waitFor(() => assert.equal(controller?.locked, false));
@@ -345,15 +349,15 @@ it.each(["switching sections", "closing Settings"] as const)("reads back an unkn
   await act(async () => { controller?.update("actor.label", "Sent from General"); });
   await act(async () => { controller?.submit(); });
   await vi.waitFor(() => assert.equal(commands.length, 1));
-  await render(navigation === "closing Settings" ? undefined : "paths");
+  await render(closed ? undefined : "paths", requestKey);
   const readsBeforeReply = reads;
   await act(async () => { lose(); });
-  if (navigation === "closing Settings") {
+  if (closed) {
     await vi.waitFor(() => assert.equal(reads, readsBeforeReply + 1, "the unknown reply started a readback while Settings was closed"), { timeout: 5000, interval: 50 });
     assert.equal(feedback.mock.calls.length, 0);
     assert.equal(onSaved.mock.calls.length, 0);
     assert.equal(onSaveProblem.mock.calls.length, 0);
-    await render("general");
+    await render("general", requestKey);
   }
   await vi.waitFor(() => { assert.equal(label(), "Sent from General", "the read-back shows the stored write"); assert.equal(controller?.dirtyCount, 0); assert.equal(controller?.locked, false); }, { timeout: 5000, interval: 50 });
   reply = request => Promise.resolve(authority.execute(request));

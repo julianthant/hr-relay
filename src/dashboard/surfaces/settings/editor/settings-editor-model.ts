@@ -179,7 +179,9 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       const outcome = await binding.executor.execute(command, options);
       if (commandSaveState(outcome).state !== "unconfirmed") return;
       // Release the command reservation even if the editor that sent it has closed.
-      const served = await readBack(() => refresh(false), document => ordinaryReadbackConfirms(document, command.payload.patch));
+      const served = await readBack<EditableSettingsWire | undefined>(() => binding.executor.isCurrentAuthority(binding.scope) ? refresh(false) : Promise.resolve(undefined),
+        document => document === undefined || ordinaryReadbackConfirms(document, command.payload.patch));
+      if (!binding.executor.isCurrentAuthority(binding.scope)) return;
       const landed = served !== undefined && ordinaryReadbackConfirms(served, command.payload.patch);
       binding.executor.resolve(command.commandId, landed, binding.scope);
       if (commandLife.current !== commandOwner) return;
