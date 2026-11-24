@@ -2,7 +2,8 @@
 import type { Page, TestInfo } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
-import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../src/models/dashboard/subscription.js";
+import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope, type StreamRow } from "../../src/models/dashboard/subscription.js";
+import { CommandResultSchema } from "../../src/rules/commands/commands.js";
 import type { DashboardPage } from "../support/helpers/dashboard/smoke/dashboard-page.js";
 import type { SeededServer } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { SEEDED_DAY, SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
@@ -394,8 +395,10 @@ const SETTING_SAVES: Record<string, readonly string[]> = {
   Animations: ["POST /api/v1/commands"],
   "Prevent sleep while running": ["POST /api/v1/commands"],
 };
-const settingsRows = (received: readonly Received[]): number => received.filter(({ envelope }) =>
-  (envelope.type === "change" || envelope.type === "snapshot") && envelope.rows.some(row => row.model === "settings")).length;
+type SettingsRow = Extract<StreamRow, { model: "settings" }>;
+const settingsRowsOf = (received: readonly Received[]): SettingsRow[] => received.flatMap(({ envelope }) =>
+  envelope.type === "change" || envelope.type === "snapshot" ? envelope.rows.filter((row): row is SettingsRow => row.model === "settings") : []);
+const settingsRows = (received: readonly Received[]): number => settingsRowsOf(received).length;
 
 for (const [label, expected] of Object.entries(SETTING_SAVES)) {
   settingsTest(`a ${label} save: ${String(expected.length)} request(s), one settings row, none for a refusal`, async ({ dashboard, page, seeded }) => {
@@ -412,6 +415,7 @@ for (const [label, expected] of Object.entries(SETTING_SAVES)) {
     seen.length = 0;
     const before = stream.received.length;
     const checked = await toggle.isChecked();
+    const reply = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/commands");
 
     await toggle.click({ force: true });
 
@@ -419,7 +423,14 @@ for (const [label, expected] of Object.entries(SETTING_SAVES)) {
     await quiet(page, seen, 2_000);
     await streamQuiet(page, stream.received);
     expect([...seen].sort(), "requests after the press").toEqual(expected);
-    expect(settingsRows(stream.received.slice(before)), "one commit, one settings row").toBe(1);
+    const rows = settingsRowsOf(stream.received.slice(before));
+    expect(rows, "one commit, one settings row").toHaveLength(1);
+    const result = CommandResultSchema.parse(await (await reply).json());
+    expect(result.state).toBe("applied");
+    const row = rows[0]?.value;
+    expect(row?.state === "available" ? { revision: row.value.revision, settingsFingerprint: row.value.settingsFingerprint } : row,
+      "the row carries the reply's revision and fingerprint").toEqual(result.state === "applied"
+      ? { revision: result.settingsRevision, settingsFingerprint: result.settingsFingerprint } : undefined);
 
     const refusedAt = stream.received.length;
     const patch = { "preferences.preventSleepWhileRunning": { set: true } };
