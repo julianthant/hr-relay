@@ -1,4 +1,4 @@
-import { Bell, Mail, MailOpen, X } from "lucide-react";
+import { Bell, Mail, MailOpen } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button, EmptyState, IconButton, Popover, PopoverContent, PopoverTrigger, SegmentedChoice, Skeleton, Tooltip, dsFocus, dsIcon } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
@@ -7,7 +7,7 @@ import { LoadingRegion } from "../shared/loading/loading.js";
 import { itemContext, itemDay, notificationAge, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
 import "./notifications-popover.css";
 
-type RowHandlers = Readonly<{ onOpen: (item: NotificationItem) => void; onControl: (id: string, control: NotificationControl) => void; onDismiss: (id: string) => void; canAct: (id: string) => boolean }>;
+type RowHandlers = Readonly<{ onOpen: (item: NotificationItem) => void; onControl: (id: string, control: NotificationControl) => void; canAct: (id: string) => boolean }>;
 
 function Age({ item }: { item: NotificationItem }) {
   const at = item.at;
@@ -19,16 +19,17 @@ function RowAction({ label, icon, onClick, disabled }: { label: string; icon: Re
   return <Tooltip side="bottom" content={label}><IconButton label={label} title="" size="xs" icon={icon} onClick={onClick} disabled={disabled} /></Tooltip>;
 }
 
-/** One row on a fixed grid: text left, a fixed side column right. The side column holds the time on the title line and the
- * actions below it, always mounted and only faded in on hover or focus, so nothing in the row moves. */
+/** One row: the title line ends in a fixed slot that shows the time, or the read toggle while the row is hovered or focused,
+ * so nothing moves. The lines below run the full width, one line each. */
 function NoticeRow({ item, handlers }: { item: NotificationItem; handlers: RowHandlers }) {
-  const enabled = handlers.canAct(item.id), context = itemContext(item);
+  const enabled = handlers.canAct(item.id), context = item.kind === "storage" ? "" : itemContext(item);
   const text = <>
     <span className="notice-head">
       <span aria-hidden className="notice-dot" />
       <span className="notice-title">{item.title}</span>
       {item.count !== undefined && <span className="notice-count"><span className="sr-only">{item.count} times</span><span aria-hidden>{item.count > 999 ? "999+" : item.count}</span></span>}
       {!item.read && <span className="sr-only">Unread</span>}
+      <Age item={item} />
     </span>
     {context !== "" && <span className="notice-context">{context}</span>}
     <span className="notice-detail">{item.gone ? "This run was deleted." : item.detail}</span>
@@ -36,14 +37,9 @@ function NoticeRow({ item, handlers }: { item: NotificationItem; handlers: RowHa
   return <li className="notice-row" data-unread={!item.read || undefined} data-gone={item.gone || undefined}>
     {item.gone ? <div className="notice-main">{text}</div>
       : <button type="button" className={cn("notice-main", dsFocus)} onClick={() => handlers.onOpen(item)} disabled={!enabled}>{text}</button>}
-    <span className="notice-side">
-      <Age item={item} />
-      {item.gone ? <Button size="sm" variant="secondary" onClick={() => handlers.onDismiss(item.id)} disabled={!enabled}>Dismiss</Button>
-        : <span className="notice-actions">
-          <RowAction label={item.read ? "Mark as unread" : "Mark as read"} icon={item.read ? <Mail aria-hidden className={dsIcon.md} /> : <MailOpen aria-hidden className={dsIcon.md} />}
-            onClick={() => handlers.onControl(item.id, item.read ? "unread" : "read")} disabled={!enabled} />
-          <RowAction label="Dismiss" icon={<X aria-hidden className={dsIcon.md} />} onClick={() => handlers.onDismiss(item.id)} disabled={!enabled} />
-        </span>}
+    <span className="notice-action">
+      <RowAction label={item.read ? "Mark as unread" : "Mark as read"} icon={item.read ? <Mail aria-hidden className={dsIcon.md} /> : <MailOpen aria-hidden className={dsIcon.md} />}
+        onClick={() => handlers.onControl(item.id, item.read ? "unread" : "read")} disabled={!enabled} />
     </span>
   </li>;
 }

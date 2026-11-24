@@ -85,27 +85,27 @@ export const notificationsReady = (...items: readonly NotificationItem[]): Notif
 export const MIXED_NOTICES: NotificationsState = notificationsReady(NOTICE_BY_KIND.storage, NOTICE_BY_KIND.chatgpt, NOTICE_BY_TONE.warning, NOTICE_BY_TONE.danger,
   { ...NOTICE_BY_TONE.info, day: "Today" }, { ...NOTICE_BY_TONE.positive, day: "Yesterday", age: "1 days ago" });
 
-/** Notices for the bell popover stories, shaped like a real week: repeats folded with a count, storage with hundreds, long text, one deleted run. */
+/** Notices for the bell popover stories, shaped like a real week: repeats folded with a count, storage with hundreds, a long name, one deleted run. */
 const notice = (id: string, item: Partial<NotificationItem> & Pick<NotificationItem, "title" | "detail" | "tone">): NotificationItem =>
   ({ ...NOTICE_BASE, id, kind: "run", priority: item.tone === "danger" || item.tone === "warning", action: "Open log", destination: { kind: "run", runId: run(4), day: "2026-08-26" }, ...item });
 export const POPOVER_FAILED = notice("popover-failed", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10555001", detail: "CRM sign-in failed.", tone: "danger", count: 3, age: "12 min ago" });
 export const POPOVER_WAITING = notice("popover-waiting", { title: "Run waiting", workflow: "Onboarding", subject: "Morrow, Bea", detail: "Waiting for hire review.", tone: "warning", age: "34 min ago" });
 export const POPOVER_DONE = notice("popover-done", { title: "Run completed", workflow: "Separations", subject: "Separation 5017", detail: "Completed and verified.", tone: "positive", read: true, day: "Today", age: "2 hr ago" });
-export const POPOVER_STORAGE = notice("popover-storage", { kind: "storage", title: "Storage needs attention", detail: "Relay could not save everything. Reopen Relay before starting more work.", tone: "warning", count: 213, action: "", age: "4 days ago" });
-export const POPOVER_GONE = notice("popover-gone", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10101010", detail: "The browser screenshot could not be captured or saved.", tone: "danger", read: true, gone: true, day: "Monday", age: "8 days ago" });
-export const POPOVER_LONG = notice("popover-long", { title: "Run failed", workflow: "Separations", subject: "Featherstonehaugh-Montgomery, Alexandria Josephine · EID 10554120",
-  detail: "Kronos could not verify the timecard. Review it, then enter the confirmed separation dates manually. The Kuali separation document stays open until the dates are confirmed, and nothing was written to UCPath.", tone: "danger", age: "59 min ago" });
+export const POPOVER_STORAGE = notice("popover-storage", { kind: "storage", title: "Storage needs attention", detail: "Relay couldn't save everything.", tone: "warning", count: 213, action: "", age: "4 days ago" });
+export const POPOVER_GONE = notice("popover-gone", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10101010", detail: "Couldn't save the browser screenshot.", tone: "danger", read: true, gone: true, day: "Monday", age: "8 days ago" });
+export const POPOVER_LONG = notice("popover-long", { title: "Run failed", workflow: "Separations", subject: "Featherstonehaugh-Montgomery, Alexandria Josephine Wilhelmina · EID 10554120",
+  detail: "Kronos couldn't verify the timecard.", tone: "danger", age: "59 min ago" });
 export const POPOVER_FEW: NotificationsState = notificationsReady(POPOVER_FAILED, POPOVER_WAITING, POPOVER_DONE);
 export const POPOVER_MANY: NotificationsState = notificationsReady(
   POPOVER_FAILED, POPOVER_WAITING,
-  notice("many-1", { title: "Run failed", workflow: "Separations", subject: "Separation 5015", detail: "The Kuali separation document could not be opened.", tone: "danger", count: 4, age: "1 hr ago" }),
+  notice("many-1", { title: "Run failed", workflow: "Separations", subject: "Separation 5015", detail: "Couldn't open the Kuali document.", tone: "danger", count: 4, age: "1 hr ago" }),
   notice("many-2", { title: "Run failed", workflow: "Work-Study", subject: "EID 10777012", detail: "UCPath sign-in failed.", tone: "danger", count: 2, age: "3 hr ago" }),
   POPOVER_STORAGE,
   POPOVER_DONE,
   notice("many-3", { title: "Run completed", workflow: "Person Lookup", subject: "EID 10333015", detail: "Completed and verified.", tone: "positive", read: true, day: "Today", age: "5 hr ago" }),
-  notice("many-4", { title: "Run failed", workflow: "Onboarding", subject: "Okafor, Ines", detail: "CRM hire data could not be verified.", tone: "danger", read: true, count: 5, day: "Yesterday", age: "1 day ago" }),
+  notice("many-4", { title: "Run failed", workflow: "Onboarding", subject: "Okafor, Ines", detail: "Couldn't verify CRM hire data.", tone: "danger", read: true, count: 5, day: "Yesterday", age: "1 day ago" }),
   notice("many-5", { title: "Run completed", workflow: "Onboarding", subject: "Morrow, Bea", detail: "Completed and verified.", tone: "positive", read: true, day: "Yesterday", age: "1 day ago" }),
-  notice("many-6", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10221844", detail: "The browser screenshot could not be captured or saved.", tone: "danger", read: true, count: 12, day: "Friday", age: "4 days ago" }),
+  notice("many-6", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10221844", detail: "Couldn't save the browser screenshot.", tone: "danger", read: true, count: 12, day: "Friday", age: "4 days ago" }),
   notice("many-7", { title: "Run waiting", workflow: "Onboarding", subject: "Okafor, Ines", detail: "Waiting for hire review.", tone: "warning", read: true, day: "Friday", age: "4 days ago" }),
   POPOVER_GONE,
 );

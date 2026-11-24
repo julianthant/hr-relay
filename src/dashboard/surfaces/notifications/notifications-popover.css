@@ -1,4 +1,4 @@
-/* The bell's popover: a fixed header over one scrolling list. Rows keep one grid whatever is hovered, and long text wraps: nothing is cut off. */
+/* The bell's popover: a fixed header over one scrolling list. Rows keep one shape whatever is hovered; every line is one line and a long one truncates. */
 .notice-bell { position: relative; }
 .notice-bell[aria-expanded="true"] { background: color-mix(in srgb, var(--ui-info) 16%, transparent); color: var(--ui-info); }
 .notice-bell-count {
@@ -16,27 +16,28 @@
 .notice-group-label { margin: 0; padding: 12px 12px 4px; font-size: 12px; font-weight: 400; line-height: 16px; color: var(--ds-fg-muted); }
 .notice-list { margin: 0; padding: 0; list-style: none; }
 
-.notice-row { display: grid; grid-template-columns: minmax(0, 1fr) 84px; border-radius: 8px; }
+.notice-row { position: relative; border-radius: 8px; }
 .notice-row:hover, .notice-row:focus-within { background: var(--ds-surface-3); }
 .notice-main {
-  display: flex; min-width: 0; flex-direction: column; gap: 2px; box-sizing: border-box; padding: 8px 0 10px 12px;
+  display: flex; width: 100%; min-width: 0; flex-direction: column; gap: 2px; box-sizing: border-box; padding: 8px 12px 10px;
   border: 0; border-radius: 8px; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer;
 }
 .notice-main:disabled, div.notice-main { cursor: default; }
-.notice-head { display: flex; min-width: 0; align-items: flex-start; gap: 8px; }
-.notice-dot { width: 6px; height: 6px; flex: none; margin-top: 7px; border-radius: 9999px; background: transparent; }
+.notice-head { display: flex; min-width: 0; height: 20px; align-items: center; gap: 8px; }
+.notice-dot { width: 6px; height: 6px; flex: none; border-radius: 9999px; background: transparent; }
 .notice-row[data-unread] .notice-dot { background: var(--ui-info); }
-.notice-title { min-width: 0; overflow-wrap: anywhere; font-size: 13px; font-weight: 400; line-height: 20px; color: var(--ds-fg-secondary); }
+.notice-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; line-height: 20px; color: var(--ds-fg-secondary); }
 .notice-row[data-unread] .notice-title { font-weight: 500; color: var(--ds-fg); }
-.notice-count { box-sizing: border-box; min-width: 20px; height: 18px; flex: none; margin-top: 1px; padding: 0 6px; border-radius: 9999px; background: color-mix(in srgb, var(--ds-fg) 10%, transparent); color: var(--ds-fg-secondary); font-size: 11px; font-weight: 500; line-height: 18px; font-variant-numeric: tabular-nums; text-align: center; }
-.notice-context, .notice-detail { padding-left: 14px; overflow-wrap: anywhere; font-size: 12px; line-height: 16px; color: var(--ds-fg-muted); }
+.notice-count { box-sizing: border-box; min-width: 20px; height: 18px; flex: none; padding: 0 6px; border-radius: 9999px; background: color-mix(in srgb, var(--ds-fg) 10%, transparent); color: var(--ds-fg-secondary); font-size: 11px; font-weight: 500; line-height: 18px; font-variant-numeric: tabular-nums; text-align: center; }
+.notice-context, .notice-detail { overflow: hidden; padding-left: 14px; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; color: var(--ds-fg-muted); }
 .notice-row[data-unread] .notice-context { color: var(--ds-fg-secondary); }
 .notice-row[data-gone] .notice-title, .notice-row[data-gone] .notice-context { color: var(--ds-fg-muted); }
 
-.notice-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: 8px 8px 8px 0; }
-.notice-age { height: 20px; white-space: nowrap; font-size: 12px; line-height: 20px; font-variant-numeric: tabular-nums; color: var(--ds-fg-muted); }
-.notice-actions { display: flex; gap: 2px; margin-right: -4px; opacity: 0; }
-.notice-row:hover .notice-actions, .notice-row:focus-within .notice-actions { opacity: 1; }
+/* The time and the read toggle share one slot at the end of the title line. */
+.notice-age { flex: none; margin-left: auto; padding-left: 8px; white-space: nowrap; font-size: 12px; line-height: 20px; font-variant-numeric: tabular-nums; color: var(--ds-fg-muted); }
+.notice-action { position: absolute; top: 6px; right: 8px; opacity: 0; }
+.notice-row:hover .notice-action, .notice-row:focus-within .notice-action { opacity: 1; }
+.notice-row:hover .notice-age, .notice-row:focus-within .notice-age { visibility: hidden; }
 
 .notice-loading { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 .notice-message { margin: 0; padding: 16px 12px; font-size: 13px; line-height: 20px; color: var(--ds-fg-secondary); }

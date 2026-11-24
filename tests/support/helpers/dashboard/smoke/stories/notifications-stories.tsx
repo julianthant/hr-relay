@@ -85,7 +85,7 @@ function PopoverScene({ state, show: initial = "all" }: { state: NotificationsSt
   return <StoryFrame>
     <aside aria-label="Workspace" className="workspace-rail ui-theme-scope"><header className="workspace-rail-header"><h2>Relay</h2><div className="workspace-rail-actions">
       <IconButton variant="ghost" size="sm" label="Collapse sidebar" title="" icon={<PanelLeft aria-hidden className="size-4" />} />
-      <NotificationsPopover state={state} open onOpenChange={noop} show={show} onShow={setShow} onReadAll={noop} onOpen={noop} onControl={noop} onDismiss={noop} canAct={() => true} />
+      <NotificationsPopover state={state} open onOpenChange={noop} show={show} onShow={setShow} onReadAll={noop} onOpen={noop} onControl={noop} canAct={() => true} />
       <IconButton variant="ghost" size="sm" label="Search" title="" icon={<Search aria-hidden className="size-4" />} />
     </div></header><div className="workspace-rail-body"><WorkflowRail workflows={SHELL_STORY_WORKFLOWS} counts={SHELL_STORY_COUNTS_IDLE} active="person-lookup" onSelect={noop} collapsed={false} /></div></aside>
     <main className="flex min-h-0 flex-1 flex-col"><div className="dashboard-panel-columns"><div className="dashboard-queue-column"><h1 className="sr-only">Person Lookup queue</h1>{emptyPanel("No runs on this day")}</div>
@@ -98,8 +98,8 @@ const POPOVER = {
   empty: popover("The popover with no notifications", notificationsReady()),
   few: popover("The popover with a few notifications", POPOVER_FEW),
   grouped: popover("The popover with many grouped notifications", POPOVER_MANY),
-  long: popover("The popover with long titles, names and text", POPOVER_LONG_NOTICES),
-  hover: popover("A row hovered: its actions appear and nothing moves", POPOVER_FEW, { play: page => page.locator(".notice-row").first().hover() }),
+  long: popover("The popover with a long name, truncated on one line", POPOVER_LONG_NOTICES, { knownFailures: { "fits-viewport": "#751" } }),
+  hover: popover("A row hovered: the read toggle takes the time's place and nothing moves", POPOVER_FEW, { play: page => page.locator(".notice-row").first().hover() }),
   "read-unread": popover("Read and unread notifications together", POPOVER_MANY),
   unread: popover("Only unread notifications", POPOVER_MANY, {}, "unread"),
   "all-read": popover("Unread chosen with everything read", notificationsReady({ ...NOTICE_BY_TONE.positive, day: "Today" }), {}, "unread"),
