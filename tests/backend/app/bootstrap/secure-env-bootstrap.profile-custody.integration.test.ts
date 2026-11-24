@@ -16,12 +16,16 @@ for (const uncertain of [false, true]) it(`bootstrap ${uncertain ? "retains" : "
   const cause = new Error("synthetic runtime refusal");
   const failure = uncertain ? new RuntimeCustodyUncertainError([cause]) : cause;
   try {
+    let supplied = false;
     await assert.rejects(runSecureEnvironmentBootstrap(["cli", "storage", "doctor"], {
+      // Unproved closure keeps this listener. It must be the fixture port, which close() releases.
+      acquireLifetimeLock: async () => { supplied = true; return f.lifetime; },
       acquireAdmission: () => f.machine,
       runCli: async admission => { assert.equal(admission, f.machine); throw failure; },
     }), error => error === failure);
     if (uncertain) { f.machine.assertLive(); f.admission.assertLive(); }
     else assert.throws(() => f.machine.assertLive());
+    assert.equal(supplied, true);
   } finally { await f.close(); }
 });
 
