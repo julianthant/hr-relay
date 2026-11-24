@@ -114,9 +114,4 @@ const COMMAND_REFUSED = {
   "inspect-intake": rejected("inspect-intake"), "enqueue-intake-manifest": rejected("enqueue-intake-manifest"),
 } satisfies Record<IntakeCommand, Story>;
 
-/** The one rule intake still breaks: the design system's tabs hold the keyboard walk's tab stops (the tab list takes a Tab stop and forwards it, and an arrow key activates the next tab and swaps the panel under the walk), tracked against the umbrella ticket. The two stories without tabs pass it. */
-const AUDIT_TICKET = "#532";
-const TABLESS = new Set(["intake/resource/loading", "intake/resource/failed"]);
-
-export const INTAKE_STORIES = defineSurface("intake", { resource: RESOURCE, session: SESSION, tab: TAB, manifest: MANIFEST, rerun: RERUN, problem: PROBLEM, pending: PENDING, refused: COMMAND_REFUSED })
-  .map(entry => TABLESS.has(entry.id) ? entry : { ...entry, story: { ...entry.story, knownFailures: { "named-and-focusable": AUDIT_TICKET } } });
+export const INTAKE_STORIES = defineSurface("intake", { resource: RESOURCE, session: SESSION, tab: TAB, manifest: MANIFEST, rerun: RERUN, problem: PROBLEM, pending: PENDING, refused: COMMAND_REFUSED });
