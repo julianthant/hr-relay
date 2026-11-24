@@ -166,13 +166,46 @@ describe("an invalid run panel in a day envelope", () => {
     assert.equal(h.states.at(-1), "live");
   });
 
-  it("refuses the open run's panel for a row that names no run, and still stops on an invalid day", () => {
+  it("isolates an invalid panel of a run the stream has not selected: nothing is held and the queue stays live", async () => {
+    const { key, panel } = await servedPanel();
+    const foreign = { model: "run-panel", key, value: { ...panel, logs: { ...panel.logs, runId: RUN_B } } };
+    for (const selected of [undefined, RUN_A]) {
+      const h = harness(selected);
+      h.opened[0]?.push(hello("pc:5"));
+      h.opened[0]?.push({ ...snapshot("pc:5", []), rows: [foreign] });
+      assert.equal(h.states.includes("stopped"), false);
+      assert.equal(h.order.length, 1, "the day is applied");
+      assert.equal(h.rows.runPanel(key), undefined, "a row for a run that is not open is never held");
+    }
+  });
+
+  const refusedValue = { state: "refused", error: { state: "error", code: "RUN_NOT_FOUND", message: "gone", retryable: false } };
+  const STRICT: Record<string, unknown> = {
+    "a null row": null,
+    "a row that is not an object": "run-panel",
+    "an unknown model": { model: "run-timeline", key: RUN_A, value: refusedValue },
+    "a missing model": { key: RUN_A, value: refusedValue },
+    "an invalid run id": { model: "run-panel", key: "not-a-run", value: refusedValue },
+    "a missing run id": { model: "run-panel", value: refusedValue },
+    "an unknown panel state": { model: "run-panel", key: RUN_A, value: { state: "pending" } },
+    "a missing value": { model: "run-panel", key: RUN_A },
+    "an extra row field": { model: "run-panel", key: RUN_A, value: refusedValue, extra: true },
+  };
+  for (const [name, row] of Object.entries(STRICT)) for (const selected of [RUN_A, RUN_B, undefined]) {
+    it(`stops the stream on ${name}, with ${selected === RUN_A ? "that run" : selected === undefined ? "no run" : "another run"} selected`, () => {
+      const h = harness(selected);
+      h.opened[0]?.push(hello("pc:5"));
+      h.opened[0]?.push({ ...snapshot("pc:5", []), rows: [row] });
+      assert.equal(h.states.at(-1), "stopped", "a row that is not an identifiable panel is a protocol error");
+      assert.equal(h.order.length, 0, "its envelope applies nothing");
+      assert.equal(h.rows.runPanel(RUN_A), undefined);
+    });
+  }
+
+  it("still stops on an invalid day beside a valid panel", () => {
     const h = harness(RUN_A);
     h.opened[0]?.push(hello("pc:5"));
-    h.opened[0]?.push({ ...snapshot("pc:5", []), rows: [{ model: "run-panel", value: { state: "available" } }] });
-    assert.equal(h.rows.runPanel(RUN_A)?.state, "refused");
-    assert.equal(h.order.length, 1);
-    h.opened[0]?.push({ ...snapshot("pc:6", []), payload: { day: DAY } });
+    h.opened[0]?.push({ ...snapshot("pc:5", [refusal(RUN_A, "first")]), payload: { day: DAY } });
     assert.equal(h.states.at(-1), "stopped", "the day envelope itself is still validated");
   });
 });

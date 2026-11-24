@@ -1165,3 +1165,42 @@ describe("failure resolution from the decision card", () => {
     assert.equal(sent.length, 1);
   });
 });
+
+describe("a panel that arrives before its day admits", () => {
+  it("offers no gate answer until the day is admitted, and holds a decision made through a handler kept from before", async () => {
+    const gate = servedGate(fixtures.ONE_CLICK);
+    const selected = selectionAt(3), sent: DashboardCommandRequest[] = [], confirmations: (() => void)[] = [];
+    const h = await harness(gateClient(gate, selected, sent), (_pending, send) => confirmations.push(send));
+    await h.render(selected);
+    const kept = h.state?.onDecision; assert.ok(kept, "with the day admitted the decision is offered");
+    // The stream published the panel; the day it came with is not admitted yet, so Logs shows the kept, display-only row.
+    h.day = { state: "loading" }; await h.render(selected);
+    assert.equal(h.state?.state, "loaded", "the matching panel is shown");
+    assert.equal(h.state?.onDecision, undefined); assert.equal(h.state?.onChildRetry, undefined);
+    assert.equal(h.state?.onBatchMemberRetry, undefined); assert.equal(h.state?.onUcpathDecision, undefined);
+    const approve = gate.decision?.options[0]; assert.ok(approve);
+    await act(async () => kept(gate.gateRef, approve, {}));
+    assert.equal(confirmations.length, 0, "a kept handler opens no confirmation"); assert.equal(sent.length, 0);
+    h.day = { state: "loaded", value: FIXTURE_DAY_WIRE }; await h.render(selected);
+    assert.ok(h.state?.onDecision, "the admitted day offers the decision");
+    await act(async () => h.state?.onDecision?.(gate.gateRef, approve, {}));
+    assert.equal(confirmations.length, 1);
+    // A confirmation opened under the admitted day sends nothing once the day is loading again.
+    h.day = { state: "loading" }; await h.render(selected);
+    await act(async () => { confirmations[0](); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.deepEqual(sent, []); assert.equal(h.outcomes.at(-1)?.kind, "refused");
+  });
+
+  it("offers no parked-write answer or UCPath check until the day is admitted", async () => {
+    const selected = selectionAt(3), sent: DashboardCommandRequest[] = [], confirmations: (() => void)[] = [];
+    const write = parkedAt();
+    const h = await harness(parkedClient(selected, sent, { write }).client, (_pending, send) => confirmations.push(send));
+    h.day = { state: "loading" }; await h.render(selected);
+    assert.equal(h.state?.state, "loaded");
+    assert.equal(h.state?.onDecision, undefined); assert.equal(h.state?.onUcpathDecision, undefined);
+    h.day = { state: "loaded", value: FIXTURE_DAY_WIRE }; await h.render(selected);
+    assert.ok(h.state?.onDecision);
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options.find(({ id }) => id === "not-saved")!, {}));
+    assert.equal(confirmations.length, 1); assert.equal(sent.length, 0);
+  });
+});

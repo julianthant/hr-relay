@@ -83,22 +83,25 @@ function streamFailure(reason: unknown): DashboardClientError {
 }
 
 const RowsCarrierSchema = z.looseObject({ rows: z.array(z.unknown()) });
-const PanelRowKeySchema = z.looseObject({ model: z.literal("run-panel"), key: RunIdSchema });
+/** A row that is identifiably one run's panel: the row's own shape, model and key are valid and its value says which
+ * panel state it is. Only what that value carries may then be wrong. */
+const IdentifiedPanelRowSchema = z.strictObject({ model: z.literal("run-panel"), key: RunIdSchema,
+  value: z.looseObject({ state: z.enum(["available", "refused"]) }) });
 
-/** An envelope whose invalid run-panel rows are replaced by a refusal of that panel, so one bad panel is shown as
- * refused in its own view while the day part of the envelope is still validated and applied. A row that names no
- * run refuses the open run's panel; with no run open it is dropped, as the store would drop it. */
-function isolateInvalidPanels(raw: unknown, openRun: string | undefined): unknown {
+/** An envelope in which each identifiable run panel whose value fails validation is replaced by a refusal of that
+ * panel: the bad panel is shown as refused in its own view while the day part is still validated and applied.
+ * Any other invalid row — not an object, another model, a bad key or panel state — is left for the envelope's own
+ * validation to refuse as a protocol error. */
+function isolateInvalidPanels(raw: unknown): unknown {
   const carrier = RowsCarrierSchema.safeParse(raw);
   if (!carrier.success) return raw;
-  const rows = carrier.data.rows.flatMap((row): unknown[] => {
-    if (StreamRowSchema.safeParse(row).success) return [row];
-    const named = PanelRowKeySchema.safeParse(row);
-    const key = named.success ? named.data.key : openRun;
-    if (key === undefined) return [];
-    const refused: StreamRow = StreamRowSchema.parse({ model: "run-panel", key, value: { state: "refused",
+  const rows = carrier.data.rows.map((row): unknown => {
+    if (StreamRowSchema.safeParse(row).success) return row;
+    const identified = IdentifiedPanelRowSchema.safeParse(row);
+    if (!identified.success) return row;
+    const refused: StreamRow = StreamRowSchema.parse({ model: "run-panel", key: identified.data.key, value: { state: "refused",
       error: { state: "error", code: "LOGS_IDENTITY_REFUSED", message: "run panel failed validation", retryable: false } } });
-    return [refused];
+    return refused;
   });
   return { ...carrier.data, rows };
 }
@@ -183,7 +186,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
         if (!currentStream(identity, stream)) return;
         let envelope: DashboardStreamEnvelope;
         try {
-          envelope = DashboardStreamEnvelopeSchema.parse(isolateInvalidPanels(JSON.parse(message.data), run));
+          envelope = DashboardStreamEnvelopeSchema.parse(isolateInvalidPanels(JSON.parse(message.data)));
         } catch (error) {
           stop(protocolError(`malformed stream envelope: ${error instanceof Error ? error.message : String(error)}`));
           return;

@@ -839,9 +839,14 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     commandRef.current = { owner: commandOwner, envelope, state: "pending" };
     void send(envelope);
   }, [commandOwner, send]);
-  // A panel ahead of the queue row is shown, but every answer is checked against the row's revision: none is offered, and a
-  // confirmation opened while they agreed sends nothing once they differ.
-  const answerable = value.state === "loaded" && value.snapshot?.detail.rowRevision.valueOf() === row.rowRevision.valueOf();
+  // A decision needs the admitted day and a panel level with its queue row. While the day is loading, Logs shows a kept,
+  // display-only row, and the stream delivers a panel before the day it came with. A panel ahead of the queue row is
+  // shown, but every answer is checked against the row's revision. In either case no answer is offered, and a
+  // confirmation opened earlier sends nothing.
+  const answerable = value.state === "loaded" && value.snapshot?.detail.rowRevision.valueOf() === row.rowRevision.valueOf()
+    && binding?.authority.dayState.day.state === "loaded";
+  const currentAnswerable = useRef(answerable);
+  currentAnswerable.current = answerable;
   const dispatchIfDecisionCurrent = useRef<(envelope: DashboardCommandRequest) => void>(() => undefined);
   dispatchIfDecisionCurrent.current = (envelope: DashboardCommandRequest) => {
     if (mounted.current && currentCommandOwner.current === commandOwner && answerable && matchesDecision(envelope)
@@ -869,7 +874,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   /** The served option this answer names, or undefined when the decision no longer serves it. */
   const servedOption = (decision: Readonly<{ options: readonly DecisionOptionWire[] }> | undefined, option: DecisionOptionWire) => decision?.options.find(candidate => candidate.id === option.id);
   const onDecision = useCallback((id: string, picked: DecisionOptionWire, answer: LogDecisionAnswer) => {
-    if (value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) return;
+    if (!currentAnswerable.current || value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) return;
     const workbooks = value.snapshot.sections.find(section => section.section === "workbook-writes");
     const reference = workbooks?.section === "workbook-writes" ? workbooks.payload.referenceChoices?.find(choice => workbookReferenceChoiceId(choice) === id) : undefined;
     if (reference !== undefined) {
@@ -944,7 +949,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
           if (currentCommandOwner.current !== commandOwner) return;
           const envelope = DashboardCommandRequestSchema.parse({ ...launch.prepareFinal(plan), source: "run-detail" });
           correctionCommand?.set(row.runId, { envelope, sourceVersion: row.rowRevision, source: served.failureId, plan });
-          if (currentDecisionMatches.current(envelope)) showConfirm(envelope, true);
+          if (currentAnswerable.current && currentDecisionMatches.current(envelope)) showConfirm(envelope, true);
         }).catch(() => {
           if (currentCommandOwner.current !== commandOwner) return;
           binding.feedback({ kind: "refused", commandId: crypto.randomUUID(), reason: "not-attempted",
@@ -1009,7 +1014,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         if (currentCommandOwner.current !== commandOwner) return;
         const envelope = DashboardCommandRequestSchema.parse({ ...launch.prepareFinal(plan), source: "run-detail" });
         correctionCommand?.set(row.runId, { envelope, sourceVersion: row.rowRevision, source: gate.gateRef, plan });
-        if (!currentDecisionMatches.current(envelope)) return;
+        if (!currentAnswerable.current || !currentDecisionMatches.current(envelope)) return;
         confirm({ action: { ...descriptor, label: correction.confirm.confirmLabel, confirm: correction.confirm }, target: { runId: row.runId, expectedVersion: row.rowRevision },
           subject: row.title, traceId: String(row.traceId), workflowLabel: selection.workflowLabel, source: "run-detail", commandId: envelope.commandId,
           requestedAt: envelope.requestedAt, triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null },
