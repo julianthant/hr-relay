@@ -16,10 +16,6 @@ const bar = (title: string, data: SessionsViewState, { open = true, operations }
   ready: open ? BODY : '[aria-label="Session Panel"]',
   render: () => <StoryFrame><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS}
     {...(operations === undefined ? {} : { operations })} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame>, ...extra });
-/** The Add workers control stays shown and switched off whenever the bar cannot act, with nothing to choose. */
-const DEAD_ADD = { knownFailures: { "no-dead-disabled-control": "#532" } } as const;
-/** A focusable browser chip (a nickname or a served reason) carries no accessible name of its own. */
-const UNNAMED_CONTROL = { knownFailures: { "named-and-focusable": "#532" } } as const;
 const ready = (...workers: readonly SessionWorker[]): SessionsViewState => ({ state: "ready", workers });
 
 const worker = (title: string, state: SessionWorkerState): Story => bar(title, ready(SESSION_WORKER_BY_STATE[state]));
@@ -34,14 +30,14 @@ const browser = (title: string, state: SessionBrowserState): Story => bar(title,
 const BROWSER = {
   ready: browser("A browser signed in and idle", "ready"), active: browser("A browser in use by the step", "active"), starting: browser("A browser opening", "starting"),
   unopened: browser("A browser the worker has not opened", "unopened"), closed: browser("A browser that was closed", "closed"),
-  unavailable: { ...browser("A browser Relay cannot read, with its reason", "unavailable"), ...UNNAMED_CONTROL }, failed: browser("A browser whose sign-in failed", "failed"),
+  unavailable: { ...browser("A browser Relay cannot read, with its reason", "unavailable") }, failed: browser("A browser whose sign-in failed", "failed"),
   "needs-duo": browser("A browser waiting on Duo", "needs-duo"), "signed-out": browser("A browser signed out", "signed-out"),
 } satisfies Record<SessionBrowserState, Story>;
 
 const BAR = {
   ready: bar("The bar open on a running worker", ready(SESSION_WORKER_BY_STATE.running)),
-  loading: bar("The bar while sessions load", { state: "loading" }, {}, { slowFetch: { region: '[aria-label="Loading sessions"]' }, ...DEAD_ADD }),
-  unavailable: bar("The bar when sessions cannot be read", { state: "unavailable", reason: "Session information is unavailable." }, {}, { ready: '[role="alert"]', ...DEAD_ADD }),
+  loading: bar("The bar while sessions load", { state: "loading" }, {}, { slowFetch: { region: '[aria-label="Loading sessions"]' } }),
+  unavailable: bar("The bar when sessions cannot be read", { state: "unavailable", reason: "Session information is unavailable." }, {}, { ready: '[role="alert"]' }),
 } satisfies Record<SessionsViewState["state"], Story>;
 
 const OPERATION = {
@@ -57,8 +53,8 @@ const COMBINATION = {
   attention: bar("Waiting, paused and failed workers side by side", ready(SESSION_WORKER_BY_STATE.waiting, SESSION_WORKER_BY_STATE.paused, SESSION_WORKER_BY_STATE.failed)),
   mixed: bar("Cards for busy workers, rows for quiet idle ones", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE)),
   "all-states": bar("One worker in every state", ready(...Object.values(SESSION_WORKER_BY_STATE))),
-  stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }, {}, DEAD_ADD),
-  wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER), {}, UNNAMED_CONTROL),
+  stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }),
+  wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER)),
   "add-workers": bar("The Add workers dialog", ready(SESSION_WORKER_BY_STATE.running), {}, { ready: '[role="dialog"]',
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } }),
 } satisfies Record<string, Story>;
