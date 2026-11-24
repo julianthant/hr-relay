@@ -18,12 +18,12 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     h.world.probeResults.push({ ...absence, evidence: { ...absence.evidence,
       idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", "10812346|fixture-termination") } });
     assert.equal((await h.execute(other)).state, "done");
-    await mount(h, source); await press("Continue"); await press("Confirm"); assert.equal(field("Employee ID").value, "10812345");
+    await mount(h, source); await press("Continue"); await press("Confirm"); await press("Back"); assert.equal(field("Employee ID").value, "10812345");
     await fill(field("Employee ID"), "10812346"); await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Start dry run");
     assert.ok(document.querySelector('[aria-label="Repeat transaction warning"]'));
     assert.equal(h.finalCommands.length, 0); assert.equal(h.queueRoots.length, 2);
     const first = StartPlanRequestSchema.parse(h.submissions.at(-1)); await press("Confirm");
-    assert.ok(document.querySelector('[aria-label="Values"]')); await press("Continue"); await press("Start dry run");
+    await press("Start dry run");
     const second = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.notEqual(first.warningAcknowledgment, second.warningAcknowledgment); assert.deepEqual(second.submissions[0], { eid: "10812346" });
     assert.equal(typeof second.warningAcknowledgment, "string", "the confirmed warning rides the second plan"); assert.equal(h.finalCommands.length, 1, "a clean plan with the confirmed warning submits at once");

@@ -68,10 +68,10 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
         ? { ...step, control: { ...step.control, forces: ["filing"] } } : step) };
       assert.deepEqual(defaultRerunSteps(response.snapshot, dependent), ["reading", "checking", "filing"]);
     }
-    await mount(h, h.fresh(source)); assert.equal(checkbox("Read employee").checked, true);
+    await mount(h, h.fresh(source)); assert.ok(document.querySelector('[aria-label="Values"]')); assert.match(text(), /The earlier run did not (?:get far enough to record|record) this\./u);
+    await press("Continue"); assert.equal(checkbox("Read employee").checked, true);
     assert.equal(checkbox("File transaction").checked, true);
     assert.equal(checkbox("Check employee").checked, true);
-    await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]')); assert.match(text(), /The earlier run did not (?:get far enough to record|record) this\./u);
   });
 
 });
