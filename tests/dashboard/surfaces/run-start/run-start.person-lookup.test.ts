@@ -32,7 +32,6 @@ describe("served Person Lookup Run and Rerun", () => {
       previewRerunWarnings: async options => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(options).source, warnings: [], warningDigest: h.HASH } }),
       submitStartPlan: async options => { request = options; const parsed = StartPlanRequestSchema.parse(options); return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
     }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
-    await dialog.press("Continue");
     assert.equal(dialog.typedInput().value, ""); assert.equal(dialog.disabled("Continue"), true); assert.equal(request, undefined);
     await dialog.type("Example, Person, 01/15/2000, x"); await dialog.press("Continue"); await dialog.press("Start run");
     assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [{ mode: "match", lastName: "Example", firstName: "Person", dob: "01/15/2000", crmCheck: true, includeCrmDates: false }]);
@@ -48,7 +47,7 @@ describe("served Person Lookup Run and Rerun", () => {
       previewRerunWarnings: async options => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(options).source, warnings: [], warningDigest: h.HASH } }),
       submitStartPlan: async options => { request = options; const parsed = StartPlanRequestSchema.parse(options); return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
     }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
-    await dialog.press("Continue"); assert.equal(dialog.typedInput().value, "10000001");
+    assert.equal(dialog.typedInput().value, "10000001");
     await dialog.press("Continue"); await dialog.press("Start run");
     assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [{ mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true, includeCrmDates: false }]);
   });
@@ -116,8 +115,7 @@ describe("served Person Lookup Run and Rerun", () => {
     const dialog = await h.openDialog(h.stubClient({ rerunValues: async () => ({ state: "available", snapshot }) }),
       { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
     assert.match(dialog.text(), /This input is protected and cannot be copied/u);
-    await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Steps");
+    assert.equal(dialog.stage(), "Input");
     assert.equal(document.querySelector("textarea") === null, true);
   });
   it("blocks a cleared rerun input before planning and accepts fresh canonical replacement input", async () => {
@@ -131,10 +129,10 @@ describe("served Person Lookup Run and Rerun", () => {
       previewRerunWarnings: async options => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(options).source, warnings: [], warningDigest: h.HASH } }),
       submitStartPlan: async options => { planned.push(options); const parsed = StartPlanRequestSchema.parse(options); return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
     }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
-    await dialog.press("Continue"); await dialog.type("");
+    await dialog.type("");
     assert.equal(dialog.disabled("Continue"), true);
     await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Values"); assert.equal(planned.length, 0);
+    assert.equal(dialog.stage(), "Input"); assert.equal(planned.length, 0);
     await dialog.type("10000002");
     assert.equal(dialog.disabled("Continue"), false);
     await dialog.press("Continue"); await dialog.press("Start run");
@@ -157,7 +155,6 @@ describe("served Person Lookup Run and Rerun", () => {
       previewRerunWarnings: async options => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(options).source, warnings: [], warningDigest: h.HASH } }),
       submitStartPlan: async options => { request = options; const parsed = StartPlanRequestSchema.parse(options); return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), ...(firstPlan-- > 0 && input.mode === "match" ? { omittedSteps: ["kuali-finalization"] } : {}), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
     }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
-    await dialog.press("Continue");
     assert.equal(dialog.typedInput().value, input.mode === "match" ? "Example, Person, x, [masked]" : "emplId" in input ? input.emplId : "Example, Person");
     assert.equal(document.body.innerHTML.includes("123456789"), false);
     await dialog.press("Continue"); await dialog.press("Start run");
@@ -167,7 +164,7 @@ describe("served Person Lookup Run and Rerun", () => {
     assert.equal(dialog.text().includes("123456789"), false);
     assert.deepEqual(snapshot.sourceInput, { state: "available", value: input });
     if (input.mode === "match") {
-      await dialog.press("Back"); await dialog.press("Back");
+      await dialog.press("Back");
       await dialog.type("Changed, Person, x, [masked]");
       assert.equal(dialog.disabled("Continue"), true);
       await dialog.type("Example, Person, x, [masked]");

@@ -43,8 +43,8 @@ describe("automatic worker forms", () => {
           rerun: { source: request.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: request.warningAcknowledgment } });
       },
     }), { workflows: [workflow], panelWorkflowId: workflow.workflowId, rerunSource: source });
-    await dialog.press("Continue"); await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Options");
+    await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Start");
     assert.equal(document.querySelector('button[aria-label$=" Workers"]') === null, true, "Workers picker must be absent");
     await dialog.press("Start run");
     assert.ok(submitted !== null && typeof submitted === "object");

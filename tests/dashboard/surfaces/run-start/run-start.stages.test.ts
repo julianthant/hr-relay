@@ -12,18 +12,17 @@ const stageNames = (): string[] => [...document.body.querySelectorAll('ol[aria-l
   .map(item => (item.textContent ?? "").replace(/^\d+/u, "").trim());
 
 describe("the Run dialog has no Confirm stage", () => {
-  it("walks Start from Input to Options and a clean plan starts at once", async () => {
+  it("walks Start from Input to Start and a clean plan starts at once", async () => {
     const plans: unknown[] = [];
     const dialog = await h.openDialog(h.stubClient({
       submitStartPlan: async request => { plans.push(request); return h.planResponse(PLAN_ID); },
       executeCommand: async () => h.APPLIED,
     }));
-    assert.deepEqual(stageNames(), ["Input", "Options", "Checks"]);
+    assert.deepEqual(stageNames(), ["Input", "Start"]);
     await dialog.type(h.TYPED);
     await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Options");
+    assert.equal(dialog.stage(), "Start");
     assert.ok(!dialog.text().includes("Preview plan"));
-    assert.ok(!dialog.text().includes("Enter to start"), "Start lives on Checks, not Options");
     await dialog.press("Start run");
     assert.equal(plans.length, 1);
     assert.deepEqual(h.closed, [false], "a clean plan submits in the same press");
@@ -38,7 +37,7 @@ describe("the Run dialog has no Confirm stage", () => {
     await dialog.type(`${h.TYPED}\n10873699`);
     await dialog.press("Continue");
     await dialog.press("Start run");
-    assert.equal(dialog.stage(), "Checks", "a stopped plan stays on the last stage");
+    assert.equal(dialog.stage(), "Start", "a stopped plan stays on the last stage");
     assert.match(dialog.text(), /Relay could not use .+\./);
     assert.ok(!dialog.text().includes("No such person."), "the server message is not shown");
     assert.ok(!dialog.text().includes(versionTag(h.WORKFLOWS[0].version)), "the version line is retired");

@@ -34,15 +34,15 @@ const current = (page: Page) => dialog(page).locator('[aria-current="step"]');
 const at = (page: Page, stage: string) => current(page).filter({ hasText: stage }).waitFor();
 
 /** Where each kind of dialog goes by Continue, in order. */
-const START_PATH = ["Input", "Options", "Checks"] as const;
-const RERUN_PATH = ["Steps", "Values", "Options", "Checks"] as const;
+const START_PATH = ["Input", "Start"] as const;
+const RERUN_PATH = ["Input", "Start"] as const;
 /** Types the input of a start, then presses Continue until `stage` is current. */
 async function reach(page: Page, stage: RunStartStage, rerun: boolean): Promise<void> {
   const path: readonly string[] = rerun ? RERUN_PATH : START_PATH;
   if (!rerun && stage !== "Input") await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED);
   await at(page, path[0] ?? "");
   for (const next of path.slice(1)) {
-    if (stage === "Input" || stage === "Steps") return;
+    if (stage === "Input") return;
     if (path.indexOf(next) > path.indexOf(stage)) return;
     await press(page, "Continue");
     await at(page, next);
@@ -71,52 +71,51 @@ const stage = scene;
 
 const STAGE = {
   Input: stage("Input, nothing typed", () => runDialogClient(), "Input"),
-  Options: stage("Options, input typed", () => runDialogClient(), "Options"),
-  Steps: stage("A rerun's Steps, each step as the source ended", rerunClient(), "Steps", { rerun: true }),
-  Values: stage("A rerun's Values, the input the source ran on", rerunClient(), "Values", { rerun: true }),
-  Warning: stage("A rerun's warning that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }), "Steps", { rerun: true,
+  RerunInput: stage("A rerun's Input, the values the source ran on", rerunClient(), "Input", { rerun: true }),
+  Warning: stage("A rerun's warning that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }), "Input", { rerun: true,
     then: async page => { await press(page, "Continue"); await dialog(page).getByText("already submitted").waitFor(); } }),
-  Checks: stage("Checks, every check ready", reading(PASS), "Checks"),
-} satisfies Record<RunStartStage, Story>;
+  Start: stage("Start, options, steps and checks, every check ready", reading(PASS), "Start"),
+  RerunStart: stage("A rerun's Start, each step as the source ended", rerunClient(), "Start", { rerun: true }),
+} satisfies Record<string, Story>;
 
 const CHECKS = {
-  checking: stage("Checks still being read", () => runDialogClient({ readPreflight: never }), "Checks", { slowFetch: { region: '[aria-label="Checking"]' } }),
-  ready: stage("Checks with a warning", reading(PASS, WARN), "Checks"),
-  unavailable: stage("Checks that could not be read", () => runDialogClient({ readPreflight: async () => ({ state: "unavailable", reason: "The runtime is restarting." }) }), "Checks"),
+  checking: stage("Checks still being read", () => runDialogClient({ readPreflight: never }), "Start", { slowFetch: { region: '[aria-label="Checking"]' } }),
+  ready: stage("Checks with a warning", reading(PASS, WARN), "Start"),
+  unavailable: stage("Checks that could not be read", () => runDialogClient({ readPreflight: async () => ({ state: "unavailable", reason: "The runtime is restarting." }) }), "Start"),
 } satisfies Record<RunChecksState["state"], Story>;
 
 const CHECK_COMBINATION = {
-  "fixable-failure": stage("A failed check with a Fix button", reading(PASS, FIXABLE), "Checks"),
-  "unfixable-failure": stage("A failed check with no Fix button", reading(UNFIXABLE, PASS), "Checks"),
-  "failure-and-warning": stage("A failed check and a warning together", reading(FIXABLE, WARN, PASS), "Checks"),
+  "fixable-failure": stage("A failed check with a Fix button", reading(PASS, FIXABLE), "Start"),
+  "unfixable-failure": stage("A failed check with no Fix button", reading(UNFIXABLE, PASS), "Start"),
+  "failure-and-warning": stage("A failed check and a warning together", reading(FIXABLE, WARN, PASS), "Start"),
 } satisfies Record<string, Story>;
 
 const RERUN_LOAD = {
-  loading: stage("A rerun reading its source", () => runDialogClient({ rerunValues: never }), "Steps", { rerun: true }),
-  failed: stage("A rerun whose source could not be read", () => runDialogClient({ rerunValues: async () => { throw new Error("The source run could not be read."); } }), "Steps", { rerun: true }),
-  ready: stage("A rerun with its source read", rerunClient(), "Steps", { rerun: true }),
+  loading: stage("A rerun reading its source", () => runDialogClient({ rerunValues: never }), "Input", { rerun: true }),
+  failed: stage("A rerun whose source could not be read", () => runDialogClient({ rerunValues: async () => { throw new Error("The source run could not be read."); } }), "Input", { rerun: true }),
+  ready: stage("A rerun with its source read", rerunClient(), "Input", { rerun: true }),
 } satisfies Record<RerunLoad["state"], Story>;
 
 const ACTIVITY = {
-  planning: stage("Start pressed, the plan being built", planning({ submitStartPlan: never }), "Checks", { then: start }),
-  "checking-warnings": stage("A rerun looking for repeat warnings", rerunClient({ previewRerunWarnings: never }), "Steps", { rerun: true, then: page => press(page, "Continue") }),
-  submitting: stage("The plan sent, waiting on the answer", planning({ executeCommand: never }), "Checks", { then: start }),
+  planning: stage("Start pressed, the plan being built", planning({ submitStartPlan: never }), "Start", { then: start }),
+  "checking-warnings": stage("A rerun looking for repeat warnings", rerunClient({ previewRerunWarnings: never }), "Input", { rerun: true, then: page => press(page, "Continue") }),
+  submitting: stage("The plan sent, waiting on the answer", planning({ executeCommand: never }), "Start", { then: start }),
   replanning: stage("An expired plan being built again", planning({ executeCommand: async () => CommandResultSchema.parse({ state: "rejected", commandId: "3a000000-0000-4000-8000-000000000003",
-    code: "RUN_START_PLAN_EXPIRED", message: "The plan expired." }), submitStartPlan: never }), "Checks", { then: start }),
+    code: "RUN_START_PLAN_EXPIRED", message: "The plan expired." }), submitStartPlan: never }), "Start", { then: start }),
 } satisfies Record<Exclude<LaunchActivity["kind"], "idle">, Story>;
 
 const REFUSAL_COPY: Readonly<Record<StartRefusalCode, string>> = {
   "input-invalid": "The employee number is not valid.", "active-run-exists": "A run for this person is already going.",
   "dry-run-unsupported": "This workflow cannot do a dry run.", "preflight-failed": "A check failed.", "capability-unavailable": "This workflow is not available.",
 };
-const refusal = (code: StartRefusalCode): Story => stage(REFUSAL_COPY[code], planning({ submitStartPlan: async () => ({ ...runDialogPlan(), planned: [], refused: [{ entry: 1, code, message: REFUSAL_COPY[code] }] }) }), "Checks", { then: start });
+const refusal = (code: StartRefusalCode): Story => stage(REFUSAL_COPY[code], planning({ submitStartPlan: async () => ({ ...runDialogPlan(), planned: [], refused: [{ entry: 1, code, message: REFUSAL_COPY[code] }] }) }), "Start", { then: start });
 const REFUSAL = {
   "input-invalid": refusal("input-invalid"), "active-run-exists": refusal("active-run-exists"), "dry-run-unsupported": refusal("dry-run-unsupported"),
   "preflight-failed": refusal("preflight-failed"), "capability-unavailable": refusal("capability-unavailable"),
 } satisfies Record<StartRefusalCode, Story>;
 
 const ANSWER = {
-  conflict: stage("The start answered with a version conflict", planning({ executeCommand: async () => RUN_DIALOG_CONFLICT }), "Checks", { then: start }),
+  conflict: stage("The start answered with a version conflict", planning({ executeCommand: async () => RUN_DIALOG_CONFLICT }), "Start", { then: start }),
 } satisfies Record<string, Story>;
 
 const RETAINED_KEY = `hrauto:run-launch:v1:${RUN_DIALOG_ACTOR}`;
@@ -134,9 +133,9 @@ const RECOVERY = {
 /** The Options stage's controls, each pressed once away from its default. */
 type OptionsControl = "priority" | "dry-run" | "browser-mode";
 const OPTIONS = {
-  priority: stage("Options with Priority switched off", () => runDialogClient(), "Options", { then: page => dialog(page).getByRole("switch", { name: "Priority" }).click() }),
-  "dry-run": stage("Options with Dry run switched on", () => runDialogClient(), "Options", { catalog: RUN_DIALOG_DRY_RUN_CATALOG, then: page => dialog(page).getByRole("switch", { name: "Dry run" }).click() }),
-  "browser-mode": stage("Options with the browser hidden", () => runDialogClient(), "Options", { then: page => dialog(page).getByText("Hidden", { exact: true }).click() }),
+  priority: stage("Options with Priority switched off", () => runDialogClient(), "Start", { then: page => dialog(page).getByRole("switch", { name: "Priority" }).click() }),
+  "dry-run": stage("Options with Dry run switched on", () => runDialogClient(), "Start", { catalog: RUN_DIALOG_DRY_RUN_CATALOG, then: page => dialog(page).getByRole("switch", { name: "Dry run" }).click() }),
+  "browser-mode": stage("Options with the browser hidden", () => runDialogClient(), "Start", { then: page => dialog(page).getByText("Hidden", { exact: true }).click() }),
 } satisfies Record<OptionsControl, Story>;
 
 /** What the operator sees of the PDFs a PDF workflow takes, from none chosen to a refused pick. */
@@ -154,8 +153,8 @@ const PDF = {
   "wrong-type": pdfStage("A file that is not a PDF", {}, "Input", afterAttach(pdfFile("notes.txt"))),
   refused: pdfStage("A PDF the server side refuses (empty)", {}, "Input", afterAttach(pdfFile("empty.pdf", ""))),
   "upload-failed": pdfStage("A PDF whose upload failed", { uploadOcrSource: async () => { throw new DashboardClientError({ kind: "network", message: "offline", retryable: true }); } }, "Input", afterAttach(pdfFile("first.pdf"))),
-  "choice-unpicked": pdfStage("Options, the required form choice not made", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Continue"); await at(page, "Options"); }),
-  "choice-picked": pdfStage("Options, OCR off and a form chosen", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Continue"); await at(page, "Options");
+  "choice-unpicked": pdfStage("Options, the required form choice not made", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Continue"); await at(page, "Start"); }),
+  "choice-picked": pdfStage("Options, OCR off and a form chosen", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Continue"); await at(page, "Start");
     await dialog(page).getByRole("switch", { name: "Read with OCR" }).click(); await dialog(page).getByText("I-9", { exact: true }).click(); }),
 } satisfies Record<PdfInputState, Story>;
 

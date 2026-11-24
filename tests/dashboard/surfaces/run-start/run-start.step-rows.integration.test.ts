@@ -29,8 +29,7 @@ async function openSteps(workflow: RunStartWorkflow, typed: string, client = h.s
   await dialog.type(typed);
   await dialog.press("Continue");
   await dialog.press("Customize steps");
-  await dialog.press("Continue");
-  assert.equal(dialog.stage(), "Steps");
+  assert.equal(dialog.stage(), "Start");
   return dialog;
 }
 const alerts = () => [...document.body.querySelectorAll('[role="alert"]')].map(node => (node.textContent ?? "").trim());
@@ -93,21 +92,21 @@ describe("the Steps stage draws the served rows", () => {
     assert.match(dialog.text(), /4 of 4 included/u);
   });
 
-  it("shows one alert, the first failure, and keeps Continue and Start off until every field is valid", async () => {
+  it("shows one alert, the first failure, and keeps Start off until every field is valid", async () => {
     const requests: unknown[] = [];
     const dialog = await openSteps(served("person-lookup"), h.TYPED, h.stubClient({ submitStartPlan: async input => { requests.push(input); return planOmitting(["crm-dates"]); } }));
     await dialog.press("Read CRM dates");
     assert.deepEqual(alerts(), ["Enter employment date for read CRM dates."]);
-    assert.equal(dialog.disabled("Continue"), true);
+    assert.equal(dialog.disabled("Start run"), true);
     await typeDate("Employment date", "2020-01-15");
     assert.deepEqual(alerts(), ["Employment date must be a valid date in MM/DD/YYYY format."]);
     await typeDate("Employment date", "01/15/2020");
     assert.deepEqual(alerts(), ["Enter oath date for read CRM dates."]);
-    assert.equal(dialog.disabled("Continue"), true);
+    assert.equal(dialog.disabled("Start run"), true);
     assert.equal(requests.length, 0);
     await typeDate("Oath date", "02/20/2020");
     assert.deepEqual(alerts(), []);
-    assert.equal(dialog.disabled("Continue"), false);
+    assert.equal(dialog.disabled("Start run"), false);
     await dialog.press("Start run");
     const request = submitted(requests);
     assert.equal(request.selectedStepKeys?.includes("crm-dates"), false);
@@ -137,12 +136,12 @@ describe("the Steps stage draws the served rows", () => {
     await dialog.press("Read CRM dates");
     await typeDate("Employment date", "01/15/2020");
     await typeDate("Oath date", "02/20/2020");
-    await dialog.press("Back"); await dialog.press("Back");
+    await dialog.press("Back");
     await dialog.type(`${h.TYPED}; 10000001`);
-    await dialog.press("Continue"); await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Steps");
+    await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Start");
     assert.deepEqual(alerts(), ["Typed values fit one person; 2 are entered."]);
-    assert.equal(dialog.disabled("Continue"), true);
+    assert.equal(dialog.disabled("Start run"), true);
   });
 
   it("offers Enter manually on a locked row, and sends the typed facts for a step that still runs", async () => {
@@ -212,13 +211,15 @@ describe("Rerun draws the same rows", () => {
       submitStartPlan: async input => { requests.push(input); return StartPlanWireSchema.parse({ ...planOmitting(["crm-dates"]), rerun: { source: StartPlanRequestSchema.parse(input).rerunSource, warnings: [], warningDigest: h.HASH } }); },
     }), { workflows: [person], panelWorkflowId: "person-lookup", rerunSource: { runId: source.source.runId, expectedVersion: source.source.version } });
     for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    await dialog.press("Continue");
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
     return dialog;
   }
-  const finish = async (dialog: Awaited<ReturnType<typeof openRerun>>) => { await dialog.press("Continue"); await dialog.press("Start run"); };
+  const finish = async (dialog: Awaited<ReturnType<typeof openRerun>>) => { await dialog.press("Start run"); };
 
   it("starts with every row included and a badge from the source run", async () => {
     const dialog = await openRerun(snapshot(), []);
-    assert.equal(dialog.stage(), "Steps");
+    assert.equal(dialog.stage(), "Start");
     assert.match(dialog.text(), /4 of 4 included/u);
     assert.equal(rowNamed("Search for person").querySelector("[data-status]")?.getAttribute("data-status"), "completed");
     assert.equal(rowNamed("Cross-check identity").querySelector("[data-status]")?.getAttribute("data-status"), "skipped");

@@ -29,9 +29,10 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     h.registerDescriptor(launchDescriptor("reject-active", { fingerprint: "b".repeat(64),
       ...(change === "version" ? { version: 2 } : {}), ...(change === "steps" ? { stepPrefix: "current-" } : {}) }));
     await mount(h, source);
-    for (const label of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(label).matches(":checked"), true);
+    assert.equal(field("Employee ID").value, "10812345");
     await press("Continue"); assert.match(text(), /already submitted/u);
-    await press("Confirm"); assert.equal(field("Employee ID").value, "10812345");
+    await press("Confirm");
+    for (const label of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(label).matches(":checked"), true);
   });
   it("selects completed steps again after a fingerprint-only change on a failed source", async () => {
     const h = await setup(); const queued = h.start(h.proposal());
@@ -40,16 +41,16 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const source = h.fresh(queued);
     h.registerDescriptor(launchDescriptor("reject-active", { fingerprint: "b".repeat(64) }));
     await mount(h, source);
+    assert.equal(field("Employee ID").value, "10812345");
+    await press("Continue");
     for (const label of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(label).matches(":checked"), true);
-    await press("Continue"); assert.equal(field("Employee ID").value, "10812345");
   });
   it("submits an earlier source as a new current run with repeat consent and fresh evidence", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
     h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));
     await mount(h, source); await press("Continue");
     assert.match(text(), /already submitted/u); assert.equal(h.finalCommands.length, 0);
-    await press("Confirm"); assert.equal(field("Employee ID").value, "10812345");
-    await press("Continue"); await act(async () => checkbox("Dry run").click());
+    await press("Confirm"); await act(async () => checkbox("Dry run").click());
     await press("Start dry run");
     const submitted = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.ok(submitted.warningAcknowledgment); assert.deepEqual(submitted.submissions, [{ eid: "10812345" }]);
@@ -68,15 +69,15 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(sourceBytes(h, source), bytes);
   });
 
-  it("Enter acknowledges the repeat warning, advances to Values and enqueues nothing", async () => {
+  it("Enter acknowledges the repeat warning, advances to Start and enqueues nothing", async () => {
     const h = await setup(); const source = await h.completeSource();
     h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));
     await mount(h, source); await press("Continue");
     assert.match(text(), /already submitted/u); assert.match(text(), /Enter to continue/u);
     await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
-    assert.equal(field("Employee ID").value, "10812345"); assert.doesNotMatch(text(), /already submitted/u);
+    assert.doesNotMatch(text(), /already submitted/u);
     assert.equal(h.finalCommands.length, 0);
-    await press("Continue"); await act(async () => checkbox("Dry run").click());
+    await act(async () => checkbox("Dry run").click());
     assert.equal(h.submissions.length, 0); assert.equal(h.finalCommands.length, 0);
     await press("Start dry run");
     assert.ok(StartPlanRequestSchema.parse(h.submissions.at(-1)).warningAcknowledgment);
@@ -89,25 +90,25 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       dryRun: false, selectedStepKeys });
     const queued = h.start(plan); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
     assert.equal((await h.execute(queued)).state, "done"); const source = h.fresh(queued);
-    await mount(h, source); await press("Continue"); await press("Confirm"); await press("Continue");
+    await mount(h, source); await press("Continue"); await press("Confirm");
     assert.equal(document.querySelector('button[aria-label$=" Workers"]') === null, true);
     await press("Start live run");
     assert.equal(Object.hasOwn(StartPlanRequestSchema.parse(h.submissions.at(-1)), "workers"), false);
   });
-  it("warns before Values exist, Cancel returns to Steps and Confirm only advances; final dry run executes fresh work", async () => {
+  it("warns before Start, Cancel returns to Input and Confirm only advances; final dry run executes fresh work", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
     await mount(h, source);
     assert.equal(document.activeElement?.getAttribute("aria-label"), "Close");
-    for (const name of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(name).matches(":checked"), true);
-    assert.match(text(), /Completed/u);
-    const before = h.authoritySnapshot(); await press("Continue");
-    assert.match(text(), /already submitted/u); assert.match(text(), /UCPath/u); assert.equal(document.querySelector('[aria-label="Required"]') === null, true); assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
-    await press("Cancel"); assert.match(text(), /3 of 3 included/u); assert.equal(h.authoritySnapshot(), before);
-    await press("Continue"); await press("Confirm"); assert.ok(document.querySelector('[aria-label="Values"]'));
-    assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
     assert.equal(field("Employee ID").value, "10812345"); await press("Copy Previous transaction");
     await fill(field("Previous transaction"), "edited memo");
-    await press("Continue"); await act(async () => checkbox("Dry run").click());
+    const before = h.authoritySnapshot(); await press("Continue");
+    assert.match(text(), /already submitted/u); assert.match(text(), /UCPath/u); assert.equal(document.querySelector('[aria-label="Required"]') === null, true); assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
+    await press("Cancel"); assert.ok(document.querySelector('[aria-label="Values"]')); assert.equal(h.authoritySnapshot(), before);
+    await press("Continue"); await press("Confirm");
+    for (const name of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(name).matches(":checked"), true);
+    assert.match(text(), /Completed/u); assert.match(text(), /3 of 3 included/u);
+    assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
+    await act(async () => checkbox("Dry run").click());
     assert.equal(h.queueRoots.length, 1); await press("Start dry run");
     const submitted = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.deepEqual(submitted.submissions, [{ eid: "10812345", memo: "edited memo" }]);
@@ -123,14 +124,13 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   });
   it("copied omission facts can be cleared/edited without attribution", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source); await mount(h, source);
+    await fill(field("Employee ID"), "10812346");
+    await press("Continue"); await press("Confirm");
     await act(async () => { checkbox("Check employee").click(); });
     assert.equal(field("Checked employee ID").value, "10812345"); assert.match(text(), /From the earlier run/u);
-    await fill(field("Checked employee ID"), ""); assert.equal(button("Continue").disabled, true);
-    const before = h.authoritySnapshot();
+    await fill(field("Checked employee ID"), ""); assert.equal(button("Start live run").disabled, true);
     await fill(field("Checked employee ID"), "10812346"); assert.doesNotMatch(text(), /From the earlier run/u);
-    await press("Continue"); await press("Confirm"); assert.ok(document.querySelector('[aria-label="Values"]'));
-    assert.equal(h.authoritySnapshot(), before);
-    await fill(field("Employee ID"), "10812346"); await press("Continue"); await act(async () => checkbox("Dry run").click());
+    await act(async () => checkbox("Dry run").click());
     await press("Start dry run");
     const request = StartPlanRequestSchema.parse(h.submissions.at(-1)); assert.deepEqual(request.submissions, [{ eid: "10812346" }]);
     assert.deepEqual(request.stepOmissions, [{ step: "checking", facts: { eid: "10812346" } }]);
@@ -234,14 +234,13 @@ describe("registered Person Lookup and Separations served launch", () => {
       const h = await readiness.setup(entry.workflowId);
       const source = await h.failedSource(entry.submission, entry.dryRun), before = h.retained(source);
       const view = await readiness.mount(h, source);
+      await vi.waitFor(() => assert.ok(document.querySelector("textarea")));
+      assert.equal(document.querySelector("textarea")?.value, entry.text);
       await vi.waitFor(() => assert.ok([...document.querySelectorAll("button")]
         .some(button => button.textContent?.trim() === "Continue" && !button.disabled)));
       await readiness.press("Continue");
-      await vi.waitFor(() => assert.ok(document.querySelector("textarea")));
-      assert.equal(document.querySelector("textarea")?.value, entry.text);
       assert.equal(h.submissions.length, 1);
       assert.deepEqual(h.finalCommands, []);
-      await readiness.press("Continue");
       if (entry.dryRun) await act(async () => readiness.checkbox("Dry run").click());
       await readiness.press(startName(entry));
       await vi.waitFor(() => assert.deepEqual(view.applied, [entry.workflowId]));

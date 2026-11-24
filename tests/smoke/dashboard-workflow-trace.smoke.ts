@@ -145,10 +145,10 @@ test("Person Lookup: Rerun starts one new run, a second press while pending send
   await dashboard.clearToasts();
   await dashboard.runPanel.getByRole("button", { name: "Rerun" }).click();
   const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
-  for (const stage of ["Steps", "Values", "Options"]) {
-    await expect(rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem").filter({ hasText: stage })).toHaveAttribute("aria-current", "step");
-    await rerun.getByRole("button", { name: "Continue" }).click();
-  }
+  const path = rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem");
+  await expect(path.filter({ hasText: "Input" })).toHaveAttribute("aria-current", "step");
+  await rerun.getByRole("button", { name: "Continue" }).click();
+  await expect(path.filter({ hasText: "Start" })).toHaveAttribute("aria-current", "step");
   const started = await dashboard.holdCommands("start-run");
   const rerunStart = rerun.getByRole("button", { name: "Start run" });
   await rerunStart.click();

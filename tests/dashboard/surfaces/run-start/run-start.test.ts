@@ -63,11 +63,8 @@ it("Enter advances and starts, Shift+Enter keeps its newline, buttons keep their
   assert.ok(back);
   assert.equal(await dialog.enter({ on: back }), false, "a focused button keeps its Enter");
   assert.equal(await dialog.enter(), true);
-  assert.equal(dialog.stage(), "Options");
-  assert.ok(dialog.text().includes("Enter to continue"));
-  await dialog.enter({ on: document.body });
+  assert.equal(dialog.stage(), "Start");
   for (let wait = 0; wait < 6; wait += 1) await settle();
-  assert.equal(dialog.stage(), "Checks");
   assert.ok(dialog.text().includes("Enter to start"));
   assert.deepEqual(revealed, []);
   await dialog.enter({ on: document.body });
@@ -150,16 +147,14 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
     }));
     await dialog.type(`${TYPED}\n10873699`);
     await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Options");
+    assert.equal(dialog.stage(), "Start");
     await dialog.press("Start run");
     assert.ok(planIsDrawn(), "the plan never rendered");
 
-    await dialog.press("Back");
     await dialog.choosePriority("interactive");
-    await dialog.press("Continue");
 
     assert.ok(!planIsDrawn(), "the plan survived a control that re-fingerprints the request");
-    assert.equal(dialog.stage(), "Checks");
+    assert.equal(dialog.stage(), "Start");
   });
 
 
@@ -168,7 +163,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
 describe("keeps optional steps and removes only the per-start destination", () => {
   afterEach(cleanup);
 
-  it("keeps Options and the separate Steps screen while omitting destination controls", async () => {
+  it("keeps Options and the inline Steps section while omitting destination controls", async () => {
     let submitted: unknown;
     const dialog = await openDialog(stubClient({
       submitStartPlan: async (input) => {
@@ -179,8 +174,9 @@ describe("keeps optional steps and removes only the per-start destination", () =
 
     await dialog.type(TYPED);
     await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Options");
+    assert.equal(dialog.stage(), "Start");
     assert.ok(dialog.text().includes("Customize steps"));
+    assert.ok(!dialog.text().includes("CRM Dates"), "Steps show only once Customize steps is on");
     assert.ok(!dialog.text().includes("Destination"));
     assert.ok(!dialog.text().includes("Test instance"));
     assert.ok(dialog.text().includes("Runs before bulk batches."));
@@ -197,12 +193,11 @@ describe("keeps optional steps and removes only the per-start destination", () =
     );
 
     await dialog.press("Customize steps");
-    await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Steps");
+    assert.equal(dialog.stage(), "Start");
     assert.ok(dialog.text().includes("CRM Dates"), "the optional step disappeared");
     await dialog.press("CRM Dates");
     await dialog.press("Start run");
-    assert.equal(dialog.stage(), "Checks");
+    assert.equal(dialog.stage(), "Start");
     assert.ok(!dialog.text().includes("Destination"));
     assert.ok(!dialog.text().includes("Test instance"));
     assert.ok(!dialog.text().includes("Test destination"));
@@ -239,7 +234,8 @@ describe("browser presentation is an immutable Run Options choice", () => {
     assert.equal(modes.find(mode => mode.value === "headed")?.checked, true);
     const screenshotControl = buttons().find(button => buttonName(button) === "Capture screenshots");
     assert.equal(screenshotControl === undefined, true, "Required screenshots must not have an off control");
-    assert.ok(dialog.text().includes("Always on"));
+    assert.ok(!dialog.text().includes("Always on"), "the Screenshots row is gone");
+    assert.ok(!dialog.text().includes("Screenshots"), "the Screenshots row is gone");
     await dialog.chooseBrowserMode("headless");
     await dialog.press("Start run");
     const request = StartPlanSubmissionSchema.parse(submitted);
@@ -283,7 +279,7 @@ describe("spreadsheet registration stays outside Run", () => {
   });
   it("keeps the full run path and offers no upload that could enqueue spreadsheet rows", async () => {
     await openDialog(stubClient({}));
-    assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 3);
+    assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 2);
     assert.equal(document.querySelectorAll('input[type="file"]').length, 0);
     assert.deepEqual(intakeHandoffs, []);
   });
@@ -307,15 +303,15 @@ describe("spreadsheet registration stays outside Run", () => {
   it("keeps mock registration from becoming a prerequisite for a live start", async () => {
     const dialog = await openDialog(stubClient({ submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001") }));
     await dialog.type(TYPED); await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Options"); assert.equal(dialog.disabled("Continue"), false);
+    assert.equal(dialog.stage(), "Start"); assert.equal(dialog.disabled("Start run"), false);
     assert.equal([...document.querySelectorAll("dt")].some(label => label.textContent === "Workbook"), false);
     assert.ok(!dialog.text().includes("Import spreadsheet"));
   });
-  it("returning from Options preserves typed input and the complete path", async () => {
+  it("returning from Start preserves typed input and the complete path", async () => {
     const dialog = await openDialog(stubClient({}));
     await dialog.type(TYPED); await dialog.press("Continue"); await dialog.press("Back");
     assert.equal(dialog.stage(), "Input"); assert.equal(dialog.typedInput().value, TYPED);
-    assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 3);
+    assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 2);
     assert.equal(document.querySelectorAll('input[type="file"]').length, 0);
   });
 });
@@ -439,7 +435,7 @@ it("keeps staging's dry-run sentence for a typed workflow", async () => {
   });
   await dialog.type(DOCUMENT);
   await dialog.press("Continue");
-  assert.equal(dialog.stage(), "Options");
+  assert.equal(dialog.stage(), "Start");
   const row = [...document.querySelectorAll(".ds-run-row")].find(node => node.textContent?.includes("Dry run"));
   assert.ok(row, "the typed dry-run row is missing");
   assert.match(row.textContent ?? "", /Fill and check every step without submitting\./u);
@@ -451,8 +447,7 @@ async function openSteps(client: DashboardClient, typed: string = DOCUMENT, scen
   await dialog.type(typed);
   await dialog.press("Continue");
   await dialog.press("Customize steps");
-  await dialog.press("Continue");
-  assert.equal(dialog.stage(), "Steps");
+  assert.equal(dialog.stage(), "Start");
   return dialog;
 }
 
@@ -518,8 +513,8 @@ describe("Start is not sent while an omitted step's form does not parse", () => 
     await dialog.fill("Last day worked", "6/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
 
-    assert.equal(dialog.disabled("Continue"), true, "Continue stayed on with an unparsable fact");
-    assert.equal(dialog.stage(), "Steps", "an unparsable fact reached the server");
+    assert.equal(dialog.disabled("Start live run"), true, "Start stayed on with an unparsable fact");
+    assert.equal(dialog.stage(), "Start", "an unparsable fact reached the server");
     assert.equal(asked, 0, "the dialog asked the server for a plan it knew would be refused");
     assert.equal(document.body.querySelectorAll('[role="alert"]').length, 1, "the refusal was not drawn as one alert");
     assert.ok(dialog.text().includes("Last day worked must be a valid date in MM/DD/YYYY format."), "the first failure was not drawn");
@@ -590,7 +585,7 @@ describe("a plan that omits a different set cannot be started", () => {
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
     await dialog.press("Start live run");
-    assert.equal(dialog.stage(), "Checks");
+    assert.equal(dialog.stage(), "Start");
 
     assert.ok(dialog.text().includes("This plan does not describe the steps you omitted"));
     assert.ok(dialog.text().includes("kronos-timecard"));
@@ -655,7 +650,6 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     await dialog.type(DOCUMENT);
     await dialog.press("Continue");
     await dialog.press("Customize steps");
-    await dialog.press("Continue");
 
     assert.ok(dialog.text().includes("Also omits: UCPath transaction"));
     assert.equal(dialog.disabled("UCPath transaction"), false);

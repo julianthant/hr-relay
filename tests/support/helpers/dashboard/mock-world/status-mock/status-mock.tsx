@@ -40,7 +40,7 @@ export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPi
     else if (ticked(picks, sheet).length > 1) setKeys(picks.keys.filter(item => item !== key));
   };
   return <div className="flex min-w-0 flex-col gap-3">
-    <RunList title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${STATUS_MOCK_REQUIRED_FIELDS.replace(", ", " and ")}.`}>
+    <RunList title="Spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${STATUS_MOCK_REQUIRED_FIELDS.replace(", ", " and ")}.`}>
       {picked.flatMap(sheet => {
         const worksheets = ticked(picks, sheet);
         return [

@@ -336,10 +336,10 @@ export function createRunStartDialogHarness() {
 
     const switchNamed = (name: string): HTMLInputElement | undefined => [...document.body.querySelectorAll<HTMLInputElement>('[role="switch"], [role="checkbox"]')]
       .find(node => [name, `Include ${name}`, `${name} (required)`].includes(node.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent ?? "") || node.getAttribute("aria-label") === name);
-    /** Checks is the last stage and holds Start; a press of Start from an earlier stage goes there first and waits for the checks. */
+    /** Start is the last stage and holds the Start button; a press of Start from an earlier stage goes there first and waits for the checks. */
     const press = async (name: string): Promise<void> => {
       if (/^(Start|Create rerun)/u.test(name) && !buttons().some(button => buttonName(button) === name)) {
-        for (let guard = 0; guard < 6 && stage() !== "Checks"; guard += 1) {
+        for (let guard = 0; guard < 6 && stage() !== "Start"; guard += 1) {
           const before = stage();
           const next = buttons().find(button => buttonName(button) === "Continue");
           if (next === undefined) break;
@@ -511,7 +511,7 @@ export function createRunStartDialogHarness() {
     }));
     await dialog.type(TYPED);
     await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Options");
+    assert.equal(dialog.stage(), "Start");
     await dialog.press("Start run");
     assert.equal(closed.at(-1), false);
     return dialog;
