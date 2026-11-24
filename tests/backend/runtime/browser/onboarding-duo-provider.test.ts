@@ -690,8 +690,38 @@ describe("draft Duo provider", () => {
     try {
       await assert.rejects(w.provider.openPortal(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.cause instanceof Error && error.cause.message === "copy-signin-duo-push-unanswered");
       assert.deepEqual(actions, ["Other options", "Duo Push Send to phone", "phone prompt"]);
+      await new Promise(resolve => setImmediate(resolve));
       assert.deepEqual(snapshots, ["gate", "push-options", "after-push"].map(stage => `${stage}:screen duo-gate\nframe duo\n`));
       assert.equal(w.events.find(event => event.operation === "portal-open")?.code, "copy-signin-duo-push-unanswered");
+    } finally { await w.cleanup(); }
+  });
+
+  it("writes the snapshots only after the gate's error reached the caller, so a stalled writer delays neither clicks nor the error", async () => {
+    const order: string[] = [];
+    let buttons = ["Other options"];
+    const w = world("darwin", { copyPortal: {
+      buttons: () => buttons,
+      click(label) { order.push(`click ${label}`); buttons = label === "Other options" ? ["Duo Push Send to phone"] : []; },
+      phone() { order.push("phone prompt"); },
+      snapshot(stage) {
+        const stalled = performance.now() + 200;
+        while (performance.now() < stalled) { /* a synchronous fsync that stalls */ }
+        order.push(`write ${stage}`);
+      },
+      async wait() { throw Object.assign(new Error("synthetic Add a device wait"), { name: "TimeoutError" }); },
+    } });
+    w.landPortal("https://test.duosecurity.com/");
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open", generation: 1 }, state: "onboarding",
+      operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", methods: { key: idle } });
+    w.owner.readState = () => state;
+    try {
+      const started = performance.now();
+      await assert.rejects(w.provider.openPortal(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.cause instanceof Error && error.cause.message === "copy-signin-duo-push-unanswered");
+      order.push("error");
+      assert.ok(performance.now() - started < 200, "no stalled write ran before the error");
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(order, ["click Other options", "click Duo Push Send to phone", "phone prompt", "error", "write gate", "write push-options", "write after-push"]);
     } finally { await w.cleanup(); }
   });
 
@@ -716,6 +746,7 @@ describe("draft Duo provider", () => {
       await assert.rejects(w.provider.openPortal(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.cause instanceof Error && error.cause.message === "copy-signin-duo-push-unanswered");
       assert.ok(performance.now() - started < 1500, "three bounded 50 ms captures");
       assert.deepEqual(actions, ["Other options", "Duo Push Send to phone", "phone prompt"]);
+      await new Promise(resolve => setImmediate(resolve));
       assert.deepEqual(snapshots, ["gate", "push-options", "after-push"].map(stage => `${stage}:capture-timeout\n`));
     } finally { await w.cleanup(); }
   });
@@ -740,6 +771,7 @@ describe("draft Duo provider", () => {
     w.owner.readState = () => state;
     try {
       await assert.rejects(w.provider.openPortal(w.owner));
+      await new Promise(resolve => setImmediate(resolve));
       assert.deepEqual(snapshots.at(-1), "after-push:screen sso-page\nframe ucsd-sso\n");
     } finally { await w.cleanup(); }
   });

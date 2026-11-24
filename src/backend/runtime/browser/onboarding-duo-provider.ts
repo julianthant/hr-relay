@@ -96,6 +96,7 @@ export interface OnboardingDuoProviderOptions {
 /** Known Duo screens, most specific first; a capture records only this name and each frame's allowlist name. */
 export const DUO_SCREENS = ["duo-error", "trust-prompt", "push-sent", "device-list", "push-options", "other-options", "duo-gate", "sso-page", "unknown"] as const;
 const DuoScreenSchema = z.enum(DUO_SCREENS);
+type CopySnapshot = ["gate" | "push-options" | "after-push", string];
 const DUO_CAPTURE_DEADLINE_MS = 2000;
 
 function allowlistedOrigin(href: string): "duo" | "ucsd-duo" | "ucsd-sso" | "not-allowlisted" {
@@ -585,7 +586,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
   }
 
   async function enrollCopy(session: OwnedBrowser, page: Page, landing: "sso-form" | "duo",
-    copy: NonNullable<OnboardingDuoProviderOptions["copySignin"]>): Promise<void> {
+    copy: NonNullable<OnboardingDuoProviderOptions["copySignin"]>, snapshots: CopySnapshot[]): Promise<void> {
     if (landing === "sso-form") {
       try {
         await submitPinnedUcsdSsoCredentials(page, async () => copy.credentials(), () => browserCurrent(session),
@@ -623,9 +624,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (approval === "phone") ownedDuoOrigin();
       else current();
     };
-    // The copy's private logs keep which Duo screen showed, since the onboarding browser profile is removed at close.
-    const snapshot = async (stage: "gate" | "push-options" | "after-push") => {
-      try { if (!page.isClosed()) copy.snapshot?.(stage, await duoScreenSnapshot(page, copy.captureDeadlineMs)); } catch { /* evidence never masks the gate's own outcome */ }
+    // Held in memory; openPortal writes them only after its outcome has reached the caller.
+    const snapshot = async (stage: CopySnapshot[0]) => {
+      try { if (!page.isClosed()) snapshots.push([stage, await duoScreenSnapshot(page, copy.captureDeadlineMs)]); } catch { /* evidence never masks the gate's own outcome */ }
     };
     const timedOut = (code: string) => (cause: unknown) => {
       if (cause instanceof Error && cause.name === "TimeoutError") throw new Error(code, { cause });
@@ -666,7 +667,18 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     if (!await add.isVisible()) await click(next);
   }
 
+  // The copy's private logs keep which Duo screen showed, since the onboarding browser profile is removed at close.
   async function openPortal(session: OwnedBrowser): Promise<void> {
+    const snapshots: CopySnapshot[] = [];
+    try { await openPortalNow(session, snapshots); }
+    finally {
+      // A stalled private write never holds back a Duo click or the gate's own error.
+      if (snapshots.length > 0) setImmediate(() => {
+        for (const [stage, text] of snapshots) try { options.copySignin?.snapshot?.(stage, text); } catch { /* evidence never masks the outcome */ }
+      });
+    }
+  }
+  async function openPortalNow(session: OwnedBrowser, snapshots: CopySnapshot[]): Promise<void> {
     browserCurrent(session);
     const context = session.context;
     if (!context) throw new ProfileOnboardingDuoProviderError("unavailable", "provider");
@@ -686,7 +698,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         browserCurrent(session);
         if (options.copySignin !== undefined && copySetup(session)) {
           session.enrollingCopy = true;
-          try { await enrollCopy(session, page, landing, options.copySignin); }
+          try { await enrollCopy(session, page, landing, options.copySignin, snapshots); }
           finally { delete session.enrollingCopy; }
         } else if (landing === "sso-form") await waitForManualUcsdSignIn(page, session);
         browserCurrent(session);
