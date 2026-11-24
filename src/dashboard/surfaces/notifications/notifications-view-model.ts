@@ -14,6 +14,7 @@ export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;
   tone: "danger" | "warning" | "positive" | "info"; age: string;
   read: boolean; action: string; destination: NotificationDestination;
+  readOnlyHistory?: true;
   kind?: NotificationKind;
   /** Repeats folded into this notice; shown only above one. */
   count?: number;

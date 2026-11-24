@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, w
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { assertCopySigninFixture, assertCopySigninTarget, driveCopySignin, useCopySigninFixture, readCopySigninCredentials, formatCopyDuoScreens } from "../../../scripts/profiles/copy-signin.js";
+import { assertCopySigninFixture, assertCopySigninTarget, copySigninLaunchOptions, driveCopySignin, useCopySigninFixture, readCopySigninCredentials, formatCopyDuoScreens } from "../../../scripts/profiles/copy-signin.js";
 import { runDevDashboard } from "../../../scripts/dev/dashboard.js";
 import { copySigninFixtureBrowser } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import { osCredentialSecretStore, selectedCredentialSecretStore } from "../../../src/backend/storage/configuration/credential-key-custody.js";
@@ -26,6 +26,15 @@ beforeEach(() => {
 });
 
 afterEach(() => { rmSync(directory, { recursive: true, force: true }); });
+
+it("follows the window when the copy is visible and keeps the headless launch at its fixed size", () => {
+  const shared = {
+    channel: "chromium", acceptDownloads: false,
+    args: ["--no-proxy-server", "--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"],
+  };
+  expect(copySigninLaunchOptions(false)).toEqual({ ...shared, headless: false, viewport: null });
+  expect(copySigninLaunchOptions(true)).toEqual({ ...shared, headless: true });
+});
 
 it("prints one line per Duo capture with only the screen and frame allowlist names", () => {
   expect(formatCopyDuoScreens([{ stage: "gate", screen: "other-options", frames: ["duo", "not-allowlisted"] },
