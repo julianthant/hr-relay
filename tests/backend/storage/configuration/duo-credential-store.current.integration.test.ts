@@ -161,7 +161,7 @@ it("refuses a platform row that shares the security key's id before retiring any
   } finally { await w.fixture.close(); }
 });
 
-// Development's dashboard startup authenticates each active credential head once and opens no credential frame; #653 adds neither.
+// Development's dashboard startup reads custody once and opens three credential frames (only the credential stores decipher); #653 adds none.
 it("starts the dashboard to sign-in with development's custody reads and drops the platform row only in the keyed store", async () => {
   const w = await storedPlatformRow();
   const files = () => [readFileSync(w.headPath), readFileSync(w.duoPath)];
@@ -175,7 +175,7 @@ it("starts the dashboard to sign-in with development's custody reads and drops t
     const machine = await acquireDashboardEntrypointAdmission(profileBrowserClosure, w.fixture.workspace, "shared", lifetime);
     try {
       assert.deepEqual(machine.readProfileRegistry().profiles.map(row => row.profileId), [w.profileId]);
-      assert.deepEqual([custody.mock.calls.length, frames.mock.calls.length], [1, 0]);
+      assert.deepEqual({ custody: custody.mock.calls.length, frames: frames.mock.calls.length }, { custody: 1, frames: 3 });
       assert.deepEqual(files(), stored);
       signInBoundProfileFixture(machine);
       admission = machine.admitProfile(w.profileId);
