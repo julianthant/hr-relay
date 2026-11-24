@@ -135,6 +135,7 @@ export type ManifestStageRow = Readonly<{
   tone: "success" | "danger" | "neutral";
   itemId: string | undefined;
   inputHash: string | undefined;
+  rejectIds: readonly string[];
   parsedInput: string;
 }>;
 
@@ -292,7 +293,7 @@ export function layoutMetaItems(session: IntakeSessionWire): string[] {
   if (session.headerRowIndex === null || fingerprint === undefined) return [];
   return [
     `header row ${String(session.headerRowIndex + 1)}`,
-    `fingerprint ${shortHash(fingerprint)}`,
+    `layout ${shortHash(fingerprint)}`,
   ];
 }
 
@@ -323,11 +324,11 @@ export function manifestIdentifierFacts(session: IntakeSessionWire): IntakeStage
     { key: "plan id", value: stage.manifestId },
     { key: "source sha256", value: session.artifact.sha256 },
     { key: "artifact id", value: session.artifact.id },
-    { key: "mapping fingerprint", value: manifest.mappingFingerprint },
+    { key: "mapping version", value: manifest.mappingFingerprint },
     { key: "mapping snapshot", value: manifest.mappingSnapshotHash },
-    { key: "intake projection", value: manifest.intakeProjectionFingerprint },
+    { key: "mappable fields", value: manifest.intakeProjectionFingerprint },
     { key: "workflow contract", value: manifest.workflowContractFingerprint },
-    { key: "canonical input schema", value: manifest.canonicalInputSchemaHash },
+    { key: "input schema", value: manifest.canonicalInputSchemaHash },
   ];
 }
 
@@ -336,7 +337,8 @@ export function manifestRowDetailFacts(row: ManifestStageRow): IntakeStageFact[]
   const facts: IntakeStageFact[] = [];
   if (row.itemId !== undefined) facts.push({ key: "item id", value: row.itemId });
   if (row.inputHash !== undefined) facts.push({ key: "input hash", value: row.inputHash });
-  facts.push({ key: "parsed input", value: row.parsedInput });
+  if (row.rejectIds.length > 0) facts.push({ key: "rejects", value: row.rejectIds.join(", ") });
+  else facts.push({ key: "parsed input", value: row.parsedInput });
   return facts;
 }
 
@@ -354,14 +356,14 @@ export function manifestStage(session: IntakeSessionWire): ManifestStage {
     kind: "terminal",
     manifestId: manifest.manifestId,
     facts: [
-      { key: "plan id", value: manifest.manifestId },
+      { key: "plan id", value: abbreviated(manifest.manifestId) },
       { key: "source", value: `${sourceLabel(session)} · sha ${session.artifact.sha256.slice(0, 12)}` },
-      { key: "artifact", value: session.artifact.id },
-      { key: "mapping fingerprint", value: manifest.mappingFingerprint },
-      { key: "mapping snapshot", value: manifest.mappingSnapshotHash },
-      { key: "intake projection", value: manifest.intakeProjectionFingerprint },
-      { key: "workflow contract", value: manifest.workflowContractFingerprint },
-      { key: "canonical input schema", value: manifest.canonicalInputSchemaHash },
+      { key: "artifact", value: abbreviated(session.artifact.id) },
+      { key: "mapping version", value: abbreviated(manifest.mappingFingerprint) },
+      { key: "mapping snapshot", value: abbreviated(manifest.mappingSnapshotHash) },
+      { key: "mappable fields", value: abbreviated(manifest.intakeProjectionFingerprint) },
+      { key: "workflow contract", value: abbreviated(manifest.workflowContractFingerprint) },
+      { key: "input schema", value: abbreviated(manifest.canonicalInputSchemaHash) },
       { key: "created", value: formatTime(manifest.createdAt) },
       { key: "totals", value: manifestTotalsText(manifest.totals) },
     ],
@@ -373,8 +375,9 @@ export function manifestStage(session: IntakeSessionWire): ManifestStage {
         tone: disposition.disposition === "valid" ? "success" : disposition.disposition === "rejected" ? "danger" : "neutral",
         itemId: disposition.itemId,
         inputHash: valid?.inputHash,
+        rejectIds: disposition.currentRejectIds,
         parsedInput: valid === undefined
-          ? disposition.currentRejectIds.length === 0 ? "—" : `rejects: ${disposition.currentRejectIds.join(", ")}`
+          ? disposition.currentRejectIds.length === 0 ? "—" : `rejects: ${disposition.currentRejectIds.map(abbreviated).join(", ")}`
           : parsedInputText(valid.parsedInput),
       };
     }),
@@ -463,6 +466,11 @@ function terminalManifest(session: IntakeSessionWire): NonNullable<IntakeSession
     throw new Error(`enqueued intake session ${session.intakeSessionId} disagrees with its terminal manifest id`);
   }
   return session.manifest;
+}
+
+/** A long id or hash, cut to the eight characters an operator can compare by eye; the popover holds the whole value. */
+export function abbreviated(value: string): string {
+  return `${shortHash(value)}…`;
 }
 
 function manifestTotalsText(totals: NonNullable<IntakeSessionWire["manifest"]>["totals"]): string {
