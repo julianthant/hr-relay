@@ -121,6 +121,8 @@ it("serves the same storage group through canonical inbox and day snapshots, kee
     assert.ok(done !== undefined && done.event.kind === "command-unknown");
     const plain = publications.project(done);
     assert.deepEqual(plain.listed, plain.publication.notification, "a publication outside a group is listed as itself");
+    const unlisted = { ...done, notification: { ...done.notification, notificationId: uuidOf(901) } } as NotificationPublication;
+    assert.throws(() => publications.project(unlisted), /NOTIFICATION_PUBLICATION_NOT_LISTED/u, "a publication its actor's list does not hold is a named failure");
     const notice = notificationRecordOf({ seed: 1, title: "Run needs attention", lastSeenAt: linked.ts });
     database.authority.notifications.create(notice);
     const subject = async (response: Response) => {

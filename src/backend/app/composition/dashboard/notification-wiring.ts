@@ -23,7 +23,8 @@ function projectionDependencies({ database, lifecycle, descriptors, runDetailDep
 }
 
 /** `target` is the read `GET /notifications/{id}/target` serves; each publication carries its answer.
- * `listed` is the row as `GET /notifications` lists it in the same read snapshot: a storage notice inside its concern's group. */
+ * `listed` is the row as `GET /notifications` lists it in the same read snapshot: a storage notice inside its concern's group.
+ * A publication its actor's list does not hold is a named failure, never sent as its own row. */
 export function composeNotificationPublications(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "notificationInbox">
   & { target: ReturnType<typeof composeNotificationRoutes>["target"] }): NonNullable<Parameters<typeof composeShell>[0]["notificationPublications"]> {
   const { database, clock, notificationInbox, target } = input;
@@ -38,10 +39,9 @@ export function composeNotificationPublications(input: NotificationWiringInput &
       });
       const listed = notificationListProjection(database.authority.notifications.listByActor(actorId), now, deps)
         .find(row => row.notificationId === notificationId || (row.kind === "notification" && row.group?.members.some(member => member.notificationId === notificationId) === true));
-      return {
-        publication: { sourceId: FingerprintSchema.parse(publication.sourceId), actorId, durable: publication.durable, notification },
-        listed: listed ?? notification,
-      };
+      // The publication is committed before it is projected, so the actor's list always holds it.
+      if (listed === undefined) throw new Error(`NOTIFICATION_PUBLICATION_NOT_LISTED: ${notificationId}`);
+      return { publication: { sourceId: FingerprintSchema.parse(publication.sourceId), actorId, durable: publication.durable, notification }, listed };
     }) };
 }
 
