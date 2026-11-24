@@ -60,9 +60,9 @@ async function schema34Store() {
   return { ...f, raw };
 }
 
-it("converts settings records in migration 35, under the list indexes' current 40", () => {
+it("converts settings records in migration 35, under the current schema 41", () => {
   assert.equal(SETTINGS_RECORD_CONVERSION_VERSION, 35);
-  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 40);
+  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 41);
   assert.deepEqual(migrationTableNames(35), migrationTableNames(34));
 });
 
