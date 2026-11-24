@@ -76,6 +76,9 @@ export interface RunLogSnapshot {
   readonly unavailableEvidence: readonly string[];
 }
 
+/** The sections a run panel carries beside its detail and logs, each only when the detail declares it. */
+const PANEL_SECTIONS: readonly string[] = ["captures", "identity-gate", "parked-write", "failure", "workbook-writes"];
+
 export async function readRunLogs(client: RunReads, selection: LogSelection, signal: AbortSignal): Promise<RunLogSnapshot> {
   const { row } = selection;
   // The first log page is requested with the detail; the detail's identity and capability checks still gate its use.
@@ -102,7 +105,7 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   }
   const unavailableEvidence = checkRunPanelLogs(row, detail, logs);
   signal.throwIfAborted();
-  const sections = await Promise.all(detail.availableSections.filter(name => ["captures", "identity-gate", "parked-write", "failure", "workbook-writes"].includes(name)
+  const sections = await Promise.all(detail.availableSections.filter(name => PANEL_SECTIONS.includes(name)
     && (name !== "captures" || detail.captures?.state === "available"))
     .map(name => client.runSection(row.runId, name, undefined, signal)));
   const snapshot = checkRunPanelSections(row, detail, logs, sections, unavailableEvidence);
@@ -591,6 +594,14 @@ function streamedRunSnapshot(row: RowIdentity, panel: Extract<RunPanel, { state:
   if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
   if (logs.runId !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
   logRowsOf(logs, "initial");
+  // The per-request reads asked for each declared section by name and checked its owner; the stream must carry exactly those.
+  const declared = detail.availableSections.filter(name => PANEL_SECTIONS.includes(name) && (name !== "captures" || detail.captures?.state === "available"));
+  const carried = new Set(sections.map(section => section.section));
+  if (carried.size !== sections.length || carried.size !== declared.length || declared.some(name => !carried.has(name))) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
+  for (const { payload } of sections) {
+    const owner = "runId" in payload ? payload.runId : "state" in payload && payload.state === "available" && "runId" in payload.value ? payload.value.runId : undefined;
+    if (owner !== undefined && owner !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
+  }
   return checkRunPanelSections(row, detail, logs, sections, checkRunPanelLogs(row, detail, logs));
 }
 
@@ -615,9 +626,10 @@ function streamedRunState(client: object, authority: RunLogAuthority, row: RowId
     // A panel the row moved ahead of is catching up.
     return { state: "loading", snapshot };
   } catch (cause) {
-    if (!behind && panel.detail.runId === row.runId && panel.detail.rowRevision < row.rowRevision) return { state: "loading" };
-    if (!(cause instanceof RunLogIdentityError)) throw cause;
-    return { state: "failed", retryable: false, diagnostic: cause, error: identityRefusalReason(cause) };
+    // A panel that fails a check is failed whatever the row's revision, until the stream replaces it; only a validated
+    // older panel is loading. A log page the checks cannot read fails here too, not in the Logs error boundary.
+    if (cause instanceof RunLogIdentityError) return { state: "failed", retryable: false, diagnostic: cause, error: identityRefusalReason(cause) };
+    return { state: "failed", retryable: false, diagnostic: cause, error: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_READ_FAILED", {})).text };
   }
 }
 

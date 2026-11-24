@@ -523,6 +523,63 @@ describe("served Logs decision authority", () => {
     assert.equal(h.refreshed, 0);
   });
 
+  describe("a streamed panel is held to the per-request section checks", () => {
+    const FOREIGN = "00000000-0000-4000-8000-0000000000f1";
+    const capturesOf = (runId: string) => RunDetailSectionResponseSchema.parse({ section: "captures", payload: { runId, artifacts: [{
+      artifact: { mediaKind: "image", mediaType: "image/png", artifactId: FOREIGN, sha256: "a".repeat(64), byteLength: 1, sensitivity: "restricted", redaction: "restricted-access", width: 1280, height: 720 },
+      origins: [{ bundleId: NOTE, originKind: "operator-request", capturedAt: AT, browserCapture: { nodeId: "first", attempt: 1, sessionId: NOTE } }] }] } });
+    const withCaptures = (revision: number) => detailAt(selectionAt(3), revision, { captures: { state: "available", artifactCount: 1 }, availableSections: ["logs", "captures"] });
+    const none = { artifactUrl: (id: string) => `/artifacts/${id}` } as unknown as DashboardClient;
+    async function shown(panel: RunPanel, rowRevision = 3) {
+      const h = await harness(none, undefined, false, false);
+      await serveRunPanel(h.rows, none, RUN, panel);
+      await h.render(selectionAt(rowRevision));
+      return h;
+    }
+
+    it("loads a panel that carries exactly its declared sections, each owned by the run", async () => {
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [capturesOf(RUN)] });
+      assert.equal(h.state?.state, "loaded");
+    });
+
+    it("fails a panel that omits a declared section", async () => {
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [] });
+      assert.equal(h.state?.state, "failed"); assert.equal(h.state?.snapshot, undefined);
+    });
+
+    it("fails a panel that carries a section its detail does not declare, or one twice", async () => {
+      const undeclared = await shown({ state: "available", detail: detailAt(selectionAt(3), 3), logs: logs().payload as never, sections: [capturesOf(RUN)] });
+      assert.equal(undeclared.state?.state, "failed");
+      await act(async () => root?.unmount());
+      const twice = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [capturesOf(RUN), capturesOf(RUN)] });
+      assert.equal(twice.state?.state, "failed");
+    });
+
+    it("fails a panel whose captures section belongs to another run, though its count matches", async () => {
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [capturesOf(FOREIGN)] });
+      assert.equal(h.state?.state, "failed"); assert.equal(h.state?.onDecision, undefined);
+    });
+
+    it("keeps a panel that failed a check failed after the queue row moves ahead of it", async () => {
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [capturesOf(FOREIGN)] });
+      await h.render(selectionAt(4));
+      assert.equal(h.state?.state, "failed"); assert.equal(h.state?.retryable, false);
+      assert.equal(h.refreshed, 0);
+    });
+
+    it("fails a panel whose log page has no live rows instead of throwing", async () => {
+      const { rows: _rows, ...archived } = logs().payload as { rows?: unknown };
+      const h = await shown({ state: "available", detail: detailAt(selectionAt(3), 3), logs: archived as never, sections: [] });
+      assert.equal(h.state?.state, "failed"); assert.equal(h.state?.retryable, false);
+    });
+
+    it("shows a validated older panel as loading once the row moves ahead", async () => {
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [capturesOf(RUN)] });
+      await h.render(selectionAt(4));
+      assert.equal(h.state?.state, "loading"); assert.ok(h.state?.snapshot);
+    });
+  });
+
   it("offers no answer while the panel is ahead of the queue row, and offers it once they agree", async () => {
     const gate = servedGate(fixtures.ONE_CLICK);
     const selected = selectionAt(3);
