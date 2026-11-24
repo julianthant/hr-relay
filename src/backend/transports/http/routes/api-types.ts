@@ -17,6 +17,7 @@ import type { DashboardCommandService } from "../../../runs/commands/command-ser
 import type { BulkCommandAcceptanceAuthority } from "../../../runs/commands/operator-command-ingress.js";
 import type { CommandRequest } from "../../../../rules/commands/commands.js";
 import type { StartPlanService } from "../../../runs/commands/start-plan-service.js";
+import type { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import type { RunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
 import type { StaticBundle } from "../static-bundle.js";
 import type { RequestIdentityCheckpoint } from "../request-identity.js";
@@ -24,6 +25,7 @@ import type { OcrRouteDeps } from "./ocr.js";
 
 /** Shared wiring plus leaf-owned contracts. Existing composed fixtures remain valid. */
 export interface DashboardAppDeps extends OcrRouteDeps, ChatGptAccountRouteDeps, WorkbooksRouteDeps, TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, IntakeRouteDeps, RunDetailRouteDeps, Pick<CommandsRouteDeps, "workerCommandResult" | "resolveWriteCommand"> {
+  readonly debugReportRunReader?: Pick<RunRecordService, "read">;
   readonly notifications?: {
     withSnapshot?(actor: string, respond: PositionedRead<readonly NotificationWire[]>): Response;
     collection?(actor: string, operation: import("../../../../models/notifications/notifications.js").NotificationCollectionOperation): import("../../../../models/notifications/notifications.js").NotificationCollectionTarget;
