@@ -1,6 +1,6 @@
 import { acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { createCredentialSecretSource, readAdmittedProfileIdentity } from "../../runtime/settings/settings-runtime.js";
-import { assertMaintenanceCustodyAvailable, StorageMaintenanceCustodyUnavailableError } from "../../storage/maintenance/custody-availability.js";
+import { assertMaintenanceCustodyAvailable, maintenanceCustodyAvailable, StorageMaintenanceCustodyUnavailableError } from "../../storage/maintenance/custody-availability.js";
 import { createSessionBackups } from "../../storage/maintenance/session-backups.js";
 import { hasPendingShutdownBackupRetirement, resumeShutdownBackupRetirement } from "../../storage/maintenance/clean-shutdown-backups.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
@@ -514,7 +514,9 @@ async function prepareStartupUpgrades(workspace: string, lifetime: RuntimeLifeti
     try {
       await withStoppedMachineStorage(workspace, lifetime, async machine => {
         logStartupUpgradeStage(workspace, clock, "inspection");
-        if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", profileId))) assertMaintenanceCustodyAvailable("backup-retirement");
+        if (!maintenanceCustodyAvailable() && hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", profileId))) {
+          throw new StorageMaintenanceCustodyUnavailableError("backup-retirement");
+        }
         reconcileStages(machine, profileId);
         AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
       });
