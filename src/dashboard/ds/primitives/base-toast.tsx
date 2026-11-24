@@ -34,12 +34,12 @@ function Toast({ className, ...props }: ToastPrimitive.Root.Props) {
   return (
     <ToastPrimitive.Root
       data-slot="toast"
-      // Its exit is upward, so the swipe is too (the library swipes down by default); a drag never moves it down, onto the Sessions panel.
+      // Its exit is upward, so the swipe is too (the library swipes down by default).
       swipeDirection={["up", "left", "right"]}
       className={cn(
         "group/toast pointer-events-auto absolute top-0 left-0 w-full origin-top cursor-pointer rounded-xl border bg-popover text-popover-foreground shadow-[0_1px_4px_0_rgb(0_0_0/0.4),0_2px_4px_-1px_rgb(0_0_0/0.4)] will-change-transform outline-none select-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
-        "[--gap:0.5rem] [--height:var(--toast-frontmost-height,var(--toast-height))] [--offset-y:calc(var(--toast-offset-y)+calc(var(--toast-index)*var(--gap))+min(0px,var(--toast-swipe-movement-y)))] [--peek:0.875rem] [--scale:calc(max(0,1-(var(--toast-index)*0.04)))]",
-        "min-h-(--height) [transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(min(0px,var(--toast-swipe-movement-y))+(var(--toast-index)*var(--peek))))_scale(var(--scale))] [transition:transform_300ms_cubic-bezier(0.22,1,0.36,1),opacity_300ms,height_150ms]",
+        "[--gap:0.5rem] [--height:var(--toast-frontmost-height,var(--toast-height))] [--offset-y:calc(var(--toast-offset-y)+calc(var(--toast-index)*var(--gap))+var(--toast-swipe-movement-y))] [--peek:0.875rem] [--scale:calc(max(0,1-(var(--toast-index)*0.04)))]",
+        "min-h-(--height) [transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(var(--toast-swipe-movement-y)+(var(--toast-index)*var(--peek))))_scale(var(--scale))] [transition:transform_300ms_cubic-bezier(0.22,1,0.36,1),opacity_300ms,height_150ms]",
         "after:absolute after:bottom-full after:left-0 after:h-[calc(var(--gap)+1px)] after:w-full after:content-['']",
         "data-expanded:min-h-(--toast-height) data-expanded:[transform:translateX(var(--toast-swipe-movement-x))_translateY(var(--offset-y))]",
         "data-limited:opacity-0 data-starting-style:[transform:translateY(-150%)]",
