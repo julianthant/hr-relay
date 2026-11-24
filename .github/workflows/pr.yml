@@ -1,0 +1,74 @@
+name: Pull request
+
+run-name: ${{ github.event.pull_request.title }}
+
+on:
+  pull_request:
+    branches: [development]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Fix, chore and Dependabot heads have no Development push run.
+  non-task-checks:
+    if: ${{ !startsWith(github.head_ref, 'task/') }}
+    uses: ./.github/workflows/checks.yml
+    with:
+      kind: fast
+
+  metadata:
+    # Task PRs get their required development result from the push on the head commit.
+    name: ${{ startsWith(github.head_ref, 'task/') && 'PR metadata' || 'development' }}
+    needs: non-task-checks
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout: |
+            scripts/ci
+            scripts/test
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: ${{ !startsWith(github.head_ref, 'task/') && 'npm' || '' }}
+          package-manager-cache: false
+      - name: Check the development pull request metadata
+        env:
+          NAMES_BASE: ${{ github.base_ref }}
+          NAMES_HEAD: ${{ github.head_ref }}
+          NAMES_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: npm run names:check -- --branch "$NAMES_HEAD" --base "$NAMES_BASE" --title "$NAMES_TITLE" --closing-line
+      - name: Fetch the pull request base
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git cat-file -e "$PR_BASE_SHA^{commit}" 2>/dev/null \
+            || git fetch --no-tags --depth=1 origin "$PR_BASE_SHA" \
+            || { echo "::error::The pull request base $PR_BASE_SHA is not available to fetch"; exit 1; }
+      - name: Check added workflow files
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: node scripts/ci/allowed-workflows.ts "$PR_BASE_SHA" "$PR_LABELS"
+      - run: npm ci
+        if: ${{ !startsWith(github.head_ref, 'task/') }}
+      - name: Require every fast proof
+        if: ${{ !startsWith(github.head_ref, 'task/') }}
+        env:
+          CHECKS_RESULT: ${{ needs.non-task-checks.result }}
+          PLAN: ${{ needs.non-task-checks.outputs.plan }}
+          RESULTS: ${{ needs.non-task-checks.outputs.results }}
+        run: |
+          test "$CHECKS_RESULT" = success
+          node --import tsx scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"

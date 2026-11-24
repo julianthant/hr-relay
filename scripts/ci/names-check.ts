@@ -11,6 +11,7 @@ interface Request {
   base?: string;
   title?: string;
   titleSet: boolean;
+  closingLine: boolean;
   worktree?: string;
   originBranches: string[];
   originSet: boolean;
@@ -117,11 +118,15 @@ function worktreeProblem(path: string): string | undefined {
 }
 
 function parse(argv: readonly string[]): Request {
-  const request: Request = { all: false, titleSet: false, originBranches: [], originSet: false };
+  const request: Request = { all: false, titleSet: false, closingLine: false, originBranches: [], originSet: false };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
     if (token === "--all") {
       request.all = true;
+      continue;
+    }
+    if (token === "--closing-line") {
+      request.closingLine = true;
       continue;
     }
     const value = argv[index + 1];
@@ -191,6 +196,9 @@ function main(): void {
   if (request.titleSet) {
     const problem = titleProblem(request.title ?? "");
     if (problem) reject(problem);
+  }
+  if (request.closingLine && !/(?:^|\n)Closes #[1-9][0-9]*\s*$/u.test(process.env.PR_BODY ?? "")) {
+    reject(report("PR_BODY", 'pull request body must end with "Closes #<issue>"'));
   }
   if (request.worktree !== undefined) {
     const problem = worktreeProblem(request.worktree);
