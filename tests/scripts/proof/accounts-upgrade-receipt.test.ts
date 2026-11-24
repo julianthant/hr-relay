@@ -141,7 +141,7 @@ describe("accounts upgrade proof receipt", () => {
       const receipt = await runAccountsUpgradeProof(build, {
         ...dependencies,
         withSession: run => withCopySession(workspace, dashboardSession => dependencies.withSession(fixtureSession =>
-          run({ ...fixtureSession, saveUcpathPassword: dashboardSession.saveUcpathPassword }))),
+          run({ ...fixtureSession, saveUcpathPassword: password => dashboardSession.saveUcpathPassword(password) }))),
       });
       assert.equal(receipt.outcome, "failed");
       assert.deepEqual(receipt.codes, ["not-editable"]);
