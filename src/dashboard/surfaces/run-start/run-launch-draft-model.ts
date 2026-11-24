@@ -71,8 +71,10 @@ export function freshLaunchDraft(workflow: RunStartWorkflow | undefined, today?:
   };
 }
 
-export function typedDraftOf(draft: LaunchDraft, workflowId: string): TypedInputDraft {
-  return draft.typed.workflowId === workflowId ? draft.typed.draft : NO_TYPED_DRAFT;
+/** A routed workflow the draft was not made for (a restored route, a late catalog) shows the workflow's own defaults, not an empty draft. */
+export function typedDraftOf(draft: LaunchDraft, workflowId: string, workflow?: RunStartWorkflow, today?: string): TypedInputDraft {
+  if (draft.typed.workflowId === workflowId) return draft.typed.draft;
+  return workflow?.workflowId === workflowId ? typedDefaultsOf(workflow, today) : NO_TYPED_DRAFT;
 }
 
 export function selectedStepKeys(draft: LaunchDraft, workflow: RunStartWorkflow | undefined): readonly string[] {
@@ -92,7 +94,7 @@ export function changeText(draft: LaunchDraft, text: string): LaunchDraft {
 export function changeTypedValue(draft: LaunchDraft, workflow: RunStartWorkflow, field: string, value: string | boolean): LaunchDraft {
   const declaration = typedDeclarationOf(workflow);
   if (declaration === undefined) return draft;
-  const values = { ...typedInputDefaults(declaration), ...typedDraftOf(draft, workflow.workflowId) };
+  const values = typedDraftOf(draft, workflow.workflowId, workflow);
   const next = changeTypedInput(declaration, values, field, value);
   const current = selectedStepKeys(draft, workflow);
   const keys = workflow.steps.filter(step => step.control.state !== "selectable"

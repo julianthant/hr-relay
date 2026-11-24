@@ -523,6 +523,32 @@ describe("Start is not sent while an omitted step's form does not parse", () => 
   });
 });
 
+describe("Enter in a manual-values editor", () => {
+  afterEach(cleanup);
+
+  it("stays in the editor and never launches a run, even when every fact is valid", async () => {
+    let asked = 0;
+    const dialog = await openSteps(stubClient({
+      submitStartPlan: async () => {
+        asked += 1;
+        return separationsPlan(["kronos-timecard", "ucpath-transaction"]);
+      },
+    }), DOCUMENT, SEPARATIONS_OMITTABLE_WRITES);
+    await dialog.press("UCPath transaction");
+    await dialog.press("Kronos timecard");
+    await dialog.fill("Last day worked", "06/30/2026");
+    await dialog.fill("Separation date", "07/01/2026");
+    await dialog.fill("UCPath transaction number", "T1234567");
+    await dialog.fill("Approval status", "Approved");
+    assert.equal(dialog.disabled("Start live run"), false, "the facts are valid, so Start is available");
+    const label = [...document.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === "UCPath transaction number");
+    const editor = label === undefined ? null : label.control ?? label.querySelector("input");
+    assert.ok(editor?.closest('[aria-labelledby="run-start-steps"]'), "the fact's editor is inside Steps");
+    assert.equal(await dialog.enter({ on: editor ?? undefined }), false, "Enter in the editor does nothing");
+    assert.equal(asked, 0, "no plan was asked for");
+  });
+});
+
 describe("the request carries the operator's omissions", () => {
   afterEach(cleanup);
 

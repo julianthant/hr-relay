@@ -218,7 +218,7 @@ export function RunStartDialog({
   }, []);
   const { text, sourceInputUnchanged, stepDrafts, manualRows, priority: priorityChoice, dryRunRequested, browserMode,
     referenceSelections, referenceDrafts, checkPicks, selectedWorkbookRows, valueDrafts, copiedOmissions } = draft;
-  const typedDraft = launchDraft.typedDraftOf(draft, workflowId);
+  const typedDraft = launchDraft.typedDraftOf(draft, workflowId, workflows.find(entry => entry.workflowId === workflowId), commandBinding?.authority.today);
   const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && (workflow.workbookReference !== undefined || workflow.workbookCheck !== undefined)), null, true, false);
   const selectedWorkflow = workflows.find(workflow => workflow.workflowId === workflowId);
   const workbookReference = selectedWorkflow?.workbookReference;
@@ -373,6 +373,11 @@ export function RunStartDialog({
         setDraft(next);
       },
       requestPlan: planRequest => launchService.preview(planRequest),
+      checkWarnings: () => {
+        if (snapshot === null) return Promise.reject(new Error("RERUN_SOURCE_UNAVAILABLE"));
+        return launchService.previewWarnings({ workflowId, source: { runId: snapshot.source.runId,
+          expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys } });
+      },
       retain: (command, planned) => {
         retainLaunchFinal(window.sessionStorage, command, planned);
         return readLaunchVerificationPlan(window.sessionStorage, command.requestedBy);
@@ -690,6 +695,8 @@ export function RunStartDialog({
       if (event.key !== "Enter" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented || event.isComposing) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target === null || (target !== document.body && target.closest('[role="dialog"]') === null)) return;
+      // The manual-values editors in Steps keep Enter for themselves, so a typed value never launches a run.
+      if (target.closest('[aria-labelledby="run-start-steps"]') !== null && target.closest('button, [role="checkbox"], [role="switch"]') === null) return;
       if (target.closest('a, button:not([role="checkbox"]):not([role="switch"]), [role="combobox"], [role="listbox"], [role="menu"], [role="option"]')) return;
       if (enterRef.current === null) return;
       event.preventDefault();

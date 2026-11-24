@@ -92,7 +92,9 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
   }
   await act(async () => root.render(createElement(Harness)));
   if (path !== "restored route") await act(async () => openOnboarding());
-  await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire");
+  await h.settle(); await chooseCurrent(); await select(0);
+  assert.equal(document.querySelector<HTMLInputElement>('input[value="new-hire"]')?.checked, true, `New hire is selected on the ${path} without a click`);
+  await mode("new-hire");
   const press = async (name: string) => {
     const button = h.buttons().find(button => h.buttonName(button) === name); assert.ok(button, name);
     await act(async () => button.click());

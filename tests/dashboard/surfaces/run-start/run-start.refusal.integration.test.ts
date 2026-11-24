@@ -19,7 +19,7 @@ const { setup, mount, cleanup, press, reachChecks, checkbox, button, fill, field
 afterEach(async () => { vi.restoreAllMocks(); await cleanup(); });
 
 for (const rerun of [false, true]) {
-  const warned = rerun ? 1 : 0;
+  const warned = 0;
   /** Reaches the last stage with a dry run chosen; the plan the first Start requests expires before it is submitted. */
   async function review(h: Awaited<ReturnType<typeof setup>>, client: DashboardClient = h.client, expireAfterPlan = true) {
     let planned = false;

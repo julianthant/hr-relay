@@ -19,8 +19,6 @@ const { setup, text, button, press, pressOnce, checkbox, field, fill, mount, cle
 afterEach(cleanup);
 type Harness = Awaited<ReturnType<typeof setup>>;
 
-/** What a preview must not touch: the queue. Minted plan ids and the settings generation may move. */
-function durable(h: Harness) { return JSON.stringify(h.queueRoots); }
 function sourceBytes(h: Harness, source: RunRecord) { return JSON.stringify({ run: h.fresh(source),
   checkpoints: h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId).filter((row) => row.runId === source.envelope.runId),
   intents: h.database.authority.writeIntents.listByRun(source.envelope.runId) }); }
@@ -81,7 +79,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.match(text(), /already submitted/u); assert.match(text(), /Enter to continue/u);
     await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
     assert.doesNotMatch(text(), /already submitted/u);
-    assert.equal(h.finalCommands.length, 0); assert.equal(h.submissions.length, 1);
+    assert.equal(h.finalCommands.length, 0); assert.equal(h.submissions.length, 0);
     await press("Start dry run");
     assert.ok(StartPlanRequestSchema.parse(h.submissions.at(-1)).warningAcknowledgment);
   });
@@ -104,17 +102,17 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(document.activeElement?.getAttribute("aria-label"), "Close");
     assert.equal(field("Employee ID").value, "10812345"); await press("Copy Previous transaction");
     await fill(field("Previous transaction"), "edited memo");
-    const before = h.authoritySnapshot(); const beforeDurable = durable(h); await press("Continue");
+    const before = h.authoritySnapshot(); await press("Continue");
     for (const name of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(name).matches(":checked"), true);
     assert.match(text(), /Completed/u); assert.match(text(), /3 of 3 included/u);
     assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
     await act(async () => checkbox("Dry run").click());
     await pressOnce("Start dry run");
     assert.match(text(), /already submitted/u); assert.match(text(), /UCPath/u); assert.equal(document.querySelector('[aria-label="Required"]') === null, true);
-    assert.equal(durable(h), beforeDurable); assert.equal(h.submissions.length, 1); assert.equal(h.finalCommands.length, 0);
-    await press("Cancel"); assert.ok(checkbox("Dry run")); assert.equal(durable(h), beforeDurable); assert.equal(h.finalCommands.length, 0);
+    assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0); assert.equal(h.finalCommands.length, 0);
+    await press("Cancel"); assert.ok(checkbox("Dry run")); assert.equal(h.authoritySnapshot(), before); assert.equal(h.finalCommands.length, 0);
     await pressOnce("Start dry run"); assert.match(text(), /already submitted/u);
-    await press("Confirm"); assert.equal(durable(h), beforeDurable); assert.equal(h.finalCommands.length, 0);
+    await press("Confirm"); assert.equal(h.authoritySnapshot(), before); assert.equal(h.finalCommands.length, 0);
     assert.equal(h.queueRoots.length, 1); await press("Start dry run");
     const submitted = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.deepEqual(submitted.submissions, [{ eid: "10812345", memo: "edited memo" }]);
@@ -131,14 +129,14 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   it("copied omission facts can be cleared/edited without attribution", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source); await mount(h, source);
     await fill(field("Employee ID"), "10812346");
-    const before = durable(h);
+    const before = h.authoritySnapshot();
     await press("Continue");
     await act(async () => { checkbox("Check employee").click(); });
     assert.equal(field("Checked employee ID").value, "10812345"); assert.match(text(), /From the earlier run/u);
     await fill(field("Checked employee ID"), ""); assert.equal(button("Start live run").disabled, true);
     await fill(field("Checked employee ID"), "10812346"); assert.doesNotMatch(text(), /From the earlier run/u);
     await act(async () => checkbox("Dry run").click());
-    assert.equal(durable(h), before); assert.equal(h.finalCommands.length, 0);
+    assert.equal(h.authoritySnapshot(), before); assert.equal(h.finalCommands.length, 0);
     await press("Start dry run");
     const request = StartPlanRequestSchema.parse(h.submissions.at(-1)); assert.deepEqual(request.submissions, [{ eid: "10812346" }]);
     assert.deepEqual(request.stepOmissions, [{ step: "checking", facts: { eid: "10812346" } }]);
