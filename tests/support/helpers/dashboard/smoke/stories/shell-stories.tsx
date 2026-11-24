@@ -18,8 +18,6 @@ import { defineSurface, type Story } from "../story-catalogue.js";
 import { StoryFrame } from "./story-frame.js";
 
 const noop = () => undefined;
-/** A dialog surface's own container carries tabindex -1; the focus rule counts it as a control no keyboard reaches. */
-const DIALOG_SURFACE_BREAK = { "named-and-focusable": "#532" } as const;
 
 /** The app raises a notice after its data answers, never on first paint; the toast host only hears notices raised once it has mounted. */
 function LateNotice(props: ComponentProps<typeof Notice>) {
@@ -76,7 +74,7 @@ const RAIL = {
 
 /** Search open on the given filter, or on the given answer from the served search. */
 function searchStory(title: string, data: keyof typeof SEARCH_STORY_DATA, play: Story["play"], ready = 'input[aria-label="Search Relay"]'): Story {
-  return { title, ready, play, knownFailures: DIALOG_SURFACE_BREAK, render: () => <StoryFrame><aside className="workspace-rail"><div className="workspace-rail-header"><div className="workspace-rail-actions"><RailSearch data={SEARCH_STORY_DATA[data]} workflows={SEARCH_STORY_WORKFLOWS} startKey="N" onAction={noop} onWorkflow={noop} onResult={noop} /></div></div></aside></StoryFrame> };
+  return { title, ready, play, render: () => <StoryFrame><aside className="workspace-rail"><div className="workspace-rail-header"><div className="workspace-rail-actions"><RailSearch data={SEARCH_STORY_DATA[data]} workflows={SEARCH_STORY_WORKFLOWS} startKey="N" onAction={noop} onWorkflow={noop} onResult={noop} /></div></div></aside></StoryFrame> };
 }
 const opening: Story["play"] = page => page.getByRole("button", { name: "Search", exact: true }).click();
 const FILTER_LABEL = Object.fromEntries(PALETTE_FILTERS.map(({ id, label }) => [id, label])) as Record<PaletteFilter, string>;
@@ -106,9 +104,9 @@ const PAUSE_ALL = {
 
 type ShellDialog = "quit" | "logout";
 const DIALOG = {
-  quit: { title: "Asked to pause everything and quit", knownFailures: DIALOG_SURFACE_BREAK, ready: '[role="dialog"]',
+  quit: { title: "Asked to pause everything and quit", ready: '[role="dialog"]',
     render: () => <StoryFrame><PauseAllQuitControls state="ready" activeCount={2} quitRequested onQuitDismiss={noop} onPauseAndQuit={noop} /></StoryFrame> },
-  logout: { title: "Asked to log out", knownFailures: DIALOG_SURFACE_BREAK, slowFetch: { region: "#hub-shell-assistant" }, ready: '[role="dialog"]', render: () => <StoryFrame><DashboardClientProvider client={CLIENT}>
+  logout: { title: "Asked to log out", slowFetch: { region: "#hub-shell-assistant" }, ready: '[role="dialog"]', render: () => <StoryFrame><DashboardClientProvider client={CLIENT}>
     <HubShell settingsOpen={false} logoutOpen onLogoutOpenChange={noop} onLogout={noop} /></DashboardClientProvider></StoryFrame> },
 } satisfies Record<ShellDialog, Story>;
 

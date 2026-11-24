@@ -351,8 +351,9 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
       const shown = stoodInFor(element).filter(part => { const partBox = part.getBoundingClientRect(); return partBox.width > 1 && partBox.height > 1; });
       if (shown.length === 0) continue;
       if (element.matches(':disabled, [aria-disabled="true"]') || element.closest('[inert], [aria-hidden="true"]') !== null) continue;
-      // A bare tabindex="-1" region is a focus target for scripts, not a control.
-      if (element.getAttribute("tabindex") === "-1" && !element.matches('a[href], button, input, select, textarea, [role]')) continue;
+      // A bare tabindex="-1" region is a focus target for scripts, not a control. So is a dialog's own surface: WCAG 2.4.3
+      // (Focus Order) has focus move into the dialog, which needs it programmatically focusable, and 2.1.1 asks for no Tab stop on it.
+      if (element.getAttribute("tabindex") === "-1" && !element.matches('a[href], button, input, select, textarea, [role]:not([role="dialog"], [role="alertdialog"])')) continue;
       const index = String(controls.length);
       element.setAttribute("data-state-rule-control", index);
       element.setAttribute("data-state-rule-look", look(element));

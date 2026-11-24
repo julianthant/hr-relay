@@ -67,8 +67,8 @@ const rerunClient = (served: Partial<DashboardClient> = {}) => () => runDialogCl
 const planning = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ submitStartPlan: async () => runDialogPlan(), executeCommand: async () => RUN_DIALOG_APPLIED, ...served });
 const start = (page: Page) => press(page, "Start run");
 
-/** Every dialog is built from the same large banded shell, which draws its body padding off the design system's, and holds a control no keyboard reaches. */
-const SHELL_BREAK = { "dialogs-share-shape": "#532", "named-and-focusable": "#532" } as const;
+/** Every dialog is built from the same large banded shell, which draws its body padding off the design system's. */
+const SHELL_BREAK = { "dialogs-share-shape": "#532" } as const;
 const stage = (title: string, client: () => DashboardClient, at: RunStartStage, extra: Partial<Story> & SceneOptions = {}) =>
   scene(title, client, at, { knownFailures: SHELL_BREAK, ...extra });
 
