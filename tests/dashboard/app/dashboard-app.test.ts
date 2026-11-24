@@ -9,8 +9,8 @@ import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/applic
 import { CommandRequestSchema, deriveSettingsCommandFingerprint, ProtectedSettingsCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { URL as FileURL } from "node:url";
 // @vitest-environment jsdom
-import { FIXTURE_EDITABLE_SETTINGS as FIXTURE_EDITABLE_SETTINGS_m1 } from "../../mocks/helpers/fixture-settings.js";
-import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_EDITABLE_SETTINGS as FIXTURE_EDITABLE_SETTINGS_m1 } from "../../support/helpers/dashboard/mock-world/fixture-settings.js";
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 // @vitest-environment jsdom
 
 import assert_m1 from "node:assert/strict";
@@ -40,8 +40,8 @@ import { DashboardApp as DashboardApp_m2 } from '../../../src/dashboard/app/dash
 import { createDashboardClient as createDashboardClient_m2 } from '../../../src/dashboard/client/index.js';
 import { DashboardClientProvider as DashboardClientProvider_m2 } from '../../../src/dashboard/state/client-context.js';
 import { DashboardDayWireSchema as DashboardDayWireSchema_m2,type DashboardDayWire as DashboardDayWire_m2 } from '../../../src/models/dashboard/projection.js';
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m2 } from '../../mocks/helpers/fixture-queue.js';
-import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m2 } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m2 } from '../../support/helpers/dashboard/mock-world/fixture-queue.js';
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m2 } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { WORKFLOW_SOURCES } from "../../../src/dashboard/app/workflow-sources.js";
 import { createFixtureBff as createFixtureBff_m2 } from '../../support/helpers/dashboard/fixture-bff.js';
 
@@ -375,7 +375,7 @@ describe_m1("served sign-up Finish", () => {
     await act_m1(async () => { await assert_m1.rejects(client.bootstrap()); });
     await vi_m1.waitFor(() => {
       assert_m1.equal(resumes, 1); assert_m1.ok(document.querySelector(".dashboard-shell"));
-      assert_m1.equal(document.querySelector(".hub-onboarding"), null);
+      assert_m1.equal(document.querySelector(".hub-onboarding") === null, true);
     });
     assert_m1.equal(refusedReads, 1);
     assert_m1.deepEqual(await client.readProfileSession(), { ...active, epoch: 2 });
@@ -588,8 +588,7 @@ afterEach_m1(_afterEachFixture0);
     const frame = frameOf("Settings");
     assert_m1.equal(document.activeElement === frame, true);
     assert_m1.equal(
-      document.querySelector('section[aria-label="UI catalog"]'),
-      null,
+      document.querySelector('section[aria-label="UI catalog"]') === null, true,
       "the catalog must no longer mount a frame of its own",
     );
     assert_m1.doesNotMatch(frame.textContent ?? "", /UI catalog|No such settings section/u);
@@ -597,8 +596,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal([...frame.querySelectorAll("a")].some(link => link.textContent?.trim() === "UI catalog"), false);
     assert_m1.equal(takeFirstTab(frame).getAttribute("aria-label"), "Close settings");
     assert_m1.equal(
-      document.querySelector('[aria-label="Close the UI catalog"]'),
-      null,
+      document.querySelector('[aria-label="Close the UI catalog"]') === null, true,
       "a section may not carry a second exit from the page that contains it",
     );
   });
@@ -619,8 +617,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(
       [...document.querySelectorAll("button")].find(
         (button) => button.textContent?.trim() === "Import spreadsheet",
-      ),
-      undefined,
+      ) === undefined, true,
       "the toolbar's Import spreadsheet door is retired — the Run Modal carries the handoff",
     );
   });
@@ -643,7 +640,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.ok(notifications instanceof HTMLButtonElement);
     assert_m1.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
     await press(notifications);
-    assert_m1.equal(frameOf("Settings"), frame, "opening notifications preserves the runtime draft owner");
+    assert_m1.equal(frameOf("Settings") === frame, true, "opening notifications preserves the runtime draft owner");
     assert_m1.equal(input.dataset.value, value, "browser appearance and notification controls preserve runtime edits");
     await press(notifications);
     const sectionLink = (label: string): HTMLAnchorElement => {

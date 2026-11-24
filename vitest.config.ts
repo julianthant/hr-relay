@@ -12,7 +12,6 @@ export const REBUILD_UNIT_TEST_INCLUDE = ["tests/**/*.test.ts"] as const;
 const UNIT_EXCLUDE_GLOBS = [
   "tests/**/*.integration.test.ts",
   "tests/architecture/**",
-  "tests/mocks/**",
   "tests/perf/**",
 ] as const;
 export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts"] as const;
@@ -134,6 +133,11 @@ const sharedConfig = defineConfig({
         "src/backend/runtime/gates/repeat-proof.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/storage/sqlite/run-continuation.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/execution/run-executor.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/execution/run-execution-outcome.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/execution/run-execution-plan.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/execution/run-execution-task.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/execution/run-execution-walk.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/execution/run-execution-write.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/policies/durable-intent.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/policies/idle-claim.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/policies/task-retry.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,

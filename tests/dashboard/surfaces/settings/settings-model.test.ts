@@ -11,7 +11,7 @@ import { DashboardClientProvider } from "../../../../src/dashboard/state/client-
 import { DASHBOARD_MAIN_REGION_ID, SETTINGS_GEAR_ID, SETTINGS_KEYBOARD_SECTION_ID, buildSettingsNav, resolveSettingsSection } from "../../../../src/dashboard/surfaces/settings/settings-model.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../../src/models/dashboard/settings.js";
-import { fixtureSettingsDocument } from "../../../mocks/helpers/fixture-settings.js";
+import { fixtureSettingsDocument } from "../../../support/helpers/dashboard/mock-world/fixture-settings.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
@@ -131,8 +131,8 @@ describe("canonical Settings navigation", () => {
     const page = await mountFailedRead("archive");
     assert.doesNotMatch(page.textContent ?? "", /Archive page removed/u);
     assert.match(page.textContent ?? "", /Couldn't load settings\./u);
-    assert.equal(page.querySelector('a[href="?settings=archive"]'), null);
-    assert.equal(page.querySelector('[aria-label="Archive"]'), null);
+    assert.equal(page.querySelector('a[href="?settings=archive"]') === null, true);
+    assert.equal(page.querySelector('[aria-label="Archive"]') === null, true);
   });
 
   it("reports unavailable field search when the catalog read fails instead of claiming no matches", async () => {
@@ -163,7 +163,7 @@ describe("focus on close", () => {
     gear.id = SETTINGS_GEAR_ID;
     if (gearMounted) container.append(gear);
     restoreDashboardTakeoverFocus(document, SETTINGS_GEAR_ID, DASHBOARD_MAIN_REGION_ID);
-    assert.equal(document.activeElement, gearMounted ? gear : main);
+    assert.equal(document.activeElement === (gearMounted ? gear : main), true);
   });
 
   it("the two targets are distinct ids", () => {

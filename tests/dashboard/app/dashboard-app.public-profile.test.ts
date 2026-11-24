@@ -31,12 +31,12 @@ for (const source of ["show", "poll", "initial", "initial-network"] as const) it
       if (source === "initial") assert.match(host.querySelector('[role="alert"]')?.textContent ?? "", /The browser may not have closed\. No file or credential was changed\./);
       assert.equal(host.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled, true);
       await act(async () => vi.advanceTimersByTimeAsync(1000));
-      assert.equal(host.querySelector("form"), null);
+      assert.equal(host.querySelector("form") === null, true);
       assert.equal(button("Reopen").disabled, false);
     } else {
       await act(async () => { if (source === "show") button("Show window").click(); else await vi.advanceTimersByTimeAsync(1000); });
       assert.match(host.textContent ?? "", /Could not reopen setup window/);
-      assert.equal(host.querySelector("form"), null, "the current draft survives the failed action or read");
+      assert.equal(host.querySelector("form") === null, true, "the current draft survives the failed action or read");
       assert.equal(button("Reopen").disabled, false);
       await act(async () => button("Reopen").click());
       assert.ok(calls.includes("/api/v1/profile/onboarding/duo/reopen"));
@@ -83,7 +83,7 @@ for (const ready of [false, true]) it(`resumes the server draft stage without or
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, {}) })));
     assert.equal(host.querySelector('.hub-onboarding') !== null, true);
-    assert.equal(host.querySelector('form'), null);
+    assert.equal(host.querySelector('form') === null, true);
     assert.ok(calls.length > 0); assert.ok(calls.every(path => path === "/api/v1/profile/state"));
     if (ready) assert.equal(host.querySelector<HTMLButtonElement>("main button:not(ol button)")?.disabled, false);
   } finally { await act(async () => root.unmount()); host.remove(); window.history.replaceState(null, "", previous); }

@@ -74,7 +74,7 @@ judging a visual difference.
 
 - Follow the [root test path](../../AGENTS.md#checks) for runner placement and slots.
 - Prove dashboard behaviour with Vitest unit/integration tests, the `tests/smoke/` browser suite
-  and `/verify` browser checks. `tests/mocks/` holds only `/ui-mock` scenes.
+  and `/verify` browser checks.
 - Add browser coverage as `tests/smoke/*.smoke.ts` on the seeded backend, through the fixtures and
   page object in `tests/support/helpers/dashboard/smoke/`. Assert behaviour and layout, never
   screenshots. CI runs it in the `smoke` job; run it locally only when assigned.

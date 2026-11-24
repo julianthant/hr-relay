@@ -9,8 +9,8 @@ import { useSessionPreviewCommands, type SessionPreviewCommandPort, type Session
 import { SessionsView } from "../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import type { SessionsViewState } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { createFixtureSessionPort, previewSessionControl, sessionsSample } from "../../../support/fixtures/dashboard/sessions-sample.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
@@ -66,7 +66,7 @@ describe("worker controls", () => {
     assert.equal(sent.length, 1, "nothing is resent"); assert.deepEqual(checked, sent);
     assert.equal(host.querySelectorAll('button[aria-label="Resume"]').length, 1);
     assert.doesNotMatch(host.textContent ?? "", /uncertain|Check outcome|unavailable/u);
-    assert.equal(host.querySelector('[role="alert"]'), null); assert.deepEqual(problems, []);
+    assert.equal(host.querySelector('[role="alert"]') === null, true); assert.deepEqual(problems, []);
   });
 
   it("settles a foreign or malformed reply from the read-back", async () => {
@@ -96,7 +96,7 @@ describe("worker controls", () => {
     assert.equal(host.querySelectorAll('button[aria-label="Resume"]').length, 0);
     assert.equal(firstPause(host)?.disabled, false, "the control works again without a reload");
     assert.doesNotMatch(host.textContent ?? "", /Lost response|No served effect|Check outcome/u);
-    assert.equal(host.querySelector('[role="alert"]'), null);
+    assert.equal(host.querySelector('[role="alert"]') === null, true);
     await act(async () => firstPause(host)?.click());
     assert.equal(sent.length, 2, "a new press sends a new command");
   });

@@ -103,7 +103,7 @@ import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatem
 import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunFromRow, predecessorCustodyRunRow, predecessorLifecycleRequest, predecessorWorkerSlotFromRow } from "./worker-custody-predecessor.js";
 import { withNativeRecordReadScope, predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord,withoutNativeRecordReadMemo } from "./run-record-row.js";
-import { SearchStateColumnSchema,createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
+import { SearchStateColumnSchema,backfillRunSearchOcrSubjects,createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
 import { createRunSummaries, listRunWorkflows } from "./run-summaries.js";
@@ -141,7 +141,7 @@ import { FAILURE_NOTE_REMOVAL_CONVERSION_ID, FAILURE_NOTE_REMOVAL_SCHEMA_VERSION
 import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertAssistantHistoryRetirable } from "./assistant-grant-retirement.js";
 import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
 import { RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS } from "../../../models/config/authority-schema-versions.js";
-import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,COMMAND_ROW_STATE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
+import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,COMMAND_ROW_STATE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,OCR_SEARCH_TERMS_BACKFILL_ID,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
@@ -1637,18 +1637,23 @@ function includeAuthorityChange(closure: ReturnType<typeof authorityChangeClosur
   }
 }
 
-function readAuthorityChangeClosure(database: DatabaseSync, after: number, high: number, observe?: (entry: ChangeEntry) => void) {
+/** Change-log entries read per page; each page's closure is validated on its own, so one scoped check covers at most this many. */
+export const CHANGE_LOG_PAGE_ENTRIES = 1_000;
+
+/** One closure per unread change-log page, or `undefined` on a gap; with nothing unread, one empty closure re-checks the singleton. */
+function readAuthorityChangePages(database: DatabaseSync, after: number, high: number, observe?: (entry: ChangeEntry) => void) {
   const tail = z.strictObject({ first: z.number().nullable(), last: z.number().nullable() }).parse(database.prepare(`SELECT
     (SELECT seq FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq LIMIT 1) AS first,
     (SELECT seq FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq DESC LIMIT 1) AS last`).get(after, after));
   if (high < after || (high === after ? tail.first !== null : tail.first !== after + 1 || tail.last !== high)) return undefined;
 
-  const closure = authorityChangeClosure();
-  const pageSize = 1_000;
+  const closures = [authorityChangeClosure()];
   let cursor = after;
   while (cursor < high) {
-    const page = readAuthorityChanges(database, cursor, pageSize);
-    if (page.length !== Math.min(high - cursor, pageSize)) return undefined;
+    const page = readAuthorityChanges(database, cursor, CHANGE_LOG_PAGE_ENTRIES);
+    if (page.length !== Math.min(high - cursor, CHANGE_LOG_PAGE_ENTRIES)) return undefined;
+    const closure = cursor === after ? closures[0] : authorityChangeClosure();
+    if (closure !== closures[0]) closures.push(closure);
     for (const entry of page) {
       if (entry.seq !== cursor + 1) return undefined;
       includeAuthorityChange(closure, entry);
@@ -1656,7 +1661,7 @@ function readAuthorityChangeClosure(database: DatabaseSync, after: number, high:
       cursor = entry.seq;
     }
   }
-  return closure;
+  return closures;
 }
 
 /** Entries kept for readers that fall behind; older ones are pruned, and a reader below the floor runs the whole-store check. */
@@ -1682,12 +1687,12 @@ function admitChanges(database: DatabaseSync, reader: ChangeLogReader, search: "
   // Entries may be missing while the schema differed, so a schema move is checked whole.
   if (schemaMoved) reader.wholeStore = true;
   const high = changeLogHighWater(database);
-  const closure = reader.wholeStore ? undefined : readAuthorityChangeClosure(database, reader.cursor, high, observe);
-  if (closure === undefined) reader.wholeStore = true;
+  const closures = reader.wholeStore ? undefined : readAuthorityChangePages(database, reader.cursor, high, observe);
+  if (closures === undefined) reader.wholeStore = true;
   const singleton = readSingletonImage(database);
-  const check = closure === undefined
+  const check = closures === undefined
     ? (value: typeof search) => { validateAuthorityStore(database, value); }
-    : (value: typeof search) => { validateAuthorityChangeClosure(database, closure, singletonChangeKeys(reader.singleton, singleton), value); };
+    : (value: typeof search) => { validateAuthorityChangePages(database, closures, singletonChangeKeys(reader.singleton, singleton), value); };
   try { check(search); }
   catch (error) {
     // The refusal is rethrown either way; this only names which half failed.
@@ -1709,7 +1714,7 @@ function admitChanges(database: DatabaseSync, reader: ChangeLogReader, search: "
   }
   if (search === "progress") return;
   Object.assign(reader, { cursor: high, singleton, wholeStore: false, failed: undefined, settled: undefined });
-  return closure !== undefined;
+  return closures !== undefined;
 }
 
 /**
@@ -1726,9 +1731,24 @@ export type AuthorityChangeRoute = "scoped" | "whole";
  */
 export function validateAuthorityChanges(database: DatabaseSync, entries: readonly ChangeEntry[], singletonKeys: readonly DependencyKey[],
   search: "all" | "progress" | "none" = "all"): AuthorityChangeRoute {
-  const closure = authorityChangeClosure();
-  for (const entry of entries) includeAuthorityChange(closure, entry);
-  return validateAuthorityChangeClosure(database, closure, singletonKeys, search);
+  const pages = Array.from({ length: Math.max(1, Math.ceil(entries.length / CHANGE_LOG_PAGE_ENTRIES)) }, (_, page) => {
+    const closure = authorityChangeClosure();
+    for (const entry of entries.slice(page * CHANGE_LOG_PAGE_ENTRIES, (page + 1) * CHANGE_LOG_PAGE_ENTRIES)) includeAuthorityChange(closure, entry);
+    return closure;
+  });
+  return validateAuthorityChangePages(database, pages, singletonKeys, search);
+}
+
+/**
+ * Validates each page's closure on its own, so one scoped check never covers more than one page; this equals validating their
+ * union, since every check reads current rows, except the build-prefix check, which is given every page's changed search rows.
+ * A whole-store route covers the remaining pages.
+ */
+function validateAuthorityChangePages(database: DatabaseSync, pages: readonly ReturnType<typeof authorityChangeClosure>[],
+  singletonKeys: readonly DependencyKey[], search: "all" | "progress" | "none"): AuthorityChangeRoute {
+  // The build-prefix check must see every changed search row: a row another page changed is not an unchanged prefix end.
+  const searchRuns = new Set(pages.flatMap(page => [...page.searchRuns]));
+  return pages.some(page => validateAuthorityChangeClosure(database, { ...page, searchRuns }, singletonKeys, search) === "whole") ? "whole" : "scoped";
 }
 
 function validateAuthorityChangeClosure(database: DatabaseSync, closure: ReturnType<typeof authorityChangeClosure>,
@@ -2405,6 +2425,7 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
       if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
       if (statement === `SELECT '${FAILURE_NOTE_REMOVAL_CONVERSION_ID}'`) migrateFailureNotes(database);
       if (statement === `SELECT '${WORKBOOK_PAYLOAD_CONVERSION_ID}'`) migrateWorkbookPayloads(database);
+      if (statement === `SELECT '${OCR_SEARCH_TERMS_BACKFILL_ID}'`) backfillRunSearchOcrSubjects(database);
       if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
     }
   }
@@ -7178,7 +7199,7 @@ export class AuthorityDatabase implements Disposable {
         listByParentRun: (parentRunId: string) => {
           const rows = this.#database.prepare(`
             SELECT * FROM delegation_dependencies
-            WHERE json_extract(payload_json, '$.parentRunId') = ?
+            WHERE parent_run_id = ?
             ORDER BY created_at, id
           `).all(RunIdSchema.parse(parentRunId));
           return Object.freeze(rows.map((row) => this.#parseNativeRow("delegation_dependencies",row,DependencyRecordSchema)));
@@ -7202,7 +7223,7 @@ export class AuthorityDatabase implements Disposable {
         listByRun: (runId: string) => {
           const rows = this.#database.prepare(`
             SELECT * FROM gate_results
-            WHERE json_extract(payload_json, '$.runId') = ?
+            WHERE run_id = ?
             ORDER BY created_at, id
           `).all(RunIdSchema.parse(runId));
           return Object.freeze(rows.map((row) => this.#parseNativeRow("gate_results",row,GateResultRecordSchema)));
@@ -7945,7 +7966,7 @@ export class AuthorityDatabase implements Disposable {
           this.#database.prepare(`INSERT INTO canonical_run_page_state VALUES(1,?,?,total_changes()+1,?)`).run(key.authorityGeneration, key.dataVersion, workflow ?? null);
           this.#temporaryProjectionChanges += this.#rawChangeKey().totalChanges - key.totalChanges;
         }
-        return Object.freeze(this.#database.prepare(`SELECT r.* FROM canonical_run_page p JOIN runs r ON r.id=p.run_id
+        return Object.freeze(this.#database.prepare(`SELECT r.* FROM canonical_run_page p CROSS JOIN runs r ON r.id=p.run_id
           WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));
       },
       // Either representation can reveal active membership when a row's state has drifted.

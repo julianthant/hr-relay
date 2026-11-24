@@ -13,7 +13,7 @@ import { RunDetailWireSchema, NotePageSchema } from "../../../src/models/dashboa
 import { parseViewRoute } from "../../../src/dashboard/app/navigation/view-route-model.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
 import { ocrReviewPageFixture } from "../../support/fixtures/dashboard/ocr-review.js";
 
@@ -76,7 +76,7 @@ it("opens shared-lookup records through real routes and keyboard selection witho
     assert.deepEqual(readSelection(), { kind: "record", record: { runId: owner.runId, recordId: records[0].recordId } });
     // Review records is a dialog; queue shortcuts resume once it closes.
     await act(async () => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    await vi.waitFor(() => assert.equal(document.querySelector('[role="dialog"][data-state="open"]'), null));
+    await vi.waitFor(() => assert.equal(document.querySelector('[role="dialog"][data-state="open"]') === null, true));
     await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true })));
     await vi.waitFor(() => assert.deepEqual(readSelection(), { kind: "record", record: { runId: owner.runId, recordId: records[1].recordId } }));
     assert.ok(requestedRuns.length > 0); assert.ok(requestedRuns.every(runId => runId === owner.runId));

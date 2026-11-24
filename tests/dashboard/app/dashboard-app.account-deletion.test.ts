@@ -8,9 +8,9 @@ import { createDashboardClient, type DashboardClient } from "../../../src/dashbo
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
-import { FIXTURE_BOOTSTRAP } from "../../mocks/helpers/fixture-bootstrap.js";
-import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_BOOTSTRAP } from "../../support/helpers/dashboard/mock-world/fixture-bootstrap.js";
+import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { operatorFailureSentence } from "../../../src/models/failures/error-catalog.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -62,7 +62,7 @@ it("enables the served account control and deletes only after explicit confirmat
   assert.ok(cancelledDialog.textContent?.includes(`Delete ${FIXTURE_BOOTSTRAP.actor.label}’s account?`));
   await act(async () => button("Cancel", cancelledDialog).click());
   assert.deepEqual(requests, []);
-  assert.equal(document.querySelector('[role="dialog"]'), null);
+  assert.equal(document.querySelector('[role="dialog"]') === null, true);
   await act(async () => trigger.click());
   const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
   await act(async () => button("Delete account", dialog).click());
@@ -72,7 +72,7 @@ it("enables the served account control and deletes only after explicit confirmat
   assert.match(document.querySelector('[aria-label="Account"]')?.textContent ?? "", /Deleting your account…/u);
   await act(async () => response.resolve(Response.json({ state: "signed-out", signUpRequired: true })));
   await vi.waitFor(() => assert.equal(document.querySelector("h1")?.textContent, "Create your profile"));
-  assert.equal(document.querySelector('[aria-label="Account"]'), null);
+  assert.equal(document.querySelector('[aria-label="Account"]') === null, true);
   assert.equal(requests.length, 1);
 });
 

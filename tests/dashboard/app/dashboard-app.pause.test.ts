@@ -9,8 +9,8 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
 import { BulkRunCommandRequestSchema, CommandRequestSchema, type BulkRunCommandRequest, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
 import { lifecycleCommandId } from "../../../src/rules/commands/lifecycle-command-id.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
-import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { pickedRunWorld } from "../../support/helpers/dashboard/picked-dashboard.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 
@@ -65,7 +65,7 @@ it("Pause all sends exact global membership once, including runs outside the sel
     await act(async () => { f.reply.resolve({ state: "applied", commandId: request.commandId,
       affectedTargets: [{ family: "application", runtimeGeneration: request.target.runtimeGeneration }] }); });
     assert.equal(f.button("Resume all runs").disabled, false);
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true);
   } finally { await f.close(); }
 });
 
@@ -75,7 +75,7 @@ it("keyboard quit confirms without a run list and retains an uncertain request w
     await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "q", metaKey: true, cancelable: true })));
     assert.equal(f.sent.length, 0);
     const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
-    assert.equal(dialog.querySelector("ul, table"), null);
+    assert.equal(dialog.querySelector("ul, table") === null, true);
     assert.ok(!dialog.textContent?.includes(f.lifecycle.targets[0].runId));
     await act(async () => f.button("Keep working").click());
     assert.equal(f.sent.length, 0);
@@ -87,7 +87,7 @@ it("keyboard quit confirms without a run list and retains an uncertain request w
     assert.match(f.host.textContent ?? "", /Relay quits after runs pause/);
     await act(async () => f.reply.reject(new Error("lost response")));
     await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "q", metaKey: true, cancelable: true })));
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.equal(f.button("Pause all runs").disabled, true);
     assert.equal(f.sent.length, 1);
   } finally { await f.close(); }

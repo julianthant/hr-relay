@@ -9,9 +9,9 @@ import { IdentityGateDetailWireSchema, RunDetailSectionResponseSchema } from '..
 import { FIXTURE_IDENTITY_GATE } from '../../support/fixtures/dashboard/run-detail/gates-park.js';
 import { DashboardClientProvider } from '../../../src/dashboard/state/client-context.js';
 import { RowRevisionSchema } from '../../../src/models/dashboard/primitives.js';
-import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from '../../mocks/helpers/fixture-queue.js';
+import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from '../../support/helpers/dashboard/mock-world/fixture-queue.js';
 import { DashboardCommandRequestSchema, type DashboardCommandRequest } from '../../../src/rules/commands/commands.js';
-import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../mocks/helpers/workflow-composition.js';
+import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../support/helpers/dashboard/mock-world/workflow-composition.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
@@ -135,7 +135,7 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
     await new Promise(resolve => setTimeout(resolve, 20));
   });
   assert.equal(subscriptions.length, 2, 'one new day subscription is the admitted refresh');
-  assert.equal(host.querySelector('form[aria-label="Is this the right person?"]'), block, 'the loaded Logs mount survives loading');
+  assert.equal(host.querySelector('form[aria-label="Is this the right person?"]') === block, true, 'the loaded Logs mount survives loading');
   assert.ok(host.querySelector('.dashboard-log-column')?.textContent?.includes('Refreshing'));
   assert.equal(approve.disabled, true, 'stale authority cannot approve a gate');
   await act(async () => approve.click());

@@ -1,6 +1,6 @@
 import { IdleSessionSchedule, IDLE_REFRESH_MS } from "../../../../src/dashboard/surfaces/sessions/session-idle-model.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
@@ -23,7 +23,7 @@ import { createSessionPreviewPort, sessionCommandEffect, type SessionCommandBind
 import { sessionsFromDay, sessionWorkerAuthorityKey } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 import { DashboardDayWireSchema, WorkerCardWireSchema, UnavailableWorkerCardWireSchema, type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../mocks/helpers/fixture-day.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../support/helpers/dashboard/mock-world/fixture-day.js";
 
 /** Waits for the panel's own read-back of an unknown outcome to settle (at most about 2.5 s). */
 async function settled(check: () => void) { await vi.waitFor(async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); check(); }, { timeout: 4000, interval: 20 }); }
@@ -567,7 +567,7 @@ it.each(["outside-day", "empty", "skipped", "cancelled"] as const)("keeps the se
     const article = host.querySelector("article"); assert(article);
     assert(!article.textContent?.includes(reason), "the served timeline refusal is a data gap, not card text");
     assert.equal((sessionsFromDay(h.day(), catalog, now) as Extract<ReturnType<typeof sessionsFromDay>, { state: "ready" }>).workers[0].timelineUnavailable, reason);
-    assert.equal(article.querySelector('[role="progressbar"]'), null);
+    assert.equal(article.querySelector('[role="progressbar"]') === null, true);
     assert.equal(h.sent.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -581,7 +581,7 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
   try {
     h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state: "running", currentRun: { state: "present", runId: row.runId, traceId: row.traceId } }],
       queueSurfaces: [{ ...row, pipeline: [{ id: "served-active", label: "Served active step", state: "active" }] }] }));
-    await act(async () => render()); assert.equal(host.querySelector('[role="progressbar"]'), null);
+    await act(async () => render()); assert.equal(host.querySelector('[role="progressbar"]') === null, true);
     const served = sessionsFromDay(h.day(), catalog, now); assert(served.state === "ready");
     assert.deepEqual(served.workers[0].timeline, [{ id: "served-active", label: "Served active step", state: "active" }]);
     assert.doesNotMatch(host.textContent ?? "", /Run timeline is not served|No steps are served|states unavailable/);
@@ -590,7 +590,7 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
         ...(state === "failed" ? { endedAt: now, stopReason: "crashed" } : {}) }] }));
       await act(async () => render());
       assert.doesNotMatch(host.textContent ?? "", /No current claimed run|Run timeline is not served|No steps are served|states unavailable/);
-      assert.equal(host.querySelector('[role="progressbar"]'), null);
+      assert.equal(host.querySelector('[role="progressbar"]') === null, true);
       if (state === "idle") { assert.match(host.textContent ?? "", /Idle/); assert.doesNotMatch(host.textContent ?? "", /No run assigned/); }
       if (state === "starting") assert.match(host.textContent ?? "", /Starting.*No run assigned/s);
       if (state === "failed") assert(host.textContent?.includes("Its run is no longer on record."));
@@ -783,6 +783,6 @@ it("keeps a system nickname's full name and an unavailable reason in the chip's 
     assert.equal(chip.textContent, "SNowServiceNowUnavailable. ServiceNow did not answer");
     assert.equal(chip.querySelector("span[aria-hidden='true']")?.textContent, "SNow");
     assert.equal(chip.querySelector("[tabindex='0']")?.getAttribute("tabindex"), "0");
-    assert.equal(plain.querySelector("[tabindex]"), null, "a chip with nothing to add is not a tab stop");
+    assert.equal(plain.querySelector("[tabindex]") === null, true, "a chip with nothing to add is not a tab stop");
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });

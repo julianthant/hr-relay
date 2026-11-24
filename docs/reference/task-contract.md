@@ -284,7 +284,7 @@ The runtime registry derives its task corpus from registered stores. There is no
 
 ### 2.6 Bounded execution
 
-`src/backend/runtime/execution/run-executor.ts` parses bound input, runs a read under the injected
+`src/backend/runtime/execution/run-execution-task.ts` parses bound input, runs a read under the injected
 monotonic `taskDeadlineMs` and run signal, validates provenance, and parses output before checkpointing.
 Browser reads acquire their driver through `WorkerSessionManager.withDriver`.
 The write sequencer bounds transaction-role invocations and retains post-fence settlement ownership.

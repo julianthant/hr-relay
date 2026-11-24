@@ -1,4 +1,4 @@
-import { registerFixturePreflightRoutes } from "../../../../mocks/helpers/fixture-preflight-routes.js";
+import { registerFixturePreflightRoutes } from "../mock-world/fixture-preflight-routes.js";
 import { wireError } from "../../../fixtures/dashboard/fixture-wire-error.js";
 import { Hono } from "hono";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";

@@ -44,15 +44,15 @@ function isProviderConsumer(path: string): boolean {
 const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
   "src/workflow-kit/providers.ts",
   "src/backend/processing/providers/provider-client.ts",
-  "src/backend/runtime/execution/run-executor.ts",
+  "src/backend/runtime/execution/run-execution-task.ts",
 ]);
 const PROVIDER_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
   "src/backend/processing/providers/provider-client.ts",
-  "src/backend/runtime/execution/run-executor.ts",
+  "src/backend/runtime/execution/run-execution-task.ts",
 ]);
 
 const PROVIDER_CLIENT_IMPORTERS: ReadonlySet<string> = new Set([
-  "src/backend/runtime/execution/run-executor.ts",
+  "src/backend/runtime/execution/run-execution-task.ts",
 ]);
 
 export function auditProviderCapabilityBoundary(root: string): readonly string[] {

@@ -10,7 +10,7 @@ import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 
 const h = createRunStartDialogHarness();

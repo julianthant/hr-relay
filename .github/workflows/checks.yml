@@ -26,7 +26,7 @@ env:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       plan: ${{ steps.select.outputs.plan }}
       smoke-matrix: ${{ steps.smoke-matrix.outputs.matrix }}
@@ -109,7 +109,6 @@ jobs:
               - 'tests/**/*.test.ts'
               - '!tests/**/*.integration.test.ts'
               - '!tests/architecture/**'
-              - '!tests/mocks/**'
               - '!tests/perf/**'
             integration:
               - 'tests/**/*.integration.test.ts'
@@ -488,6 +487,13 @@ jobs:
           retention-days: 7
           path: tests/smoke/.output/results.json
           if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: smoke-states-${{ matrix.lane }}
+          retention-days: 7
+          path: tests/smoke/.output/states/
+          if-no-files-found: ignore
 
   unit:
     name: unit

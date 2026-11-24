@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, it, vi } from "vitest";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../../mocks/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { DAY, runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { disposeHttpRouteHarness, harness } from "../../../support/helpers/backend/http-route-harness.js";
 import { STARTUP_READ_DEADLINE_MS } from "../../../../src/dashboard/app/startup/first-screen.js";
@@ -144,7 +144,7 @@ it("ends a bootstrap read that never answers in the Reload notice", async () => 
     await act(async () => { await new Promise(resolve => setTimeout(resolve, STARTUP_READ_DEADLINE_MS - 1_000)); });
     assert.deepEqual(app.frames, ["loading"], "the loader holds while bootstrap is pending");
     await vi.waitFor(() => assert.match(app.host.textContent ?? "", /Couldn't start Relay\./u), { timeout: 5_000, interval: 50 });
-    assert.equal(app.host.querySelector("[data-startup-loading]"), null);
+    assert.equal(app.host.querySelector("[data-startup-loading]") === null, true);
     assert.ok(app.host.querySelector('button')?.textContent?.includes("Reload"));
   } finally { await app.stop(); }
 }, STARTUP_READ_DEADLINE_MS + 20_000);

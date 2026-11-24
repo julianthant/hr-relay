@@ -26,13 +26,13 @@ it('full screen hides the record column, the first Escape leaves it and the seco
   const escape = () => act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
   try {
     act(() => root.render(createElement(TooltipProvider, null, createElement(ReviewDialog, { open: true, onOpenChange, subject: 'Scan.pdf', children: createElement(RecordReview, props) }))));
-    assert.equal(document.querySelector('button[aria-label="Add record"]'), null);
+    assert.equal(document.querySelector('button[aria-label="Add record"]') === null, true);
     act(() => document.querySelector<HTMLButtonElement>('button[aria-label="Full screen"]')!.click());
     assert.ok(document.querySelector('[data-review-fullscreen] button[aria-label="Exit full screen"]'));
     assert.equal(document.querySelector('[aria-label="Record review cards"]')!.classList.contains('hidden'), true);
     escape();
     assert.equal(onOpenChange.mock.calls.length, 0);
-    assert.equal(document.querySelector('[data-review-fullscreen]'), null);
+    assert.equal(document.querySelector('[data-review-fullscreen]') === null, true);
     escape();
     assert.deepEqual(onOpenChange.mock.calls[0], [false]);
   } finally { act(() => root.unmount()); host.remove(); }

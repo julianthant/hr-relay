@@ -5,9 +5,10 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import type { IsoInstant } from "../../../rules/identity/ids.js";
 import type { ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, OCR_SEARCH_TERMS_COLUMN_SQL } from "./migrations.js";
 import { openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
 import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
+import { backfillRunSearchOcrSubjects } from "./run-search-index.js";
 import { privatePathRejects } from "../private-path.js";
 
 export function historyArchivePath(stateRoot: string): string {
@@ -71,6 +72,7 @@ export function writeHistoryArchive(source: DatabaseSync, path: string, binding:
       counts[name] = count;
     }
     archive.exec("UPDATE run_search SET state='discarded' WHERE run_id IN (SELECT id FROM runs WHERE outcome='discarded') AND state NOT IN ('done','failed','cancelled','discarded','interrupted','superseded')");
+    backfillRunSearchOcrSubjects(archive);
     archive.exec("COMMIT");
     return counts;
   } finally { archive.close(); }
@@ -112,11 +114,47 @@ export function checkStagedHistory(localPath: string, archivePath: string, bindi
 function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.nlink !== 1 || privatePathRejects(path, stat, "private")) throw new Error("isolated-history-unsafe");
+  upgradeHistoryArchive(path, binding);
   const url = pathToFileURL(path);
   url.search = "mode=ro&immutable=1";
   database.prepare("ATTACH DATABASE ? AS history").run(url.href);
   const header = headers.parse(database.prepare("SELECT * FROM history.history_header").get());
   if (header.installation_id !== binding.installationId || header.profile_id !== binding.profileId) throw new Error("isolated-history-binding-mismatch");
+}
+
+/** Each step lifts an archive written at its key's schema to the next one; the archive keeps every row it imported. */
+const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync) => void>> = {
+  39: archive => archive.exec(`ALTER TABLE delegation_dependencies ADD COLUMN parent_run_id;
+    UPDATE delegation_dependencies SET parent_run_id=json_extract(payload_json,'$.parentRunId')`),
+  40: archive => {
+    archive.exec(OCR_SEARCH_TERMS_COLUMN_SQL);
+    backfillRunSearchOcrSubjects(archive);
+  },
+};
+const ArchiveVersion = z.object({ schema_version: z.number().int(), installation_id: z.string(), profile_id: z.string() });
+
+/** Brings an archive an older build wrote up to the current schema in place, in one transaction. */
+function upgradeHistoryArchive(path: string, binding: ProfileDatabaseBinding): void {
+  const probe = new DatabaseSync(path, { readOnly: true });
+  let header: z.infer<typeof ArchiveVersion>;
+  try { header = ArchiveVersion.parse(probe.prepare("SELECT schema_version,installation_id,profile_id FROM history_header").get()); } finally { probe.close(); }
+  if (header.schema_version >= CURRENT_AUTHORITY_SCHEMA_VERSION) return;
+  if (header.installation_id !== binding.installationId || header.profile_id !== binding.profileId) throw new Error("isolated-history-binding-mismatch");
+  let version: number;
+  const archive = new DatabaseSync(path);
+  try {
+    archive.exec("BEGIN IMMEDIATE");
+    try {
+      for (version = ArchiveVersion.parse(archive.prepare("SELECT schema_version,installation_id,profile_id FROM history_header").get()).schema_version;
+        version < CURRENT_AUTHORITY_SCHEMA_VERSION; version += 1) {
+        const step = ARCHIVE_UPGRADES[version];
+        if (step === undefined) throw new Error(`isolated-history-schema-unsupported: ${String(version)}`);
+        step(archive);
+      }
+      archive.prepare("UPDATE history_header SET schema_version=?").run(version);
+      archive.exec("COMMIT");
+    } catch (error) { archive.exec("ROLLBACK"); throw error; }
+  } finally { archive.close(); }
 }
 
 export function attachHistoryArchive(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
