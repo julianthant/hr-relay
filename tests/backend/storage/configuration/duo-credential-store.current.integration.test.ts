@@ -136,7 +136,7 @@ for (const target of ["head", "duo"] as const) {
       admission = machine.admitProfile(binding.profileId);
       const reopened = createDuoCredentialStore(admission, w.clock);
       assert.deepEqual(reopened.credentials().map(row => row.credentialId), w.ready);
-      assert.deepEqual(w.rows(), w.before);
+      assert.deepEqual(reopened.read().credentials.map(row => [row.credentialId, row.authenticator?.transport]), w.before);
       const current = w.head();
       assert.equal(current.state, "active");
       assert.ok(current.retired.includes(w.touch.credentialId));
