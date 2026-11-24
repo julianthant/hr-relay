@@ -107,10 +107,10 @@ export const DialogClose = DialogPrimitive.Close;
 
 export type DsDialogSize = "sm" | "md" | "lg" | "xl";
 
-/** sm 400, md 560, lg 880. `lg` is the Start run frame: a 73px divided header and a 57px recessed footer.
+/** sm 520, md 560, lg 880. `lg` is the Start run frame: a 73px divided header and a 57px recessed footer.
  * `xl` is Review records' own size and is not a general width. */
 const DIALOG_SIZE: Record<DsDialogSize, string> = {
-  sm: "max-w-[400px]",
+  sm: "max-w-[520px]",
   md: "max-w-[560px]",
   lg: "max-w-[880px]",
   xl: "max-w-[min(94vw,1100px)]",
@@ -218,14 +218,14 @@ function DialogSurface({
           DIALOG_SIZE[size],
           dsLayer.modal,
           "group/dialog flex max-h-[86vh] flex-col overflow-hidden outline-none",
-          "bg-[var(--ds-surface-overlay)] rounded-[var(--ds-radius-dialog)]",
+          "bg-[var(--ds-dialog-bg)] rounded-[var(--ds-radius-dialog)]",
           dsElev.high,
           dsMotion.enter,
           entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]",
           className,
         )}
       >
-        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-dialog-pad)] pb-[var(--ds-space-cozy)] pt-[var(--ds-dialog-pad)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)] group-data-[size=lg]/dialog:h-[73px] group-data-[size=lg]/dialog:items-center group-data-[size=lg]/dialog:bg-[var(--ds-surface-2)]">
+        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-dialog-pad)] pb-[var(--ds-dialog-header-pb)] pt-[var(--ds-dialog-pad)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)] group-data-[size=lg]/dialog:h-[73px] group-data-[size=lg]/dialog:items-center group-data-[size=lg]/dialog:bg-[var(--ds-surface-2)]">
           <div className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
             <DialogPrimitive.Title className="text-[length:var(--ds-dialog-title-size)] font-semibold leading-[var(--ds-dialog-title-lh)] text-[color:var(--ds-fg)]">
               {title}
@@ -237,7 +237,7 @@ function DialogSurface({
             )}
           </div>
           <DialogPrimitive.Close asChild>
-            <IconButton label="Close" size="md" icon={<X aria-hidden className={dsIcon.md} />} />
+            <IconButton label="Close" size="md" variant="ghost" className="ds-dialog-close" icon={<X aria-hidden className={dsIcon.lg} />} />
           </DialogPrimitive.Close>
         </header>
         {children}
@@ -248,7 +248,7 @@ function DialogSurface({
 
 export function DialogBody({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div data-slot="dialog-body" className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-dialog-pad)] py-[var(--ds-space-cozy)]", className)}>
+    <div data-slot="dialog-body" className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-dialog-pad)] pt-[var(--ds-dialog-body-pt)] pb-[var(--ds-dialog-body-pb)]", className)}>
       {children}
     </div>
   );
@@ -267,9 +267,10 @@ export function DialogFooter({
 }) {
   return (
     <footer
+      data-slot="dialog-footer"
       className={cn(
         // Compact: the buttons sit in the dialog's own padding. Only the Run and Rerun dialog (`band`) has the recessed plane.
-        "flex shrink-0 items-center gap-[var(--ds-space-base)] px-[var(--ds-dialog-pad)] pb-[var(--ds-dialog-pad)] pt-[var(--ds-space-cozy)]",
+        "flex shrink-0 items-center gap-[var(--ds-dialog-footer-gap)] px-[var(--ds-dialog-pad)] pb-[var(--ds-dialog-pad)] pt-[var(--ds-dialog-footer-pt)]",
         "group-data-[size=lg]/dialog:h-[57px] group-data-[size=lg]/dialog:pb-0 group-data-[band]/dialog:border-t group-data-[band]/dialog:border-[color:var(--ds-border-subtle)] group-data-[band]/dialog:bg-[var(--ds-recess-bg)] group-data-[band]/dialog:pt-[var(--ds-space-cozy)] group-data-[band]/dialog:[border-end-start-radius:inherit] group-data-[band]/dialog:[border-end-end-radius:inherit]",
         meta ? "justify-between" : "justify-end",
         className,
@@ -285,7 +286,7 @@ export function DialogFooter({
           {meta}
         </span>
       )}
-      <span className="flex shrink-0 items-center gap-[var(--ds-space-base)]">{children}</span>
+      <span className="flex shrink-0 items-center gap-[var(--ds-dialog-footer-gap)]">{children}</span>
     </footer>
   );
 }
