@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { auditSurfaceOrigins, decidableLeaves, REDACTION_SURFACES, SURFACE_LEAF_ORIGINS } from "./helpers/redaction-surface-audit.js";
 
-it("pins every worker startup text origin across the three command-result surfaces", () => {
+it("pins every worker startup text origin across the three command-result surfaces and the publication targets that carry them", () => {
   const origins = SURFACE_LEAF_ORIGINS.filter(entry => entry.path.includes("workerStartup"));
   assert.deepEqual(origins.map(entry => `${entry.surface}|${entry.path}|${entry.origin}`).sort(), [
     "wire/intake-command-result|result.workerStartup.message|repository-authored",
@@ -11,6 +11,10 @@ it("pins every worker startup text origin across the three command-result surfac
     "wire/ocr-command-result|result.workerStartup.detail|external-text",
     "wire/worker-command-result|result.workerStartup.message|repository-authored",
     "wire/worker-command-result|result.workerStartup.detail|external-text",
+    "wire/stream-envelope|target.result.workerStartup.message|repository-authored",
+    "wire/stream-envelope|target.result.workerStartup.detail|external-text",
+    "wire/stream-envelope|target.results[].workerStartup.message|repository-authored",
+    "wire/stream-envelope|target.results[].workerStartup.detail|external-text",
   ].sort());
 });
 

@@ -55,7 +55,7 @@ async function mount(missing = false, mixed = false, view?: Readonly<Record<stri
     notificationTarget: async () => target,
     bootstrap: async () => { const boot = await transport.bootstrap(); return mixed ? { ...boot, workflows: [...boot.workflows, { ...WorkflowBootstrapPrimitiveSchema.parse(boot.workflows[0]), id: "separations", code: "sep", label: "Separations" }] } : boot; },
     runDetail: async (id: string) => { const detail = await transport.runDetail(id); return mixed && id === FIXTURE_IDS.failedRun ? RunDetailWireSchema.parse({ ...detail, header: { ...detail.header, workflowId: "separations" } }) : detail; },
-    dashboardDay: async (day: string) => { reads.push(day); return { ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), queueSurfaces: missing ? [] : dayRows }; },
+    dashboardDay: async (day: string) => { reads.push(day); return { ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), queueSurfaces: missing ? [] : dayRows, notifications: [notification] }; },
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
       input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), queueSurfaces: dayRows, notifications: [notification] }); input.onState({ state: "live" }); return streamingRunPanel(input, client);
     },

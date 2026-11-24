@@ -264,7 +264,7 @@ afterEach_m1(_afterEachFixture0);
         linkedRuns: [{ runId: "11111111-1111-4111-8111-111111111111", partitionDay: FIXTURE_DAY_WIRE_m1.day,
           workflowId: "separations", label: "Unavailable mock link", panelKind: "run", status: "queued" }] } : surface) });
     await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, {
-      subscribeDay(input) { input.onDay({ ...linkedDay, notifications: [NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title, occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: "Separations" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId: row.runId } })] }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} }; },
+      subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { select() {}, close() {} }; },
     }, "sidebar");
     const link = document.querySelector<HTMLButtonElement>(`[data-demo-row-id="${FIXTURE_IDS_m1.queuedRun}"] button[data-demo-row-link]`);
     assert_m1.ok(link);
@@ -344,7 +344,7 @@ afterEach_m1(_afterEachFixture0);
     const linkedDay = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1,
       queueSurfaces: FIXTURE_DAY_WIRE_m1.queueSurfaces.map(item => item === row ? { ...item, workflowId: "separations", title } : item) });
     await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&settings=general`, {
-      subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { select() {}, close() {} }; },
+      subscribeDay(input) { input.onDay({ ...linkedDay, notifications: [NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title, occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: "Separations" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId: row.runId } })] }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} }; },
       notificationTarget: async () => ({ kind: "run" as const, runId: row.runId, day: linkedDay.day }),
     }, "sidebar", workflows => {
       const composition = MOCK_WORKFLOW_COMPOSITION_m1(workflows);
