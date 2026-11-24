@@ -33,7 +33,11 @@ async function play(page: Page, scene: SignInScene): Promise<void> {
     const input = page.getByLabel(label, { exact: true });
     if (await input.count() > 0) await input.fill(value);
   }
-  for (const name of scene.press ?? []) await page.getByRole("button", { name, exact: true }).last().click();
+  let pressedInDialog = false;
+  for (const name of scene.press ?? []) {
+    if (await page.locator('[role="dialog"]').count() > 0) pressedInDialog = true;
+    await page.getByRole("button", { name, exact: true }).last().click();
+  }
   if (scene.wait !== undefined) await page.clock.runFor(scene.wait);
   if (scene.submit === true) await page.getByRole("button", { name: scene.step === "signup" ? "Create profile" : "Log in" }).click();
   if (scene.confirm === true) await page.getByRole("button", { name: "Add this device" }).click();
@@ -41,6 +45,8 @@ async function play(page: Page, scene: SignInScene): Promise<void> {
   // A story that ends on an open dialog keeps its focus trap; any other waits for the dialog to finish closing.
   if (scene.confirm === true || scene.press?.length === 1 && scene.press[0] === "Cancel sign-up") return;
   await page.locator('[role="dialog"]').waitFor({ state: "hidden" });
+  // Radix restores focus from a dialog a task after the dialog leaves the page; a reset before then is undone.
+  if (pressedInDialog) await page.waitForFunction(() => document.activeElement !== null && document.activeElement !== document.body);
   await page.evaluate(() => {
     const { body } = document;
     body.tabIndex = -1; body.focus({ preventScroll: true }); body.removeAttribute("tabindex");
