@@ -62,6 +62,15 @@ function installReadHold({ target, delayMs, coldOrigin }: { target: Read; delayM
     return read;
   }
 
+  // Declared here: the browser receives only this function's source, so it cannot call module-level helpers.
+  // A day hold delays the first snapshot; a run hold delays the first envelope that carries the run's panel row.
+  const carriesHeldRead = (event: string, held: { day: string } | { run: string }): boolean => {
+    if ("day" in held) return /^data: \{"type":"snapshot"[,}]/mu.test(event);
+    const data = event.split("\n").filter(line => line.startsWith("data: ")).map(line => line.slice(6)).join("\n");
+    if (data === "") return false;
+    const envelope = JSON.parse(data) as { rows?: readonly unknown[] };
+    return Array.isArray(envelope.rows) && envelope.rows.length > 0;
+  };
   const fetchFromServer = window.fetch.bind(window);
   window.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : input, location.href);
@@ -108,13 +117,4 @@ function installReadHold({ target, delayMs, coldOrigin }: { target: Read; delayM
     return new Response(body, { headers: response.headers, status: response.status });
   };
   return read;
-}
-
-/** A day hold delays the first snapshot; a run hold delays the first envelope that carries the run's panel row. */
-function carriesHeldRead(event: string, target: { day: string } | { run: string }): boolean {
-  if ("day" in target) return /^data: \{"type":"snapshot"[,}]/mu.test(event);
-  const data = event.split("\n").filter(line => line.startsWith("data: ")).map(line => line.slice(6)).join("\n");
-  if (data === "") return false;
-  const envelope = JSON.parse(data) as { rows?: readonly unknown[] };
-  return Array.isArray(envelope.rows) && envelope.rows.length > 0;
 }
