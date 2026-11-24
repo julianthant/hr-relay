@@ -41,14 +41,15 @@ async function versionFourMachine(operations: (profileId: string) => readonly { 
   const machine = join(world.machineRoot, "machine"), control = join(workspace, ".tracker", "control");
   const paths: Paths = { registry: join(machine, "profiles.json"), marker: join(machine, "profile-registry-version.json"), operations: join(machine, "operations"),
     control: join(control, "profile-registry.json"), intent: join(control, "security-key-only-upgrade.json") };
-  const expected = DocumentSchema.parse(JSON.parse(readFileSync(paths.registry, "utf8")));
+  const current = DocumentSchema.parse(JSON.parse(readFileSync(paths.registry, "utf8")));
+  const expected = { ...current, profiles: current.profiles.map(({ relayEmail: _relayEmail, ...row }) => row) };
   assert.equal(expected.schemaVersion, 5);
   assert.ok(expected.profiles.every(row => row.registration.onboardingCompletion !== undefined));
   const prior = { ...expected, schemaVersion: 4, profiles: expected.profiles.map(row => ({ ...row,
     registration: { ...row.registration, onboardingCompletion: { ...row.registration.onboardingCompletion, touch: TOUCH_RECEIPT } } })) };
   writeStore(paths, prior, operations(alex.profileId));
   writeFileSync(paths.marker, JSON.stringify({ schemaVersion: 9 }));
-  return { lifetime, workspace, paths, expected, profileId: alex.profileId };
+  return { lifetime, workspace, paths, prior, expected, profileId: alex.profileId };
 }
 
 function startup(machine: { workspace: string; lifetime: RuntimeLifetimeLock }): void {
@@ -124,6 +125,14 @@ describe("profile registry version 4 to 5 upgrade (security key only)", () => {
     startup(machine);
     assert.deepEqual(paths.map(path => readFileSync(path)), files);
     assertUpgraded(machine);
+  });
+
+  it("refuses Relay email in a version 4 registry row", async () => {
+    const machine = await versionFourMachine();
+    writeStore(machine.paths, { ...machine.prior, profiles: machine.prior.profiles.map(row =>
+      ({ ...row, relayEmail: "alex@ucsd.edu" })) }, []);
+    assert.throws(() => startup(machine), /Unrecognized key:.*relayEmail/u);
+    assert.equal(existsSync(machine.paths.intent), false);
   });
 
   for (const [file, moment] of [["operation", "before"], ["operation", "after"], ["registry", "before"], ["control", "before"], ["marker", "before"], ["marker", "after"]] as const) {
