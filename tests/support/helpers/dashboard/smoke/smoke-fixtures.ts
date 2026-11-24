@@ -18,8 +18,11 @@ export function watchPageDiagnostics(page: Page): string[] {
   page.on("pageerror", error => seen.push(`pageerror: ${error.message}`));
   page.on("requestfailed", request => {
     const reason = request.failure()?.errorText ?? "";
+    const { pathname } = new URL(request.url());
     // Leaving or reloading the page aborts its open event stream.
-    if (reason === "net::ERR_ABORTED" && new URL(request.url()).pathname.startsWith("/events/")) return;
+    if (reason === "net::ERR_ABORTED" && pathname.startsWith("/events/")) return;
+    // Closing search or changing its query cancels the search read still in flight.
+    if (reason === "net::ERR_ABORTED" && pathname === "/api/v1/search") return;
     seen.push(`requestfailed: ${request.url()} ${reason}`);
   });
   page.on("response", response => {
