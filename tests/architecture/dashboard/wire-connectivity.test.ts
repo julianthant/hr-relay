@@ -289,9 +289,7 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "notification-unread-all": "complete actor inbox target, not a run row",
   "notification-snooze-all": "complete actor inbox target, not a run row",
   "notification-unsnooze-all": "complete actor inbox target, not a run row",
-  "notification-clear": "notification target, not a run row",
-  "notification-clear-all": "complete actor inbox target, not a run row",
-  "notification-clear-unread-all": "complete actor inbox target, not a run row",
+  "notification-clear": "named notification rows, not a run row",
 
   "set-assistant-model-preference": "the assistant surface owns the model choice; no run row can express it",
 };

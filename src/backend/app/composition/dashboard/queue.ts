@@ -42,6 +42,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       command: (commandId) => database.authority.commands.get(commandId),
       latestNotificationSource: (notificationId) => database.authority.notificationPublications.latest(notificationId),
       notificationConcernActive: concern => database.authority.notificationHealth.get(concern)?.active,
+      notificationCommandSettled: id => { const read = database.authority.commands.readForNotice(id); return read === undefined ? undefined : read.result !== undefined; },
       listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),

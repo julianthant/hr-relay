@@ -40,7 +40,7 @@ import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../models/intake/session.js";
-import { NotificationFoldRequestSchema,NotificationRecordOutcomeSchema,NotificationRecordSchema,NotificationStateRequestSchema,notificationCollectionTarget,notificationStanding,requireMutableNotification,type NotificationCollectionOperation,type NotificationCollectionTarget,type NotificationRecord,type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
+import { NotificationFoldRequestSchema,NotificationRecordOutcomeSchema,NotificationRecordSchema,NotificationStateRequestSchema,notificationCollectionTarget,requireMutableNotification,type NotificationCollectionOperation,type NotificationCollectionTarget,type NotificationRecord,type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
 import { StoredOcrExtractionSchema, type StoredOcrExtraction } from "../../../models/ocr/stored-extraction.js";
 import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
 import { AssistantActionRecordSchema,AssistantChatRecordSchema } from "../../../models/profiles/assistant-authorization.js";
@@ -96,7 +96,6 @@ import { createImportedArtifactRepositories,importedArtifactFromRow } from "./im
 import { initialFailureColumns,initialNotificationColumns,isNativeOrdinaryTable,isNativeRecordIntegrityFailure,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
 import { deletionArtifactValues,executeNativeRunDeletion,prepareNativeRunDeletion } from "./native-run-deletion.js";
 import { createNotificationMetadataRepositories,validateNotificationMetadata } from "./notification-publications.js";
-import { notificationStandingSources } from "../../../rules/notifications/notification-triggers.js";
 import { createReadonlyAuthoritySnapshot,readonlyAuthorityImage,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { deletePreBuildRuns } from "./pre-build-run-deletion.js";
@@ -4479,7 +4478,7 @@ export class AuthorityDatabase implements Disposable {
         table_name IN ('run_batches','run_delegations','delegation_dependencies','run_checkpoints',
           'gate_results','run_failures','run_receipts','write_intents','write_attempts','dryrun_results',
           'worker_pools','worker_slots','auth_leases','ocr_review_revisions','ocr_approved_snapshots','ocr_source_uploads',
-          'notifications','settings','settings_snapshots')
+          'notifications','notification_states','settings','settings_snapshots')
         OR (table_name = 'run_results' AND (
           NOT EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%')
           OR EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%' AND substr(value,5) NOT IN (SELECT id FROM changed_runs))
@@ -6504,10 +6503,7 @@ export class AuthorityDatabase implements Disposable {
           return { result: updated, changes: 1 };
         });
       },
-      collection: (actorId: string, operation: NotificationCollectionOperation) => {
-        const sources = notificationStandingSources(this.authority);
-        return notificationCollectionTarget(this.authority.notifications.listByActor(actorId), actorId, operation, row => notificationStanding(row, sources));
-      },
+      collection: (actorId: string, operation: NotificationCollectionOperation) => notificationCollectionTarget(this.authority.notifications.listByActor(actorId), actorId, operation),
       get: (notificationId: string) => this.#readRecord("notifications", notificationId, NotificationRecordSchema),
       findByDedupe,
       listByActor: (actorId: string, status?: unknown) => {

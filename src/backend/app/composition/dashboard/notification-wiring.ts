@@ -41,6 +41,7 @@ function projectionDependencies({ database, lifecycle, descriptors, runDetailDep
       runs: { get: id => database.authority.runs.get(id) },
       notificationPublications: { latest: id => database.authority.notificationPublications.latest(id) },
       notificationHealth: { get: concern => database.authority.notificationHealth.get(concern) },
+      commands: { readForNotice: id => database.authority.commands.readForNotice(id) },
     }),
   };
 }
@@ -102,6 +103,7 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
           runState: id => { usedDisplay = true; return deps.standing.runState(id); },
           storageConcern: id => deps.standing.storageConcern(id),
           concernActive: concern => { usedDisplay = true; return deps.standing.concernActive(concern); },
+          commandSettled: id => { usedDisplay = true; return deps.standing.commandSettled(id); },
         },
       }));
       // Display context and standing read run, command, health and retained timeline evidence outside the inbox table.

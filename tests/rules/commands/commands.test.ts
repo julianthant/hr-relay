@@ -150,8 +150,6 @@ describe("authority classification and command families", () => {
       "notification-snooze-all": "local-write",
       "notification-unsnooze-all": "local-write",
       "notification-clear": "local-write",
-      "notification-clear-all": "local-write",
-      "notification-clear-unread-all": "local-write",
 
     };
     assert.deepEqual(COMMAND_EFFECT_BY_ACTION, expected);

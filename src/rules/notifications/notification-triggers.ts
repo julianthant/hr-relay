@@ -279,6 +279,7 @@ export function notificationStandingSources(repositories: {
   runs: { get(runId: string): { lifecycle: { state: string } } | undefined };
   notificationPublications: { latest(notificationId: string): { event: unknown } | undefined };
   notificationHealth: { get(concern: string): { active: boolean } | undefined };
+  commands: { readForNotice(commandId: string): { result?: unknown } | undefined };
 }): NotificationStandingSources {
   return {
     runState: runId => repositories.runs.get(runId)?.lifecycle.state,
@@ -288,5 +289,6 @@ export function notificationStandingSources(repositories: {
       return event?.kind === "storage-degraded" ? event.concern : undefined;
     },
     concernActive: concern => repositories.notificationHealth.get(concern)?.active,
+    commandSettled: commandId => { const read = repositories.commands.readForNotice(commandId); return read === undefined ? undefined : read.result !== undefined; },
   };
 }

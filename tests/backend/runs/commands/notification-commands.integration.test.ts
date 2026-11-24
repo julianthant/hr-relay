@@ -10,10 +10,12 @@ const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 const { _afterEachFixture0, ACTOR, record, harness, command } = createNotificationInboxTestWorld(profileFixtures.create);
 
-const collection = (database: AuthorityDatabase, type: "notification-clear-all" | "notification-clear-unread-all", actor = ACTOR) => ({
-  ...command(type, 1), target: database.withAuthorityReadSnapshot(() => database.authority.notifications.collection(actor, type === "notification-clear-all" ? "clear" : "clear-unread")),
-});
-const one = (notificationId: string, expectedVersion = 1) => ({ ...command("notification-clear", expectedVersion), target: { notificationId, actorId: ACTOR, expectedVersion } });
+/** Clears exactly these rows at these versions, as the bell sends it. */
+const clear = (members: readonly (readonly [string, number])[], actorId = ACTOR) => {
+  const sorted = [...members].sort(([x], [y]) => x < y ? -1 : 1).map(([notificationId, expectedVersion]) => ({ notificationId, expectedVersion }));
+  return { ...command("notification-clear", 1), target: { actorId, members: sorted, matchingCount: sorted.length } };
+};
+const one = (notificationId: string, expectedVersion = 1) => clear([[notificationId, expectedVersion]]);
 const listed = (database: AuthorityDatabase) => database.authority.notifications.listByActor(ACTOR).filter(row => row.clearedAt === undefined).map(row => row.notificationId).sort();
 
 describe("clearing notifications", () => {
@@ -53,52 +55,94 @@ describe("clearing notifications", () => {
     assert.deepEqual(listed(database), [id]);
   });
 
-  it("refuses to clear a notice still waiting on the operator and leaves it out of Clear all with its count", async () => {
+  it("refuses to clear a notice still waiting on the operator and keeps its state and count", async () => {
     const { database, kernel } = await harness();
     // A storage notice whose concern cannot be read is still standing: nothing proves it handled.
-    const standing = randomUUID(), plain = randomUUID();
+    const standing = randomUUID();
     database.authority.notifications.create(record({ notificationId: standing, dedupeFingerprint: "3".repeat(64), trigger: "storage", title: "Storage needs attention", count: 4, links: [{ kind: "storage", diagnosticFingerprint: "d".repeat(64) }] }));
-    database.authority.notifications.create(record({ notificationId: plain, dedupeFingerprint: "4".repeat(64) }));
     const before = database.authority.notifications.get(standing);
-    const refused = kernel.execute({ ...command("notification-clear", 1), target: { notificationId: standing, actorId: ACTOR, expectedVersion: 1 } });
+    const refused = kernel.execute(one(standing));
     assert.equal(refused.state, "rejected");
     if (refused.state === "rejected") assert.equal(refused.code, "policy-refused");
-    const request = collection(database, "notification-clear-all");
-    assert.equal(request.target.matchingCount, 1);
-    assert.equal(kernel.execute(request).state, "applied");
-    assert.deepEqual(database.authority.notifications.get(standing), before, "the standing notice keeps its state and count");
+    assert.deepEqual(database.authority.notifications.get(standing), before);
+  });
+
+  it("keeps a recovery notice standing while its command is unsettled, and clears it once settled", async () => {
+    const { database, kernel } = await harness();
+    const pending = { ...command("notification-read", 1), target: { notificationId: randomUUID(), actorId: ACTOR, expectedVersion: 1 } };
+    database.authority.commands.insert(pending);
+    const notice = randomUUID();
+    database.authority.notifications.create(record({ notificationId: notice, dedupeFingerprint: "7".repeat(64), trigger: "command", title: "Command needs attention",
+      summary: "The result of this command is unknown", links: [{ kind: "recovery", commandId: pending.commandId }] }));
+    const refused = kernel.execute(one(notice));
+    assert.equal(refused.state, "rejected");
+    if (refused.state === "rejected") assert.equal(refused.code, "policy-refused");
+    database.authority.commandAudits.insert({ auditId: randomUUID(), request: pending, completedAt: LATER, versionChanges: [], affectedDependencyIds: [],
+      result: { state: "rejected", commandId: pending.commandId, code: "target-not-found", message: "gone" } });
+    assert.equal(kernel.execute(one(notice)).state, "applied");
+    assert.deepEqual(listed(database), []);
+  });
+
+  it("clears a whole group in one command, or none of it when one member stands or moved", async () => {
+    const { database, kernel } = await harness();
+    const [a, b, standing] = [randomUUID(), randomUUID(), randomUUID()];
+    database.authority.notifications.create(record({ notificationId: a, dedupeFingerprint: "8".repeat(64) }));
+    database.authority.notifications.create(record({ notificationId: b, dedupeFingerprint: "9".repeat(64), status: "read" }));
+    database.authority.notifications.create(record({ notificationId: standing, dedupeFingerprint: "3".repeat(64), trigger: "storage", title: "Storage needs attention", links: [{ kind: "storage", diagnosticFingerprint: "d".repeat(64) }] }));
+    const before = [a, b, standing].map(id => database.authority.notifications.get(id));
+    const withStanding = kernel.execute(clear([[a, 1], [b, 1], [standing, 1]]));
+    assert.equal(withStanding.state, "rejected");
+    if (withStanding.state === "rejected") assert.equal(withStanding.code, "policy-refused");
+    assert.equal(kernel.execute(clear([[a, 1], [b, 2]])).state, "rejected", "a member at another version refuses the whole group");
+    assert.deepEqual([a, b, standing].map(id => database.authority.notifications.get(id)), before, "a refusal leaves every member as it was");
+    const result = kernel.execute(clear([[a, 1], [b, 1]]));
+    assert.equal(result.state, "applied");
+    if (result.state === "applied") assert.equal(result.affectedTargets.length, 2, "read and unread members clear together");
     assert.deepEqual(listed(database), [standing]);
   });
 
-  it("clears every notice Clear all lists in one command, or only the unread ones from the Unread tab", async () => {
+  it("clears only the rows Clear all named, so a notice that arrives after the list stays", async () => {
     const { database, kernel } = await harness();
-    const ids = Array.from({ length: 4 }, () => randomUUID());
-    for (const [index, notificationId] of ids.entries()) {
-      database.authority.notifications.create(record({ notificationId, dedupeFingerprint: String(index).repeat(64), status: index < 2 ? "unread" : "read" }));
-    }
-    const pinned = randomUUID();
-    database.authority.notifications.create(record({ notificationId: pinned, dedupeFingerprint: "b".repeat(64), trigger: "backfill-gap", links: [] }));
-    const unread = collection(database, "notification-clear-unread-all");
-    assert.equal(unread.target.matchingCount, 2);
-    const result = kernel.execute(unread);
-    assert.equal(result.state, "applied");
-    if (result.state === "applied") assert.equal(result.affectedTargets.length, 2);
-    assert.deepEqual(listed(database), [...ids.slice(2), pinned].sort());
-    assert.equal(kernel.execute(collection(database, "notification-clear-all")).state, "applied");
-    assert.deepEqual(listed(database), [pinned], "a pinned backfill gap is never cleared");
+    const ids = Array.from({ length: 3 }, () => randomUUID());
+    for (const [index, notificationId] of ids.entries()) database.authority.notifications.create(record({ notificationId, dedupeFingerprint: String(index).repeat(64) }));
+    const request = clear(ids.map(id => [id, 1] as const));
+    const arrived = randomUUID();
+    database.authority.notifications.create(record({ notificationId: arrived, dedupeFingerprint: "6".repeat(64) }));
+    assert.equal(kernel.execute(request).state, "applied");
+    assert.deepEqual(listed(database), [arrived]);
   });
 
-  it("refuses a stale Clear all and leaves another person's notices untouched", async () => {
+  it("refuses a pinned backfill gap and another person's notices, leaving theirs untouched", async () => {
     const { database, kernel } = await harness();
-    const mine = randomUUID(), theirs = randomUUID();
-    database.authority.notifications.create(record({ notificationId: mine, dedupeFingerprint: "5".repeat(64) }));
+    const pinned = randomUUID(), theirs = randomUUID();
+    database.authority.notifications.create(record({ notificationId: pinned, dedupeFingerprint: "b".repeat(64), trigger: "backfill-gap", links: [] }));
     database.authority.notifications.create(record({ notificationId: theirs, actorId: "other-operator", dedupeFingerprint: "5".repeat(64) }));
-    const request = collection(database, "notification-clear-all");
-    database.authority.notifications.create(record({ notificationId: randomUUID(), dedupeFingerprint: "6".repeat(64) }));
-    assert.equal(kernel.execute(request).state, "rejected", "a notice that arrived after the list was read refuses the collection");
-    assert.equal(kernel.execute(collection(database, "notification-clear-all")).state, "applied");
-    assert.deepEqual(listed(database), []);
+    assert.equal(kernel.execute(one(pinned)).state, "rejected");
+    assert.equal(kernel.execute(one(theirs)).state, "rejected");
+    assert.equal(kernel.execute(clear([[theirs, 1]], "other-operator")).state, "rejected", "the admitted actor cannot clear for someone else");
     assert.equal(database.authority.notifications.get(theirs)?.clearedAt, undefined);
     assert.equal(database.authority.notifications.get(theirs)?.version, 1);
+    assert.deepEqual(listed(database), [pinned]);
+  });
+
+  it("drops the served day when only storage health or an observed command's result changes", async () => {
+    const { database } = await harness();
+    const pending = { ...command("notification-read", 1), target: { notificationId: randomUUID(), actorId: ACTOR, expectedVersion: 1 } };
+    database.authority.commands.insert(pending);
+    const day = LATER.slice(0, 10);
+    const observed = () => {
+      const first = database.checkQueueDaySources(day);
+      assert.ok(first);
+      return { through: first.through, runIds: [], timelineRunIds: [], lastWorkerClaims: [], commandIds: [pending.commandId], relationships: [], month: { from: day, to: day, counts: [] } };
+    };
+    let previous = observed();
+    assert.equal(database.checkQueueDaySources(day, previous)?.kind, "unchanged");
+    database.withAuthorityTransaction(repositories => repositories.notificationHealth.put({ concern: "disk-space", active: false,
+      occurrence: 0, observedAt: LATER, createdAt: LATER, samples: [] }));
+    assert.equal(database.checkQueueDaySources(day, previous)?.kind, "full", "a health-only recovery changes a storage notice's standing");
+    previous = observed();
+    database.authority.commandAudits.insert({ auditId: randomUUID(), request: pending, completedAt: LATER, versionChanges: [], affectedDependencyIds: [],
+      result: { state: "rejected", commandId: pending.commandId, code: "target-not-found", message: "gone" } });
+    assert.equal(database.checkQueueDaySources(day, previous)?.kind, "full", "a settled command changes its recovery notice's standing");
   });
 });

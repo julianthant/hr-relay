@@ -183,6 +183,8 @@ export interface RunQueueProjectionDeps {
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
     /** Whether a storage concern is still active; absent or unknown keeps its notices standing. */
     notificationConcernActive?(concern: string): boolean | undefined;
+    /** Whether a command has its result; absent or unknown leaves its recovery notice clearable. */
+    notificationCommandSettled?(commandId: string): boolean | undefined;
     command?(commandId: string): CommandRequest | undefined;
     listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
     listCheckpoints: RunTimelineEvidenceSource["authority"]["listCheckpoints"];
@@ -1809,6 +1811,10 @@ export class RunQueueProjection {
           return parsed?.kind === "storage-degraded" ? parsed.concern : undefined;
         },
         concernActive: concern => this.#deps.authority.notificationConcernActive?.(concern),
+        commandSettled: id => {
+          notificationCommands.add(id);
+          return this.#deps.authority.notificationCommandSettled?.(id);
+        },
       },
     });
     const noticesById = new Map(projected.map(notice => [notice.notificationId, notice]));

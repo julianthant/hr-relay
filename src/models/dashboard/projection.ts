@@ -609,6 +609,7 @@ export function notificationWireOf(
       sourceEvent: sourceEvent ?? { state: "unavailable" },
       priority: readState === "unread" && !snoozed,
       link,
+      ...(standing === true && readOnlyHistory !== true ? { standing } : {}),
     });
   }
   const severity = record.trigger === "failed" || record.trigger === "write-parked"
@@ -732,6 +733,8 @@ const CommandNotificationWireSchema = z.strictObject({
     z.strictObject({ kind: z.literal("command-result"), commandId: CommandIdSchema }),
     z.strictObject({ kind: z.literal("bulk-result"), bulkCommandId: CommandIdSchema }),
   ]),
+  /** A recovery whose command is still unsettled, so it cannot be cleared yet. */
+  standing: z.literal(true).optional(),
 });
 
 const BackfillGapNotificationWireSchema = z.strictObject({
