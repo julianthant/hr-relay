@@ -41,8 +41,7 @@ function scanRoots(): string[] {
 
 function compilerOptions(): ts.CompilerOptions {
   const configPath = resolve(REPO_ROOT, "tsconfig.json");
-  const config = ts.readConfigFile(configPath, (path) => ts.sys.readFile(path)).config;
-  return { ...ts.parseJsonConfigFileContent(config, ts.sys, REPO_ROOT).options, noEmit: true };
+  return { ...ts.parseJsonConfigFileContent(ts.readConfigFile(configPath, (path) => ts.sys.readFile(path)).config, ts.sys, REPO_ROOT).options, noEmit: true };
 }
 
 function assertModuleBinding(checker: ts.TypeChecker, identifier: ts.Identifier): "module" | "function" | undefined {
