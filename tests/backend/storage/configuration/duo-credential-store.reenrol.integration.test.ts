@@ -115,7 +115,7 @@ it("renames one key across a restart and recovers removal of only the selected k
     assert.equal(store.identity(), identity);
     assert.deepEqual(record().credentials, [{ ...rows[0], name: "Duo Backup Key" }, rows[1]]);
 
-    const remove = { kind: "remove" as const, commandId: randomUUID(), keyId: work.id, expectedRevision: renamed.revision };
+    const remove = { kind: "remove" as const, commandId: randomUUID().toUpperCase(), keyId: work.id, expectedRevision: renamed.revision };
     crashBeforeRename(join(machineRoot, "machine", "duo-credentials", `${profileId}.json`), () => store.changeKey(remove));
     assert.throws(() => store.readSettings(), { code: "DUO_CREDENTIAL_UNAVAILABLE" });
     await fixture.closeController();

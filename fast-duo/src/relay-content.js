@@ -100,7 +100,7 @@
     registration.accepted = true;
     try {
       const reply = await chrome.runtime.sendMessage({ type: 'RELAY_PORTAL_ACCEPTED', request: {
-        requestId: registration.requestId, rpId: registration.rpId, origin: registration.origin, ...(name ? { name } : {}) } });
+        requestId: registration.requestId, rpId: registration.rpId, origin: registration.origin, ...(name && name.length <= 160 ? { name } : {}) } });
       if (!reply?.success) throw new Error('ONBOARDING_DUO_PORTAL_UNRECORDED');
     } catch { window.postMessage({ type: 'RELAY_DUO_UNCERTAIN' }, location.origin); }
   };

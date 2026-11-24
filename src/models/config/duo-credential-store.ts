@@ -9,9 +9,10 @@ export const DuoKeyIdSchema = z.string().regex(/^[a-f0-9]{64}$/u);
 export const DuoKeyNameSchema = z.string().min(1).max(160)
   .regex(/^[^\p{Cc}]+$/u).refine(value => value === value.trim());
 const KeyChangeTarget = { commandId: z.uuid(), keyId: DuoKeyIdSchema, expectedRevision: z.number().int().safe().nonnegative() };
+const KeyChangeRequestTarget = { ...KeyChangeTarget, commandId: KeyChangeTarget.commandId.toLowerCase() };
 export const DuoKeyChangeSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ ...KeyChangeTarget, kind: z.literal("remove") }),
-  z.strictObject({ ...KeyChangeTarget, kind: z.literal("rename"), name: z.string().trim().pipe(DuoKeyNameSchema) }),
+  z.strictObject({ ...KeyChangeRequestTarget, kind: z.literal("remove") }),
+  z.strictObject({ ...KeyChangeRequestTarget, kind: z.literal("rename"), name: z.string().trim().pipe(DuoKeyNameSchema) }),
 ]);
 export type DuoKeyChange = z.infer<typeof DuoKeyChangeSchema>;
 export const DuoKeyChangeReceiptSchema = z.strictObject({ ...KeyChangeTarget, kind: z.enum(["rename", "remove"]),
