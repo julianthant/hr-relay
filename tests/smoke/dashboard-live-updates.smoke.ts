@@ -160,8 +160,10 @@ function watchRequestsWithQuery(page: Page): string[] {
 const ROW_WAIT_AND_MARGIN_MS = 6_500;
 
 // A landed command waits for its row on the stream instead of reopening the day. The same seeded command, Continue anyway on
-// a Work-Study run parked at its gate with that run open, measured on the base before this change: PRE_CHANGE.
-const ANSWERED_GATE = { stream: 0, day: 0 };
+// a Work-Study run parked at its gate with that run open. Measured on the base adapters (CI run 45384851232, same test): the
+// press opened the stream once, with the run topic, and read the day not at all, as the day rides the stream's snapshot.
+const PRE_CHANGE = { stream: 1, day: 0 };
+const ANSWERED_GATE = { stream: PRE_CHANGE.stream - 1, day: PRE_CHANGE.day };
 scriptedTest("an answered gate: the row arrives on the stream and nothing reopens the day, not even after the fallback wait", async ({ dashboard, failures, page, seeded }) => {
   failures.allow(SEEDED_PREFERENCE_WRITE, "the seeded backend cannot save the chosen workflow");
   const request = seededRequestOver(seeded.baseUrl);
@@ -187,10 +189,9 @@ scriptedTest("an answered gate: the row arrives on the stream and nothing reopen
   await page.waitForTimeout(ROW_WAIT_AND_MARGIN_MS);
   await quiet(page, seen);
   expect(await row.textContent(), "the settled row stays settled").toBe(settled);
-  expect.soft(seen, "all requests after the press").toEqual([]);
-  expect.soft(seen.filter(entry => entry === "POST /api/v1/commands"), "one command").toHaveLength(1);
-  expect.soft(seen.filter(entry => entry.startsWith("GET /events/v1")).length, "stream opens after the press").toBe(ANSWERED_GATE.stream);
-  expect.soft(seen.filter(entry => entry.startsWith("GET /api/v1/dashboard?day=")).length, "day reads after the press").toBe(ANSWERED_GATE.day);
+  expect(seen.filter(entry => entry === "POST /api/v1/commands"), "one command").toHaveLength(1);
+  expect(seen.filter(entry => entry.startsWith("GET /events/v1")).length, "stream opens after the press").toBe(ANSWERED_GATE.stream);
+  expect(seen.filter(entry => entry.startsWith("GET /api/v1/dashboard?day=")).length, "day reads after the press").toBe(ANSWERED_GATE.day);
 });
 
 /** One envelope a run-topic stream received, with its arrival time. */
