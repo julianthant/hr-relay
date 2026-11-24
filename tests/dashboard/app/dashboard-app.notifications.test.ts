@@ -163,7 +163,7 @@ it("opens a delegated run's notice on its host run and closes the list", async (
   requested.linkRunId = "00000000-0000-4000-8000-00000000c41d";
   await mount();
   assert.equal(new URLSearchParams(location.search).get("run"), FIXTURE_IDS.failedRun);
-  assert.equal(document.querySelector("li.notice-row"), null, "opening an item closes the list");
+  assert.ok(document.querySelector("li.notice-row") === null, "opening an item closes the list");
 });
 it("mounts served inbox controls and reports only the served search authority total", async () => {
   const { app } = createFixtureBff();
@@ -228,12 +228,12 @@ it("opens a storage notice in Settings > General instead of refusing it", async 
   await act(async () => bell.click());
   const row = document.querySelector<HTMLElement>("li.notice-row"); assert(row);
   assert.equal(row.querySelector(".notice-count")?.textContent, "213 times213", "the count is a badge beside a one-line title");
-  assert.equal(row.querySelector(".notice-context"), null, "a storage notice has no source line");
+  assert.ok(row.querySelector(".notice-context") === null, "a storage notice has no source line");
   const open = row.querySelector<HTMLButtonElement>("button.notice-main"); assert(open);
   await act(async () => { open.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
   assert.equal(new URLSearchParams(location.search).get("settings"), "general");
   assert.equal(document.body.textContent?.includes(notificationTargetUnavailable()), false);
-  assert.equal(document.querySelector("li.notice-row"), null);
+  assert.ok(document.querySelector("li.notice-row") === null);
 });
 
 it("admits a canonical Separations historical target while Person Lookup and Separations are both served", async () => {

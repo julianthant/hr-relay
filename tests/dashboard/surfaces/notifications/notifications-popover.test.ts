@@ -43,7 +43,7 @@ it("shows repeats as one row with a count badge, and a storage notice as title, 
   const storage = view.row(1);
   assert.equal(storage.querySelector(".notice-title")?.textContent, "Storage needs attention");
   assert.equal(storage.querySelector(".notice-count")?.textContent, "213 times213");
-  assert.equal(storage.querySelector(".notice-context"), null);
+  assert.ok(storage.querySelector(".notice-context") === null);
   assert.equal(storage.querySelector(".notice-detail")?.textContent, "Relay could not save everything.");
 });
 
@@ -61,8 +61,8 @@ it("says a deleted run was deleted on its own row, which opens nothing and has n
   const gone = view.row(3);
   assert.equal(gone.dataset.gone, "true");
   assert.equal(gone.querySelector(".notice-detail")?.textContent, "This run was deleted.");
-  assert.equal(gone.querySelector("button.notice-main"), null);
-  assert.equal(document.querySelector('button[aria-label="Dismiss"]'), null);
+  assert.ok(gone.querySelector("button.notice-main") === null);
+  assert.ok(document.querySelector('button[aria-label="Dismiss"]') === null);
 });
 
 it("filters to unread and disables Mark all read when nothing is unread", async () => {
