@@ -122,14 +122,32 @@ it("replays a count-neutral background task step across a dashboard reconnect", 
     await runtime.settled();
     expect(publications).toEqual(["snapshot"]);
 
-    const next = f.create(826);
-    writer.emit(runQueuedSpanEvent({ run: next, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Next queued run" }));
-    projection.ingestFromTimeline();
-    expect(publications).toEqual(["snapshot", "snapshot"]);
+    const captured = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    const poll = projection.pollBackground.bind(projection);
+    vi.spyOn(projection, "pollBackground").mockImplementationOnce((read, now) => poll(async request => {
+      const page = await read(request);
+      captured.resolve();
+      await release.promise;
+      return page;
+    }, now));
+    clock.advanceMonotonic(60_000);
     vi.advanceTimersByTime(250);
+    await captured.promise;
+    try {
+      const next = f.create(826);
+      writer.emit(runQueuedSpanEvent({ run: next, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Next queued run" }));
+      projection.ingestFromTimeline();
+      expect(publications).toEqual(["snapshot", "snapshot"]);
+      vi.advanceTimersByTime(250);
+    } finally { release.resolve(); }
+    const commandCursor = projection.cursor();
     await runtime.settled();
     unsubscribe();
     expect(publications).toEqual(["snapshot", "snapshot"]);
+    const afterCommand = await hub.connect({ day, lastEventId: commandCursor, lastProjectionGeneration });
+    expect(afterCommand.initial.map(event => event.type)).toEqual(["hello", "health", "change"]);
+    expect(detected).not.toHaveBeenCalled();
+    afterCommand.close();
   } finally {
     hub.close();
     for (const cleanup of startupCleanups.reverse()) await cleanup();
