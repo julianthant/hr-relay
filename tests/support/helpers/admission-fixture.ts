@@ -167,6 +167,10 @@ export async function finishProfileOnboarding(session: Pick<ReturnType<typeof cr
   return session.completeOnboarding(draft.token, draft.operationId);
 }
 
+export function withFixtureUcpath<T extends { email: string; password: string }>(fields: T) {
+  return { ...fields, ucpathUsername: fields.email, ucpathPassword: fields.password };
+}
+
 export function signInBoundProfileFixture(machine: RuntimeAdmission): void {
   const session = createProfileSession({ admission: machine, machineRoot: machine.stateRoot,
     activity: { hasUnquiescedWork: () => false } });
@@ -193,7 +197,7 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
         password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
       const session = createSyntheticProfileSession({ admission: machine, machineRoot: machine.stateRoot,
         activity: { hasUnquiescedWork: () => false } });
-      const draft = options.pending === "storage" ? undefined : session.signUp(fields);
+      const draft = options.pending === "storage" ? undefined : session.signUp(withFixtureUcpath(fields));
       if (draft !== undefined && draft.state !== "onboarding") throw new Error(`fixture draft was not created: ${draft.code}`);
       const operation = draft ?? machine.beginProfileSignUp({ firstName: fields.firstName, lastName: fields.lastName,
         createdAt: IsoInstantSchema.parse(fields.createdAt), emailKey: createProfileVerifiers(machine.stateRoot).emailKeyFor(fields.email),

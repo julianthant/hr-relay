@@ -5,6 +5,7 @@ import { DashboardDayWireSchema, NotificationWireSchema, QueueSurfaceWireSchema,
 import { NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "./run-detail.js";
 import { NotificationObservationStatusSchema } from "../notifications/notifications.js";
 import { NotificationTargetSchema, type NotificationTarget } from "../notifications/notification-target.js";
+import { EditableSettingsWireSchema } from "./settings-editor.js";
 
 const QueueReplacementPatchSchema = z.strictObject({
   operation: z.literal("replace-queue-surface"),
@@ -68,6 +69,8 @@ export const StreamRowSchema = z.discriminatedUnion("model", [
   }),
   /** What `GET /notifications/status` answers for the actor. */
   z.strictObject({ model: z.literal("notification-status"), key: ActorIdSchema, value: ReadSchema(NotificationObservationStatusSchema) }),
+  /** What `GET /settings/editable` answers; the document carries its `revision`. */
+  z.strictObject({ model: z.literal("settings"), key: z.literal("editable"), value: ReadSchema(EditableSettingsWireSchema) }),
 ]);
 export type StreamRow = z.infer<typeof StreamRowSchema>;
 

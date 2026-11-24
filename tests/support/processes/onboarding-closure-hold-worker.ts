@@ -1,3 +1,4 @@
+import { withFixtureUcpath } from "../helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -33,7 +34,7 @@ const profile = composeProfileRuntime({ admission: machine, hostFacts: { primary
     async start() { throw new Error("unexpected enrollment"); },
     async cancel() { return { state: "uncertain" }; },
   } });
-const draft = profile.session.signUp({ firstName: "Closure", lastName: "Fixture", email: "closure-fixture@ucsd.edu", password: "disposable-closure-fixture", createdAt: systemClock.now().toISOString() });
+const draft = profile.session.signUp(withFixtureUcpath({ firstName: "Closure", lastName: "Fixture", email: "closure-fixture@ucsd.edu", password: "disposable-closure-fixture", createdAt: systemClock.now().toISOString() }));
 if (draft.state !== "onboarding") throw new Error("closure-hold-fixture-draft");
 await assert.rejects(profile.session.showOnboardingBrowser(draft.token, draft.operationId), hasUnprovedSourceClosure);
 assert.equal(profile.session.readOnboarding(draft.token, draft.operationId).operationId, draft.operationId);
