@@ -23,7 +23,11 @@
 }
 .launch-dialog.launch-rerun { grid-template-columns: minmax(0, 1fr); }
 .launch-dialog > header, .launch-dialog > footer { grid-column: 1 / -1; }
-.launch-dialog > footer { @apply bg-ui-table; }
+div.launch-dialog[data-size="lg"][data-band] > header { @apply h-16 items-center gap-3 border-b border-ui-stroke bg-ui-panel px-5 py-0; }
+div.launch-dialog[data-size="lg"][data-band] > header > div { @apply gap-0.5; }
+div.launch-dialog[data-size="lg"][data-band] > footer { @apply h-14 gap-3 border-t border-ui-stroke bg-ui-table px-5 py-0; }
+.launch-dialog > footer > span:last-child { @apply gap-2; }
+.launch-dialog > footer > span:last-child > button { @apply min-w-24 justify-center; }
 .launch-dialog > footer > span:first-child,
 .launch-dialog > footer > span:first-child > span { @apply font-ui; }
 
@@ -78,7 +82,7 @@
 .launch-dialog .launch-picker .workflow-rail { @apply p-2 pt-0; }
 .launch-dialog .launch-picker .workflow-rail-groups { @apply gap-4 pb-2; }
 .launch-dialog .launch-picker .workflow-rail h3 { @apply text-body; }
-.launch-dialog .launch-picker .workflow-rail button { @apply h-8 rounded-lg font-normal; }
+.launch-dialog .launch-picker .workflow-rail button { @apply h-8 rounded-lg pl-[30px] font-normal; }
 
 .required-capture-row { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-loose); padding: var(--ds-space-cozy) var(--ds-space-loose); }
 

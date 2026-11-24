@@ -431,39 +431,55 @@ export interface CheckSheet {
 }
 export type ReferenceWorksheet = SheetWorksheet;
 
-/** The served Run and Rerun dialogs' reference spreadsheet list: one input section (title and description left, Add spreadsheet right) with the picked spreadsheet under it, over the library the run reads. One spreadsheet per run: adding another replaces the current one. */
-export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibraryId, chosenVersionId, chosenSheetId, worksheets, worksheetsState, worksheetsError, busy, catalogError, onPick, onVersion, onWorksheet, onRemove, onRefresh }: {
-  checkRows?: ReactNode;
-  requiredLabel: string; sheets: readonly ReferenceSheet[];
-  chosenLibraryId?: string; chosenVersionId?: string; chosenSheetId: string;
-  worksheets: readonly ReferenceWorksheet[]; worksheetsState: "loading" | "ready" | "error"; worksheetsError: string | null;
-  busy: boolean; catalogError: string | null;
-  onPick: (libraryId: string, versionId: string) => void; onVersion: (versionId: string) => void; onWorksheet: (sheetId: string) => void; onRemove: () => void; onRefresh: () => void;
+/** The reference spreadsheet a run looks people up in: one per run, with the worksheets of the chosen version that carry the key fields. */
+export interface RunReferenceSheet {
+  readonly requiredLabel: string; readonly sheets: readonly ReferenceSheet[];
+  readonly chosenLibraryId?: string | undefined; readonly chosenVersionId?: string | undefined; readonly chosenSheetId: string;
+  readonly worksheets: readonly ReferenceWorksheet[]; readonly worksheetsState: "loading" | "ready" | "error"; readonly worksheetsError: string | null;
+  readonly onPick: (libraryId: string, versionId: string) => void; readonly onVersion: (versionId: string) => void; readonly onWorksheet: (sheetId: string) => void; readonly onRemove: () => void;
+}
+
+const SPREADSHEETS_BOTH = (requiredLabel: string) => `Where this run looks people up, and extra spreadsheets to check each person against. Needs ${requiredLabel}.`;
+const SPREADSHEETS_REFERENCE = (requiredLabel: string) => `Spreadsheets this run looks people up in. Needs ${requiredLabel}.`;
+const SPREADSHEETS_CHECK = "Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.";
+
+/** The served Run and Rerun dialogs' one Spreadsheets field: the reference spreadsheet the run looks people up in and the optional extra spreadsheets it checks each person against. One Add spreadsheet button: it fills the reference first, then adds checks; with no check available it changes the reference. */
+export function RunSpreadsheets({ reference, check, busy, catalogError, onRefresh }: {
+  reference?: RunReferenceSheet | undefined; check?: { readonly sheets: readonly CheckSheet[] } & CheckCallbacks | undefined;
+  busy: boolean; catalogError: string | null; onRefresh: () => void;
 }) {
-  const chosen = sheets.find(sheet => sheet.libraryId === chosenLibraryId);
+  const chosen = reference?.sheets.find(sheet => sheet.libraryId === reference.chosenLibraryId);
+  const chosenSheetId = reference?.chosenSheetId ?? "";
+  const worksheets = reference?.worksheets ?? [];
+  const worksheetsState = reference?.worksheetsState ?? "ready";
   const missingSheet = chosenSheetId !== "" && !worksheets.some(sheet => sheet.sheetId === chosenSheetId);
+  const onWorksheet = reference?.onWorksheet;
   useEffect(() => {
-    if (chosenSheetId === "" && worksheetsState === "ready" && worksheets.length > 0) onWorksheet(worksheets[0].sheetId);
+    if (onWorksheet !== undefined && chosenSheetId === "" && worksheetsState === "ready" && worksheets.length > 0) onWorksheet(worksheets[0].sheetId);
   }, [chosenSheetId, worksheetsState, worksheets, onWorksheet]);
-  const title = "Reference spreadsheets";
-  const description = `Spreadsheets this run looks people up in. Needs ${requiredLabel}.`;
-  const options = sheets.map((sheet): PickerOption => {
+  const title = "Spreadsheets";
+  const description = reference === undefined ? SPREADSHEETS_CHECK : check === undefined ? SPREADSHEETS_REFERENCE(reference.requiredLabel) : SPREADSHEETS_BOTH(reference.requiredLabel);
+  if (catalogError) return <div className="flex min-w-0 flex-col gap-3"><RunSection title={title} description={description}><ReferenceFailure onRefresh={onRefresh} /></RunSection></div>;
+  const addsCheck = check !== undefined && (reference === undefined || chosen !== undefined);
+  const referenceOptions = reference === undefined ? [] : reference.sheets.map((sheet): PickerOption => {
     const uncoverable = sheet.worksheets.length === 0 && sheet.versions.length < 2;
     return { libraryId: sheet.libraryId, name: sheet.name, names: sheet.worksheets, pinned: sheet.pinned === true, disabled: uncoverable,
-      description: sheet.worksheets.length > 0 ? sheet.worksheets.join(", ") : uncoverable ? `No worksheet has ${requiredLabel}` : `No current worksheet has ${requiredLabel}. Pick an earlier version.` };
+      description: sheet.worksheets.length > 0 ? sheet.worksheets.join(", ") : uncoverable ? `No worksheet has ${reference.requiredLabel}` : `No current worksheet has ${reference.requiredLabel}. Pick an earlier version.` };
   });
+  const picker = addsCheck
+    ? <SpreadsheetPicker label="Add spreadsheet" options={checkOptions(check.sheets)} busy={busy} onPick={check.onAdd} />
+    : <SpreadsheetPicker label={chosen ? "Change spreadsheet" : "Add spreadsheet"} options={referenceOptions} busy={busy}
+      onPick={libraryId => reference?.onPick(libraryId, reference.sheets.find(sheet => sheet.libraryId === libraryId)?.currentVersionId ?? "")} />;
   const note = missingSheet ? "Previous worksheet unavailable; choose again" : worksheetsState === "loading" ? "Loading worksheets…" : undefined;
   return <div className="flex min-w-0 flex-col gap-3">
-    {catalogError ? <RunSection title={title} description={description}><ReferenceFailure onRefresh={onRefresh} /></RunSection>
-    : <SpreadsheetSection title={title} description={description}
-      picker={<SpreadsheetPicker label={chosen ? "Change spreadsheet" : "Add spreadsheet"} options={options} busy={busy} onPick={libraryId => onPick(libraryId, sheets.find(sheet => sheet.libraryId === libraryId)?.currentVersionId ?? "")} />}>
-      {chosen && <SpreadsheetRow name={chosen.name} versions={chosen.versions} versionId={chosenVersionId ?? chosen.currentVersionId} note={note}
+    <SpreadsheetSection title={title} description={description} picker={picker}>
+      {reference !== undefined && chosen && <SpreadsheetRow name={chosen.name} versions={chosen.versions} versionId={reference.chosenVersionId ?? chosen.currentVersionId} note={note}
         worksheets={worksheets} picked={chosenSheetId === "" ? [] : [chosenSheetId]} mode="one" busy={busy} worksheetsReady={worksheetsState === "ready"}
-        onVersion={onVersion} onWorksheets={ids => { if (ids[0] !== undefined) onWorksheet(ids[0]); }} onRemove={onRemove} />}
-    </SpreadsheetSection>}
-    {worksheetsState === "error" && <p role="alert" className="m-0 text-caption text-ui-danger">{worksheetsError}</p>}
-    {chosen && worksheetsState === "ready" && worksheets.length === 0 && <p role="status" className="m-0 text-caption text-ui-muted">No worksheets in this version have {requiredLabel}.</p>}
-    {!catalogError && checkRows}
+        onVersion={reference.onVersion} onWorksheets={ids => { if (ids[0] !== undefined) reference.onWorksheet(ids[0]); }} onRemove={reference.onRemove} />}
+      {check !== undefined && <CheckPickedRows sheets={check.sheets} busy={busy} {...check} />}
+    </SpreadsheetSection>
+    {reference !== undefined && worksheetsState === "error" && <p role="alert" className="m-0 text-caption text-ui-danger">{reference.worksheetsError}</p>}
+    {reference !== undefined && chosen && worksheetsState === "ready" && worksheets.length === 0 && <p role="status" className="m-0 text-caption text-ui-muted">No worksheets in this version have {reference.requiredLabel}.</p>}
   </div>;
 }
 
@@ -487,24 +503,4 @@ function CheckPickedRows({ sheets, busy, onVersion, onSheets, onRemove }: { shee
       worksheets={sheet.worksheets} picked={picked} mode="many" busy={busy} worksheetsReady={sheet.worksheetsState === "ready"}
       onVersion={versionId => onVersion(sheet.libraryId, versionId)} onWorksheets={ids => onSheets(sheet.libraryId, ids)} onRemove={() => onRemove(sheet.libraryId)} />;
   })}</>;
-}
-
-/** The optional check's section: the same row pattern as the reference spreadsheet. */
-export function RunCheckRows({ sheets, busy, ...callbacks }: { sheets: readonly CheckSheet[]; busy: boolean } & CheckCallbacks) {
-  return <SpreadsheetSection title="Also check" description="Optional. Extra spreadsheets to check each person against."
-    picker={<SpreadsheetPicker label="Add spreadsheet" options={checkOptions(sheets)} busy={busy} onPick={callbacks.onAdd} />}>
-    <CheckPickedRows sheets={sheets} busy={busy} {...callbacks} />
-  </SpreadsheetSection>;
-}
-
-/** The reference section of a workflow with no required spreadsheet: only the optional check. */
-export function RunCheckCard({ sheets, busy, catalogError, onRefresh, ...callbacks }: { sheets: readonly CheckSheet[]; busy: boolean; catalogError: string | null; onRefresh: () => void } & CheckCallbacks) {
-  const title = "Reference spreadsheets";
-  const description = "Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.";
-  return <div className="flex min-w-0 flex-col gap-3">
-    {catalogError ? <RunSection title={title} description={description}><ReferenceFailure onRefresh={onRefresh} /></RunSection>
-    : <SpreadsheetSection title={title} description={description} picker={<SpreadsheetPicker label="Add spreadsheet" options={checkOptions(sheets)} busy={busy} onPick={callbacks.onAdd} />}>
-      <CheckPickedRows sheets={sheets} busy={busy} {...callbacks} />
-    </SpreadsheetSection>}
-  </div>;
 }

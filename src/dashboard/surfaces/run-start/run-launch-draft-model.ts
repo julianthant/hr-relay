@@ -47,11 +47,11 @@ export type LaunchDraft = Readonly<{
 const NO_TYPED_DRAFT: TypedInputDraft = {};
 const typedDeclarationOf = (workflow: RunStartWorkflow | undefined) =>
   workflow?.inputRun.state === "present" ? workflow.inputRun.surface.typedInput : undefined;
-/** A required date starts on the dashboard day; clearing it still refuses. */
+/** A required date starts on the dashboard day; clearing it still refuses. A declaration with no initial mode starts on its first mode. */
 const typedDefaultsOf = (workflow: RunStartWorkflow | undefined, today: string | undefined): TypedInputDraft => {
   const declaration = typedDeclarationOf(workflow);
   if (declaration === undefined) return {};
-  const defaults = typedInputDefaults(declaration);
+  const defaults = typedInputDefaults(declaration, declaration.initialMode ?? declaration.modes[0]?.value ?? null);
   const day = today === undefined ? undefined : usDateText(today);
   return day === undefined ? defaults : { ...defaults, ...Object.fromEntries(typedDateControls(declaration, String(defaults[declaration.modeField] ?? declaration.initialMode)).filter(control => control.required).map(control => [control.field, day])) };
 };

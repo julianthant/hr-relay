@@ -10,8 +10,8 @@ import type { StartPlanResponse } from "../../client/commands/start-commands.js"
 import type { LaunchFinalCommand, LaunchVerificationPlan } from "./run-launch-recovery.js";
 import type { RerunLaunchSource } from "./run-launch-model.js";
 
-/** The Run and Rerun dialog stages. There is no Confirm: Checks is the last stage and its Start plans and submits. */
-export type RunStartStage = "Input" | "Options" | "Steps" | "Values" | "Warning" | "Checks";
+/** The Run and Rerun dialog stages. There is no Confirm: Start is the last stage and its Start plans and submits. */
+export type RunStartStage = "Input" | "Warning" | "Start";
 
 export type RunDialogState = Readonly<{
   nextRequest: number;
@@ -71,7 +71,7 @@ export type LaunchGates = Readonly<{
   next: RunStartStage | null;
   inputBlocked: boolean;
   stepsBlocked: boolean;
-  /** A required launch pick (a PDF workflow's File to OnBase) is still unmade. */
+  /** A required launch pick (a PDF workflow's File to OnBase) is still unmade; it blocks Start. */
   optionsBlocked: boolean;
   rerunInputBlocked: boolean;
   /** A readiness check failed or has not been read yet; Start stays off until every check passes or only warns. */
@@ -79,7 +79,7 @@ export type LaunchGates = Readonly<{
   referencesUnavailable: boolean;
   omissionMismatch: boolean;
   plannedCount: number;
-  /** The stages on screen, in order; Back from Checks skips Steps unless the person is customizing steps. */
+  /** The stages on screen, in order. */
   path?: readonly RunStartStage[];
   /** Undefined when the workflow has no dry run; otherwise the draft's choice. */
   dryRun?: boolean;
@@ -87,7 +87,7 @@ export type LaunchGates = Readonly<{
 
 export type AuthorityCheck = { readonly state: "ok" } | { readonly state: "replaced" };
 export type RunDialogEvent =
-  | { type: "open"; recovery: LaunchRecovery; rerun?: RerunLaunchSource; landOnValues: boolean }
+  | { type: "open"; recovery: LaunchRecovery; rerun?: RerunLaunchSource }
   | { type: "source-loaded"; request: number; snapshot: RerunValuesSnapshot }
   | { type: "source-failed"; request: number; message: string }
   | { type: "pick-workflow" }
@@ -132,11 +132,11 @@ export const REFERENCES_UNAVAILABLE = "Reference data is unavailable. Refresh it
 
 export const initialRunDialogState: RunDialogState = { nextRequest: 1, stage: "Input", source: { kind: "start" }, recovery: NONE, detached: [], activity: IDLE };
 
-/** Stage order per source; Warning sits between Steps and Values and is never a Back target. */
+/** Stage order per source; Warning sits between Input and Start in a rerun and is never a Back target. */
 function stageOrder(source: LaunchSource): readonly RunStartStage[] {
-  return source.kind === "start" ? ["Input", "Options", "Steps", "Checks"] : ["Steps", "Warning", "Values", "Options", "Checks"];
+  return source.kind === "start" ? ["Input", "Start"] : ["Input", "Warning", "Start"];
 }
-/** `path` is the stages this draft walks (Steps only when customizing); without it every stage of the source counts. */
+/** `path` is the stages this draft walks; without it every stage of the source counts. */
 function previousStage(state: RunDialogState, path: readonly RunStartStage[] = stageOrder(state.source)): RunStartStage | null {
   if (state.stage === "Warning") return null;
   const order = path.filter(stage => stage !== "Warning");
@@ -197,10 +197,7 @@ function continueRefusal(state: RunDialogState, gates: LaunchGates): RunDialogRe
   if (state.stage === "Warning" || gates.next === null) return "not-here";
   if (state.recovery.state !== "none") return "blocked";
   if (state.source.kind === "rerun" && state.source.load.state !== "ready") return "blocked";
-  if (state.stage === "Input" && gates.inputBlocked) return "blocked";
-  if (state.stage === "Options" && gates.optionsBlocked) return "blocked";
-  if (state.stage === "Steps" && gates.stepsBlocked) return "blocked";
-  if (state.stage === "Values" && (gates.rerunInputBlocked || gates.stepsBlocked)) return "blocked";
+  if (state.stage === "Input" && (state.source.kind === "start" ? gates.inputBlocked : gates.rerunInputBlocked)) return "blocked";
   return undefined;
 }
 
@@ -301,7 +298,7 @@ export function runDialogTransition(state: RunDialogState, event: RunDialogEvent
       const base = { ...cleared(state, ["shown", "problem"]), activity: IDLE, detached: [], recovery: event.recovery };
       if (event.rerun === undefined) return step({ ...base, stage: "Input", source: { kind: "start" } });
       const request = state.nextRequest;
-      return step({ ...base, nextRequest: request + 1, stage: event.landOnValues ? "Values" : "Steps",
+      return step({ ...base, nextRequest: request + 1, stage: "Input",
         source: { kind: "rerun", request: event.rerun, load: { state: "loading", request } } }, [{ kind: "load-source", request }]);
     }
     case "source-loaded": case "source-failed": {
@@ -336,7 +333,7 @@ export function runDialogTransition(state: RunDialogState, event: RunDialogEvent
     case "continue": {
       const refusal = continueRefusal(state, event.gates);
       if (refusal !== undefined) return { refused: refusal };
-      if (state.stage === "Steps" && state.source.kind === "rerun" && state.source.load.state === "ready") {
+      if (state.stage === "Input" && state.source.kind === "rerun" && state.source.load.state === "ready") {
         const request = state.nextRequest;
         const acknowledgment = state.source.load.acknowledgment;
         return step({ ...cleared(state, ["problem"]), nextRequest: request + 1,
@@ -351,7 +348,7 @@ export function runDialogTransition(state: RunDialogState, event: RunDialogEvent
         if (event.warning.rerun.warnings.length > 0 && digest !== owner.acknowledgmentAtDispatch) {
           return step({ ...released, source: withWarning(released.source, event.warning), stage: "Warning" });
         }
-        return step({ ...released, source: withWarning(released.source, event.warning, digest), stage: "Values" });
+        return step({ ...released, source: withWarning(released.source, event.warning, digest), stage: "Start" });
       });
     case "warnings-failed": case "plan-failed":
       if (event.type === "plan-failed" && findOwner(state, event.request, ["replanning"]) !== undefined) {
@@ -370,10 +367,10 @@ export function runDialogTransition(state: RunDialogState, event: RunDialogEvent
       const refusal = acknowledgeRefusal(state, event.via);
       if (refusal !== undefined || state.source.kind !== "rerun" || state.source.load.state !== "ready" || state.source.load.warning === undefined) return { refused: refusal ?? "not-here" };
       const warning = state.source.load.warning;
-      return step({ ...cleared(state, ["shown"]), source: withWarning(state.source, warning, warning.rerun.warningDigest), stage: "Values" });
+      return step({ ...cleared(state, ["shown"]), source: withWarning(state.source, warning, warning.rerun.warningDigest), stage: "Start" });
     }
     case "cancel-warning":
-      return state.stage === "Warning" ? step({ ...state, stage: "Steps" }) : { refused: "not-here" };
+      return state.stage === "Warning" ? step({ ...state, stage: "Input" }) : { refused: "not-here" };
     case "start": {
       const current = currentShown(state, fingerprint);
       const refusal = startRefusal(state, event.gates, current);

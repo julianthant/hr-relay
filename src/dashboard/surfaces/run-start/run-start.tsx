@@ -33,7 +33,7 @@ import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
-import { TypedInput, StepOmissionFactsForm, RunReferenceRows, RunCheckRows, RunCheckCard, type CheckSheet } from "./run-start-kit.js";
+import { TypedInput, StepOmissionFactsForm, RunSpreadsheets, type CheckSheet } from "./run-start-kit.js";
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
 import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
@@ -313,11 +313,11 @@ export function RunStartDialog({
     ? "Fill and check every step without submitting or saving."
     : "Fill and check every step without submitting.";
   const dryRun = supportsDryRun && dryRunRequested;
-  const launchStages = useMemo(() => runStartStages(customizeSteps, isRerun), [customizeSteps, isRerun]);
+  const launchStages = useMemo(() => runStartStages(), []);
 
   useEffect(() => {
-    setCurrentStage((current) => reconcileRunStartStage(launchStages, current));
-  }, [launchStages, setCurrentStage]);
+    setCurrentStage((current) => reconcileRunStartStage(launchStages, current, isRerun));
+  }, [launchStages, setCurrentStage, isRerun]);
 
   /** Plans and results expire when any request-shaping fact changes. */
   /** Lock forced omissions using the descriptor cascade; the planner owns the rule. */
@@ -437,7 +437,7 @@ export function RunStartDialog({
     if (rerunSource !== undefined) setCustomizeSteps(true);
     // A start keeps the routed stage; only a rerun opens on its own first stage.
     suppressStage.current = rerunSource === undefined;
-    try { send({ type: "open", recovery: recoveryState, ...(rerunSource === undefined ? {} : { rerun: rerunSource }), landOnValues: rerunInputText !== undefined }); }
+    try { send({ type: "open", recovery: recoveryState, ...(rerunSource === undefined ? {} : { rerun: rerunSource }) }); }
     finally { suppressStage.current = false; }
   }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, actorId, launchService, routed, setCustomizeSteps, resetPdfs, update, send]);
 
@@ -473,7 +473,7 @@ export function RunStartDialog({
   }, [open]);
   useEffect(() => { if (!open) setDraftKept(false); }, [open]);
 
-  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Checks", open);
+  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Start", open);
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
   const fixedCheck = useRef<{ check: string; reread: boolean } | null>(null);
   const fixCheck = (item: RunCheckRow) => {
@@ -581,6 +581,7 @@ export function RunStartDialog({
   const stepLabels = (keys: readonly string[]): string => keys.map(stepLabel).join(", ");
   const nextStage = adjacentRunStartStage(launchStages, currentStage, "next");
   const onLastStage = nextStage === null && currentStage !== "Warning";
+  const stepsShown = customizeSteps || isRerun;
 
   const changeCustomizeSteps = (next: boolean) => {
     setCustomizeSteps(next);
@@ -618,30 +619,33 @@ export function RunStartDialog({
     }),
     onRemove: (libraryId: string) => update(current => launchDraft.removeCheck(current, libraryId)),
   };
-  const checkRows = <RunCheckRows sheets={checkSheets} busy={checkBusy} {...checkHandlers} />;
   const requiredLabelOf = (labels: readonly string[]) => labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels.join('');
-  const referenceLoading = (description: string) => <div role="status" aria-label="Loading reference data"><RunList title="Reference spreadsheets" description={description}><RunListSkeleton rows={2} /></RunList></div>;
-  const referenceControls = (types: readonly string[], withCheck: boolean) => types.length === 0 ? (!withCheck || workbookCheck === undefined ? undefined : library.catalogLoading ? referenceLoading("Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.")
-    : <RunCheckCard sheets={checkSheets} busy={checkBusy} catalogError={library.catalogError} {...checkHandlers} onRefresh={() => void library.adapter.refreshCatalog()} />)
-    : <>{library.catalogLoading ? referenceLoading(`Spreadsheets this run looks people up in. Needs ${requiredLabelOf(selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [])}.`) : types.map(typeId => {
-    const draft = referenceDrafts[typeId];
-    const sheetOptions = versionSources.state === 'ready' ? versionSources.sources : [];
-    const requiredFields = selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [];
-    const sheets = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed).map(entry => ({ libraryId: entry.libraryId, name: entry.name, pinned: entry.state.pinned,
-      versions: entry.state.versions.map((version, index) => ({ id: version.id, savedAt: version.savedAt, name: version.name || `v${entry.state.versions.length - index}` })), currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
-    return <RunReferenceRows key={typeId} checkRows={withCheck && workbookCheck !== undefined && checkSheets.length > 0 ? checkRows : undefined} requiredLabel={requiredLabelOf(requiredFields)}
-      sheets={sheets} chosenLibraryId={draft?.libraryId} chosenVersionId={draft?.versionId} chosenSheetId={selectedReferences[typeId]?.sheetId ?? ''}
-      worksheets={sheetOptions.map(source => ({ sheetId: source.sheetId, sheetName: source.sheetName }))} worksheetsState={versionSources.state} worksheetsError={versionSources.error}
-      busy={library.catalogRefreshing || library.compatibility === undefined} catalogError={library.catalogError}
-      onPick={(libraryId, versionId) => update(current => launchDraft.pickReference(current, typeId, libraryId, versionId))}
-      onVersion={versionId => update(current => launchDraft.pickReferenceVersion(current, typeId, versionId))}
-      onWorksheet={sheetId => {
-        const source = sheetOptions.find(candidate => candidate.sheetId === sheetId);
-        if (source !== undefined) update(current => launchDraft.pickWorksheet(current, typeId, { libraryId: source.libraryId, versionId: source.versionId, sheetId: source.sheetId }));
-      }}
-      onRemove={() => update(current => launchDraft.removeReference(current, typeId))}
-      onRefresh={() => void library.adapter.refreshCatalog()} />;
-  })}</>;
+  const referenceLoading = (description: string) => <div role="status" aria-label="Loading reference data"><RunList title="Spreadsheets" description={description}><RunListSkeleton rows={2} /></RunList></div>;
+  /** The one Spreadsheets field: the reference spreadsheet a run looks people up in and, when the workflow allows, the extra spreadsheets it checks each person against. */
+  const referenceControls = (types: readonly string[], withCheck: boolean) => {
+    const check = withCheck && workbookCheck !== undefined ? { sheets: checkSheets, ...checkHandlers } : undefined;
+    if (types.length === 0) return check === undefined ? undefined : library.catalogLoading ? referenceLoading("Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.")
+      : <RunSpreadsheets check={check} busy={checkBusy} catalogError={library.catalogError} onRefresh={() => void library.adapter.refreshCatalog()} />;
+    if (library.catalogLoading) return referenceLoading(`Spreadsheets this run looks people up in. Needs ${requiredLabelOf(selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [])}.`);
+    return <>{types.map(typeId => {
+      const draft = referenceDrafts[typeId];
+      const sheetOptions = versionSources.state === 'ready' ? versionSources.sources : [];
+      const requiredFields = selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [];
+      const sheets = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed).map(entry => ({ libraryId: entry.libraryId, name: entry.name, pinned: entry.state.pinned,
+        versions: entry.state.versions.map((version, index) => ({ id: version.id, savedAt: version.savedAt, name: version.name || `v${entry.state.versions.length - index}` })), currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
+      return <RunSpreadsheets key={typeId} check={check !== undefined && checkSheets.length > 0 ? check : undefined} busy={library.catalogRefreshing || library.compatibility === undefined} catalogError={library.catalogError}
+        onRefresh={() => void library.adapter.refreshCatalog()}
+        reference={{ requiredLabel: requiredLabelOf(requiredFields), sheets, chosenLibraryId: draft?.libraryId, chosenVersionId: draft?.versionId, chosenSheetId: selectedReferences[typeId]?.sheetId ?? '',
+          worksheets: sheetOptions.map(source => ({ sheetId: source.sheetId, sheetName: source.sheetName })), worksheetsState: versionSources.state, worksheetsError: versionSources.error,
+          onPick: (libraryId, versionId) => update(current => launchDraft.pickReference(current, typeId, libraryId, versionId)),
+          onVersion: versionId => update(current => launchDraft.pickReferenceVersion(current, typeId, versionId)),
+          onWorksheet: sheetId => {
+            const source = sheetOptions.find(candidate => candidate.sheetId === sheetId);
+            if (source !== undefined) update(current => launchDraft.pickWorksheet(current, typeId, { libraryId: source.libraryId, versionId: source.versionId, sheetId: source.sheetId }));
+          },
+          onRemove: () => update(current => launchDraft.removeReference(current, typeId)) }} />;
+    })}</>;
+  };
   /** The one thing that stops the operator, in the slot pinned under the stage tabs: a refused plan, unavailable checks or a failed PDF. */
   const planRefusal = onLastStage && plan !== null ? planRefusalNotice(plan.refused, preview.entries) : null;
   const notice: { sentence: string; action?: { label: string; onClick: () => void; icon?: ReactNode } } | null = planRefusal !== null
@@ -700,11 +704,10 @@ export function RunStartDialog({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, hidden]);
   /** The one thing stopping Continue or Start on this stage, as its own line beside the buttons. */
-  const stageHint = currentStage === "Input" ? (compatibilityMissing ? null : blockedReason)
-    : currentStage === "Options" ? optionsBlockedReason
-    : currentStage === "Steps" ? stepsBlockedReason
-    : currentStage === "Checks" && gates.checksBlocked ? (checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : null)
-    : planRefusal === null ? null : planRefusal.sentence.replace(/\. .*$/u, ".");
+  const checksHint = gates.checksBlocked ? (checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : null) : null;
+  const stageHint = currentStage === "Input" ? (compatibilityMissing || isRerun ? null : blockedReason)
+    : currentStage === "Start" ? optionsBlockedReason ?? stepsBlockedReason ?? checksHint ?? (planRefusal === null ? null : planRefusal.sentence.replace(/\. .*$/u, "."))
+    : null;
   return (
     <Dialog open={open && !hidden} onOpenChange={closeAndReset}>
       <DialogContent
@@ -721,7 +724,7 @@ export function RunStartDialog({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ol aria-label="Run configuration path" className="launch-stagebar">
               {launchStages.map((stage, index) => {
-                const activeIndex = launchStages.findIndex(entry => entry.label === (currentStage === "Warning" ? "Steps" : currentStage));
+                const activeIndex = launchStages.findIndex(entry => entry.label === (currentStage === "Warning" ? "Input" : currentStage));
                 const current = index === activeIndex;
                 return <li key={stage.label} aria-current={current ? "step" : undefined}>
                   <BareButton disabled={index > activeIndex || busy || recovery !== null} aria-label={`${stage.number} ${stage.label}`} className={dsFocus} onClick={() => send({ type: "go-to", stage: stage.label, via: "stage-bar" })}>
@@ -748,19 +751,9 @@ export function RunStartDialog({
               <Banner tone="danger" title="The request did not complete">{error}</Banner>
             )}
 
-            {currentStage === "Steps" && <section className="flex flex-col gap-1">
-              <div className="flex max-w-[var(--ds-w-body-content)] items-baseline justify-between gap-3 pr-[calc(var(--ds-row-pad-x)+1px)]">
-              <h3 className="text-control font-medium">Steps</h3>
-              {workflow && <span className="text-control text-ui-secondary">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>}
-              </div>
-              <p className="text-body text-ui-secondary">{isRerun ? "Choose steps. Status shows the earlier result." : "Replace reading steps with manual values. Form actions stay included."}</p>
-            </section>}
-
-            {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} onRecheck={checks.recheck} />}
-
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
-              {currentStage === "Input" && compatibilityMissing && <FailureNotice sentence="Reference spreadsheets can't be checked." action={{ label: "Retry", onClick: () => void library.adapter.refreshCatalog() }} />}
-              {(currentStage === "Input" && !compatibilityMissing || currentStage === "Values") && (
+              {currentStage === "Input" && compatibilityMissing && <FailureNotice sentence="Spreadsheets can't be checked." action={{ label: "Retry", onClick: () => void library.adapter.refreshCatalog() }} />}
+              {currentStage === "Input" && !compatibilityMissing && (
                 <section aria-label={isRerun ? "Values" : "Input"} className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
                   {pdfSurface !== undefined ? <>
                     <WorkflowPdfInput files={pdfInput.draft?.files.map(file => ({ name: file.source.fileName, size: file.source.artifact.bytes })) ?? []}
@@ -841,7 +834,7 @@ export function RunStartDialog({
                 </section>
               )}
 
-              {currentStage === "Options" && (
+              {currentStage === "Start" && (
                 <RunOptionsLayout priority={priority} onPriorityChange={next => update(current => launchDraft.changePriority(current, next))} browserMode={browserMode} onBrowserModeChange={next => update(current => launchDraft.changeBrowserMode(current, next))}
                   flags={<>
                     {!isRerun && <RunListRow title="Customize steps" description="Choose optional steps."><Switch hideLabel label="Customize steps" checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
@@ -849,13 +842,16 @@ export function RunStartDialog({
                     {launchFields.map(field => field.kind === "boolean"
                       ? <RunListRow key={field.field} title={field.label} {...(field.description === undefined ? {} : { description: field.description })}><Switch hideLabel label={field.label} checked={pdfRunSwitchValue(field, pdfInput.picks)} onCheckedChange={next => pdfInput.pick(field.field, next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>
                       : <RunListRow key={field.field} title={field.label}><div className="w-[var(--ds-w-body-control)]"><SegmentedChoice hideLabel label={field.label} value={pdfRunSelectValue(field, pdfInput.picks)} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
-                    <RunListRow title="Screenshots" description="Required by this workflow."><span className="text-body text-ui-secondary">Always on</span></RunListRow>
                   </>} />
               )}
 
-              {currentStage === "Steps" && workflow !== undefined && (
+              {currentStage === "Start" && stepsShown && workflow !== undefined && (
                 <section aria-labelledby="run-start-steps" className="flex flex-col gap-[var(--ds-space-cozy)]">
-                  <h4 id="run-start-steps" className="sr-only">Steps</h4>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h4 id="run-start-steps" className="m-0 text-[length:var(--ds-row-heading)] font-normal leading-[var(--ds-row-heading-lh)] text-[color:var(--ds-fg)]">Steps</h4>
+                    <span className="text-caption text-ui-muted">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>
+                  </div>
+                  <p className="m-0 text-caption text-ui-secondary">{isRerun ? "Choose steps. Status shows the earlier result." : "Replace reading steps with manual values. Form actions stay included."}</p>
                   <RunList label="Steps">
                     {rows.map((row) => {
                       const included = rowIncluded(row, selectedStepKeys, manualRows);
@@ -880,6 +876,8 @@ export function RunStartDialog({
                   {stepsFailure !== null && stepsFailure.rowKey === "" && <p role="alert" className="text-caption text-ui-danger">{stepsFailure.text}</p>}
                 </section>
               )}
+
+              {currentStage === "Start" && <RunChecksStage checks={checks.state} onFix={fixCheck} onRecheck={checks.recheck} />}
 
               {onLastStage && lastStageFacts.length > 0 && <KeyValueList items={lastStageFacts} />}
 
