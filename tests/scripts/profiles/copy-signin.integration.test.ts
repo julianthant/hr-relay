@@ -81,7 +81,7 @@ const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const credentials = {
   RELAY_EMAIL: "relay-email-sentinel@example.test",
   RELAY_PASSWORD: "relay-password-sentinel",
-  UCPATH_USERNAME: "ucpath-username-sentinel",
+  UCPATH_USERNAME: "ucpath-username-sentinel@ucsd.edu",
   UCPATH_PASSWORD: "ucpath-password-sentinel",
 };
 // HOME moves to the fixture, so Playwright keeps the installed browsers explicitly.
