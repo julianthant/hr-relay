@@ -513,12 +513,13 @@ async function prepareStartupUpgrades(workspace: string, lifetime: RuntimeLifeti
   for (const profileId of profiles) {
     try {
       await withStoppedMachineStorage(workspace, lifetime, async machine => {
-        reconcileStages(machine, profileId);
         logStartupUpgradeStage(workspace, clock, "inspection");
+        if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", profileId))) assertMaintenanceCustodyAvailable("backup-retirement");
+        reconcileStages(machine, profileId);
         AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
       });
     } catch (error) {
-      if (hasUnprovedSourceClosure(error)) throw error;
+      if (hasUnprovedSourceClosure(error) || error instanceof StorageMaintenanceCustodyUnavailableError) throw error;
       try {
         await repairRegisteredPerson(workspace, lifetime, profileId, clock, error);
         await withStoppedMachineStorage(workspace, lifetime, async machine => { reconcileStages(machine, profileId); });
