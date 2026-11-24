@@ -141,7 +141,7 @@ export function inboxProjection(rows: readonly NotificationWire[], nowIso: strin
     // A repeating notice says the failure repeats; it is not one more failure.
     const counted = group.filter(row => row === group[0] || !repeatingNotice(row)).reduce((sum, row) => sum + (row.kind === "notification" ? row.count : 1), 0);
     return { ...shown, read: group.every(row => row.readState === "read"), ...(counted > 1 ? { count: counted } : {}), ...(group.some(row => gone.has(row.notificationId)) ? { gone: true } : {}),
-      ...(group.some(row => row.kind === "notification" && row.standing === true) ? { standing: true as const } : {}) };
+      ...(group.some(row => row.standing === true) ? { standing: true as const } : {}) };
   });
   const needsYou = items.filter(item => !item.read && (item.tone === "danger" || item.tone === "warning")).length;
   return { state: { state: "ready", items, pinned: [] }, notice, needsYou };
@@ -272,7 +272,23 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   /** Each durable row a listed row stands for, at its listed revision. */
   const durableRows = (row: NotificationWire): readonly (readonly [string, number])[] => row.kind === "backfill-gap" ? []
     : row.kind === "notification" && row.group !== undefined ? row.group.members.map(member => [member.notificationId, member.revision] as const) : [[row.notificationId, row.revision] as const];
-  const clearable = (row: NotificationWire) => row.kind !== "backfill-gap" && row.readOnlyHistory !== true && !(row.kind === "notification" && row.standing === true);
+  const clearable = (row: NotificationWire) => row.kind !== "backfill-gap" && row.readOnlyHistory !== true && row.standing !== true;
+  /** One command clears exactly these rows at their listed revisions, or none of them. */
+  const sendClear = async (entries: readonly (readonly [string, number])[]): Promise<boolean> => {
+    const owner = current.current.binding;
+    hide(entries);
+    const members = [...new Map(entries)].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([notificationId, expectedVersion]) => ({ notificationId, expectedVersion }));
+    const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.now(), requestedBy: request.scope.actorId,
+      source: "dashboard", family: "notification", type: "notification-clear", target: { actorId: request.scope.actorId, members, matchingCount: members.length } });
+    const outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
+      publish: outcome => {
+        if (current.current.request !== request || outcome.kind === "confirmed") return;
+        owner.feedback(outcome);
+        if (outcome.kind === "conflict") dayState.refresh();
+      } });
+    if (outcome.kind !== "confirmed") { if (current.current.request === request) unhide(entries); return false; }
+    return current.current.request === request;
+  };
   const control = async (id: string, action: NotificationControl | "snooze" | "unsnooze"): Promise<boolean> => {
     if (!enabled || current.current.request !== request || !current.current.usable) return false;
     const row = rowsRef.current?.find(row => row.notificationId === id);
@@ -339,38 +355,16 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       if (!group.every(clearable)) return false;
       const members = group.flatMap(durableRows);
       if (heldAttempt(new Set(members.map(([memberId]) => memberId))) !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
-      const owner = current.current.binding;
-      hide(members);
-      for (const [index, [notificationId, revision]] of members.entries()) {
-        const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.now(), requestedBy: request.scope.actorId,
-          source: "dashboard", family: "notification", type: "notification-clear", target: { notificationId, actorId: request.scope.actorId, expectedVersion: revision } });
-        const outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
-          publish: outcome => {
-            if (current.current.request !== request || outcome.kind === "confirmed") return;
-            owner.feedback(outcome);
-            if (outcome.kind === "conflict") dayState.refresh();
-          } });
-        if (outcome.kind !== "confirmed") { if (current.current.request === request) unhide(members.slice(index)); return false; }
-      }
-      return current.current.request === request;
+      return sendClear(members);
     },
     clearAll: async show => {
-      if (!enabled || current.current.request !== request || !current.current.usable || client.notificationCollection === undefined) return;
+      if (!enabled || current.current.request !== request || !current.current.usable) return;
       if (heldAttempt() !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return; }
-      const listed = (rowsRef.current ?? []).filter(row => clearable(row) && (show === "all" || (row.kind !== "backfill-gap" && row.readState === "unread")));
-      const entries = listed.flatMap(durableRows).filter(([id, revision]) => (clearedRef.current?.get(id) ?? -1) < revision);
-      const owner = current.current.binding;
-      hide(entries);
-      let target: NotificationCollectionTarget;
-      try { target = await client.notificationCollection(show === "all" ? "clear" : "clear-unread"); }
-      catch { if (current.current.request === request) { unhide(entries); setCommandNotice({ request, text: inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE") }); } return; }
-      if (current.current.request !== request) return;
-      if (!current.current.usable || heldAttempt() !== undefined || target.actorId !== request.scope.actorId) { unhide(entries); return; }
-      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.now(), requestedBy: request.scope.actorId,
-        source: "dashboard", family: "notification", type: show === "all" ? "notification-clear-all" : "notification-clear-unread-all", target });
-      const outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
-        publish: outcome => { if (current.current.request === request && outcome.kind !== "confirmed") owner.feedback(outcome); } });
-      if (outcome.kind !== "confirmed" && current.current.request === request) unhide(entries);
+      // Whole displayed items only: a standing item stays whole, and Unread clears every row of an item with any unread row.
+      const groups = foldRows(rowsRef.current ?? []).filter(group => group.every(clearable)
+        && (show === "all" || group.some(row => row.readState === "unread")));
+      const entries = groups.flatMap(group => group.flatMap(durableRows)).filter(([id, revision]) => (clearedRef.current?.get(id) ?? -1) < revision);
+      if (entries.length > 0) await sendClear(entries);
     },
     onPublication: listener => { arrivalListeners.current.add(listener); return () => { arrivalListeners.current.delete(listener); }; },
     readAll: async () => {

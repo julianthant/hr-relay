@@ -66,7 +66,7 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
       const operation = new URL(url).searchParams.get("operation");
       return Response.json({ actorId: "local-operator",
         members: [...rows].sort((a, b) => a.notificationId < b.notificationId ? -1 : 1).map(row => ({ notificationId: row.notificationId, expectedVersion: row.kind === "notification" ? row.revision : 1 })),
-        matchingCount: rows.filter(row => row.kind === "notification" && (operation === "clear" ? row.standing !== true : row.readState === "unread" && (operation !== "clear-unread" || row.standing !== true))).length });
+        matchingCount: rows.filter(row => row.kind === "notification" && (operation === "read" ? row.readState === "unread" : true)).length });
     }
     if (path.endsWith("/notifications")) return Response.json(rows);
     if (path.endsWith("/commands")) {
@@ -74,9 +74,12 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); commands.push(command);
       await postWait;
       const target = command.target;
-      if (command.type.startsWith("notification-clear")) {
-        if (refuseClear) return Response.json({ state: "rejected", commandId: command.commandId, code: "policy-refused", message: "This notice still waits on you." });
-        const cleared = rows.filter(item => item.kind === "notification" && ("members" in target ? target.members.some(member => member.notificationId === item.notificationId) && item.standing !== true : item.notificationId === target.notificationId));
+      if (command.type === "notification-clear" && "members" in target) {
+        // As the server does: every named row clears, or none does.
+        const cleared = rows.filter(item => item.kind !== "backfill-gap" && target.members.some(member => member.notificationId === item.notificationId && member.expectedVersion === item.revision));
+        if (refuseClear || cleared.length !== target.members.length || cleared.some(item => item.kind !== "backfill-gap" && item.standing === true)) {
+          return Response.json({ state: "rejected", commandId: command.commandId, code: "policy-refused", message: "This notice still waits on you." });
+        }
         rows = rows.filter(item => !cleared.includes(item));
         return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: cleared.map(item => ({ family: "notification", notificationId: item.notificationId })) });
       }
@@ -539,8 +542,8 @@ it("clears an item's whole group at once and keeps it gone while a stale day sti
   let cleared: Promise<boolean> | undefined;
   await act(async () => { cleared = h.value.clear(first.notificationId); });
   await act(async () => { assert.equal(await cleared, true); });
-  assert.deepEqual(h.commands.map(command => [command.type, "notificationId" in command.target ? command.target.notificationId : ""]),
-    [["notification-clear", first.notificationId], ["notification-clear", repeat.notificationId]]);
+  assert.deepEqual(h.commands.map(command => [command.type, "members" in command.target ? command.target.members.map(member => member.notificationId) : []]),
+    [["notification-clear", [first.notificationId, repeat.notificationId]]], "one command names every member");
   h.serveDay([first, repeat, other]); await h.render();
   assert.deepEqual(shownIds(h.value), [other.notificationId], "a day snapshot frozen before the clear does not bring it back");
 });
@@ -569,6 +572,33 @@ it("does not clear a standing notice and Clear all leaves it listed", async () =
   await act(async () => { assert.equal(await h.value.clear(waiting.notificationId), false); });
   assert.equal(h.commands.length, 0, "a standing notice sends no clear");
   await act(async () => { await h.value.clearAll("all"); });
-  assert.deepEqual(h.commands.map(command => command.type), ["notification-clear-all"]);
+  assert.deepEqual(h.commands.map(command => "members" in command.target ? command.target.members.map(member => member.notificationId) : []), [[done.notificationId]]);
   assert.deepEqual(shownIds(h.value), [waiting.notificationId]);
 });
+
+it("Clear all skips a whole group with a standing row and clears a mixed-read group whole from Unread", async () => {
+  const h = await harness();
+  const unread = row("run-failed", { notificationId: "00000000-0000-4000-8000-000000000531", occurredAt: "2026-08-03T16:59:00.000Z", summary: "CRM sign-in failed." });
+  const read = row("run-failed", { notificationId: "00000000-0000-4000-8000-000000000532", occurredAt: "2026-08-03T16:58:00.000Z", summary: "CRM sign-in failed.", readState: "read", state: "read" });
+  const waiting = row("gate-opened", { notificationId: "00000000-0000-4000-8000-000000000533", occurredAt: "2026-08-03T16:57:00.000Z", standing: true });
+  const waitingRepeat = row("gate-opened", { notificationId: "00000000-0000-4000-8000-000000000534", occurredAt: "2026-08-03T16:56:00.000Z" });
+  h.setRows([unread, read, waiting, waitingRepeat]); await h.render();
+  assert.equal(shownIds(h.value).length, 2, "each repeat folds into its item");
+  await act(async () => { await h.value.clearAll("unread"); });
+  assert.deepEqual(h.commands.map(command => "members" in command.target ? command.target.members.map(member => member.notificationId) : []),
+    [[unread.notificationId, read.notificationId]], "one command; the standing group is left whole");
+  assert.deepEqual(shownIds(h.value), [waiting.notificationId]);
+});
+
+it("Clear all names only the rows it showed, so a notice that arrives meanwhile stays", async () => {
+  const h = await harness();
+  const shown = row("run-failed", { notificationId: "00000000-0000-4000-8000-000000000541" });
+  const arrived = row("verified-done", { notificationId: "00000000-0000-4000-8000-000000000542" });
+  h.setRows([shown]); await h.render();
+  h.setRows([shown, arrived]);
+  await act(async () => { await h.value.clearAll("all"); });
+  assert.deepEqual(h.commands.map(command => "members" in command.target ? command.target.members.map(member => member.notificationId) : []), [[shown.notificationId]]);
+  await h.render();
+  assert.deepEqual(shownIds(h.value), [arrived.notificationId]);
+});
+

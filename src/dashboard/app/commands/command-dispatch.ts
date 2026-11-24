@@ -326,9 +326,10 @@ export async function verifyShellCommandEffect(
   if (request.family === "notification" && "members" in request.target) {
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== request.target.matchingCount) return mismatch(reply);
     const rows = (await client.notificationSnapshot()).filter(row => row.readOnlyHistory !== true);
-    if (request.type === "notification-clear-all" || request.type === "notification-clear-unread-all") {
-      // A cleared row is no longer listed, alone or inside a storage group.
+    if (request.type === "notification-clear") {
+      // Exactly the named rows cleared, and none is listed any more, alone or inside a storage group.
       const cleared = new Set(reply.affectedTargets.map(target => target.family === "notification" ? target.notificationId : ""));
+      if (request.target.actorId !== request.requestedBy || !request.target.members.every(member => cleared.has(member.notificationId))) return mismatch(reply);
       const listed = rows.flatMap(row => row.kind === "notification" && row.group !== undefined ? row.group.members.map(member => member.notificationId) : [row.notificationId]);
       return listed.every(id => !cleared.has(id)) ? { state: "matched", evidence: rows } : mismatch(rows);
     }
@@ -359,10 +360,6 @@ export async function verifyShellCommandEffect(
     const rows = await client.notificationSnapshot();
     const target = request.target;
     const row = rows.find(row => row.notificationId === target.notificationId);
-    if (request.type === "notification-clear") {
-      const listed = rows.some(row => row.notificationId === target.notificationId || (row.kind === "notification" && row.group?.members.some(member => member.notificationId === target.notificationId) === true));
-      return request.target.actorId === request.requestedBy && !listed ? { state: "matched", evidence: rows } : mismatch(rows);
-    }
     if (request.target.actorId !== request.requestedBy || row?.actorId !== request.target.actorId || row.kind !== "notification"
       || row.revision !== request.target.expectedVersion + 1) return mismatch(rows);
     const matches = request.type === "notification-read" ? row.readState === "read"
