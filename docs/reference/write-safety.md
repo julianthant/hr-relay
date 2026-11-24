@@ -56,7 +56,7 @@ The completion union contains three kinds:
 | `ambiguous` | Match count, observation instant, query digest, and at least two evidence references | Refuse fence and click |
 | `unknown` | Reason and observation instant | Refuse fence and click |
 
-A throwing, ambiguous, or unknown pre-write probe raises `WriteSafetyAuthorityError`. `run-executor.ts` passes that error to node failure settlement, which terminalizes the run as failed. It does not create a parked write or an intent for an unfenced transaction. Post-fence uncertainty instead uses the parked-write protocol below.
+A throwing, ambiguous, or unknown pre-write probe raises `WriteSafetyAuthorityError`. `run-execution-walk.ts` passes that error to node failure settlement, which terminalizes the run as failed. It does not create a parked write or an intent for an unfenced transaction. Post-fence uncertainty instead uses the parked-write protocol below.
 
 A positive probe is not trusted without parsing. The sequencer parses both the declared proof and the full output reconstructed from it. An existing `committed` or `observed-present` intent also requires valid stored schema identities and proof before reuse.
 
@@ -258,7 +258,7 @@ without copying run-input metadata into those nested envelopes. This keeps trans
 local-preview and delegated-preview schema identities stable when a new run-input origin is
 introduced. Existing result bytes, completion/dependency digests and receipt links remain intact.
 
-`run-executor.ts` records each transaction preview and continues through the declared graph. A later form can consume a separately declared, labelled preview-only sample; dependent receipt/confirmation reads stay unavailable. Samples never become ordinary outputs, real transaction checkpoints or submit receipts. A live sequencer rejects preview scope, preview bindings and reserved sample values before probing, staging or fencing. Upstream task checkpoints, gate records, preview events, and terminal rehearsal evidence can still exist. A dry run is not a verified real write. Dry-run evidence accounting uses `writeIntents.countDryRunEvidenceByRun`, scoped to the run rather than global table counts.
+`run-execution-walk.ts` records each transaction preview and continues through the declared graph. A later form can consume a separately declared, labelled preview-only sample; dependent receipt/confirmation reads stay unavailable. Samples never become ordinary outputs, real transaction checkpoints or submit receipts. A live sequencer rejects preview scope, preview bindings and reserved sample values before probing, staging or fencing. Upstream task checkpoints, gate records, preview events, and terminal rehearsal evidence can still exist. A dry run is not a verified real write. Dry-run evidence accounting uses `writeIntents.countDryRunEvidenceByRun`, scoped to the run rather than global table counts.
 
 The shared preview contract reserves `DRY_RUN_TRANSACTION_NUMBER` and the numeric
 `DRY_RUN_I9_PROFILE_ID`. Numeric profile samples retain their producer and field labels and use
@@ -321,7 +321,9 @@ Confirmed-operation history is exempt from ordinary timeline expiry. Authorized 
 
 An omitted transaction step produces no transaction outcome or write evidence. An operator-asserted transaction number remains an assertion. It cannot be promoted into a claim that this automation submitted it.
 
-Confirmed-action publication is separate from settlement. `run-executor.ts` publishes a submit fact only after matching the frozen commit action, completed saved-effect verifier, durable checkpoint, and proof digests. Missing or mismatched evidence yields no successful submit fact. Prior-work reuse and recovery do not invent new submit actions. Publisher failure cannot undo durable write completion.
+`write-sequencer.ts` delivers its optional saved-effect callback after verification and its
+optional durable-commit callback after settlement. The latter carries the intent, confirmation
+time, and proof digest. A delivery failure cannot undo durable write completion.
 
 ## Separation write protections
 

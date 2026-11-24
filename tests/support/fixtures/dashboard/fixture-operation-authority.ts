@@ -18,7 +18,8 @@ import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-qu
 import { projectStartSteps, startStepWireControl } from "../../../../src/backend/runs/start/step-selection.js";
 import { Hono } from "hono";
 import { composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
-import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { supportsDryRun } from "../../../../src/backend/runs/start/plan.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
@@ -153,7 +154,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     held.shell = shell;
     app.get("/events/v1", (c) => c.body(new ReadableStream<Uint8Array>({ start(controller) {
       for (const value of [{ type: "hello", wireVersion: 1, descriptorHash: hash, projectionGeneration: projection.generation(), cursor: projection.cursor() },
-        { type: "snapshot", topic: "dashboard-day", position: 0, cursor: projection.cursor(), payload: projection.buildDashboardDayWire(day) }, { type: "health", state: "live" }]) {
+        { type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: projection.cursor(), payload: projection.buildDashboardDayWire(day) }, { type: "health", state: "live" }]) {
         controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(DashboardStreamEnvelopeSchema.parse(value))}\n\n`));
       }
     } }), 200, { "content-type": "text/event-stream", "cache-control": "no-cache" }));

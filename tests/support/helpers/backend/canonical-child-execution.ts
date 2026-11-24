@@ -15,7 +15,8 @@ import { createStartPlanService } from "../../../../src/backend/runs/commands/st
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
-import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import type { ProtectedSecretSource } from "../../../../src/models/config/secrets.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import type { ProtectedInputBinding } from "../../../../src/models/write-safety/protected-input.js";

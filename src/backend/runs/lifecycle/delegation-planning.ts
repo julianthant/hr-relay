@@ -6,7 +6,7 @@ import { deriveItemId } from "../../../rules/identity/identifiers.js";
 import { ItemIdSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import type { ChildRunContext } from "../../runtime/execution/run-executor.js";
+import type { ChildRunContext } from "../../runtime/execution/run-execution-contract.js";
 import { hasProtectedSubject, protectedSubjectMatchKey } from "../start/protected-input.js";
 
 export function canonicalDelegationChild(context: ChildRunContext, target: AnyWorkflowDescriptor, bound: unknown, schemaReader?: EvidenceSchemaReader) {

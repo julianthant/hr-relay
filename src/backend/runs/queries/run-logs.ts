@@ -536,21 +536,38 @@ export function buildRunLogsSection(
 
   noteScanCache?: RunNoteScanCache,
 ): RunDetailSectionResponse {
-  const section = "logs";
   const snapshots = logSnapshotsFor(deps, noteScanCache);
-  let offset = 0;
-  let snapshot: RunLogSnapshot;
   if (cursorInput === undefined) {
-    snapshot = snapshots.start(runId, () => logLinesForRun(deps, row, authority, runId));
-  } else {
-    const cursor = LogPageCursorSchema.parse(cursorInput);
-    const [, snapshotId, offsetText] = cursor.split(":");
-    if (snapshotId === undefined || offsetText === undefined) throw new Error(`log cursor ${cursor} is incomplete`);
-    offset = Number(offsetText);
-    snapshot = snapshots.resume(runId, snapshotId);
+    const snapshot = snapshots.start(runId, () => logLinesForRun(deps, row, authority, runId));
+    return logsPage(deps, runId, authority, snapshot, 0, LOGS_PAGE_SIZE);
   }
+  const cursor = LogPageCursorSchema.parse(cursorInput);
+  const [, snapshotId, offsetText] = cursor.split(":");
+  if (snapshotId === undefined || offsetText === undefined) throw new Error(`log cursor ${cursor} is incomplete`);
+  return logsPage(deps, runId, authority, snapshots.resume(runId, snapshotId), Number(offsetText), LOGS_PAGE_SIZE);
+}
+
+/** The whole log in one page, as every page of `buildRunLogsSection` joined; nothing is held for paging. */
+export function buildRunLogsWhole(
+  deps: RunDetailQueryDeps,
+  runId: string,
+  row: RunFoldRecord | undefined,
+  authority: RunRecord,
+): RunDetailSectionResponse {
+  const entries = logLinesForRun(deps, row, authority, runId);
+  return logsPage(deps, runId, authority, { id: "whole", entries }, 0, entries.length);
+}
+
+function logsPage(
+  deps: RunDetailQueryDeps,
+  runId: string,
+  authority: RunRecord,
+  snapshot: RunLogSnapshot,
+  offset: number,
+  size: number,
+): RunDetailSectionResponse {
   const all = snapshot.entries;
-  const page = all.slice(offset, offset + LOGS_PAGE_SIZE);
+  const page = all.slice(offset, offset + size);
   const unread = unreadReadFields(deps, authority, all);
   const rows = page.map((entry, index) => LogRowWireSchema.parse(logRowOf(
     entry,
@@ -560,14 +577,14 @@ export function buildRunLogsSection(
     unread?.logId === logIdOf(entry) ? unread.labels : [],
   )));
   return RunDetailSectionResponseSchema.parse({
-    section,
+    section: "logs",
     payload: {
       runId,
       ...(authority.envelope.dryRun ? { dryRunPreview: dryRunPreviewForLogs(deps, authority) } : {}),
       rows,
       notes: rows.flatMap((row) => row.kind === "note" ? [row.note] : []),
-      nextCursor: offset + LOGS_PAGE_SIZE < all.length
-        ? { state: "present", value: `lc:${snapshot.id}:${String(offset + LOGS_PAGE_SIZE)}` }
+      nextCursor: offset + size < all.length
+        ? { state: "present", value: `lc:${snapshot.id}:${String(offset + size)}` }
         : { state: "absent", reason: "end-of-page" },
     },
   });

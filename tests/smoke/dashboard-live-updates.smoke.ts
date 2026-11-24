@@ -1,8 +1,9 @@
 /** Live-update smoke: the requests the dashboard makes after one server event. Each live-update ticket lowers the counts it covers. */
-import type { Page } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
+import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../src/models/dashboard/subscription.js";
 import type { DashboardPage } from "../support/helpers/dashboard/smoke/dashboard-page.js";
 import type { SeededServer } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
-import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
+import { SEEDED_DAY, SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { seededRequestOver, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
 import { test as scriptedTest } from "../support/helpers/dashboard/smoke/scripted-run-fixtures.js";
 import { expect, SEEDED_PREFERENCE_WRITE, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
@@ -150,4 +151,105 @@ for (const view of Object.keys(DECLARED_GATE_BASELINE) as View[]) {
     await quiet(page, seen);
     expect([...seen].sort()).toEqual([...DECLARED_GATE_BASELINE[view] ?? []].sort());
   });
+}
+
+/** One envelope a run-topic stream received, with its arrival time. */
+interface Received { readonly envelope: DashboardStreamEnvelope; readonly at: number }
+
+/** A second stream that names a run topic, opened with the page's own stream headers. The client does not ask for rows yet. */
+async function openRunTopic(headers: Record<string, string>, baseUrl: string, runId: string) {
+  const controller = new AbortController();
+  const openedAt = performance.now();
+  const response = await fetch(`${baseUrl}/events/v1?topics=dashboard-day:${SEEDED_DAY},run:${runId}`, { headers, signal: controller.signal });
+  expect(response.status, "the run topic is served").toBe(200);
+  const body = response.body;
+  if (body === null) throw new Error("the run topic stream has no body");
+  const received: Received[] = [];
+  void (async () => {
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      const reader = body.getReader();
+      for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+        buffer += decoder.decode(chunk.value, { stream: true });
+        for (let end = buffer.indexOf("\n\n"); end !== -1; end = buffer.indexOf("\n\n")) {
+          const data = buffer.slice(0, end).split("\n").filter(line => line.startsWith("data: ")).map(line => line.slice(6)).join("\n");
+          buffer = buffer.slice(end + 2);
+          if (data !== "") received.push({ envelope: DashboardStreamEnvelopeSchema.parse(JSON.parse(data)), at: performance.now() });
+        }
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) throw error;
+    }
+  })();
+  return { openedAt, received, close: () => controller.abort() };
+}
+
+/** Resolves once the stream has received nothing for a full quiet window. */
+async function streamQuiet(page: Page, received: readonly Received[]): Promise<void> {
+  for (let count = -1; count !== received.length;) {
+    count = received.length;
+    await page.waitForTimeout(QUIET_MS);
+  }
+}
+
+/** `type` and, for envelopes that carry rows, the panel state of each row. */
+function shapeOf({ envelope }: Received): string {
+  if (envelope.type !== "change" && envelope.type !== "snapshot") return envelope.type;
+  const day = envelope.type === "change" && envelope.day !== undefined ? "+day" : "";
+  return `${envelope.type}${day}[${envelope.rows.map(row => row.value.state).join(",")}]`;
+}
+
+function recordMs(testInfo: TestInfo, type: string, ms: number): void {
+  testInfo.annotations.push({ type, description: `${ms.toFixed(1)} ms` });
+  console.log(`${testInfo.title} :: ${type} = ${ms.toFixed(1)} ms`);
+}
+
+type TopicView = "that run on the topic" | "another run on the topic";
+
+/** Envelopes a `run:<id>` connection receives after the event. Each row is read by the routes' own queries. */
+const TOPIC_BASELINE: Partial<Record<RunEvent, Record<TopicView, readonly string[]>>> = {
+  // The start replaces the whole day twice; each snapshot carries the panel.
+  "run starting": {
+    "that run on the topic": ["snapshot[available]", "snapshot[available]"],
+    "another run on the topic": ["snapshot[available]", "snapshot[available]"],
+  },
+  "step finishing": {
+    "that run on the topic": ["change+day[available]"],
+    "another run on the topic": ["change+day[]"],
+  },
+  "gate parking": {
+    "that run on the topic": ["change+day[available]", "snapshot[available]"],
+    "another run on the topic": ["change+day[]", "snapshot[available]"],
+  },
+};
+
+for (const event of Object.keys(TOPIC_BASELINE) as RunEvent[]) {
+  for (const view of Object.keys(TOPIC_BASELINE[event] ?? {}) as TopicView[]) {
+    test(`${event}, ${view}: stream envelopes after the event`, async ({ dashboard, page, seeded }, testInfo) => {
+      const eventRun = EVENTS[event].run(seeded);
+      const topicRun = view === "that run on the topic" ? eventRun : dashboard.runId("doneRun");
+      const pageStream = page.waitForRequest(request => new URL(request.url()).pathname === "/events/v1");
+      await dashboard.open();
+      const stream = await openRunTopic(await (await pageStream).allHeaders(), seeded.baseUrl, topicRun);
+      await expect.poll(() => stream.received.some(({ envelope }) => envelope.type === "snapshot"), { message: "the handoff snapshot arrives" }).toBe(true);
+      const snapshot = stream.received.find(({ envelope }) => envelope.type === "snapshot");
+      if (snapshot === undefined) throw new Error("no snapshot");
+      expect(shapeOf(snapshot), "the handoff snapshot carries the panel").toBe("snapshot[available]");
+      recordMs(testInfo, "handoff panel read", snapshot.at - stream.openedAt);
+      await streamQuiet(page, stream.received);
+      const before = stream.received.length;
+
+      const firedAt = performance.now();
+      EVENTS[event].fire(seeded);
+
+      await expect.poll(() => stream.received.length, { message: "the stream carries the event" }).toBeGreaterThan(before);
+      await streamQuiet(page, stream.received);
+      const after = stream.received.slice(before);
+      const withRow = after.find(({ envelope }) => (envelope.type === "change" || envelope.type === "snapshot") && envelope.rows.length > 0);
+      if (withRow !== undefined) recordMs(testInfo, "event to panel row", withRow.at - firedAt);
+      stream.close();
+      expect(after.map(shapeOf)).toEqual(TOPIC_BASELINE[event]?.[view]);
+    });
+  }
 }
