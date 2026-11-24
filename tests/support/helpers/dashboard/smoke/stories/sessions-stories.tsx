@@ -1,4 +1,6 @@
 /** Sessions stories: the real Sessions bar and its worker cards on fixture workers, one story per worker state, browser state, bar state and command operation. */
+import { useEffect, useState } from "react";
+import { useToasts } from "../../../../../../src/dashboard/ds/ui.js";
 import { SessionsView } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import type { SessionBrowserState, SessionWorker, SessionWorkerState, SessionsViewState } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import type { SessionPreviewOperation } from "../../../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
@@ -16,6 +18,18 @@ const bar = (title: string, data: SessionsViewState, { open = true, operations }
   ready: open ? BODY : '[aria-label="Session Panel"]',
   render: () => <StoryFrame><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS}
     {...(operations === undefined ? {} : { operations })} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame>, ...extra });
+/** Raises one result toast once the story has mounted, as the app does after a command settles. */
+function RaiseToast() {
+  const { toast } = useToasts();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  useEffect(() => { if (mounted) toast({ tone: "success", title: "Workers added" }); }, [mounted, toast]);
+  return null;
+}
+const withToast = (title: string, data: SessionsViewState, open = true): Story => {
+  const base = bar(title, data, { open });
+  return { ...base, ready: '[data-ds-toast-state]', render: () => <StoryFrame><RaiseToast /><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame> };
+};
 const ready = (...workers: readonly SessionWorker[]): SessionsViewState => ({ state: "ready", workers });
 
 const worker = (title: string, state: SessionWorkerState): Story => bar(title, ready(SESSION_WORKER_BY_STATE[state]));
@@ -59,4 +73,12 @@ const COMBINATION = {
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } }),
 } satisfies Record<string, Story>;
 
-export const SESSIONS_STORIES = defineSurface("sessions", { worker: WORKER, browser: BROWSER, bar: BAR, operation: OPERATION, combination: COMBINATION });
+/** A toast sits bottom centre above the Sessions bar at every panel height: collapsed, empty, one row and several. */
+const TOAST = {
+  collapsed: withToast("A result toast over the collapsed bar", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle), false),
+  empty: withToast("A result toast over the empty panel", ready()),
+  "one-row": withToast("A result toast over one idle row", ready(QUIET_IDLE[0] as SessionWorker)),
+  several: withToast("A result toast over cards and rows", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE)),
+} satisfies Record<string, Story>;
+
+export const SESSIONS_STORIES = defineSurface("sessions", { worker: WORKER, browser: BROWSER, bar: BAR, operation: OPERATION, combination: COMBINATION, toast: TOAST });

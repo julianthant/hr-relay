@@ -144,6 +144,25 @@ export function toastTextOnly({ page }: StateRuleContext): Promise<readonly stri
   });
 }
 
+/** A toast sits bottom centre and clears the Sessions panel, at whatever height the panel is. */
+export function toastPlacement({ page }: StateRuleContext): Promise<readonly string[]> {
+  return page.evaluate(() => {
+    const found: string[] = [];
+    const panel = document.querySelector('[aria-label="Session Panel"]')?.getBoundingClientRect();
+    for (const toast of document.querySelectorAll<HTMLElement>('[data-ds-toast-state]')) {
+      const box = toast.getBoundingClientRect();
+      if (box.width <= 1 || box.height <= 1) continue;
+      const label = `the toast "${toast.innerText.trim().slice(0, 60)}"`;
+      const offCentre = Math.abs((box.left + box.right) / 2 - window.innerWidth / 2);
+      if (offCentre > 2) found.push(`${label} is ${String(Math.round(offCentre))}px off the horizontal centre`);
+      if (panel !== undefined && box.bottom > panel.top && box.top < panel.bottom && box.left < panel.right && panel.left < box.right) found.push(`${label} overlaps the Sessions panel`);
+      else if (panel !== undefined && box.top >= panel.bottom) found.push(`${label} sits below the Sessions panel`);
+      if (box.bottom > window.innerHeight - 1) found.push(`${label} runs off the bottom of the window`);
+    }
+    return found;
+  });
+}
+
 export function skeletonOnlyWhileFetching({ page, story }: StateRuleContext): Promise<readonly string[]> {
   return page.evaluate(region => {
     const skeletons = [...document.querySelectorAll('[data-slot="skeleton"]')];
@@ -454,6 +473,7 @@ export const STATE_RULES: Readonly<Record<StateRuleName, { readonly check: State
   "no-banned-text": { check: noBannedText, failure: "text an operator must never read" },
   "word-limits": { check: wordLimits, failure: "titles, descriptions or errors over their word limit" },
   "toast-text-only": { check: toastTextOnly, failure: "a toast that holds more than text or covers a toolbar or title" },
+  "toast-placement": { check: toastPlacement, failure: "a toast that is off bottom centre or over the Sessions panel" },
   "skeleton-only-while-fetching": { check: skeletonOnlyWhileFetching, failure: "a skeleton outside a slow fetch or outside its fetching region" },
   "dialogs-share-shape": { check: dialogsShareShape, failure: "dialogs of one kind that differ in radius, border, title size or padding" },
   "primary-button-accent": { check: primaryButtonAccent, failure: "a primary button that is not the one accent" },

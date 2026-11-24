@@ -49,7 +49,7 @@ The shell includes `StorageBanner` above the main content on dashboard and takeo
 appears for unavailable authority and links to Settings rather than performing repair.
 
 Sessions stays at the bottom across views. Its Settings gear opens the guarded Settings page.
-Toasts clear the Sessions bar through `--ds-toast-inset-bottom`. Command recovery, bulk feedback,
+Toasts sit bottom centre, above the Sessions bar floor (`--ds-toast-inset-bottom`) or the open Sessions panel (`--session-dock-h`), whichever is higher. Command recovery, bulk feedback,
 and the result feed sit above the Queue/Logs region and retain results when a target changes.
 
 The desktop canvas never changes into a phone layout. Queue stays beside Logs; below the minimum,
