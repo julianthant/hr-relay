@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { applicationDataWorkspace } from "../../app/config/runtime-isolation.js";
+import { isUpgradeableAuthoritySchemaVersion } from "../../../models/config/authority-schema-versions.js";
 import { runtimeProfiles } from "../../../models/config/define-runtime-isolation.js";
 import { ProfileDatabaseBindingSchema, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { encodeSavedWorkbook, type SavedWorkbook, type WorkbookOperation, type WorkbookType } from "../../../models/dashboard/workbooks.js";
@@ -12,9 +14,11 @@ import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import { type AuthorityDatabase } from "../sqlite/authority-database.js";
-import { parseBackupManifestFile, readVerifiedBackupManifestAtPath } from "../sqlite/backup-service.js";
+import { isolatedBackupScratchRoot, withUpgradedBackupCopy } from "../sqlite/backup-inspection.js";
+import { readVerifiedBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { authoritySourceDatabaseIdentity } from "../sqlite/database-identity.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
+import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 import { createWorkbookLibraryRepository, INITIAL_WORKBOOK_TYPE } from "../sqlite/workbook-library-repository.js";
 
 export const IsolatedLibraryImportRequestSchema = z.strictObject({
@@ -23,6 +27,16 @@ export const IsolatedLibraryImportRequestSchema = z.strictObject({
 });
 
 const IMPORT_OPERATION_PREFIX = "relay-isolated-import:";
+
+const newerVersion = z.int().gt(CURRENT_AUTHORITY_SCHEMA_VERSION);
+const NewerBackupManifestSchema = z.strictObject({ ...AuthorityBackupManifestSchema.shape, schemaVersion: newerVersion,
+  verification: AuthorityBackupManifestSchema.shape.verification.extend({ schemaVersion: newerVersion }),
+}).refine(manifest => manifest.schemaVersion === manifest.verification.schemaVersion);
+const ImportBackupManifestSchema = AuthorityBackupManifestSchema.or(NewerBackupManifestSchema);
+
+export function parseIsolatedImportBackupManifest(manifestPath: string) {
+  return ImportBackupManifestSchema.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
+}
 
 export type IsolatedLibraryImportReport = Readonly<{
   created: number;
@@ -73,32 +87,44 @@ function assertIsolatedDestination(admission: RuntimeAdmission, database: Author
   if (inside(production, context.workspace) || inside(production, admission.stateRoot)) throw new IsolatedLibraryImportRefusedError("destination-not-isolated");
 }
 
-/** Reads the backup's local library through the supported verifier, from the same read-only snapshot its inspection checks. */
 type StageHistory = Parameters<Parameters<typeof withStagedHistory>[1]>[0];
 
-function readVerifiedSourceLibrary(admission: RuntimeAdmission, manifestPath: string, expected: ProfileDatabaseBinding, stage?: StageHistory) {
-  const manifest = parseBackupManifestFile(manifestPath);
+function readVerifiedSourceLibrary(admission: RuntimeAdmission, manifestPath: string, expected: ProfileDatabaseBinding, clock: Clock, stage?: StageHistory) {
+  const manifest = parseIsolatedImportBackupManifest(manifestPath);
   if (manifest.installationId !== expected.installationId || manifest.profileId !== expected.profileId
     || manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity({ kind: "profile", binding: expected })) {
     throw new IsolatedLibraryImportRefusedError("source-binding-mismatch");
   }
-  if (manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new IsolatedLibraryImportRefusedError("source-schema-not-current");
+  const version = manifest.schemaVersion;
+  if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new IsolatedLibraryImportRefusedError("source-schema-newer");
+  if (version !== CURRENT_AUTHORITY_SCHEMA_VERSION && !isUpgradeableAuthoritySchemaVersion(version)) {
+    throw new IsolatedLibraryImportRefusedError("source-schema-upgrade-unsupported");
+  }
+  isolatedBackupScratchRoot(admission, manifestPath);
   const verified = readVerifiedBackupManifestAtPath(admission, manifestPath, { kind: "profile", binding: expected }, (database): SourceLibrary => {
-    stage?.(database, manifest.createdAt);
-    const repository = createWorkbookLibraryRepository({ database, read: work => work(),
-      mutate: () => { throw new Error("isolated-library-import-source-read-only"); } });
-    const entries = repository.catalog();
-    const local = entries.filter(entry => entry.state.origin.kind === "local");
-    return {
-      types: repository.types().filter(type => type.id !== INITIAL_WORKBOOK_TYPE.id),
-      workbooks: local.map(entry => {
-        const record = repository.read(entry.libraryId);
-        if (record === undefined) throw new IsolatedLibraryImportRefusedError("source-library-entry-missing");
-        return { record, typeId: entry.metadata.typeId };
-      }),
-      skippedWorkflowOutputs: entries.length - local.length,
+    if (database.prepare("PRAGMA user_version").get()?.user_version !== version) {
+      throw new IsolatedLibraryImportRefusedError("source-backup-changed");
+    }
+    const read = (source: typeof database): SourceLibrary => {
+      stage?.(source, manifest.createdAt);
+      const repository = createWorkbookLibraryRepository({ database: source, read: work => work(),
+        mutate: () => { throw new Error("isolated-library-import-source-read-only"); } });
+      const entries = repository.catalog();
+      const local = entries.filter(entry => entry.state.origin.kind === "local");
+      return {
+        types: repository.types().filter(type => type.id !== INITIAL_WORKBOOK_TYPE.id),
+        workbooks: local.map(entry => {
+          const record = repository.read(entry.libraryId);
+          if (record === undefined) throw new IsolatedLibraryImportRefusedError("source-library-entry-missing");
+          return { record, typeId: entry.metadata.typeId };
+        }),
+        skippedWorkflowOutputs: entries.length - local.length,
+      };
     };
+    return version === CURRENT_AUTHORITY_SCHEMA_VERSION ? read(database)
+      : withUpgradedBackupCopy(admission, database, version, expected, clock.now().toISOString(), read);
   });
+  if (canonicalJsonStringify(verified.manifest) !== canonicalJsonStringify(manifest)) throw new IsolatedLibraryImportRefusedError("source-backup-changed");
   return { manifest: verified.manifest, library: verified.value };
 }
 
@@ -130,7 +156,7 @@ async function importLibrary(admissionInput: RuntimeAdmission, database: Authori
   const manifestPath = resolve(request.source.manifestPath);
   if (inside(admission.stateRoot, manifestPath)) throw new IsolatedLibraryImportRefusedError("source-inside-destination");
 
-  const { manifest, library } = readVerifiedSourceLibrary(admission, manifestPath, request.source.binding, stage);
+  const { manifest, library } = readVerifiedSourceLibrary(admission, manifestPath, request.source.binding, clock, stage);
   const target = database.authority.workbooks;
   const at = clock.now().toISOString();
   const issued = (sourceLibraryId: string) => importedLibraryId(request.source.binding, request.destination, sourceLibraryId);

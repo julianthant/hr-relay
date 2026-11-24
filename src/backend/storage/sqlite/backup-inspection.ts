@@ -1,12 +1,19 @@
-import { requireRuntimeAdmission } from "../admission/admission-identity.js";
-import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
-import { retainAuthoritySourceClosure } from "../source-closure.js";
-import { authoritySourceDatabaseIdentity } from "./database-identity.js";
-import { createReadonlyAuthoritySnapshot, openReadOnlyDatabase, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
-import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { existsSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { inspectNativeAuthority, inspectNativeBackupCopy, inspectNormalAuthority } from "./authority-database.js";
+import { applicationDataWorkspace } from "../../app/config/runtime-isolation.js";
+import { isUpgradeableAuthoritySchemaVersion } from "../../../models/config/authority-schema-versions.js";
+import type { ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
+import { createPrivateDirectory } from "../private-path.js";
+import { retainAuthoritySourceClosure } from "../source-closure.js";
+import { authoritySourceDatabaseIdentity } from "./database-identity.js";
+import { createReadonlyAuthoritySnapshot, openReadOnlyDatabase, readonlyAuthorityCopyPrefix, readonlyAuthorityImage, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
+import { applyAuthorityMigrationsAfter, inspectNativeAuthority, inspectNativeBackupCopy, inspectNormalAuthority } from "./authority-database.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
@@ -31,6 +38,58 @@ function backupInspection(inspection: ReturnType<typeof inspectNativeAuthority>)
 /** A SHA-bound backup copy can retain its SQLite inspection across publication at a new path. */
 export function inspectVerifiedBackupCopyReadOnly(admission: RuntimeAdmission, path: string, expectedSchemaVersion: number): BackupCopyInspection {
   return withAuthorityDatabaseReadOnly(admission, path, database => backupInspection(inspectNativeBackupCopy(database, expectedSchemaVersion)));
+}
+
+export function isolatedBackupScratchRoot(admission: RuntimeAdmission, sourcePath: string): string {
+  const context = requireRuntimeAdmission(admission).readInstallationContext();
+  if (context === undefined) throw new Error("authority-backup-upgrade-destination-unbound");
+  const root = realpathSync(tmpdir());
+  const protectedRoots = [applicationDataWorkspace(undefined, "production"), context.workspace, admission.stateRoot,
+    admission.artifactRoot, dirname(sourcePath)];
+  if (protectedRoots.some(path => {
+    const offset = relative(existsSync(path) ? realpathSync(path) : path, root);
+    return !isAbsolute(offset) && offset.split(sep)[0] !== "..";
+  })) throw new Error("authority-backup-upgrade-temp-root-refused");
+  return root;
+}
+
+/** Migrates a disposable clone of the verifier's read-only image for the duration of the import read. */
+export function withUpgradedBackupCopy<T>(admission: RuntimeAdmission, source: DatabaseSync, version: number,
+  binding: ProfileDatabaseBinding, now: string, read: (database: DatabaseSync) => T): T {
+  const image = readonlyAuthorityImage(source);
+  const sourcePath = source.location();
+  if (image === undefined || sourcePath === null || resolve(sourcePath) === image.path) throw new Error("authority-backup-snapshot-required");
+  if (!isUpgradeableAuthoritySchemaVersion(version) || source.prepare("PRAGMA user_version").get()?.user_version !== version) {
+    throw new Error("authority-backup-upgrade-source-schema-mismatch");
+  }
+  const root = isolatedBackupScratchRoot(admission, image.path);
+  const directory = { path: join(root, `${readonlyAuthorityCopyPrefix}${String(process.pid)}-import-${randomUUID()}`) };
+  createPrivateDirectory(directory.path, { mode: 0o700 });
+  let database: DatabaseSync | undefined;
+  let result: { value: T } | { error: unknown };
+  try {
+    const path = join(directory.path, "authority.sqlite");
+    writeFileSync(path, source.serialize(), { flag: "wx", mode: 0o600 });
+    database = new DatabaseSync(path, { enableForeignKeyConstraints: true, enableDoubleQuotedStringLiterals: false,
+      allowExtension: false, allowBareNamedParameters: false, allowUnknownNamedParameters: false, defensive: true });
+    database.exec("BEGIN EXCLUSIVE");
+    applyAuthorityMigrationsAfter(database, version, { now, binding,
+      captureFile: () => { throw new Error("authority-backup-upgrade-artifact-unavailable"); } });
+    database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
+    database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+    inspectNormalAuthority(database);
+    database.exec("COMMIT; PRAGMA query_only=ON");
+    result = { value: read(database) };
+  } catch (error) { result = { error }; }
+  const failures = "error" in result ? [result.error] : [];
+  if (database !== undefined) {
+    try { database.close(); }
+    catch (error) { throw retainAuthoritySourceClosure([...failures, error], { database, directory }); }
+  }
+  try { rmSync(directory.path, { recursive: true, force: true, maxRetries: 3 }); }
+  catch (error) { throw retainAuthoritySourceClosure([...failures, error], { directory }); }
+  if ("error" in result) throw result.error;
+  return result.value;
 }
 
 
