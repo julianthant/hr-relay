@@ -162,8 +162,9 @@ const noStatus = (): HeldNotificationStatus | undefined => undefined;
 
 /** The inbox's rows come from the day it holds and the publications and command readbacks since; its status comes from the stream's row. */
 export function useInboxWiring({ client, enabled, binding }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding }): InboxWiring {
-  const request = useMemo(() => ({ client, enabled, scope: binding.scope }), [client, enabled, binding.scope]);
   const dayState = binding.authority.dayState;
+  // Commands run in the app's active scope; the inbox's own rows are keyed by the day stream it reads, which may be another day's.
+  const request = useMemo(() => ({ client, enabled, scope: binding.scope, dayRequest: dayState.request }), [client, enabled, binding.scope, dayState.request]);
   const store = dayState.rows;
   const status = useSyncExternalStore(listener => store.subscribe(listener), () => store.notificationStatus(), noStatus);
   const day = dayState.day;

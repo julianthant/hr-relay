@@ -311,8 +311,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [executor, toast]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
   const inboxBinding = useMemo(() => inboxDay === undefined ? commandBinding : Object.freeze({ ...commandBinding,
-    authority: Object.freeze({ ...authority, day: inboxDay, dayState: inboxDayState }), scope: Object.freeze({ ...commandScope, dayRequest: inboxDayState.request }) }),
-  [inboxDay, commandBinding, authority, inboxDayState, commandScope]);
+    authority: Object.freeze({ ...authority, day: inboxDay, dayState: inboxDayState }) }),
+  [inboxDay, commandBinding, authority, inboxDayState]);
   const currentPreferenceBinding = useRef(commandBinding);
   currentPreferenceBinding.current = commandBinding;
   useEffect(() => {

@@ -10,7 +10,7 @@ import { subscribeDashboardDay } from "../../../src/dashboard/client/subscriptio
 import type { DashboardTransport, SseMessage, StreamHandle } from "../../../src/dashboard/client/transport.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { PRODUCT_WORKFLOW_COMPOSITION } from "../../../src/dashboard/app/workflow-sources.js";
-import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
+import { NotificationWireSchema, type NotificationWire } from "../../../src/models/dashboard/projection.js";
 import { NotificationCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
@@ -34,13 +34,16 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, { refuseCommands = fals
   const { app } = createFixtureBff();
   const opened: { day: string; push: (envelope: unknown) => void }[] = [];
   const commands: string[] = [];
+  /** The row the server lists; an accepted mark-read moves it to read at the next revision, as the readback reads it. */
+  let served: NotificationWire = NOTIFICATION;
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
-    if (path === "/api/v1/notifications") return Response.json([NOTIFICATION]);
+    if (path === "/api/v1/notifications") return Response.json([served]);
     if (path === "/api/v1/commands") {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); commands.push(command.type);
       if (refuseCommands) return Response.json({ state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: false }, { status: 409 });
+      if (command.type === "notification-read" && served.kind === "notification") served = NotificationWireSchema.parse({ ...served, readState: "read", state: "read", revision: served.revision + 1 });
       return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId: NOTIFICATION.notificationId }] });
     }
     return app.request(url, init);
@@ -143,4 +146,21 @@ for (const link of ["2099-01-01", "not-a-date"]) it(`loads the inbox from today'
   await m.openBell();
   assert.deepEqual(m.listed(), ["Run completed"]);
   assert.equal(m.control("Mark as read").disabled, false);
+
+  await act(async () => m.control("Mark as read").click()); await settle();
+
+  assert.deepEqual(m.commands, ["notification-read"]);
+  assert.equal(m.control("Mark as unread").disabled, false, "the accepted mark-read's readback shows the row as read");
+  assert.doesNotMatch(m.notice(), /could not|replaced/iu);
+});
+
+for (const link of ["2099-01-01", "not-a-date"]) it(`dismisses a row through today's stream on a cold link to ${link}`, async () => {
+  const m = await mount(link);
+  await m.greet(READY);
+  await m.openBell();
+
+  await act(async () => m.control("Dismiss").click()); await settle();
+
+  assert.deepEqual(m.commands, ["notification-read"]);
+  assert.deepEqual(m.listed(), [], "Dismiss hides the row once its mark-read is accepted");
 });
