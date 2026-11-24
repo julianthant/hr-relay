@@ -189,3 +189,17 @@ it("sends the lookup roster and the extra check picks the two old fields sent, f
     { typeId: "reference-check", entry: 1, libraryId: "tracker", versionId: "v", sheetId: "Sheet1", expectedVersion: 2 },
   ]);
 });
+
+it("keeps the extra check and holds Continue when the required lookup sheet is removed", async () => {
+  const dialog = await h.openDialog(h.stubClient({ ...rosterLookupReads(), submitStartPlan: async () => { throw new Error("a missing reference must not reach planning"); } }),
+    { workflows: [rosterLookup], panelWorkflowId: rosterLookup.workflowId });
+  await h.settle();
+  await dialog.type(h.TYPED);
+  await add("Spreadsheets", "Contact roster");
+  await add("Spreadsheets", "I-9 tracker");
+  assert.equal(dialog.disabled("Continue"), false);
+  await click("Remove Contact roster");
+  assert.ok(h.buttons().some(button => h.buttonName(button) === "Remove I-9 tracker"), "the check stays selected");
+  assert.equal(dialog.disabled("Continue"), true);
+  assert.ok(text().includes("Add a reference spreadsheet first."));
+});

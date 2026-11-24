@@ -317,7 +317,7 @@ describe("spreadsheet registration stays outside Run", () => {
 
 {
 type OpenDialog = Awaited<ReturnType<typeof openDialog>>;
-const { cleanup, openDialog, stubClient, ACTOR_ID, HASH, APPLIED } = createRunStartDialogHarness();
+const { cleanup, openDialog, stubClient, ACTOR_ID, HASH, APPLIED, closed } = createRunStartDialogHarness();
 
 
 const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
@@ -546,6 +546,53 @@ describe("Enter in a manual-values editor", () => {
     assert.ok(editor?.closest('[aria-labelledby="run-start-steps"]'), "the fact's editor is inside Steps");
     assert.equal(await dialog.enter({ on: editor ?? undefined }), false, "Enter in the editor does nothing");
     assert.equal(asked, 0, "no plan was asked for");
+  });
+});
+
+describe("Options while a run is starting", () => {
+  afterEach(cleanup);
+  const dryRunnable = () => {
+    const base = SEPARATIONS_WORKFLOWS.find(workflow => workflow.workflowId === "separations");
+    assert.ok(base?.inputRun.state === "present");
+    const typed = { ...base, inputRun: { state: "present" as const, surface: { ...base.inputRun.surface, supportsDryRun: true } } };
+    return { workflows: SEPARATIONS_WORKFLOWS.map(workflow => workflow.workflowId === typed.workflowId ? typed : workflow), panelWorkflowId: "separations" };
+  };
+  const optionSwitch = (name: string) => [...document.body.querySelectorAll<HTMLElement>('[role="switch"], [role="checkbox"]')]
+    .find(node => node.getAttribute("aria-label") === name || node.closest(".ds-run-row")?.textContent?.includes(name) === true);
+
+  it("does not launch from Enter on a focused switch", async () => {
+    let planned = 0, launched = 0;
+    const dialog = await openDialog(stubClient({
+      submitStartPlan: async () => { planned += 1; return separationsPlan(); },
+      executeCommand: async () => { launched += 1; return APPLIED; },
+    }), dryRunnable());
+    await dialog.type(DOCUMENT);
+    await dialog.press("Continue");
+    const dryRun = optionSwitch("Dry run"); assert.ok(dryRun, "the Dry run switch");
+    assert.equal(await dialog.enter({ on: dryRun }), false, "Enter on the switch is left to the switch");
+    assert.equal(planned, 0, "no plan was asked for");
+    assert.equal(launched, 0, "no launch was sent");
+  });
+
+  it("locks Priority and Dry run while the command is out and settles a delayed applied reply", async () => {
+    let release: ((result: CommandResult) => void) | undefined;
+    const dialog = await openDialog(stubClient({
+      submitStartPlan: async () => separationsPlan(),
+      executeCommand: async () => new Promise<CommandResult>(resolve => { release = resolve; }),
+    }), dryRunnable());
+    await dialog.type(DOCUMENT);
+    await dialog.press("Continue");
+    await dialog.press("Start live run");
+    const settleCommand = release; assert.ok(settleCommand !== undefined, "the dialog never called executeCommand");
+    for (const name of ["Priority", "Dry run"]) {
+      const node = optionSwitch(name); assert.ok(node, name);
+      assert.equal(node.hasAttribute("disabled") || node.getAttribute("aria-disabled") === "true", true, `${name} is locked while the command is out`);
+      await act(async () => node.click());
+    }
+    await act(async () => { settleCommand(APPLIED); await Promise.resolve(); });
+    for (let wait = 0; wait < 4; wait += 1) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.deepEqual(closed, [false], "the delayed applied reply dismissed the modal");
+    assert.equal(window.sessionStorage.length, 0, "the applied submission cleared durable recovery");
   });
 });
 
