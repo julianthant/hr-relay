@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { JSDOM } from "jsdom";
 import { it } from "vitest";
 import { populateGlobal } from "vitest/environments";
 import { composeDashboardApplication } from "../../../../src/backend/app/composition/dashboard/compose.js";
@@ -20,6 +19,8 @@ it("signs up through the real form with both pairs, stores the UCPath pair and s
   const fixture = await publicProfileShellFixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   // The backend runs in the node environment; the form gets a DOM only for this test, set up before React loads.
+  const jsdom = "jsdom"; // a variable specifier: jsdom ships no types
+  const { JSDOM } = await import(jsdom) as { JSDOM: new (html: string, options: { url: string }) => { window: object } };
   const dom = new JSDOM("<!doctype html><body></body>", { url: "http://localhost/" });
   const { keys, originals } = populateGlobal(globalThis, dom.window, { bindFunctions: true });
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -47,7 +48,7 @@ it("signs up through the real form with both pairs, stores the UCPath pair and s
     assert.ok(host.querySelector('input[name="ucpathUsername"][aria-invalid="true"]') ?? host.textContent?.includes("Enter your UCPath username."));
     await type("ucpathUsername", ucpath.username); await type("ucpathPassword", ucpath.password);
     await act(async () => { host.querySelector<HTMLFormElement>("form")?.requestSubmit(); });
-    await waitUntil(() => steps.length > 0);
+    await waitUntil(() => steps.length > 0, act);
     const draft = states.at(-1); assert.ok(draft?.state === "onboarding");
     const started = await client.startProfileOnboardingDuo({ operationId: draft.operationId, method: "key" }); assert.ok(started.state === "onboarding");
     const confirmed = await client.confirmProfileOnboardingDuo({ operationId: draft.operationId, method: "key", attemptId: started.methods.key.attemptId ?? "", operatorConfirmed: true });
@@ -67,7 +68,7 @@ it("signs up through the real form with both pairs, stores the UCPath pair and s
   }
 });
 
-async function waitUntil(done: () => boolean) {
+async function waitUntil(done: () => boolean, act: (callback: () => Promise<void>) => Promise<void>) {
   for (let attempt = 0; attempt < 100 && !done(); attempt++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
   assert.ok(done());
 }
