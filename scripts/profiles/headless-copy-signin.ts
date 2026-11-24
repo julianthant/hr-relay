@@ -1,9 +1,9 @@
-import { execFileSync } from "node:child_process";
-import { EventEmitter } from "node:events";
+import { execFileSync, spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { z } from "zod";
 import { applicationDataWorkspace, rebuildRuntimeIsolation } from "../../src/backend/app/config/runtime-isolation.js";
@@ -12,8 +12,9 @@ import { acquireRuntimeLifetimeLock } from "../../src/backend/storage/admission/
 import { noSymlinkAncestry, statDirectory } from "../../src/backend/storage/configuration/credential-safe-file.js";
 import { createDashboardClient } from "../../src/dashboard/client/index.js";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
+import { DEVELOPMENT_DEBUG_MIRROR_ENV, RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
+import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../src/models/dashboard/dashboard-frontend-owner.js";
 import type { PublicProfileState } from "../../src/models/profiles/public-profile.js";
-import type { runDevDashboard } from "../dev/dashboard.js";
 import { assertCopySigninTarget, CopySigninError, driveCopySignin, operatorCredentials, resumeKey, resumeRoute, stateRoute, waitForFrontend } from "./copy-signin.js";
 
 const profile = "development";
@@ -93,28 +94,48 @@ export async function withHeadlessCopySignin<T>(use: (session: HeadlessCopySessi
     }
   };
   requireHead(options.expectedSha ?? head);
-  const launcherEntry = join(checkout, "scripts", "dev", "dashboard.ts");
-  if (realpathSync(launcherEntry) !== launcherEntry) throw new CopySigninError("copy-signin-headless-worktree-refused");
-  const launcherUrl = pathToFileURL(launcherEntry);
-  launcherUrl.searchParams.set("sha", head);
-  const launcher: unknown = await import(launcherUrl.href);
-  const { runDevDashboard: start } = z.object({ runDevDashboard: z.custom<typeof runDevDashboard>(fn => typeof fn === "function") }).parse(launcher);
   const backendEntry = join(checkout, "scripts", "profiles", "copy-signin.ts");
-  if (realpathSync(backendEntry) !== backendEntry) throw new CopySigninError("copy-signin-headless-worktree-refused");
-  const signals = new EventEmitter(), stop = new AbortController();
+  const viteEntry = join(checkout, "node_modules", "vite", "bin", "vite.js");
+  if (realpathSync(backendEntry) !== backendEntry || realpathSync(viteEntry) !== viteEntry) throw new CopySigninError("copy-signin-headless-worktree-refused");
+  const stop = new AbortController();
   const signal = options.signal === undefined ? stop.signal : AbortSignal.any([options.signal, stop.signal]);
-  const halt = () => { signals.emit("SIGTERM"); };
-  const ready = Promise.withResolvers<string>();
-  const finished = start({ profile, signals, copySignin: { backendEntry, ready: ready.resolve,
-    phone() { stop.abort(new CopySigninError("copy-signin-headless-enrollment-required")); } } })
-    .finally(() => { stop.abort(new CopySigninError("copy-signin-headless-dashboard-stopped")); });
+  const nonce = randomBytes(32).toString("hex");
+  const env = { ...process.env, [RUNTIME_PROFILE_ENV]: profile, [DASHBOARD_LAUNCH_NONCE_ENV]: nonce, [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" };
+  const children: { process: ReturnType<typeof spawn>; closed: Promise<boolean> }[] = [];
+  let stopping = false;
+  const halt = () => {
+    stopping = true;
+    for (const { process: child } of children) if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+  };
+  const stopped = () => new CopySigninError("copy-signin-headless-dashboard-stopped");
+  function launch(args: readonly string[], ipc = false) {
+    const child = spawn(process.execPath, args, { cwd: checkout, env, stdio: ipc ? ["inherit", "inherit", "inherit", "ipc"] : "inherit" });
+    const closed = new Promise<boolean>(resolve => {
+      child.once("close", (code, childSignal) => {
+        if (!stopping) stop.abort(stopped());
+        resolve(code === 0 || childSignal === "SIGTERM");
+      });
+    });
+    child.once("error", () => { stop.abort(stopped()); });
+    children.push({ process: child, closed });
+    return { child, closed };
+  }
   signal.addEventListener("abort", halt, { once: true });
   let context: BrowserContext | undefined;
   let result: T;
-  let dashboardStatus: number;
+  let dashboardClosed: boolean;
   try {
     signal.throwIfAborted();
-    const nonce = await Promise.race([ready.promise, finished.then(() => { throw signal.reason instanceof Error ? signal.reason : new CopySigninError("copy-signin-headless-dashboard-stopped"); })]);
+    const backend = launch(["--conditions=development", "--import", "tsx", backendEntry, "--owned-backend", profile], true);
+    const ready = Promise.withResolvers<void>();
+    backend.child.on("message", (message: unknown) => {
+      if (message === null || typeof message !== "object" || !("type" in message)) return;
+      if (message.type === "hrauto-dashboard-ready") ready.resolve();
+      if (message.type === "relay-copy-signin-phone") stop.abort(new CopySigninError("copy-signin-headless-enrollment-required"));
+    });
+    await Promise.race([ready.promise, backend.closed.then(() => { signal.throwIfAborted(); throw stopped(); })]);
+    signal.throwIfAborted();
+    launch([viteEntry, "--config", "vite.dashboard.config.ts"]);
     await waitForFrontend(ports.frontendPort, nonce, signal);
     requireHead(head);
     const origin = `http://127.0.0.1:${String(ports.frontendPort)}`;
@@ -171,9 +192,9 @@ export async function withHeadlessCopySignin<T>(use: (session: HeadlessCopySessi
     try { await context?.close(); }
     finally {
       halt();
-      dashboardStatus = await finished;
+      dashboardClosed = (await Promise.all(children.map(child => child.closed))).every(Boolean);
     }
   }
-  if (dashboardStatus !== 0) throw new CopySigninError("copy-signin-headless-dashboard-stopped");
+  if (!dashboardClosed) throw stopped();
   return result;
 }

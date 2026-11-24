@@ -15,7 +15,7 @@ vi.mock("../../../src/backend/storage/admission/lifetime-lock.js", () => ({
 vi.mock("../../../src/backend/storage/admission/bootstrap-admission.js", () => ({
   acquireEntrypointAdmission: () => ({ readProfileRegistry: seams.readRegistry, release: seams.release }),
 }));
-vi.mock("../../../scripts/dev/dashboard.js", () => ({ runDevDashboard: seams.launchDashboard }));
+vi.mock(import("node:child_process"), async importOriginal => ({ ...await importOriginal(), spawn: seams.launchDashboard }));
 vi.mock("playwright", () => ({ chromium: { launchPersistentContext: seams.launchBrowser } }));
 
 it.each([
