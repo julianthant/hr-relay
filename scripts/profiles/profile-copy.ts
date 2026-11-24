@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
@@ -140,9 +140,8 @@ export async function runProfileCopy(options: ProfileCopyOptions): Promise<strin
     }
     syncWorktree(options.copyPath, sha, git, options.gitFor ?? gitIn);
     const install = options.install ?? (directory => {
-      const npm = process.env.npm_execpath;
-      const [command, ...args] = npm === undefined ? ["npm", "ci"] : [process.execPath, npm, "ci"];
-      execFileSync(command, args, { cwd: directory, stdio: "inherit" });
+      if (process.platform === "win32") execSync("npm ci", { cwd: directory, stdio: "inherit" });
+      else execFileSync("npm", ["ci"], { cwd: directory, stdio: "inherit" });
     });
     install(options.copyPath);
     const imported = sourceProfile === undefined ? undefined : await importProfileLibrary({ ...options, sourceProfile }, lock);

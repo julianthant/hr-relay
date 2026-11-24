@@ -99,9 +99,11 @@ it("imports into a signed-in staging copy whose key exists only under the stagin
     import { syncBuiltinESMExports } from "node:module";
     const user = os.userInfo();
     os.userInfo = () => ({ ...user, homedir: process.env.HOME });
+    childProcess.execSync = command => {
+      if (command !== "npm ci") throw new Error("Unexpected shell command in profile copy fixture");
+    };
     childProcess.execFileSync = (command, args) => {
-      if (command === "npm" && args[0] === "ci"
-        || command === process.execPath && args[0] === process.env.npm_execpath && args[1] === "ci") return;
+      if (command === "npm" && args[0] === "ci") return;
       if (command !== "git") throw new Error("Unexpected command in profile copy fixture");
       if (args[2] === "show") return JSON.stringify({ scripts: { "dashboard:staging": "fixture" } });
       return args[2] === "rev-parse" ? "0123abc" : "";
