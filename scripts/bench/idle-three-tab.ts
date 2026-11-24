@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import type { Page, Response } from "playwright";
 import { z } from "zod";
+import { ConfigSchema, type EditableSettingsOverride } from "../../src/models/config/schema.js";
 import { readRuntimeProfile, workerBootstrapEnvironment } from "../../src/models/config/secrets.js";
 import { systemClock } from "../../src/rules/time/clock.js";
 import type { HeadlessCopySession } from "../profiles/headless-copy-signin.js";
@@ -22,6 +23,7 @@ const rssFlatBytes = 16 * 1024 * 1024;
 const StallsSchema = z.strictObject({ count: z.int().nonnegative(), longestMs: z.number().nonnegative(), totalMs: z.number().nonnegative() });
 const ProbeSchema = z.strictObject({ pid: z.int().positive(), start: z.iso.datetime(), end: z.iso.datetime(),
   elapsedMs: z.number().positive(), stalls: StallsSchema, busyPercent: z.number().nonnegative(),
+  threadCpuMicros: z.int().nonnegative(), probeCpuMicros: z.int().nonnegative(),
   rssStartBytes: z.int().positive(), rssEndBytes: z.int().positive() });
 type Probe = z.infer<typeof ProbeSchema>;
 type IdleMetrics = Pick<Probe, "stalls" | "busyPercent" | "rssStartBytes" | "rssEndBytes"> & { readonly errors: number };
@@ -53,9 +55,16 @@ export function compareIdleRuns(base: ReturnType<typeof summarizeIdleRuns>, targ
   return separated ? "inconclusive-until-limiter-profiled" : "no-measurable-difference";
 }
 
+export function assertHeadlessCopySettings(settings: EditableSettingsOverride | undefined): void {
+  if (settings === undefined || !(settings.browser?.headless ?? ConfigSchema.shape.browser.parse(undefined).headless)) {
+    throw new Error("idle-benchmark-copy-headless-required");
+  }
+}
+
 export function serveBackendProbe(path: string) {
   let start: { iso: string; monotonicMs: number; cpu: ReturnType<typeof process.threadCpuUsage>; rss: number } | undefined;
   let timer: NodeJS.Timeout | undefined, last = 0;
+  let probeCpuMicros = 0;
   const stalls = { count: 0, longestMs: 0, totalMs: 0 };
   const sample = (now: number) => {
     const late = now - last - sampleMs;
@@ -77,7 +86,12 @@ export function serveBackendProbe(path: string) {
       if (command === "start" && start === undefined) {
         start = { iso: systemClock.now().toISOString(), monotonicMs: systemClock.monotonicMs(), cpu: process.threadCpuUsage(), rss: process.memoryUsage.rss() };
         last = start.monotonicMs;
-        timer = setInterval(() => { sample(systemClock.monotonicMs()); }, sampleMs);
+        timer = setInterval(() => {
+          const beforeSample = process.threadCpuUsage();
+          sample(systemClock.monotonicMs());
+          const sampleCpu = process.threadCpuUsage(beforeSample);
+          probeCpuMicros += sampleCpu.user + sampleCpu.system;
+        }, sampleMs);
         timer.unref();
         connection.end("started");
       } else if (command === "finish" && start !== undefined && timer !== undefined) {
@@ -86,8 +100,10 @@ export function serveBackendProbe(path: string) {
         const now = systemClock.monotonicMs(), elapsedMs = now - start.monotonicMs;
         sample(now);
         const cpu = process.threadCpuUsage(start.cpu);
+        const threadCpuMicros = cpu.user + cpu.system;
         connection.end(JSON.stringify({ pid: process.pid, start: start.iso, end: systemClock.now().toISOString(), elapsedMs, stalls,
-          busyPercent: (cpu.user + cpu.system) / (elapsedMs * 10), rssStartBytes: start.rss, rssEndBytes: process.memoryUsage.rss() }));
+          threadCpuMicros, probeCpuMicros, busyPercent: (threadCpuMicros - probeCpuMicros) / (elapsedMs * 10),
+          rssStartBytes: start.rss, rssEndBytes: process.memoryUsage.rss() }));
       } else connection.end("refused");
     });
   });
@@ -177,6 +193,7 @@ async function runBenchmark() {
   const { runtimeProfiles } = await import("../../src/models/config/define-runtime-isolation.js");
   const { noSymlinkAncestry } = await import("../../src/backend/storage/configuration/credential-safe-file.js");
   const { openReadOnlyDatabase } = await import("../../src/backend/storage/sqlite/readonly-authority-snapshot.js");
+  const { readAppSettings } = await import("../../src/backend/storage/sqlite/settings-storage.js");
   const checkout = developmentCopyCheckout();
   if (realpathSync(process.cwd()) === checkout) throw new Error("idle-benchmark-use-separate-checkout");
   const stop = new AbortController();
@@ -251,6 +268,8 @@ async function runBenchmark() {
         } finally { archive.close(); }
         const database = openReadOnlyDatabase(local, 250);
         try {
+          const settings = readAppSettings(database);
+          assertHeadlessCopySettings(settings?.saved?.settings ?? settings?.initialization.settings.settings);
           if (database.prepare("SELECT 1 FROM runs WHERE state IS NOT 'terminal' LIMIT 1").get() !== undefined) throw new Error("idle-benchmark-active-copy-runs");
         } finally { database.close(); }
       } });

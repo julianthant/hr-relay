@@ -22,7 +22,8 @@ windows. The copy is left stopped at the target SHA. Ctrl+C cancels the current 
 the dashboard and Chromium it owns.
 
 The rig checks the copy's Git worktree, ports, registered profile, and history binding and
-refuses queued or otherwise nonterminal runs. It resumes the existing copy session or signs in
+refuses queued or otherwise nonterminal runs. It also requires `browser.headless` to resolve to
+`true` before starting the dashboard. It resumes the existing copy session or signs in
 to the existing profile through the copy launcher. A copy that needs sign-up or Duo enrollment
 is refused. All three tabs run in headless Chromium against the owned loopback frontend. Browser
 routing blocks other origins and disables the HTTP cache in all runs. Each timed window starts
@@ -34,7 +35,8 @@ rewrite.
 The command writes an aggregate JSON file in the invoking directory with mode `600`. Report
 both runs from the exact target SHA, their ranges, and the verdict on #485. Each run records:
 
-- Main backend thread CPU as user plus system CPU time divided by the measured wall time.
+- Main backend thread CPU as user plus system CPU time less the measured sampling callback CPU,
+  divided by wall time. The result records the raw thread and callback CPU times in microseconds.
 - Event-loop stalls strictly over 100 ms as count, longest, and total. A 20 ms timer measures
   the lateness of each wake-up. The copy store's event-loop diagnostic records appear as a
   separate cross-check because Relay coalesces those above its own 200 ms threshold.

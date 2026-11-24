@@ -1,8 +1,14 @@
 import { expect, it } from "vitest";
-import { compareIdleRuns, summarizeIdleRuns } from "../../../scripts/bench/idle-three-tab.js";
+import { assertHeadlessCopySettings, compareIdleRuns, summarizeIdleRuns } from "../../../scripts/bench/idle-three-tab.js";
 
 const mib = 1024 * 1024;
 const first = { stalls: { count: 0, longestMs: 0, totalMs: 0 }, busyPercent: 1.2, rssStartBytes: 300 * mib, rssEndBytes: 304 * mib, errors: 0 };
+
+it("refuses headed or unavailable copy settings and accepts the runtime headless default", () => {
+  expect(() => { assertHeadlessCopySettings({ browser: { headless: false } }); }).toThrow("idle-benchmark-copy-headless-required");
+  expect(() => { assertHeadlessCopySettings(undefined); }).toThrow("idle-benchmark-copy-headless-required");
+  expect(() => { assertHeadlessCopySettings({}); }).not.toThrow();
+});
 
 it("reports both ranges and the limiting target across two idle runs", () => {
   const second = { ...first, stalls: { count: 2, longestMs: 145, totalMs: 260 }, busyPercent: 2, rssEndBytes: 318 * mib };
