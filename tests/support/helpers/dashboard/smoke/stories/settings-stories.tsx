@@ -9,7 +9,6 @@ import type { EditableSettingsState, SettingsSaveState } from "../../../../../..
 import type { SettingsSectionResolution } from "../../../../../../src/dashboard/surfaces/settings/settings-model.js";
 import type { EditableSettingsWire } from "../../../../../../src/models/dashboard/settings-editor.js";
 import { settingsStoryServer, type SettingsStoryServerOptions } from "../../../../fixtures/dashboard/settings-story-fixtures.js";
-import type { StateRuleName } from "../state-rule-limits.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import { DUO_WORK_KEY, SettingsHost, type AccountStub, type SettingsHostProps } from "./settings-story-host.js";
 
@@ -204,14 +203,6 @@ const NOTICE = {
   "setting-unavailable": scene("A search target that is not on the page", { host: { searchTarget: "nothing.here" }, play: loaded, story: { ready: 'text=/Setting unavailable/' } }),
 } satisfies Record<Notice, Story>;
 
-/** Rules today's Settings breaks, each recorded against the dashboard-audit-fixes feature (#532), whose tickets fix them; never loosened. */
-const AUDIT_FIXES = "#532";
-const breaks = (...rules: readonly StateRuleName[]): Readonly<Partial<Record<StateRuleName, string>>> => Object.fromEntries(rules.map(rule => [rule, AUDIT_FIXES]));
-const BREAK_SETS = {
-  /** The Tab walk reaches no control while a toast is on screen. */
-  FOCUS: breaks("named-and-focusable"),
-} as const;
-
 /** Measured at both widths with the app's Sessions-bar inset on the frame: the bottom-centre toast still covers the "Runs" toolbar (the save, restart and notice stories) or the "Workflow configuration" title and group (the credentials and account-action stories). The overlap is real, so these stay recorded. */
 const TOAST_STORIES: ReadonlySet<string> = new Set([
   "settings/action/name-not-saved",
@@ -229,27 +220,11 @@ const TOAST_STORIES: ReadonlySet<string> = new Set([
   "settings/save/unconfirmed",
 ]);
 
-/** By `<state type>/<member>`. */
-const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleName, string>>>>> = {
-  "save/saving": BREAK_SETS.FOCUS,
-  "notice/opened-for-check": BREAK_SETS.FOCUS,
-  "action/duo-not-opened": BREAK_SETS.FOCUS,
-  "action/name-not-saved": BREAK_SETS.FOCUS,
-  "action/password-changed": BREAK_SETS.FOCUS,
-  "action/password-not-confirmed": BREAK_SETS.FOCUS,
-  "save-combo/replayed": BREAK_SETS.FOCUS,
-  "save-combo/restart-required": BREAK_SETS.FOCUS,
-  "save/applied": BREAK_SETS.FOCUS,
-  "save/conflict": BREAK_SETS.FOCUS,
-  "save/refused": BREAK_SETS.FOCUS,
-  "save/unconfirmed": BREAK_SETS.FOCUS,
-};
 const SETTINGS_TABLES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
   save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
 });
 
-export const SETTINGS_STORIES = SETTINGS_TABLES.map(entry => {
-  const known = { ...KNOWN_BREAKS[entry.id.slice("settings/".length)], ...(TOAST_STORIES.has(entry.id) ? breaks("toast-text-only") : {}) };
-  return Object.keys(known).length === 0 ? entry : { ...entry, story: { ...entry.story, knownFailures: known } };
-});
+export const SETTINGS_STORIES = SETTINGS_TABLES.map(entry => TOAST_STORIES.has(entry.id)
+  ? { ...entry, story: { ...entry.story, knownFailures: { "toast-text-only": "#532" } } }
+  : entry);
