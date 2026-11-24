@@ -225,7 +225,7 @@ Each state keeps its own badge in the queue row and the run header, its own word
 
 ### Timeline
 
-The waiting segment is an amber hatch on amber, low contrast, never black stripes. Step labels use the secondary text colour and the bar carries the state colour. A step under one second reads "<1s". Skipped is a dashed outline and Upcoming a solid outline.
+The waiting segment is an amber hatch on amber, low contrast, never black stripes. Step labels use the secondary text colour and the bar carries the state colour. Segments are one row of equal width; each label stays on one line and ends in "…" when cut, with the full name on hover and keyboard focus, and the row never wraps. A step under one second reads "<1s". Skipped is a dashed outline and Upcoming a solid outline.
 
 ## Explorer
 

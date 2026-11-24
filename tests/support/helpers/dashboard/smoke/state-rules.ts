@@ -54,6 +54,17 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
       const bottom = Math.max(...drawn.map(rect => (rect.top + rect.bottom) / 2 + ink));
       const label = `"${nodes.map(node => node.textContent ?? "").join("").trim().slice(0, 60)}"`;
       const cuts: string[] = [];
+      const text = nodes.map(node => node.textContent ?? "").join("").trim();
+      // An ellipsis is accepted only where the full text is reachable: a title, or a hover/focus trigger named with it.
+      const reachable = () => { for (let holder: HTMLElement | null = element; holder !== null; holder = holder.parentElement) {
+        if ((holder.getAttribute("title") ?? "").includes(text)) return true;
+        if (holder.hasAttribute("data-state") && (holder.getAttribute("aria-label") ?? "").includes(text)) return true;
+      } return false; };
+      if (element.hasAttribute("data-one-line")) {
+        const lines = new Set(drawn.map(rect => Math.round(rect.top)));
+        if (lines.size > 1) found.push(`${label} takes ${String(lines.size)} lines; it must stay on one line`);
+      }
+      let ellipsed = false;
       let checkX = true;
       let checkY = true;
       let unseen = false;
@@ -66,14 +77,18 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
         const frameLeft = box.left + frameElement.clientLeft;
         const frameTop = box.top + frameElement.clientTop;
         const by = frameElement === element ? "" : " by its container";
-        if (checkX && clips(frameStyle.overflowX) && (right > frameLeft + frameElement.clientWidth + 1 || left < frameLeft - 1)) { cuts.push(`${label} is cut off sideways${by}`); checkX = false; }
+        if (checkX && clips(frameStyle.overflowX) && (right > frameLeft + frameElement.clientWidth + 1 || left < frameLeft - 1)) {
+          if (frameStyle.textOverflow === "ellipsis" && reachable()) ellipsed = true;
+          else cuts.push(`${label} is cut off sideways${by}`);
+          checkX = false;
+        }
         if (checkY && clips(frameStyle.overflowY) && (bottom > frameTop + frameElement.clientHeight + 1 || top < frameTop - 1)) { cuts.push(`${label} is cut off at the ${bottom > frameTop + frameElement.clientHeight + 1 ? "bottom" : "top"}${by}`); checkY = false; }
         // Text past a scrolling container's edge is reachable by scrolling, not clipped.
         if (scrolls(frameStyle.overflowX)) checkX = false;
         if (scrolls(frameStyle.overflowY)) checkY = false;
       }
       if (unseen) continue;
-      if (right > window.innerWidth + 1) found.push(`${label} runs ${String(Math.round(right - window.innerWidth))}px past the right edge`);
+      if (!ellipsed && right > window.innerWidth + 1) found.push(`${label} runs ${String(Math.round(right - window.innerWidth))}px past the right edge`);
       found.push(...cuts);
     }
     return found;

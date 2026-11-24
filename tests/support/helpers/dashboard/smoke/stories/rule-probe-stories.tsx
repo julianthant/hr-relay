@@ -162,6 +162,17 @@ export const RULE_PROBES = {
     },
     finds: { "fits-viewport": [/"a long line of text that cannot fit its box" is cut off sideways by its container/u, /^(?![\s\S]*"a short line")/u] },
   },
+  "ellipsis-without-full-text": {
+    story: {
+      title: "A truncated label with no full text, beside one a tooltip trigger names, and a label that wraps",
+      render: () => <StoryFrame>
+        <div style={{ width: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>a label cut with nothing to read it in full</div>
+        <div style={{ width: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title="a label whose title carries it in full">a label whose title carries it in full</div>
+        <div style={{ width: 120 }}><span data-one-line>a label that wraps onto two lines</span></div>
+      </StoryFrame>,
+    },
+    finds: { "fits-viewport": [/"a label cut with nothing to read it in full" is cut off sideways/u, /takes \d+ lines; it must stay on one line/u, /^(?![\s\S]*"a label whose title)/u] },
+  },
   "dialog-off-shape": {
     story: {
       title: "A dialog with its own body padding and bottom edge",
