@@ -572,8 +572,15 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       else current();
     };
     // The copy's private logs keep what Duo showed, since the onboarding browser profile is removed at close.
+    // Only a Duo document that stays put across the capture is kept, with every input masked; a redirect to SSO keeps nothing.
     const screen = async (stage: "gate" | "push-options" | "after-push") => {
-      try { copy.screen?.(stage, await page.screenshot({ timeout: 5000 })); } catch { /* evidence never masks the gate's own outcome */ }
+      try {
+        const before = URL.parse(page.url());
+        if (page.isClosed() || session.portal !== page || before === null || !duo(before)) return;
+        const png = await page.screenshot({ timeout: 5000, mask: [page.locator("input, textarea, select, [contenteditable]")] });
+        if (page.isClosed() || page.url() !== before.href) return;
+        copy.screen?.(stage, png);
+      } catch { /* evidence never masks the gate's own outcome */ }
     };
     const timedOut = (code: string) => (cause: unknown) => {
       if (cause instanceof Error && cause.name === "TimeoutError") throw new Error(code, { cause });

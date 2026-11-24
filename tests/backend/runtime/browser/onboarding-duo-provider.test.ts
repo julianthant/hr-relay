@@ -150,7 +150,7 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false, copyPort
         evaluate: async () => true, fill: async () => { typedCount++; }, dispose: async () => undefined,
         click: async () => { typedCount++; if (portalSubmitFailure) throw portalSubmitFailure; throw new Error("unexpected synthetic submit"); },
       }) }),
-      screenshot: async () => Buffer.from(url), close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
+      screenshot: async (shot?: { mask?: unknown[] }) => Buffer.from(`${url}|masked=${String(shot?.mask?.length ?? 0)}`), close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }
   let pages = [makePage()];
   const pageWaiters: ((page: Page) => void)[] = [];
@@ -689,8 +689,32 @@ describe("draft Duo provider", () => {
     try {
       await assert.rejects(w.provider.openPortal(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.cause instanceof Error && error.cause.message === "copy-signin-duo-push-unanswered");
       assert.deepEqual(actions, ["Other options", "Duo Push Send to phone", "phone prompt"]);
-      assert.deepEqual(screens, ["gate", "push-options", "after-push"].map(stage => `${stage}:https://test.duosecurity.com/`));
+      assert.deepEqual(screens, ["gate", "push-options", "after-push"].map(stage => `${stage}:https://test.duosecurity.com/|masked=1`));
       assert.equal(w.events.find(event => event.operation === "portal-open")?.code, "copy-signin-duo-push-unanswered");
+    } finally { await w.cleanup(); }
+  });
+
+  it("keeps no screenshot once the push redirects back to the UCSD sign-in form", async () => {
+    const screens: string[] = [];
+    let buttons = ["Other options"];
+    const w = world("darwin", { copyPortal: {
+      buttons: () => buttons,
+      click(label) { buttons = label === "Other options" ? ["Duo Push Send to phone"] : []; },
+      phone() {},
+      screen(stage) { screens.push(stage); },
+      async wait() {
+        w.reachDuo("https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO");
+        throw Object.assign(new Error("synthetic Add a device wait"), { name: "TimeoutError" });
+      },
+    } });
+    w.landPortal("https://test.duosecurity.com/");
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open", generation: 1 }, state: "onboarding",
+      operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", methods: { key: idle } });
+    w.owner.readState = () => state;
+    try {
+      await assert.rejects(w.provider.openPortal(w.owner));
+      assert.deepEqual(screens, ["gate", "push-options"]);
     } finally { await w.cleanup(); }
   });
 
