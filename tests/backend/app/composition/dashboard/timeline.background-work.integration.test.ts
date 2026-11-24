@@ -112,6 +112,16 @@ it("replays a count-neutral background task step across a dashboard reconnect", 
     expect(resumed.initial.map(event => event.type)).toEqual(["hello", "health", "change", "change"]);
     expect(detected).not.toHaveBeenCalled();
     resumed.close();
+
+    const publications: string[] = [];
+    const unsubscribe = projection.onChange(change => publications.push(change.kind));
+    f.cancel(run, 825);
+    writer.emit({ t: "span.ended", kind: "run", ts: clock.now().toISOString(), workflow, runId, traceId, attempt,
+      spanPath: traceId, outcome: "cancelled" });
+    vi.advanceTimersByTime(250);
+    await runtime.settled();
+    unsubscribe();
+    expect(publications).toEqual(["snapshot"]);
   } finally {
     hub.close();
     for (const cleanup of startupCleanups.reverse()) await cleanup();

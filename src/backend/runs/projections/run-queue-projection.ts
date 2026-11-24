@@ -482,6 +482,7 @@ export class RunQueueProjection {
   async pollBackground(read: (request: DashboardBackgroundReadRequest) => Promise<DashboardBackgroundReadResult>, nowMs: number,
     workersChangedDuringStartup?: () => boolean): Promise<number | undefined> {
     const generation = this.#generationValue, rebuilding = this.#health.state === "degraded";
+    const first = this.#backgroundWorkers === undefined;
     const after = rebuilding ? 0 : this.#timelineCursor;
     const request = { limit: BACKGROUND_PAGE_SIZE, nowMs, ...(rebuilding ? { spanTypes: PROJECTION_SPAN_TYPES } : {}) };
     const current = () => generation === this.#generationValue && rebuilding === (this.#health.state === "degraded");
@@ -503,6 +504,8 @@ export class RunQueueProjection {
           workers.leases.set(lease.workerId, leases);
         }
         moreWorkerFacts = page.workers.next !== null;
+        // A timeline snapshot carries worker state too. Capture its admitted fingerprint before publishing it.
+        if (!moreWorkerFacts && !rebuilding) this.#backgroundWorkers = workers;
       }
       if (rebuilding && page.records.length > 0) {
         let events: IterableIterator<ProjectionEvent> = projectionEvents(page.records).sort(compareEvents).values();
@@ -534,10 +537,9 @@ export class RunQueueProjection {
         }
       }
     }
-    const first = this.#backgroundWorkers === undefined;
-    this.#backgroundWorkers = workers;
     this.#publishedBatchVersions = batches;
     if (rebuilt !== undefined) {
+      this.#backgroundWorkers = workers;
       this.#foldState = rebuilt;
       this.#notifiedRows.clear();
       this.#finishRebuild(through);
