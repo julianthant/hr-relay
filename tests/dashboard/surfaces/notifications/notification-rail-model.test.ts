@@ -27,14 +27,14 @@ function Harness({ notifications, onOpenNotification }: {
   onOpenNotification: (destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [notice, setNotice] = useState("existing notice");
+  const [refused, setRefused] = useState("");
   const [reads, setReads] = useState<Readonly<Record<string, boolean>>>({});
   const served = useMemo(() => sampleInbox(applyNotificationReads(notifications, reads), notifications, setReads), [notifications, reads]);
-  const model = useNotificationRailModel({ served, setOpen, setNotice, onOpenNotification });
+  const model = useNotificationRailModel({ served, setOpen, onRefused: item => setRefused(item.id), onOpenNotification });
   const readMarks = model.state.state === "ready" ? Object.fromEntries(model.state.items.map(item => [item.id, item.read])) : {};
   const completed = model.state.state === "ready" ? model.state.items.find(item => item.title === "Run completed") : undefined;
   return createElement("div", {
-    "data-open": String(open), "data-notice": notice, "data-unread": String(model.unread),
+    "data-open": String(open), "data-refused": refused, "data-unread": String(model.unread),
     "data-reads": JSON.stringify(readMarks),
   }, [
     createElement("button", { key: "read", onClick: () => model.onControl("sample-verification", "read") }, "Mark read"),
@@ -81,13 +81,12 @@ describe("notification rail producer", () => {
     click("Open panel");
     click("Open completed");
     assert.deepEqual(destinations[0], { kind: "run", runId: "00000000-0003-4000-8000-000000000003", day: "2026-08-03" });
-    assert.equal(model().dataset.notice, "This notification is unavailable.");
+    assert.equal(model().dataset.refused, "sample-completed", "a refused open names its item");
     assert.equal(model().dataset.open, "true");
     assert.equal(model().dataset.unread, "1");
     allowOpen = true;
     click("Open completed");
-    assert.equal(model().dataset.notice, "");
-    assert.equal(model().dataset.open, "true");
+    assert.equal(model().dataset.open, "false", "opening an item closes the list");
     assert.equal(model().dataset.unread, "0");
     assert.equal(model().dataset.reads?.includes('"sample-completed":true'), true);
   });
