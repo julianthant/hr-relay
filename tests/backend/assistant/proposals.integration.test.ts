@@ -14,7 +14,8 @@ import { createAssistantReferenceTable } from "../../../src/backend/assistant/re
 import { composeDataQueries } from "../../../src/backend/app/composition/dashboard/data.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
-import { createCommandKernel, executeSettingsCommand } from "../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../src/backend/runs/commands/settings-command.js";
 import { createDashboardCommandService } from "../../../src/backend/runs/commands/command-service.js";
 import { RunWorkerStartupError } from "../../../src/backend/runs/commands/run-worker-capacity.js";
 import type { RunWorkerStartupFailure } from "../../../src/rules/commands/commands.js";

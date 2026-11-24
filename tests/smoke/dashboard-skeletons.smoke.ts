@@ -17,8 +17,8 @@ const RUN_SETTLED = `${RUN_PANEL} [role="region"][aria-label="Run logs"]`;
 const QUEUE_LOADING = `${QUEUE} [aria-label="Loading queue"]`;
 const QUEUE_SETTLED = `${QUEUE} .queue-filter-content`;
 const SETTINGS_FORM = '#dashboard-settings-content .settings-compact-form';
-const RUNS_SECTION = '.ds-body-section:has(> figure[aria-label="Runs per day"])';
 const REPORT = 'section[aria-label="Analytics report"]';
+const RUNS_SECTION = `${REPORT} section[aria-label="Runs"]`;
 const REPORT_TOOLBAR = `${REPORT} .ds-toolbar-row`;
 const OPEN_RUNS = { selector: `${REPORT} button`, text: "Open runs" };
 const THEME_FIELD = '[data-settings-path="appearance.theme"]';
@@ -79,7 +79,7 @@ function startFrames(page: Page, trigger: Awaited<ReturnType<Locator["elementHan
         sessionText,
         feedback: findTarget(scene.feedback) !== undefined,
         analytics: scene.analyticsPeriod === undefined ? undefined : {
-          period: find(`${runs} figure .text-control`)?.textContent?.trim(),
+          period: find(`${toolbar} [data-analytics-period]`)?.textContent?.trim(),
           updating: findTarget({ selector: `${toolbar} [role="status"]`, text: "Updating" }) !== undefined,
           exportLocked: findTarget({ selector: `${toolbar} button:disabled`, text: "Export" }) !== undefined,
           drillInLocked: drillIn instanceof HTMLButtonElement && drillIn.disabled,
@@ -326,12 +326,11 @@ for (const viewport of DESKTOP_VIEWPORTS) {
 
       test("switching to an uncached 90-day report keeps the previous Analytics report visible", async ({ dashboard, page, seeded }) => {
         await dashboard.openDataPage("Analytics");
-        const chart = page.getByRole("figure", { name: "Runs per day" });
         const exportButton = page.getByRole("button", { name: "Export", exact: true });
         const to = seeded.day;
         const from = shiftDate(to, -89);
         const priorPeriod = analyticsPeriodLabel({ from: shiftDate(to, -6), to });
-        await expect(chart.getByText(priorPeriod, { exact: true })).toBeVisible();
+        await expect(page.locator(REPORT_TOOLBAR).getByText(priorPeriod, { exact: true })).toBeVisible();
         await expect(exportButton).toBeEnabled();
         await page.getByRole("button", { name: "Show Person Lookup details" }).click();
         const openRuns = page.getByRole("button", { name: "Open runs", exact: true });
@@ -358,7 +357,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
           await expect.soft(drillIn).toBeHidden();
           return attempt;
         }, async () => {
-          await expect(chart.getByText(analyticsPeriodLabel({ from, to }), { exact: true })).toBeVisible();
+          await expect(page.locator(REPORT_TOOLBAR).getByText(analyticsPeriodLabel({ from, to }), { exact: true })).toBeVisible();
           await expect(exportButton).toBeEnabled();
           await expect(openRuns).toBeEnabled();
           expect(await openRuns.evaluate(link => link.tabIndex), "restored link is keyboard reachable").toBe(0);

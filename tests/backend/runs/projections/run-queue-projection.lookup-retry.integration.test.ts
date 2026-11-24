@@ -1,4 +1,4 @@
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, derivePersistedSettingsFingerprint } from "../../../../src/models/config/settings.js";
 import { batchMemberRetryAvailable } from "../../../../src/backend/runs/queries/run-retry.js";
 import { workflowQueueCapabilities } from "../../../../src/backend/app/registries/workflow-registry.js";

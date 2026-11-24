@@ -4,7 +4,8 @@ import { BulkRunCommandOutcomeSchema, CommandRequestSchema, CommandResultSchema 
 
 /** Closed destinations resolved afresh from authority when the operator opens a row. */
 export const NotificationTargetSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, day: z.iso.date() }),
+  /** `linkedRunId` is the delegated run the notification links, when `runId` is the host run that shows it. */
+  z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, day: z.iso.date(), linkedRunId: RunIdSchema.optional() }),
   z.strictObject({ kind: z.literal("failure"), runId: RunIdSchema, failureId: FailureIdSchema, day: z.iso.date() }),
   z.strictObject({ kind: z.literal("archive"), runId: RunIdSchema, reportDigest: FingerprintSchema }),
   z.strictObject({ kind: z.literal("storage") }),

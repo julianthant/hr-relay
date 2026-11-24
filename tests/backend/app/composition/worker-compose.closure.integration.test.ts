@@ -24,7 +24,7 @@ import { WorkerSessionClosureUnprovedError, WorkerSessionManager } from "../../.
 import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";

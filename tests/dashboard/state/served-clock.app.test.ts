@@ -11,7 +11,7 @@ import { ToastProvider, TooltipProvider } from "../../../src/dashboard/ds/ui.js"
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { createServedClock, ServedClockContext } from "../../../src/dashboard/state/served-clock.js";
 import { SessionPanel } from "../../../src/dashboard/surfaces/sessions/session-panel.js";
-import { NotificationsPanel } from "../../../src/dashboard/surfaces/notifications/notifications-view.js";
+import { NotificationsPopover } from "../../../src/dashboard/surfaces/notifications/notifications-popover.js";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../support/helpers/dashboard/mock-world/fixture-day.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../support/helpers/dashboard/mock-world/fixture-start.js";
@@ -96,7 +96,7 @@ it("ten minutes of ticks re-render LoadedApp never, while the open inbox's age a
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(PRODUCT_WORKFLOW_COMPOSITION.sources) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell);
   await act(async () => { bell.click(); await new Promise(resolve => setTimeout(resolve, 10)); });
-  const age = () => document.querySelector(".notification-item-age")?.textContent;
+  const age = () => document.querySelector(".notice-age")?.textContent;
   assert.equal(age(), "5 min ago");
   const drawn = appRenders.count;
   assert.ok(drawn > 0);
@@ -138,9 +138,9 @@ it("an updated notification shows its new age at once, even when the label it ha
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   const draw = (occurredAt: string) => act(async () => root?.render(createElement(ServedClockContext.Provider, { value: clock }, createElement(TooltipProvider, null,
-    createElement(NotificationsPanel, { state: { state: "ready", items: [item(occurredAt)], pinned: [] }, activeId: "", showPriority: false, onShowPriority() {},
-      dismissed: [], onDismiss() {}, onControl() {}, canAct: () => true, onReadAll() {}, onOpen() {}, onBack() {}, notice: "" })))));
-  const age = () => host.querySelector(".notification-item-age")?.textContent;
+    createElement(NotificationsPopover, { state: { state: "ready", items: [item(occurredAt)], pinned: [] }, open: true, onOpenChange() {}, show: "all", onShow() {},
+      onControl() {}, canAct: () => true, onReadAll() {}, onOpen() {} })))));
+  const age = () => document.querySelector(".notice-age")?.textContent;
   await draw(at(-70));
   assert.equal(age(), "1 min ago");
   await tick(40_000);

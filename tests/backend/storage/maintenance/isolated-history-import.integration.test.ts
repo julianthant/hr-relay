@@ -40,6 +40,11 @@ const clock = manualClock(new Date("2026-11-23T12:00:00.000Z"));
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { try { for (const close of cleanups.splice(0).reverse()) await close(); } finally { vi.unstubAllGlobals(); } });
 const { openCurrentWorld, takeBackup } = createBackupFixtures(cleanups, clock);
+/** Named indexes on the tables the archive carries; the archive's own id and owner lookups are not native. */
+const queryIndexes = (db: DatabaseSync) => db.prepare(`SELECT name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL
+  AND tbl_name IN (SELECT name FROM sqlite_master WHERE type='table') ORDER BY name`).all().map(row => String(row.name)).filter(name => !/_(lookup|owner)$/u.test(name));
+const invocationPlan = (db: DatabaseSync) => db.prepare(`EXPLAIN QUERY PLAN SELECT * FROM commands WHERE family='run-lifecycle'
+  AND json_extract(request_json,'$.operation')='delegation-invocation' AND json_extract(request_json,'$.request.manifestId')=? ORDER BY id`).all("x").map(row => String(row.detail)).join("\n");
 
 it("preserves the migration error when closing the private import copy fails", async () => {
   const world = await openCurrentWorld();
@@ -149,6 +154,16 @@ it.each([CURRENT_AUTHORITY_SCHEMA_VERSION, 36])("imports schema %i runs, history
   expect(withReadonlyAuthoritySnapshot(historyPath, database => database.prepare("SELECT schema_version FROM history_header").get()?.schema_version))
     .toBe(CURRENT_AUTHORITY_SCHEMA_VERSION);
   expect(report.history).toMatchObject({ write_intents: 1, write_attempts: 1, notifications: 1 });
+  // The archive answers the native statements, so it seeks where the native store seeks.
+  const archived = new DatabaseSync(historyPath, { readOnly: true }), native = new DatabaseSync(join(copy.stateRoot, "state.db"), { readOnly: true });
+  try {
+    const carried = new Set(archived.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => String(row.name)));
+    const expected = native.prepare("SELECT name,tbl_name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL ORDER BY name").all()
+      .filter(row => carried.has(String(row.tbl_name))).map(row => String(row.name));
+    expect(expected).toContain("commands_manifest_idx");
+    expect(queryIndexes(archived)).toEqual(expected);
+    expect(invocationPlan(archived)).toMatch(/SEARCH commands USING INDEX commands_manifest_idx/u);
+  } finally { archived.close(); native.close(); }
   const history = copy.database.dashboardHistory();
   const range = { from: "0001-01-01", to: "9999-12-31" };
   expect(createTransactionHistory(history.authority).query(range).rows).toEqual(source.history.query(range).rows);
@@ -198,10 +213,13 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
   source.database.authority.runs.enqueue(runRecordOf({ seed: 598, enqueuedAt: clock.now().toISOString() }));
   await expect(refresh()).rejects.toThrow("isolated-history-local-id-collision: runs");
   copy.closeDatabase();
-  // A schema-39 build wrote this archive: no dependency parent column. The dashboard upgrades it in place at boot.
+  // A schema-39 build wrote this archive: no dependency parent column and no native index. The dashboard upgrades it in place at boot.
   const archivePath = join(copy.stateRoot, "files", "imported-history.sqlite");
   const archive = new DatabaseSync(archivePath);
+  let indexes: string[];
   try {
+    indexes = queryIndexes(archive);
+    for (const name of indexes) archive.exec(`DROP INDEX ${name}`);
     archive.exec("ALTER TABLE run_search DROP COLUMN ocr_subject_terms; ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id; UPDATE history_header SET schema_version=39");
   } finally { archive.close(); }
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(copy.workspace, name));
@@ -236,5 +254,7 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
     expect(upgraded.prepare("SELECT schema_version FROM history_header").get()?.schema_version).toBe(CURRENT_AUTHORITY_SCHEMA_VERSION);
     expect(upgraded.prepare("SELECT count(*) AS count FROM pragma_table_info('delegation_dependencies') WHERE name='parent_run_id'").get()?.count).toBe(1);
     expect(upgraded.prepare("SELECT count(*) AS count FROM pragma_table_info('run_search') WHERE name='ocr_subject_terms'").get()?.count).toBe(1);
+    expect(indexes.length).toBeGreaterThan(0);
+    expect(queryIndexes(upgraded)).toEqual(indexes);
   } finally { upgraded.close(); }
 });

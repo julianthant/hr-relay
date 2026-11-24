@@ -9,7 +9,7 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../../src/models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { boundProfileCredentials, createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { activeSettingsRuntimeIdentity } from "../../../../src/backend/runtime/settings/settings-runtime.js";

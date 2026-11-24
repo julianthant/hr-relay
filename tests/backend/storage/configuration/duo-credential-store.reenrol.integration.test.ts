@@ -87,6 +87,57 @@ function assertCommitted(w: Active, intent: DuoReenrolCommitIntent, kept: Readon
   assert.deepEqual(reenrolStages(w), []);
 }
 
+it("renames one key across a restart and recovers removal of only the selected key", async () => {
+  const fixture = await createBoundProfileFixture();
+  const clock = manualClock(new Date("2026-11-01T12:00:01.000Z"));
+  const profileId = fixture.admission.profileBinding.profileId, machineRoot = fixture.machine.stateRoot;
+  const rowsFor = (admission: typeof fixture.admission) => DuoCredentialRecordSchema.parse(createCanonicalCredentials(admission).readRecord("duo")?.value).credentials;
+  try {
+    const store = createDuoCredentialStore(fixture.admission, clock);
+    const added = material(randomUUID());
+    store.enroll(added);
+    store.recordEnrollmentName(added.credentialId, added.scope, "Duo Work Key (Laptop)");
+    store.confirm(added.credentialId, added.scope);
+    assert.equal(store.readSettings().keys[1].lastUsedAt, undefined);
+    await store.sign(signRequest(added));
+    const before = store.readSettings(), rows = rowsFor(fixture.admission), identity = store.identity();
+    const [old, work] = before.keys;
+    assert.deepEqual(Object.keys(old).sort(), ["addedAt", "id", "shortId"]);
+    assert.equal(work.name, "Duo Work Key (Laptop)");
+    assert.equal(work.lastUsedAt, clock.now().toISOString());
+
+    const rename = { kind: "rename" as const, commandId: randomUUID(), keyId: old.id, expectedRevision: before.revision };
+    assert.equal(store.changeKey({ ...rename, name: "  duo work key (laptop)  " }), "name-in-use");
+    assert.deepEqual(store.readSettings(), before);
+    assert.equal(store.changeKey({ ...rename, name: "  Duo Backup Key  " }), "changed");
+    const renamed = { revision: before.revision + 1, keys: [{ ...old, name: "Duo Backup Key" }, work] };
+    assert.deepEqual(store.readSettings(), renamed);
+    assert.equal(store.identity(), identity);
+    assert.deepEqual(rowsFor(fixture.admission), [{ ...rows[0], name: "Duo Backup Key" }, rows[1]]);
+
+    const remove = { kind: "remove" as const, commandId: randomUUID().toUpperCase(), keyId: work.id, expectedRevision: renamed.revision };
+    crashBeforeRename(join(machineRoot, "machine", "duo-credentials", `${profileId}.json`), () => store.changeKey(remove));
+    assert.throws(() => store.readSettings(), { code: "DUO_CREDENTIAL_UNAVAILABLE" });
+    await fixture.closeController();
+    const lifetime = await RuntimeLifetimeLock.acquire(0);
+    try {
+      const machine = acquireEntrypointAdmission(fixture.workspace, "exclusive", lifetime);
+      try {
+        signInBoundProfileFixture(machine);
+        const admission = machine.admitProfile(profileId);
+        try {
+          const reopened = createDuoCredentialStore(admission, clock);
+          const removed = { revision: renamed.revision + 1, keys: [renamed.keys[0]] };
+          assert.deepEqual(reopened.readSettings(), removed);
+          assert.equal(reopened.changeKey(remove), "changed");
+          assert.deepEqual(rowsFor(admission), [{ ...rows[0], name: "Duo Backup Key" }]);
+          await assert.rejects(reopened.sign(signRequest(added)));
+        } finally { admission.release(); }
+      } finally { machine.release(); }
+    } finally { await lifetime.close(); }
+  } finally { await fixture.close(); }
+});
+
 it("keeps staged rows out of credentials, identity, signing and counter reservation", async () => {
   const w = await activeProfile();
   try {

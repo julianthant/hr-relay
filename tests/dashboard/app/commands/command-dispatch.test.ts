@@ -12,7 +12,7 @@ import { type IdentityEvidencePacket, buildIdentityEvidencePacket } from "../../
 import { noSeparationWritePlan } from "../../../../src/rules/separations/write-plan.js";
 import { type IdentityGateDetail } from "../../../../src/dashboard/surfaces/run-detail/identity/identity-ceremony.js";
 import { z } from "zod";
-import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../../src/backend/runs/commands/command-arms.js";
 import { queueRowActions, type QueueRowActionFacts } from "../../../../src/backend/runs/projections/queue-row-actions.js";
 import { ActionCommandKeySchema, ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../src/models/dashboard/actions.js";
 import { QueueStatusSchema } from "../../../../src/models/dashboard/projection.js";
