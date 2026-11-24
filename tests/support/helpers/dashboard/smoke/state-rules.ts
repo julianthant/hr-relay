@@ -310,8 +310,11 @@ export function noDeadDisabledControl({ page }: StateRuleContext): Promise<reado
     const found: string[] = [];
     const disabled = (element: Element) => element.matches(':disabled, [aria-disabled="true"]');
     const name = (element: Element) => (element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 40);
+    // A control held off while its own request is in flight (the page marks that with aria-busy) is a lock, not a dead control.
+    const inFlight = document.querySelector('[aria-busy="true"]') !== null;
     for (const control of document.querySelectorAll<HTMLElement>('body :is(select, [role="combobox"], [aria-haspopup])')) {
       if (!disabled(control) || control.getBoundingClientRect().width <= 1) continue;
+      if (inFlight && control.matches('[aria-haspopup]')) continue;
       if (control instanceof HTMLSelectElement && [...control.options].filter(option => !option.disabled).length > 1) continue;
       found.push(`the picker "${name(control)}" is shown switched off with nothing to choose`);
     }

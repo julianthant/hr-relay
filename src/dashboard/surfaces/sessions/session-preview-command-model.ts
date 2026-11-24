@@ -305,12 +305,13 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
       const attemptEpoch = epoch.current;
       const finish = (next?: SessionPreviewOperation) => {
         if (!live.current || operationsRef.current[operation.request.target]?.request.id !== operation.request.id) return;
+        if (next?.state === 'refused' && operation.request.action === 'remove') { drop(operation.request); onRefused.current?.(next.message); return; }
         if (next?.state === 'confirmed' || next?.state === 'refused') { retain(next); return; }
         void settle(operation.request, undefined, attemptEpoch, latestSource.current);
       };
       void (port.afterSettled?.(operation.request) ?? Promise.resolve(undefined)).then(finish, () => finish());
     }
-  }, [port, retain, settle]);
+  }, [port, retain, settle, drop]);
   const perform = useCallback(async (request: SessionPreviewRequest) => {
     if (operationsRef.current[request.target]?.state === 'pending') return;
     retain({ request, state: 'pending', message: `${request.action === 'add' ? 'Adding workers' : `${label(request)} requested`}…` });

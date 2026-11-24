@@ -19,16 +19,17 @@ const bar = (title: string, data: SessionsViewState, { open = true, operations }
   render: () => <StoryFrame><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS}
     {...(operations === undefined ? {} : { operations })} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame>, ...extra });
 /** Raises one result toast once the story has mounted, as the app does after a command settles. */
-function RaiseToast() {
+const TOAST_TITLES = ["Workers added", "Worker removed", "Idle sessions refreshed"] as const;
+function RaiseToast({ count }: { count: number }) {
   const { toast } = useToasts();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  useEffect(() => { if (mounted) toast({ tone: "success", title: "Workers added" }); }, [mounted, toast]);
+  useEffect(() => { if (mounted) TOAST_TITLES.slice(0, count).forEach(title => toast({ tone: "success", title })); }, [mounted, count, toast]);
   return null;
 }
-const withToast = (title: string, data: SessionsViewState, open = true): Story => {
+const withToast = (title: string, data: SessionsViewState, open = true, count = 1, play?: Story["play"]): Story => {
   const base = bar(title, data, { open });
-  return { ...base, ready: '[data-ds-toast-state]', render: () => <StoryFrame><RaiseToast /><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame> };
+  return { ...base, ready: '[data-ds-toast-state]', ...(play === undefined ? {} : { play }), render: () => <StoryFrame><RaiseToast count={count} /><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame> };
 };
 const ready = (...workers: readonly SessionWorker[]): SessionsViewState => ({ state: "ready", workers });
 
@@ -60,8 +61,6 @@ const OPERATION = {
   refused: bar("A control Relay refused", ready(SESSION_WORKER_BY_STATE.running), { operations: { [SESSION_WORKER_BY_STATE.running.id]: SESSION_OPERATION_BY_STATE.refused } }),
 } satisfies Record<SessionPreviewOperation["state"], Story>;
 
-/** A deliberate lock: Add workers is switched off while its request is in flight, so the rule exemption is permanent, not a ticket to fix. */
-const ADD_LOCKED = { "no-dead-disabled-control": "#754" } as const;
 const ADDING: Readonly<Record<string, SessionPreviewOperation>> = { add: { request: { id: "add-1", target: "add", action: "add", workflow: "separations", count: 1, ordinal: 1 }, state: "pending", message: "Adding workers…" } };
 
 /** The combinations a person meets: a closed bar, an empty pool, a mixed pool, a stale day, a wide card and the Add workers dialog. */
@@ -73,8 +72,8 @@ const COMBINATION = {
   "all-states": bar("One worker in every state", ready(...Object.values(SESSION_WORKER_BY_STATE))),
   stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }),
   wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER)),
-  "adding-empty": bar("A worker being added to an empty panel, shown as a pending row", ready(), { operations: ADDING }, { ready: "li[aria-busy]", knownFailures: ADD_LOCKED }),
-  adding: bar("A worker being added beside an idle card", ready(QUIET_IDLE[0]), { operations: ADDING }, { ready: "li[aria-busy]", knownFailures: ADD_LOCKED }),
+  "adding-empty": bar("A worker being added to an empty panel, shown as a pending row", ready(), { operations: ADDING }, { ready: "li[aria-busy]" }),
+  adding: bar("A worker being added beside an idle card", ready(QUIET_IDLE[0]), { operations: ADDING }, { ready: "li[aria-busy]" }),
   removing: bar("An idle card being removed, the status reads Removing", ready(QUIET_IDLE[0]), { operations: { [(QUIET_IDLE[0]).id]: { request: { id: "remove-1", target: (QUIET_IDLE[0]).id, action: "remove" }, state: "pending", message: "Remove requested…" } } }, { ready: 'text="Removing"' }),
   "add-workers": bar("The Add workers dialog", ready(SESSION_WORKER_BY_STATE.running), {}, { ready: '[role="dialog"]',
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } }),
@@ -86,6 +85,10 @@ const TOAST = {
   empty: withToast("A result toast over the empty panel", ready()),
   "one-row": withToast("A result toast over one idle card", ready(QUIET_IDLE[0])),
   several: withToast("A result toast over several cards", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE)),
+  stack: withToast("Three toasts stacked at rest over the open panel", ready(SESSION_WORKER_BY_STATE.running, ...QUIET_IDLE), true, 3, page => page.waitForTimeout(600)),
+  "stack-hover": withToast("Three toasts expanded on hover, clear of the panel", ready(SESSION_WORKER_BY_STATE.running, ...QUIET_IDLE), true, 3,
+    async page => { await page.locator('[data-slot="toast"]').first().hover(); await page.waitForTimeout(600); }),
+  "stack-collapsed": withToast("Three toasts stacked over the collapsed bar", ready(SESSION_WORKER_BY_STATE.running, ...QUIET_IDLE), false, 3, page => page.waitForTimeout(600)),
 } satisfies Record<string, Story>;
 
 export const SESSIONS_STORIES = defineSurface("sessions", { worker: WORKER, browser: BROWSER, bar: BAR, operation: OPERATION, combination: COMBINATION, toast: TOAST });

@@ -322,6 +322,29 @@ it("refresh confirms only while the member keeps the lifetime it was sent to", a
   assert.equal(h.sent.length, 1);
 });
 
+it("a Remove refused after a remount is one toast, never a note on the row, and the row returns", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); let release!: (value: unknown) => void; let original: CommandRequest | undefined;
+  h.effect(command => { original = command; return new Promise(resolve => { release = resolve; }); });
+  const host = document.createElement("div"); document.body.append(host); let root = createRoot(host);
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} }));
+  const toasts = () => [...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent ?? "");
+  try {
+    await act(async () => render());
+    const remove = [...document.querySelectorAll("button")].find(button => button.getAttribute("aria-label") === "Remove worker"); assert(remove);
+    await act(async () => remove.click()); assert(original);
+    await act(async () => root.unmount()); root = createRoot(host);
+    await act(async () => render());
+    assert.match(document.body.textContent ?? "", /Removing/);
+    await act(async () => { release(Response.json({ state: "rejected", code: "invalid-state", message: "WORKER_BUSY", commandId: original!.commandId }, { status: 422 })); await Promise.resolve(); });
+    await settled(() => assert.equal(toasts().filter(toast => toast.includes(ERROR_CATALOG.WORKER_BUSY.text)).length, 1));
+    assert.doesNotMatch(document.querySelector(WORKER_ENTRY)?.textContent ?? "", /Removing|Remove requested/u);
+    assert.ok(!(document.querySelector(WORKER_ENTRY)?.textContent ?? "").includes(ERROR_CATALOG.WORKER_BUSY.text), "no note on the row");
+    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
+    assert.equal(h.sent.length, 1);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
 it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flight across a remount to its %s outcome by reading it back, without resending", async outcome => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness(); let release!: (value: unknown) => void; let original: CommandRequest | undefined;

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ActionBar, ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, Switch, Tab, TabList, TabPanel, Tabs, useToasts,
 } from "../../../../../../src/dashboard/ds/ui.js";
+import { SessionsView } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import type { StateRuleName } from "../state-rule-limits.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import { StoryFrame } from "./story-frame.js";
@@ -23,6 +24,19 @@ function ToastOverToolbar() {
     return () => { window.clearTimeout(timer); };
   }, [toast]);
   return <div className="fixed inset-x-0" style={{ bottom: "calc(var(--ds-toast-inset-bottom) - 1rem)" }}><ActionBar><ActionBarRow label="Queue actions"><Button>Start run</Button></ActionBarRow></ActionBar></div>;
+}
+
+/** The Sessions panel open, with the toast viewport pushed off centre and down onto it. */
+function ToastOverSessions() {
+  const { toast } = useToasts();
+  useEffect(() => {
+    const timer = window.setTimeout(() => { toast({ tone: "success", sticky: true, title: "Workers added" }); }, 0);
+    return () => { window.clearTimeout(timer); };
+  }, [toast]);
+  return <>
+    <style>{'[data-slot="toast-viewport"] { bottom: 24px !important; left: 25% !important; }'}</style>
+    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+  </>;
 }
 
 /** Starts a request after first paint; it answers 404 and then the text changes. */
@@ -150,6 +164,10 @@ export const RULE_PROBES = {
       </DialogContent></Dialog></StoryFrame>,
     },
     finds: { "dialogs-share-shape": [/a dialog:sm dialog has body padding 0px; the design system draws it with /u, /a dialog:sm dialog has bottom border 4px /u, /^(?![\s\S]*(?:header|footer) padding)/u] },
+  },
+  "toast-over-sessions": {
+    story: { title: "A toast off centre and over the Sessions panel", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastOverSessions /></StoryFrame> },
+    finds: { "toast-placement": [/is \d+px off the horizontal centre/u, /overlaps the Sessions panel/u] },
   },
   "toast-over-toolbar": {
     story: { title: "A toast over the queue toolbar", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastOverToolbar /></StoryFrame> },

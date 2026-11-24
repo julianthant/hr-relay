@@ -1132,8 +1132,8 @@ describe_m3("shell and queue structural fidelity", () => {
     );
     assert_m3.match(
       OVERLAY,
-      /fixed bottom-\[max\(var\(--ds-toast-inset-bottom,0\.75rem\),calc\(var\(--session-dock-h,0px\)\+1\.25rem\+var\(--toast-frontmost-height,3rem\)\)\)\] left-1\/2/u,
-      "the fixed toast viewport is bottom-centred on the Sessions bar floor or above the open Sessions panel, whichever is higher",
+      /fixed bottom-\[max\(calc\(var\(--ds-toast-inset-bottom,0\.75rem\)-3rem\),calc\(var\(--session-dock-h,0px\)\+1\.25rem\)\)\] left-1\/2/u,
+      "the fixed toast viewport is bottom-centred on the Sessions bar floor or above the open Sessions panel, whichever is higher, with the whole stack growing upward from there",
     );
     assert_m3.match(
       LAUNCHER_MODEL,
