@@ -143,7 +143,8 @@ export function createRelayWorker(api, reportEvent) {
     if (data.requestId !== pending.requestId) throw new Error('ONBOARDING_DUO_SCOPE');
     if (message.type === 'RELAY_PORTAL_ACCEPTED') {
       if (!pending.credentialId) throw new Error('ONBOARDING_DUO_SCOPE');
-      if (!pending.accepted) await checked(() => call('portal-accepted', { credentialId: pending.credentialId, requestId: pending.requestId }));
+      if (!pending.accepted) await checked(() => call('portal-accepted', { credentialId: pending.credentialId, requestId: pending.requestId,
+        ...(data.name === undefined ? {} : { name: data.name }) }));
       pending.accepted = true;
       return { observed: true };
     }
