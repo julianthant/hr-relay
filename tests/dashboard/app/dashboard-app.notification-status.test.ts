@@ -34,11 +34,14 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, { refuseCommands = fals
   const { app } = createFixtureBff();
   const opened: { day: string; push: (envelope: unknown) => void }[] = [];
   const commands: string[] = [];
+  const requested: string[] = [];
   /** The row the server lists; an accepted mark-read moves it to read at the next revision, as the readback reads it. */
   let served: NotificationWire = NOTIFICATION;
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
+    requested.push(path);
     if (path === "/api/v1/notifications") return Response.json([served]);
+    if (path === `/api/v1/notifications/${NOTIFICATION.notificationId}/target`) return Response.json({ kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: FIXTURE_DAY_WIRE.day });
     if (path === "/api/v1/commands") {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); commands.push(command.type);
@@ -85,10 +88,12 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, { refuseCommands = fals
     const bell = host.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell, host.querySelector('button[aria-label^="Notifications"]')?.getAttribute("aria-label") ?? "no bell");
     await act(async () => bell.click()); await settle();
   };
+  const open = () => { const found = host.querySelector<HTMLButtonElement>("li.notification-row button.notification-item"); assert(found, "open"); return found; };
   const control = (label: string) => { const found = host.querySelector<HTMLButtonElement>(`li.notification-row button[aria-label="${label}"]`); assert(found, label); return found; };
   const listed = () => [...host.querySelectorAll(".notification-item-title")].map(title => title.textContent);
   const notice = () => host.querySelector(".notification-notice")?.textContent ?? "";
-  return { host, opened, commands, greet, change, openBell, control, listed, notice };
+  const targetReads = () => requested.filter(path => path.endsWith("/target")).length;
+  return { host, opened, commands, greet, change, openBell, open, control, listed, notice, targetReads };
 }
 
 it("shows a first snapshot whose status could not be read as display-only rows, then restores the controls when a change delivers it", async () => {
@@ -99,14 +104,18 @@ it("shows a first snapshot whose status could not be read as display-only rows, 
   assert.match(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, true);
   assert.equal(m.control("Dismiss").disabled, true);
+  assert.equal(m.open().disabled, true, "Open cannot act or take focus while the status is unavailable");
 
   await m.change(READY);
 
   assert.doesNotMatch(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, false);
   assert.equal(m.control("Dismiss").disabled, false);
+  assert.equal(m.open().disabled, false);
   await act(async () => m.control("Mark as read").click()); await m.change(READY);
   assert.deepEqual(m.commands, ["notification-read"]);
+  await act(async () => m.open().click()); await settle();
+  assert.equal(m.targetReads(), 1, "Open reads the row's target once the status is back");
 });
 
 it("turns the controls off when a status update cannot be read, and back on when the retried status arrives", async () => {
@@ -121,12 +130,16 @@ it("turns the controls off when a status update cannot be read, and back on when
   assert.match(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, true);
   assert.equal(m.control("Dismiss").disabled, true);
+  assert.equal(m.open().disabled, true, "Open cannot act or take focus while the status is unavailable");
   assert.deepEqual(m.commands, []);
 
   await m.change(READY);
 
   assert.doesNotMatch(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, false);
+  assert.equal(m.open().disabled, false);
+  await act(async () => m.open().click()); await settle();
+  assert.equal(m.targetReads(), 1, "Open reads the row's target once the status is back");
 });
 
 it("keeps a dismissed row in the list when its mark-read is refused", async () => {

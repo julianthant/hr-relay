@@ -25,7 +25,7 @@ function NotificationAge({ item }: { item: NotificationItem }) {
 /** Codex rows: the unread dot left of the title, the time right of it, the workflow and run, then a two-line grey line below. */
 function NotificationRow({ item, active, onOpen, actions }: { item: NotificationItem; active: boolean; onOpen: Open; actions: RowActions }) {
   return <li className="notification-row">
-    <button type="button" aria-current={active || undefined} className={cn("notification-item", dsFocus)} onClick={() => onOpen(item)}>
+    <button type="button" aria-current={active || undefined} className={cn("notification-item", dsFocus)} onClick={() => onOpen(item)} disabled={!actions.canAct(item.id)}>
       <span className="notification-item-head">
         {!item.read && <span aria-hidden className="notification-unread-dot" />}
         <span className="notification-item-title">{item.title}</span>
