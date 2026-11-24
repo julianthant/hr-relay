@@ -42,21 +42,22 @@ primitives.
    and only actions valid in that state appear.
 3. Put the switch behind the harness. Product surfaces read a variant or scenario with
    `mockParam(<name>)` from `src/dashboard/app/mock-surfaces.ts`, which returns `null` unless
-   `tests/mocks/app-entry.tsx` set the harness flag, so a served dashboard never shows a mock.
+   `tests/support/helpers/dashboard/mock-world/app-entry.tsx` set the harness flag, so a served
+   dashboard never shows a mock.
    A standalone control goes in `tests/support/helpers/dashboard/controls/<name>-preview.tsx`,
    exporting `ControlPreview` and opened at `/?fixture=<name>&state=<scenario>`. Fixture data lives
    beside the surface's existing mock or fixture files.
 
 ## Render
 
-- Add or extend a scene spec in `tests/mocks/` modelled on `zz-status-mock.test.ts`: start
-  `startFixtureServer` from `tests/support/helpers/dashboard/fixture-bff.ts` on `MOCK_DIST_DIR`,
-  set `relayMockTheme` per theme, load each variant and scenario, and write PNGs to an output
-  folder taken from an environment variable.
-- Run it alone: `npm run mocks -- <spec> -g "<title>"`. Each run rebuilds
-  `dist/mock-dashboard`. Follow the local operations note's limits for local renders.
-- Capture every variant and scenario light and dark at 1280, and at 1024 where layout changes, into
-  the task's `.work/` folder. Look at every frame before handing it over.
+- Add or extend a story in `tests/support/helpers/dashboard/smoke/stories/`, one file per surface,
+  keyed by the state type it renders. `tests/smoke/gallery/` is the page that draws a story; the
+  rules live in `tests/support/helpers/dashboard/smoke/state-rules.ts`.
+- `tests/smoke/dashboard-states.gallery.ts` runs every state rule on every story at both desktop
+  sizes and saves a frame of each.
+- Run one surface on the gallery project:
+  `npm run test:smoke -- --project=gallery --workers=1 --grep @<surface>`.
+  Look at every frame before handing it over.
 
 ## Hand over
 
