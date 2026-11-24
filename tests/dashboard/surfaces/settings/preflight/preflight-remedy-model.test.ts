@@ -4,7 +4,7 @@ import { CURRENT_FISCAL_TARGET,preflightRemedy,RUN_CHECK_FIXES,runCheckFix,runCh
 import { CHECK_COPY } from '../../../../../src/dashboard/surfaces/settings/preflight/preflight-check-copy.js';
 import { buildSettingsNav,resolveSettingsSection } from '../../../../../src/dashboard/surfaces/settings/settings-model.js';
 import { settingsSearchIndex } from '../../../../../src/dashboard/surfaces/settings/navigation/settings-search-model.js';
-import { fixtureSettingsDocument } from '../../../../mocks/helpers/fixture-settings.js';
+import { fixtureSettingsDocument } from '../../../../support/helpers/dashboard/mock-world/fixture-settings.js';
 import { PREFLIGHT_CHECKS } from '../../../../../src/models/runtime/runtime-dependencies.js';
 
 it('maps known checks to available Settings sections and preserves a general destination for new checks', () => {

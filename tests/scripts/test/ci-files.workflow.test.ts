@@ -282,7 +282,7 @@ describe("development fast check", () => {
       "tests/support/helpers/credential-keychain-fake.ts"]) {
       expect(matches(file), file).toBe(true);
     }
-    for (const file of ["README.md", "tests/smoke/README.md", "tests/scripts/test/ci-plan.test.ts", "playwright.mocks.config.ts"]) {
+    for (const file of ["README.md", "tests/smoke/README.md", "tests/scripts/test/ci-plan.test.ts"]) {
       expect(matches(file), file).toBe(false);
     }
 

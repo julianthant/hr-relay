@@ -7,8 +7,8 @@ import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { assistantOpen } from "../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
-import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../mocks/helpers/fixture-queue.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { loadLazyPages } from "../../support/helpers/dashboard/lazy-pages.js";
 

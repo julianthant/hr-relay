@@ -1,7 +1,7 @@
 import { isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
-import { fixtureIntakePresentation } from "../../../mocks/helpers/fixture-intake-routes.js";
-import { fixturePreflightReport } from "../../../mocks/helpers/fixture-preflight-routes.js";
-import { DEFAULT_DASHBOARD_PROFILE } from "../../../mocks/helpers/fixture-profile.js";
+import { fixtureIntakePresentation } from "./mock-world/fixture-intake-routes.js";
+import { fixturePreflightReport } from "./mock-world/fixture-preflight-routes.js";
+import { DEFAULT_DASHBOARD_PROFILE } from "./mock-world/fixture-profile.js";
 
 import { mkdtempSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,7 +15,7 @@ FIXTURE_DAY_WIRE,
 FIXTURE_IDS,
 FIXTURE_RUN_DETAILS,
 FIXTURE_SECTIONS,
-} from "../../../mocks/helpers/fixture-day.js";
+} from "./mock-world/fixture-day.js";
 import {
 FIXTURE_INTAKE_MAPPING,
 FIXTURE_INTAKE_VALIDATED,

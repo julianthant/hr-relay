@@ -9,8 +9,8 @@ import { useSessionPreviewCommands, type SessionPreviewCommandPort, type Session
 import { SessionsView } from "../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import type { SessionsViewState } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { createFixtureSessionPort, previewSessionControl, sessionsSample } from "../../../support/fixtures/dashboard/sessions-sample.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
