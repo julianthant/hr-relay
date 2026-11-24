@@ -38,7 +38,11 @@ async function play(page: Page, scene: SignInScene): Promise<void> {
   if (scene.submit === true) await page.getByRole("button", { name: scene.step === "signup" ? "Create profile" : "Log in" }).click();
   if (scene.confirm === true) await page.getByRole("button", { name: "Add this device" }).click();
   // The keyboard walk starts at the top of the page, as it does for a person who has just arrived.
-  await page.evaluate(() => { getSelection()?.setPosition(document.body, 0); });
+  await page.evaluate(() => {
+    if (document.querySelector('[role="dialog"]') !== null) return;
+    const { body } = document;
+    body.tabIndex = -1; body.focus({ preventScroll: true }); body.removeAttribute("tabindex");
+  });
 }
 
 /** `shows` is the text the finished story must show; without it the story's own first control is the ready point. */
