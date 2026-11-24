@@ -70,8 +70,12 @@ function feedback(code: "COMMAND_REFUSED" | "COMMAND_CONFLICT" | "COMMAND_CONFIR
   return formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
 }
 
+function sameAuthority(left: CommandExecutionScope | undefined, right: CommandExecutionScope): boolean {
+  return left?.actorId === right.actorId && left.client === right.client && left.authority === right.authority;
+}
+
 function sameScope(left: CommandExecutionScope | undefined, right: CommandExecutionScope): boolean {
-  return left?.actorId === right.actorId && left.client === right.client && left.authority === right.authority && left.dayRequest === right.dayRequest;
+  return left?.dayRequest === right.dayRequest && sameAuthority(left, right);
 }
 
 function lockKey(request: DashboardCommandRequest): string {
@@ -116,6 +120,10 @@ export class CommandExecutor {
   private readonly reservations = new Map<string, Reservation>();
 
   constructor(private readonly currentScope: () => CommandExecutionScope | undefined) {}
+
+  isCurrentAuthority(scope: CommandExecutionScope): boolean {
+    return sameAuthority(this.currentScope(), scope);
+  }
 
   retainedAttempts(): readonly RetainedCommandAttempt[] {
     return Object.freeze([...new Set(this.attempts.values())].flatMap(({ request, body, scope, state, outcome }) => state === "absent" ? []

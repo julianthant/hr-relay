@@ -4,10 +4,11 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, matchesGlob } from "node:path";
 import { runInNewContext } from "node:vm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ciPlanSchema, createCiPlan, hasTimingArtifact, registeredTimingWorkflows, timingRunIds } from "../../../scripts/test/ci-plan.js";
 import { LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
 import type { CiPlan } from "../../../scripts/test/ci-plan.js";
+import { dialogsShareShape } from "../../support/helpers/dashboard/smoke/state-rules.js";
 import { START_STEP } from "../../../scripts/ci/full-run.js";
 
 const load = (name: string) => readFileSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url), "utf8");
@@ -255,6 +256,17 @@ describe("development fast check", () => {
     }
   });
 
+  it("rejects an independent gallery story that draws a cross-story dialog reference", async () => {
+    const page = {
+      viewportSize: () => ({ width: 1280, height: 720 }),
+      evaluate: vi.fn().mockResolvedValue([{ kind: "dialog:custom", variant: null, shape: {} }]),
+      context: vi.fn(), url: vi.fn(),
+    };
+    await expect(dialogsShareShape({
+      page, storyId: "queue/status/queued", story: { title: "Queued", render: () => null }, dialogShapes: new Map(),
+    })).rejects.toThrow("queue/status/queued draws dialog:custom with a cross-story reference");
+  });
+
   it("runs the shared smoke command for browser inputs on task pushes", () => {
     const filter = job(checks, "changes").match(/^ {12}smoke:\n((?: {14}- '[^'\n]+'\n)+)/mu)?.[1];
     assert.ok(filter);
@@ -275,7 +287,13 @@ describe("development fast check", () => {
     }
 
     const body = job(checks, "smoke");
-    expect(body).toMatch(/^ {6}- run: npm run test:smoke$/mu);
+    const changes = job(checks, "changes");
+    expect(changes).toContain("smoke-matrix: ${{ steps.smoke-matrix.outputs.matrix }}");
+    expect(changes).toContain("python3 tests/support/helpers/dashboard/smoke/smoke-lanes.py matrix");
+    expect(body).toContain("matrix: ${{ fromJSON(needs.changes.outputs.smoke-matrix) }}");
+    expect(body).toContain("SLOTS: ${{ strategy.job-total }}");
+    expect(body).toContain('run: npm run test:smoke -- --test-list "$RUNNER_TEMP/smoke-tests.txt"');
+    expect(body).toContain("-f tests/support/helpers/dashboard/smoke/verify-shard.jq");
     const condition = body.match(/^ {4}if: (.+)$/mu)?.[1];
     assert.ok(condition);
     for (const smoke of ["true", "false"]) {

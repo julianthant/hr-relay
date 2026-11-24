@@ -1,6 +1,7 @@
 /** The operator's rules for every dashboard state. Each rule is one named function that returns what it found
  * wrong, with its own failure message; the check loop runs all of them on every story. */
 import { expect, type Page } from "@playwright/test";
+import { usesIndependentDialogReferences } from "./gallery-shards.js";
 import { BANNED_PATTERNS, BANNED_PHRASES, BANNED_TERMS, WORD_LIMITS, type StateRuleName } from "./state-rule-limits.js";
 import { DIALOG_REFERENCE_SURFACE, DIALOG_REFERENCE_VARIANTS } from "./story-catalogue.js";
 import type { Story } from "./story-catalogue.js";
@@ -180,7 +181,7 @@ function measureDialogs(): DialogShape[] {
 }
 
 /** The design system's own dialog of this size, drawn alone in a second page at the same viewport. */
-async function designSystemDialogShape(page: Page, variant: string): Promise<DialogShape["shape"]> {
+async function designSystemDialogShape(page: Pick<Page, "context" | "url">, variant: string): Promise<DialogShape["shape"]> {
   const reference = await page.context().newPage();
   try {
     await reference.goto(new URL("/", page.url()).href);
@@ -198,10 +199,17 @@ async function designSystemDialogShape(page: Page, variant: string): Promise<Dia
   }
 }
 
-export async function dialogsShareShape({ page, storyId, story, dialogShapes }: StateRuleContext): Promise<readonly string[]> {
+type DialogRuleContext = Pick<StateRuleContext, "storyId" | "story" | "dialogShapes"> & {
+  readonly page: Pick<Page, "viewportSize" | "evaluate" | "context" | "url">;
+};
+
+export async function dialogsShareShape({ page, storyId, story, dialogShapes }: DialogRuleContext): Promise<readonly string[]> {
   const viewport = page.viewportSize();
   const found: string[] = [];
   for (const { kind, variant, shape } of await page.evaluate(measureDialogs)) {
+    if ((variant === null || !DIALOG_REFERENCE_VARIANTS.includes(variant)) && usesIndependentDialogReferences(storyId)) {
+      throw new Error(`${storyId} draws ${kind} with a cross-story reference. Move its story group to the shared-reference gallery shard.`);
+    }
     const key = `${kind} at ${String(viewport?.width)}x${String(viewport?.height)}`;
     let reference = dialogShapes.get(key);
     // A dialog built on the design system is held to the design system's own dialog of that size.

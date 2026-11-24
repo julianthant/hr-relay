@@ -40,7 +40,8 @@ type EnvelopeOf<Type extends DashboardStreamEnvelope["type"]> = Extract<Dashboar
 export interface DashboardDaySubscriptionDeps {
   readonly transport: DashboardTransport;
   readonly day: string;
-  readonly onDay: (day: DashboardDayWire) => void;
+  /** `cursor` is the stream position the day was served at: its snapshot cursor, or the last change applied to it. */
+  readonly onDay: (day: DashboardDayWire, cursor?: string) => void;
   readonly onState: (state: SubscriptionState) => void;
   readonly publications?: Readonly<{ actorId: string; onPublication: (publication: NotificationPublicationWire) => void }>;
   /** Injectable reconnect timer; defaults to setTimeout. */
@@ -271,7 +272,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       authority,
       held: { snapshot: envelope.payload, cursorNumber: cursor, cursorId: envelope.cursor },
     };
-    deps.onDay(envelope.payload);
+    deps.onDay(envelope.payload, envelope.cursor);
   }
 
   function applyChange(envelope: EnvelopeOf<"change">): void {
@@ -307,7 +308,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       ...(authority === undefined ? {} : { authority }),
       held: { snapshot: next, cursorNumber: cursor, cursorId: envelope.cursor },
     };
-    if (envelope.day !== undefined) deps.onDay(next);
+    if (envelope.day !== undefined) deps.onDay(next, envelope.cursor);
   }
 
   function handleEnvelope(envelope: DashboardStreamEnvelope): void {

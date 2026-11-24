@@ -551,7 +551,7 @@ function hello(cursor: string): Record<string, unknown> {
 }
 
 function snapshotEnvelope(cursor: string, surfaces: readonly Record<string, unknown>[]): Record<string, unknown> {
-  return { type: "snapshot", topic: "dashboard-day", position: 0, cursor, payload: { ...dayOf(surfaces), snapshotCursor: cursor } };
+  return { type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor, payload: { ...dayOf(surfaces), snapshotCursor: cursor } };
 }
 
 async function tick(): Promise<void> {
@@ -578,7 +578,7 @@ describe("resumable subscription protocol", () => {
     streams[0].push(snapshotEnvelope("pc:1", [surfaceOf(1)]), "pc:1");
     streams[0].push({ type: "health", state: "live" });
     streams[0].push({
-      type: "change", topic: "dashboard-day", cursor: "pc:2", after: "pc:1", position: 0,
+      type: "change", topic: "dashboard-day", rows: [], cursor: "pc:2", after: "pc:1", position: 0,
       day: { operation: "replace-queue-surface", target: { runId: RUN_ID, rowRevision: 2 }, replacement: surfaceOf(2) },
     }, "pc:2");
     await tick();
@@ -612,7 +612,7 @@ describe("resumable subscription protocol", () => {
     streams[0].push(snapshotEnvelope("pc:1", []), "pc:1");
     // pc:5 follows pc:4, which this client never held: a gap the client must not paper over.
     streams[0].push({
-      type: "change", topic: "dashboard-day", cursor: "pc:5", after: "pc:4", position: 0,
+      type: "change", topic: "dashboard-day", rows: [], cursor: "pc:5", after: "pc:4", position: 0,
       day: { operation: "replace-queue-surface", target: { runId: RUN_ID, rowRevision: 1 }, replacement: surfaceOf(1) },
     }, "pc:5");
     await tick();

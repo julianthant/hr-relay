@@ -7,6 +7,7 @@ export default defineConfig({
   testDir: "tests/smoke",
   outputDir: "tests/smoke/.output",
   fullyParallel: false,
+  globalTeardown: "./tests/support/helpers/dashboard/smoke/gallery-teardown.ts",
   workers: Math.min(3, availableParallelism()),
   retries: 0,
   timeout: 120_000,
@@ -18,8 +19,8 @@ export default defineConfig({
     viewport: { width: 1280, height: 720 },
   },
   projects: [
-    // Keep cross-story references and frame collection on one worker while smoke files run alongside it.
-    { name: "gallery", testMatch: "**/*.gallery.ts", workers: 1 },
+    // Each viewport keeps its ordered story references on one worker.
+    { name: "gallery", testMatch: "**/*.gallery.ts", workers: 2 },
     { name: "smoke", testMatch: "**/*.smoke.ts", workers: 2 },
   ],
   reporter: [["list"], ["json", { outputFile: "tests/smoke/.output/results.json" }]],

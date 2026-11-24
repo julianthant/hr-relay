@@ -153,7 +153,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     held.shell = shell;
     app.get("/events/v1", (c) => c.body(new ReadableStream<Uint8Array>({ start(controller) {
       for (const value of [{ type: "hello", wireVersion: 1, descriptorHash: hash, projectionGeneration: projection.generation(), cursor: projection.cursor() },
-        { type: "snapshot", topic: "dashboard-day", position: 0, cursor: projection.cursor(), payload: projection.buildDashboardDayWire(day) }, { type: "health", state: "live" }]) {
+        { type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: projection.cursor(), payload: projection.buildDashboardDayWire(day) }, { type: "health", state: "live" }]) {
         controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(DashboardStreamEnvelopeSchema.parse(value))}\n\n`));
       }
     } }), 200, { "content-type": "text/event-stream", "cache-control": "no-cache" }));

@@ -18,6 +18,8 @@ import { z } from "zod";
 import type { DiagnosticArtifactWriter, StagedDiagnosticArtifact } from "../../../workflow-kit/artifacts.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import { noSymlinkAncestry, removeExactPath, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { fsyncPath, privatePathRejects } from "../private-path.js";
 import {
   ArtifactPutMetadataSchema,
   ArtifactRefSchema,
@@ -214,16 +216,50 @@ function probeRecordedOwner(ownerPid: number): Readonly<{
 
 async function reclaimDeadOwnerTemps(admission: RuntimeAdmission, root: string, sha256: string): Promise<void> {
   admission.assertWritable();
-  const prefix = `${sha256}.`;
   for (const name of await readdir(root)) {
     admission.assertWritable();
-    if (!name.startsWith(prefix) || !name.endsWith(".tmp") || name.endsWith(".diagnostic.tmp")) continue;
-    const ownerText = name.slice(prefix.length, name.indexOf(".", prefix.length));
-    if (!/^[1-9][0-9]*$/u.test(ownerText)) continue;
-    const ownerPid = Number(ownerText);
-    if (!Number.isSafeInteger(ownerPid) || ownerPid === process.pid) continue;
-    if (probeRecordedOwner(ownerPid).state === "dead") await unlinkIfPresent(join(root, name));
+    if (name.startsWith(`${sha256}.`) && deadArtifactTemp(name) !== undefined) await unlinkIfPresent(join(root, name));
   }
+}
+
+function deadArtifactTemp(name: string) {
+  const match = /^([a-f0-9]{64})\.([1-9][0-9]{0,9})\.([a-f0-9-]{36})\.tmp$/u.exec(name);
+  if (match === null || !z.uuidv4().safeParse(match[3]).success) return undefined;
+  const pid = Number(match[2]);
+  if (pid > 0x7fff_ffff || pid === process.pid || probeRecordedOwner(pid).state !== "dead") return undefined;
+  return { digest: match[1], pid };
+}
+
+export function reclaimStartupArtifactStages(machine: RuntimeAdmission, profileId: string, operation: OfflineMaintenanceOperation): number {
+  const root = join(machine.stateRoot, "profiles", z.uuid().parse(profileId), "artifacts");
+  const assertHeld = () => { machine.assertOfflineMaintenance(operation); machine.assertStateRoot(root); };
+  assertHeld();
+  const ancestry = new Map<string, DirectoryIdentity>();
+  if (!noSymlinkAncestry(root, ancestry)) return 0;
+  const names = readdirSync(root);
+  let removed = 0;
+  for (const name of names) {
+    const owner = deadArtifactTemp(name);
+    if (owner === undefined) continue;
+    const path = join(root, name), status = fileStatus(path);
+    if (!status.isFile() || privatePathRejects(path, status, "file-0600")) continue;
+    const links = privateFileNumber(status.nlink);
+    if (links !== 1) {
+      const diagnosticPrefix = `${owner.digest}.${owner.pid}.`;
+      const hasPublishedLink = (entry: string) => {
+        const candidate = fileStatus(join(root, entry), true);
+        return candidate?.isFile() === true && candidate.dev === status.dev && candidate.ino === status.ino;
+      };
+      if (links !== 2 || !hasPublishedLink(`${owner.digest}.artifact`) && !names.some(entry =>
+        entry.startsWith(diagnosticPrefix) && diagnosticStageName.test(entry) && hasPublishedLink(entry))) continue;
+    }
+    assertHeld();
+    noSymlinkAncestry(root, ancestry);
+    removeExactPath(path, { device: status.dev, inode: status.ino }, false, "artifact-stage-custody-changed");
+    removed++;
+  }
+  if (removed > 0) fsyncPath(root);
+  return removed;
 }
 
 function assertMatchingMediaType(stored: Readonly<{ ref: ArtifactRef }>, metadata: ArtifactPutMetadata): void {

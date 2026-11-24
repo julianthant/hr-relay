@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync, randomUUID } from "node:crypto";
+import crypto, { generateKeyPairSync, randomUUID } from "node:crypto";
 import fs, { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { basename, join } from "node:path";
 import { z } from "zod";
 import { it, vi } from "vitest";
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { CanonicalCredentialHeadSchema } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { createDuoCredentialStore } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 import { createBoundProfileFixture, readAuthenticatedCredentialFixture, rewriteAuthenticatedCredentialFixture, signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
 it("keeps enrollment scoped and burns distinct canonical counts across independent signing views", async () => {
@@ -156,4 +159,35 @@ it("refuses a platform row that shares the security key's id before retiring any
     assert.deepEqual(w.rows(), [...w.before, [w.key.credentialId, "internal"]]);
     assert.deepEqual(w.stages(), []);
   } finally { await w.fixture.close(); }
+});
+
+// Development's dashboard startup reads custody once and opens three credential frames (only the credential stores decipher); #653 adds none.
+it("starts the dashboard to sign-in with development's custody reads and drops the platform row only in the keyed store", async () => {
+  const w = await storedPlatformRow();
+  const files = () => [readFileSync(w.headPath), readFileSync(w.duoPath)];
+  const stored = files();
+  await w.fixture.closeController();
+  const custody = vi.spyOn(FakeKeyringEntry.prototype, "getPassword");
+  const frames = vi.spyOn(crypto, "createDecipheriv"); syncBuiltinESMExports();
+  const lifetime = await RuntimeLifetimeLock.acquire(0);
+  let admission: RuntimeAdmission | undefined;
+  try {
+    const machine = await acquireDashboardEntrypointAdmission(profileBrowserClosure, w.fixture.workspace, "shared", lifetime);
+    try {
+      assert.deepEqual(machine.readProfileRegistry().profiles.map(row => row.profileId), [w.profileId]);
+      assert.deepEqual({ custody: custody.mock.calls.length, frames: frames.mock.calls.length }, { custody: 1, frames: 3 });
+      assert.deepEqual(files(), stored);
+      signInBoundProfileFixture(machine);
+      admission = machine.admitProfile(w.profileId);
+      const store = createDuoCredentialStore(admission, w.clock);
+      assert.deepEqual(files(), stored);
+      custody.mockClear(); frames.mockClear();
+      assert.deepEqual(store.credentials().map(row => row.credentialId), w.ready);
+      assert.ok(custody.mock.calls.length > 0 && frames.mock.calls.length > 0);
+      assert.deepEqual(store.read().credentials.map(row => row.credentialId), w.before.map(([id]) => id));
+      assert.notDeepEqual(files(), stored);
+      const head = w.head();
+      assert.equal(head.state, "active"); assert.ok(head.retired.includes(w.touch.credentialId));
+    } finally { admission?.release(); machine.release(); }
+  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); await lifetime.close(); await w.fixture.close(); }
 });
