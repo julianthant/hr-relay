@@ -5,7 +5,7 @@ import { EmptyState, IconButton, Panel, PanelBody } from "../../../../../../src/
 import { NotificationsPopover, type NotificationsShow } from "../../../../../../src/dashboard/surfaces/notifications/notifications-popover.js";
 import { WorkflowRail } from "../../../../../../src/dashboard/surfaces/shell/workflow-rail.js";
 import { useNotificationAlert } from "../../../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
-import type { NotificationItem, NotificationKind, NotificationsState } from "../../../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
+import { itemClearable, type NotificationItem, type NotificationKind, type NotificationsState } from "../../../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import {
   NOTICE_BY_KIND, NOTICE_BY_TONE, POPOVER_FEW, POPOVER_GONE, POPOVER_LONG_NOTICES, POPOVER_MANY, notificationsReady,
 } from "../../../../fixtures/dashboard/sessions-notifications-story-fixtures.js";
@@ -32,14 +32,17 @@ const TOAST = {
   info: toast(NOTICE_BY_TONE.info, 'text=/^Relay repaired a saved file/'),
 } satisfies Record<NotificationItem["tone"], Story>;
 
-/** The bell's popover over the dashboard: the rail, the bell in its header, and an idle queue and Logs behind it. */
-function PopoverScene({ state, show: initial = "all", open = true, notice, collapsed = false }: { state: NotificationsState; show?: NotificationsShow; open?: boolean; notice?: string; collapsed?: boolean }) {
+/** The bell's popover over the dashboard: the rail, the bell in its header, and an idle queue and Logs behind it. Clearing removes rows as the served inbox does. */
+function PopoverScene({ state: initialState, show: initial = "all", open = true, notice, collapsed = false }: { state: NotificationsState; show?: NotificationsShow; open?: boolean; notice?: string; collapsed?: boolean }) {
   const [show, setShow] = useState(initial);
+  const [state, setState] = useState(initialState);
+  const keep = (kept: (item: NotificationItem) => boolean) => setState(current => current.state === "ready" ? { ...current, items: current.items.filter(kept) } : current);
   const emptyPanel = (title: string, description?: string) => <Panel className="min-h-0 flex-1"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState title={title} description={description} /></PanelBody></Panel>;
   return <StoryFrame>
     <aside aria-label="Workspace" className="workspace-rail ui-theme-scope" data-collapsed={collapsed || undefined}><header className="workspace-rail-header"><h2>Relay</h2><div className="workspace-rail-actions">
       <IconButton variant="ghost" size="sm" label="Collapse sidebar" title="" icon={<PanelLeft aria-hidden className="size-4" />} />
-      <NotificationsPopover state={state} open={open} onOpenChange={noop} {...(notice === undefined ? {} : { notice })} show={show} onShow={setShow} onReadAll={noop} onOpen={noop} onControl={noop} canAct={() => true} />
+      <NotificationsPopover state={state} open={open} onOpenChange={noop} {...(notice === undefined ? {} : { notice })} show={show} onShow={setShow} onReadAll={noop} onOpen={noop} onControl={noop} canAct={() => true}
+        onClear={id => keep(item => item.id !== id)} onClearAll={() => keep(item => !itemClearable(item) || (show === "unread" && item.read))} />
       <IconButton variant="ghost" size="sm" label="Search" title="" icon={<Search aria-hidden className="size-4" />} />
     </div></header><div className="workspace-rail-body"><WorkflowRail workflows={SHELL_STORY_WORKFLOWS} counts={SHELL_STORY_COUNTS_IDLE} active="person-lookup" onSelect={noop} collapsed={collapsed} /></div></aside>
     <main className="flex min-h-0 flex-1 flex-col"><div className="dashboard-panel-columns"><div className="dashboard-queue-column"><h1 className="sr-only">Person Lookup queue</h1>{emptyPanel("No runs on this day")}</div>
@@ -68,7 +71,10 @@ const COMBINATION = {
   empty: popover("The popover with no notifications", notificationsReady()),
   grouped: popover("The popover with many grouped notifications", POPOVER_MANY),
   long: popover("The popover with a long name, truncated on one line", POPOVER_LONG_NOTICES, { knownFailures: { "fits-viewport": "#751" } }),
-  hover: popover("A row hovered: the read toggle takes the time's place and nothing moves", POPOVER_FEW, { play: page => page.locator(".notice-row").first().hover() }),
+  hover: popover("A row hovered: the read toggle and Clear take the time's place and nothing moves", POPOVER_FEW, { play: page => page.locator(".notice-row").first().hover() }),
+  standing: popover("A notice still waiting on you, hovered: no Clear until it is handled", POPOVER_FEW, { play: page => page.locator('.notice-row[data-id="popover-waiting"]').hover() }),
+  cleared: popover("Everything cleared: only the notice still waiting on you stays", POPOVER_FEW, { play: page => page.getByRole("button", { name: "Clear all" }).click() }),
+  "cleared-empty": popover("Everything cleared: the empty panel", notificationsReady(POPOVER_FAILED, POPOVER_DONE), { play: page => page.getByRole("button", { name: "Clear all" }).click() }),
   unread: popover("Only unread notifications", POPOVER_MANY, {}, { show: "unread" }),
   "all-read": popover("Unread chosen with everything read", notificationsReady({ ...NOTICE_BY_TONE.positive, day: "Today" }), {}, { show: "unread" }),
   gone: popover("A notice whose run was deleted", notificationsReady(POPOVER_GONE)),

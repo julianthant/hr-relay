@@ -23,10 +23,13 @@ async function draw(state: NotificationsState, show: "all" | "unread" = "all") {
   const calls: string[] = [];
   const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
   await act(async () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(NotificationsPopover, { state, open: true, onOpenChange() {}, show, onShow() {},
-    onReadAll: () => calls.push("read-all"), onOpen: opened => calls.push(`open:${opened.id}`), onControl: (id, control) => calls.push(`${control}:${id}`), canAct: () => true })))));
+    onReadAll: () => calls.push("read-all"), onClearAll: () => calls.push("clear-all"), onClear: id => calls.push(`clear:${id}`),
+    onOpen: opened => calls.push(`open:${opened.id}`), onControl: (id, control) => calls.push(`${control}:${id}`), canAct: () => true })))));
   const groups = () => [...document.querySelectorAll("section.notice-group")].map(group => [group.getAttribute("aria-label"), [...group.querySelectorAll(".notice-title")].map(title => title.textContent).length]);
   const row = (index: number) => { const found = document.querySelectorAll<HTMLElement>("li.notice-row")[index]; assert(found); return found; };
-  return { host, calls, groups, row };
+  const rerender = (next: NotificationsState) => act(async () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(NotificationsPopover, { state: next, open: true, onOpenChange() {}, show, onShow() {},
+    onReadAll() {}, onClearAll() {}, onClear: id => calls.push(`clear:${id}`), onOpen() {}, onControl() {}, canAct: () => true })))));
+  return { host, calls, groups, row, rerender };
 }
 
 it("lists unread failures and waits under Needs you and everything read under its day, with the unread count on the bell", async () => {
@@ -67,8 +70,9 @@ it("opens a row, toggles its read state from the row, and marks all read", async
   await act(async () => view.row(0).querySelector<HTMLButtonElement>("button.notice-main")?.click());
   await act(async () => view.row(0).querySelector<HTMLButtonElement>('button[aria-label="Mark as read"]')?.click());
   await act(async () => view.row(2).querySelector<HTMLButtonElement>('button[aria-label="Mark as unread"]')?.click());
-  await act(async () => [...document.querySelectorAll("button")].find(button => button.textContent === "Mark all read")?.click());
-  assert.deepEqual(view.calls, ["open:failed", "read:failed", "unread:read", "read-all"]);
+  await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Mark all read"]')?.click());
+  await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Clear all"]')?.click());
+  assert.deepEqual(view.calls, ["open:failed", "read:failed", "unread:read", "read-all", "clear-all"]);
 });
 
 it("shows history without a toggle or bell count even when it matches a native notice", async () => {
@@ -104,5 +108,43 @@ it("filters to unread and disables Mark all read when nothing is unread", async 
   const view = await draw({ state: "ready", items: ITEMS.map(entry => ({ ...entry, read: true })), pinned: [] }, "unread");
   assert.deepEqual(view.groups(), []);
   assert(document.body.textContent?.includes("No unread notifications"));
-  assert.equal([...document.querySelectorAll("button")].find(button => button.textContent === "Mark all read")?.disabled, true);
+  assert.equal(document.querySelector<HTMLButtonElement>('button[aria-label="Mark all read"]')?.disabled, true);
+  assert.equal(document.querySelector<HTMLButtonElement>('button[aria-label="Clear all"]')?.disabled, true);
+});
+
+it("names the header actions by icon only and offers Clear only on rows that can be cleared", async () => {
+  const items = [item("failed"), item("waiting", { title: "Run waiting", tone: "warning", standing: true }), item("history", { read: true, readOnlyHistory: true, day: "Yesterday" })];
+  const view = await draw({ state: "ready", items, pinned: [] });
+  for (const label of ["Mark all read", "Clear all"]) {
+    const button = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    assert.equal(button?.textContent, "", `${label} shows no text`);
+  }
+  assert(view.row(0).querySelector('button[aria-label="Clear notification"]'));
+  assert.ok(view.row(1).querySelector('button[aria-label="Clear notification"]') === null, "a standing notice has no Clear");
+  assert(view.row(1).querySelector('button[aria-label="Mark as read"]'), "a standing notice keeps its read toggle");
+  assert.ok(view.row(2).querySelector(".notice-action") === null, "history has no actions");
+  await act(async () => view.row(0).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]')?.click());
+  assert.deepEqual(view.calls, ["clear:failed"]);
+});
+
+it("dims Clear all when only standing notices are listed", async () => {
+  await draw({ state: "ready", items: [item("waiting", { tone: "warning", standing: true })], pinned: [] });
+  assert.equal(document.querySelector<HTMLButtonElement>('button[aria-label="Clear all"]')?.disabled, true);
+  assert.equal(document.querySelector<HTMLButtonElement>('button[aria-label="Mark all read"]')?.disabled, false);
+});
+
+it("moves focus to the next row after a clear, then to the header once the list is empty", async () => {
+  const items = [item("a"), item("b"), item("c")];
+  const view = await draw({ state: "ready", items, pinned: [] });
+  await act(async () => view.row(0).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]')?.click());
+  await view.rerender({ state: "ready", items: items.slice(1), pinned: [] });
+  assert.equal(document.activeElement, view.row(0).querySelector(".notice-main"), "focus lands on the row that took its place");
+  assert.equal(view.row(0).dataset.id, "b");
+  await act(async () => view.row(1).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]')?.click());
+  await view.rerender({ state: "ready", items: [items[1]], pinned: [] });
+  assert.equal(document.activeElement, view.row(0).querySelector(".notice-main"), "the last row falls back to the one before it");
+  await act(async () => view.row(0).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]')?.click());
+  await view.rerender({ state: "ready", items: [], pinned: [] });
+  assert.equal(document.activeElement, document.querySelector("header.notice-popover-head"));
+  assert(document.body.textContent?.includes("No notifications"), "the empty state is the panel's own");
 });

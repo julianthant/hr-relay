@@ -25,6 +25,8 @@ export type NotificationRailModel = Readonly<{
   onControl: (id: string, control: NotificationControl) => Promise<boolean>;
   canAct: (id: string) => boolean;
   onReadAll: () => void;
+  onClear: (id: string) => void;
+  onClearAll: (show: "all" | "unread") => void;
   onOpenItem: (item: NotificationItem) => void;
 }>;
 
@@ -53,6 +55,8 @@ export function useNotificationRailModel({ open = false, setOpen, onAlert, onRef
     onControl: (id, action) => served.control(id, action),
     canAct: id => served.canAct(id),
     onReadAll: () => { void served.readAll(); },
+    onClear: id => { void served.clear(id); },
+    onClearAll: show => { void served.clearAll(show); },
     // Opening an item closes the list; one that cannot open says so in a toast.
     onOpenItem: item => served.open(item, onOpenNotification, () => setOpen(false), message => onRefused(item, message)),
   };

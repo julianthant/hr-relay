@@ -280,6 +280,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const [bulkReview, setBulkReview] = useState(false);
   const [openedBulk, setOpenedBulk] = useState<BulkBatchOutcome | null>(null);
   const [noticeRead, setNoticeRead] = useState<ReadonlySet<string>>(() => new Set());
+  const [noticeCleared, setNoticeCleared] = useState<ReadonlySet<string>>(() => new Set());
   const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(() => workflowComposition.harness?.bulkOutcome ?? null);
   const [, refreshCommandRecovery] = useState(0);
   const [pendingRecovery, setPendingRecovery] = useState<string | null>(null);
@@ -771,13 +772,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const inbox = harnessInbox ?? servedInbox;
   const shownRecovery: readonly CommandRecoveryEntry[] = workflowComposition.harness?.unknownCommand ? [...recoveryEntries, workflowComposition.harness.unknownCommand] : recoveryEntries;
   const commandNotices: readonly NotificationItem[] = [
-    ...shownRecovery.map((entry): NotificationItem => ({ id: `command:${entry.inFlightKey}`, kind: "command", priority: true, title: recoveryTitle(entry), subject: "", workflow: "",
+    // A command whose outcome is unknown still waits on the operator, so it cannot be cleared.
+    ...shownRecovery.map((entry): NotificationItem => ({ id: `command:${entry.inFlightKey}`, kind: "command", priority: true, standing: true, title: recoveryTitle(entry), subject: "", workflow: "",
       detail: `${recoveryDetail(entry)}. Review the original request to recover its result.`, tone: "warning", age: "Just now", read: false, action: "Review", destination: { kind: "local-recovery", key: entry.inFlightKey } })),
     ...commandResults.map((entry): NotificationItem => ({ id: `command-result:${entry.id}`, kind: "command", priority: true, title: commandResultTitle(entry), subject: "", workflow: "",
       detail: commandResultDetail(entry), tone: entry.settlement.reason === "conflict" ? "warning" : "danger", age: entry.clock, read: false,
       action: entry.settlement.reason === "conflict" ? "Refresh row" : "Open run", destination: { kind: "local-command-result", id: entry.id } })),
     ...(bulkOutcome === null ? [] : [bulkResultNotice(bulkOutcome)]),
-  ];
+  ].filter(notice => !noticeCleared.has(notice.id));
   // Local command notices are not server rows: their read state lives here, never in the served inbox.
   const localNoticeIds = new Set(commandNotices.map(notice => notice.id));
   const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => localNoticeIds.has(item.id) ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
@@ -788,7 +790,18 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       if (action === "read" || action === "unread") setNoticeRead(previous => { const next = new Set(previous); if (action === "read") next.add(id); else next.delete(id); return next; });
       return true;
     },
-    readAll: async () => { setNoticeRead(previous => new Set([...previous, ...localNoticeIds])); await inbox.readAll(); } };
+    readAll: async () => { setNoticeRead(previous => new Set([...previous, ...localNoticeIds])); await inbox.readAll(); },
+    clear: async (id: string) => {
+      if (!localNoticeIds.has(id)) return inbox.clear(id);
+      if (commandNotices.some(notice => notice.id === id && notice.standing === true)) return false;
+      setNoticeCleared(previous => new Set([...previous, id]));
+      return true;
+    },
+    clearAll: async (show: "all" | "unread") => {
+      const local = commandNotices.filter(notice => notice.standing !== true && (show === "all" || !(notice.read || noticeRead.has(notice.id)))).map(notice => notice.id);
+      setNoticeCleared(previous => new Set([...previous, ...local]));
+      return inbox.clearAll(show);
+    } };
   const servedNeedsYou = railInbox?.state.state === "ready" ? railInbox.state.items.filter(item => !item.read && item.priority === true).length : 0;
   useEffect(() => { assistantNeeds.report(servedNeedsYou); }, [servedNeedsYou]);
   const canOpenRegisteredWorkflow = useCallback((id: string) => workflows.some(flow => flow.id === id), [workflows]);

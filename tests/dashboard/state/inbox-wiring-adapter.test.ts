@@ -51,7 +51,8 @@ function publication(notification: NotificationWire, n = 1, listed: Notification
 }
 const ERROR = WireErrorSchema.parse({ state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true });
 async function harness(enabled = true, initiallyFailed = false, statusDelivered = true) {
-  let rows: readonly NotificationWire[] = [row()], lose = false, refuseTarget = false;
+  let rows: readonly NotificationWire[] = [row()], lose = false, refuseTarget = false, refuseClear = false;
+  const feedbacks: string[] = [];
   let postWait: Promise<void> | undefined;
   const requests: string[] = [];
   const commands: CommandRequest[] = [], listeners: ((arrival: NotificationArrival) => void)[] = [];
@@ -61,15 +62,24 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
       const linked = rows.find(row => row.notificationId === path.split("/").at(-2));
       return Response.json(linked === undefined ? { kind: "refused", reason: "run-unavailable" } : targetOf(linked, refuseTarget));
     }
-    if (path.endsWith("/collection")) return Response.json({ actorId: "local-operator",
-      members: [...rows].sort((a, b) => a.notificationId < b.notificationId ? -1 : 1).map(row => ({ notificationId: row.notificationId, expectedVersion: row.kind === "notification" ? row.revision : 1 })),
-      matchingCount: rows.filter(row => row.kind === "notification" && row.readState === "unread").length });
+    if (path.endsWith("/collection")) {
+      const operation = new URL(url).searchParams.get("operation");
+      return Response.json({ actorId: "local-operator",
+        members: [...rows].sort((a, b) => a.notificationId < b.notificationId ? -1 : 1).map(row => ({ notificationId: row.notificationId, expectedVersion: row.kind === "notification" ? row.revision : 1 })),
+        matchingCount: rows.filter(row => row.kind === "notification" && (operation === "clear" ? row.standing !== true : row.readState === "unread" && (operation !== "clear-unread" || row.standing !== true))).length });
+    }
     if (path.endsWith("/notifications")) return Response.json(rows);
     if (path.endsWith("/commands")) {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); commands.push(command);
       await postWait;
       const target = command.target;
+      if (command.type.startsWith("notification-clear")) {
+        if (refuseClear) return Response.json({ state: "rejected", commandId: command.commandId, code: "policy-refused", message: "This notice still waits on you." });
+        const cleared = rows.filter(item => item.kind === "notification" && ("members" in target ? target.members.some(member => member.notificationId === item.notificationId) && item.standing !== true : item.notificationId === target.notificationId));
+        rows = rows.filter(item => !cleared.includes(item));
+        return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: cleared.map(item => ({ family: "notification", notificationId: item.notificationId })) });
+      }
       const affected = rows.filter(item => item.kind === "notification" && ("members" in target ? target.members.some(member => member.notificationId === item.notificationId) && item.readState === "unread" : item.notificationId === target.notificationId));
       rows = rows.map(item => item.kind !== "notification" || !affected.some(row => row.notificationId === item.notificationId) ? item : NotificationWireSchema.parse({ ...item, revision: item.revision + 1,
         readState: command.type === "notification-read" || command.type === "notification-read-all" ? "read" : command.type === "notification-unread" ? "unread" : item.readState,
@@ -91,7 +101,7 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
   const scope = { client, authority: epoch, actorId: "local-operator", dayRequest };
   let activeScope: CommandExecutionScope = scope;
   const executor = new CommandExecutor(() => activeScope);
-  const binding: DashboardCommandBinding = { executor, scope, feedback() {}, authority: { epoch, now: () => now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
+  const binding: DashboardCommandBinding = { executor, scope, feedback: outcome => { feedbacks.push(outcome.kind); }, authority: { epoch, now: () => now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
     dayState: { rows: store, request: dayRequest, get day() { if (dayRows !== dayServed) { dayRows = dayServed; day = { state: "loaded", value: { ...FIXTURE_DAY_WIRE, snapshotCursor: ProjectionCursorSchema.parse(`pc:${snapshots += 1}`), notifications: [...dayServed] } }; } return day; },
       connection: { state: "live" }, refresh() { refreshes += 1; }, subscribePublications: listener => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; } } } };
   let value: InboxWiring | undefined;
@@ -107,6 +117,7 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
     setRows: (next: readonly NotificationWire[]) => { rows = next; dayServed = next; },
     /** A day snapshot the stream delivers without changing what the server serves, such as one frozen before a command. */
     serveDay: (next: readonly NotificationWire[]) => { dayServed = next; }, lose: () => { lose = true; }, refuseTarget: () => { refuseTarget = true; },
+    refuseClear: () => { refuseClear = true; }, feedbacks,
     holdCommands: () => { let release = () => {}; postWait = new Promise<void>(resolve => { release = resolve; }); return release; } };
 }
 it("defines all eight source policies with exact target kinds and honest gap/missing-source notice", () => {
@@ -514,4 +525,50 @@ it("groups served notices by local day", () => {
   const now = new Date(2026, 10, 11, 15).toISOString();
   const at = (days: number) => new Date(2026, 10, 11 - days, 9).toISOString();
   assert.deepEqual([0, 1, 3, 8].map(days => notificationDay(at(days), now)), ["Today", "Yesterday", "Sunday", "November 3"]);
+});
+
+const shownIds = (inbox: InboxWiring) => inbox.state.state === "ready" ? inbox.state.items.map(item => item.id) : [];
+
+it("clears an item's whole group at once and keeps it gone while a stale day still lists it", async () => {
+  const h = await harness();
+  const first = row("run-failed", { notificationId: "00000000-0000-4000-8000-000000000501", occurredAt: "2026-08-03T16:59:00.000Z", summary: "CRM sign-in failed." });
+  const repeat = row("run-failed", { notificationId: "00000000-0000-4000-8000-000000000502", occurredAt: "2026-08-03T16:58:00.000Z", summary: "CRM sign-in failed." });
+  const other = row("verified-done", { notificationId: "00000000-0000-4000-8000-000000000503" });
+  h.setRows([first, repeat, other]); await h.render();
+  assert.deepEqual(shownIds(h.value).sort(), [first.notificationId, other.notificationId], "the repeat folds into one item");
+  let cleared: Promise<boolean> | undefined;
+  await act(async () => { cleared = h.value.clear(first.notificationId); });
+  await act(async () => { assert.equal(await cleared, true); });
+  assert.deepEqual(h.commands.map(command => [command.type, "notificationId" in command.target ? command.target.notificationId : ""]),
+    [["notification-clear", first.notificationId], ["notification-clear", repeat.notificationId]]);
+  h.serveDay([first, repeat, other]); await h.render();
+  assert.deepEqual(shownIds(h.value), [other.notificationId], "a day snapshot frozen before the clear does not bring it back");
+});
+
+it("puts a refused clear back with one failure toast", async () => {
+  const h = await harness();
+  const failed = row("run-failed", { notificationId: "00000000-0000-4000-8000-000000000511" });
+  h.setRows([failed]); await h.render();
+  h.refuseClear();
+  const release = h.holdCommands();
+  let cleared: Promise<boolean> | undefined;
+  await act(async () => { cleared = h.value.clear(failed.notificationId); });
+  assert.deepEqual(shownIds(h.value), [], "the row leaves at once");
+  release();
+  await act(async () => { assert.equal(await cleared, false); });
+  assert.deepEqual(shownIds(h.value), [failed.notificationId], "a refused clear puts it back");
+  assert.deepEqual(h.feedbacks, ["refused"], "one toast");
+});
+
+it("does not clear a standing notice and Clear all leaves it listed", async () => {
+  const h = await harness();
+  const waiting = row("gate-opened", { notificationId: "00000000-0000-4000-8000-000000000521", standing: true });
+  const done = row("verified-done", { notificationId: "00000000-0000-4000-8000-000000000522" });
+  h.setRows([waiting, done]); await h.render();
+  assert.equal(h.value.state.state === "ready" && h.value.state.items.find(item => item.id === waiting.notificationId)?.standing, true);
+  await act(async () => { assert.equal(await h.value.clear(waiting.notificationId), false); });
+  assert.deepEqual(h.commands, [], "a standing notice sends no clear");
+  await act(async () => { assert.equal(await h.value.clearAll("all"), true); });
+  assert.deepEqual(h.commands.map(command => command.type), ["notification-clear-all"]);
+  assert.deepEqual(shownIds(h.value), [waiting.notificationId]);
 });
