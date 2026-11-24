@@ -82,7 +82,9 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
 export async function noBannedText({ page }: StateRuleContext): Promise<readonly string[]> {
   const texts = await page.evaluate(() => {
     // The whole document: dialogs, menus and toasts mount in portals beside the story root.
-    const lines = document.body.innerText.split("\n");
+    // A path control shows the chosen folder on purpose (middle-truncated); that one value is not an operator leak.
+    const shownPaths = new Set([...document.body.querySelectorAll(".ds-path-value")].map(element => element.textContent?.trim()));
+    const lines = document.body.innerText.split("\n").filter(line => !shownPaths.has(line.trim()));
     for (const element of document.body.querySelectorAll("[aria-label], [title], [placeholder], [alt]")) {
       for (const attribute of ["aria-label", "title", "placeholder", "alt"]) lines.push(element.getAttribute(attribute) ?? "");
     }

@@ -1389,11 +1389,11 @@ body[data-demo-theme="light"] {
 }
 /* Toolbar search edge: a step stronger than the faint field border (Codex). */
 
-.ds-search-field { --field-border: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-canvas)); }
+.ds-search-field { --field-border: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-canvas)); --field: color-mix(in srgb, var(--ds-fg) 4%, var(--ui-canvas)); --field-hover: var(--field); --field-focus: var(--field); --field-border-focus: color-mix(in srgb, var(--ds-fg) 40%, var(--ui-canvas)); }
 [data-demo-theme="dark"] 
 .ds-search-field { --field-border: color-mix(in srgb, var(--ds-fg) 23%, var(--ui-canvas)); }
 /* `field`: the 8px bordered 28px field inside a page or menu, a 14px magnifier, 13px text. `sidebar` (below) is the filled pill above a list. */
-.ds-search-field [data-slot="search-field-group"] { width: 100%; height: var(--ds-h-md); min-height: var(--ds-h-md); max-height: var(--ds-h-md); box-sizing: border-box; gap: 8px; padding-inline: 10px 4px; border-radius: 8px; background: var(--field); color: var(--field-foreground); }
+.ds-search-field [data-slot="search-field-group"] { width: 100%; height: var(--ds-h-md); min-height: var(--ds-h-md); max-height: var(--ds-h-md); box-sizing: border-box; gap: 8px; padding-inline: 12px 4px; border-radius: 9999px; background: var(--field); color: var(--field-foreground); }
 .ds-search-field [data-slot="search-field-search-icon"] { width: 14px; height: 14px; flex-shrink: 0; color: var(--field-placeholder); }
 .ds-search-field [data-slot="search-field-input"] { min-width: 0; width: 100%; height: 100%; padding-block: 0; padding-inline: 0; background: transparent; font-size: 13px; font-weight: 400; line-height: 18px; }
 .ds-search-field [data-slot="search-field-input"]::placeholder { color: var(--field-placeholder); opacity: 1; }
@@ -1402,12 +1402,12 @@ body[data-demo-theme="light"] {
 .ds-menu-search-row svg { width: 16px; height: 16px; flex: none; }
 .ds-menu-search-row input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; box-shadow: none; background: transparent; color: var(--ui-primary); font: inherit; font-size: 13px; line-height: 18px; }
 .ds-menu-search-row input::placeholder { color: var(--ui-muted); opacity: 1; }
-/* Sidebar search (Codex): 36px, no border, a 15px corner, a fill one step above the sidebar; icon and text sit on the row icon and text x. */
-.ds-search-field--sidebar { --field: color-mix(in srgb, var(--ds-fg) 7%, transparent); --field-hover: var(--field); --field-focus: var(--field); --field-border: transparent; --field-border-hover: transparent; --field-border-focus: transparent; --border-width-field: 0px; }
-[data-demo-theme="dark"] .ds-search-field--sidebar { --field-border: transparent; }
-.ds-search-field--sidebar [data-slot="search-field-group"] { height: 36px; min-height: 36px; max-height: 36px; padding-inline: 12px 6px; border-radius: 9999px; border: 0; }
-.ds-search-field--sidebar [data-slot="search-field-search-icon"] { width: 16px; height: 16px; margin: 0; }
-.ds-search-field--sidebar [data-slot="search-field-input"] { font-size: 14px; line-height: 20px; }
+/* Sidebar search: a 32px outlined pill with a barely-there fill; `field` above is the page pill with a thin border and a muted fill. */
+.ds-search-field--sidebar { --field: color-mix(in srgb, var(--ds-fg) 2%, transparent); --field-hover: var(--field); --field-focus: var(--field); --field-border: color-mix(in srgb, var(--ds-fg) 14%, transparent); --field-border-hover: var(--field-border); --field-border-focus: color-mix(in srgb, var(--ds-fg) 40%, transparent); --border-width-field: 1px; }
+[data-demo-theme="dark"] .ds-search-field--sidebar { --field-border: color-mix(in srgb, var(--ds-fg) 22%, transparent); }
+.ds-search-field--sidebar [data-slot="search-field-group"] { height: 32px; min-height: 32px; max-height: 32px; padding-inline: 12px 6px; border-radius: 9999px; border: 1px solid var(--field-border); }
+.ds-search-field--sidebar [data-slot="search-field-search-icon"] { width: 14px; height: 14px; margin: 0; }
+.ds-search-field--sidebar [data-slot="search-field-input"] { font-size: 13px; line-height: 18px; }
 /* The sidebar field has no edge to step up, so the input itself draws the ring. */
 .ds-search-field.ds-search-field--sidebar [data-slot="search-field-input"]:focus-visible { outline: var(--ds-focus-ring-w) solid var(--ds-focus-ring); outline-offset: 2px; border-radius: 9999px; }
 .ds-search-shortcut { margin-right: var(--ds-space-base); color: var(--ds-fg-muted); }
@@ -2057,3 +2057,8 @@ body[data-demo-theme],
 [data-demo-theme="dark"] { --ds-menu-fg: #dcdcde; --ds-fg-list: #c4c4c6; --ds-sidebar-fg: #c5c5c7; --ds-sidebar-grey: #7c7c80; }
 
 @media (max-width: 1099px) { :root { --ds-w-queue-column: 336px; } }
+
+/* The small dialog (confirmations and single-field edits): a light 16px title, the × level with it, tight even spacing. */
+[data-size="sm"][role="dialog"] { --ds-dialog-title-size: 16px; --ds-dialog-title-lh: 24px; }
+[data-size="sm"][role="dialog"] > header { align-items: center; padding-bottom: var(--ds-space-base); }
+[data-size="sm"][role="dialog"] > header h2 { font-weight: 500; }
