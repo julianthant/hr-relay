@@ -47,14 +47,13 @@ const click = (name: string | RegExp, exact = true) => async (page: Page): Promi
   await page.getByRole("button", { name, exact }).first().click();
 };
 const then = (...steps: readonly ((page: Page) => Promise<void>)[]) => async (page: Page): Promise<void> => { for (const step of steps) await step(page); };
-/** Waits for the editable settings to arrive: the General page's job-end date is on screen. */
-const WINDOW = '[data-settings-path$=".jobEndDate"] [role="spinbutton"][data-type="day"]';
+/** Waits for the editable settings to arrive: the General page's failures switch is on screen. */
+const WINDOW = '[data-settings-path="preferences.notifications.failures"] [role="switch"]';
 const loaded = async (page: Page): Promise<void> => { await page.locator(WINDOW).waitFor(); };
-/** The immediate-save edit every save story makes: the job-end day starts at 30, so typing 15 is a change. */
+/** The immediate-save edit every save story makes: the failures switch starts on, so one press is a change. */
 const chooseWindow = async (page: Page): Promise<void> => {
   await loaded(page);
-  await page.locator(WINDOW).press("1");
-  await page.locator(WINDOW).press("5");
+  await page.locator(WINDOW).click();
 };
 const type = (label: string, value: string) => async (page: Page): Promise<void> => { await page.getByLabel(label, { exact: true }).fill(value); };
 
@@ -96,7 +95,7 @@ const saveStory = (title: string, server: SettingsStoryServerOptions, ready: str
 const SAVE = {
   idle: scene("A setting with nothing changed", { play: loaded }),
   saving: scene("A save sent, no answer yet", { server: { save: "never" }, play: chooseWindow, story: { ready: WINDOW } }),
-  applied: saveStory("A save that lands", { save: "applied" }, 'text=/Saved settings/'),
+  applied: saveStory("A save that lands", { save: "applied" }, 'text=/Saved /'),
   refused: saveStory("A save the server refused", { save: "rejected" }, 'text=/Settings weren.t saved/'),
   conflict: saveStory("A save over settings that changed elsewhere", { save: "conflict" }, 'text=/Settings weren.t saved/'),
   unconfirmed: saveStory("A save whose answer was lost", { save: "lost" }, 'text=/Settings weren.t saved/'),
@@ -105,7 +104,7 @@ const SAVE = {
 /** Saves that land with something to say. */
 type SaveCombo = "replayed" | "restart-required";
 const SAVE_COMBO = {
-  replayed: saveStory("A save that was already saved", { save: "replayed" }, 'text=/Already saved settings/'),
+  replayed: saveStory("A save that was already saved", { save: "replayed" }, 'text=/Already saved /'),
   "restart-required": saveStory("A save that needs a restart", { save: "restart" }, 'text=/Restart to use them/'),
 } satisfies Record<SaveCombo, Story>;
 
