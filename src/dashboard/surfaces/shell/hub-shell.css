@@ -40,5 +40,3 @@
 .hub-history { display:flex;flex-direction:column;flex:1;min-height:0; }
 .hub-history-bar { display:flex;flex:none;align-items:center;gap:8px;padding:4px 16px 8px; }
 .hub-history-bar > :first-child { flex:1;min-width:0; }
-.hub-history-bar .ds-segment { flex:none;height:32px; }
-.hub-history-bar .ds-segment > label > span { padding-inline:12px; }

@@ -14,6 +14,7 @@ export interface StateRuleContext {
   readonly diagnostics: { readonly seen: readonly string[]; readonly settle: () => Promise<void> };
   /** The shape each kind of dialog is held to in this run, by kind and viewport. */
   readonly dialogShapes: Map<string, { readonly storyId: string; readonly shape: Readonly<Record<string, string>> }>;
+  readonly recordTabStop?: (activeElement: string) => void;
 }
 
 type StateRuleCheck = (context: StateRuleContext) => Promise<readonly string[]>;
@@ -268,6 +269,8 @@ export function primaryButtonAccent({ page }: StateRuleContext): Promise<readonl
     };
     const accent = token("--ds-accent");
     const canvasSurface = token("--ds-surface-page");
+    const off = token("--ds-button-off-bg");
+    const same = (first: readonly number[], second: readonly number[]) => first.every((channel, index) => Math.abs(channel - (second[index] ?? 0)) <= 2);
     const found: string[] = [];
     for (const button of document.querySelectorAll<HTMLElement>('body :is(button, [role="button"], a[data-slot="button"])')) {
       const box = button.getBoundingClientRect();
@@ -278,6 +281,8 @@ export function primaryButtonAccent({ page }: StateRuleContext): Promise<readonl
       const declared = button.className.includes("bg-[var(--ds-accent)]") || button.className.includes("text-[color:var(--ds-accent-fg)]");
       const loud = fill[3] >= 250 && contrast(fill, canvasSurface) >= 3;
       if (!declared && !loud) continue;
+      // A dialog's confirm with nothing to save is the flat off grey, not a second accent.
+      if (button.matches(":disabled") && same(fill, off)) continue;
       if (fill[3] < 250 || fill.some((channel, index) => Math.abs(channel - (accent[index] ?? 0)) > 2)) {
         const paint = fill[3] < 250 ? "has no solid fill" : `is filled rgb(${fill.slice(0, 3).join(", ")})`;
         found.push(`the button "${(button.getAttribute("aria-label") ?? button.innerText).trim().slice(0, 40)}" ${paint}, `
@@ -322,7 +327,7 @@ interface FocusProbeControl {
 interface FocusProbeResult {
   readonly controls: readonly FocusProbeControl[];
   /** Where keyboard focus is now: a tagged control, some other element, or nothing. */
-  readonly stop: { readonly index: string | null; readonly nowhere: boolean; readonly ring: boolean };
+  readonly stop: { readonly index: string | null; readonly nowhere: boolean; readonly ring: boolean; readonly element: string };
 }
 
 /** Runs in the page. Tags every control an operator can use, then reports each keyboard stop and how it is drawn. */
@@ -333,6 +338,9 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
     // A switch's input is laid over its whole row at opacity 0 so the row takes the click; the ring a keyboard user sees
     // is drawn on the visible control beside it (WCAG 2.4.7 asks that a ring be visible, not that it sit on the input).
     const overlay = element instanceof HTMLInputElement && getComputedStyle(element).opacity === "0";
+    // A text field's focus mark is its caret plus the field's border stepping up, drawn on the box around the input.
+    const field = element.matches("input:not([type=checkbox], [type=radio], [type=range]), textarea") ? element.closest('[data-slot="search-field-group"], .ds-secret-input') : null;
+    if (field !== null) return [element, field];
     if (!(element instanceof HTMLInputElement) || box.width > 1 && box.height > 1 && !overlay) return [element];
     return [...element.labels ?? []].flatMap(label => [label, ...label.querySelectorAll("*")]).filter(part => part !== element);
   };
@@ -342,12 +350,17 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
     return [outline, style.boxShadow, style.borderColor, style.backgroundColor];
   }));
   const controls: FocusProbeControl[] = [];
-  let stop: FocusProbeResult["stop"] = { index: null, nowhere: true, ring: false };
+  let stop: FocusProbeResult["stop"] = { index: null, nowhere: true, ring: false, element: "(none)" };
   const report = () => {
     const active = document.activeElement;
-    if (active === null || active === document.body) return;
+    if (active === null) return;
     const index = active.getAttribute("data-state-rule-control");
-    stop = { index, nowhere: false, ring: index !== null && look(active) !== active.getAttribute("data-state-rule-look") };
+    const attributes = ["id", "role", "tabindex", "aria-label"].flatMap(name => {
+      const value = active.getAttribute(name);
+      return value === null ? [] : [` ${name}=${JSON.stringify(value)}`];
+    });
+    stop = { index, nowhere: active === document.body, ring: index !== null && look(active) !== active.getAttribute("data-state-rule-look"),
+      element: `<${active.localName}${attributes.join("")}>` };
   };
   if (input.step === "tag") {
     // Focus styles ease in; measure where they settle.
@@ -365,9 +378,14 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
       if (element.matches(':disabled, [aria-disabled="true"]') || element.closest('[inert], [aria-hidden="true"]') !== null) continue;
       // A tab list hands its Tab stop to the active tab, so the tabs are the stops; the list counts as reached only while that tab can take focus.
       if (element.getAttribute("role") === "tablist" && element.querySelector('[role="tab"][aria-selected="true"]:not(:disabled, [aria-disabled="true"])') !== null) continue;
-      // A bare tabindex="-1" region is a focus target for scripts, not a control. So is a dialog's own surface: WCAG 2.4.3
-      // (Focus Order) has focus move into the dialog, which needs it programmatically focusable, and 2.1.1 asks for no Tab stop on it.
-      if (element.getAttribute("tabindex") === "-1" && !element.matches('a[href], button, input, select, textarea, [role]:not([role="dialog"], [role="alertdialog"])')) continue;
+      if (element.getAttribute("tabindex") === "-1") {
+        // Settings names the highlighted row so it can announce the destination; its controls still have their own stops.
+        const settingsPath = element.getAttribute("data-settings-path");
+        if (settingsPath !== null && element.matches('div[role="group"]')
+          && element.closest("[data-settings-target]")?.getAttribute("data-settings-target") === settingsPath) continue;
+        // A dialog surface or bare region can receive programmatic focus without adding a Tab stop.
+        if (!element.matches('a[href], button, input, select, textarea, [role]:not([role="dialog"], [role="alertdialog"])')) continue;
+      }
       const index = String(controls.length);
       element.setAttribute("data-state-rule-control", index);
       element.setAttribute("data-state-rule-look", look(element));
@@ -392,7 +410,7 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
   return { controls, stop };
 }
 
-export async function namedAndFocusable({ page }: StateRuleContext): Promise<readonly string[]> {
+export async function namedAndFocusable({ page, recordTabStop }: StateRuleContext): Promise<readonly string[]> {
   const found: string[] = [];
   const { controls } = await page.evaluate(focusProbe, { step: "tag", selector: CONTROL_SELECTOR });
   try {
@@ -402,19 +420,35 @@ export async function namedAndFocusable({ page }: StateRuleContext): Promise<rea
         .then(() => true, () => false);
       if (!named) found.push(`${label} has no name`);
     }
-    // Walk the page as a keyboard user does: Tab between stops, arrow keys inside a widget. Only a stop the walk
-    // lands on counts as reached. The walk ends when focus leaves the page or comes round again.
+    // Blurring a control leaves Chromium's Tab starting point there. Follow the browser's wrap through the
+    // document so a walk beginning mid-page also reaches the earlier controls.
     const rings = new Map<string, boolean>();
-    const widgets = new Map(controls.map(control => [control.index, control.composite]));
+    const tabStops = new Set<string>();
+    const byIndex = new Map(controls.map(control => [control.index, control]));
     const members = controls.filter(control => control.composite).length;
-    for (let presses = 0; presses < controls.length * 2 + 20; presses += 1) {
+    let wrapped = false;
+    let lastTabIndex: number | undefined;
+    for (let presses = 0; presses < controls.length * 2 + 20 && rings.size < controls.length; presses += 1) {
       await page.keyboard.press("Tab");
       const { stop } = await page.evaluate(focusProbe, { step: "stop" });
-      if (stop.nowhere) break;
+      const control = stop.index === null ? undefined : byIndex.get(stop.index);
+      recordTabStop?.(control === undefined ? stop.element : `${stop.element} ${control.label.replace(/\s+/gu, " ")}`);
+      if (stop.nowhere) {
+        if (wrapped) break;
+        wrapped = true;
+        tabStops.clear();
+        continue;
+      }
       if (stop.index === null) continue;
-      if (rings.has(stop.index)) break;
+      const tabIndex = Number(stop.index);
+      // A later control after body means focus was dropped mid-page.
+      if (wrapped && tabStops.size === 0 && lastTabIndex !== undefined && tabIndex > lastTabIndex) break;
+      if (tabStops.has(stop.index)) break;
+      tabStops.add(stop.index);
+      lastTabIndex = tabIndex;
+      if (rings.has(stop.index)) continue;
       rings.set(stop.index, stop.ring);
-      if (widgets.get(stop.index) !== true) continue;
+      if (control?.composite !== true) continue;
       for (const key of ["ArrowRight", "ArrowDown"]) {
         for (let moves = 0; moves < members; moves += 1) {
           const before = (await page.evaluate(focusProbe, { step: "stop" })).stop.index;
