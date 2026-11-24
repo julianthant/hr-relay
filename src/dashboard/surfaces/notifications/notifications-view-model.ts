@@ -19,10 +19,12 @@ export type NotificationItem = Readonly<{
   count?: number;
   /** Priority: still needs the operator. Resolved items fall into their day group. */
   priority?: boolean;
-  /** Day group label once out of Priority: Today, Yesterday, a weekday or a date. */
+  /** Day group label once out of Needs you: Today, Yesterday, a weekday or a date. */
   day?: string;
   /** When it happened; the shown age ticks from it. Without it the age stays as served. */
   at?: string;
+  /** The run or failure it pointed at was deleted: the item says so and opens nothing. */
+  gone?: boolean;
 }>;
 
 /** Whole minutes, hours, then days since `at`. */

@@ -53,6 +53,14 @@ const headers = z.strictObject({ format: z.literal(archiveFormat), schema_versio
 const Column = z.string().regex(/^[a-z_][a-z0-9_]*$/u);
 const validatedVersion = new WeakMap<DatabaseSync, number>();
 
+/** The archive answers the statements written for the native tables, so it carries their indexes: without one a lookup scans every archived row. */
+function missingNativeIndexes(native: DatabaseSync, archive: DatabaseSync): string[] {
+  const present = new Set(archive.prepare("SELECT name FROM sqlite_master WHERE type='index'").all().map(row => z.object({ name: z.string() }).parse(row).name));
+  return native.prepare(`SELECT name,sql FROM main.sqlite_master WHERE type='index' AND sql IS NOT NULL
+    AND tbl_name IN (SELECT value FROM json_each(?)) ORDER BY name`).all(JSON.stringify(Object.keys(historyTables)))
+    .map(row => z.object({ name: z.string(), sql: z.string() }).parse(row)).filter(index => !present.has(index.name)).map(index => index.sql);
+}
+
 /** An index hint applies to a native table. The planner selects each side's index independently on the history union. */
 export function runIndex(database: DatabaseSync, name: "runs_day_idx" | "runs_workflow_day_idx" | "runs_parent_idx" | "runs_nonterminal_idx"): string {
   return validatedVersion.has(database) ? "" : `INDEXED BY ${name}`;
@@ -97,6 +105,7 @@ function materializeHistoryArchive(source: DatabaseSync, path: string, binding: 
     }
     archive.exec("UPDATE run_search SET state='discarded' WHERE run_id IN (SELECT id FROM runs WHERE outcome='discarded') AND state NOT IN ('done','failed','cancelled','discarded','interrupted','superseded')");
     backfillRunSearchOcrSubjects(archive);
+    for (const index of missingNativeIndexes(source, archive)) archive.exec(index);
     archive.exec("COMMIT");
     return counts;
   } finally { archive.close(); }
@@ -234,7 +243,7 @@ function assertArchiveFile(path: string) {
 
 function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
   assertArchiveFile(path);
-  upgradeHistoryArchive(path, binding, database);
+  upgradeHistoryArchive(database, path, binding);
   const url = pathToFileURL(path);
   url.search = "mode=ro&immutable=1";
   database.prepare("ATTACH DATABASE ? AS history").run(url.href);
@@ -260,30 +269,32 @@ function readArchiveVersion(archive: DatabaseSync, binding: ProfileDatabaseBindi
   return header;
 }
 
-/** Brings an archive an older build wrote up to the current schema in place, in one transaction. */
-function upgradeHistoryArchive(path: string, binding: ProfileDatabaseBinding, layout: DatabaseSync): void {
+/** Upgrades an archive's schema, format and native indexes in one transaction. */
+function upgradeHistoryArchive(native: DatabaseSync, path: string, binding: ProfileDatabaseBinding): void {
   const probe = new DatabaseSync(path, { readOnly: true });
-  let header: z.infer<typeof ArchiveVersion>;
-  try { header = readArchiveVersion(probe, binding); } finally { probe.close(); }
-  if (header.schema_version === CURRENT_AUTHORITY_SCHEMA_VERSION && header.format === archiveFormat) return;
-  let version: number;
+  try {
+    const header = readArchiveVersion(probe, binding);
+    if (header.schema_version === CURRENT_AUTHORITY_SCHEMA_VERSION && header.format === archiveFormat
+      && missingNativeIndexes(native, probe).length === 0) return;
+  } finally { probe.close(); }
   const archive = new DatabaseSync(path);
   try {
     archive.exec("BEGIN IMMEDIATE");
     try {
       const start = readArchiveVersion(archive, binding);
-      for (version = start.schema_version;
-        version < CURRENT_AUTHORITY_SCHEMA_VERSION; version += 1) {
+      let version = start.schema_version;
+      for (; version < CURRENT_AUTHORITY_SCHEMA_VERSION; version += 1) {
         const step = ARCHIVE_UPGRADES[version];
         if (step === undefined) throw new Error(`isolated-history-schema-unsupported: ${String(version)}`);
         step(archive);
       }
       if (start.format === 1) {
         for (const name of Object.keys(dashboardEvidenceTables)) {
-          const columns = layout.prepare(`SELECT * FROM main.${name} LIMIT 0`).columns().map(column => Column.parse(column.name));
+          const columns = native.prepare(`SELECT * FROM main.${name} LIMIT 0`).columns().map(column => Column.parse(column.name));
           createHistoryTable(archive, name, columns);
         }
       }
+      for (const index of missingNativeIndexes(native, archive)) archive.exec(index);
       archive.prepare("UPDATE history_header SET schema_version=?,format=?").run(version, archiveFormat);
       archive.exec("COMMIT");
     } catch (error) { archive.exec("ROLLBACK"); throw error; }
