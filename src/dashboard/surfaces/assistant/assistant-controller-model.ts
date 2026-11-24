@@ -11,7 +11,7 @@ import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModel
 import { ASSISTANT_FAILURES, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelCatalog, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_UNKNOWN_NOTICE, assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantProposal, type AssistantState } from './assistant-model.js';
 import { ASSISTANT_UNSAVED_REPLY, type AssistantHistory } from './assistant-history-model.js';
-import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
+import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from '../../../models/failures/error-catalog.js';
 import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
 import { AssistantActionDecisionSchema, type AssistantActionProposal } from '../../../models/dashboard/assistant.js';
 
@@ -223,11 +223,16 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (client.assistantStageAttachment === undefined) throw new Error(ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE);
       return client.assistantStageAttachment(conversationId, file);
     },
-    /** A picker choice: saved without a chat turn; the executor's feedback reports a refusal or unknown result. */
+    /** A picker choice: saved without a chat turn; command feedback reports a refusal, an unknown result or a failed read before dispatch. */
     async choose(preference: AssistantModelPreference) {
       if (retired) return;
       const owner = binding, signal = new AbortController().signal;
-      await savePreference(preference, owner, signal, () => !retired && binding === owner);
+      const current = () => !retired && binding === owner;
+      try { await savePreference(preference, owner, signal, current); }
+      catch (cause) {
+        if (current()) owner.commands?.feedback({ kind: 'failed', commandId: '', cause,
+          feedback: formatErrorCatalogFailure(createErrorCatalogFailure('COMMAND_DISPATCH_FAILED', {})) });
+      }
     },
     bind(next: Binding) {
       if (retired) return;

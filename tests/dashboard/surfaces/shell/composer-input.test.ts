@@ -117,10 +117,10 @@ describe('served composer menus', () => {
 function preferenceServer() {
   let view = AssistantModelPreferenceViewSchema.parse({ profileId: crypto.randomUUID(), epoch: 1, revision: 0, preference: servedPreference });
   const feedback: CommandOutcome[] = [];
-  const held = { gate: undefined as Promise<void> | undefined, refuse: false };
+  const held = { gate: undefined as Promise<void> | undefined, refuse: false, unreadable: false };
   const client = {
     async assistantRespond(): Promise<AssistantRespondEnvelope> { throw new Error('a pick sends no chat turn'); },
-    async assistantModelPreference() { return view; },
+    async assistantModelPreference() { if (held.unreadable) throw new TypeError('Failed to fetch'); return view; },
     async executeCommand(input: unknown): Promise<CommandResult> {
       const command = AssistantModelPreferenceCommandRequestSchema.parse(input);
       await held.gate;
@@ -184,6 +184,18 @@ describe('composer model menu', () => {
     await act(async () => { gate.resolve(); });
     await vi.waitFor(() => expect(trigger(host).textContent).toBe('GPT-6.1 SolMedium'));
     expect(server.feedback.map(outcome => outcome.kind)).toEqual(['refused']);
+    expect(server.preference).toEqual(servedPreference);
+  });
+
+  it('goes back and reports the failure when the preference cannot be read before saving', async () => {
+    const server = preferenceServer();
+    const host = await server.load();
+    server.held.unreadable = true;
+
+    await choose(host, 'Max');
+
+    await vi.waitFor(() => expect(server.feedback.map(outcome => outcome.kind)).toEqual(['failed']));
+    expect(trigger(host).textContent).toBe('GPT-6.1 SolMedium');
     expect(server.preference).toEqual(servedPreference);
   });
 });
