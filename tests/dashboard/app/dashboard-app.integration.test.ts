@@ -532,11 +532,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     assert_m1.ok(reads > 0);
     assert_m1.ok(document.body.textContent?.includes("Couldn't load logs."));
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Is this the right person\?|private transport detail/);
-    const retryLogs = [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Retry");
-    assert_m1.ok(retryLogs, "the logs notice offers Retry");
-    await act_m1(async () => { retryLogs.click(); });
-    await settle();
-    assert_m1.ok(document.body.textContent?.includes("Couldn't load logs."), "the stream's refusal stands until the server sends a panel");
+    assert_m1.ok([...document.querySelectorAll("button")].every(button => button.textContent?.trim() !== "Retry"), "a refused panel offers no client Retry; the server re-serves it");
     const failedReads = reads;
     await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { key: "mock-composition", client,
       children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));

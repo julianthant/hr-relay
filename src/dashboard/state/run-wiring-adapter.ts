@@ -598,19 +598,22 @@ function streamedRunSnapshot(row: RowIdentity, panel: Extract<RunPanel, { state:
 function refusedPanelState(error: Extract<RunPanel, { state: "refused" }>["error"]): RunWiringState {
   if (error.code === "LOGS_IDENTITY_REFUSED") return { state: "failed", retryable: false, diagnostic: error, error: identityRefusalReason(undefined) };
   const catalog = error.code === "RUN_LOG_DISPLAY_VALUE_UNMAPPED" ? "RUN_LOG_DISPLAY_VALUE_UNMAPPED" : "DASHBOARD_READ_FAILED";
-  return { state: "failed", retryable: error.retryable, diagnostic: error, error: formatErrorCatalogFailure(createErrorCatalogFailure(catalog, {})).text };
+  return { state: "failed", retryable: false, diagnostic: error, error: formatErrorCatalogFailure(createErrorCatalogFailure(catalog, {})).text };
 }
 
 /** What the run panel shows for the row: nothing yet, a refusal as the route would have answered it, a panel
  * that has not caught up with the row, or the validated composite. */
-function streamedRunState(client: object, authority: RunLogAuthority, row: RowIdentity, panel: RunPanel | undefined): RunWiringState {
+function streamedRunState(client: object, authority: RunLogAuthority, row: RowIdentity, panel: RunPanel | undefined, held: RunPanel | undefined): RunWiringState {
   if (panel === undefined) return keptRunLogsState(client, authority, row) ?? { state: "loading" };
   if (panel.state === "refused") return refusedPanelState(panel.error);
   try {
     const snapshot = streamedRunSnapshot(row, panel);
-    return snapshot.detail.rowRevision < row.rowRevision ? { state: "loading", snapshot } : { state: "loaded", snapshot };
+    if (snapshot.detail.rowRevision >= row.rowRevision) return { state: "loaded", snapshot };
+    // Only a panel held while the row moved ahead is catching up; one delivered below the row is invalid.
+    if (panel === held) return { state: "loading", snapshot };
+    throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
   } catch (cause) {
-    if (panel.detail.runId === row.runId && panel.detail.rowRevision < row.rowRevision) return { state: "loading" };
+    if (panel === held && panel.detail.runId === row.runId && panel.detail.rowRevision < row.rowRevision) return { state: "loading" };
     if (!(cause instanceof RunLogIdentityError)) throw cause;
     return { state: "failed", retryable: false, diagnostic: cause, error: identityRefusalReason(cause) };
   }
@@ -658,7 +661,11 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const authority = useMemo<RunLogAuthority>(() => ({ epoch: binding?.authority.epoch, actorId: binding?.scope.actorId }), [binding?.authority.epoch, binding?.scope.actorId]);
   // A day frame re-serves the row as a new object; only its identity and revision change what the panel shows.
   const { runId, attempt, traceId, workflowId, rowRevision } = row;
-  const value = useMemo(() => streamedRunState(client, authority, { runId, attempt, traceId, workflowId, rowRevision }, panel), [client, authority, runId, attempt, traceId, workflowId, rowRevision, panel]);
+  // The panel held when the row last moved: it may trail the row while the stream catches up. Any panel delivered later may not.
+  const heldAtRow = useRef<{ runId: string; rowRevision: number; panel: RunPanel | undefined }>();
+  if (heldAtRow.current?.runId !== runId || heldAtRow.current.rowRevision !== rowRevision) heldAtRow.current = { runId, rowRevision, panel };
+  const held = heldAtRow.current.panel;
+  const value = useMemo(() => streamedRunState(client, authority, { runId, attempt, traceId, workflowId, rowRevision }, panel, held), [client, authority, runId, attempt, traceId, workflowId, rowRevision, panel, held]);
   useEffect(() => { if (value.snapshot !== undefined && value.state === "loaded") keepRunLogs(client, authority, value.snapshot); }, [client, authority, value]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),

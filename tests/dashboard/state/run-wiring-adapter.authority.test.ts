@@ -503,6 +503,17 @@ describe("served Logs decision authority", () => {
     assert.equal(h.state?.snapshot?.detail.rowRevision, 4);
   });
 
+  it("fails a panel delivered below the selected row instead of waiting for it, while a held one stays loading", async () => {
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(3), 3), runSection: async () => logs() } as unknown as DashboardClient;
+    const h = await harness(client, undefined, false, false);
+    await h.render(selectionAt(4));
+    assert.equal(h.state?.state, "loading");
+    await act(async () => h.serve());
+    assert.equal(h.state?.state, "failed");
+    assert.equal(h.state?.retryable, false);
+    assert.equal(h.refreshed, 0);
+  });
+
   it("stays loading with no panel in the store and reads nothing from the client", async () => {
     const reads: string[] = [];
     const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => { reads.push("detail"); return detailAt(selectionAt(3), 3); },
@@ -523,6 +534,17 @@ describe("served Logs decision authority", () => {
     assert.equal(h.state?.state, "failed");
     assert.equal(h.state?.snapshot, undefined);
     assert.equal(h.refreshed, 0);
+  });
+
+  it("offers no client Retry for a refused panel, whatever the server called it", async () => {
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(3), 3), runSection: async () => logs() } as unknown as DashboardClient;
+    const h = await harness(client, undefined, false, false);
+    await act(async () => serveRunPanel(h.rows, client, RUN, { state: "refused", error: { state: "error", code: ErrorCodeSchema.parse("DASHBOARD_READ_FAILED"), message: "later", retryable: true } }));
+    await h.render(selectionAt(3));
+    assert.equal(h.state?.state, "failed");
+    assert.equal(h.state?.retryable, false);
+    await act(async () => h.serve());
+    assert.equal(h.state?.state, "loaded", "the server's next available panel recovers it");
   });
 
   it("refuses a streamed panel whose identity is not the selected run's", async () => {

@@ -213,7 +213,6 @@ export function LoadedApp({
   const dayResource = dayState.day;
   snoozes.current = dayResource.state === "loaded" ? dayResource.value.notifications
     .flatMap(row => row.kind === "notification" && row.state === "snoozed" && row.snoozedUntil !== undefined ? [new Date(row.snoozedUntil).toISOString()] : []) : [];
-  const [logsAttempt, setLogsAttempt] = useState(0);
   const streamDown = dayState.connection.state === "stopped" || dayState.connection.state === "reconnecting";
   const dayFailureText = useMemo(() => {
     if (dayResource.state !== "failed") return undefined;
@@ -990,11 +989,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date">{keptDay !== undefined && <KeptDayMark />}<DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
-            <PanelBoundary resetKey={`${route.run ?? ""}:${logsAttempt}`} sentence="Couldn't show this run.">
+            <PanelBoundary resetKey={route.run ?? ""} sentence="Couldn't show this run.">
             {route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
               LogPreview !== undefined && (logRow.parent === null || workflowComposition.harness?.logsChildRows === true)
               ? <LogPreview selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} onAction={logAction} />
-              : <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}:${logsAttempt}`} onRetryLogs={() => setLogsAttempt(attempt => attempt + 1)} confirm={confirmLogDecision} onAction={logAction}
+              : <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} onAction={logAction}
                 reviewOpen={route.section === "review"} reviewFocus={route.view?.queueMember?.kind === "record" ? route.view.queueMember.record : undefined}
                 onOpenLinked={openRelatedRun} onReview={() => setRoute(current => ({ ...current, section: "review" }))} onLogs={() => setRoute(current => ({ ...current, section: "logs" }))}
                 initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
