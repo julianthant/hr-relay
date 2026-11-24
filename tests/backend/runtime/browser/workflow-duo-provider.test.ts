@@ -110,9 +110,9 @@ describe("backend workflow Duo bridge", () => {
     assert.equal(w.signed[0].credentialId, "AQID");
     assert.equal(/privateKey|signCount|highWater/.test(JSON.stringify(w.replies)), false); await owner.stop();
   });
-  it("passes through only an explicit valid no-software-match request", async () => {
+  it("refuses a valid request no stored security key matches instead of passing it to native WebAuthn", async () => {
     const w = world({ noMatch: true }); const owner = await w.open(); w.request(); await w.replied;
-    assert.deepEqual(w.replies, [{ ok: true, value: { passThrough: true } }]); assert.equal(w.signed.length, 0); await owner.stop();
+    assert.deepEqual(w.replies, [{ ok: true, value: { ok: false } }]); assert.equal(w.signed.length, 0); await owner.stop();
   });
   it("refuses a different account instead of turning it into native pass-through", async () => {
     const w = world(); const owner = await w.open(); w.request(["other"]); await w.stopped;
@@ -160,7 +160,7 @@ it("never selects an empty resident user handle ahead of a usable key", async ()
     const owner = await w.open(); w.request(["alex"], []); await w.replied;
     assert.equal(w.signed.length, usable ? 1 : 0);
     if (usable) assert.equal(w.signed[0].credentialId, "BAUG");
-    else assert.deepEqual(w.replies, [{ ok: true, value: { passThrough: true } }]);
+    else assert.deepEqual(w.replies, [{ ok: true, value: { ok: false } }]);
     await owner.stop();
   }
 });

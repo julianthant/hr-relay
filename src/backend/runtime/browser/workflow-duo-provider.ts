@@ -55,7 +55,8 @@ export async function provisionWorkflowDuo(input: Readonly<{
         && (request.allowCredentials.length > 0
           ? request.allowCredentials.some(allowed => Buffer.from(allowed, "base64").equals(Buffer.from(credential.credentialId, "base64url")))
           : credential.isResidentCredential && credential.userHandle !== undefined && credential.userHandle.length > 0));
-      let value: unknown = { passThrough: true };
+      // The security key is the only Duo method: a request no stored key matches is refused, never handed to native WebAuthn.
+      let value: unknown = { ok: false };
       if (credential !== undefined) {
         const assertion = await source.sign({ requestId: request.requestId, origin: request.origin, rpId: request.rpId,
           challenge: request.challenge, credentialId: credential.credentialId });
