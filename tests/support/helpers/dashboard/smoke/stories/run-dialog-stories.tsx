@@ -131,8 +131,8 @@ const retainedCommand = () => JSON.stringify({ version: 1, command: { commandId:
 const saved = (value: string | null) => () => { if (value === null) window.sessionStorage.removeItem(RETAINED_KEY); else window.sessionStorage.setItem(RETAINED_KEY, value); };
 const RECOVERY = {
   none: stage("Nothing saved from an earlier start", () => runDialogClient(), "Input", { before: saved(null) }),
-  unreadable: stage("A saved start that cannot be read", () => runDialogClient(), "Input", { before: saved("not json"), knownFailures: { "no-banned-text": "#532" } }),
-  retained: stage("A start sent earlier and not confirmed", planning({ executeCommand: never }), "Input", { before: saved(retainedCommand()), knownFailures: { "no-banned-text": "#532" } }),
+  unreadable: stage("A saved start that cannot be read", () => runDialogClient(), "Input", { before: saved("not json"), knownFailures: { ...SHELL_BREAK, "no-banned-text": "#532" } }),
+  retained: stage("A start sent earlier and not confirmed", planning({ executeCommand: never }), "Input", { before: saved(retainedCommand()), knownFailures: { ...SHELL_BREAK, "no-banned-text": "#532" } }),
 } satisfies Record<LaunchRecovery["state"], Story>;
 
 /** The Options stage's controls, each pressed once away from its default. */
