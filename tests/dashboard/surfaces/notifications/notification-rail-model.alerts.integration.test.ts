@@ -24,7 +24,7 @@ const item = (id: string, title: string, tone: NotificationItem["tone"], read = 
 });
 const ready = (...items: NotificationItem[]): NotificationsState => ({ state: "ready", items, pinned: [] });
 type Arrival = Parameters<Parameters<InboxWiring["onPublication"]>[0]>[0];
-const served = (state: NotificationsState, listeners: Set<(arrival: Arrival) => void>): InboxWiring => ({ state, notice: "", control: async () => true, readAll: async () => undefined, open: () => undefined,
+const served = (state: NotificationsState, listeners: Set<(arrival: Arrival) => void>): InboxWiring => ({ state, notice: "", control: async () => true, canAct: () => true, readAll: async () => undefined, open: () => undefined,
   onPublication: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; } });
 const preferencesPort = (notifications: Partial<PersonPreferences["notifications"]>): PersonPreferencesPort => {
   const snapshot = { value: resolvePersonPreferences({ notifications }), state: "ready" as const };
