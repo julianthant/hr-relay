@@ -55,7 +55,7 @@ const run = (n: number) => RunIdSchema.parse(`00000000-000${n}-4000-8000-0000000
 const none = { kind: "none" } as const;
 const NOTICE_BASE = { subject: "", workflow: "", age: "2 min ago", at, read: false, action: "", destination: none } as const;
 
-/** One notice for each tone; the panel colors and sorts by it. */
+/** One notice for each tone. */
 export const NOTICE_BY_TONE: Readonly<Record<NotificationItem["tone"], NotificationItem>> = {
   danger: { ...NOTICE_BASE, id: "tone-danger", kind: "run", priority: true, title: "Run failed", subject: "EID 10555001", workflow: "Person Lookup", detail: "Cross Verification failed.", tone: "danger", action: "Open log",
     destination: { kind: "run", runId: run(4), day: "2026-08-26" } },
@@ -66,24 +66,17 @@ export const NOTICE_BY_TONE: Readonly<Record<NotificationItem["tone"], Notificat
   info: { ...NOTICE_BASE, id: "tone-info", kind: "storage", title: "Relay repaired a saved file", detail: "Nothing needs your attention.", tone: "info" },
 };
 
-/** One notice for each source the panel names. */
+/** One notice for each source. */
 export const NOTICE_BY_KIND: Readonly<Record<NotificationKind, NotificationItem>> = {
   storage: { ...NOTICE_BASE, id: "kind-storage", kind: "storage", priority: true, title: "Your disk is full", detail: "Free up space; Relay cannot save anything until then.", tone: "danger" },
   chatgpt: { ...NOTICE_BASE, id: "kind-chatgpt", kind: "chatgpt", priority: true, title: "ChatGPT usage limit reached", detail: "Runs that read scans wait until 3:40 PM.", tone: "warning", action: "Open settings",
     destination: { kind: "settings", section: "general", target: "chatgpt.account" } },
   run: NOTICE_BY_TONE.warning,
   command: { ...NOTICE_BASE, id: "kind-command", kind: "command", priority: true, title: "Pause worker was not confirmed", subject: "Worker 1", workflow: "Separations",
-    detail: "Relay could not confirm whether this finished. Open it to check before trying again.", tone: "danger", action: "Open result", destination: { kind: "local-command-result", id: "operation-1" } },
+    detail: "Relay could not confirm whether this finished.", tone: "danger", action: "Open result", destination: { kind: "local-command-result", id: "operation-1" } },
 };
 
-export const STORAGE_DEGRADED_NOTICE: NotificationItem = { ...NOTICE_BASE, id: "storage-degraded", kind: "storage", priority: true, title: "Relay could not save everything",
-  detail: "Relay could not save everything. Reopen Relay before starting more work.", tone: "warning" };
-export const BACKFILL_GAP_NOTICE: NotificationItem = { ...NOTICE_BASE, id: "backfill-gap", kind: "storage", priority: true, title: "Notification history is incomplete",
-  detail: "Notification history is incomplete. Reconcile the affected work.", tone: "warning" };
-
 export const notificationsReady = (...items: readonly NotificationItem[]): NotificationsState => ({ state: "ready", items, pinned: [] });
-export const MIXED_NOTICES: NotificationsState = notificationsReady(NOTICE_BY_KIND.storage, NOTICE_BY_KIND.chatgpt, NOTICE_BY_TONE.warning, NOTICE_BY_TONE.danger,
-  { ...NOTICE_BY_TONE.info, day: "Today" }, { ...NOTICE_BY_TONE.positive, day: "Yesterday", age: "1 days ago" });
 
 /** Notices for the bell popover stories, shaped like a real week: repeats folded with a count, storage with hundreds, a long name, one deleted run. */
 const notice = (id: string, item: Partial<NotificationItem> & Pick<NotificationItem, "title" | "detail" | "tone">): NotificationItem =>

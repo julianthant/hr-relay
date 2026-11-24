@@ -3,6 +3,6 @@
 export function usesIndependentDialogReferences(storyId: string): boolean {
   const [surface, group] = storyId.split("/");
   if (surface === "shell") return group !== "filter" && group !== "search";
-  if (surface === "notifications") return group !== "popover";
+  if (surface === "notifications") return group === "toast" || group === "bell";
   return ["queue", "sign-in", "run-panel", "run-dialog", "sessions", "notifications", "analytics", "assistant"].includes(surface);
 }

@@ -158,6 +158,8 @@ function KeptDayMark() {
 }
 
 function commandResultRun(destination: NotificationDestination): NotificationDestination | undefined {
+  // A storage notice opens Settings > General, where storage lives.
+  if (destination.kind === "storage") return { kind: "settings", section: "general" };
   if (destination.kind !== "command-result") return destination;
   const request = destination.request;
   if (!("target" in request) || !("runId" in request.target) || destination.day === undefined) return undefined;

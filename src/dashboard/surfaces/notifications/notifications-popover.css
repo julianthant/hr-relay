@@ -42,3 +42,4 @@
 .notice-loading { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 .notice-message { margin: 0; padding: 16px 12px; font-size: 13px; line-height: 20px; color: var(--ds-fg-secondary); }
 .notice-empty { padding-block: 56px; }
+.notice-status { flex: none; margin: 0; padding: 8px 16px; border-top: 1px solid var(--ds-border-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; color: var(--ds-fg-muted); }

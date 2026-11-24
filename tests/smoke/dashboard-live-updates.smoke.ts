@@ -114,6 +114,28 @@ test("notification published: the inbox takes the row from the stream with no re
   expect(seen).toEqual([]);
 });
 
+test("notification row: hovering shows the read toggle and moves nothing", async ({ dashboard, page, seeded }) => {
+  await dashboard.open();
+  const before = await unreadCount(page);
+  await seeded.drive.publishNotification();
+  await expect.poll(() => unreadCount(page)).toBe(before + 1);
+  await page.getByRole("button", { name: /^Notifications, \d+ unread$/u }).click();
+  const row = page.getByRole("dialog", { name: "Notifications" }).locator(".notice-row").first();
+  await expect(row).toBeVisible();
+  const boxes = () => row.evaluate(node => [node, ...node.querySelectorAll(".notice-title, .notice-age, .notice-context, .notice-detail")].map(part => {
+    const box = part.getBoundingClientRect(); return [box.x, box.y, box.width, box.height];
+  }));
+  await page.mouse.move(0, 0);
+  await expect(row.locator(".notice-action")).toHaveCSS("opacity", "0");
+  const resting = await boxes();
+  await row.hover();
+  await expect(row.locator(".notice-action")).toHaveCSS("opacity", "1");
+  expect(await boxes()).toEqual(resting);
+  // The title, the count and the time share one line without overlapping.
+  const [title, age] = await Promise.all([row.locator(".notice-title").boundingBox(), row.locator(".notice-age").boundingBox()]);
+  expect(title !== null && age !== null && title.x + title.width <= age.x).toBe(true);
+});
+
 // A Work-Study run held at its first read goes on and the executor parks it at the gate the workflow declares.
 // The Work-Study queue holds this one run, so there is no other run to hold open beside it.
 const DECLARED_GATE_BASELINE: Partial<Record<View, readonly string[]>> = {

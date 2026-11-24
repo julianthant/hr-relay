@@ -54,8 +54,10 @@ const SHOW_OPTIONS = [{ value: "all", label: "All" }, { value: "unread", label: 
 
 /** The bell and the surface it opens: a popover anchored to the bell, over the page, with its own scroll. Unread failures and waits
  * sit under Needs you; everything else falls into its day. It is modal, so Tab stays inside it until it closes. */
-export function NotificationsPopover({ state, open, onOpenChange, show, onShow, onReadAll, ...handlers }: RowHandlers & {
+export function NotificationsPopover({ state, open, onOpenChange, show, onShow, onReadAll, notice = "", ...handlers }: RowHandlers & {
   state: NotificationsState; open: boolean; onOpenChange: (open: boolean) => void; show: NotificationsShow; onShow: (show: NotificationsShow) => void; onReadAll: () => void;
+  /** What the inbox says about its own state, such as rows that may be missing. */
+  notice?: string;
 }) {
   const all = state.state === "ready" ? state.items : [];
   const unread = all.filter(item => !item.read).length;
@@ -85,6 +87,7 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
             {days.map(day => <NoticeGroup key={day} label={day} items={rest.filter(item => itemDay(item) === day)} handlers={handlers} />)}
           </>}
       </div>
+      {notice !== "" && <p role="status" className="notice-status">{notice}</p>}
     </PopoverContent>
   </Popover>;
 }
