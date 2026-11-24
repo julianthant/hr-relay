@@ -8,6 +8,13 @@ export interface WorkflowNavigationEntry {
   readonly id: string; readonly label: string; readonly categoryId: string; readonly role: WorkflowModuleRole; readonly icon: IconName;
 }
 
+/** A workflow's mark in the rail: the first letters of its first two words, or the first two letters of a single word. */
+export function workflowInitials(label: string): string {
+  const words = label.split(/[^\p{L}\p{N}]+/u).filter(word => word !== "");
+  const letters = words.length > 1 ? words.slice(0, 2).map(word => word[0]).join("") : (words[0] ?? label).slice(0, 2);
+  return letters.toUpperCase();
+}
+
 const CATEGORY_ORDER = ["Lookup", "Separations", "Onboarding", "Work-Study", "Payroll", "Utils", "OnBase", "Timekeeping"] as const;
 
 const WORKFLOW_ORDER: readonly string[] = Object.keys(WORKFLOW_SOURCES);

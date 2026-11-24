@@ -33,7 +33,7 @@
 .rail-notification-toggle[data-hovered] { background: var(--ui-hover); }
 .rail-notification-toggle[data-focus-visible] { outline: 2px solid var(--ui-info); outline-offset: 2px; }
 .workflow-rail { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: 8px 8px 16px; }
-.workflow-rail-groups { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; scrollbar-width: none; }
+.workflow-rail-groups { display: flex; flex-direction: column; gap: 20px; overflow-y: auto; min-height: 0; scrollbar-width: none; }
 .workflow-rail-groups::-webkit-scrollbar, .rail-scroll::-webkit-scrollbar { display: none; }
 .rail-scroll { scrollbar-width: none; }
 .workflow-rail-group li + li { margin-top: var(--ds-space-hair); }
@@ -43,6 +43,7 @@
 .workflow-rail button:hover { background: var(--ds-surface-3); }
 .workflow-rail button[aria-current="page"] { background: var(--ds-surface-selected); }
 /* The running-count pill is the row's far-right item; the name keeps the group's left edge. */
+.workflow-rail-initials { display: inline-flex; width: 20px; flex-shrink: 0; justify-content: center; font-size: 11px; font-weight: 600; letter-spacing: 0; line-height: 1; }
 .workflow-rail-running { display: flex; flex-shrink: 0; margin-left: auto; }
 
 .dashboard-shell:not([data-settings-takeover="true"]):has(.workspace-rail[data-collapsed]) { --shell-rail-width: 56px; }
@@ -51,7 +52,7 @@
 .workspace-rail[data-collapsed] .workspace-rail-header h2 { display: none; }
 .workspace-rail[data-collapsed] .workspace-rail-actions { flex-direction: column; gap: 4px; }
 .workflow-rail[data-collapsed] { padding: 8px 0 16px; align-items: center; }
-.workflow-rail[data-collapsed] .workflow-rail-groups { gap: 8px; align-items: center; width: 100%; padding: 6px 0 0; overflow-x: visible; }
+.workflow-rail[data-collapsed] .workflow-rail-groups { gap: 18px; align-items: center; width: 100%; padding: 6px 0 0; overflow-x: visible; }
 .workflow-rail[data-collapsed] .workflow-rail-group { gap: 0; align-items: center; }
 .workflow-rail[data-collapsed] li + li { margin-top: 4px; }
 .workflow-rail[data-collapsed] button { position: relative; background: color-mix(in srgb, var(--ds-fg) 5%, transparent); width: 28px; height: 28px; justify-content: center; gap: 0; padding: 0; border-radius: 8px; color: var(--ui-secondary); }
