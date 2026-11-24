@@ -103,6 +103,11 @@ function repairNotices(machineRoot: string) {
     && payload.event.reason === "unfinished-store-stages-cleared" ? [payload.event] : []);
 }
 
+function automaticRepairRefusedFor(error: unknown, cause: string): boolean {
+  return error instanceof Error && "code" in error && error.code === "STORAGE_AUTOMATIC_REPAIR_REFUSED"
+    && error.cause instanceof Error && "code" in error.cause && error.cause.code === cause;
+}
+
 it.skipIf(process.platform === "win32").each(crashPoints)("restarts after a hard crash at $stage", async ({ stage, location, abandoned }) => {
   const profile = await createBoundProfileFixture(), clock = manualClock(new Date(now));
   const profileId = profile.admission.profileBinding.profileId, machineRoot = profile.machine.stateRoot;
@@ -176,6 +181,14 @@ it.skipIf(process.platform === "win32").each(crashPoints)("restarts after a hard
 
     const lifetime = await RuntimeLifetimeLock.acquire(profile.lifetime.port);
     restart = lifetime;
+    if (restoreStage !== undefined && process.platform !== "darwin") {
+      retain(restoreStage);
+      retain(restoreJournal);
+      await assert.rejects(() => initializeRegisteredPersonStores(profile.workspace, lifetime, hostFacts, clock),
+        (error: unknown) => automaticRepairRefusedFor(error, "PROFILE_RESTORE_BROWSER_CUSTODY_UNPROVED"));
+      for (const { path, bytes } of published) assert.deepEqual(readFileSync(path), bytes, path);
+      return;
+    }
     await initializeRegisteredPersonStores(profile.workspace, lifetime, hostFacts, clock);
     const machine = acquireEntrypointAdmission(profile.workspace, "shared", lifetime);
     const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts });
@@ -190,8 +203,7 @@ it.skipIf(process.platform === "win32").each(crashPoints)("restarts after a hard
       assert.equal(existsSync(restoreJournal), false);
     }
     const notices = repairNotices(machineRoot);
-    assert.equal(notices.length, stages.length === 0 ? 0 : 1);
-    if (notices.length > 0) assert.match(notices[0].message ?? "", new RegExp(`^Cleared ${stages.length} unfinished storage files?\\.$`, "u"));
+    assert.deepEqual(notices.map(notice => notice.message), stages.length === 0 ? [] : ["Cleared unfinished storage files."]);
     if (stage === "artifact stage") {
       await lifetime.close();
       restart = await RuntimeLifetimeLock.acquire(profile.lifetime.port);
@@ -214,9 +226,8 @@ it.skipIf(process.platform === "win32")("keeps the startup refusal for an unreco
     writeFileSync(unknown, "unrecognized credential sibling", { mode: 0o600 });
     const lifetime = await RuntimeLifetimeLock.acquire(profile.lifetime.port);
     restart = lifetime;
-    await assert.rejects(() => initializeRegisteredPersonStores(profile.workspace, lifetime, hostFacts, clock), (error: unknown) =>
-      error instanceof Error && "code" in error && error.code === "STORAGE_AUTOMATIC_REPAIR_REFUSED"
-      && error.cause instanceof Error && "code" in error.cause && error.cause.code === "CREDENTIAL_OPERATION_PENDING");
+    await assert.rejects(() => initializeRegisteredPersonStores(profile.workspace, lifetime, hostFacts, clock),
+      (error: unknown) => automaticRepairRefusedFor(error, "CREDENTIAL_OPERATION_PENDING"));
     assert.equal(readFileSync(unknown, "utf8"), "unrecognized credential sibling");
     assert.deepEqual(readFileSync(current), bytes);
   } finally { await restart?.close(); await profile.close(); }

@@ -34,7 +34,6 @@ import { inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
-import { readAuthorityRestoreJournal } from "../admission/installation.js";
 import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import {
   StoppedAuthorityBackupManifestSchema,
@@ -335,7 +334,9 @@ export function reconcileStartupAuthorityStages(machine: RuntimeAdmission, profi
   const assertHeld = () => { machine.assertOfflineMaintenance(operation); machine.assertStateRoot(root); };
   assertHeld();
   const context = machine.readInstallationContext();
-  if (context === undefined || readAuthorityRestoreJournal(context.workspace) !== undefined) throw new Error("authority-restore-recovery-required");
+  if (context === undefined || fileStatus(join(context.workspace, ".tracker", "control", "journal.json"), true) !== undefined) {
+    throw new Error("authority-restore-recovery-required");
+  }
   const ancestry = new Map<string, DirectoryIdentity>();
   if (!noSymlinkAncestry(root, ancestry)) return 0;
   const names = new Set(readdirSync(root));

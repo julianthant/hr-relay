@@ -540,7 +540,7 @@ async function prepareStartupUpgrades(workspace: string, lifetime: RuntimeLifeti
     try {
       appendLocalDebug({ stateRoot, build: buildVersion(), now: clock.now(),
         event: { category: "boot", phase: "settled", area: "profile-startup-repair", reason: "unfinished-store-stages-cleared",
-          message: `Cleared ${repaired} unfinished storage ${repaired === 1 ? "file" : "files"}.`, pinned: false } });
+          message: "Cleared unfinished storage files.", pinned: false } });
     } catch { /* The debug log does not gate startup. */ }
   }
   const registered = profiles.filter(profileId => !isStartupHeld(standings, profileId));
