@@ -109,7 +109,7 @@ function child(source: string) {
   return { process, exited, stdout: () => stdout };
 }
 
-it("admits simultaneous native captures in separate processes without duplicate shared bytes", async () => {
+it("admits simultaneous native captures in separate processes without duplicate shared bytes", { repeats: 9 }, async () => {
   const f = await fixture({ sharedMachine: true });
   try {
     const clock = JSON.stringify(f.clock.now().toISOString());
