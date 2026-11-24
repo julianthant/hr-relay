@@ -82,7 +82,7 @@ const OUTCOME = {
   deleted: scene("A spreadsheet deleted", { play: done(menu("Delete"), click("Delete spreadsheet")), story: { ready: 'ul[aria-label="Spreadsheets"]' } }),
   "rolled-back": scene("A version rolled back", { play: done(loaded, click(/^Versions of Department roster/), click(/Version 2|v2/, "radio"), click("Roll back"), click("Roll back")), story: { ready: 'ul[aria-label="Pinned"]' } }),
   refused: scene("A change the library refused", { server: { action: "refused" }, play: done(menu("Pin")), story: { ready: 'text=/Couldn\'t save the change/' } }),
-  pending: scene("A change whose result is not yet known", { server: { action: "lost" }, play: done(menu("Pin")), story: { ready: 'text="Check result"' } }),
+  pending: scene("A change whose result is not yet known", { server: { action: "lost" }, play: done(menu("Pin")), story: { ready: 'text=/The library change is not yet confirmed/' } }),
   "sync-failed": scene("A sync the library could not finish", { server: { sync: "fail" }, play: done(menu("Retry sync", "Hiring tracker.xlsx")), story: { ready: "text=/Couldn't sync Hiring tracker.xlsx/" } }),
   synced: scene("A linked spreadsheet synced", { play: done(menu("Retry sync", "Hiring tracker.xlsx")), story: { ready: 'text="Synced Hiring tracker.xlsx"' } }),
 } satisfies Record<Outcome, Story>;
