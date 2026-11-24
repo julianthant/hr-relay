@@ -46,6 +46,8 @@ export async function syntheticSettingsAuthority(profileFixture: () => Promise<B
 }
 export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof syntheticSettingsAuthority>>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
   const commands: unknown[] = [];
+  /** Every request the editor sent, as `METHOD /path`. */
+  const requests: string[] = [];
   // The stream's rows: an applied ordinary save delivers the document read after it, before its reply.
   const rows = createRowStore();
   const notices: SettingsSaveNotice[] = [];
@@ -62,6 +64,7 @@ export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof 
     },
   };
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
+    requests.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
     if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(ports.read()), { status: 200 });
     if (url.endsWith("/settings/storage-relocation")) return new Response(JSON.stringify({ revision: 0,
       installationId: "11111111-1111-4111-8111-111111111111", sourceGeneration: 0,
@@ -87,7 +90,7 @@ export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof 
   }
   const render = async (sectionId: string, show = true, requestKey = 0): Promise<void> => { await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, rows, children: show ? createElement(Harness, { sectionId }) : null }) })); }); };
   await render(section);
-  return { host, commands, notices, problems, ports, client, rows, render, controller: () => { if (editor === undefined) throw new Error("settings-not-mounted"); return editor; },
+  return { host, commands, requests, notices, problems, ports, client, rows, render, controller: () => { if (editor === undefined) throw new Error("settings-not-mounted"); return editor; },
     close: () => { act(() => root.unmount()); host.remove(); } };
 }
 export async function settingsAction(action: () => void): Promise<void> { await act(async () => { action(); }); }

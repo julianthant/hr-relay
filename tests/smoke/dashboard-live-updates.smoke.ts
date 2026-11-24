@@ -1,5 +1,6 @@
 /** Live-update smoke: the requests the dashboard makes after one server event. Each live-update ticket lowers the counts it covers. */
 import type { Page, TestInfo } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../src/models/dashboard/subscription.js";
 import type { DashboardPage } from "../support/helpers/dashboard/smoke/dashboard-page.js";
@@ -8,6 +9,9 @@ import { SEEDED_DAY, SEEDED_NOW } from "../support/helpers/dashboard/served-fixt
 import { seededRequestOver, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
 import { test as scriptedTest } from "../support/helpers/dashboard/smoke/scripted-run-fixtures.js";
 import { expect, SEEDED_PREFERENCE_WRITE, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
+import { MOCK_DIST_DIR } from "../support/helpers/dashboard/served-fixtures/bundle.js";
+import { startSeededServer } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/models/config/settings.js";
 
 /** The once-a-second lifecycle poll is not caused by an event and is counted apart. */
 const LIFECYCLE_POLL = "/api/v1/application-lifecycle";
@@ -199,10 +203,15 @@ interface Received { readonly envelope: DashboardStreamEnvelope; readonly at: nu
 
 /** A second stream that names a run topic, opened with the page's own stream headers. The client does not ask for rows yet. */
 async function openRunTopic(headers: Record<string, string>, baseUrl: string, runId: string) {
+  return openStream(headers, baseUrl, `dashboard-day:${SEEDED_DAY},run:${runId}`);
+}
+
+/** A second stream on these topics, opened with the page's own stream headers. */
+async function openStream(headers: Record<string, string>, baseUrl: string, topics: string) {
   const controller = new AbortController();
   const openedAt = performance.now();
-  const response = await fetch(`${baseUrl}/events/v1?topics=dashboard-day:${SEEDED_DAY},run:${runId}`, { headers, signal: controller.signal });
-  expect(response.status, "the run topic is served").toBe(200);
+  const response = await fetch(`${baseUrl}/events/v1?topics=${topics}`, { headers, signal: controller.signal });
+  expect(response.status, "the stream's topics are served").toBe(200);
   const body = response.body;
   if (body === null) throw new Error("the run topic stream has no body");
   const received: Received[] = [];
@@ -364,3 +373,62 @@ test("the open-gate run's refusal shows from the stream, with no run read and no
   await quiet(page, seen);
   expect(seen, "the queue keeps updating and the refused panel reads nothing").toEqual([]);
 });
+
+/** Ordinary settings save for real on this server, and each commit's settings row rides the stream. */
+const settingsTest = test.extend<{ seeded: SeededServer }>({
+  // eslint-disable-next-line no-empty-pattern -- Playwright parses fixture dependencies from this pattern.
+  seeded: async ({}, use) => {
+    const server = await startSeededServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" }, productApp: true, liveSettings: true });
+    try {
+      await use(server);
+    } finally {
+      await server.close();
+    }
+  },
+});
+
+/** Requests one settings switch press makes, sorted. Measured on the base (design section 2): 2 for a display preference
+ * (the command and a re-read of Settings) and 4 when readiness needs preflight. The readback now joins the reply to the stream's row. */
+const SETTING_SAVES: Record<string, readonly string[]> = {
+  Animations: ["POST /api/v1/commands"],
+  "Prevent sleep while running": ["GET /api/v1/preflight", "POST /api/v1/commands"],
+};
+const settingsRows = (received: readonly Received[]): number => received.filter(({ envelope }) =>
+  (envelope.type === "change" || envelope.type === "snapshot") && envelope.rows.some(row => row.model === "settings")).length;
+
+for (const [label, expected] of Object.entries(SETTING_SAVES)) {
+  settingsTest(`a ${label} save: ${String(expected.length)} request(s), one settings row, none for a refusal`, async ({ dashboard, page, seeded }) => {
+    const seen = watchRequests(page);
+    const pageStream = page.waitForRequest(request => new URL(request.url()).pathname === "/events/v1");
+    await dashboard.open();
+    const stream = await openStream(await (await pageStream).allHeaders(), seeded.baseUrl, `dashboard-day:${SEEDED_DAY}`);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(page.getByRole("navigation", { name: "Settings sections" })).toBeVisible();
+    const toggle = page.getByRole("switch", { name: label }).first();
+    await expect(toggle).toBeEnabled();
+    await quiet(page, seen);
+    await streamQuiet(page, stream.received);
+    seen.length = 0;
+    const before = stream.received.length;
+    const checked = await toggle.isChecked();
+
+    await toggle.click({ force: true });
+
+    await expect(toggle).toBeChecked({ checked: !checked });
+    await quiet(page, seen, 2_000);
+    await streamQuiet(page, stream.received);
+    expect([...seen].sort(), "requests after the press").toEqual(expected);
+    expect(settingsRows(stream.received.slice(before)), "one commit, one settings row").toBe(1);
+
+    const refusedAt = stream.received.length;
+    const patch = { "preferences.preventSleepWhileRunning": { set: true } };
+    // A stale revision is refused; the server answers it as an error, which is the point.
+    await seededRequestOver(seeded.baseUrl)("/api/v1/commands", { commandId: randomUUID(), requestedAt: SEEDED_NOW, requestedBy: "local-operator",
+      source: "settings-surface", family: "settings", type: "apply-settings", target: { expectedRevision: 999 },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).catch(() => undefined);
+    await page.waitForTimeout(QUIET_MS);
+    await streamQuiet(page, stream.received);
+    expect(settingsRows(stream.received.slice(refusedAt)), "a refusal sends no settings row").toBe(0);
+    stream.close();
+  });
+}
