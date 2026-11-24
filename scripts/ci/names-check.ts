@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +12,7 @@ interface Request {
   base?: string;
   title?: string;
   titleSet: boolean;
+  closingLine: boolean;
   worktree?: string;
   originBranches: string[];
   originSet: boolean;
@@ -117,11 +119,15 @@ function worktreeProblem(path: string): string | undefined {
 }
 
 function parse(argv: readonly string[]): Request {
-  const request: Request = { all: false, titleSet: false, originBranches: [], originSet: false };
+  const request: Request = { all: false, titleSet: false, closingLine: false, originBranches: [], originSet: false };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
     if (token === "--all") {
       request.all = true;
+      continue;
+    }
+    if (token === "--closing-line") {
+      request.closingLine = true;
       continue;
     }
     const value = argv[index + 1];
@@ -191,6 +197,9 @@ function main(): void {
   if (request.titleSet) {
     const problem = titleProblem(request.title ?? "");
     if (problem) reject(problem);
+  }
+  if (request.closingLine && !/^Closes #[1-9][0-9]*[ \t]*\r?$/mu.test(readFileSync(0, "utf8"))) {
+    reject(report("PR_BODY", 'pull request body must include "Closes #<issue>" on its own line'));
   }
   if (request.worktree !== undefined) {
     const problem = worktreeProblem(request.worktree);

@@ -92,10 +92,10 @@ for (const scenario of [{ action: "complete", withCause: true, unknownFirst: tru
       if (scenario.unknownFirst) {
         const history = SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).onboarding?.attempts[0]; assert.ok(history);
         assert.equal(history.state, "unknown"); assert.ok(history.failure); assert.ok(history.providerClosedAt);
-        if (scenario.action === "complete") for (const method of ["key", "touch"]) {
-          const pending = PublicProfileStateSchema.parse(await (await call("duo/start", { method })).json());
+        if (scenario.action === "complete") {
+          const pending = PublicProfileStateSchema.parse(await (await call("duo/start", { method: "key" })).json());
           assert.equal(pending.state, "onboarding"); if (pending.state !== "onboarding") throw new Error("attempt required");
-          assert.equal((await call("duo/confirm", { method, attemptId: pending.methods[method as "key" | "touch"].attemptId, operatorConfirmed: true })).status, 200);
+          assert.equal((await call("duo/confirm", { method: "key", attemptId: pending.methods.key.attemptId, operatorConfirmed: true })).status, 200);
         }
       }
       const done = await call(scenario.action); assert.equal(done.status, 200);
@@ -224,30 +224,25 @@ it("uses a real verifier and selected session credential, rejects foreign browse
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
     const keyCapture: { capability?: DraftDuoCapability } = {};
-    let providerActive = false, closedAttempts = 0;
+    let providerActive = false;
     const onboardingDuo: ProfileOnboardingDuoProvider = {
       async showBrowser(owner) { owner.assertCurrent(); },
       async openPortal(owner) { owner.assertCurrent(); },
       async stop() {},
       async closeBrowser() { return { state: "closed" }; },
-      async start(attempt, bind, _reportFailure) {
+      async start(_attempt, bind, _reportFailure) {
         assert.equal(providerActive, false); providerActive = true;
-        const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
+        const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: 1,
           origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
-        const credentialId = attempt.method === "key" ? "Zml4dHVyZS1zb2Z0d2FyZS1rZXk" : "fixture-native-touch";
-        if (attempt.method === "key") {
-          keyCapture.capability = capability;
-          const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-          await capability.persistPending({ credentialId,
-            privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
-            publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"),
-            transport: "usb", isResidentCredential: false, createdAt: new Date().toISOString() });
-        }
-        await capability.recordCeremony({ credentialId, requestId: randomUUID(),
-          mechanism: attempt.method === "key" ? "fast-duo" : "native-platform", softwareInterceptionDisabled: attempt.method === "touch" });
-        if (attempt.method === "touch") await capability.recordPortalAcceptance({ credentialId, requestId: randomUUID(), acceptance: "portal-accepted" });
+        const credentialId = "Zml4dHVyZS1zb2Z0d2FyZS1rZXk", pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+        keyCapture.capability = capability;
+        await capability.persistPending({ credentialId,
+          privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
+          publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"),
+          transport: "usb", isResidentCredential: false, createdAt: new Date().toISOString() });
+        await capability.recordCeremony({ credentialId, requestId: randomUUID() });
       },
-      async cancel() { providerActive = false; closedAttempts += 1; return { state: "closed" }; },
+      async cancel() { providerActive = false; return { state: "closed" }; },
     };
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
@@ -258,8 +253,7 @@ it("uses a real verifier and selected session credential, rejects foreign browse
     const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding");
     if (draft.state !== "onboarding") throw new Error("fixture actual signup draft required");
-    assert.equal(draft.methods.key.state, "idle"); assert.equal(draft.methods.touch.state, "idle");
-    assert.equal(draft.methods.key.state, "idle"); assert.equal(draft.methods.touch.state, "idle");
+    assert.equal(draft.methods.key.state, "idle");
     const draftCredential = signup.headers.get("x-relay-session"); assert.ok(draftCredential);
     assert.equal(signup.headers.has("set-cookie"), false); assert.match(draftCredential, /^draft\.[a-f0-9]{64}$/u);
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { "x-relay-session": draftCredential } })).status, 401);
@@ -282,15 +276,7 @@ it("uses a real verifier and selected session credential, rejects foreign browse
     const assertion = await keyCapture.capability.signAssertion(request);
     assert.ok(assertion.signCount > 0);
     await assert.rejects(keyCapture.capability.signAssertion(request), { code: "DUO_CREDENTIAL_CONFLICT" });
-    const touch = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/start", { operationId: draft.operationId, method: "touch" }, draftCredential)).json());
-    if (touch.state !== "onboarding" || touch.methods.touch.attemptId === undefined) throw new Error("fixture touch draft required");
-    assert.equal(closedAttempts, 1);
-    assert.equal(touch.methods.touch.state, "complete");
-    const ready = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/confirm", {
-      operationId: draft.operationId, method: "touch", attemptId: touch.methods.touch.attemptId, operatorConfirmed: true }, draftCredential)).json());
-    assert.equal(ready.state, "onboarding");
-    if (ready.state !== "onboarding") throw new Error("fixture Ready draft required");
-    assert.equal(ready.step, "ready"); assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
+    assert.equal(confirmedKey.step, "ready"); assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
     const finished = await post("/api/v1/profile/onboarding/complete", { operationId: draft.operationId }, draftCredential);
     const active = PublicProfileStateSchema.parse(await finished.json()); assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("fixture actual completed signup required");
@@ -700,16 +686,15 @@ it("revokes retained selected producers before a genuine in-flight public transp
   }
 });
 
-it("publishes a sign-up whose methods both finished from Duo's success heading", async () => {
+it("publishes a sign-up whose security key finished from Duo's success heading", async () => {
   const f = await fixture();
-  const onboardingDuo: ProfileOnboardingDuoProvider = { ...syntheticOnboardingDuo(), async start(attempt, bind) {
-    const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2, origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
+  const onboardingDuo: ProfileOnboardingDuoProvider = { ...syntheticOnboardingDuo(), async start(_attempt, bind) {
+    const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: 1, origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
     const credentialId = randomBytes(32).toString("base64url"), requestId = randomUUID(), pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
     await capability.persistPending({ credentialId, privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
       publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"),
-      transport: attempt.method === "key" ? "usb" : "internal", isResidentCredential: attempt.method === "touch",
-      ...(attempt.method === "touch" ? { initialSignCount: 1 } : {}), createdAt: new Date().toISOString() });
-    await capability.recordCeremony({ credentialId, requestId, mechanism: attempt.method === "key" ? "fast-duo" : "chromium-platform", softwareInterceptionDisabled: attempt.method === "touch" });
+      transport: "usb", isResidentCredential: false, createdAt: new Date().toISOString() });
+    await capability.recordCeremony({ credentialId, requestId });
     await capability.recordPortalAcceptance({ credentialId, requestId, acceptance: "portal-accepted" });
   } };
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
@@ -721,6 +706,6 @@ it("publishes a sign-up whose methods both finished from Duo's success heading",
     const completion = f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion;
     assert.ok(completion);
     assert.equal(completion.key.confirmation, "portal-accepted");
-    assert.equal(completion.touch.operatorConfirmedAt, undefined);
+    assert.equal("touch" in completion, false);
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });

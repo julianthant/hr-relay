@@ -619,7 +619,7 @@ it("distinguishes unopened browser requirements from observed unavailable health
       const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
       assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", observation?.state === "present" && observation.health === "failed" ? "failed" : "unavailable"], ["UCPath", "unopened"]]);
       await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
-      assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), [observation?.state === "present" && observation.health === "failed" ? "CRMFailed" : observation?.state === "unavailable" ? "CRMUnavailable. Browser health was not served" : "CRMUnavailable", "UCPathNot opened"]);
+      assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), [observation?.state === "present" && observation.health === "failed" ? "CRMFailed" : "CRMUnavailable", "UCPathNot opened"]);
       assert.match(host.querySelector("article")?.textContent ?? "", /Starting.*No run assigned/s);
       assert.equal(h.sent.length, 0);
     }
@@ -780,9 +780,8 @@ it("keeps a system nickname's full name and an unavailable reason in the chip's 
   try {
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
     const [chip, plain] = [...host.querySelectorAll("article li")];
-    assert.equal(chip.textContent, "SNowServiceNowUnavailable. ServiceNow did not answer");
-    assert.equal(chip.querySelector("span[aria-hidden='true']")?.textContent, "SNow");
-    assert.equal(chip.querySelector("[tabindex='0']")?.getAttribute("tabindex"), "0");
+    assert.equal(chip.textContent, "SNowUnavailable");
+    assert.equal(chip.querySelector("[tabindex='0']")?.getAttribute("aria-label"), "ServiceNow. Unavailable. ServiceNow did not answer");
     assert.equal(plain.querySelector("[tabindex]") === null, true, "a chip with nothing to add is not a tab stop");
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });

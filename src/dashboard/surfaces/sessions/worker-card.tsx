@@ -23,16 +23,17 @@ function cardNote(worker: SessionWorker): string | undefined {
   return worker.note;
 }
 
-/** A nickname or a served reason stays reachable: screen readers get the full text, and a focusable chip shows it in the design-system tooltip. */
+/** A nickname or a served reason stays reachable: the focusable chip carries the full text as its name and shows it in the design-system tooltip. */
 function BrowserRow({ browser }: { browser: WorkerBrowser }) {
   const detail = [browser.name, browser.reason].filter(Boolean).join(" · ");
   const row = <>
-    <span className="flex min-w-0 items-center gap-1"><span aria-hidden={browser.name !== undefined} className="break-words">{browser.label}</span>{browser.name !== undefined && <span className="sr-only">{browser.name}</span>}</span>
-    <span className={cn("shrink-0", BROWSER_TONE[browser.state])}>{BROWSER_WORD[browser.state]}{browser.reason !== undefined && <span className="sr-only">. {browser.reason}</span>}</span>
+    <span className="flex min-w-0 items-center gap-1"><span className="break-words">{browser.label}</span></span>
+    <span className={cn("shrink-0", BROWSER_TONE[browser.state])}>{BROWSER_WORD[browser.state]}</span>
   </>;
+  const name = [browser.name ?? browser.label, BROWSER_WORD[browser.state], browser.reason].filter(Boolean).join(". ");
   return <li className="flex min-h-8 min-w-0 items-center rounded-md bg-[var(--ds-worker-chip-bg)] text-caption">{detail === ""
     ? <div className="flex min-w-0 flex-1 items-center justify-between gap-2 px-2 py-1">{row}</div>
-    : <Tooltip content={detail}><div tabIndex={0} className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ui-info">{row}</div></Tooltip>}</li>;
+    : <Tooltip content={detail}><div tabIndex={0} role="group" aria-label={name} className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ui-info">{row}</div></Tooltip>}</li>;
 }
 
 /** Browser sessions are always the chip grid, two per row; a workflow past four systems gets a wider card and three per row. */

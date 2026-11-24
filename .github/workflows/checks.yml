@@ -26,7 +26,7 @@ env:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       plan: ${{ steps.select.outputs.plan }}
       smoke-matrix: ${{ steps.smoke-matrix.outputs.matrix }}

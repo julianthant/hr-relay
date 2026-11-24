@@ -18,7 +18,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/build/` | Source-tool preparation and independent checks. |
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. `relay.ts` owns the Windows production launcher and private loopback stop broker; `relay-backend.ts` reports shutdown only after bootstrap releases its lifetime. Root `relay.cmd` selects portable Node. `tests/support/processes/relay-drain-child.ts` supplies the controlled write-drain proof. |
 | `scripts/test/` | Shared typed CI selection/proof/timing-history policy (`ci-plan.ts`), duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
-| `.github/workflows/development.yml`, `staging.yml`, `production.yml`, `checks.yml` | `Development`, `Staging` and `Production` call the one `checks.yml` with fast, portable, release or full kinds. Their required gates are `development`, `staging` and `production`; Development tests task pushes and non-task PRs, gates task PRs on their push run and runs the scheduled full run; Staging and staging releases run the portable plan and require a green full run through `scripts/ci/full-run.ts`; hotfix and manual releases add macOS native proofs. Each PR supersedes its own older runs. |
+| `.github/workflows/` | `checks.yml` owns the shared fast, portable, release and full plans. `development.yml` posts the `development` result for Task pushes. `pr.yml` posts `PR metadata` for development PRs and the `development` result for non-Task heads. `full.yml` runs the scheduled or dispatched full plan on development. `staging.yml` and staging releases through `production.yml` run the portable plan and require a green full run through `scripts/ci/full-run.ts`. Hotfix and manual releases add macOS native proofs. |
 | `scripts/verify/` | Repository privacy and test-target verification. |
 | `src/` | Application source. |
 | `tests/` | Tests, fixtures, helpers, and process entrypoints. |
@@ -76,7 +76,7 @@ src/
 
 `storage/maintenance/account-deletion.ts` owns captured local-account erasure and startup continuation.
 `storage/maintenance/custody-availability.ts` owns the Windows maintenance refusal shared by backup/export, restore, retirement, upgrades, layout migration and ready-account deletion. Normal reads and initial profile cleanup remain outside that contract.
-`runtime/browser/duo-platform-authenticator.ts` prepares emulated platform enrollment and login, exporting fresh keys/counters to canonical custody and rehydrating ready keys over private CDP. `runtime/browser/native-browser-focus.ts` activates the exact owned Duo process and captured Relay return target on macOS and Windows.
+`runtime/browser/native-browser-focus.ts` activates the exact owned Duo process and captured Relay return target on macOS and Windows.
 
 Paths in this table are relative to `src/backend/`.
 
