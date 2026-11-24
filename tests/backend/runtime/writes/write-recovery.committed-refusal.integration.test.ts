@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
-import type { WriteResolutionContext } from "../../../../src/backend/runs/commands/command-kernel.js";
+import type { WriteResolutionContext } from "../../../../src/backend/runs/commands/write-resolution-command.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { absentProbeEvidence } from "../../../support/fixtures/write-sequencer-fixtures.js";

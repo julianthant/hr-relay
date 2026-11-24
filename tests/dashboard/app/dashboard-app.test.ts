@@ -634,7 +634,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.ok(otherTheme);
     await act_m1(async () => otherTheme.click());
     assert_m1.equal(themeRadios.find(radio => radio.checked)?.value, initialTheme === "light" ? "dark" : "light");
-    const notifications = document.querySelector(".rail-notification-toggle");
+    const notifications = document.querySelector(".notice-bell");
     assert_m1.ok(notifications instanceof HTMLButtonElement);
     assert_m1.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
     await press(notifications);
@@ -1063,7 +1063,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     assert_m2.ok([...document.querySelectorAll('[data-slot="toast"]')].some(toast => toast.textContent?.includes("Delete run: outcome unknown")), "the lost response stays visible as a sticky toast");
     const bell = h.host.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m2.ok(bell);
     await act_m2(async () => bell.click()); await settle();
-    const review = [...h.host.querySelectorAll<HTMLButtonElement>("button.notification-item")].find(entry => entry.textContent?.includes("Delete run: outcome unknown"));
+    const review = [...document.querySelectorAll<HTMLButtonElement>("button.notice-main")].find(entry => entry.textContent?.includes("Delete run: outcome unknown"));
     assert_m2.ok(review, "the Priority notification offers the original request for review");
     await act_m2(async () => review.click());
     assert_m2.ok([...document.querySelectorAll('[role="dialog"]')].some(dialog => dialog.textContent?.includes("Recover previous Delete run")));

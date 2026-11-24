@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/gate-command.js";
 import { planStart } from "../../../../src/backend/runs/start/plan.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import type { RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";

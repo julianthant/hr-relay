@@ -16,17 +16,6 @@ export function ChartHeading({ label, value }: { label: string; value: string })
   return <div className="mb-4"><p className="m-0 text-body text-ui-secondary">{label}</p><p className={`m-0 ${dsText.display} tabular-nums text-ui-primary`}>{value}</p></div>;
 }
 
-/** The legend: a status dot, the label, then the count and share. Colour is never the only cue. */
-export function KeyFigures({ items, inline = false }: { items: readonly { label: string; status: DsStatus; count: number }[]; inline?: boolean }) {
-  const finished = items.reduce((total, item) => total + item.count, 0) || 1;
-  return <ul aria-label="Key figures" className={`m-0 flex list-none p-0 ${inline ? "flex-wrap gap-x-6 gap-y-2" : "gap-3"}`}>
-    {items.map(item => <li key={item.label} className={`flex flex-col ${inline ? "" : "min-w-0 flex-1"}`}>
-      <span className="flex items-center gap-2 text-body text-ui-secondary"><StatusDot status={item.status} />{item.label}</span>
-      <span className={`${dsText.title} tabular-nums text-ui-primary`}>{item.count} · {Math.round(item.count / finished * 100)}%</span>
-    </li>)}
-  </ul>;
-}
-
 /** The chart card. One hover design for every chart: a guide line at the day, the chart's own mark for that day, and a card beside it that stays inside this card. Focus a day (arrow keys move between days) for the same card. */
 function ChartFrame({ label, days, ticks, top, height, header, footer, tip, plot }: {
   label: string; days: readonly ChartDay[]; ticks: readonly { value: number; label: string }[]; top: number; height: number;

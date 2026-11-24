@@ -54,21 +54,25 @@ it('resets the workflow filter to All when the selected workflow leaves the peri
   const [first, second] = data.report.analytics.workflows;
   assert(first && second);
   await render(data);
-  const trigger = [...document.querySelectorAll('button')].find(item => item.textContent === 'By workflow'); assert(trigger);
+  const trigger = [...document.querySelectorAll('button')].find(item => item.textContent === 'All workflows'); assert(trigger);
   await act(async () => { trigger.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' })); });
   const option = [...document.querySelectorAll('[role="menuitemradio"]')].find(item => item.textContent === first.label) as HTMLElement | undefined; assert(option);
   await act(async () => option.click());
-  assert(![...document.querySelectorAll('button')].some(item => item.textContent === 'By workflow'));
+  assert(![...document.querySelectorAll('button')].some(item => item.textContent === 'All workflows'));
   await render(loaded({ ...data, report: { ...data.report, analytics: { ...data.report.analytics, workflows: [second] } } }));
-  assert([...document.querySelectorAll('button')].some(item => item.textContent === 'By workflow'));
-  assert.doesNotMatch(document.body.textContent, /No workflow activity in this period/);
+  assert([...document.querySelectorAll('button')].some(item => item.textContent === 'All workflows'));
+  assert.doesNotMatch(document.body.textContent, /No finished runs in this period/);
 });
+
+/** The number of one figure in the Runs card. */
+const figure = (label: string) => Number([...document.querySelectorAll('section[aria-label="Runs"] dl dt')].find(item => item.textContent?.endsWith(label))?.nextElementSibling?.querySelector('span')?.textContent);
 
 it('counts the chart\'s runs in the header and labels open runs as a separate count', async () => {
   if (data.state !== 'loaded') throw new Error('sample not loaded');
   const [first] = data.report.analytics.workflows; assert(first);
   await render({ ...data, report: { ...data.report, analytics: { ...data.report.analytics, running: 1, workflows: [{ ...first, done: 0, failed: 0, attention: 1 }] } } });
-  assert.match(document.body.textContent, /1 run in this period · 1 open now/);
+  assert.equal(figure('Runs'), 1);
+  assert.match(document.querySelector('section[aria-label="Runs"] dl')?.textContent ?? '', /1 open now/);
 });
 
 const days = (count: number) => Array.from({ length: count }, (_, index) => `2026-09-${String(20 + index)}`);
@@ -79,11 +83,9 @@ const withAssistant = (messages: readonly number[], proposed: readonly number[])
 };
 const headings = () => [...document.querySelectorAll('h2, h3')].map(item => item.textContent);
 
-it('draws Messages and Actions, with the served counts', async () => {
+it('draws Messages and Proposed actions under Assistant, with the served counts', async () => {
   await render(withAssistant([1, 2, 3, 0, 0, 4, 5], [0, 1, 0, 0, 2, 0, 0]));
-  const order = headings().filter(text => ['Why runs failed', 'Messages', 'Tools used', 'Actions'].includes(text ?? ''));
-  assert.deepEqual(order, ['Messages', 'Actions'], 'Why runs failed is no longer drawn');
-  assert.match(document.body.textContent, /Messages sent to the assistant each day\./);
+  assert.deepEqual(headings().filter(text => text !== 'Analytics'), ['Workflows', 'Assistant']);
   const messages = document.querySelector('figure[aria-label="Messages per day"]'); assert(messages);
   assert.match(messages.textContent ?? '', /Messages\s*15/);
   assert.deepEqual([...messages.querySelectorAll('table tbody tr')].map(row => row.lastElementChild?.textContent), ['1', '2', '3', '0', '0', '4', '5']);
@@ -99,18 +101,17 @@ it('shows no tools section and no not-recorded line, since neither is recorded',
   assert.doesNotMatch(document.body.textContent, /not recorded yet/);
 });
 
-it('shows each assistant section empty when the range has no assistant use', async () => {
+it('shows Assistant empty when the range has no assistant use', async () => {
   await render(withAssistant([], []));
-  assert.match(document.body.textContent, /No messages in this period/);
-  assert.match(document.body.textContent, /No actions proposed in this period/);
+  assert.match(document.body.textContent, /No assistant use in this period/);
   assert.doesNotMatch(document.body.textContent, /not recorded yet/);
   assert.equal(document.querySelector('figure[aria-label="Messages per day"]') === null, true);
   assert.equal(document.querySelector('figure[aria-label="Proposed actions per day"]') === null, true);
 });
 
-it('leaves the run sections as they were', async () => {
+it('draws the Runs chart and the Workflows table', async () => {
   await render(withAssistant([1], [1]));
-  assert.match(document.body.textContent, /\d+ runs? in this period/);
+  assert(figure('Runs') > 0);
   assert(document.querySelector('figure[aria-label="Runs per day"]'));
   assert(document.querySelector('table[aria-label="Workflows"]'));
 });
@@ -140,15 +141,13 @@ it('a bad range keeps the period control and never echoes the raw value', async 
   assert(['7d', '30d', '90d'].every(value => document.querySelector(`fieldset input[type="radio"][value="${value}"]`)));
 });
 
-it('shows a dash for the time of a workflow with no run in the period, and ranks the rest', async () => {
+it('lists only workflows with a finished run in the period', async () => {
   if (data.state !== 'loaded') throw new Error('sample not loaded');
   const [first, second] = data.report.analytics.workflows; assert(first && second);
   const empty = { ...first, id: 'empty', label: 'Empty workflow', done: 0, failed: 0, attention: 0, typicalSeconds: 407 };
   await render({ ...data, report: { ...data.report, analytics: { ...data.report.analytics, workflows: [empty, { ...second, typicalSeconds: 90 }] } } });
-  const row = [...document.querySelectorAll('table[aria-label="Workflows"] tbody tr')].find(item => item.textContent?.includes('Empty workflow')); assert(row);
-  assert.equal(row.lastElementChild?.textContent, '—');
-  const ranked = [...document.querySelectorAll('ol[aria-label="Typical time per workflow"] li')];
-  assert.equal(ranked.length, 2); assert.match(ranked[0]?.textContent ?? '', new RegExp(second.label)); assert.match(ranked[1]?.textContent ?? '', /Empty workflow.*—/);
+  const rows = [...document.querySelectorAll('table[aria-label="Workflows"] tbody tr')];
+  assert.equal(rows.length, 1); assert.match(rows[0]?.textContent ?? '', new RegExp(second.label));
 });
 
 it('while the report loads, shows a busy region and no guessed sections', async () => {
@@ -203,8 +202,7 @@ it('a held empty report names its own period until the chosen period arrives', a
   const props = { today: ACTIVITY_SAMPLE_TODAY, onRange() {} };
   const empty = activitySample(ACTIVITY_SAMPLE_RANGE, 'empty');
   await act(async () => root?.render(createElement(ActivityView, { ...props, data: empty, range: ACTIVITY_SAMPLE_RANGE })));
-  assert.match(document.body.textContent, /No runs in this period/);
-  assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
+  assert.match(document.body.textContent, /No runs in this periodPick another period/);
   await act(async () => root?.render(createElement(ActivityView, { ...props, data: empty, range: next, blocked: true })));
   assert.match(document.body.textContent, new RegExp(`No runs in this period.*${analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)}`));
   assert(document.querySelector('[data-analytics-stale]'));
@@ -214,13 +212,11 @@ it('a held empty report names its own period until the chosen period arrives', a
   assert.equal(document.querySelector('[data-analytics-stale]') === null, true);
 });
 
-it('agrees on one run total across the header, the legend and the table for the seeded day', async () => {
+it('agrees on one run total across the Runs figure, the status figures and the table for the seeded day', async () => {
   await render(data);
-  const header = /(\d+) runs? in this period/.exec(document.body.textContent ?? '');
-  assert(header, 'the Runs header counts runs');
-  const legend = [...document.querySelectorAll('ul[aria-label="Key figures"] li')].reduce((n, item) => n + Number(/^(\d+) ·/.exec(item.lastElementChild?.textContent ?? '')?.[1]), 0);
+  const legend = figure('Done') + figure('Failed') + figure('Needs attention');
   const table = [...document.querySelectorAll('table[aria-label="Workflows"] tbody tr:not([data-open]) td:nth-child(3)')].reduce((n, cell) => n + Number(cell.textContent), 0);
-  assert.equal(Number(header[1]), legend);
+  assert.equal(figure('Runs'), legend);
   assert.equal(legend, table);
   assert(legend > 0);
   await act(async () => (document.querySelector('button[aria-expanded]') as HTMLButtonElement).click());

@@ -11,7 +11,7 @@ import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import {
   PHASE1_ACTIVE_COMMAND_ARMS,
-} from "../../../src/backend/runs/commands/command-kernel.js";
+} from "../../../src/backend/runs/commands/command-arms.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import {
