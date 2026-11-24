@@ -7,6 +7,7 @@ import { PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../../src/models/config
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
+import { readAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -263,7 +264,7 @@ for (const scenario of ["software", "abort", "timeout"] as const) it(`real enrol
     password: "synthetic-enrollment-password", createdAt: systemClock.now().toISOString() });
   assert.equal(draft.state, "onboarding");
   if (draft.state !== "onboarding") throw new Error("synthetic draft missing");
-  let failure: unknown;
+  let failure: unknown, finished = false;
   try {
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
     assert.ok(context);
@@ -328,6 +329,20 @@ for (const scenario of ["software", "abort", "timeout"] as const) it(`real enrol
         assert.doesNotMatch(JSON.stringify(events), /synthetic-enrollment@ucsd.edu|synthetic-enrollment-password|synthetic-handle|synthetic-enrollment-challenge|privateKey|publicKey|stack/);
       });
     } finally { debugAdmission.release(); }
+    if (scenario === "software") {
+      const attemptId = profile.session.readOnboarding(draft.token, draft.operationId).methods.key.attemptId;
+      assert.ok(attemptId);
+      const ready = profile.session.confirmOnboardingDuo(draft.token, draft.operationId, "key", attemptId);
+      assert.ok(ready.state === "onboarding" && ready.step === "ready");
+      assert.equal(machine.readProfileRegistry().profiles.some(row => row.profileId === draft.profileId), false);
+      const active = await profile.session.completeOnboarding(draft.token, draft.operationId);
+      finished = true;
+      assert.equal(active.profileId, draft.profileId);
+      assert.equal(machine.readProfileRegistry().profiles.filter(row => row.profileId === draft.profileId).length, 1);
+      const rows = z.strictObject({ credentials: z.array(z.looseObject({ state: z.string(), authenticator: z.looseObject({ transport: z.string() }).optional() })) })
+        .parse(readAuthenticatedCredentialFixture(machine.stateRoot, draft.profileId, "duo")).credentials;
+      assert.deepEqual(rows.map(row => [row.state, row.authenticator?.transport]), [["ready", "usb"]]);
+    }
   } catch (error) {
     failure = error;
     try {
@@ -342,7 +357,7 @@ for (const scenario of ["software", "abort", "timeout"] as const) it(`real enrol
     } catch (diagnosticError) { failure = new AggregateError([error, diagnosticError], "enrollment fixture and diagnostics failed"); }
   }
   try {
-    if (profile.session.readOnboarding(draft.token, draft.operationId).methods.key.state === "unknown") {
+    if (!finished && profile.session.readOnboarding(draft.token, draft.operationId).methods.key.state === "unknown") {
       await assert.rejects(profile.close(), error => error instanceof RuntimeCustodyUncertainError
         && error.errors.some(cause => cause instanceof AggregateError && cause.message === "profile-onboarding-custody-unproved"));
     } else await profile.close();
