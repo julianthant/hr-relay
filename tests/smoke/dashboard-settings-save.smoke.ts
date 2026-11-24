@@ -1,13 +1,24 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { CommandResultSchema, SettingsCommandRequestSchema } from "../../src/rules/commands/commands.js";
-import { syntheticSettingsAuthority } from "../support/helpers/dashboard/settings-harness.js";
+import { MOCK_DIST_DIR } from "../support/helpers/dashboard/served-fixtures/bundle.js";
+import { startSeededServer, type SeededServer } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { expect, test as base } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 
 type HoldSave = (edit: () => Promise<void>, refused?: boolean) => Promise<void>;
-const test = base.extend<{ settings: { pickedPath: string; whileReplyIsHeld: HoldSave } }>({
+// Saves commit on the seeded server, so each commit's settings row rides the stream the readback joins.
+const test = base.extend<{ seeded: SeededServer; settings: { pickedPath: string; whileReplyIsHeld: HoldSave } }>({
+  // eslint-disable-next-line no-empty-pattern -- Playwright parses fixture dependencies from this pattern.
+  seeded: async ({}, use) => {
+    const server = await startSeededServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" }, productApp: true, liveSettings: true });
+    try {
+      await use(server);
+    } finally {
+      await server.close();
+    }
+  },
   settings: async ({ page }, use) => {
-    const authority = await syntheticSettingsAuthority();
     let nextSave: { ready: Promise<void>; refused: boolean } | undefined;
     async function whileReplyIsHeld(edit: () => Promise<void>, refused = false) {
       const gate = Promise.withResolvers<void>();
@@ -18,13 +29,13 @@ const test = base.extend<{ settings: { pickedPath: string; whileReplyIsHeld: Hol
       }
       finally { gate.resolve(); }
     }
-    const pickedPath = join(authority.root, "smoke-downloads");
+    const root = await mkdtemp(join(tmpdir(), "relay-settings-save-"));
+    const pickedPath = join(root, "smoke-downloads");
     try {
       await mkdir(pickedPath);
       await page.route("**/api/v1/settings/path-picker", route => route.fulfill({
         json: { state: "selected", field: "paths.downloadsDir", path: pickedPath },
       }));
-      await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: authority.read() }));
       await page.route("**/api/v1/commands", async route => {
         const request = SettingsCommandRequestSchema.parse(route.request().postDataJSON());
         const save = nextSave;
@@ -35,13 +46,13 @@ const test = base.extend<{ settings: { pickedPath: string; whileReplyIsHeld: Hol
             state: "rejected", commandId: request.commandId, code: "lock-unavailable", message: "Fixture refused this settings save.",
           }) });
         } else {
-          await route.fulfill({ json: authority.execute(request) });
+          await route.continue();
         }
       });
 
       await use({ pickedPath, whileReplyIsHeld });
     } finally {
-      await authority.close();
+      await rm(root, { recursive: true, force: true });
     }
   },
 });

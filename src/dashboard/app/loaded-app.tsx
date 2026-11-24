@@ -319,6 +319,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const binding = currentPreferenceBinding.current;
     return preferences.connect(client, { ...binding, scope: commandScope, authority: { ...binding.authority, epoch: authorityEpoch } }, () => currentPreferenceBinding.current);
   }, [preferences, client, authorityEpoch, commandScope]);
+  useEffect(() => { preferences.streamChanged(); }, [preferences, dayState.rows, dayState.connection.state]);
   const preferenceState = usePersonPreferences();
   useConfirmCloseDuringRun(preferenceState.value.confirmCloseDuringRun, (application?.targets.length ?? 0) > 0);
   useEffect(() => { if (preferenceState.problem) toast({ ...settingsSaveFailure(), title: preferenceState.problem }); }, [preferenceState.problem, toast]);
