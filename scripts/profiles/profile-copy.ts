@@ -38,10 +38,10 @@ export async function importProfileLibrary(options: ImportOptions, lock: Runtime
   if (!existsSync(join(targetWorkspace, ".tracker", "control", "installation.json"))) {
     throw new ProfileCopyRefusedError("destination-signup-required", "Start the copy, finish its own Duo signup, stop it, then rerun.");
   }
-  const { parseBackupManifestFile } = await import("../../src/backend/storage/sqlite/backup-service.js");
+  const { importIsolatedProfileData, parseIsolatedImportBackupManifest } = await import("../../src/backend/storage/maintenance/isolated-library-import.js");
   const directory = join(sourceWorkspace, rebuildRuntimeIsolation.stateRoot, "profiles", sourceProfile, "backups", "authority");
   const backups = (existsSync(directory) ? readdirSync(directory) : []).filter(name => name.endsWith(".sqlite.manifest.json"))
-    .map(name => ({ name, manifest: parseBackupManifestFile(join(directory, name)) }))
+    .map(name => ({ name, manifest: parseIsolatedImportBackupManifest(join(directory, name)) }))
     .sort((a, b) => Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt)
       || b.manifest.authorityGeneration - a.manifest.authorityGeneration || b.name.localeCompare(a.name));
   const newest = backups[0];
@@ -51,10 +51,9 @@ export async function importProfileLibrary(options: ImportOptions, lock: Runtime
     throw new ProfileCopyRefusedError("source-backup-mismatch", "The newest backup does not match the chosen production profile.");
   }
 
-  const [{ acquireEntrypointAdmission }, { createCredentialStore }, { importIsolatedProfileData }, { AuthorityDatabase }] = await Promise.all([
+  const [{ acquireEntrypointAdmission }, { createCredentialStore }, { AuthorityDatabase }] = await Promise.all([
     import("../../src/backend/storage/admission/bootstrap-admission.js"),
     import("../../src/backend/storage/configuration/credential-store.js"),
-    import("../../src/backend/storage/maintenance/isolated-library-import.js"),
     import("../../src/backend/storage/sqlite/authority-database.js"),
   ]);
   const machine = acquireEntrypointAdmission(targetWorkspace, "exclusive", lock);
