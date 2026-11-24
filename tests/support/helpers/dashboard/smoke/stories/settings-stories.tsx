@@ -239,6 +239,5 @@ const SETTINGS_TABLES = defineSurface("settings", {
 
 export const SETTINGS_STORIES = SETTINGS_TABLES.map(entry => {
   const known = { ...KNOWN_BREAKS[entry.id.slice("settings/".length)], ...(TOAST_STORIES.has(entry.id) ? breaks("toast-text-only") : {}) };
-  const narrow = entry.id === "settings/notice/setting-unavailable" ? { knownFailureWidths: { "named-and-focusable": [1024] } } : {};
-  return Object.keys(known).length === 0 ? entry : { ...entry, story: { ...entry.story, knownFailures: known, ...narrow } };
+  return Object.keys(known).length === 0 ? entry : { ...entry, story: { ...entry.story, knownFailures: known } };
 });
