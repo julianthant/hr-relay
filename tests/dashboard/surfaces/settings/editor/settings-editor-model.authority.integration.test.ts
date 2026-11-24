@@ -312,24 +312,31 @@ it("closing Settings mid-read retires that visit's read: a reopen reads again an
   assert.equal(controller?.editor.state === "loaded" ? controller.editor.document.revision : undefined, reopened.revision);
 });
 
-it("an unknown save reply that lands after a section switch is read back and frees the command lock", async () => {
+it.each(["switching sections", "closing Settings"] as const)("reads back an unknown save reply after %s and frees the command lock", async navigation => {
   const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
   const commands: unknown[] = [];
+  let reads = 0;
   let reply: (request: unknown) => Promise<unknown> = request => Promise.resolve(authority.execute(request));
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
-    if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(authority.read()), { status: 200 });
+    if (url.endsWith("/settings/editable")) {
+      reads += 1;
+      return new Response(JSON.stringify(authority.read()), { status: 200 });
+    }
     if (url.endsWith("/commands") && typeof init?.body === "string") {
       const request: unknown = JSON.parse(init.body); commands.push(request);
       return new Response(JSON.stringify(await reply(request)), { status: 200 });
     }
     throw new Error("unexpected-settings-test-request");
   } });
+  const feedback = vi.fn();
+  const onSaved = vi.fn();
+  const onSaveProblem = vi.fn();
   let controller: ReturnType<typeof useEditableSettings> | undefined;
-  function Harness({ view }: { view: string }) { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view }); return null; }
+  function Harness({ view }: { view: string }) { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view, onSaved, onSaveProblem }); return null; }
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   cleanups.push(() => { act(() => root.unmount()); host.remove(); });
-  const render = (view: string) => act(async () => root.render(createElement(DashboardClientProvider, { client,
-    children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: 0, children: createElement(Harness, { view }) }) })));
+  const render = (view?: string) => act(async () => root.render(createElement(DashboardClientProvider, { client,
+    children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: 0, feedback, children: view === undefined ? null : createElement(Harness, { view }) }) })));
   const label = () => controller?.leaves.find(leaf => leaf.path === "actor.label")?.settingsValue;
   await render("general");
   await vi.waitFor(() => assert.equal(controller?.locked, false));
@@ -338,10 +345,21 @@ it("an unknown save reply that lands after a section switch is read back and fre
   await act(async () => { controller?.update("actor.label", "Sent from General"); });
   await act(async () => { controller?.submit(); });
   await vi.waitFor(() => assert.equal(commands.length, 1));
-  await render("paths");
+  await render(navigation === "closing Settings" ? undefined : "paths");
+  const readsBeforeReply = reads;
   await act(async () => { lose(); });
+  if (navigation === "closing Settings") {
+    await vi.waitFor(() => assert.equal(reads, readsBeforeReply + 1, "the unknown reply started a readback while Settings was closed"), { timeout: 5000, interval: 50 });
+    assert.equal(feedback.mock.calls.length, 0);
+    assert.equal(onSaved.mock.calls.length, 0);
+    assert.equal(onSaveProblem.mock.calls.length, 0);
+    await render("general");
+  }
   await vi.waitFor(() => { assert.equal(label(), "Sent from General", "the read-back shows the stored write"); assert.equal(controller?.dirtyCount, 0); assert.equal(controller?.locked, false); }, { timeout: 5000, interval: 50 });
   reply = request => Promise.resolve(authority.execute(request));
   await act(async () => { controller?.update("actor.label", "Next edit", true); });
-  await vi.waitFor(() => assert.equal(commands.length, 2, "the reservation was released, so the next edit reaches Relay"), { timeout: 5000, interval: 50 });
+  await vi.waitFor(() => {
+    assert.equal(commands.length, 2, "the reservation was released, so the next edit reaches Relay");
+    assert.equal(label(), "Next edit");
+  }, { timeout: 5000, interval: 50 });
 });
