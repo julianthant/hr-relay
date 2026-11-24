@@ -45,6 +45,34 @@ describe("subscription run panel rows", () => {
     assert.equal(h.rows.runPanel(RUN_A)?.state, "refused");
   });
 
+  it("empties the store on reset-required, so no panel read before it answers a decision", () => {
+    const h = harness(RUN_A);
+    const stream = h.opened[0];
+    stream?.push(hello("pc:5"));
+    stream?.push(snapshot("pc:5", [refusal(RUN_A, "first")]));
+    assert.equal(h.rows.runPanel(RUN_A)?.state, "refused");
+    stream?.push({ type: "reset-required", reason: "cursor-expired", cursor: "pc:5" });
+    assert.equal(h.rows.runPanel(RUN_A), undefined);
+  });
+
+  it("empties the store on a cursor gap", () => {
+    const h = harness(RUN_A);
+    const stream = h.opened[0];
+    stream?.push(hello("pc:5"));
+    stream?.push(snapshot("pc:5", [refusal(RUN_A, "first")]));
+    stream?.push(change("pc:9", "pc:8", [refusal(RUN_A, "after the gap")]));
+    assert.equal(h.rows.runPanel(RUN_A), undefined);
+  });
+
+  it("empties the store when a hello announces a new projection generation", () => {
+    const h = harness(RUN_A);
+    h.opened[0]?.push(hello("pc:5"));
+    h.opened[0]?.push(snapshot("pc:5", [refusal(RUN_A, "first")]));
+    assert.equal(h.rows.runPanel(RUN_A)?.state, "refused");
+    h.opened[0]?.push({ ...hello("pc:5"), projectionGeneration: 8 });
+    assert.equal(h.rows.runPanel(RUN_A), undefined);
+  });
+
   it("opens with the day alone when no run is selected, and ignores an id that is not a run id", () => {
     assert.equal(harness().opened[0]?.path, `/events/v1?topics=dashboard-day:${DAY}`);
     assert.equal(harness("not-a-run").opened[0]?.path, `/events/v1?topics=dashboard-day:${DAY}`);
