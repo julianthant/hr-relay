@@ -56,9 +56,12 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
       const cuts: string[] = [];
       const text = nodes.map(node => node.textContent ?? "").join("").trim();
       // An ellipsis is accepted only where the full text is reachable: a title, or a hover/focus trigger named with it.
-      const reachable = () => { for (let holder: HTMLElement | null = element; holder !== null; holder = holder.parentElement) {
+      const tooltipStates = ["closed", "delayed-open", "instant-open"];
+      const reachable = () => { if (text === "") return false; for (let holder: HTMLElement | null = element; holder !== null; holder = holder.parentElement) {
         if ((holder.getAttribute("title") ?? "").includes(text)) return true;
-        if (holder.hasAttribute("data-state") && (holder.getAttribute("aria-label") ?? "").includes(text)) return true;
+        // A tooltip trigger opens on hover and focus; tabs and collapsibles also carry data-state, but not these.
+        const trigger = tooltipStates.includes(holder.getAttribute("data-state") ?? "") && !holder.hasAttribute("aria-expanded") && holder.getAttribute("role") !== "tab";
+        if (trigger && (holder.getAttribute("aria-label") ?? "").includes(text)) return true;
       } return false; };
       if (element.hasAttribute("data-one-line")) {
         const lines = new Set(drawn.map(rect => Math.round(rect.top)));
