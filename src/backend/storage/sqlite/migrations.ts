@@ -180,6 +180,34 @@ const SCHEMA_38_QUERY_INDEXES = deepFreeze({
 /** The current query indexes exercised by the store query plan test. */
 export const QUERY_INDEXES = deepFreeze({ ...SCHEMA_37_QUERY_INDEXES, ...SCHEMA_38_QUERY_INDEXES });
 
+/** Migration 40 indexes the lookups that scanned on an operator-sized store and the foreign keys whose parent rows are deleted. */
+export const LIST_INDEX_SCHEMA_VERSION = 40;
+export const LIST_INDEXES = deepFreeze({
+  commands_child_idx: { on: "commands(parent_id) WHERE parent_id IS NOT NULL",
+    serves: "the scoped command-group check a dashboard read runs after a peer write; commands_parent_idx counts the parentless rows and is not chosen" },
+  runs_owned_idx: { on: "runs(owner_worker_id,created_at,id) WHERE owner_worker_id IS NOT NULL", serves: "runs.listByWorker" },
+  runs_queue_order_idx: { on: "runs(CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id)",
+    serves: "the run list page's position rebuild in queue order" },
+  runs_workflow_queue_order_idx: { on: "runs(workflow,CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id)",
+    serves: "the workflow-filtered run list page's position rebuild in queue order" },
+  gates_run_idx: { on: "gate_results(run_id,created_at,id)", serves: "gateResults.listByRun" },
+  notifications_actor_idx: { on: "notifications(actor_id,created_at,id)", serves: "notifications.listByActor" },
+  run_batches_workflow_idx: { on: "run_batches(workflow,started_at,id)", serves: "runSessions.listByWorkflow" },
+  failures_fingerprint_idx: { on: "run_failures(fingerprint,created_at,id)", serves: "failures.listByFingerprint and countByFingerprint" },
+  ocr_approved_run_idx: { on: "ocr_approved_snapshots(run_id,created_at,id)", serves: "a run's approved OCR snapshots and the run foreign key" },
+  dependencies_parent_run_idx: { on: "delegation_dependencies(parent_run_id,created_at,id)", serves: "delegationDependencies.listByParentRun on every worker heartbeat" },
+  dependencies_parent_order_idx: { on: "delegation_dependencies(parent_run_id,id)", serves: "the queue list's dependencies for a page of runs" },
+  debug_events_run_idx: { on: "debug_events(run_id) WHERE run_id IS NOT NULL", serves: "run deletion's removal of the run's debug events" },
+  diagnostics_failure_idx: { on: "diagnostic_snapshots(failure_id)", serves: "the failure foreign key when run deletion removes a failure" },
+  receipts_failure_idx: { on: "run_receipts(failure_id)", serves: "the failure foreign key when run deletion removes a failure" },
+  attachments_conversation_idx: { on: "assistant_attachments(conversation_id)", serves: "the cascade when an expired conversation is deleted" },
+});
+/** The dependency's parent run, kept in its record, becomes an indexed generated column; the record stays the source. */
+export const LIST_INDEX_MIGRATION = deepFreeze({ version: LIST_INDEX_SCHEMA_VERSION, statements: [
+  "ALTER TABLE delegation_dependencies ADD COLUMN parent_run_id TEXT GENERATED ALWAYS AS (json_extract(payload_json,'$.parentRunId')) VIRTUAL",
+  ...Object.entries(LIST_INDEXES).map(([name, index]) => `CREATE INDEX ${name} ON ${index.on}`),
+] });
+
 export const SQLITE_MIGRATIONS = deepFreeze([
   { version: 1, statements: [`CREATE TABLE database_states (
  id INTEGER PRIMARY KEY CHECK(id=1), schema_version INTEGER NOT NULL CHECK(schema_version>0),
@@ -1150,6 +1178,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     ...Object.entries(SCHEMA_38_QUERY_INDEXES).map(([name, index]) => `CREATE INDEX ${name} ON ${index.on}`),
   ] },
   DEBUG_EVENTS_MIGRATION,
+  LIST_INDEX_MIGRATION,
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
