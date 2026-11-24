@@ -31,9 +31,10 @@ export function historyArchivePath(stateRoot: string): string {
 
 const commandFamilies = "family IN ('run-lifecycle','run','start','bulk-parent','bulk-child','failure-resolution','ocr-review','gate','workflow-batch') OR (family='worker-browser' AND json_extract(request_json,'$.type')='check-parked-write')";
 const archiveFormat = 2;
-const startEvidenceTables = {
+const dashboardEvidenceTables = {
   run_requests: " WHERE id IN (SELECT json_extract(payload_json,'$.origin.startPlanId') FROM run_batches WHERE id IN (SELECT session_id FROM runs))",
   settings_snapshots: " WHERE id IN (SELECT settings_snapshot_id FROM runs)",
+  artifacts: " WHERE kind='extracted' AND id IN (SELECT json_extract(payload_json,'$.result.value.extractionId') FROM run_results WHERE workflow='ocr-page')",
 } as const;
 const historyTables = {
   runs: "", run_batches: "", deleted_runs: "", run_delegations: "", delegation_dependencies: "",
@@ -44,7 +45,7 @@ const historyTables = {
   command_audits: ` WHERE command_id IN (SELECT id FROM commands WHERE ${commandFamilies})`,
   run_references: " WHERE table_name IN ('commands','command_audits','run_delegations','delegation_dependencies','run_results','run_receipts')",
   workbook_operations: " WHERE json_extract(request_json,'$.source.kind') IN ('run','run-reference') AND receipt_json IS NOT NULL",
-  ...startEvidenceTables,
+  ...dashboardEvidenceTables,
 } as const;
 const tables = Object.entries(historyTables);
 const headers = z.strictObject({ format: z.literal(archiveFormat), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
@@ -278,7 +279,7 @@ function upgradeHistoryArchive(path: string, binding: ProfileDatabaseBinding, la
         step(archive);
       }
       if (start.format === 1) {
-        for (const name of Object.keys(startEvidenceTables)) {
+        for (const name of Object.keys(dashboardEvidenceTables)) {
           const columns = layout.prepare(`SELECT * FROM main.${name} LIMIT 0`).columns().map(column => Column.parse(column.name));
           createHistoryTable(archive, name, columns);
         }

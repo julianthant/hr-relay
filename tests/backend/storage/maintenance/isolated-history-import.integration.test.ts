@@ -10,6 +10,8 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
+import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { readQueueRecordMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
 import { ConfigSnapshotIdSchema, LOCAL_OPERATOR_ACTOR_ID, WriteAttemptIdSchema } from "../../../../src/rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
@@ -22,6 +24,7 @@ import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/s
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { searchPartitionDay } from "../../../../src/models/dashboard/search-calendar.js";
+import { OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT, NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -151,7 +154,7 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
   const archive = new DatabaseSync(archivePath);
   try {
     archive.exec(`ALTER TABLE run_search DROP COLUMN ocr_subject_terms; ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id;
-      DROP TABLE run_requests; DROP TABLE settings_snapshots; UPDATE history_header SET schema_version=39,format=1`);
+      DROP TABLE run_requests; DROP TABLE settings_snapshots; DROP TABLE artifacts; UPDATE history_header SET schema_version=39,format=1`);
   } finally { archive.close(); }
   const { client, outbound, spawn } = await openCopyDashboard(copy, clock);
   expect((await client.runDetail(sourceRun.envelope.runId)).runId).toBe(sourceRun.envelope.runId);
@@ -207,6 +210,22 @@ it("loads every imported dashboard day with delegated runs and failed Lookup sta
   const snapshotId = failed.envelope.configSnapshotId;
   expect(history.authority.configSnapshots.get(snapshotId)).toEqual(database.authority.configSnapshots.get(snapshotId));
   expect(copy.database.authority.configSnapshots.get(snapshotId)).toBeUndefined();
+  const pages = database.authority.runs.listByWorkflow("ocr-page");
+  expect(pages.length).toBeGreaterThan(0);
+  for (const page of pages) {
+    const result = database.authority.runResults.get(page.envelope.runId);
+    const { extractionId } = OcrPageReadingSchema.parse(result?.result.value);
+    const extraction = database.authority.ocrExtractions.get(extractionId);
+    expect(extraction).toBeDefined();
+    expect(history.authority.ocrExtractions.get(extractionId)).toEqual(extraction);
+    expect(copy.database.authority.ocrExtractions.get(extractionId)).toBeUndefined();
+  }
+  const reader = new RunRecordService({ database: history, clock: sourceClock, ids: { uuid: randomUUID },
+    publishQueued() { throw new Error("unexpected-archive-queue-publication"); } });
+  const importedRoot = history.authority.runs.get(parentRun.envelope.runId);
+  assert.ok(importedRoot);
+  expect(history.withAuthorityReadSnapshot(() => readQueueRecordMembers(history.authority, reader, importedRoot,
+    history.authority.runs.listChildren(importedRoot.envelope.runId), source.resolve))).toBeDefined();
   expect(copy.database.authority.runs.listNonTerminal()).toEqual([]);
   copy.closeDatabase();
 
