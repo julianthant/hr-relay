@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { RailSearch } from "../../../../../src/dashboard/surfaces/shell/search/navbar-view.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -28,7 +28,8 @@ it("reopens the search palette with an empty query", async () => {
   assert.equal(input()?.value, "");
   await escape();
   assert.equal(input(), null);
-  assert.equal(document.activeElement, trigger());
+  // Radix returns focus in a timer after the dialog unmounts. A failing assert.equal on two jsdom nodes inspects them without bound.
+  await vi.waitFor(() => assert.equal(document.activeElement === trigger(), true));
   await act(async () => trigger().click());
   assert.equal(input()?.value, "");
 });
