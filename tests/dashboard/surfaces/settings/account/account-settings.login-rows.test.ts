@@ -206,10 +206,10 @@ describe("Settings > Account Relay login rows", () => {
     assert.equal(document.body.querySelector('[role="dialog"] [role="alert"]')?.textContent, ERROR_CATALOG.PROFILE_CURRENT_PASSWORD_REFUSED.text);
   });
 
-  it("shows an unreadable username without an edit control", async () => {
+  it("shows a missing username as shown after the next sign-in, with the pencil on", async () => {
     await mount(login({ username: undefined }));
-    assert.match(rowText(), /Not set/u);
-    assert.equal(host?.querySelector('button[aria-label="Edit username"]') === null, true);
+    assert.match(rowText(), /Shown after your next sign-in/u);
+    assert.equal(button("Edit username").disabled, false);
     assert.equal(button("Change Relay password").disabled, false);
   });
 });

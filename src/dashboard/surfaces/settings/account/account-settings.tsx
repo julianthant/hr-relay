@@ -13,6 +13,8 @@ export interface AccountValues {
   readonly timekeeper: string;
   readonly timekeeperInitials: string;
   readonly lastSignedInAt: string;
+  /** Absent until the next sign-in rewrites a stale registry email. */
+  readonly username?: string | undefined;
 }
 export interface AccountPage { readonly values: AccountValues; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; /** The served account now, read back after a details change whose reply was lost. */ readonly readAccount?: () => Promise<AccountValues | undefined>; readonly login: Omit<RelayLogin, "username"> }
 
@@ -125,7 +127,7 @@ function EditTextDialog({ label, value, close, onSave }: { label: string; value:
 
 export type ProfileLoginChangeResult = z.infer<typeof ProfileLoginChangeResultSchema>;
 export interface RelayLogin {
-  /** The current Relay username, or undefined while it cannot be read. */
+  /** The served Relay username, or undefined until the next sign-in. */
   readonly username: string | undefined;
   readonly changePassword: (request: { currentPassword: string; newPassword: string }) => Promise<ProfileLoginChangeResult>;
   readonly changeUsername: (request: { currentPassword: string; newUsername: string }) => Promise<ProfileLoginChangeResult>;
@@ -166,7 +168,7 @@ export function RelayLoginRows({ login }: { login: RelayLogin }) {
     return undefined;
   };
   return <>
-    <PencilRow label="Username" shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" editable={username !== undefined}
+    <PencilRow label="Username" shown={username ?? "Shown after your next sign-in"} pencilLabel="Edit username" title="Edit username"
       dialog={close => <UsernameDialog close={close} onSave={(current, next) => apply("username", current, next)} />} />
     <PencilRow label="Password" shown="••••••••" pencilLabel="Change Relay password" title="Change password"
       dialog={close => <PasswordDialog close={close} onSave={(current, next) => apply("password", current, next)} />} />
