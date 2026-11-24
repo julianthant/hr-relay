@@ -23,8 +23,8 @@ for (const uncertain of [false, true]) it(`bootstrap ${uncertain ? "retains" : "
       acquireAdmission: () => f.machine,
       runCli: async admission => { assert.equal(admission, f.machine); throw failure; },
     }), error => error === failure);
-    if (uncertain) { f.machine.assertLive(); f.admission.assertLive(); }
-    else assert.throws(() => f.machine.assertLive());
+    if (uncertain) { f.machine.assertLive(); f.admission.assertLive(); f.lifetime.assertHeld(); }
+    else { assert.throws(() => f.machine.assertLive()); assert.throws(() => f.lifetime.assertHeld()); }
     assert.equal(supplied, true);
   } finally { await f.close(); }
 });
