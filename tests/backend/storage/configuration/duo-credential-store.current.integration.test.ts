@@ -98,13 +98,15 @@ async function storedPlatformRow(touchId?: (keyId: string) => string) {
   const key = { credentialId: Buffer.from(randomUUID()).toString("base64url"), ...keys(), scope, authenticator: { transport: "usb" as const, isResidentCredential: false } };
   const store = createDuoCredentialStore(fixture.admission, clock);
   store.enroll(key); store.confirm(key.credentialId, scope);
+  const ready = store.credentials().map(row => row.credentialId);
+  const rows = () => RowsSchema.parse(readAuthenticatedCredentialFixture(machineRoot, profileId, "duo")).credentials.map(row => [row.credentialId, row.authenticator?.transport]);
+  const before = rows();
   const usb = RowsSchema.parse(readAuthenticatedCredentialFixture(machineRoot, profileId, "duo")).credentials[0];
   const touch = { ...usb, ...keys(), credentialId: touchId?.(key.credentialId) ?? Buffer.from(randomUUID()).toString("base64url"),
     authenticator: { transport: "internal", isResidentCredential: true, userHandle: Buffer.from("synthetic-platform-user").toString("base64") } };
   rewriteAuthenticatedCredentialFixture(machineRoot, profileId, value => ({ credentials: [...RowsSchema.parse(value).credentials, touch] }), "duo");
   const keyDirectory = join(machineRoot, "machine", "credential-keys"), duoDirectory = join(machineRoot, "machine", "duo-credentials");
-  return { fixture, clock, key, touch, profileId, keyDirectory, duoDirectory, headPath: join(keyDirectory, `${profileId}.json`), duoPath: join(duoDirectory, `${profileId}.json`),
-    rows: () => RowsSchema.parse(readAuthenticatedCredentialFixture(machineRoot, profileId, "duo")).credentials.map(row => [row.credentialId, row.authenticator?.transport]),
+  return { fixture, clock, key, touch, profileId, ready, before, rows, keyDirectory, duoDirectory, headPath: join(keyDirectory, `${profileId}.json`), duoPath: join(duoDirectory, `${profileId}.json`),
     head: () => CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(keyDirectory, `${profileId}.json`), "utf8"))),
     stages: () => [keyDirectory, duoDirectory].flatMap(directory => readdirSync(directory).filter(name => name.endsWith(".canonical.tmp"))) };
 }
@@ -133,8 +135,8 @@ for (const target of ["head", "duo"] as const) {
       signInBoundProfileFixture(machine);
       admission = machine.admitProfile(binding.profileId);
       const reopened = createDuoCredentialStore(admission, w.clock);
-      assert.deepEqual(reopened.credentials().map(row => row.credentialId), [w.key.credentialId]);
-      assert.deepEqual(w.rows(), [[w.key.credentialId, "usb"]]);
+      assert.deepEqual(reopened.credentials().map(row => row.credentialId), w.ready);
+      assert.deepEqual(w.rows(), w.before);
       const current = w.head();
       assert.equal(current.state, "active");
       assert.ok(current.retired.includes(w.touch.credentialId));
@@ -151,7 +153,7 @@ it("refuses a platform row that shares the security key's id before retiring any
     const before = readFileSync(w.headPath);
     assert.throws(() => createDuoCredentialStore(w.fixture.admission, w.clock).credentials(), { code: "DUO_CREDENTIAL_UNAVAILABLE" });
     assert.ok(readFileSync(w.headPath).equals(before));
-    assert.deepEqual(w.rows(), [[w.key.credentialId, "usb"], [w.key.credentialId, "internal"]]);
+    assert.deepEqual(w.rows(), [...w.before, [w.key.credentialId, "internal"]]);
     assert.deepEqual(w.stages(), []);
   } finally { await w.fixture.close(); }
 });
