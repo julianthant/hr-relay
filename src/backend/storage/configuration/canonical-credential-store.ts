@@ -1504,11 +1504,14 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
       try {
         const owner = z.uuid().parse(accountId);
         locked(() => {
-          const { revision, record } = readDuo(), { head, key } = readHead();
+          const frame = read("duo");
+          if (frame === undefined) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+          // A record written before security-key-only drops its platform rows with the draft, under the same re-enrolment stages.
+          const { revision } = frame, { record, platformIds } = readStoredDuoRecord(frame.value), { head, key } = readHead();
           assertReenrolAccount(record, owner);
           if (record.credentials.some(row => row.state === "ready" && head.retired.includes(row.credentialId))) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
-          const draft = record.credentials.filter(row => row.scope.accountId === owner).map(row => row.credentialId);
-          const kept = { credentials: record.credentials.filter(row => row.scope.accountId !== owner) };
+          const draft = [...new Set([...record.credentials.filter(row => row.scope.accountId === owner).map(row => row.credentialId), ...platformIds])];
+          const kept = { credentials: record.credentials.filter(row => !draft.includes(row.credentialId)) };
           if (draft.length === 0) return;
           if (!publishable({ ...head, retired: [...head.retired, ...draft] }, kept)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
           retireHead(head, key, draft, reenrolStagePath(canonical, owner, "head"));
