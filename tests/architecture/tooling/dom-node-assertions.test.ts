@@ -12,6 +12,8 @@ const COMPARISONS = new Set([
   "equal", "notEqual", "strictEqual", "notStrictEqual",
   "deepEqual", "notDeepEqual", "deepStrictEqual", "notDeepStrictEqual", "partialDeepStrictEqual",
 ]);
+// `default` and `strict` both name the whole assert module; `assert.strict` is the strict module itself.
+const MODULE_EXPORTS = new Set(["default", "strict"]);
 const ASSERT_MODULES = new Set(["node:assert", "node:assert/strict", "assert", "assert/strict"]);
 const NODE_PROBE = resolve(REPO_ROOT, "tests/architecture/tooling/dom-node-probe.ts");
 const PROOF = resolve(REPO_ROOT, "tests/architecture/tooling/dom-node-proof.ts");
@@ -24,6 +26,7 @@ const PROOF_SOURCE = [
   'import * as nodeAssert from "node:assert";',
   'import { deepEqual } from "node:assert/strict";',
   'import { default as aliased } from "node:assert/strict";',
+  'import { strict as strictAssert } from "node:assert";',
   'const trigger = () => document.querySelector<HTMLButtonElement>(\'button[aria-label="Search"]\')!;',
   "export function original() { assert.equal(document.activeElement, trigger()); }",
   "export function namespace(rows: readonly HTMLElement[]) { nodeAssert.deepStrictEqual(rows, []); }",
@@ -33,6 +36,10 @@ const PROOF_SOURCE = [
   "export function truthy() { assert.ok(document.activeElement); }",
   "export function defaultAlias() { aliased.equal(document.activeElement, trigger()); }",
   "export function defaultAliasIdentity() { aliased.equal(document.activeElement === trigger(), true); }",
+  "export function strictImport() { strictAssert.equal(document.activeElement, null); }",
+  "export function strictImportIdentity() { strictAssert.equal(document.activeElement === null, true); }",
+  "export function strictMember() { nodeAssert.strict.equal(document.activeElement, null); }",
+  "export function strictMemberIdentity() { nodeAssert.strict.equal(document.activeElement === null, true); }",
 ].join("\n");
 
 const HELPER_CALLER_SOURCE = [
@@ -66,9 +73,14 @@ function assertModuleBinding(checker: ts.TypeChecker, identifier: ts.Identifier)
   if (importDeclaration === undefined || !ts.isStringLiteral(importDeclaration.moduleSpecifier)
     || !ASSERT_MODULES.has(importDeclaration.moduleSpecifier.text)) return undefined;
   if (ts.isImportClause(declaration) || ts.isNamespaceImport(declaration)) return "module";
-  if (ts.isImportSpecifier(declaration) && (declaration.propertyName ?? declaration.name).text === "default") return "module";
+  if (ts.isImportSpecifier(declaration) && MODULE_EXPORTS.has((declaration.propertyName ?? declaration.name).text)) return "module";
   if (ts.isImportSpecifier(declaration)) return COMPARISONS.has((declaration.propertyName ?? declaration.name).text) ? "function" : undefined;
   return undefined;
+}
+
+function isAssertModule(checker: ts.TypeChecker, receiver: ts.Expression): boolean {
+  if (ts.isIdentifier(receiver)) return assertModuleBinding(checker, receiver) === "module";
+  return ts.isPropertyAccessExpression(receiver) && receiver.name.text === "strict" && isAssertModule(checker, receiver.expression);
 }
 
 function holdsNode(checker: ts.TypeChecker, type: ts.Type, node: ts.Type, seen = new Set<ts.Type>()): boolean {
@@ -101,8 +113,8 @@ export function findDomNodeAssertions(roots: readonly string[], virtual: Readonl
     const visit = (child: ts.Node): void => {
       if (ts.isCallExpression(child)) {
         const callee = child.expression;
-        const binding = ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) && COMPARISONS.has(callee.name.text)
-          ? assertModuleBinding(checker, callee.expression) === "module"
+        const binding = ts.isPropertyAccessExpression(callee) && COMPARISONS.has(callee.name.text)
+          ? isAssertModule(checker, callee.expression)
           : ts.isIdentifier(callee) && assertModuleBinding(checker, callee) === "function";
         if (binding && child.arguments.slice(0, 2).some((argument) => holdsNode(checker, checker.getTypeAtLocation(argument), node))) {
           const position = source.getLineAndCharacterOfPosition(child.getStart(source));
@@ -123,12 +135,14 @@ describe("DOM node assertions", () => {
     assert.deepEqual(findDomNodeAssertions(roots), []);
   }, 120_000);
 
-  it("catches the original search palette focus assertion and its namespace, named and default-alias forms", () => {
+  it("catches the original search palette focus assertion and its namespace, named, default-alias and strict forms", () => {
     assert.deepEqual(findDomNodeAssertions([], new Map([[PROOF, PROOF_SOURCE]])), [
-      "tests/architecture/tooling/dom-node-proof.ts:6:30",
-      "tests/architecture/tooling/dom-node-proof.ts:7:59",
-      "tests/architecture/tooling/dom-node-proof.ts:8:44",
-      "tests/architecture/tooling/dom-node-proof.ts:12:34",
+      "tests/architecture/tooling/dom-node-proof.ts:7:30",
+      "tests/architecture/tooling/dom-node-proof.ts:8:59",
+      "tests/architecture/tooling/dom-node-proof.ts:9:44",
+      "tests/architecture/tooling/dom-node-proof.ts:13:34",
+      "tests/architecture/tooling/dom-node-proof.ts:15:34",
+      "tests/architecture/tooling/dom-node-proof.ts:17:34",
     ]);
   }, 120_000);
 
