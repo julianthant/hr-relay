@@ -231,7 +231,7 @@ it("uses the served calendar for the product producer and never substitutes work
   try {
     await act(async () => root.render(createElement(ActivityReport, { client, today: "2026-08-07", range: "", onRange: () => {}, workflowSources: sources })));
     assert.deepEqual(vi.mocked(client.activityPopulation).mock.calls[0]?.slice(0, 2), ["2026-08-01", "2026-08-07"]);
-    assert.match(host.textContent ?? "", /1 run in this period/);
+    assert.match(host.querySelector('section[aria-label="Runs"] dl')?.textContent ?? "", /^Runs1Done/);
     const details = host.querySelector<HTMLButtonElement>('button[aria-label^="Show "]'); assert.ok(details);
     await act(async () => details.click());
     const openRuns = [...host.querySelectorAll<HTMLButtonElement>("button")].find(link => link.textContent?.trim() === "Open runs"); assert.ok(openRuns);

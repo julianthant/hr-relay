@@ -30,7 +30,7 @@ export function AnalyticsToolbar({ range, shown = range, today, onRange, workflo
       <SegmentedChoice hideLabel label="Report period" value={(quick ?? "") as Quick} options={QUICK} onChange={value => onRange(quickRange(value, today))} />
       {isActivityCalendarDate(shown.from) && isActivityCalendarDate(shown.to) && shown.from <= shown.to && <span className="flex items-center gap-1">
         <IconButton size="xs" label="Previous period" icon={<ChevronLeft aria-hidden className={dsIcon.md} />} onClick={() => onRange(shiftRange(range, -1))} />
-        <span className="text-control tabular-nums text-ui-primary">{analyticsPeriodLabel(shown)}</span>
+        <span data-analytics-period className="text-control tabular-nums text-ui-primary">{analyticsPeriodLabel(shown)}</span>
         <IconButton size="xs" label="Next period" disabled={range.to >= today} icon={<ChevronRight aria-hidden className={dsIcon.md} />} onClick={() => onRange(shiftRange(range, 1))} />
       </span>}
       <span className="ml-auto flex items-center gap-2"><DropdownMenu>
