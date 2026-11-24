@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 export const SKELETON_READ_HOLD_MS = 2_500;
 
-type Read = { pathname: string; query?: Record<string, string> } | { day: string } | { fileName: string };
+type Read = { pathname: string; query?: Record<string, string> } | { day: string } | { run: string } | { fileName: string };
 
 type HeldRead = {
   timing: { requestedAt?: number; withheldAt?: number; windowStartedAt?: number; releasedAt?: number };
@@ -66,9 +66,12 @@ function installReadHold({ target, delayMs, coldOrigin }: { target: Read; delayM
   window.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : input, location.href);
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+    const topics = url.searchParams.get("topics") ?? "";
     const matches = "day" in target
-      ? url.pathname === "/events/v1" && url.searchParams.get("topics") === `dashboard-day:${target.day}`
-      : url.pathname === target.pathname
+      ? url.pathname === "/events/v1" && topics === `dashboard-day:${target.day}`
+      : "run" in target
+        ? url.pathname === "/events/v1" && topics.endsWith(`,run:${target.run}`)
+        : url.pathname === target.pathname
         && Object.entries(target.query ?? {}).every(([key, value]) => url.searchParams.get(key) === value);
     if (!matches || method !== "GET" || url.origin !== location.origin || (matched && coldOrigin === undefined)) {
       return fetchFromServer(input, init);
@@ -87,7 +90,7 @@ function installReadHold({ target, delayMs, coldOrigin }: { target: Read; delayM
     if (!response.ok || response.body === null || !response.headers.get("content-type")?.startsWith("text/event-stream")) {
       throw new Error("Expected a seeded dashboard-day event stream");
     }
-    // Forward the greeting and delay only the first snapshot. The stream stays open.
+    // Forward the greeting and delay only the first envelope that carries the held read. The stream stays open.
     let pending = "";
     const body = response.body.pipeThrough(new TextDecoderStream()).pipeThrough(new TransformStream<string, string>({
       async transform(chunk, controller) {
@@ -96,7 +99,7 @@ function installReadHold({ target, delayMs, coldOrigin }: { target: Read; delayM
         while (boundary !== -1) {
           const event = pending.slice(0, boundary + 2);
           pending = pending.slice(boundary + 2);
-          if (timing.withheldAt === undefined && /^data: \{"type":"snapshot"[,}]/mu.test(event)) await hold();
+          if (timing.withheldAt === undefined && carriesHeldRead(event, target)) await hold();
           controller.enqueue(event);
           boundary = pending.indexOf("\n\n");
         }
@@ -105,4 +108,12 @@ function installReadHold({ target, delayMs, coldOrigin }: { target: Read; delayM
     return new Response(body, { headers: response.headers, status: response.status });
   };
   return read;
+}
+
+/** A day hold delays the first snapshot; a run hold delays the first envelope that carries the run's panel row. */
+function carriesHeldRead(event: string, target: { day: string } | { run: string }): boolean {
+  if ("day" in target) return /^data: \{"type":"snapshot"[,}]/mu.test(event);
+  const data = event.split("\n").filter(line => line.startsWith("data: ")).map(line => line.slice(6)).join("\n");
+  const envelope = JSON.parse(data) as { rows?: readonly unknown[] };
+  return Array.isArray(envelope.rows) && envelope.rows.length > 0;
 }
