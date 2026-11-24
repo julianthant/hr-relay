@@ -137,8 +137,8 @@ const DELETE = {
   uncertain: deleting("Account deletion not confirmed", { state: "uncertain", personName: "Jordan Lee", message: "Couldn't confirm the deletion. Reopen Relay to check." }, 'text="Couldn\'t confirm the deletion. Reopen Relay to check."'),
 } satisfies Record<DeleteAccountPresentation["state"], Story>;
 
-/** Typing leaves focus in the search box; the keyboard walk starts at the top of the page, as a user's does. */
-const find = (query: string): Scene["play"] => then(type("Search settings", query), async page => { await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); }); });
+/** Typing leaves focus in the search box; a click on the sidebar title puts the keyboard walk back at the top of the page, as a user's Tab would start. */
+const find = (query: string): Scene["play"] => then(type("Search settings", query), async page => { await page.getByRole("heading", { name: "Settings", exact: true }).click(); });
 const SEARCH = {
   results: scene("Search with matching settings", { play: then(loaded, find("browser")), story: { ready: '[role="status"]:has-text("found")' } }),
   none: scene("Search with no matching setting", { play: then(loaded, find("zzzz")), story: { ready: 'text="No settings found"' } }),
