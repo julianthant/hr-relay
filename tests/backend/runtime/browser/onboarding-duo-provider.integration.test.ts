@@ -28,12 +28,17 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const FORM = `<!doctype html><form action="${SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="username"><label for="ssopassword">Password</label><input id="ssopassword" name="password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
 
-// A fresh runner's first Chromium start pages in the binary; doing it here keeps that cost out of each test's 5 s launch window.
+// The runner's first load of the staged MV3 extension is slow; paying it here keeps it out of each test's 5 s launch window.
 beforeAll(async () => {
-  const extension = realpathSync(join(process.cwd(), "fast-duo")), profile = mkdtempSync(join(tmpdir(), "onboarding-warm-"));
-  const context = await chromium.launchPersistentContext(profile, { channel: "chromium", headless: true,
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "onboarding-warm-"))), extension = join(root, "extension");
+  stageFastDuoExtension(realpathSync("fast-duo"), extension, PROFILE_ENROLLMENT_EXTENSION_MODE);
+  const context = await chromium.launchPersistentContext(join(root, "profile"), { channel: "chromium", headless: true,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
-  await context.close();
+  try {
+    const worker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js"))
+      ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js") });
+    assert.ok(worker);
+  } finally { await context.close(); }
 });
 
 for (const pendingClose of [false, true]) it(pendingClose
