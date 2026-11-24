@@ -185,7 +185,8 @@ afterAll(() => profiles.close());
   it("accounts for every authority table", () => {
     assert.deepEqual([...new Set(cases.map(({ table }) => table))].sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority"
-        && !["database_states", "database_upgrades"].includes(name))
+        // Debug rows are diagnostics: their append bumps no authority generation.
+        && !["database_states", "database_upgrades", "debug_events"].includes(name))
       .map(({ name }) => name)
       .sort());
   });
