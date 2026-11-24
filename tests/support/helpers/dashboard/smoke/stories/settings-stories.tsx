@@ -186,7 +186,7 @@ const BREAK_SETS = {
   PATH: breaks("no-banned-text"),
   /** Save is not the accent while the Account edit dialog shows a refusal. */
   ACCENT: breaks("primary-button-accent"),
-  /** The page's search field and notice leave controls with no keyboard stop. */
+  /** The sidebar section buttons, "Clear search" and "Close settings" while the search is open, and a toast's "Dismiss notification" have no keyboard stop. */
   FOCUS: breaks("named-and-focusable"),
   /** FOCUS, and the Downloads row shows a file path. */
   FOCUS_AND_PATH: breaks("named-and-focusable", "no-banned-text"),
