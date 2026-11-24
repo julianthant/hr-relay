@@ -13,4 +13,6 @@ vi.mock("node:crypto", async importOriginal => {
   return { ...actual, scryptSync: (...[password, salt, length, options]: Parameters<typeof actual.scryptSync>) => actual.scryptSync(password, salt, length, { ...options, N: 2 ** 10 }) };
 });
 
-it("upgrades real retained predecessor Kuali evidence through startup after an interrupted committed conversion, preserving every frozen row and a second startup", () => upgradeRetainedPredecessorEvidence(true));
+it("upgrades real retained predecessor Kuali evidence through startup after an interrupted committed conversion, preserving every frozen row and a second startup", () => upgradeRetainedPredecessorEvidence(true,
+  // Imported after the fixture resets the module graph, so the store matches the reloaded storage modules.
+  () => import("../../../../src/backend/storage/configuration/credential-store.js")));

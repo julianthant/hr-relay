@@ -36,7 +36,8 @@ export function conversions(path: string) {
 }
 
 /** Upgrade the retained predecessor Kuali evidence through startup, optionally after an interrupted committed conversion, and prove every frozen row survives a second startup. */
-export async function upgradeRetainedPredecessorEvidence(interrupted: boolean): Promise<void> {
+export async function upgradeRetainedPredecessorEvidence(interrupted: boolean,
+  credentialStore: () => Promise<typeof import("../../../../src/backend/storage/configuration/credential-store.js")>): Promise<void> {
   const f = await predecessorSeparationsRerun();
   assert.ok(f.writes.some(intent => intent.status === "committed"));
   const { RuntimeLifetimeLock } = await import("../../../../src/backend/storage/admission/lifetime-lock.js");
@@ -46,7 +47,7 @@ export async function upgradeRetainedPredecessorEvidence(interrupted: boolean): 
   const { createReceiptService } = await import("../../../../src/backend/runs/trust/receipt-service.js");
   const { testRunService } = await import("../../fixtures/run-lifecycle-fixtures.js");
   const { createCanonicalCredentials } = await import("../../../../src/backend/storage/configuration/canonical-credential-store.js");
-  const { authenticateDocument, createCredentialStore } = await import("../../../../src/backend/storage/configuration/credential-store.js");
+  const { authenticateDocument, createCredentialStore } = await credentialStore();
   const { deriveSchemaHash } = await import("../../../../src/models/validation/schema-bound-value.js");
   const { separationsDescriptor: descriptor } = await import("../registered-workflows.js");
   const before = frozenRows(f.path), protectedPath = join(f.stateRoot, "credentials", "protected.json"), oldCredentials = readFileSync(protectedPath);
