@@ -5,7 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 
 TRACE_LANES = 2
-GALLERY_LANES = 3
+GALLERY_LANES = 2
 # Per-file test seconds from the smoke profile in run 45292546150.
 TRACE_SECONDS = {
     "dashboard-analytics": 18, "dashboard-live-updates": 143, "dashboard-run-dialog": 64,
