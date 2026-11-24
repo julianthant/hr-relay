@@ -126,56 +126,37 @@ export function wordLimits({ page }: StateRuleContext): Promise<readonly string[
 export function toastTextOnly({ page }: StateRuleContext): Promise<readonly string[]> {
   return page.evaluate(() => {
     const found: string[] = [];
-    const drawn = (element: Element) => { const box = element.getBoundingClientRect(); return box.width > 1 && box.height > 1; };
-    const chrome = [...document.querySelectorAll('[role="toolbar"], [role="group"][aria-label], h1, h2, h3, [data-slot$="title"]')]
-      .filter(element => drawn(element) && element.closest('[data-ds-toast-state]') === null);
     for (const toast of document.querySelectorAll<HTMLElement>('[data-ds-toast-state]')) {
-      if (!drawn(toast)) continue;
-      const label = `the toast "${toast.innerText.trim().slice(0, 60)}"`;
-      const extras = toast.querySelectorAll("button, a[href], input, select, textarea, img, video");
-      if (extras.length > 0) found.push(`${label} holds ${String(extras.length)} control or image; a toast is text only`);
       const box = toast.getBoundingClientRect();
-      for (const element of chrome) {
-        const other = element.getBoundingClientRect();
-        if (box.left < other.right && other.left < box.right && box.top < other.bottom && other.top < box.bottom) {
-          found.push(`${label} covers ${element.matches('[role="toolbar"], [role="group"]') ? `the toolbar "${element.getAttribute("aria-label") ?? ""}"` : `the title "${(element.textContent ?? "").trim().slice(0, 40)}"`}`);
-        }
-      }
+      if (box.width <= 1 || box.height <= 1) continue;
+      const extras = toast.querySelectorAll("button, a[href], input, select, textarea, img, video");
+      if (extras.length > 0) found.push(`the toast "${toast.innerText.trim().slice(0, 60)}" holds ${String(extras.length)} control or image; a toast is text only`);
     }
     return found;
   });
 }
 
-/** A toast sits bottom centre on its floor: the configured inset, or 8px above the Sessions panel when that is higher. */
+/** Toasts sit top centre, 12px from the top, inside the window and off the Sessions panel, whatever height the panel is. */
 export function toastPlacement({ page }: StateRuleContext): Promise<readonly string[]> {
   return page.evaluate(() => {
     const found: string[] = [];
     const panel = document.querySelector('[aria-label="Session Panel"]')?.getBoundingClientRect();
-    const shown = [...document.querySelectorAll('[data-ds-toast-state]')].filter(toast => { const box = toast.getBoundingClientRect(); return box.width > 1 && box.height > 1; });
+    const shown = [...document.querySelectorAll<HTMLElement>('[data-ds-toast-state]')].filter(toast => { const box = toast.getBoundingClientRect(); return box.width > 1 && box.height > 1; });
     if (shown.length === 0) return found;
     const viewport = document.querySelector('[data-slot="toast-viewport"]');
     const front = shown.find(toast => getComputedStyle(toast).getPropertyValue("--toast-index").trim() === "0");
     if (viewport === null || front === undefined) return ["a toast is shown without a viewport or a front toast"];
-    const probe = document.createElement("div");
-    probe.style.cssText = "position:fixed;visibility:hidden;width:0;height:var(--ds-toast-inset-bottom)";
-    viewport.parentElement?.append(probe);
-    const inset = probe.getBoundingClientRect().height;
-    probe.remove();
-    if (inset === 0) return ["--ds-toast-inset-bottom sets no floor for the toasts"];
-    const floor = Math.max(inset, panel === undefined ? 0 : window.innerHeight - panel.top + 8);
     for (const [part, element] of [["toast viewport", viewport], ["front toast", front]] as const) {
-      const offset = window.innerHeight - element.getBoundingClientRect().bottom;
-      if (Math.abs(offset - floor) > 1.5) found.push(`the ${part} sits ${String(Math.round(offset))}px above the window's bottom edge; its floor is ${String(Math.round(floor))}px`);
+      const top = element.getBoundingClientRect().top;
+      if (Math.abs(top - 12) > 1) found.push(`the ${part} sits ${String(Math.round(top))}px from the window's top edge, not 12px`);
     }
-    for (const toast of document.querySelectorAll<HTMLElement>('[data-ds-toast-state]')) {
+    for (const toast of shown) {
       const box = toast.getBoundingClientRect();
-      if (box.width <= 1 || box.height <= 1) continue;
       const label = `the toast "${toast.innerText.trim().slice(0, 60)}"`;
       const offCentre = Math.abs((box.left + box.right) / 2 - window.innerWidth / 2);
       if (offCentre > 2) found.push(`${label} is ${String(Math.round(offCentre))}px off the horizontal centre`);
       if (panel !== undefined && box.bottom > panel.top && box.top < panel.bottom && box.left < panel.right && panel.left < box.right) found.push(`${label} overlaps the Sessions panel`);
-      else if (panel !== undefined && box.top >= panel.bottom) found.push(`${label} sits below the Sessions panel`);
-      if (box.bottom > window.innerHeight - 1) found.push(`${label} runs off the bottom of the window`);
+      if (box.top < 0 || box.left < 0 || box.right > window.innerWidth || box.bottom > window.innerHeight) found.push(`${label} runs outside the window`);
     }
     return found;
   });
@@ -492,8 +473,8 @@ export const STATE_RULES: Readonly<Record<StateRuleName, { readonly check: State
   "fits-viewport": { check: fitsViewport, failure: "sideways scroll or clipped text at this size" },
   "no-banned-text": { check: noBannedText, failure: "text an operator must never read" },
   "word-limits": { check: wordLimits, failure: "titles, descriptions or errors over their word limit" },
-  "toast-text-only": { check: toastTextOnly, failure: "a toast that holds more than text or covers a toolbar or title" },
-  "toast-placement": { check: toastPlacement, failure: "a toast that is off bottom centre or over the Sessions panel" },
+  "toast-text-only": { check: toastTextOnly, failure: "a toast that holds more than text" },
+  "toast-placement": { check: toastPlacement, failure: "a toast that is off top centre, outside the window or over the Sessions panel" },
   "skeleton-only-while-fetching": { check: skeletonOnlyWhileFetching, failure: "a skeleton outside a slow fetch or outside its fetching region" },
   "dialogs-share-shape": { check: dialogsShareShape, failure: "dialogs of one kind that differ in radius, border, title size or padding" },
   "primary-button-accent": { check: primaryButtonAccent, failure: "a primary button that is not the one accent" },

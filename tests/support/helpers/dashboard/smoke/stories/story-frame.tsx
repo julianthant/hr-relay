@@ -1,5 +1,5 @@
 /** The dashboard's theme root and providers around one story, as `DashboardApp` nests them. */
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useHubMotion } from "../../../../../../src/dashboard/ds/theme/motion.js";
 import { ToastProvider, TooltipProvider } from "../../../../../../src/dashboard/ds/ui.js";
 import { PersonPreferencesContext } from "../../../../../../src/dashboard/lib/person-preferences.js";
@@ -9,10 +9,9 @@ import { NEUTRAL_PERSON_PREFERENCES } from "../../../../../../src/models/config/
 const STILL = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: "dark", animations: false });
 const ANIMATED = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: "dark", animations: true });
 
-function ThemeRoot({ children }: { children: ReactNode }) {
+function ThemeRoot({ children, theme }: { children: ReactNode; theme: "dark" | "light" }) {
   useHubMotion();
-  return <div data-app-root="" data-demo-theme="dark"
-    style={{ "--ds-toast-inset-bottom": "calc(2 * (var(--ds-h-bar) + var(--ds-space-loose)))" } as CSSProperties}
+  return <div data-app-root="" data-demo-theme={theme}
     className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]">
     <TooltipProvider delayDuration={200}><ToastProvider hold>
       <div className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -23,6 +22,6 @@ function ThemeRoot({ children }: { children: ReactNode }) {
 }
 
 /** `animated` is for a check of motion itself; every other story holds still. */
-export function StoryFrame({ children, animated = false }: { children: ReactNode; animated?: boolean }) {
-  return <PersonPreferencesContext.Provider value={animated ? ANIMATED : STILL}><ThemeRoot>{children}</ThemeRoot></PersonPreferencesContext.Provider>;
+export function StoryFrame({ children, animated = false, theme = "dark" }: { children: ReactNode; animated?: boolean; theme?: "dark" | "light" }) {
+  return <PersonPreferencesContext.Provider value={animated ? ANIMATED : STILL}><ThemeRoot theme={theme}>{children}</ThemeRoot></PersonPreferencesContext.Provider>;
 }

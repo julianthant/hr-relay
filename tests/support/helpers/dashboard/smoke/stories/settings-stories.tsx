@@ -212,21 +212,6 @@ const BREAK_SETS = {
   FOCUS: breaks("named-and-focusable"),
 } as const;
 
-/** Measured at both widths with the app's Sessions-bar inset on the frame: the bottom-centre toast still covers the "Runs" toolbar (the save, restart and notice stories), or a title or group of the page (the credentials and Duo stories). The overlap is real, so these stay recorded. */
-const TOAST_STORIES: ReadonlySet<string> = new Set([
-  "settings/action/duo-not-opened",
-  "settings/credentials/unknown",
-  "settings/notice/restart-required",
-  "settings/notice/setting-unavailable",
-  "settings/runtime/restart-required",
-  "settings/save-combo/replayed",
-  "settings/save-combo/restart-required",
-  "settings/save/applied",
-  "settings/save/conflict",
-  "settings/save/refused",
-  "settings/save/unconfirmed",
-]);
-
 /** By `<state type>/<member>`. */
 const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleName, string>>>>> = {
   "save/saving": BREAK_SETS.FOCUS,
@@ -248,6 +233,6 @@ const SETTINGS_TABLES = defineSurface("settings", {
 });
 
 export const SETTINGS_STORIES = SETTINGS_TABLES.map(entry => {
-  const known = { ...KNOWN_BREAKS[entry.id.slice("settings/".length)], ...(TOAST_STORIES.has(entry.id) ? breaks("toast-text-only") : {}) };
-  return Object.keys(known).length === 0 ? entry : { ...entry, story: { ...entry.story, knownFailures: known } };
+  const known = KNOWN_BREAKS[entry.id.slice("settings/".length)];
+  return known === undefined ? entry : { ...entry, story: { ...entry.story, knownFailures: known } };
 });

@@ -1,7 +1,7 @@
 /** Planted violations that prove each state rule bites, on the dashboard's real primitives. Never part of the catalogue. */
 import { useEffect, useState } from "react";
 import {
-  ActionBar, ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, Switch, Tab, TabList, TabPanel, Tabs, useToasts,
+  Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, Switch, Tab, TabList, TabPanel, Tabs, useToasts,
 } from "../../../../../../src/dashboard/ds/ui.js";
 import { SessionsView } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import type { StateRuleName } from "../state-rule-limits.js";
@@ -16,16 +16,6 @@ export interface RuleProbe {
   readonly clean?: readonly StateRuleName[];
 }
 
-function ToastOverToolbar() {
-  const { toast } = useToasts();
-  // After the provider's own effects: it starts listening for toasts once it has mounted.
-  useEffect(() => {
-    const timer = window.setTimeout(() => { toast({ tone: "danger", sticky: true, title: "Run unavailable", description: "This run is no longer in the queue." }); }, 0);
-    return () => { window.clearTimeout(timer); };
-  }, [toast]);
-  return <div className="fixed inset-x-0" style={{ bottom: "calc(var(--ds-toast-inset-bottom) - 1rem)" }}><ActionBar><ActionBarRow label="Queue actions"><Button>Start run</Button></ActionBarRow></ActionBar></div>;
-}
-
 /** The Sessions panel open, with the toast viewport pushed off centre and down onto it. */
 function ToastOverSessions() {
   const { toast } = useToasts();
@@ -34,20 +24,20 @@ function ToastOverSessions() {
     return () => { window.clearTimeout(timer); };
   }, [toast]);
   return <>
-    <style>{'[data-slot="toast-viewport"] { bottom: 24px !important; left: 25% !important; }'}</style>
+    <style>{'[data-slot="toast-viewport"] { top: auto !important; bottom: 24px !important; left: 25% !important; }'}</style>
     <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
   </>;
 }
 
-/** The Sessions bar collapsed, with a centred toast that clears it by 8px but sits under the configured inset. */
-function ToastUnderFloor() {
+/** The Sessions bar collapsed, with a centred toast inside the window that hangs lower than its place. */
+function ToastBelowTop() {
   const { toast } = useToasts();
   useEffect(() => {
     const timer = window.setTimeout(() => { toast({ tone: "success", sticky: true, title: "Workers added" }); }, 0);
     return () => { window.clearTimeout(timer); };
   }, [toast]);
   return <>
-    <style>{'[data-slot="toast-viewport"] { bottom: calc(var(--session-dock-h) + 1.25rem) !important; }'}</style>
+    <style>{'[data-slot="toast-viewport"] { top: 66px !important; }'}</style>
     <SessionsView data={{ state: "ready", workers: [] }} open={false} onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
   </>;
 }
@@ -190,11 +180,11 @@ export const RULE_PROBES = {
   },
   "toast-over-sessions": {
     story: { title: "A toast off centre and over the Sessions panel", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastOverSessions /></StoryFrame> },
-    finds: { "toast-placement": [/is \d+px off the horizontal centre/u, /overlaps the Sessions panel/u] },
+    finds: { "toast-placement": [/is \d+px off the horizontal centre/u, /overlaps the Sessions panel/u, /runs outside the window/u] },
   },
-  "toast-under-floor": {
-    story: { title: "A centred toast clear of the Sessions bar, under its floor", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastUnderFloor /></StoryFrame> },
-    finds: { "toast-placement": [/the toast viewport sits 66px .* its floor is 104px/u, /the front toast sits 66px .* its floor is 104px/u, /^(?![\s\S]*(?:horizontal centre|overlaps))/u] },
+  "toast-below-top": {
+    story: { title: "A centred toast clear of the Sessions bar, lower than its place", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastBelowTop /></StoryFrame> },
+    finds: { "toast-placement": [/the toast viewport sits 66px .* not 12px/u, /the front toast sits 66px .* not 12px/u, /^(?![\s\S]*(?:horizontal centre|overlaps|outside))/u] },
   },
   "picker-beside-a-request": {
     story: {
@@ -207,9 +197,9 @@ export const RULE_PROBES = {
     },
     finds: { "no-dead-disabled-control": [/the picker "Workflow" is shown switched off/u, /^(?![\s\S]*"Add workers")/u] },
   },
-  "toast-over-toolbar": {
-    story: { title: "A toast over the queue toolbar", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastOverToolbar /></StoryFrame> },
-    finds: { "toast-text-only": [/covers the toolbar "Queue actions"/u] },
+  "toast-with-a-button": {
+    story: { title: "A toast that holds a button", ready: "[data-ds-toast-state]", render: () => <StoryFrame><div data-ds-toast-state="full">Run deleted<Button>Undo</Button></div></StoryFrame> },
+    finds: { "toast-text-only": [/the toast "Run deleted\s*Undo" holds 1 control or image/u] },
   },
   "slow-fetch": {
     story: {

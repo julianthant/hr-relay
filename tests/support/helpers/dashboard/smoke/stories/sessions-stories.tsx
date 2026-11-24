@@ -27,6 +27,21 @@ function RaiseToast({ count }: { count: number }) {
   useEffect(() => { if (mounted) TOAST_TITLES.slice(0, count).forEach(title => toast({ tone: "success", title })); }, [mounted, count, toast]);
   return null;
 }
+/** The approved design's own toast: an error in front of two results, title and one short line. */
+function RaiseErrorStack() {
+  const { toast } = useToasts();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!mounted) return;
+    toast({ tone: "success", title: "Workers added" });
+    toast({ tone: "success", title: "Worker removed" });
+    toast({ tone: "danger", title: "Cancel run: rejected", description: "Morrow, Bea · The run already finished." });
+  }, [mounted, toast]);
+  return null;
+}
+const errorStack = (theme: "dark" | "light"): Story => ({ title: `An error toast in front of two results, ${theme}`, ready: '[data-slot="toast-description"]', play: page => page.waitForTimeout(600),
+  render: () => <StoryFrame theme={theme}><RaiseErrorStack /><SessionsView data={ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle)} open={false} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame> });
 const withToast = (title: string, data: SessionsViewState, open = true, count = 1, play?: Story["play"]): Story => {
   const base = bar(title, data, { open });
   return { ...base, ready: '[data-ds-toast-state]', ...(play === undefined ? {} : { play }), render: () => <StoryFrame><RaiseToast count={count} /><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame> };
@@ -79,7 +94,7 @@ const COMBINATION = {
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } }),
 } satisfies Record<string, Story>;
 
-/** A toast sits bottom centre above the Sessions bar at every panel height: collapsed, empty, one row and several. */
+/** Toasts sit top centre at every panel height: collapsed, empty, one row and several. */
 const TOAST = {
   collapsed: withToast("A result toast over the collapsed bar", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle), false),
   empty: withToast("A result toast over the empty panel", ready()),
@@ -88,6 +103,8 @@ const TOAST = {
   stack: withToast("Three toasts stacked at rest over the open panel", ready(SESSION_WORKER_BY_STATE.running, ...QUIET_IDLE), true, 3, page => page.waitForTimeout(600)),
   "stack-hover": withToast("Three toasts expanded on hover, clear of the panel", ready(SESSION_WORKER_BY_STATE.running, ...QUIET_IDLE), true, 3,
     async page => { await page.locator('[data-slot="toast"]').first().hover(); await page.waitForTimeout(600); }),
+  "error-stack": errorStack("dark"),
+  "error-stack-light": errorStack("light"),
   "stack-collapsed": withToast("Three toasts stacked over the collapsed bar", ready(SESSION_WORKER_BY_STATE.running, ...QUIET_IDLE), false, 3, page => page.waitForTimeout(600)),
 } satisfies Record<string, Story>;
 

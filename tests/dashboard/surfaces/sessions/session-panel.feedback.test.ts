@@ -56,8 +56,8 @@ it.each(["normal", "refused", "uncertain"] as const)("shows add progress in the 
   assert.doesNotMatch(panel.textContent ?? "", /Check outcome|uncertain|Response unavailable/, "an unknown outcome is read back, never shown");
   if (outcome === "refused") {
     assert.equal(panel.querySelector('[role="alert"]')?.textContent, undefined, "a refusal is a toast, not an inline panel");
-    assert.deepEqual([...document.querySelectorAll('[data-slot="toast-title"]')].map(title => title.textContent?.replace(/:.*$/su, "")), ["Couldn't add workers"]);
-    assert.match(document.querySelector('[data-slot="toast-title"]')?.textContent ?? "", /Worker control was refused/);
+    assert.deepEqual([...document.querySelectorAll('[data-slot="toast-title"]')].map(title => title.textContent), ["Couldn't add workers"]);
+    assert.match(document.querySelector('[data-slot="toast-description"]')?.textContent ?? "", /Worker control was refused/);
     assert.equal(panel.querySelectorAll("article").length, 0);
     assert.equal(trigger.disabled, false);
     return;
