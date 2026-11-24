@@ -11,6 +11,8 @@ export class StorageMaintenanceCustodyUnavailableError extends Error {
   }
 }
 
+export function maintenanceCustodyAvailable(): boolean { return platform() !== "win32"; }
+
 export function assertMaintenanceCustodyAvailable(operation: StorageMaintenanceOperation): void {
-  if (platform() === "win32") throw new StorageMaintenanceCustodyUnavailableError(operation);
+  if (!maintenanceCustodyAvailable()) throw new StorageMaintenanceCustodyUnavailableError(operation);
 }
