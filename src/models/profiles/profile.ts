@@ -263,6 +263,11 @@ export const SignUpOperationSchema = z.strictObject({
   commandId: z.uuid(),
   writeId: z.uuid(),
   emailKey: z.string().regex(/^[0-9a-f]{64}$/u),
+  relay: z.strictObject({
+    email: ProfileRegistryRowSchema.shape.relayEmail.unwrap(),
+    salt: z.string().regex(/^[0-9a-f]{32}$/u),
+    passwordVerifier: z.string().regex(/^[0-9a-f]{64}$/u),
+  }).optional(),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   createdAt: IsoInstantSchema,

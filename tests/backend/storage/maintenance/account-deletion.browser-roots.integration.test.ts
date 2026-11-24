@@ -15,7 +15,7 @@ import { admitCommandBrowser, commandProfileDirectory, createBrowserRoots } from
 import { AccountDeletionSchema } from "../../../../src/backend/storage/maintenance/account-deletion.js";
 import { fixedLayoutEntries } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { finishProfileOnboarding, syntheticOnboardingDuo, withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 
 vi.mock("../../../../src/backend/storage/maintenance/process-closure.js", async load => ({
@@ -37,8 +37,8 @@ async function fixture(commands = false) {
     hostFacts: { primaryDisplay: null }, onboardingDuo: syntheticOnboardingDuo() });
   const retainedBrowsers: BrowserRoot[] = [];
   async function signup(email: string) {
-    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp({ firstName: "Fixture", lastName: "Operator", email,
-      password: "disposable-fixture-password", createdAt: systemClock.now().toISOString() }));
+    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(withFixtureUcpath({ firstName: "Fixture", lastName: "Operator", email,
+      password: "disposable-fixture-password", createdAt: systemClock.now().toISOString() })));
     assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("actual signup required");
     if (commands) {
       const context = runtime.selectedContext(active.token), profileRoot = join(context.admission.stateRoot, "browsers");
