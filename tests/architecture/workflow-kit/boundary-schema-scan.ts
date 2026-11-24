@@ -66,8 +66,10 @@ async function discoverBoundarySchemas(): Promise<ReadonlyMap<string, z.core.$Zo
     if ((!file.endsWith(".ts") && !file.endsWith(".tsx")) || file.endsWith(".d.ts")) continue;
     const path = join(REPO_ROOT, file);
     if (!mightExportSchema(path)) continue;
-    const moduleExports: Record<string, unknown> = await import(pathToFileURL(path).href);
-    for (const [name, value] of Object.entries(moduleExports)) {
+    const moduleExports: unknown = await import(pathToFileURL(path).href);
+    assert.ok(moduleExports !== null && typeof moduleExports === "object", `${file}: expected a module namespace`);
+    const entries: [string, unknown][] = Object.entries(moduleExports);
+    for (const [name, value] of entries) {
       if (isSchemaName(name) && value instanceof z.core.$ZodType) schemas.set(`${file}:${name}`, value);
     }
   }
