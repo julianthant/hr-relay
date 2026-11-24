@@ -28,8 +28,8 @@ export function isAuthoritySourceChanged(error: unknown): boolean {
   return error instanceof AuthoritySourceChangedError || error instanceof Error && error.cause !== undefined && isAuthoritySourceChanged(error.cause);
 }
 
-function identity(stats: BigIntStats): string {
-  return [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs].join(":");
+function identity(stats: BigIntStats, includeTimes = true): string {
+  return [stats.dev, stats.ino, stats.mode, stats.size, ...(includeTimes ? [stats.mtimeNs, stats.ctimeNs] : [])].join(":");
 }
 
 function inspect(path: string): BigIntStats | undefined {
@@ -116,7 +116,8 @@ export interface AuthorityImageOwner {
 }
 
 /** pointInTime: an owner image; later changes to the live files do not make it stale. */
-type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void; pointInTime?: true; sourceMarker?: string }>;
+type SnapshotMarkers = Readonly<{ files: string; authority: string }>;
+type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void; pointInTime?: true; markers?: SnapshotMarkers }>;
 type ReadonlyAuthorityImage = Readonly<{ path: string; marker: string }>;
 const readerImages = new WeakMap<DatabaseSync, ReadonlyAuthorityImage>();
 
@@ -126,6 +127,55 @@ export function readonlyAuthorityImage(database: DatabaseSync): ReadonlyAuthorit
 
 type ActiveObservation = { readonly statePath: string; owner: AuthorityImageOwner | undefined; snapshot?: ReadonlySnapshot; view?: ReadonlySnapshot };
 const activeObservation = new AsyncLocalStorage<ActiveObservation>();
+
+type ReusableSnapshot = {
+  readonly marker: string;
+  readonly snapshot: ReadonlySnapshot;
+  readers: number;
+  retired: boolean;
+};
+const reusableSnapshots = new AsyncLocalStorage<{ active: boolean; copies: Map<string, ReusableSnapshot> }>();
+
+/** Share guarded copies of unchanged SQLite files during stopped upgrade inspection. */
+export async function withReusableReadonlyAuthoritySnapshots<T>(body: () => Promise<T>): Promise<T> {
+  const copies = new Map<string, ReusableSnapshot>();
+  const scope = { active: true, copies };
+  let primary: { error: unknown } | undefined;
+  let result: { value: T } | undefined;
+  try { result = { value: await reusableSnapshots.run(scope, body) }; }
+  catch (error) { primary = { error }; }
+  scope.active = false;
+  const failures: unknown[] = [];
+  for (const copy of copies.values()) {
+    try { retireSnapshot(copy); } catch (error) { failures.push(error); }
+  }
+  copies.clear();
+  if (failures.length !== 0) throw retainAuthoritySourceClosure(primary === undefined ? failures : [primary.error, ...failures], {});
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error("authority-readonly-snapshot-reuse-result-missing");
+  return result.value;
+}
+
+function retireSnapshot(copy: ReusableSnapshot): void {
+  copy.retired = true;
+  if (copy.readers === 0) copy.snapshot.dispose();
+}
+
+function borrowSnapshot(copy: ReusableSnapshot): ReadonlySnapshot {
+  copy.readers++;
+  let released = false;
+  return Object.freeze({
+    ...copy.snapshot,
+    assertUnchanged() {
+      if (released) throw new Error("authority-readonly-snapshot-closed");
+      copy.snapshot.assertUnchanged();
+    },
+    dispose() {
+      if (!released) { released = true; copy.readers--; }
+      if (copy.retired && copy.readers === 0) copy.snapshot.dispose();
+    },
+  });
+}
 
 /** With an owner, every read of this active authority file in body uses one owner image disposed when body ends; every other path keeps guarded, freshness-checked copies. */
 export async function withActiveAuthorityObservation<T>(statePath: string, owner: AuthorityImageOwner | undefined, body: () => Promise<T>): Promise<T> {
@@ -167,8 +217,25 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySna
     // The file at the path is not the one the owner opened: judge it by today's guarded copy.
     scope.owner = undefined;
   }
-  const proof = outermostOperationProof();
   const marker = snapshotMarker(sourcePath);
+  const reuse = reusableSnapshots.getStore();
+  if (reuse?.active) {
+    const { copies } = reuse;
+    const cached = copies.get(sourcePath);
+    if (cached?.marker === marker) {
+      cached.snapshot.assertUnchanged();
+      return borrowSnapshot(cached);
+    }
+    if (cached !== undefined) {
+      copies.delete(sourcePath);
+      retireSnapshot(cached);
+    }
+    const snapshot = copyReadonlyAuthoritySnapshot(sourcePath);
+    const copy = { marker: snapshot.markers.files, snapshot, readers: 0, retired: false };
+    copies.set(sourcePath, copy);
+    return borrowSnapshot(copy);
+  }
+  const proof = outermostOperationProof();
   const key = `readonly-snapshot:${sourcePath}`;
   const cached = proof?.slots.get(key) as { marker: string; snapshot: ReadonlySnapshot } | undefined;
   if (cached?.marker === marker) {
@@ -204,7 +271,7 @@ function pidAlive(pid: number): boolean {
   }
 }
 
-function copyReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySnapshot;
+function copyReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySnapshot & { readonly markers: SnapshotMarkers };
 function copyReadonlyAuthoritySnapshot(sourcePath: string, owner: AuthorityImageOwner): ReadonlySnapshot | undefined;
 function copyReadonlyAuthoritySnapshot(sourcePath: string, owner?: AuthorityImageOwner): ReadonlySnapshot | undefined {
   const directory = process.platform === "win32"
@@ -281,8 +348,12 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string, owner?: AuthorityImag
     }
     if (copy.stdout !== "copied") throw copyFailed();
     assertUnchanged();
-    const sourceMarker = sources.map(source => source.stats === undefined ? "absent" : identity(source.stats)).join("|");
-    return Object.freeze({ ...snapshot, sourceMarker });
+    const markers = Object.freeze({
+      files: sources.map(source => source.stats === undefined ? "absent" : identity(source.stats)).join("|"),
+      // SQLite reconstructs the shared-memory index in the private copy from the main file and WAL.
+      authority: sources.map(source => source.stats === undefined ? "absent" : identity(source.stats, source.suffix !== "-shm")).join("|"),
+    });
+    return Object.freeze({ ...snapshot, markers });
   } catch (error) {
     try { dispose(); }
     catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { snapshot }); }
@@ -338,7 +409,7 @@ export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (
  try {
    database = openReadOnlyDatabase(snapshot.path, busyTimeoutMs);
    database.exec("PRAGMA query_only=ON; BEGIN"); transactionOpen = true;
-   if (snapshot.sourceMarker !== undefined) readerImages.set(database, Object.freeze({ path, marker: snapshot.sourceMarker }));
+   if (snapshot.markers !== undefined) readerImages.set(database, Object.freeze({ path, marker: snapshot.markers.authority }));
    try { result = { value: read(database) }; }
    finally { readerImages.delete(database); }
    database.exec("COMMIT"); transactionOpen = false;
