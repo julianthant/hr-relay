@@ -408,12 +408,9 @@ export async function withCopySession(workspace: string, run: (session: ProofSes
   } finally {
     halt();
     try {
-      const code = await finished;
+      const code = await (operationCompleted ? finished : finished.catch(() => undefined));
       if (operationCompleted) requireProof(code === 0, "COPY_DASHBOARD_UNAVAILABLE");
-    } catch (error) {
-      if (operationCompleted) throw error;
-    }
-    finally { process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt); }
+    } finally { process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt); }
   }
 }
 
