@@ -170,7 +170,7 @@ describe("authority change log reader", () => {
     } finally { await f.close(); }
   });
 
-  it("prunes all but the newest 100,000 entries at most once a minute inside its own writes; a reader below the floor runs the whole-store check", async () => {
+  it("prunes all but the newest 10,000 entries at most once a minute inside its own writes; a reader below the floor runs the whole-store check", async () => {
     const f = await store();
     try {
       assert.equal(refusal(() => f.peer.summaryWorkflows()), undefined);
@@ -179,13 +179,13 @@ describe("authority change log reader", () => {
         try { return z.object({ low: z.number(), high: z.number() }).parse(database.prepare("SELECT min(seq) AS low, max(seq) AS high FROM authority_changes").get()); }
         finally { database.close(); }
       };
-      f.raw(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<100010)
+      f.raw(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<10010)
         INSERT INTO authority_changes(table_name,row_key,op,keys_json) SELECT 'notifications','["absent"]','update','[]' FROM n`);
       // The seeding writes pruned at this instant already; the next prune is due a minute later.
       f.clock.advanceWall(60_000);
       f.writer.authority.runs.enqueue(runRecordOf({ seed: 50, workflow: "person-lookup" }));
       const pruned = floor();
-      assert.equal(pruned.high - pruned.low + 1, 100_000);
+      assert.equal(pruned.high - pruned.low + 1, 10_000);
       f.raw("INSERT INTO authority_changes(table_name,row_key,op,keys_json) VALUES('notifications','[\"absent\"]','update','[]')");
       f.clock.advanceWall(59_000);
       f.writer.authority.runs.enqueue(runRecordOf({ seed: 51, workflow: "person-lookup" }));
@@ -193,11 +193,55 @@ describe("authority change log reader", () => {
       f.clock.advanceWall(1_000);
       f.writer.authority.runs.enqueue(runRecordOf({ seed: 52, workflow: "person-lookup" }));
       const later = floor();
-      assert.equal(later.high - later.low + 1, 100_000);
+      assert.equal(later.high - later.low + 1, 10_000);
       const statements = prepared(() => { f.peer.summaryWorkflows(); });
       assert.ok(statements.includes(WHOLE_STORE_COVERAGE));
       assert.ok(!statements.some(statement => statement.includes("SELECT seq,table_name,row_key,op,keys_json FROM authority_changes")));
       assert.equal(refusal(() => f.writer.summaryWorkflows()), undefined);
+    } finally { await f.close(); }
+  });
+
+  it("keeps every entry a reader at the floor or inside an open snapshot still needs while a prune commits", async () => {
+    const f = await store();
+    try {
+      const [first] = f.runIds;
+      assert.ok(first !== undefined);
+      const count = (database: DatabaseSync, sql: string) => z.object({ n: z.number() }).parse(database.prepare(sql).get()).n;
+      const high = () => {
+        const database = new DatabaseSync(f.path, { readOnly: true });
+        try { return count(database, "SELECT seq AS n FROM sqlite_sequence WHERE name='authority_changes'"); } finally { database.close(); }
+      };
+      const fill = (entries: number) => f.raw(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<${entries})
+        INSERT INTO authority_changes(table_name,row_key,op,keys_json) SELECT 'notifications','["absent"]','update','[]' FROM n`);
+      fill(20_000);
+      // An enqueue inside the same minute does not prune; it measures how many entries one enqueue appends.
+      const measured = high();
+      f.writer.authority.runs.enqueue(runRecordOf({ seed: 59, workflow: "person-lookup" }));
+      const appended = high() - measured;
+      assert.equal(refusal(() => f.peer.summaryWorkflows()), undefined);
+      const cursor = high();
+      const snapshot = new DatabaseSync(f.path, { readOnly: true });
+      try {
+        snapshot.exec("BEGIN");
+        const before = count(snapshot, "SELECT count(*) AS n FROM authority_changes");
+        // After the next enqueue the floor lands exactly on the peer's cursor: every entry above it must survive.
+        fill(10_000 - appended);
+        f.clock.advanceWall(60_000);
+        f.writer.authority.runs.enqueue(runRecordOf({ seed: 60, workflow: "person-lookup" }));
+        assert.equal(high(), cursor + 10_000);
+        assert.equal(count(snapshot, "SELECT count(*) AS n FROM authority_changes"), before);
+        snapshot.exec("COMMIT");
+      } finally { snapshot.close(); }
+      const live = new DatabaseSync(f.path, { readOnly: true });
+      try { assert.equal(count(live, `SELECT count(*) AS n FROM authority_changes WHERE seq>${cursor}`), count(live, "SELECT count(*) AS n FROM authority_changes")); }
+      finally { live.close(); }
+      f.raw("UPDATE run_search SET workflow='forged' WHERE run_id=?", first);
+      let refused: string | undefined;
+      const statements = prepared(() => { refused = refusal(() => f.peer.summaryWorkflows()); });
+      assert.match(refused ?? "", /run-search-index-rebuild-required/u);
+      assert.ok(!statements.includes(WHOLE_STORE_COVERAGE));
+      f.raw("UPDATE run_search SET workflow='person-lookup' WHERE run_id=?", first);
+      assert.equal(refusal(() => f.peer.summaryWorkflows()), undefined);
     } finally { await f.close(); }
   });
 });

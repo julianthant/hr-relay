@@ -1,10 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { z } from "zod";
 
-const approved = new Set(["checks.yml", "development.yml", "staging.yml", "production.yml"]);
+const approved = new Set(["checks.yml", "development.yml", "full.yml", "pr.yml", "staging.yml", "production.yml"]);
 const directory = ".github/workflows/";
-const base = z.string().regex(/^[a-f0-9]{40}$/u).parse(process.argv[2]);
-const labels = z.array(z.string()).parse(JSON.parse(process.argv[3] ?? "null"));
+const base = process.argv[2];
+if (!base || !/^[a-f0-9]{40}$/u.test(base)) throw new Error("PR_BASE_SHA must be a commit SHA.");
+const labels: unknown = JSON.parse(process.argv[3] ?? "null");
+if (!Array.isArray(labels) || !labels.every((label: unknown) => typeof label === "string")) {
+  throw new Error("PR_LABELS must be an array of label names.");
+}
 
 if (!labels.includes("needs-human")) {
   const additions = execFileSync("git", [

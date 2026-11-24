@@ -2,22 +2,22 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
 import { z } from "zod";
-import { applyAuthorityMigrationsAfter, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, LIST_INDEXES, LIST_INDEX_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, LIST_INDEXES, LIST_INDEX_MIGRATION, LIST_INDEX_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { restoreSchema39ListIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 const AT = "2026-11-23T00:00:00.000Z";
-const CAPTURE = { now: AT, captureFile: () => { throw new Error("no capture expected"); } };
 const ObjectSchema = z.object({ type: z.string(), name: z.string(), sql: z.string().nullable() });
 const schemaObjects = (database: DatabaseSync) => z.array(ObjectSchema)
   .parse(database.prepare("SELECT type,name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all());
 
-/** A fresh store at the current schema, every migration statement applied in order. */
-function currentStore(): DatabaseSync {
+function listIndexStore(): DatabaseSync {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON");
-  for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) database.exec(statement);
+  for (const migration of SQLITE_MIGRATIONS) if (migration.version <= LIST_INDEX_SCHEMA_VERSION) {
+    for (const statement of migration.statements) database.exec(statement);
+  }
   return database;
 }
 
@@ -38,15 +38,14 @@ const UNINDEXED_FOREIGN_KEYS = {
 } as const;
 
 describe("list index migration 40", () => {
-  it("is the current schema and adds no table", () => {
+  it("uses schema 40 and adds no table", () => {
     assert.equal(LIST_INDEX_SCHEMA_VERSION, 40);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 40);
     assert.deepEqual(migrationTableNames(40), migrationTableNames(39));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
 
   it("adds each list index and the generated dependency parent column, and keeps every row and other schema object", () => {
-    const database = currentStore();
+    const database = listIndexStore();
     try {
       database.prepare(`INSERT INTO commands(id,family,actor_id,parent_id,target_id,request_digest,request_json,state,outcome_json,created_at,updated_at)
         VALUES('command','settings','operator',NULL,NULL,'digest','{}','admitted',NULL,?,?)`).run(AT, AT);
@@ -55,10 +54,10 @@ describe("list index migration 40", () => {
       const prior = schemaObjects(database);
       const stored = database.prepare("SELECT * FROM commands").all();
       database.exec("BEGIN");
-      applyAuthorityMigrationsAfter(database, 39, CAPTURE);
+      for (const statement of LIST_INDEX_MIGRATION.statements) database.exec(statement);
       database.exec("COMMIT");
       const after = schemaObjects(database);
-      const fresh = currentStore();
+      const fresh = listIndexStore();
       try { assert.deepEqual(after, schemaObjects(fresh)); } finally { fresh.close(); }
       assert.deepEqual(after.filter(object => !(object.name in LIST_INDEXES) && object.name !== "delegation_dependencies"),
         prior.filter(object => object.name !== "delegation_dependencies"));
@@ -72,7 +71,7 @@ describe("list index migration 40", () => {
   });
 
   it("indexes every foreign key whose parent row is deleted, and names each one left out", () => {
-    const database = currentStore();
+    const database = listIndexStore();
     try {
       const tables = z.array(z.object({ name: z.string() })).parse(database.prepare(
         "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()).map(row => row.name);
@@ -94,9 +93,11 @@ describe("list index migration 40", () => {
       const database = new DatabaseSync(f.path);
       try {
         database.exec("PRAGMA foreign_keys=ON");
-        for (const migration of SQLITE_MIGRATIONS) if (migration.version > 7) for (const statement of migration.statements) database.exec(statement);
-        database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
-        database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+        for (const migration of SQLITE_MIGRATIONS) if (migration.version > 7 && migration.version <= LIST_INDEX_SCHEMA_VERSION) {
+          for (const statement of migration.statements) database.exec(statement);
+        }
+        database.prepare("UPDATE database_states SET schema_version=?").run(LIST_INDEX_SCHEMA_VERSION);
+        database.exec(`PRAGMA user_version=${String(LIST_INDEX_SCHEMA_VERSION)}`);
         restoreSchema39ListIndexes(database);
         assert.equal(inspectNativeAuthority(database, 39).schemaVersion, 39);
       } finally { database.close(); }

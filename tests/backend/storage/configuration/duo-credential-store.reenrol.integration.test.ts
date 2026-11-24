@@ -10,7 +10,7 @@ import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admi
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { DuoCredentialRecordSchema, DuoReenrolCommitIntentSchema, type DuoReenrolCommitIntent } from "../../../../src/models/config/duo-credential-store.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { createBoundProfileFixture, signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, rewriteAuthenticatedCredentialFixture, signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 type Fixture = Awaited<ReturnType<typeof createBoundProfileFixture>>;
@@ -457,5 +457,22 @@ it("holds an unreadable record or head unprovable and keeps a discard refused on
     writeFileSync(w.headPath, headBytes);
     w.store.commitReenrol(intent);
     assertCommitted(w, intent);
+  } finally { await w.f.close(); }
+});
+
+it("discards a re-enrolment draft from a record that still holds a platform row by dropping that row first", async () => {
+  const w = await activeProfile();
+  try {
+    const [kept, platform] = w.old;
+    rewriteAuthenticatedCredentialFixture(w.f.machine.stateRoot, w.profileId, value => ({ credentials: DuoCredentialRecordSchema.parse(value).credentials
+      .map(row => row.credentialId === platform.credentialId ? { ...row, authenticator: { ...row.authenticator, transport: "internal" } } : row) }), "duo");
+    const store = createDuoCredentialStore(w.f.admission, w.clock);
+    store.discardDraft(w.reenrolAccount);
+    assert.deepEqual(Object.keys(Object.fromEntries(store.read().credentials.map(row => [row.credentialId, row.state]))),
+      w.active.filter(id => id !== platform.credentialId));
+    const current = head(w);
+    for (const id of [platform.credentialId, ...w.fresh.map(row => row.credentialId)]) assert.ok(current.retired.includes(id));
+    assert.equal(current.retired.includes(kept.credentialId), false);
+    assert.equal((await store.sign(signRequest(kept))).transport, "usb");
   } finally { await w.f.close(); }
 });

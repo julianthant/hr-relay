@@ -99,7 +99,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     let setup = context.pages()[0]; assert.ok(setup);
     assert.match(setup.url(), /^chrome-extension:\/\/[^/]+\/src\/options\.html$/);
     await expect(setup.locator("#editorTitle")).toHaveText("Set up Security key");
-    await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
+    await expect(setup.getByRole("heading", { name: "Relay sign-in method", exact: true })).toBeVisible();
     await expect(setup.locator(".brand small")).toHaveText("Relay sign-in setup");
     await expect(setup.locator("footer")).toHaveCount(0);
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId); assert.equal(launches, 1);
@@ -159,13 +159,13 @@ for (const pendingClose of [false, true]) it(pendingClose
     await Promise.all([profile.session.showOnboardingBrowser(draft.token, draft.operationId), profile.session.showOnboardingBrowser(draft.token, draft.operationId)]);
     assert.equal(launches, 1); assert.equal(context.pages().length, 2);
     setup = context.pages().find(page => page !== portal)!; assert.ok(setup);
-    await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
+    await expect(setup.getByRole("heading", { name: "Relay sign-in method", exact: true })).toBeVisible();
     assert.equal(submissions, 0); assert.deepEqual(read().methods, methodsBeforeReopen);
     await context.close();
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
     assert.equal(launches, 2); assert.equal(context.pages().length, 1);
     assert.equal(submissions, 0); assert.deepEqual(read().methods, methodsBeforeReopen);
-    await expect(context.pages()[0].getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
+    await expect(context.pages()[0].getByRole("heading", { name: "Relay sign-in method", exact: true })).toBeVisible();
     if (pendingClose) {
       setup = context.pages()[0];
       await setup.locator('.relay-method-card[data-method="key"]').click();
