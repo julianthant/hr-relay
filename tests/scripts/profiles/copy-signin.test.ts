@@ -121,9 +121,9 @@ it("opens a new copy's Duo setup and only finishes after the dashboard reports b
       const path = new URL(url).pathname;
       calls.push({ path, body: init?.body, session: new Headers(init?.headers).get("x-relay-session") });
       if (path.endsWith("/state")) return Response.json({ state: "signed-out", signUpRequired: true });
-      if (path.endsWith("/sign-up")) return Response.json({ ...draft, step: "duo", methods: { key: idle, touch: idle } },
+      if (path.endsWith("/sign-up")) return Response.json({ ...draft, step: "duo", methods: { key: idle } },
         { headers: { "x-relay-session": "synthetic-draft" } });
-      if (path.endsWith("/portal")) return Response.json({ ...draft, step: "ready", methods: { key: complete, touch: complete } });
+      if (path.endsWith("/portal")) return Response.json({ ...draft, step: "ready", methods: { key: complete } });
       return activeResponse();
     },
   });

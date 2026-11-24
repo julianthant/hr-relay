@@ -3,15 +3,15 @@ import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import { expect, it, vi } from "vitest";
 
-it("cancels an unanswered setup get and ignores a late pass-through reply", async () => {
+function bridge(replies: Record<string, unknown> = {}) {
   const origin = "https://test.duosecurity.com";
   const listeners: ((event: unknown) => void)[] = [];
   const nativeGet = vi.fn(async (_options: unknown) => ({ native: true }));
-  const credentials = { get: nativeGet, create: vi.fn() };
-  const signing = Promise.withResolvers<unknown>();
+  const nativeCreate = vi.fn(async (_options: unknown) => ({ native: true }));
+  const credentials = { get: nativeGet, create: nativeCreate };
   const deadline = vi.fn((_callback: () => void, _delay: number) => 1);
   const sendMessage = vi.fn(async (message: { type: string }) =>
-    message.type === "DUO_AUTOPILOT_SIGN" ? signing.promise : { success: true });
+    message.type in replies ? replies[message.type] : { success: true });
   const scope = {
     navigator: { credentials }, location: { origin, href: origin, hostname: "test.duosecurity.com" },
     crypto: { randomUUID }, document: { documentElement: {} }, MutationObserver: class { observe() {} },
@@ -29,6 +29,12 @@ it("cancels an unanswered setup get and ignores a late pass-through reply", asyn
   for (const file of ["relay-inpage.js", "relay-content.js"]) {
     runInContext(readFileSync(`fast-duo/src/${file}`, "utf8"), context);
   }
+  return { credentials, nativeGet, nativeCreate, sendMessage, deadline };
+}
+
+it("cancels an unanswered setup get and ignores a late pass-through reply", async () => {
+  const signing = Promise.withResolvers<unknown>();
+  const { credentials, nativeGet, sendMessage, deadline } = bridge({ DUO_AUTOPILOT_SIGN: signing.promise });
   const result = credentials.get({ publicKey: { rpId: "duosecurity.com", challenge: new Uint8Array([1]) } });
   await Promise.resolve();
   expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "DUO_AUTOPILOT_SIGN" }));
@@ -45,3 +51,21 @@ it("cancels an unanswered setup get and ignores a late pass-through reply", asyn
   await new Promise<void>(resolve => setImmediate(resolve));
   expect(nativeGet).not.toHaveBeenCalled();
 });
+
+it.each([
+  { name: "a non-Duo get", call: (c: Credentials) => c.get({ publicKey: { rpId: "example.invalid", challenge: new Uint8Array([1]) } }) },
+  { name: "a non-Duo create", call: (c: Credentials) => c.create({ publicKey: { rp: { id: "example.invalid" }, challenge: new Uint8Array([1]) } }) },
+  { name: "a Duo get with no armed key", call: (c: Credentials) => c.get({ publicKey: { rpId: "duosecurity.com", challenge: new Uint8Array([1]) } }) },
+  { name: "a Duo platform create", call: (c: Credentials) => c.create({ publicKey: { rp: { id: "duosecurity.com" }, challenge: new Uint8Array([1]),
+    user: { id: new Uint8Array([2]), name: "person" }, authenticatorSelection: { authenticatorAttachment: "platform" } } }) },
+])("refuses $name with no native WebAuthn fallback", async ({ call }) => {
+  const { credentials, nativeGet, nativeCreate } = bridge({
+    DUO_AUTOPILOT_SIGN: { success: true, result: { passThrough: true } },
+    DUO_AUTOPILOT_ENROLL: { success: false, error: "ONBOARDING_DUO_KEY_REQUIRED" },
+  });
+  await expect(call(credentials)).rejects.toMatchObject({ name: "NotAllowedError" });
+  expect(nativeGet).not.toHaveBeenCalled();
+  expect(nativeCreate).not.toHaveBeenCalled();
+});
+
+interface Credentials { get(options: unknown): Promise<unknown>; create(options: unknown): Promise<unknown> }

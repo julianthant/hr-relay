@@ -369,7 +369,7 @@ for (const scenario of ["software", "abort", "timeout"] as const) it(`real enrol
   if (failure !== undefined) throw new Error("enrollment fixture failed", { cause: failure });
 });
 
-it("copy enrollment clicks the owned Duo tab after arming and records both Fast Duo receipts", async () => {
+it("copy enrollment clicks the owned Duo tab after arming and records the Fast Duo security-key receipt", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "copy-duo-enrollment-")));
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(root, file));
   const machine = acquireEntrypointAdmission(root, "exclusive", await runtimeLifetimeLock());
@@ -390,25 +390,22 @@ it("copy enrollment clicks the owned Duo tab after arming and records both Fast 
         else if (url === portal) await route.fulfill({ contentType: "text/html", body: `<!doctype html>
           <main><button>Add a device</button></main><script>
           const wizard = document.querySelector('main');
-          let method = 'key';
           wizard.addEventListener('click', async ({target}) => {
             if (target.textContent === 'Add a device') {
-              wizard.innerHTML = '<h1>Select an option</h1><button>Security key</button><button>Windows Hello</button>';
-            } else if (target.textContent === 'Security key' || target.textContent === 'Windows Hello') {
-              method = target.textContent === 'Security key' ? 'key' : 'touch';
+              wizard.innerHTML = '<h1>Select an option</h1><button>Security key</button>';
+            } else if (target.textContent === 'Security key') {
               wizard.innerHTML = '<h1>Set up your device</h1><button>Continue</button>';
             } else if (target.textContent === 'Continue') {
-              const platform = method === 'touch';
               wizard.textContent = 'Waiting for registration';
               const credential = await navigator.credentials.create({publicKey: {
-                challenge: new TextEncoder().encode('synthetic-copy-enrollment-' + method),
+                challenge: new TextEncoder().encode('synthetic-copy-enrollment-key'),
                 rp: {id: 'duosecurity.com', name: 'Synthetic Duo'},
                 user: {id: new TextEncoder().encode('synthetic-copy'), name: 'synthetic-copy@example.edu', displayName: 'Synthetic Copy'},
                 pubKeyCredParams: [{type: 'public-key', alg: -7}], timeout: 5000,
-                authenticatorSelection: {authenticatorAttachment: platform ? 'platform' : 'cross-platform', userVerification: platform ? 'required' : 'discouraged'},
+                authenticatorSelection: {authenticatorAttachment: 'cross-platform', userVerification: 'discouraged'},
               }});
-              if (!(credential instanceof PublicKeyCredential) || credential.authenticatorAttachment !== (platform ? 'platform' : 'cross-platform')) throw new Error('registration missing');
-              wizard.innerHTML = platform ? '<h1>Added Windows Hello</h1>' : '<h1>Added security key</h1><button>Done</button>';
+              if (!(credential instanceof PublicKeyCredential) || credential.authenticatorAttachment !== 'cross-platform') throw new Error('registration missing');
+              wizard.innerHTML = '<h1>Added security key</h1><button>Done</button>';
             } else if (target.textContent === 'Done') {
               wizard.innerHTML = '<button>Add a device</button>';
             }
@@ -429,11 +426,10 @@ it("copy enrollment clicks the owned Duo tab after arming and records both Fast 
     const read = () => profile.session.readOnboarding(draft.token, draft.operationId);
     await Promise.race([opening, expect.poll(() => read().step, { timeout: 10_000 }).toBe("ready")]);
     const ready = await opening;
-    for (const method of ["key", "touch"] as const) {
-      assert.equal(ready.methods[method].state, "complete");
-      assert.equal(ready.methods[method].ceremonyObserved, true);
-      assert.equal(ready.methods[method].portalAccepted, true);
-    }
+    assert.deepEqual(Object.keys(ready.methods), ["key"]);
+    assert.equal(ready.methods.key.state, "complete");
+    assert.equal(ready.methods.key.ceremonyObserved, true);
+    assert.equal(ready.methods.key.portalAccepted, true);
   } finally {
     try { await profile.close(); }
     finally {

@@ -554,29 +554,26 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (!await add.isVisible()) throw new Error("copy-signin-duo-device-list-unavailable");
     }
 
-    for (const method of ["key", "touch"] as const) {
+    current();
+    const state = session.owner.readState().methods.key.state;
+    if (state === "complete") return;
+    if (state !== "idle") throw new Error("copy-signin-duo-method-unavailable");
+    await session.owner.start("key");
+    await click(add);
+    const added = page.getByRole("heading", { name: /^Added security key\b/iu });
+    const next = control(/^(?:Continue|Done)$/iu);
+    await click(control(/^Security key\b/iu));
+    await added.or(next).first().waitFor({ timeout });
+    if (!await added.isVisible()) await click(next);
+    const deadline = options.clock.monotonicMs() + timeout;
+    for (;;) {
       current();
-      const state = session.owner.readState().methods[method].state;
-      if (state === "complete") continue;
-      if (state !== "idle") throw new Error("copy-signin-duo-method-unavailable");
-      await session.owner.start(method);
-      await click(add);
-      const select = method === "key" ? /^Security key\b/iu : /^(?:Touch ID|Windows Hello)\b/iu;
-      const added = page.getByRole("heading", { name: method === "key" ? /^Added security key\b/iu : /^Added (?:Touch ID|Windows Hello)\b/iu });
-      const next = control(/^(?:Continue|Done)$/iu);
-      await click(control(select));
-      await added.or(next).first().waitFor({ timeout });
-      if (!await added.isVisible()) await click(next);
-      const deadline = options.clock.monotonicMs() + timeout;
-      for (;;) {
-        current();
-        const result = session.owner.readState().methods[method].state;
-        if (result === "complete") break;
-        if (result !== "pending" || options.clock.monotonicMs() >= deadline) throw new Error("copy-signin-duo-receipt-unavailable");
-        await new Promise<void>(resolve => setTimeout(resolve, 100));
-      }
-      if (method === "key" && !await add.isVisible()) await click(next);
+      const result = session.owner.readState().methods.key.state;
+      if (result === "complete") break;
+      if (result !== "pending" || options.clock.monotonicMs() >= deadline) throw new Error("copy-signin-duo-receipt-unavailable");
+      await new Promise<void>(resolve => setTimeout(resolve, 100));
     }
+    if (!await add.isVisible()) await click(next);
   }
 
   async function openPortal(session: OwnedBrowser): Promise<void> {
