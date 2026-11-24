@@ -333,6 +333,9 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
     // A switch's input is laid over its whole row at opacity 0 so the row takes the click; the ring a keyboard user sees
     // is drawn on the visible control beside it (WCAG 2.4.7 asks that a ring be visible, not that it sit on the input).
     const overlay = element instanceof HTMLInputElement && getComputedStyle(element).opacity === "0";
+    // A text field's focus mark is its caret plus the field's border stepping up, drawn on the box around the input.
+    const field = element.matches("input:not([type=checkbox], [type=radio], [type=range]), textarea") ? element.closest('[data-slot="search-field-group"], .ds-secret-input') : null;
+    if (field !== null) return [element, field];
     if (!(element instanceof HTMLInputElement) || box.width > 1 && box.height > 1 && !overlay) return [element];
     return [...element.labels ?? []].flatMap(label => [label, ...label.querySelectorAll("*")]).filter(part => part !== element);
   };
