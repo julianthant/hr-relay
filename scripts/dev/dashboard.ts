@@ -22,6 +22,7 @@ interface Managed {
   readonly name: string;
   readonly child: ChildProcess;
   closed: boolean;
+  signalSent?: NodeJS.Signals;
 }
 
 export interface DashboardLauncherOptions {
@@ -90,8 +91,9 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     result = code;
     forwardedSignal = signal;
     stopProgress();
-    for (const { child, closed } of managed) {
-      if (!closed && child.exitCode === null && child.signalCode === null) child.kill(signal);
+    for (const item of managed) {
+      const { child, closed } = item;
+      if (!closed && child.exitCode === null && child.signalCode === null && child.kill(signal)) item.signalSent = signal;
     }
     completeIfClosed();
   }
@@ -115,6 +117,7 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
         writeError(`\n[dashboard] ${name} stopped (${how}); stopping the rest.\n`);
         stop("SIGTERM", code ?? 1);
       } else if (result === 0) {
+        if (name === "web" && code === 143 && item.signalSent === "SIGTERM") return;
         if (code !== null && code !== 0) result = code;
         else if (signal !== null && signal !== forwardedSignal) result = 1;
       }
