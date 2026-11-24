@@ -21,7 +21,7 @@ it("explains an existing profile on duplicate sign-up and offers Log in", async 
   }
   try {
     await act(async () => root.render(createElement(Probe)));
-    for (const [name, value] of [["firstName", "Fixture"], ["lastName", "Operator"], ["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"]]) {
+    for (const [name, value] of [["firstName", "Fixture"], ["lastName", "Operator"], ["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"], ["ucpathUsername", "ucpath-sso"], ["ucpathPassword", "ucpath-fixture-password"]]) {
       await act(async () => {
         const field = host.querySelector<HTMLInputElement>(`input[name="${name}"]`); assert.ok(field);
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
@@ -79,7 +79,7 @@ it("uses server authentication for Duo access and keeps a refused served login o
     assert.match(host.textContent ?? "", /Could not show the setup browser/);
     assert.doesNotMatch(host.textContent ?? "", /Start with your details/);
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "login", authenticated: false })));
-    for (const [name, value] of [["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"]]) {
+    for (const [name, value] of [["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"], ["ucpathUsername", "ucpath-sso"], ["ucpathPassword", "ucpath-fixture-password"]]) {
       await act(async () => { const field = host.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
         field.dispatchEvent(new Event("input", { bubbles: true })); });
@@ -297,7 +297,7 @@ it.each(["refusal", "transport"] as const)("shows the served catalog refusal and
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "signup", onStep() {}, onDashboard() {}, port })));
     assert.doesNotMatch(host.textContent ?? "", /Claim existing data|Reopen profile|Return to your profile/);
-    for (const [name, value] of [["firstName", "Fresh"], ["lastName", "Fixture"], ["email", "fresh@ucsd.edu"], ["password", "disposable-password"]]) {
+    for (const [name, value] of [["firstName", "Fresh"], ["lastName", "Fixture"], ["email", "fresh@ucsd.edu"], ["password", "disposable-password"], ["ucpathUsername", "ucpath-sso"], ["ucpathPassword", "ucpath-password"]]) {
       await act(async () => {
         const input = host.querySelector<HTMLInputElement>(`input[name="${name}"]`); assert.ok(input);
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
@@ -404,7 +404,7 @@ for (const kind of ["network", "schema", "protocol"] as const) it(`describes a s
     async submit() { throw new DashboardClientError({ kind, message: "private transport detail" }); } };
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "signup", port, onStep() {}, onDashboard() {} })));
-    for (const [name, value] of [["firstName", "Alex"], ["lastName", "Rivera"], ["email", "fixture@ucsd.edu"], ["password", "synthetic-password"]]) {
+    for (const [name, value] of [["firstName", "Alex"], ["lastName", "Rivera"], ["email", "fixture@ucsd.edu"], ["password", "synthetic-password"], ["ucpathUsername", "ucpath-sso"], ["ucpathPassword", "ucpath-synthetic"]]) {
       await act(async () => {
         const field = host.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);

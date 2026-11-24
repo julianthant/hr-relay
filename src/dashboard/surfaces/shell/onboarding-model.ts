@@ -5,7 +5,7 @@ import { operatorFailureSentence } from "../../../models/failures/error-catalog.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type OnboardingStep = "login" | "signup" | "duo" | "ready";
-export type OnboardingDetails = { firstName: string; lastName: string; email: string; password: string };
+export type OnboardingDetails = { firstName: string; lastName: string; email: string; password: string; ucpathUsername?: string; ucpathPassword?: string };
 export type OnboardingErrors = Partial<Record<keyof OnboardingDetails, string>>;
 export type DuoMethods = { key: boolean };
 export type DuoConfirmationScope = Readonly<Pick<ConfirmProfileOnboardingDuoRequest, "operationId" | "method" | "attemptId"> & {
@@ -39,6 +39,8 @@ export function validateOnboarding(step: "login" | "signup", details: Onboarding
     if (step === "signup") {
       if (!details.firstName.trim()) errors.firstName = "Enter your first name.";
       if (!details.lastName.trim()) errors.lastName = "Enter your last name.";
+      if (!details.ucpathUsername?.trim()) errors.ucpathUsername = "Enter your UCPath username.";
+      if (!details.ucpathPassword) errors.ucpathPassword = "Enter your UCPath password.";
     }
     if (!details.email.trim()) errors.email = "Enter your work email.";
     else if (!/^[^\s@]+@ucsd\.edu$/iu.test(details.email.trim())) errors.email = "Use your @ucsd.edu email.";
