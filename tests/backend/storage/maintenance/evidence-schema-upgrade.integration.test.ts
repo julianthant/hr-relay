@@ -44,7 +44,9 @@ function conversions(path: string) {
 }
 
 for (const interrupted of [false, true]) it(`upgrades real retained predecessor Kuali evidence through startup${interrupted ? " after an interrupted committed conversion" : ""}, preserving every frozen row and a second startup`, async () => {
+  const __p0 = performance.now(); const prof = (label: string) => process.stderr.write(`[prof] ${label} ${Math.round(performance.now() - __p0)}ms\n`);
   const f = await predecessorSeparationsRerun();
+  prof("test:fixture");
   assert.ok(f.writes.some(intent => intent.status === "committed"));
   const { RuntimeLifetimeLock } = await import("../../../../src/backend/storage/admission/lifetime-lock.js");
   const { acquireEntrypointAdmission } = await import("../../../../src/backend/storage/admission/bootstrap-admission.js");
@@ -60,7 +62,8 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
   const lifetime = await RuntimeLifetimeLock.acquire(0);
   let restoreFault: (() => void) | undefined;
   try {
-    const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK);
+    prof("test:imports+lock");
+    const startup = async () => { await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK); prof("test:startup"); };
     if (process.platform === "win32") {
       await startup(); await assertConversionRefused(f.workspace, lifetime);
       assert.deepEqual(frozenRows(f.path), before); assert.deepEqual(readFileSync(protectedPath), oldCredentials);
@@ -72,7 +75,7 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
         convert(...args); throw new Error("synthetic-interruption-after-closed-evidence-conversion");
       });
       restoreFault = () => fault.mockRestore();
-      await startup(); await assertConversionRefused(f.workspace, lifetime); restoreFault(); restoreFault = undefined;
+      await startup(); await assertConversionRefused(f.workspace, lifetime); prof("test:refused"); restoreFault(); restoreFault = undefined;
       assert.equal(conversions(f.path).length, 1);
       assert.deepEqual(readFileSync(protectedPath), oldCredentials); assert.deepEqual(frozenRows(f.path), before);
     }
@@ -87,7 +90,7 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
     const runtime = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: CLOCK });
     try {
       const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: CLOCK.now().toISOString() });
-      assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("converted-evidence-sign-in-refused");
+      prof("test:compose+signIn"); assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("converted-evidence-sign-in-refused");
       const admission = machine.admitProfile(active.profileId);
       const database = AuthorityDatabase.open(admission, { path: f.path, migrationOwner: "converted-evidence-readback", busyTimeoutMs: 250 }, CLOCK,
         undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
@@ -127,13 +130,15 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
           assert.ok(certificate);
           assert.throws(() => database.evidenceSchemaHash(certificate.owner, { ...intent, bindingProofDigest: "f".repeat(64) }, certificate.sourceSchemaHash, certificate.currentSchemaHash), /source-changed/u);
         }
-      } finally { database.close(); admission.release(); }
-    } finally { await runtime.close(); machine.release(); }
-  } finally { restoreFault?.(); await lifetime.close(); await f.cleanup(); }
+      } finally { prof("test:readback"); database.close(); admission.release(); }
+    } finally { await runtime.close(); machine.release(); prof("test:runtime-close"); }
+  } finally { restoreFault?.(); await lifetime.close(); await f.cleanup(); prof("test:cleanup"); }
 });
 
 it("opens certified predecessor Separations Rerun after backed startup and derives fresh admitted identity", async () => {
+  const __p0 = performance.now(); const prof = (label: string) => process.stderr.write(`[prof] ${label} ${Math.round(performance.now() - __p0)}ms\n`);
   const f = await predecessorSeparationsRerun();
+  prof("test:fixture");
   const { RuntimeLifetimeLock } = await import("../../../../src/backend/storage/admission/lifetime-lock.js");
   const { acquireEntrypointAdmission } = await import("../../../../src/backend/storage/admission/bootstrap-admission.js");
   const { initializeRegisteredPersonStores, composeProfileRuntime } = await import("../../../../src/backend/app/composition/storage-compose.js");
@@ -148,7 +153,8 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
   const { profileInitials } = await import("../../../../src/models/profiles/profile-identity.js");
   const before = frozenRows(f.path), lifetime = await RuntimeLifetimeLock.acquire(0);
   try {
-    const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK);
+    prof("test:imports+lock");
+    const startup = async () => { await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK); prof("test:startup"); };
     if (process.platform === "win32") {
       await startup(); await assertConversionRefused(f.workspace, lifetime);
       assert.deepEqual(frozenRows(f.path), before); assert.equal(conversions(f.path).length, 0); return;
@@ -162,7 +168,7 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
     const runtime = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: CLOCK });
     try {
       const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: CLOCK.now().toISOString() });
-      assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("converted-rerun-sign-in-refused");
+      prof("test:compose+signIn"); assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("converted-rerun-sign-in-refused");
       // The account enters initials of its own, so a plan that derived letters from the name would be caught.
       assert.equal(runtime.session.changeDetails(active.token, { timekeeperInitials: "QZ" }).state, "changed");
       const admission = machine.admitProfile(active.profileId), credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot });
@@ -201,7 +207,7 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
         }
         assert.deepEqual(database.authority.runs.get(f.run.envelope.runId), f.run);
         assert.deepEqual(database.authority.writeIntents.listByRun(f.run.envelope.runId), f.writes);
-      } finally { database.close(); admission.release(); }
-    } finally { await runtime.close(); machine.release(); }
-  } finally { await lifetime.close(); await f.cleanup(); }
+      } finally { prof("test:readback"); database.close(); admission.release(); }
+    } finally { await runtime.close(); machine.release(); prof("test:runtime-close"); }
+  } finally { await lifetime.close(); await f.cleanup(); prof("test:cleanup"); }
 });

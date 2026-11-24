@@ -14,6 +14,7 @@ function merge(example: JsonValue, value: JsonValue): JsonValue {
 
 /** A closed profile store whose Separations run was stored by the profile-name-domain build (input generation 1, no stored initials) with its committed Kuali write, plus predecessor credentials. */
 export async function predecessorSeparationsRerun(options: Readonly<{ predecessorCredentials?: boolean; keepOpen?: boolean }> = {}) {
+  const __p0 = performance.now(); const prof = (label: string) => process.stderr.write(`[prof] ${label} ${Math.round(performance.now() - __p0)}ms\n`);
   vi.resetModules();
   vi.doMock("../../../../src/models/validation/schema-bound-value.js", async importOriginal => {
     const current = await importOriginal<typeof import("../../../../src/models/validation/schema-bound-value.js")>();
@@ -25,7 +26,9 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
   const restoreBuild = simulatePreviousSeparationsInputGeneration();
   const { compositionHarness, compositionQueuedRun, compositionClaimRunning, compositionContext, COMPOSITION_SCOPE_OUTPUTS,
     COMPOSITION_TIMEKEEPER, FINALIZE_NODE } = await import("../separations-composition-fixtures.js");
+  prof("fixture:reset+imports");
   const h = await compositionHarness();
+  prof("fixture:harness");
   try {
     const { FINALIZATION_SCOPE_OUTPUTS } = await import("../kuali-finalization-fixtures.js");
     const { RunRecordSchema } = await import("../../../../src/models/run/record.js");
@@ -40,6 +43,7 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
     const { buildTerminalAuthorization } = await import("../../../../src/backend/runs/lifecycle/terminal-authorization.js");
     const { NodeIdSchema } = await import("../../../../src/rules/identity/ids.js");
     const { preInitialsSeparationsRun, preInitialsExecutionInput, preInitialsSignedComment } = await import("../../fixtures/storage/pre-initials-separations.js");
+    prof("fixture:imports2");
     const valueId = randomUUID(), raw = preInitialsSeparationsRun(RunRecordSchema.parse(compositionQueuedRun()), "name-domain");
     const queued = { ...raw, input: { ...raw.input, parsed: { ...raw.input.parsed,
       protectedBindings: [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId }] } } };
@@ -62,9 +66,11 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
         output: { schemaHash: deriveSchemaHash(node.uses.output, "output"), value }, writtenAt: h.clock.now().toISOString(),
         provenance: evidenceLeaves(value).map(({ path }) => ({ path, source: "live", observedAt: h.clock.now().toISOString(), originalObservedAt: h.clock.now().toISOString() })) }));
     }
+    prof("fixture:checkpoints");
     const outcome = await h.bound(() => h.sequencer.executeTransaction({ ...context,
       scope: { input: preInitialsExecutionInput(run), protectedInputBindings: run.input.parsed.protectedBindings, outputs } }));
     assert.equal(Reflect.get(Object(outcome), "disposition"), "committed");
+    prof("fixture:transaction");
     const current = h.database.authority.runs.get(run.envelope.runId); assert.ok(current);
     const failure = buildNodeFailureRecord({ writes: [], run: current, failureId: randomUUID(), nodeId: NodeIdSchema.parse(FINALIZE_NODE), taskId: context.node.commit.uses.id,
       error: new Error("synthetic post-completion diagnostic failure"), occurredAt: h.clock.now().toISOString() });
@@ -76,10 +82,12 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
     const { createReceiptService } = await import("../../../../src/backend/runs/trust/receipt-service.js");
     const { testRunService } = await import("../../fixtures/run-lifecycle-fixtures.js");
     const receipt = createReceiptService({ database: h.database, runReader: testRunService(h.database, h.clock), descriptors: [descriptor] }).ensureReceipt(run.envelope.runId);
+    prof("fixture:terminal+receipt");
     const { captureProfileCredentialFixture, installPredecessorProfileCredentials } = await import("../predecessor-profile-credentials.js");
     const credential = captureProfileCredentialFixture(h.profile.admission), paths = { workspace: h.profile.workspace, stateRoot: h.profile.stateRoot,
       profileId: h.profile.admission.profileBinding.profileId, path: h.path };
     if (!options.keepOpen) await h.closeController(); if (!options.keepOpen && options.predecessorCredentials !== false) installPredecessorProfileCredentials(credential, COMPOSITION_TIMEKEEPER, valueId);
+    prof("fixture:close+credentials");
     return { ...paths, database: h.database, clock: h.clock, run: terminal, result, checkpoints, writes, receipt, valueId, cleanup: h.dispose };
   } catch (error) { await h.dispose(); throw error; }
   finally { restoreBuild(); vi.doUnmock("../../../../src/models/validation/schema-bound-value.js"); vi.resetModules(); }
