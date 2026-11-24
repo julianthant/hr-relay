@@ -183,7 +183,7 @@ also refresh the committed seed from a successful run:
 `gh run download <run-id> -n ci-timings -D <dir>` then copy its generated `ci-durations.json` to
 `scripts/test/ci-durations.json`. Corrupt reports and download failures fail CI.
 A new test file requiring native platform proofs belongs in `NATIVE_FILES`, outside Ubuntu shards.
-`LINUX_NATIVE_FILES` names the `NATIVE_FILES` members that pass on Linux (28 files, never a serial or storage file; the READY-bound upgrade proof is four files that share `tests/support/helpers/storage/ready-bound-upgrade.ts`): Ubuntu shards run them because `ci-run.sh` sets `RELAY_TEST_NATIVE=1`, and the macOS native shards still run them. `npm run test:pc` sets that variable for its listing and remote run, so its unchanged filter still keeps them. `tests/scripts/test/ci-files.test.ts` pins the list.
+`LINUX_NATIVE_FILES` names the `NATIVE_FILES` members that pass on Linux (27 files, never a serial or storage file; the READY-bound upgrade proof is four files that share `tests/support/helpers/storage/ready-bound-upgrade.ts`): Ubuntu shards run them because `ci-run.sh` sets `RELAY_TEST_NATIVE=1`, and the macOS native shards still run them. `npm run test:pc` sets that variable for its listing and remote run, so its unchanged filter still keeps them. `tests/scripts/test/ci-files.test.ts` pins the list.
 Both platforms select from this one list; platform refusals remain failures until their proof is implemented.
 
 ### Pre-push tests on the PC
