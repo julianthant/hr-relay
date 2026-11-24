@@ -21,7 +21,8 @@ export function appendDuoDiagnostic(machineRoot: string, now: Date, event: Profi
       ...(parsed.code === undefined ? {} : { code: parsed.code }),
       ...(parsed.exceptionType === undefined ? {} : { exceptionType: parsed.exceptionType }),
       ...(parsed.operation === undefined ? {} : { operation: parsed.operation }),
-      ...(parsed.durationMs === undefined ? {} : { durationMs: parsed.durationMs }) });
+      ...(parsed.durationMs === undefined ? {} : { durationMs: parsed.durationMs }),
+      ...(parsed.screens === undefined ? {} : { screens: parsed.screens }) });
     const bytes = Buffer.from(`${JSON.stringify(record)}\n`);
     const directory = join(machineRoot, "logs");
     createPrivateDirectory(directory, { recursive: true, mode: 0o700 });

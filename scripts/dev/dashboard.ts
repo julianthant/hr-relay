@@ -13,6 +13,7 @@ import {
 } from "../../src/backend/transports/http/frontend-owner.js";
 
 import { RuntimeProfileSchema, type RuntimeProfile } from "../../src/models/config/define-runtime-isolation.js";
+import { CopyDuoScreensSchema, type CopyDuoScreen } from "../../src/models/profiles/profile.js";
 
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 const STARTUP_PROGRESS_MS = 30_000;
@@ -29,7 +30,7 @@ export interface DashboardLauncherOptions {
   readonly frontendOwnerFile?: string;
   readonly signals?: EventEmitter;
   readonly writeError?: (message: string) => void;
-  readonly copySignin?: Readonly<{ backendEntry: string; fixtureWorkspace?: string; ready(launchNonce: string): void; phone(): void }>;
+  readonly copySignin?: Readonly<{ backendEntry: string; fixtureWorkspace?: string; ready(launchNonce: string): void; phone(): void; screens?(screens: readonly CopyDuoScreen[]): void }>;
 }
 
 export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise<number> {
@@ -144,6 +145,12 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     if (!stopping && copySignin !== undefined && message !== null && typeof message === "object"
       && "type" in message && message.type === "relay-copy-signin-phone") {
       copySignin.phone();
+      return;
+    }
+    if (!stopping && copySignin !== undefined && message !== null && typeof message === "object"
+      && "type" in message && message.type === "relay-copy-signin-screens" && "screens" in message) {
+      const screens = CopyDuoScreensSchema.safeParse(message.screens);
+      if (screens.success) copySignin.screens?.(screens.data);
       return;
     }
     if (stopping || ready || message === null || typeof message !== "object"

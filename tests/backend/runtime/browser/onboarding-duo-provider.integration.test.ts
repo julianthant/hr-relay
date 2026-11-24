@@ -691,7 +691,7 @@ it("records only the duo-error screen when an alert reflects a typed input value
     await page.goto(`https://api-test.duosecurity.com/frame/prompt?sid=${SNAPSHOT_SECRET}`);
     await page.fill("#code", `${SNAPSHOT_SECRET}-typed`);
     await expect(page.getByRole("alert")).toContainText(SNAPSHOT_SECRET);
-    assert.equal(await duoScreenSnapshot(page), "screen duo-error\nframe duo\n");
+    assert.deepEqual(await duoScreenSnapshot(page), { screen: "duo-error", frames: ["duo"] });
   } finally { await context.browser()?.close(); }
 });
 
@@ -705,9 +705,7 @@ it("records non-HTTPS and opaque frames only as not-allowlisted and names the Du
     const page = await context.newPage();
     await page.goto("https://api-test.duosecurity.com/frame/prompt");
     await expect.poll(() => page.frames().length).toBe(4);
-    const lines = (await duoScreenSnapshot(page)).split("\n");
-    assert.deepEqual(lines.slice(0, 2), ["screen push-sent", "frame duo"]);
-    assert.deepEqual(lines.slice(2).sort(), ["", "frame not-allowlisted", "frame not-allowlisted", "frame not-allowlisted"]);
+    assert.deepEqual(await duoScreenSnapshot(page), { screen: "push-sent", frames: ["duo", "not-allowlisted", "not-allowlisted", "not-allowlisted"] });
   } finally { await context.browser()?.close(); }
 });
 
@@ -722,6 +720,6 @@ it("records only the sso-page screen after a redirect", async () => {
     await page.goto("https://api-test.duosecurity.com/frame/prompt");
     await page.waitForURL(url => url.href.startsWith(sso));
     await page.fill("#u", `${SNAPSHOT_SECRET}-user`);
-    assert.equal(await duoScreenSnapshot(page), "screen sso-page\nframe ucsd-sso\n");
+    assert.deepEqual(await duoScreenSnapshot(page), { screen: "sso-page", frames: ["ucsd-sso"] });
   } finally { await context.browser()?.close(); }
 });
