@@ -9,6 +9,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { createDashboardClient, createRowStore, type DashboardClient } from "../../../src/dashboard/client/index.js";
+import type { RunPanel } from "../../../src/models/dashboard/subscription.js";
 import { serveRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 import { failureDecision } from "../../../src/backend/runs/queries/run-detail/receipts-failures.js";
 import { hireReviewDecision, parkedWriteDecision } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
@@ -529,6 +530,7 @@ describe("served Logs decision authority", () => {
       artifact: { mediaKind: "image", mediaType: "image/png", artifactId: FOREIGN, sha256: "a".repeat(64), byteLength: 1, sensitivity: "restricted", redaction: "restricted-access", width: 1280, height: 720 },
       origins: [{ bundleId: NOTE, originKind: "operator-request", capturedAt: AT, browserCapture: { nodeId: "first", attempt: 1, sessionId: NOTE } }] }] } });
     const withCaptures = (revision: number) => detailAt(selectionAt(3), revision, { captures: { state: "available", artifactCount: 1 }, availableSections: ["logs", "captures"] });
+    const page = () => { const section = logs(); assert(section.section === "logs"); return section.payload; };
     const none = { artifactUrl: (id: string) => `/artifacts/${id}` } as unknown as DashboardClient;
     async function shown(panel: RunPanel, rowRevision = 3) {
       const h = await harness(none, undefined, false, false);
@@ -538,43 +540,43 @@ describe("served Logs decision authority", () => {
     }
 
     it("loads a panel that carries exactly its declared sections, each owned by the run", async () => {
-      const h = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [capturesOf(RUN)] });
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [capturesOf(RUN)] });
       assert.equal(h.state?.state, "loaded");
     });
 
     it("fails a panel that omits a declared section", async () => {
-      const h = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [] });
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [] });
       assert.equal(h.state?.state, "failed"); assert.equal(h.state?.snapshot, undefined);
     });
 
     it("fails a panel that carries a section its detail does not declare, or one twice", async () => {
-      const undeclared = await shown({ state: "available", detail: detailAt(selectionAt(3), 3), logs: logs().payload as never, sections: [capturesOf(RUN)] });
+      const undeclared = await shown({ state: "available", detail: detailAt(selectionAt(3), 3), logs: page(), sections: [capturesOf(RUN)] });
       assert.equal(undeclared.state?.state, "failed");
       await act(async () => root?.unmount());
-      const twice = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [capturesOf(RUN), capturesOf(RUN)] });
+      const twice = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [capturesOf(RUN), capturesOf(RUN)] });
       assert.equal(twice.state?.state, "failed");
     });
 
     it("fails a panel whose captures section belongs to another run, though its count matches", async () => {
-      const h = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [capturesOf(FOREIGN)] });
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [capturesOf(FOREIGN)] });
       assert.equal(h.state?.state, "failed"); assert.equal(h.state?.onDecision, undefined);
     });
 
     it("keeps a panel that failed a check failed after the queue row moves ahead of it", async () => {
-      const h = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [capturesOf(FOREIGN)] });
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [capturesOf(FOREIGN)] });
       await h.render(selectionAt(4));
       assert.equal(h.state?.state, "failed"); assert.equal(h.state?.retryable, false);
       assert.equal(h.refreshed, 0);
     });
 
     it("fails a panel whose log page has no live rows instead of throwing", async () => {
-      const { rows: _rows, ...archived } = logs().payload as { rows?: unknown };
-      const h = await shown({ state: "available", detail: detailAt(selectionAt(3), 3), logs: archived as never, sections: [] });
+      const { rows: _rows, ...archived } = page();
+      const h = await shown({ state: "available", detail: detailAt(selectionAt(3), 3), logs: NotePageSchema.parse(archived), sections: [] });
       assert.equal(h.state?.state, "failed"); assert.equal(h.state?.retryable, false);
     });
 
     it("shows a validated older panel as loading once the row moves ahead", async () => {
-      const h = await shown({ state: "available", detail: withCaptures(3), logs: logs().payload as never, sections: [capturesOf(RUN)] });
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [capturesOf(RUN)] });
       await h.render(selectionAt(4));
       assert.equal(h.state?.state, "loading"); assert.ok(h.state?.snapshot);
     });
