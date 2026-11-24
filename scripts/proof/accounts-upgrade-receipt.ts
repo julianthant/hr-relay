@@ -266,7 +266,8 @@ async function inspectStoppedCopy(workspace: string, snapshot: UpgradeProofDepen
       requireProof(row !== undefined && row.profileId === registry.activeProfileId, "COPY_SESSION_NOT_ISSUED");
       requireProof(row.lifecycle === "ready" && row.registration.onboardingCompletion !== undefined && row.duoState === "ready", "PROFILE_TRANSITION_BLOCKED");
       const browserRoots = BrowserRootsSchema.parse(JSON.parse(privateBytes(join(machine.stateRoot, "machine", "browser-roots.json"), "lock", 1_048_576).toString("utf8")));
-      requireProof(browserRoots.installationId === registry.installationId && browserRoots.roots.every(root => root.state === "closed"), "COPY_TARGET_REFUSED");
+      requireProof(browserRoots.installationId === registry.installationId
+        && browserRoots.roots.every(root => root.launch.state === "closed" && root.native === undefined), "COPY_TARGET_REFUSED");
       const observed = snapshot(row.profileId);
       const admission = machine.admitProfile(row.profileId);
       try {
