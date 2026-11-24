@@ -378,6 +378,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   } });
   const app = createDashboardApp({
     debugEvents,
+    debugReportRunReader: lifecycle,
     assistant,
     chatGptOcrTest,
     chatGptAccount: {
