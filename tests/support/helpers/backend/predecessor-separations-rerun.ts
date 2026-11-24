@@ -19,13 +19,17 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
   vi.doMock("../../../../src/models/validation/schema-bound-value.js", async importOriginal => {
     const current = await importOriginal<typeof import("../../../../src/models/validation/schema-bound-value.js")>();
     const { FingerprintSchema } = await import("../../../../src/rules/identity/ids.js");
-    return { ...current, deriveSchemaHash: (schema: Parameters<typeof current.deriveSchemaHash>[0], io: "input" | "output") =>
-      FingerprintSchema.parse(predecessorEvidenceSchemaHash(schema, io)) };
+    let hashMs = 0, hashes = 0; Reflect.set(globalThis, "__hashStats", () => `${hashes} hashes ${Math.round(hashMs)}ms`);
+    return { ...current, deriveSchemaHash: (schema: Parameters<typeof current.deriveSchemaHash>[0], io: "input" | "output") => {
+      const s0 = performance.now(); try { return FingerprintSchema.parse(predecessorEvidenceSchemaHash(schema, io)); } finally { hashMs += performance.now() - s0; hashes++; } } };
   });
   // The receipt is derived by the build that stored the run: the profile-name-domain build, whose Separations input had no stored initials.
   const restoreBuild = simulatePreviousSeparationsInputGeneration();
   const { compositionHarness, compositionQueuedRun, compositionClaimRunning, compositionContext, COMPOSITION_SCOPE_OUTPUTS,
     COMPOSITION_TIMEKEEPER, FINALIZE_NODE } = await import("../separations-composition-fixtures.js");
+  prof("fixture:reset");
+  await import("../../../../src/models/validation/schema-bound-value.js"); prof("fixture:schema-bound-value");
+  await import("../registered-workflows.js"); prof("fixture:registered-workflows " + String(Reflect.apply(Reflect.get(globalThis, "__hashStats") ?? (() => "no-hash"), undefined, [])));
   prof("fixture:reset+imports");
   const h = await compositionHarness();
   prof("fixture:harness");
@@ -87,7 +91,7 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
     const credential = captureProfileCredentialFixture(h.profile.admission), paths = { workspace: h.profile.workspace, stateRoot: h.profile.stateRoot,
       profileId: h.profile.admission.profileBinding.profileId, path: h.path };
     if (!options.keepOpen) await h.closeController(); if (!options.keepOpen && options.predecessorCredentials !== false) installPredecessorProfileCredentials(credential, COMPOSITION_TIMEKEEPER, valueId);
-    prof("fixture:close+credentials");
+    prof("fixture:close+credentials"); prof(String(Reflect.apply(Reflect.get(globalThis, "__hashStats") ?? (() => "no-hash"), undefined, [])));
     return { ...paths, database: h.database, clock: h.clock, run: terminal, result, checkpoints, writes, receipt, valueId, cleanup: h.dispose };
   } catch (error) { await h.dispose(); throw error; }
   finally { restoreBuild(); vi.doUnmock("../../../../src/models/validation/schema-bound-value.js"); vi.resetModules(); }
