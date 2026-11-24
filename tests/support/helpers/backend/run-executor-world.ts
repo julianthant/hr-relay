@@ -13,7 +13,7 @@ import { testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { ExecutorSpanEventSchema } from "../../../../src/backend/logs/span-emitter.js";
-import { type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { type WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
 import { type RunRecord } from "../../../../src/models/run/record.js";

@@ -189,7 +189,7 @@ it.each(['run-action', 'workflow'] as const)('renders the existing served %s car
   await act(async () => { confirm.click(); confirm.click(); });
   await vi.waitFor(() => assert.equal(confirmations, 1));
   await act(async () => { await vi.waitFor(() => assert.match(host.textContent ?? '', kind === 'workflow' ? /Started/u : /Done/u)); });
-  assert.equal(host.querySelector('article[aria-label^="Proposed "]'), null);
+  assert.equal(host.querySelector('article[aria-label^="Proposed "]') === null, true);
 });
 
 function setupAccount() {

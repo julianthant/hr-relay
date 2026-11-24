@@ -24,7 +24,7 @@ it("a toast is text only and times out unless sticky", async () => {
     await act(async () => root.render(createElement(ToastProvider, { children: createElement(Producer) })));
     await press("Plain");
     assert.equal(cards().length, 1);
-    assert.equal(document.querySelector('[data-slot="toast"]')?.querySelector("button"), null);
+    assert.equal(document.querySelector('[data-slot="toast"]')?.querySelector("button") === null, true);
     await act(async () => vi.advanceTimersByTime(3_500));
     assert.equal(cards().length, 0);
     await press("Sticky");

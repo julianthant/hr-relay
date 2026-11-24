@@ -47,7 +47,7 @@ it("clears the final Search entry and disables Continue", async () => {
   await dialog.type(" 10000001;10000001 ");
   await dialog.press("Remove 10000001");
   assert.equal(dialog.typedInput().value, "");
-  assert.equal(document.querySelector('[aria-label="Parsed input"]'), null);
+  assert.equal(document.querySelector('[aria-label="Parsed input"]') === null, true);
   assert.equal(dialog.disabled("Continue"), true);
   assert.match(dialog.text(), /Type at least one value/u);
 });
@@ -64,7 +64,7 @@ it("keeps Match identifiers raw in the editor and masked in its preview", async 
   assert.equal(box.value, raw);
   assert.match(dialog.text(), /Example, Person, x, \[masked\]/u);
   assert.equal(document.querySelector('[aria-label="Parsed input"]')?.textContent?.includes("902481357"), false);
-  assert.equal(document.querySelector('button[aria-label^="Remove "]'), null);
+  assert.equal(document.querySelector('button[aria-label^="Remove "]') === null, true);
 });
 
 it.each([";", "|"])("preserves two Match tuples through Search blur before the mode click with %s", async delimiter => {

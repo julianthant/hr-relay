@@ -42,7 +42,7 @@ import { authenticateParkedWriteRecheck,authenticateParkedWriteResolution } from
 import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
 import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting, descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
-import type { ChildRunBatchContext } from "../../runtime/execution/run-executor.js";
+import type { ChildRunBatchContext } from "../../runtime/execution/run-execution-contract.js";
 import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import type { AuthorityDatabase,AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { assertCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
