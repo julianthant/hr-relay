@@ -18,7 +18,8 @@ import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-qu
 import { projectStartSteps, startStepWireControl } from "../../../../src/backend/runs/start/step-selection.js";
 import { Hono } from "hono";
 import { composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
-import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { supportsDryRun } from "../../../../src/backend/runs/start/plan.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
