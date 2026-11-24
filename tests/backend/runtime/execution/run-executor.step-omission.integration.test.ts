@@ -8,7 +8,7 @@ import { testRunLifecycle, testWorkerPorts } from "../../../support/fixtures/run
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
-import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/gate-command.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";

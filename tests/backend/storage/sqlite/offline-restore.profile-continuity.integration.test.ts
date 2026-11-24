@@ -23,7 +23,7 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { acquireRecoveryRuntimeRestore,RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 

@@ -4,7 +4,7 @@ import { queueParentFixture } from "../../../support/helpers/dashboard/queue-par
 import { describe,it } from "vitest";
 import { z } from "zod";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
-import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../../src/backend/runs/commands/command-arms.js";
 import {
 queueRowActions,
 type QueueRowActionFacts,

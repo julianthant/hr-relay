@@ -18,7 +18,7 @@ import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, it, vi } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { delegatedCandidateEligible } from "../../../../src/backend/runs/lifecycle/run-claim-admission.js";
