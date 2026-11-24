@@ -243,9 +243,9 @@ it("serves archived notices as read alongside actionable copy notices", async ()
   const archive = readFileSync(archivePath);
   const { client } = await openCopyDashboard(copy, clock);
   const day = searchPartitionDay(clock.now());
-  const archived = expect.objectContaining({ notificationId: archivedId, readState: "read", state: "read", readOnlyHistory: true });
+  const archived = { notificationId: archivedId, readState: "read", state: "read", readOnlyHistory: true };
   for (const rows of [await client.notificationSnapshot(), (await client.dashboardDay(day)).notifications]) {
-    expect(rows).toContainEqual(archived);
+    expect(rows.find(row => row.notificationId === archivedId)).toMatchObject(archived);
     const local = rows.find(row => row.notificationId === localId);
     expect(local).toMatchObject({ readState: "unread", state: "unread", revision: 1 });
     expect(local).not.toHaveProperty("readOnlyHistory");
@@ -263,7 +263,7 @@ it("serves archived notices as read alongside actionable copy notices", async ()
   const toggled = await client.executeCommand(unread);
   expect(toggled.state).toBe("applied");
   expect(await verifyShellCommandEffect(client, day, unread, toggled)).toMatchObject({ state: "matched" });
-  expect(await client.notificationSnapshot()).toContainEqual(archived);
+  expect((await client.notificationSnapshot()).find(row => row.notificationId === archivedId)).toMatchObject(archived);
   expect(readFileSync(archivePath)).toEqual(archive);
 });
 
