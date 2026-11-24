@@ -265,20 +265,6 @@ export function createAssistantController(client: AssistantQueries, initialBindi
 
 export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true, chatId = "default", commands?: DashboardCommandBinding, options?: { history?: AssistantHistory; preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void; readModels?: boolean }) {
   const { history, preferenceChanged, readModels = true } = options ?? {};
-  const [launcherBottom, setLauncherBottom] = useState<string>();
-  useLayoutEffect(() => {
-    if (!shellMounted) return;
-    const panel = document.querySelector('[aria-label="Session Panel"]');
-    const bar = panel?.querySelector('[aria-label="Session actions"]');
-    if (!(panel instanceof HTMLElement) || !(bar instanceof HTMLElement)) throw new Error('ASSISTANT_UNAVAILABLE');
-    const measure = () => {
-      const extra = panel.getBoundingClientRect().height - bar.getBoundingClientRect().height;
-      if (!Number.isFinite(extra) || extra < 0) throw new Error('ASSISTANT_UNAVAILABLE');
-      setLauncherBottom(`calc(var(--ds-space-section) + var(--ds-toast-inset-bottom) + ${extra}px)`);
-    };
-    const observer = new ResizeObserver(measure); observer.observe(panel); observer.observe(bar); measure();
-    return () => observer.disconnect();
-  }, [shellMounted]);
   const accountPort = useContext(ChatGptAccountContext);
   const account = useChatGptAccount(accountPort);
   const bindingAuthority = useMemo(() => ({ authority, account, shellMounted, commandScope: commands?.scope, commandExecutor: commands?.executor, commandFeedback: commands?.feedback }), [authority, account, shellMounted, commands?.scope, commands?.executor, commands?.feedback]);
@@ -311,7 +297,7 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
     client.assistantModels(request.signal).then(catalog => { if (!request.signal.aborted) setModels(catalog.models); }, () => { if (!request.signal.aborted) setModels(undefined); });
     return () => request.abort();
   }, [readModels, accountAvailable, sessions.client]);
-  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
+  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
     accountAction: (account.state === 'loading' ? undefined : accountReadFailed ? 'retry' : account.state === 'connected' || account.state === 'unavailable' || account.state === 'signing-in' ? 'settings' : 'sign-in'),
     accountRetry: () => { void accountPort.refresh?.(); },

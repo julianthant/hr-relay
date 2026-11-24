@@ -17,7 +17,7 @@ import { useHubMotion } from "../ds/theme/motion.js";
 import "../ds/theme/hub-theme.css";
 import { productWorkflowComposition, type WorkflowComposition } from "./workflow-sources.js";
 import { ViewNavigationProvider } from "./navigation/view-navigation.js";
-import {useCallback,useContext,useEffect,useMemo,useRef,useState,type CSSProperties } from "react";
+import {useCallback,useContext,useEffect,useMemo,useRef,useState } from "react";
 
 
 import { Button,FailureNotice,EmptyState,ToastProvider,TooltipProvider,useDemoTheme } from "../ds/ui.js";
@@ -109,7 +109,6 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
     <PersonPreferencesContext.Provider value={preferences}><div
       data-app-root=""
       data-demo-theme={theme}
-      style={{ "--ds-toast-inset-bottom": "calc(2 * (var(--ds-h-bar) + var(--ds-space-loose)))" } as CSSProperties}
       className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]"
     >
     <ChatGptAccountContext.Provider value={account ?? inheritedAccount}>
