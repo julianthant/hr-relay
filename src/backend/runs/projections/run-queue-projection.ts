@@ -365,6 +365,7 @@ export class RunQueueProjection {
 
   #workerAuthorityFingerprint: string;
   #backgroundWorkers?: BackgroundWorkerFacts;
+  #foregroundSnapshotFingerprint?: string;
   #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
   #storedCanonical: { key: number; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
   /** One step per emitted envelope; the projection is the only owner of the sequence. */
@@ -457,7 +458,7 @@ export class RunQueueProjection {
     }
   }
 
-  #ingestTail(tail: ReturnType<typeof readTimelineRecords>): void {
+  #ingestTail(tail: ReturnType<typeof readTimelineRecords>, workerFactsCaptured = false): void {
     this.#timelineCursor = tail.cursor;
     if (tail.records.length === 0) return;
     const touched = new Set<RunId>();
@@ -474,7 +475,7 @@ export class RunQueueProjection {
       workerChanged ||= affected.workerChanged;
     }
     const affected = { runIds: [...runIds], workerChanged };
-    const carried = queueRevisions > 0 ? this.#notify(affected, queueRevisions > 1) : { snapshot: false, runIds: [] };
+    const carried = queueRevisions > 0 ? this.#notify(affected, queueRevisions > 1, workerFactsCaptured) : { snapshot: false, runIds: [] };
     const uncarried = carried.snapshot ? [] : [...touched].filter(runId => !carried.runIds.includes(runId));
     if (uncarried.length > 0) this.#emit({ kind: "runs", runIds: uncarried, position: this.#timelineCursor });
   }
@@ -518,7 +519,7 @@ export class RunQueueProjection {
         replay[level] = events;
       } else if (!rebuilding && page.cursor > this.#timelineCursor) {
         // A synchronous command may already have consumed part or all of this page.
-        this.#ingestTail({ records: page.records.filter(row => row.cursor > this.#timelineCursor), cursor: page.cursor });
+        this.#ingestTail({ records: page.records.filter(row => row.cursor > this.#timelineCursor), cursor: page.cursor }, !moreWorkerFacts);
       }
       if (page.cursor >= through && !moreWorkerFacts) break;
       const workerCursor = moreWorkerFacts ? page.workers.next : null;
@@ -546,6 +547,14 @@ export class RunQueueProjection {
     } else {
       // The worker uses a different fingerprint format. Only rebaseline silently when the startup facts still match.
       if (first && workersChangedDuringStartup?.() === false) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
+      // Commands can publish the same authority before the worker catches up.
+      const foreground = this.#foregroundSnapshotFingerprint;
+      this.#foregroundSnapshotFingerprint = undefined;
+      if (foreground !== undefined) {
+        const fingerprint = this.#captureSharedAuthorityFingerprint();
+        if (fingerprint !== this.#workerAuthorityFingerprint && this.#deps.reader.withRunTreeSnapshot([], () =>
+          this.#captureSharedAuthorityFingerprint(undefined, true)) === foreground) this.#workerAuthorityFingerprint = fingerprint;
+      }
       this.reconcileWorkerAuthority();
     }
     return expiry;
@@ -633,6 +642,7 @@ export class RunQueueProjection {
     this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
     this.#cursorValue = 1;
     this.#health = { state: "live" };
+    this.#foregroundSnapshotFingerprint = undefined;
     this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
     this.#emit({ kind: "generation", cursor: this.cursor() });
   }
@@ -901,7 +911,8 @@ export class RunQueueProjection {
   }
 
   /** Publishes day changes and reports which runs they carried. A snapshot carries every run. */
-  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, forceSnapshot = false): { snapshot: boolean; runIds: readonly string[] } {
+  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, forceSnapshot = false,
+    workerFactsCaptured = false): { snapshot: boolean; runIds: readonly string[] } {
     if (affected.workerChanged) this.#dayCache.clear();
     else {
       for (const cached of this.#dayCache.values()) {
@@ -981,7 +992,12 @@ export class RunQueueProjection {
       }
       const snapshotOnly = forceSnapshot || batchPresentationChanged || crossDayMembersChanged || patches.length > 1;
       if (snapshotOnly) snapshotNeeded = true;
-      if (snapshotNeeded) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint(snapshot.runs);
+      if (snapshotNeeded) {
+        this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint(snapshot.runs);
+        if (workerFactsCaptured) this.#foregroundSnapshotFingerprint = undefined;
+        else this.#foregroundSnapshotFingerprint = this.#backgroundWorkers === undefined
+          ? this.#workerAuthorityFingerprint : this.#captureSharedAuthorityFingerprint(snapshot.runs, true);
+      }
       // Each emitted change takes its own cursor, in emission order.
       const position = this.#timelineCursor;
       const changes: RunQueueProjectionChange[] = snapshotOnly ? []
@@ -997,8 +1013,8 @@ export class RunQueueProjection {
   }
 
   /** Capture shared authority at a snapshot/reconcile boundary, including the batch revisions row patches may expose. */
-  #captureSharedAuthorityFingerprint(canonicalRuns?: readonly RunRecord[]): string {
-    const facts = this.#backgroundWorkers;
+  #captureSharedAuthorityFingerprint(canonicalRuns?: readonly RunRecord[], foreground = false): string {
+    const facts = foreground ? undefined : this.#backgroundWorkers;
     if (facts !== undefined) {
       const members = this.#deps.authority.workerMembers?.().map(view => ({
         workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version,
@@ -1030,7 +1046,7 @@ export class RunQueueProjection {
         pause: run.pause,
       }));
       built = { storeJson: JSON.stringify({ pools, batches, runs }), claimedIds: source.filter((run) => runClaim(run) !== undefined).map((run) => run.envelope.runId), batches };
-      if (canonicalRuns === undefined && key !== undefined) this.#storedCanonical = { key, ...built };
+      if (key !== undefined) this.#storedCanonical = { key, ...built };
     }
     const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version,
       duoLeases: this.#deps.authority.heldDuoLeases?.(view.member.workerId) }));
@@ -1039,7 +1055,7 @@ export class RunQueueProjection {
     const startupPending = [...new Set(members?.map(member => member.workflow))].filter(workflowId => this.#deps.authority.workerStartupPending?.(workflowId) === true);
     const fingerprint = JSON.stringify({ members, workers, writeInFlight, startupPending }) + built.storeJson;
     const batches = built.batches;
-    this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
+    if (!foreground || canonicalRuns !== undefined) this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
     return fingerprint;
   }
 

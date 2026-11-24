@@ -120,8 +120,16 @@ it("replays a count-neutral background task step across a dashboard reconnect", 
       spanPath: traceId, outcome: "cancelled" });
     vi.advanceTimersByTime(250);
     await runtime.settled();
-    unsubscribe();
     expect(publications).toEqual(["snapshot"]);
+
+    const next = f.create(826);
+    writer.emit(runQueuedSpanEvent({ run: next, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Next queued run" }));
+    projection.ingestFromTimeline();
+    expect(publications).toEqual(["snapshot", "snapshot"]);
+    vi.advanceTimersByTime(250);
+    await runtime.settled();
+    unsubscribe();
+    expect(publications).toEqual(["snapshot", "snapshot"]);
   } finally {
     hub.close();
     for (const cleanup of startupCleanups.reverse()) await cleanup();
