@@ -127,6 +127,19 @@ describe("seeded drive helpers", () => {
     }
   });
 
+  it("closing while the next step's hold yields its turn fails that step and settles the run", async () => {
+    const server = await boot({ scriptedRuns: true });
+    const runId = await startScriptedRun(seededRequestOver(server.baseUrl), SEEDED_NOW, "10812345");
+    const run = await server.scripted.drive(runId);
+    expect(run.position).toEqual({ at: "step", nodeId: "paypath-position" });
+
+    const next = run.advance();
+    // Queued before the next hold queues its own turn, so close lands while that hold yields.
+    await new Promise(resolve => setImmediate(resolve));
+    await expect(server.scripted.close()).rejects.toThrow(`scripted run ${runId} was left held at a step`);
+    expect(await next).toMatchObject({ at: "settled" });
+  });
+
   it("parks the running Person Lookup run at its task node with a healthy detail read", async () => {
     const server = await boot();
     const stream = await openStream(server);

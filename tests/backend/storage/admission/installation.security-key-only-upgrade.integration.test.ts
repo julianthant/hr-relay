@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, onTestFinished, vi } from "vitest";
 import { z } from "zod";
@@ -8,11 +8,10 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import * as privatePath from "../../../../src/backend/storage/private-path.js";
+import { ProfileRegistryDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { createProfileSessionWorld } from "../../../support/helpers/backend/profile-session-world.js";
 
-const DocumentSchema = z.looseObject({ schemaVersion: z.number(), profiles: z.array(z.looseObject({ profileId: z.uuid(),
-  registration: z.looseObject({ onboardingCompletion: z.looseObject({}).optional() }) })) });
 const sha256 = (value: unknown) => createHash("sha256").update(canonicalJsonStringify(value)).digest("hex");
 const TOUCH_RECEIPT = { receiptDigest: "c".repeat(64), softwareInterceptionDisabled: true, operatorConfirmedAt: "2026-09-06T12:05:00.000Z" };
 
@@ -41,9 +40,8 @@ async function versionFourMachine(operations: (profileId: string) => readonly { 
   const machine = join(world.machineRoot, "machine"), control = join(workspace, ".tracker", "control");
   const paths: Paths = { registry: join(machine, "profiles.json"), marker: join(machine, "profile-registry-version.json"), operations: join(machine, "operations"),
     control: join(control, "profile-registry.json"), intent: join(control, "security-key-only-upgrade.json") };
-  const current = DocumentSchema.parse(JSON.parse(readFileSync(paths.registry, "utf8")));
+  const current = ProfileRegistryDocumentSchema.parse(JSON.parse(readFileSync(paths.registry, "utf8")));
   const expected = { ...current, profiles: current.profiles.map(({ relayEmail: _relayEmail, ...row }) => row) };
-  assert.equal(expected.schemaVersion, 5);
   assert.ok(expected.profiles.every(row => row.registration.onboardingCompletion !== undefined));
   const prior = { ...expected, schemaVersion: 4, profiles: expected.profiles.map(row => ({ ...row,
     registration: { ...row.registration, onboardingCompletion: { ...row.registration.onboardingCompletion, touch: TOUCH_RECEIPT } } })) };
@@ -57,6 +55,26 @@ function startup(machine: { workspace: string; lifetime: RuntimeLifetimeLock }):
 }
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
+
+it.each([2, 3, 4] as const)("refuses relayEmail in a version %i registry row", async version => {
+  const machine = await versionFourMachine();
+  const { paths, prior } = machine;
+  const { installationId: _installationId, revision: _revision, ...v2Fields } = prior;
+  const profiles = version === 4 ? prior.profiles : prior.profiles.map(({ timekeeperInitials: _initials, ...row }) => row);
+  const document = { ...(version === 2 ? v2Fields : prior), schemaVersion: version, profiles };
+  writeFileSync(paths.marker, JSON.stringify({ schemaVersion: { 2: 2, 3: 8, 4: 9 }[version] }));
+  if (version === 2) {
+    const { revision: _witnessRevision, ...witness } = z.looseObject({ revision: z.number(), operations: z.tuple([]) }).parse(readJson(paths.control));
+    const { dev: device, ino: inode } = statSync(paths.registry);
+    writeFileSync(paths.control, JSON.stringify({ ...witness, schemaVersion: 1, device, inode, erasures: [] }));
+  }
+
+  writeStore(paths, { ...document, profiles: profiles.map(row => ({ ...row, relayEmail: "alex@ucsd.edu" })) }, []);
+  assert.throws(() => startup(machine), /Unrecognized key[^\n]*relayEmail/u);
+
+  writeStore(paths, document, []);
+  startup(machine);
+});
 
 function attempt(method: "key" | "touch", state: "pending" | "complete" | "unknown" | "closed", ceremony?: "fast-duo" | "chromium-platform") {
   return { attemptId: randomUUID(), generation: 1, method, expiresAt: "2026-09-06T13:10:00.000Z", state,

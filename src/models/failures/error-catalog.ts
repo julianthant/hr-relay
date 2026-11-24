@@ -818,10 +818,6 @@ export const ERROR_CATALOG = Object.freeze({
     "Your sign-in change may not have saved. Try the new login, then old.",
     EmptyParametersSchema,
   ),
-  PROFILE_LOGIN_CHANGE_UNSETTLED: catalogEntry(
-    "Your sign-in change did not finish. Try again; your old login works.",
-    EmptyParametersSchema,
-  ),
   PROFILE_LOGIN_CHANGE_BUSY: catalogEntry(
     "Another save was running, so your sign-in was not changed. Try again.",
     EmptyParametersSchema,
