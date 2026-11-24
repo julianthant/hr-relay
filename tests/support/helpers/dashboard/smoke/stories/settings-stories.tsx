@@ -146,16 +146,21 @@ const SEARCH = {
   unavailable: scene("Search after settings could not be read", { server: { read: "fail" }, play: find("zzzz"), story: { ready: 'text="Settings fields unavailable"' } }),
 } satisfies Record<SearchState, Story>;
 
+/** The Save just pressed is still under the pointer, which fills it in its hover color; move the pointer off it and let the fill settle, so the story is measured at the accent. */
+const still = async (page: Page): Promise<void> => {
+  await page.mouse.move(1, 1);
+  await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => undefined))));
+};
 const refusedDetails: AccountStub = { details: { state: "refused", code: "PROFILE_NAME_REFUSED" } };
 const refusedLogin: AccountStub = { login: { state: "refused", code: "PROFILE_CURRENT_PASSWORD_REFUSED" } };
 const onAccount = (title: string, play: Scene["play"], ready: string, extra: Partial<Scene> = {}): Story => scene(title, { section: "account", ...(play === undefined ? {} : { play }), story: { ready }, ...extra });
 const DIALOG = {
   "edit-name": onAccount("Editing the account name", click("Edit name"), '[role="dialog"]'),
-  "edit-name-refused": onAccount("A name change the server refused", then(click("Edit name"), type("Name", "Jordan Q Lee"), click("Save")), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedDetails } }),
+  "edit-name-refused": onAccount("A name change the server refused", then(click("Edit name"), type("Name", "Jordan Q Lee"), click("Save"), still), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedDetails } }),
   "edit-username": onAccount("Editing the Relay username", click("Edit username"), '[role="dialog"]'),
-  "edit-username-refused": onAccount("A username change with the wrong password", then(click("Edit username"), type("Current password", "wrong"), type("New username", "jordan@ucsd.edu"), click("Save")), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedLogin } }),
+  "edit-username-refused": onAccount("A username change with the wrong password", then(click("Edit username"), type("Current password", "wrong"), type("New username", "jordan@ucsd.edu"), click("Save"), still), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedLogin } }),
   "change-password": onAccount("Changing the Relay password", click("Change Relay password"), '[role="dialog"]'),
-  "change-password-refused": onAccount("A password change with the wrong password", then(click("Change Relay password"), type("Current password", "wrong"), type("New password", "a-new-password"), type("Confirm new password", "a-new-password"), click("Save")), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedLogin } }),
+  "change-password-refused": onAccount("A password change with the wrong password", then(click("Change Relay password"), type("Current password", "wrong"), type("New password", "a-new-password"), type("Confirm new password", "a-new-password"), click("Save"), still), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedLogin } }),
   "edit-credential": onAccount("Editing the UCPath username", click("Edit UCPath username"), '[role="dialog"]'),
   "remove-credential": onAccount("Asked to remove the UCPath username", then(click("Edit UCPath username"), click("Remove UCPath username")), 'text="Remove UCPath username?"'),
   "disconnect-chatgpt": scene("Asked to disconnect ChatGPT", { host: { chatGpt: { state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", planUsage: "enabled" } }, play: click("Disconnect"), story: { ready: 'text="Disconnect ChatGPT?"' } }),
