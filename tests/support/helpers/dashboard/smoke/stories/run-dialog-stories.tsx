@@ -11,9 +11,10 @@ import { PreflightCheckIdSchema } from "../../../../../../src/models/preflight/p
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
-  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, RUN_DIALOG_REFERENCE_READS, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
+  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
   never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, type ServedCheck,
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
+import { RUN_DIALOG_REFERENCE_READS } from "../../../../fixtures/dashboard/run-dialog-reference-fixtures.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import { SceneBinding } from "./scene-binding.js";
 import { StoryFrame } from "./story-frame.js";
