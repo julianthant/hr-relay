@@ -71,8 +71,6 @@ const buttonVariants = cva(
           "bg-[color-mix(in_srgb,var(--ds-danger)_14%,transparent)] text-[color:var(--ds-danger)] border-transparent",
           "hover:bg-[color-mix(in_srgb,var(--ds-danger)_22%,transparent)] active:bg-[color-mix(in_srgb,var(--ds-danger)_30%,transparent)]",
         ),
-        /** Plain red text with no box or inset: the third, destructive action at the left of a dialog footer. */
-        dangerText: "bg-transparent border-transparent !px-0 text-[color:var(--ds-danger)] hover:underline",
         dangerGhost: cn(
           "bg-transparent text-[color:var(--ds-danger)]",
           "border-[color:var(--ds-danger-border)]",

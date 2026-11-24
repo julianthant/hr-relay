@@ -26,7 +26,7 @@ function fakeEditor(draft: Draft = {}): never {
 async function mount(name: "ucpathUserId" | "ucpathPassword", label: string, thing: string, draft: Draft = {}): Promise<void> {
   calls.length = 0;
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ToastProvider, { children: createElement(ProtectedPencilRow, { editor: fakeEditor(draft), name, label, thing, description: "d", onRemove: () => {} }) })));
+  await act(async () => root?.render(createElement(ToastProvider, { children: createElement(ProtectedPencilRow, { editor: fakeEditor(draft), name, label, thing, description: "d" }) })));
 }
 const dialog = (): HTMLElement | null => document.body.querySelector<HTMLElement>('[role="dialog"]');
 const press = (name: string) => act(async () => { [...(dialog()?.querySelectorAll("button") ?? [])].find(item => item.textContent === name)?.click(); });

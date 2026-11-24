@@ -9,9 +9,8 @@ type Editor = ReturnType<typeof useEditableSettings>;
 type Name = Parameters<Editor["protectedEditor"]["update"]>[0];
 
 /** A saved protected value shown as a row; the pencil opens a dialog over the same draft and Save command. */
-export function ProtectedPencilRow({ editor, name, label, thing, description, onRemove }: {
+export function ProtectedPencilRow({ editor, name, label, thing, description }: {
   editor: Editor; name: Name; label: string; thing: string; description: string;
-  onRemove: (hasSaved: boolean, label: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const pencil = useRef<HTMLButtonElement>(null);
@@ -24,7 +23,6 @@ export function ProtectedPencilRow({ editor, name, label, thing, description, on
   const shown = stored === undefined ? "Not set" : name === "ucpathUserId" ? formatSetting(stored.value) : "••••••••";
   const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
   const operation = credentials.draft[name];
-  const canRemove = stored !== undefined || operation?.kind === "set";
   const typed = operation?.kind === "set" ? operation.raw.trim() : "";
   const changed = typed !== "" && !(name === "ucpathUserId" && stored !== undefined && typed === formatSetting(stored.value));
   const close = (): void => { credentials.reset(name); setOpen(false); };
@@ -35,8 +33,8 @@ export function ProtectedPencilRow({ editor, name, label, thing, description, on
     </span>} />
     <Dialog open={open} onOpenChange={next => { if (!next) close(); }}>
       <DialogContent size="sm" className="settings-edit-dialog" title={`Edit ${thing}`} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
-        <DialogBody><ProtectedSettingField editor={editor} name={name} description={description} onRemove={onRemove} inDialog /></DialogBody>
-        <DialogFooter meta={canRemove ? <Button variant="dangerText" aria-label={`Remove ${thing}`} disabled={disabled} onClick={() => onRemove(stored !== undefined, thing)}>Remove</Button> : undefined}>
+        <DialogBody><ProtectedSettingField editor={editor} name={name} description={description} inDialog /></DialogBody>
+        <DialogFooter>
           <Button variant="secondary" onClick={close}>Cancel</Button>
           <Button variant="primary" disabled={disabled || !changed} onClick={() => { credentials.submit(); setOpen(false); }}>Save</Button>
         </DialogFooter>
