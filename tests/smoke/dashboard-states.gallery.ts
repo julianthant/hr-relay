@@ -1,7 +1,7 @@
 /** The state check loop: every catalogue story, at both desktop sizes, against every state rule.
  * Run one surface alone with `--grep @<surface>`, for example `--grep @queue`. */
 import { DESKTOP_VIEWPORTS } from "../support/helpers/dashboard/smoke/dashboard-page.js";
-import { expect, saveStateFrame, test, writeStateFrameIndex } from "../support/helpers/dashboard/smoke/gallery-fixtures.js";
+import { expect, saveStateFrame, test } from "../support/helpers/dashboard/smoke/gallery-fixtures.js";
 import { usesIndependentDialogReferences } from "../support/helpers/dashboard/smoke/gallery-shards.js";
 import { STATE_RULE_NAMES } from "../support/helpers/dashboard/smoke/state-rule-limits.js";
 import { STATE_RULES, type StateRuleContext } from "../support/helpers/dashboard/smoke/state-rules.js";
@@ -10,15 +10,14 @@ import { CATALOGUE } from "../support/helpers/dashboard/smoke/stories/catalogue.
 const dialogShapes: StateRuleContext["dialogShapes"] = new Map();
 
 function galleryTags(id: string, surface: string): string[] {
-  return usesIndependentDialogReferences(id) ? [`@${surface}`, "@gallery-independent"] : [`@${surface}`];
+  return usesIndependentDialogReferences(id) ? [`@${surface}`, `@gallery-group:${id.split("/").slice(0, 2).join("/")}`] : [`@${surface}`];
 }
 
-test.afterAll(() => {
-  writeStateFrameIndex(CATALOGUE, DESKTOP_VIEWPORTS.map(viewport => viewport.width));
-});
+test.describe.configure({ mode: "parallel" });
 
 for (const viewport of DESKTOP_VIEWPORTS) {
   test.describe(`states at ${String(viewport.width)}x${String(viewport.height)}`, () => {
+    test.describe.configure({ mode: "default" });
     test.use({ viewport });
 
     for (const { id, surface, story } of CATALOGUE) {
