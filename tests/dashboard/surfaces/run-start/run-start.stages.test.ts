@@ -43,7 +43,7 @@ describe("the Run dialog has no Confirm stage", () => {
     assert.ok(!dialog.text().includes("No such person."), "the server message is not shown");
     assert.ok(!dialog.text().includes(versionTag(h.WORKFLOWS[0].version)), "the version line is retired");
     assert.ok(!dialog.text().includes("ready to queue"));
-    assert.equal(document.body.querySelector('[aria-label="Run outputs"]'), null);
+    assert.equal(document.body.querySelector('[aria-label="Run outputs"]') === null, true);
     assert.deepEqual(h.closed, []);
     await dialog.press("Start run");
     assert.deepEqual(h.closed, [], "Start stays disabled while the refusal shows; nothing is submitted");

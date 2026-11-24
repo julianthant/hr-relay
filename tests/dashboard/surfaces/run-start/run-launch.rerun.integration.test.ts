@@ -101,7 +101,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     for (const name of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(name).matches(":checked"), true);
     assert.match(text(), /Completed/u);
     const before = h.authoritySnapshot(); await press("Continue");
-    assert.match(text(), /already submitted/u); assert.match(text(), /UCPath/u); assert.equal(document.querySelector('[aria-label="Required"]'), null); assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
+    assert.match(text(), /already submitted/u); assert.match(text(), /UCPath/u); assert.equal(document.querySelector('[aria-label="Required"]') === null, true); assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
     await press("Cancel"); assert.match(text(), /3 of 3 included/u); assert.equal(h.authoritySnapshot(), before);
     await press("Continue"); await press("Confirm"); assert.ok(document.querySelector('[aria-label="Values"]'));
     assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
@@ -112,7 +112,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const submitted = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.deepEqual(submitted.submissions, [{ eid: "10812345", memo: "edited memo" }]);
     assert.deepEqual(submitted.rerunSource?.copiedFrom, [{ nodeId: "read", fieldPath: "eid", targetFieldPath: "eid" }]);
-    assert.equal(document.querySelector('[role="dialog"]'), null); assert.match(text(), /Rerun created/u);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true); assert.match(text(), /Rerun created/u);
     const queued = h.queueRoots.at(-1); assert.ok(queued); assert.notEqual(queued.runId, source.envelope.runId);
     const run = h.database.authority.runs.get(queued.runId); assert.ok(run); assert.equal(run.envelope.dryRun, true);
     const priorCommits = h.world.events.filter((event) => event === "commit").length;
