@@ -40,7 +40,7 @@ it("lists unread failures and waits under Needs you and everything read under it
 it("draws no dot and no number on the bell with nothing unread", async () => {
   const view = await draw({ state: "ready", items: [item("read", { read: true })], pinned: [] });
   assert(view.host.querySelector('button[aria-label="Notifications, 0 unread"]'));
-  assert.equal(view.host.querySelector(".notice-bell-dot, .notice-bell-count"), null);
+  assert.ok(view.host.querySelector(".notice-bell-dot, .notice-bell-count") === null);
 });
 
 it("reads 99+ on the bell above 99 and keeps the exact count in its name", async () => {
