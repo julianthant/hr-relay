@@ -76,7 +76,7 @@ function materializeHistoryArchive(source: DatabaseSync, path: string, binding: 
     archive.prepare("INSERT INTO history_header VALUES(?,?,?,?)").run(archiveFormat, CURRENT_AUTHORITY_SCHEMA_VERSION, binding.installationId, binding.profileId);
     const counts: Record<string, number> = {};
     for (const [name, where] of tables) {
-      const select = source.prepare(`SELECT * FROM ${name}${at === undefined ? " WHERE 0" : where}`);
+      const select = source.prepare(`SELECT * FROM ${name}${at === undefined ? " WHERE 0" : where}${name === "commands" ? " ORDER BY rowid" : ""}`);
       const columns = select.columns().map(column => Column.parse(column.name));
       createHistoryTable(archive, name, columns);
       const insert = archive.prepare(`INSERT INTO ${name} VALUES(${columns.map(() => "?").join(",")})`);
@@ -302,6 +302,9 @@ export function attachHistoryArchive(database: DatabaseSync, path: string, bindi
     });
     database.exec(`CREATE TEMP VIEW ${name} AS SELECT ${selection.join(",")} FROM main.${name} UNION ALL SELECT ${columns.join(",")} FROM history.${name}`);
   }
+  database.exec(`CREATE TEMP VIEW history_command_order AS
+    SELECT id AS command_id, 0 AS source, rowid AS ordinal FROM history.commands
+    UNION ALL SELECT id AS command_id, 1 AS source, rowid AS ordinal FROM main.commands`);
   checkIdentities(database);
   validatedVersion.set(database, -1);
   return offset;
