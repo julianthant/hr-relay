@@ -114,6 +114,7 @@ function installReadHold({ target, delayMs, coldOrigin }: { target: Read; delayM
 function carriesHeldRead(event: string, target: { day: string } | { run: string }): boolean {
   if ("day" in target) return /^data: \{"type":"snapshot"[,}]/mu.test(event);
   const data = event.split("\n").filter(line => line.startsWith("data: ")).map(line => line.slice(6)).join("\n");
+  if (data === "") return false;
   const envelope = JSON.parse(data) as { rows?: readonly unknown[] };
   return Array.isArray(envelope.rows) && envelope.rows.length > 0;
 }
