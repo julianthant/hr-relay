@@ -10,6 +10,7 @@ import { createServedOnboardingPort } from "../../../../src/dashboard/surfaces/s
 import type { OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import type { PublicProfileState } from "../../../../src/models/profiles/public-profile.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { publicProfileShellFixture } from "../../../support/helpers/backend/public-profile-shell.js";
@@ -59,12 +60,13 @@ it("signs up through the real form with both pairs, stores the UCPath pair and s
     assert.equal((await fresh.signInProfile({ email: relay.email, password: ucpath.password })).state, "refused");
     assert.equal((await fresh.signInProfile(relay)).state, "active");
     await runtime.stop(); runtime = undefined;
-    const owner = fixture.machine.admitProfile(active.profileId);
+    const machine = acquireEntrypointAdmission(fixture.root, "exclusive", fixture.lifetime);
+    const owner = machine.admitProfile(active.profileId);
     try {
       const stored = createCredentialStore({ admission: owner, stateRoot: owner.stateRoot }).read().entries;
       assert.equal(stored.ucpathUserId?.value, ucpath.username);
       assert.equal(stored.ucpathPassword?.value, ucpath.password);
-    } finally { owner.release(); }
+    } finally { owner.release(); machine.release(); }
   } finally {
     await act(async () => root.unmount()); host.remove();
     for (const key of keys) { const original: unknown = originals.get(key); if (original === undefined) Reflect.deleteProperty(globalThis, key); else Reflect.set(globalThis, key, original); }
