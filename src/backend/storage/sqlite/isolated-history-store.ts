@@ -112,11 +112,43 @@ export function checkStagedHistory(localPath: string, archivePath: string, bindi
 function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.nlink !== 1 || privatePathRejects(path, stat, "private")) throw new Error("isolated-history-unsafe");
+  upgradeHistoryArchive(path, binding);
   const url = pathToFileURL(path);
   url.search = "mode=ro&immutable=1";
   database.prepare("ATTACH DATABASE ? AS history").run(url.href);
   const header = headers.parse(database.prepare("SELECT * FROM history.history_header").get());
   if (header.installation_id !== binding.installationId || header.profile_id !== binding.profileId) throw new Error("isolated-history-binding-mismatch");
+}
+
+/** Each step lifts an archive written at its key's schema to the next one; the archive keeps every row it imported. */
+const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync) => void>> = {
+  39: archive => archive.exec(`ALTER TABLE delegation_dependencies ADD COLUMN parent_run_id;
+    UPDATE delegation_dependencies SET parent_run_id=json_extract(payload_json,'$.parentRunId')`),
+};
+const ArchiveVersion = z.object({ schema_version: z.number().int(), installation_id: z.string(), profile_id: z.string() });
+
+/** Brings an archive an older build wrote up to the current schema in place, in one transaction. */
+function upgradeHistoryArchive(path: string, binding: ProfileDatabaseBinding): void {
+  const probe = new DatabaseSync(path, { readOnly: true });
+  let header: z.infer<typeof ArchiveVersion>;
+  try { header = ArchiveVersion.parse(probe.prepare("SELECT schema_version,installation_id,profile_id FROM history_header").get()); } finally { probe.close(); }
+  if (header.schema_version >= CURRENT_AUTHORITY_SCHEMA_VERSION) return;
+  if (header.installation_id !== binding.installationId || header.profile_id !== binding.profileId) throw new Error("isolated-history-binding-mismatch");
+  let version: number;
+  const archive = new DatabaseSync(path);
+  try {
+    archive.exec("BEGIN IMMEDIATE");
+    try {
+      for (version = ArchiveVersion.parse(archive.prepare("SELECT schema_version,installation_id,profile_id FROM history_header").get()).schema_version;
+        version < CURRENT_AUTHORITY_SCHEMA_VERSION; version += 1) {
+        const step = ARCHIVE_UPGRADES[version];
+        if (step === undefined) throw new Error(`isolated-history-schema-unsupported: ${String(version)}`);
+        step(archive);
+      }
+      archive.prepare("UPDATE history_header SET schema_version=?").run(version);
+      archive.exec("COMMIT");
+    } catch (error) { archive.exec("ROLLBACK"); throw error; }
+  } finally { archive.close(); }
 }
 
 export function attachHistoryArchive(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
