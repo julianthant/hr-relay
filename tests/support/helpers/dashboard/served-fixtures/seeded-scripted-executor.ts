@@ -6,6 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import type { z } from "zod";
 import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
 import { I9_CHECK_REFERENCE } from "../../../../../src/models/workflows/i9-check/start.js";
@@ -157,6 +158,7 @@ export function createScriptedExecutor(deps: Readonly<{
     const current = active();
     if (current.failing) throw new Error("the script failed this step");
     if (current.releaseAll) return;
+    await nextTurn();
     const verdict = await new Promise<Verdict>((resolve) => {
       current.release = resolve;
       current.arrive({ at: "step", nodeId: heldNode(current.execId) });
@@ -270,6 +272,8 @@ export function createScriptedExecutor(deps: Readonly<{
         .finally(() => { deps.reportWorker(slot.workerId, WorkerActivitySchema.parse({ state: "idle" })); });
     };
     return { close: () => manager.closeAll("worker-stop"), execute: async (rootId: string): Promise<ScriptedOutcome> => {
+      // This worker shares the seeded server's process: each claim and hold yields a turn so the server answers the page between steps.
+      await nextTurn();
       let executed = await executeOne(rootId);
       // A run that delegates runs its children on this worker, then itself again; a failed child leaves the parent queued to account for it.
       for (;;) {
@@ -278,6 +282,7 @@ export function createScriptedExecutor(deps: Readonly<{
           || executed.outcome.state === "failed" && executed.run.envelope.runId !== rootId && root?.lifecycle.state === "queued";
         if (root?.lifecycle.state === "terminal" || !continues) return executed.outcome;
         await manager.closeAll("parked");
+        await nextTurn();
         executed = await executeOne(rootId);
       }
     } };
