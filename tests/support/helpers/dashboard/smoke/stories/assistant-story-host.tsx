@@ -44,13 +44,14 @@ function Panel({ props }: { props: AssistantHostProps }) {
     {...(props.modelPreference === undefined ? {} : { modelPreference: props.modelPreference })} title="New chat" onOpenSettings={noop} onClose={noop} onAttachFile={attached} />;
 }
 
-function Dock({ children }: { children: ReactNode }) {
-  return <div className="ml-auto flex min-h-0 w-[26rem] max-w-full flex-1 flex-col border-l border-ui-stroke">{children}</div>;
+/** `wide` is the shipped panel's 480px, which the model menu's trigger is sized for. */
+function Dock({ children, wide }: { children: ReactNode; wide: boolean }) {
+  return <div className={`ml-auto flex min-h-0 ${wide ? "w-[30rem]" : "w-[26rem]"} max-w-full flex-1 flex-col border-l border-ui-stroke`}>{children}</div>;
 }
 
 export function AssistantHost({ props }: { props: AssistantHostProps }) {
   const port = useMemo(() => assistantAccountPort(props.account ?? CONNECTED, props.retryable), [props.account, props.retryable]);
-  return <StoryFrame><ChatGptAccountContext.Provider value={port}><Dock><Panel props={props} /></Dock></ChatGptAccountContext.Provider></StoryFrame>;
+  return <StoryFrame><ChatGptAccountContext.Provider value={port}><Dock wide={props.modelChoices === true}><Panel props={props} /></Dock></ChatGptAccountContext.Provider></StoryFrame>;
 }
 
 const SHELL_CLIENT = inertDashboardClient();
