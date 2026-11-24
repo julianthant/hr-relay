@@ -1509,7 +1509,8 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
           // A record written before security-key-only drops its platform rows with the draft, under the same re-enrolment stages.
           const { revision } = frame, { record, platformIds } = readStoredDuoRecord(frame.value), { head, key } = readHead();
           assertReenrolAccount(record, owner);
-          if (record.credentials.some(row => row.state === "ready" && head.retired.includes(row.credentialId))) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+          // A platform row an interrupted discard already retired resumes here; a retired ready security key still refuses.
+          if (record.credentials.some(row => row.state === "ready" && !platformIds.includes(row.credentialId) && head.retired.includes(row.credentialId))) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
           const draft = [...new Set([...record.credentials.filter(row => row.scope.accountId === owner).map(row => row.credentialId), ...platformIds])];
           const kept = { credentials: record.credentials.filter(row => !draft.includes(row.credentialId)) };
           if (draft.length === 0) return;
