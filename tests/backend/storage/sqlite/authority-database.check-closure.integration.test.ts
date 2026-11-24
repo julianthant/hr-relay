@@ -27,10 +27,13 @@ function jsonObject(value: unknown): Row {
   return parsed.success ? parsed.data : {};
 }
 
-/** A constraint the schema itself enforces makes the edit impossible for any writer, so the case is skipped. */
+/** A constraint the schema itself enforces, or a generated column that cannot parse the edited JSON, makes the edit impossible for any writer, so the case is skipped. */
 function applied(raw: DatabaseSync, sql: string, values: readonly SQLInputValue[]): number | bigint | undefined {
   try { return raw.prepare(sql).run(...values).lastInsertRowid; }
-  catch (error) { if (error instanceof Error && "errcode" in error && [19, 20].includes(Number(error.errcode) & 0xff)) return undefined; throw error; }
+  catch (error) {
+    if (error instanceof Error && "errcode" in error && ([19, 20].includes(Number(error.errcode) & 0xff) || error.message === "malformed JSON")) return undefined;
+    throw error;
+  }
 }
 
 /** One raw edit per column of every row (a value from another row, a changed value, NULL), plus a delete and a copy of each row. */
