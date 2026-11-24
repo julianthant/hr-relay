@@ -75,7 +75,7 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
     </PopoverTrigger></Tooltip>
     <PopoverContent title="Notifications" hideTitle side="bottom" align="start" sideOffset={8} className="notice-popover font-ui">
       <header className="notice-popover-head">
-        <h2 className="notice-popover-title">Notifications</h2>
+        <p className="notice-popover-title">Notifications</p>
         <SegmentedChoice label="Show" hideLabel value={show} options={SHOW_OPTIONS} onChange={onShow} />
         <Button size="sm" variant="ghost" onClick={onReadAll} disabled={unread === 0}>Mark all read</Button>
       </header>
