@@ -12,7 +12,8 @@ import { workflowQueueCapabilities } from "../../registries/workflow-registry.js
 import { queryAssistantUsage } from "../../../assistant/usage-counts.js";
 
 export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline" | "assistantUsage"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
-  workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> }) {
+  workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
+  listNotifications?: Parameters<typeof createRunQueueProjection>[0]["authority"]["listNotifications"] }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
   const changeKey = database.trackAuthorityTables(["runs", "run_batches", "worker_pools"]);
   return createRunQueueProjection({
@@ -37,7 +38,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
         const ocr = current.run.envelope.workflow === "ocr" ? current.run : hostedOcrRun(database.authority, current.run);
         return ocr !== undefined && !endedUnfinished(current.run) && offeredOcrReview(database.authority, input.reader, ocr) !== undefined;
       }),
-      listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
+      listNotifications: input.listNotifications ?? database.authority.notifications.listByActor,
       command: (commandId) => database.authority.commands.get(commandId),
       latestNotificationSource: (notificationId) => database.authority.notificationPublications.latest(notificationId),
       listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),

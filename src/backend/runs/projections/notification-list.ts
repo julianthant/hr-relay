@@ -9,17 +9,19 @@ type NotificationProjectionDependencies = {
   source(id: string): Parameters<typeof notificationSourceEventOf>[1];
 };
 
-export function notificationProjection(record: NotificationRecord, nowMs: number, deps: NotificationProjectionDependencies): NotificationWire {
+export type ServedNotificationRecord = NotificationRecord & Readonly<{ readOnlyHistory?: true }>;
+
+export function notificationProjection(record: ServedNotificationRecord, nowMs: number, deps: NotificationProjectionDependencies): NotificationWire {
   const source = deps.source(record.notificationId);
   const sourceEvent = notificationSourceEventOf(record, source);
   const event = source === undefined ? undefined : NotificationTriggerEventSchema.parse(source.event);
   const context = event?.kind === "storage-degraded" ? { state: "storage", concern: event.concern } as const
     : record.trigger === "storage" ? { state: "unavailable" } as const : notificationDisplayContext(record, deps.display);
-  return notificationWireOf(record, nowMs, context, sourceEvent);
+  return notificationWireOf(record, nowMs, context, sourceEvent, record.readOnlyHistory);
 }
 
 /** Group only retained source evidence; durable rows and their mutation revisions remain distinct. */
-export function notificationListProjection(records: readonly NotificationRecord[], nowMs: number, deps: NotificationProjectionDependencies): NotificationWire[] {
+export function notificationListProjection(records: readonly ServedNotificationRecord[], nowMs: number, deps: NotificationProjectionDependencies): NotificationWire[] {
   const rows = records.map(record => notificationProjection(record, nowMs, deps))
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.notificationId.localeCompare(b.notificationId));
   const groups = new Map<string, Extract<NotificationWire, { kind: "notification" }>[]>();
@@ -29,7 +31,7 @@ export function notificationListProjection(records: readonly NotificationRecord[
       result.push(row);
       continue;
     }
-    const key = `${row.actorId}:${row.context.concern}`;
+    const key = `${row.actorId}:${row.context.concern}:${row.readOnlyHistory === true}`;
     const group = groups.get(key);
     if (group === undefined) groups.set(key, [row]);
     else group.push(row);
