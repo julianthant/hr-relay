@@ -8,7 +8,7 @@ import { seedSyntheticRuntimeConfig,singleAppliedRunId } from "../../support/fix
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { join,relative } from "node:path";
+import { join } from "node:path";
 import ts from "typescript";
 import { afterEach,describe,it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
@@ -25,10 +25,97 @@ import { NO_INTAKE_PROJECTIONS,UNWIRED_INTAKE_PARSER } from "../../support/fixtu
 import { COMMAND_FIXTURES,HASH_B,NOW,UUID_2,UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN,sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { boundProfileCredentials,createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
-import { REPO_ROOT,walkFiles } from "../support/helpers/guard-files.js";
+import tsconfig from "../../../tsconfig.json" with { type: "json" };
+import { REPO_ROOT,repoRelative,walkFiles } from "../support/helpers/guard-files.js";
 
 const KERNEL_PATH = "src/backend/runs/commands/command-kernel.ts";
 const WORKER_COMMANDS_PATH = "src/backend/runs/commands/worker-pool-commands.ts";
+const SETTINGS_COMMAND_PATH = "src/backend/runs/commands/settings-command.ts";
+const REPLAY_PATH = "src/backend/runs/commands/command-replay.ts";
+const RUN_LIFECYCLE_COMMANDS_PATH = "src/backend/runs/commands/run-lifecycle-commands.ts";
+
+const COMMAND_EXECUTOR_EXPORTS = new Map<string, readonly string[]>([
+  [REPLAY_PATH, ["replay"]],
+  [RUN_LIFECYCLE_COMMANDS_PATH, ["executeRecover", "executeRetry", "executeCancel", "executeDelete", "executeBump", "executePresentation"]],
+  [SETTINGS_COMMAND_PATH, ["executeSettings"]],
+  [WORKER_COMMANDS_PATH, ["executeWorkerPoolCommand"]],
+  ["src/backend/runs/commands/start-command.ts", ["executeStartRun"]],
+  ["src/backend/runs/commands/intake-commands.ts", ["executeIntake"]],
+  ["src/backend/runs/commands/gate-command.ts", ["executeResolveGate"]],
+  ["src/backend/runs/commands/notification-commands.ts", ["executeNotification"]],
+  ["src/backend/runs/commands/write-resolution-command.ts", ["executeWriteResolution"]],
+]);
+
+const { options: moduleOptions, errors: moduleOptionErrors } = ts.convertCompilerOptionsFromJson(tsconfig.compilerOptions, REPO_ROOT);
+assert.deepEqual(moduleOptionErrors, []);
+const moduleCache = ts.createModuleResolutionCache(REPO_ROOT, path => path, moduleOptions);
+
+function scanCommandExecutorImports(path: string, raw: string): string[] {
+  const file = join(REPO_ROOT, path);
+  const source = ts.createSourceFile(file, raw, ts.ScriptTarget.Latest);
+  const imports: string[] = [];
+  const executorBindings = new Set<string>();
+  function resolve(specifier: ts.Node | undefined): string | undefined {
+    while (specifier && ts.isParenthesizedExpression(specifier)) specifier = specifier.expression;
+    if (!specifier || !ts.isStringLiteralLike(specifier)) return undefined;
+    const resolved = ts.resolveModuleName(specifier.text, file, moduleOptions, ts.sys, moduleCache).resolvedModule;
+    return resolved && repoRelative(resolved.resolvedFileName);
+  }
+  function visit(node: ts.Node): void {
+    if (ts.isImportDeclaration(node) && node.importClause && !node.importClause.isTypeOnly) {
+      const target = resolve(node.moduleSpecifier);
+      const names = COMMAND_EXECUTOR_EXPORTS.get(target ?? "");
+      if (names && target) {
+        const bindings = node.importClause.namedBindings;
+        if (node.importClause.name) imports.push(`${path} -> ${target}: default import`);
+        if (bindings && ts.isNamespaceImport(bindings)) imports.push(`${path} -> ${target}: namespace import`);
+        if (bindings && ts.isNamedImports(bindings)) {
+          for (const binding of bindings.elements) {
+            const name = (binding.propertyName ?? binding.name).text;
+            if (!binding.isTypeOnly && names.includes(name)) {
+              imports.push(`${path} -> ${target}: ${name}`);
+              executorBindings.add(binding.name.text);
+            }
+          }
+        }
+      }
+    } else if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.moduleSpecifier) {
+      const target = resolve(node.moduleSpecifier);
+      const names = COMMAND_EXECUTOR_EXPORTS.get(target ?? "");
+      const clause = node.exportClause;
+      if (names && target && (!clause || !ts.isNamedExports(clause) || clause.elements.some(binding =>
+        !binding.isTypeOnly && names.includes((binding.propertyName ?? binding.name).text)))) {
+        imports.push(`${path} -> ${target}: re-export`);
+      }
+    } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword
+      || (ts.isIdentifier(node.expression) && node.expression.text === "require"))) {
+      const target = resolve(node.arguments[0]);
+      if (target && COMMAND_EXECUTOR_EXPORTS.has(target)) imports.push(`${path} -> ${target}: dynamic import`);
+    } else if (ts.isImportEqualsDeclaration(node) && !node.isTypeOnly && ts.isExternalModuleReference(node.moduleReference)) {
+      const target = resolve(node.moduleReference.expression);
+      if (target && COMMAND_EXECUTOR_EXPORTS.has(target)) imports.push(`${path} -> ${target}: namespace import`);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  for (const node of source.statements) {
+    if (ts.isExportDeclaration(node) && !node.isTypeOnly && !node.moduleSpecifier && node.exportClause
+      && ts.isNamedExports(node.exportClause)) {
+      for (const binding of node.exportClause.elements) {
+        const local = (binding.propertyName ?? binding.name).text;
+        if (!binding.isTypeOnly && executorBindings.has(local)) imports.push(`${path}: re-export of ${local}`);
+      }
+    }
+  }
+  return imports;
+}
+
+function assertCommandExecutorImports(imports: readonly string[]): void {
+  const expected = [...COMMAND_EXECUTOR_EXPORTS].flatMap(([target, names]) => names.map(name => `${KERNEL_PATH} -> ${target}: ${name}`));
+  expected.push(`${WORKER_COMMANDS_PATH} -> ${RUN_LIFECYCLE_COMMANDS_PATH}: executeCancel`,
+    `${WORKER_COMMANDS_PATH} -> ${REPLAY_PATH}: replay`, `${SETTINGS_COMMAND_PATH} -> ${REPLAY_PATH}: replay`);
+  assert.deepEqual([...imports].sort(), expected.sort());
+}
 
 function readCommandScopeSources() {
   return {
@@ -1043,8 +1130,8 @@ describe("control-command-single-path", () => {
     ]);
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
     const movedAuthorityCalls = new Map<string, Readonly<Record<string, number>>>([
-      ["src/backend/runs/commands/command-replay.ts", { "commandAudits.findByCommand(": 2, "startPlans.consume(": 1 }],
-      ["src/backend/runs/commands/settings-command.ts", { ".commands.insert(": 1, "commandAudits.insert(": 1 }],
+      [REPLAY_PATH, { "commandAudits.findByCommand(": 2, "startPlans.consume(": 1 }],
+      [SETTINGS_COMMAND_PATH, { ".commands.insert(": 1, "commandAudits.insert(": 1 }],
       ["src/backend/runs/commands/start-command.ts", { "startPlans.consume(": 1 }],
       [WORKER_COMMANDS_PATH, { ".commands.insert(": 2, "commandAudits.insert(": 2, "commandAudits.findByCommand(": 1 }],
     ]);
@@ -1056,11 +1143,13 @@ describe("control-command-single-path", () => {
       ["src/models/events/confirmed-operation.ts", 1],
     ]);
     const violations: string[] = [];
+    const executorImports: string[] = [];
     let kernelDefinitions = 0;
     const commandSources = readCommandScopeSources();
     for (const file of walkFiles(join(REPO_ROOT, "src"), { extensions: [".ts", ".tsx"] })) {
-      const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
+      const path = repoRelative(file);
       const raw = readFileSync(file, "utf8");
+      executorImports.push(...scanCommandExecutorImports(path, raw));
       let content = withoutDelegationAuditReads(raw, path, commandSources);
       if (content.includes("export function createCommandKernel")) kernelDefinitions += 1;
       if (path !== KERNEL_PATH && path !== WORKER_COMMANDS_PATH && path !== "src/backend/storage/sqlite/command-record-row.ts"
@@ -1102,12 +1191,36 @@ describe("control-command-single-path", () => {
     }
     assert.deepEqual(violations, []);
     assert.equal(kernelDefinitions, 1, "exactly one module may define the command kernel");
+    assertCommandExecutorImports(executorImports);
+
+    const foreignPath = "src/backend/runs/foreign-command.ts";
+    const specifier = '"./commands/../commands/start-command.js"';
+    for (const mutant of [
+      `import { executeStartRun as start } from ${specifier};`,
+      `import * as start from ${specifier};`,
+      `const start = () => import(${specifier});`,
+      `export { executeStartRun as start } from ${specifier};`,
+      `export * from ${specifier};`,
+    ]) {
+      assert.throws(() => assertCommandExecutorImports([
+        ...executorImports, ...scanCommandExecutorImports(foreignPath, mutant),
+      ]), /foreign-command\.ts/u);
+    }
+    assert.throws(() => assertCommandExecutorImports([
+      ...executorImports.filter(entry => !entry.startsWith(`${KERNEL_PATH} -> `)),
+      ...scanCommandExecutorImports(KERNEL_PATH, `${commandSources.kernel}\nexport { executeStartRun as start };`),
+    ]), /re-export of executeStartRun/u);
+    assert.deepEqual(scanCommandExecutorImports(foreignPath, `
+      import { type executeStartRun } from ${specifier};
+      import { isAdmittedUnsettled } from "./commands/command-replay.js";
+      import { executeSettingsCommand } from "./commands/settings-command.js";
+    `), []);
 
     const commandPaths = [KERNEL_PATH, ...movedAuthorityCalls.keys(),
       "src/backend/runs/commands/command-application.ts", "src/backend/runs/commands/command-arms.ts",
       "src/backend/runs/commands/command-refusal.ts", "src/backend/runs/commands/gate-command.ts",
       "src/backend/runs/commands/intake-commands.ts", "src/backend/runs/commands/notification-commands.ts",
-      "src/backend/runs/commands/run-command-context.ts", "src/backend/runs/commands/run-lifecycle-commands.ts",
+      "src/backend/runs/commands/run-command-context.ts", RUN_LIFECYCLE_COMMANDS_PATH,
       "src/backend/runs/commands/write-resolution-command.ts"];
     for (const path of commandPaths) {
       const content = readFileSync(join(REPO_ROOT, path), "utf8");

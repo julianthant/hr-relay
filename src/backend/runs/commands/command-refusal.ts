@@ -18,6 +18,7 @@ export function rejectCommandRequest(request: CommandRequest, code: z.infer<type
   throw new CommandRefusal({state:"rejected",commandId:request.commandId,code,message});
 }
 
+// Throwing a typed non-applied result rolls back partial effects while retaining its command outcome.
 export function reject(request: CommandRequest, code: string, message: string): never {
   throw new CommandRefusal({ state: "rejected", commandId: request.commandId, code, message });
 }
