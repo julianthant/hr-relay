@@ -4,7 +4,8 @@ import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-r
 import { ucpathStore } from "../../../../src/backend/systems/ucpath/task-registry.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
-import { executeClaimedRun, type RunExecutionAuthority, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { RunExecutionAuthority, RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { UcpathReadJobSummary } from "../../../../src/models/systems/ucpath/read-job-summary.js";
 import { SearchPersonOrg } from "../../../../src/models/systems/ucpath/search-person-org.js";
