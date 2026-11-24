@@ -75,10 +75,10 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   // Capture positions before the initial fold so a peer commit during startup remains visible.
   const workerTables = ["runs", "deleted_runs", "worker_slots", "worker_pools", "run_batches", "auth_leases", "write_intents"] as const;
   const revision = database.trackAuthorityTables(["timeline_events", ...workerTables], "poll-hint");
-  const startupWorkerRevision = database.trackAuthorityTables(workerTables, "poll-hint");
+  const workerRevision = database.trackAuthorityTables(workerTables, "poll-hint");
   const startupTimelineRevision = database.trackAuthorityTables(["timeline_events"], "poll-hint");
   let key: string | { state: "retry" } = JSON.stringify(database.capturedChangeKey());
-  const startupWorkers = startupWorkerRevision();
+  const startupWorkers = workerRevision();
   let startupTimeline = startupTimelineRevision();
   let observed = revision();
   let lastWall = clock.nowMs(), leaseExpiry = Infinity;
@@ -92,8 +92,13 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   }
   const reader = createDashboardBackgroundReader(admission, database);
   let pending: Promise<void> | undefined, stopped = false, checkAfterRead = false, initialRead = true;
-  const startRead = (now: number, workersChangedDuringStartup?: () => boolean) => {
-    pending = projection.pollBackground(request => reader.read(request), now, workersChangedDuringStartup).then(expiry => {
+  const startRead = (now: number, workersAtStart: number | undefined) => {
+    const workerRevisionState = () => {
+      const current = workerRevision();
+      return { readUnchanged: current !== undefined && current === workersAtStart,
+        startupUnchanged: current !== undefined && current === startupWorkers };
+    };
+    pending = projection.pollBackground(request => reader.read(request), now, workerRevisionState).then(expiry => {
       if (expiry === undefined) key = { state: "retry" };
       else leaseExpiry = expiry;
     }).catch((error: unknown) => {
@@ -135,7 +140,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       }
       lastWall = now;
       const next = revision();
-      if (safety || leaseDue || degraded || typeof key !== "string" || next === undefined || next !== observed) void startRead(now);
+      if (safety || leaseDue || degraded || typeof key !== "string" || next === undefined || next !== observed) void startRead(now, workerRevision());
       key = current;
       observed = next;
       if (safety) safetyAt = elapsed + 60_000;
@@ -143,7 +148,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       projection.backgroundReadFailed(error);
     }
   }
-  void startRead(lastWall, () => startupWorkers === undefined || startupWorkerRevision() !== startupWorkers);
+  void startRead(lastWall, startupWorkers);
   const timelineTimer = setInterval(check, TIMELINE_POLL_MS);
   timelineTimer.unref();
   const settled = async () => { while (pending !== undefined) await pending; };

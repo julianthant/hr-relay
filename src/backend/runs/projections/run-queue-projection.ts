@@ -475,18 +475,19 @@ export class RunQueueProjection {
       workerChanged ||= affected.workerChanged;
     }
     const affected = { runIds: [...runIds], workerChanged };
-    const forceSnapshot = queueRevisions > 1 && (!workerFactsCaptured || workerChanged || runIds.size !== 1);
+    const forceSnapshot = queueRevisions > 1 && (workerChanged || runIds.size !== 1);
     const carried = queueRevisions > 0 ? this.#notify(affected, forceSnapshot, workerFactsCaptured) : { snapshot: false, runIds: [] };
     const uncarried = carried.snapshot ? [] : [...touched].filter(runId => !carried.runIds.includes(runId));
     if (uncarried.length > 0) this.#emit({ kind: "runs", runIds: uncarried, position: this.#timelineCursor });
   }
 
   async pollBackground(read: (request: DashboardBackgroundReadRequest) => Promise<DashboardBackgroundReadResult>, nowMs: number,
-    workersChangedDuringStartup?: () => boolean): Promise<number | undefined> {
+    workerRevisionState?: () => { readUnchanged: boolean; startupUnchanged: boolean }): Promise<number | undefined> {
     const generation = this.#generationValue, rebuilding = this.#health.state === "degraded";
     const first = this.#backgroundWorkers === undefined;
     const foregroundAtRead = this.#foregroundSnapshot;
-    const superseded = () => this.#foregroundSnapshot !== undefined && this.#foregroundSnapshot !== foregroundAtRead;
+    const workerFactsCurrent = () => (this.#foregroundSnapshot === undefined || this.#foregroundSnapshot === foregroundAtRead)
+      && workerRevisionState?.().readUnchanged !== false;
     const after = rebuilding ? 0 : this.#timelineCursor;
     const request = { limit: BACKGROUND_PAGE_SIZE, nowMs, ...(rebuilding ? { spanTypes: PROJECTION_SPAN_TYPES } : {}) };
     const current = () => generation === this.#generationValue && rebuilding === (this.#health.state === "degraded");
@@ -509,7 +510,7 @@ export class RunQueueProjection {
         }
         moreWorkerFacts = page.workers.next !== null;
         // A timeline snapshot carries worker state too. Capture its admitted fingerprint before publishing it.
-        if (!moreWorkerFacts && !rebuilding && !superseded()) this.#backgroundWorkers = workers;
+        if (!moreWorkerFacts && !rebuilding && workerFactsCurrent()) this.#backgroundWorkers = workers;
       }
       if (rebuilding && page.records.length > 0) {
         let events: IterableIterator<ProjectionEvent> = projectionEvents(page.records).sort(compareEvents).values();
@@ -522,7 +523,7 @@ export class RunQueueProjection {
         replay[level] = events;
       } else if (!rebuilding && page.cursor > this.#timelineCursor) {
         // A synchronous command may already have consumed part or all of this page.
-        this.#ingestTail({ records: page.records.filter(row => row.cursor > this.#timelineCursor), cursor: page.cursor }, this.#backgroundWorkers === workers && !superseded());
+        this.#ingestTail({ records: page.records.filter(row => row.cursor > this.#timelineCursor), cursor: page.cursor }, this.#backgroundWorkers === workers && workerFactsCurrent());
       }
       if (page.cursor >= through && !moreWorkerFacts) break;
       const workerCursor = moreWorkerFacts ? page.workers.next : null;
@@ -541,8 +542,8 @@ export class RunQueueProjection {
         }
       }
     }
-    // A command can publish after this read starts. Reconcile only once a read has caught up to that snapshot.
-    if (!rebuilding && superseded()) return undefined;
+    // Fold the timeline even when a concurrent commit requires a fresh read of worker authority.
+    if (!rebuilding && !workerFactsCurrent()) return undefined;
     this.#publishedBatchVersions = batches;
     if (rebuilt !== undefined) {
       this.#backgroundWorkers = workers;
@@ -551,7 +552,7 @@ export class RunQueueProjection {
       this.#finishRebuild(through);
     } else {
       // The worker uses a different fingerprint format. Only rebaseline silently when the startup facts still match.
-      if (first && workersChangedDuringStartup?.() === false) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
+      if (first && workerRevisionState?.().startupUnchanged === true) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
       // Commands can publish the same authority before the worker catches up.
       const foreground = this.#foregroundSnapshot;
       this.#foregroundSnapshot = undefined;

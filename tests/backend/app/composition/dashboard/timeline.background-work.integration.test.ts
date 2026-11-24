@@ -124,12 +124,13 @@ it("replays a count-neutral background task step across a dashboard reconnect", 
 
     const captured = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
     const poll = projection.pollBackground.bind(projection);
-    vi.spyOn(projection, "pollBackground").mockImplementationOnce((read, now) => poll(async request => {
+    const background = vi.spyOn(projection, "pollBackground");
+    background.mockImplementationOnce((read, now, changed) => poll(async request => {
       const page = await read(request);
       captured.resolve();
       await release.promise;
       return page;
-    }, now));
+    }, now, changed));
     clock.advanceMonotonic(60_000);
     vi.advanceTimersByTime(250);
     await captured.promise;
@@ -157,10 +158,22 @@ it("replays a count-neutral background task step across a dashboard reconnect", 
     const validating = database.authority.runs.transition({ runId: next.envelope.runId, expectedVersion: claim.run.version, claim: claimIdentity, now,
       lifecycle: { state: "validating", ...claimTimes } });
     if (validating.state !== "applied") throw new Error("fixture run did not enter validation");
-    expect(database.authority.runs.transition({ runId: next.envelope.runId, expectedVersion: validating.run.version, claim: claimIdentity, now,
-      lifecycle: { state: "running", currentNodeId: "searching", ...claimTimes } }).state).toBe("applied");
+    const capturedValidation = Promise.withResolvers<void>(), releaseValidation = Promise.withResolvers<void>();
+    background.mockImplementationOnce((read, now, changed) => poll(async request => {
+      const page = await read(request);
+      capturedValidation.resolve();
+      await releaseValidation.promise;
+      return page;
+    }, now, changed));
     vi.advanceTimersByTime(250);
+    await capturedValidation.promise;
+    try {
+      expect(database.authority.runs.transition({ runId: next.envelope.runId, expectedVersion: validating.run.version, claim: claimIdentity, now,
+        lifecycle: { state: "running", currentNodeId: "searching", ...claimTimes } }).state).toBe("applied");
+      vi.advanceTimersByTime(250);
+    } finally { releaseValidation.resolve(); }
     await runtime.settled();
+    expect(afterCommand.pending).toBe(1);
     const running = await afterCommand.next();
     afterCommand.close();
     expect(running).toMatchObject({ type: "snapshot", payload: { queueSurfaces: expect.arrayContaining([
