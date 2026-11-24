@@ -37,6 +37,7 @@ both runs from the exact target SHA, their ranges, and the verdict on #485. Each
 
 - Main backend thread CPU as user plus system CPU time less the measured sampling callback CPU,
   divided by wall time. The result records the raw thread and callback CPU times in microseconds.
+  Individual callbacks can fall below the CPU counter's resolution.
 - Event-loop stalls strictly over 100 ms as count, longest, and total. A 20 ms timer measures
   the lateness of each wake-up. The copy store's event-loop diagnostic records appear as a
   separate cross-check because Relay coalesces those above its own 200 ms threshold.

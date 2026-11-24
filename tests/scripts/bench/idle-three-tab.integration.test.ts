@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import { probe, serveBackendProbe } from "../../../scripts/bench/idle-three-tab.js";
 
@@ -11,6 +11,11 @@ it("subtracts timer CPU, captures RSS endpoints, and reports a stall over 100 ms
   const directory = mkdtempSync(join(realpathSync(tmpdir()), "relay-probe-"));
   const path = join(directory, "probe.sock");
   const server = serveBackendProbe(path);
+  let userMicros = 0;
+  const cpu = vi.spyOn(process, "threadCpuUsage").mockImplementation(previous => {
+    userMicros += 100;
+    return { user: userMicros - (previous?.user ?? 0), system: 0 };
+  });
   try {
     await once(server, "listening");
     const signal = AbortSignal.timeout(10_000);
@@ -28,6 +33,7 @@ it("subtracts timer CPU, captures RSS endpoints, and reports a stall over 100 ms
     expect(stalls.count).toBeGreaterThanOrEqual(1);
     expect(stalls.longestMs).toBeGreaterThan(100);
   } finally {
+    cpu.mockRestore();
     await new Promise<void>((resolve, reject) => { server.close(error => { if (error === undefined) resolve(); else reject(error); }); });
     rmdirSync(directory);
   }
