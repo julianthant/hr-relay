@@ -29,7 +29,6 @@
       ],
       "js": [
         "src/username.js",
-        "src/relay-native.js",
         "src/relay-content.js"
       ],
       "run_at": "document_start",

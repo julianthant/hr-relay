@@ -465,7 +465,7 @@ for (const boundary of ["key-read", "current-document-read", "final-document-rea
 for (const shape of ["object", "array", "wrapper", "malformed"] as const) it(`holds unexplained retained ${shape} signer bytes before fresh key creation`, async () => {
   const f = await createBoundProfileFixture({ pending: "storage" }), operation = currentOperation(f), initial = initialDocument();
   const path = join(f.stateRoot, "credentials", "duo-webauthn.json");
-  const legacy = { rpId: "duosecurity.com", credentialId: "synthetic-retained-id", privateKey: "synthetic-retained-key", signCount: 42, transport: "internal" };
+  const legacy = { rpId: "duosecurity.com", credentialId: "synthetic-retained-id", privateKey: "synthetic-retained-key", signCount: 42, transport: "usb" };
   const bytes = Buffer.from(shape === "malformed" ? "invalid legacy signer bytes" : JSON.stringify(shape === "array" ? [legacy] : shape === "wrapper" ? { credentials: [legacy] } : legacy));
   mkdirSync(join(f.stateRoot, "credentials"), { recursive: true, mode: 0o700 });
   writeFileSync(path, bytes, { mode: 0o600 });

@@ -11,7 +11,7 @@ import { useDuoReenrol } from "../../../../src/dashboard/surfaces/shell/onboardi
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const operationId = "00000000-0000-4000-8000-000000000001", profileId = "00000000-0000-4000-8000-000000000003";
 const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-const draft = DuoReenrolStateSchema.parse({ state: "duo-reenrol", operationId, profileId, step: "duo", methods: { key: idle, touch: idle }, browser: { state: "open", generation: 0 } });
+const draft = DuoReenrolStateSchema.parse({ state: "duo-reenrol", operationId, profileId, step: "duo", methods: { key: idle }, browser: { state: "open", generation: 0 } });
 const active = PublicProfileStateSchema.parse({ state: "active", profileId, epoch: 2, duoState: "ready" });
 
 async function fixture(routes: Record<string, () => Response>) {

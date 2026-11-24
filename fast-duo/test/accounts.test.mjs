@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { selectCredential, validateAccount, isDuoOrigin } from '../src/accounts.js';
 const accounts=[{id:'a',username:'demo-user',enabled:true},{id:'b',username:'demouser',enabled:true}];
-const a={accountId:'a',credentialId:btoa('alpha'),rpId:'duosecurity.com',status:'ready',transport:'internal',isResidentCredential:true,userHandle:btoa('a')};
-const b={...a,accountId:'b',credentialId:btoa('beta'),transport:'usb',userHandle:btoa('b')};
+const a={accountId:'a',credentialId:btoa('alpha'),rpId:'duosecurity.com',status:'ready',transport:'usb',isResidentCredential:true,userHandle:btoa('a')};
+const b={...a,accountId:'b',credentialId:btoa('beta'),userHandle:btoa('b')};
 const state={accounts,credentials:[a,b]};
 const req={rpId:'duosecurity.com',allowCredentials:[b.credentialId],usernames:[]};
 test('server key IDs select the correct account without a username',()=>assert.equal(selectCredential(state,req).credential,b));
@@ -62,4 +62,10 @@ test('paused aliases and corrupt duplicate ownership never select a key', () => 
   assert.ok(selectCredential(linked, { ...req, usernames: ['demouser'], allowCredentials: [a.credentialId] }).reason);
   linked.accounts = [{ ...accounts[0], aliases: ['demouser'] }, accounts[1]];
   assert.ok(selectCredential(linked, { ...req, usernames: ['demouser'], allowCredentials: [a.credentialId] }).reason);
+});
+
+test('a stored platform row never signs, even when Duo requests its exact id', () => {
+  const platform = { ...b, credentialId: btoa('platform'), transport: 'internal' };
+  assert.match(selectCredential({ ...state, credentials: [platform] }, { ...req, allowCredentials: [platform.credentialId] }).reason, /No linked key/);
+  assert.equal(selectCredential({ ...state, credentials: [platform, b] }, { ...req, allowCredentials: [], usernames: ['demouser'] }).credential, b);
 });

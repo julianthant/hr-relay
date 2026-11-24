@@ -1,0 +1,89 @@
+name: Pull request
+
+run-name: ${{ github.event.pull_request.title }}
+
+on:
+  pull_request:
+    branches: [development]
+    types: [opened, edited, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  metadata:
+    name: PR metadata
+    runs-on: ubuntu-slim
+    concurrency:
+      group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}-metadata
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout: scripts/ci
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Check the development pull request metadata
+        env:
+          NAMES_BASE: ${{ github.base_ref }}
+          NAMES_HEAD: ${{ github.head_ref }}
+          NAMES_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          args=(--branch "$NAMES_HEAD" --base "$NAMES_BASE" --title "$NAMES_TITLE")
+          if [[ "$NAMES_HEAD" == task/* ]]; then
+            printf '%s' "$PR_BODY" | npm run names:check -- "${args[@]}" --closing-line
+          else
+            npm run names:check -- "${args[@]}"
+          fi
+      - name: Fetch the pull request base
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git cat-file -e "$PR_BASE_SHA^{commit}" 2>/dev/null \
+            || git fetch --no-tags --depth=1 origin "$PR_BASE_SHA" \
+            || { echo "::error::The pull request base $PR_BASE_SHA is not available to fetch"; exit 1; }
+      - name: Check added workflow files
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: node scripts/ci/allowed-workflows.ts "$PR_BASE_SHA" "$PR_LABELS"
+
+  # Fix, chore and Dependabot heads have no Development push run.
+  non-task-checks:
+    if: ${{ !startsWith(github.head_ref, 'task/') && contains(fromJSON('["opened","synchronize","reopened","ready_for_review"]'), github.event.action) }}
+    concurrency:
+      group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}-fast
+      cancel-in-progress: true
+    uses: ./.github/workflows/checks.yml
+    with:
+      kind: fast
+
+  non-task-result:
+    # A skipped job named development could mask an earlier test result.
+    name: ${{ !startsWith(github.head_ref, 'task/') && contains(fromJSON('["opened","synchronize","reopened","ready_for_review"]'), github.event.action) && 'development' || 'Non-task result' }}
+    needs: non-task-checks
+    if: ${{ !cancelled() && !startsWith(github.head_ref, 'task/') && contains(fromJSON('["opened","synchronize","reopened","ready_for_review"]'), github.event.action) }}
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/test
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Require every fast proof
+        env:
+          CHECKS_RESULT: ${{ needs.non-task-checks.result }}
+          PLAN: ${{ needs.non-task-checks.outputs.plan }}
+          RESULTS: ${{ needs.non-task-checks.outputs.results }}
+        run: |
+          test "$CHECKS_RESULT" = success
+          node --import tsx scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"

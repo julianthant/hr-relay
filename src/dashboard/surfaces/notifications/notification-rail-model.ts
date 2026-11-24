@@ -78,7 +78,7 @@ export function useNotificationAlert(play: () => void = playNotificationSound) {
   return useCallback((item: NotificationItem, sound: boolean) => {
     const finished = item.tone === "positive";
     toast({ tone: finished ? "success" : item.tone === "danger" ? "danger" : item.tone === "warning" ? "warning" : "info", title: item.title,
-      description: finished ? `${item.subject} · ${item.workflow}` : item.detail, ...(item.tone === "danger" ? { duration: 6000 } : {}) });
+      description: finished ? `${item.subject} · ${item.workflow}` : item.tone === "info" ? undefined : item.detail, ...(item.tone === "danger" ? { duration: 6000 } : {}) });
     if (sound) play();
   }, [toast, play]);
 }
