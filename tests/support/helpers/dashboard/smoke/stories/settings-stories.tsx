@@ -209,28 +209,9 @@ const TOAST_STORIES: ReadonlySet<string> = new Set([
 
 /** By `<state type>/<member>`. */
 const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleName, string>>>>> = {
-  "save/saving": BREAK_SETS.FOCUS,
-  "search/none": BREAK_SETS.FOCUS,
-  "search/results": BREAK_SETS.FOCUS,
   "dialog/change-password-refused": BREAK_SETS.ACCENT,
   "dialog/edit-name-refused": BREAK_SETS.ACCENT,
   "dialog/edit-username-refused": BREAK_SETS.ACCENT,
-  "notice/opened-for-check": BREAK_SETS.FOCUS,
-  "search/reading": BREAK_SETS.FOCUS,
-  "search/unavailable": BREAK_SETS.FOCUS,
-  "action/duo-not-opened": BREAK_SETS.FOCUS,
-  "action/name-not-saved": BREAK_SETS.FOCUS,
-  "action/password-changed": BREAK_SETS.FOCUS,
-  "action/password-not-confirmed": BREAK_SETS.FOCUS,
-  "notice/restart-required": BREAK_SETS.FOCUS,
-  "notice/setting-unavailable": BREAK_SETS.FOCUS,
-  "runtime/restart-required": BREAK_SETS.FOCUS,
-  "save-combo/replayed": BREAK_SETS.FOCUS,
-  "save-combo/restart-required": BREAK_SETS.FOCUS,
-  "save/applied": BREAK_SETS.FOCUS,
-  "save/conflict": BREAK_SETS.FOCUS,
-  "save/refused": BREAK_SETS.FOCUS,
-  "save/unconfirmed": BREAK_SETS.FOCUS,
 };
 const SETTINGS_TABLES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
