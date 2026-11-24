@@ -26,7 +26,7 @@ it.each([{workflowId:h.WORKFLOW_ID,version:3},{workflowId:"separations",version:
   await dialog.type(workflowId === "separations" ? "4502" : h.TYPED);
   await dialog.press("Continue");
   assert.doesNotMatch(dialog.text(), /Active policy|Workflow version/u);
-  assert.equal(document.querySelector(".launch-fixed-facts"), null);
+  assert.equal(document.querySelector(".launch-fixed-facts") === null, true);
   assert.ok(!dialog.text().includes(`v${version}`), "the workflow version line is not shown before start");
   await dialog.press(workflowId === "separations" ? "Start live run" : "Start run");
   const target = StartCommandRequestSchema.parse(submitted).target;

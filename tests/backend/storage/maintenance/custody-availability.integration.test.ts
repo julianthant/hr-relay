@@ -37,7 +37,7 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { afterEach, it, vi } from "vitest";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -527,6 +527,26 @@ it("refuses startup Windows backup retirement before repair admission captures p
     observed.mockRestore(); syncBuiltinESMExports(); checkInventory();
     assert.ok(failure instanceof AutomaticPersonRepairRefusedError && failure.cause instanceof StorageMaintenanceCustodyUnavailableError);
   } finally { observed.mockRestore(); discovery.mockRestore(); capture.mockRestore(); syncBuiltinESMExports(); await f.close(); }
+});
+
+it("keeps the POSIX startup refusal for an unowned backup retirement marker", async () => {
+  host.platform = "linux";
+  const f = await createBoundProfileFixture();
+  const directory = join(f.stateRoot, "backups", "authority");
+  const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "startup-unowned-retirement" }, clock,
+    undefined, undefined, undefined, boundProfileCredentials(f.admission));
+  const service = new AuthorityBackupService(f.admission, database, { directory, purpose: "clean-shutdown" }, clock);
+  try { clock.advanceWall(1000); await service.request({ trigger: "graceful-drain", requiredGeneration: database.getMeta().authorityGeneration }); }
+  finally { database.close(); }
+  writeFileSync(join(directory, "foreign.manifest.json.retiring"), "{}", { mode: 0o600 });
+  f.admission.release(); f.machine.release();
+  try {
+    let failure: unknown;
+    try { await initializeRegisteredPersonStores(f.workspace, f.lifetime, { primaryDisplay: null }, clock); } catch (error) { failure = error; }
+    assert.ok(failure instanceof AutomaticPersonRepairRefusedError && failure.cause instanceof Error
+      && failure.cause.message === "shutdown-backup-retirement-unowned", "an unowned retirement marker must stop startup, not hold the person for repair");
+    assert.equal(existsSync(join(directory, "foreign.manifest.json.retiring")), true);
+  } finally { await f.close(); }
 });
 
 it("refuses automatic Windows restore before repair admission captures an unsupported profile", async () => {

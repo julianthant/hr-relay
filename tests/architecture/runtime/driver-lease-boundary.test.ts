@@ -84,7 +84,7 @@ describe("driver lease boundary", () => {
   it("keeps withDriver callers to owners", () => {
     const allowed = new Set([
       "src/backend/runtime/workers/worker-sessions.ts",
-      "src/backend/runtime/execution/run-executor.ts",
+      "src/backend/runtime/execution/run-execution-task.ts",
       "src/backend/runtime/writes/write-sequencer.ts",
       "src/backend/runtime/writes/recovery-activity.ts",
     ]);
@@ -155,7 +155,7 @@ describe("driver lease boundary", () => {
       manager.includes("async withTransactionDriver<"),
       "worker-sessions must own the fence-retained transaction lease",
     );
-    const interpreter = readFileSync(join(REPO_ROOT, "src/backend/runtime/execution/run-executor.ts"), "utf8");
+    const interpreter = readFileSync(join(REPO_ROOT, "src/backend/runtime/execution/run-execution-task.ts"), "utf8");
     assert.ok(interpreter.includes(".withDriver("), "the interpreter must consume the lease");
     const sequencer = readFileSync(join(REPO_ROOT, "src/backend/runtime/writes/write-sequencer.ts"), "utf8");
     assert.ok(

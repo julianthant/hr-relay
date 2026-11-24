@@ -44,7 +44,7 @@ for (const rerun of [false, true]) {
     assert.equal(h.finalCommands.length, 1);
     assert.equal(window.sessionStorage.length, 0);
     await press("Start dry run");
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.equal(h.finalCommands.length, 2);
     assert.equal(h.queueRoots.length, rerun ? 2 : 1);
     const original = StartCommandRequestSchema.parse(h.finalCommands[0]), refreshed = StartCommandRequestSchema.parse(h.finalCommands[1]);
@@ -63,7 +63,7 @@ for (const rerun of [false, true]) {
     await review(h, { ...h.client, submitStartPlan: async request => { const plan = await h.client.submitStartPlan(request); blocked = true; return plan; } }, false);
     const timer = vi.spyOn(globalThis, "setTimeout");
     await press("Start dry run");
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.equal(text().split("Run not started").length - 1, 1);
     assert.ok(text().includes(ERROR_CATALOG.RUN_START_READINESS_BLOCKED.text));
     for (const privateText of ["PRIVATE_KERNEL_MARKER", "RUN_START_READINESS_BLOCKED", "The start was refused", "Command result", "nothing is enqueued"]) assert.equal(text().includes(privateText), false);
@@ -82,7 +82,7 @@ for (const rerun of [false, true]) {
       return h.client.submitStartPlan(request);
     } });
     await press("Start dry run");
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.equal(text().split("Run not started").length - 1, 1);
     assert.ok(text().includes(ERROR_CATALOG.RUN_START_READINESS_UNAVAILABLE.text));
     assert.equal(text().includes("PRIVATE_REPREVIEW_MARKER"), false);
@@ -132,7 +132,7 @@ for (const rerun of [false, true]) {
     await unmount(); document.body.replaceChildren();
     await mount(h, rerun ? h.database.authority.runs.listByWorkflow(h.descriptor.id)[0] : undefined);
     await press("Replay exact submission");
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.deepEqual(h.finalCommands[1], h.finalCommands[0]);
     assert.equal(h.submissions.length, 1); assert.equal(window.sessionStorage.length, 0);
     assert.equal(text().split("Run not started").length - 1, 1);

@@ -38,7 +38,7 @@ describe("Settings > General groups", () => {
     const rows = [...h.host.querySelectorAll('[data-settings-path^="preferences."]')];
     assert.deepEqual(rows.map(row => row.getAttribute("data-settings-path")), ROWS.map(row => row[0]));
     rows.forEach((row, index) => { assert.ok(row.textContent?.includes(ROWS[index][1]), ROWS[index][1]); assert.ok(row.textContent?.includes(ROWS[index][2]), ROWS[index][2]); });
-    for (const row of rows) assert.equal(row.querySelector(".ds-switch-content .ds-text-meta, .ds-field-description"), null, row.textContent ?? "");
+    for (const row of rows) assert.equal(row.querySelector(".ds-switch-content .ds-text-meta, .ds-field-description") === null, true, row.textContent ?? "");
     const sectionOf = (row: Element) => { let node: Element | null = row; while (node !== null && node.querySelector(".ds-body-section-heading") === null) node = node.parentElement; return node?.querySelector(".ds-body-section-heading")?.firstChild?.textContent; };
     assert.deepEqual(rows.map(sectionOf), ["Runs", "Runs", "Notifications", "Notifications", "Notifications", "Notifications"]);
   });

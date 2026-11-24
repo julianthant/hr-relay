@@ -62,7 +62,7 @@ const FIELDS = [
 describe("Settings > Account details rows", () => {
   for (const field of FIELDS) it(`${field.pencil} opens the ${field.title} dialog with the served value, Cancel and Save, and no inline field`, async () => {
     await mount(async () => ({ state: "changed", account: account() }));
-    assert.equal(document.body.querySelector("input"), null);
+    assert.equal(document.body.querySelector("input") === null, true);
     await click(field.pencil);
     assert.ok(dialog()?.textContent?.startsWith(field.title), field.title);
     assert.equal(input(field.row).value, field.value);
@@ -78,7 +78,7 @@ describe("Settings > Account details rows", () => {
     await press("Save");
     await settle();
     assert.deepEqual(sent, [{ name: { firstName: "Sam", lastName: "Rivera" } }]);
-    assert.equal(dialog(), null);
+    assert.equal(dialog() === null, true);
     assert.match(text(), /NameSam Rivera/u);
     assert.match(text(), /InitialsSR/u);
   });
@@ -105,7 +105,7 @@ describe("Settings > Account details rows", () => {
     await press("Save");
     await settle();
     assert.deepEqual(sent, []);
-    assert.equal(dialog(), null);
+    assert.equal(dialog() === null, true);
   });
 
   for (const field of FIELDS.filter(item => item.row.includes("nitials"))) it(`keeps the ${field.row} dialog open with the typed value and the reason under the field when a change is refused`, async () => {
@@ -119,7 +119,7 @@ describe("Settings > Account details rows", () => {
     assert.equal(dialog()?.querySelector('[role="alert"]')?.textContent, ERROR_CATALOG.PROFILE_INITIALS_REFUSED.text);
     assert.equal(dialogButton("Save").disabled, false);
     await typeInto(field.row, "AB");
-    assert.equal(dialog()?.querySelector('[role="alert"]'), null);
+    assert.equal(dialog()?.querySelector('[role="alert"]') === null, true);
   });
 
   it("closes the dialog once a retried value is saved", async () => {
@@ -133,7 +133,7 @@ describe("Settings > Account details rows", () => {
     await typeInto("Initials", "AB");
     await press("Save");
     await settle();
-    assert.equal(dialog(), null);
+    assert.equal(dialog() === null, true);
     assert.match(text(), /InitialsAB/u);
   });
 
@@ -145,7 +145,7 @@ describe("Settings > Account details rows", () => {
     await press("Save");
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
     assert.equal(reads.length, 1);
-    assert.equal(dialog(), null);
+    assert.equal(dialog() === null, true);
     assert.match(text(), /NameSam Rivera/u);
     assert.doesNotMatch(text(), /not saved|not confirmed/u);
   });
@@ -169,9 +169,9 @@ describe("Settings > Account details rows", () => {
     if (how === "Cancel") await press("Cancel"); else await escape();
     await settle();
     assert.deepEqual(sent, []);
-    assert.equal(dialog(), null);
+    assert.equal(dialog() === null, true);
     assert.match(text(), /Timekeeper nameCasey Morgan Park/u);
-    assert.equal(document.activeElement, pencil("Edit timekeeper name"));
+    assert.equal(document.activeElement === pencil("Edit timekeeper name"), true);
   });
 
   it("takes a details read-back only from the profile and sign-in that made the change", () => {

@@ -238,7 +238,7 @@ describe("browser presentation is an immutable Run Options choice", () => {
     assert.deepEqual(modes.map(mode => mode.value), ["headed", "headless"]);
     assert.equal(modes.find(mode => mode.value === "headed")?.checked, true);
     const screenshotControl = buttons().find(button => buttonName(button) === "Capture screenshots");
-    assert.equal(screenshotControl, undefined, "Required screenshots must not have an off control");
+    assert.equal(screenshotControl === undefined, true, "Required screenshots must not have an off control");
     assert.ok(dialog.text().includes("Always on"));
     await dialog.chooseBrowserMode("headless");
     await dialog.press("Start run");

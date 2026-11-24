@@ -62,7 +62,7 @@ describe("Settings > Account Relay login rows", () => {
     await click("Save");
     await settle();
     assert.deepEqual(sent, [{ currentPassword: "old-secret", newPassword: "new-secret" }]);
-    assert.equal(document.body.querySelector("input[name=newPassword]"), null);
+    assert.equal(document.body.querySelector("input[name=newPassword]") === null, true);
     assert.doesNotMatch(document.body.innerHTML, /old-secret|new-secret/u);
   });
 
@@ -77,7 +77,7 @@ describe("Settings > Account Relay login rows", () => {
       const label = [...document.body.querySelectorAll('[role="dialog"] label')].find(item => item.textContent === name);
       assert.equal((label as HTMLLabelElement | undefined)?.htmlFor, field(control).id, `visible label ${name}`);
     }
-    assert.equal(document.body.querySelector("input[placeholder]"), null);
+    assert.equal(document.body.querySelector("input[placeholder]") === null, true);
     assert.equal(button("Save").disabled, true);
     await type("currentPassword", "old-secret");
     await type("newPassword", "new-secret");
@@ -168,7 +168,7 @@ describe("Settings > Account Relay login rows", () => {
     await settle();
     assert.match(document.body.textContent ?? "", /Relay password change not confirmed/u);
     assert.doesNotMatch(document.body.textContent ?? "", /could not confirm|Try your new/iu);
-    assert.equal(document.body.querySelector('[role="dialog"]'), null);
+    assert.equal(document.body.querySelector('[role="dialog"]') === null, true);
   });
 
   it("reads a lost username reply back and shows the new username with no message when it landed", async () => {
@@ -179,7 +179,7 @@ describe("Settings > Account Relay login rows", () => {
     await type("newUsername", "new.name@ucsd.edu");
     await click("Save");
     await vi.waitFor(async () => { await settle(); assert.match(rowText(), /new\.name@ucsd\.edu/u); });
-    assert.equal(document.body.querySelector('[role="dialog"]'), null);
+    assert.equal(document.body.querySelector('[role="dialog"]') === null, true);
     assert.doesNotMatch(document.body.textContent ?? "", /not changed|could not confirm/iu);
   });
 
@@ -209,7 +209,7 @@ describe("Settings > Account Relay login rows", () => {
   it("shows an unreadable username without an edit control", async () => {
     await mount(login({ username: undefined }));
     assert.match(rowText(), /Not set/u);
-    assert.equal(host?.querySelector('button[aria-label="Edit username"]'), null);
+    assert.equal(host?.querySelector('button[aria-label="Edit username"]') === null, true);
     assert.equal(button("Change Relay password").disabled, false);
   });
 });

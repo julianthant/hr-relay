@@ -44,15 +44,15 @@ it("keeps the worker cards it last read while another day loads, marked as updat
   assert.ok(cards > 0, "the fixture day serves worker cards");
   assert.ok(workerButtons(host).some(button => !button.disabled), "a loaded day offers worker commands");
   assert.equal(addWorkers(host)?.disabled, false);
-  assert.equal(host.querySelector("[data-sessions-stale]"), null);
+  assert.equal(host.querySelector("[data-sessions-stale]") === null, true);
   await render({ state: "loading" });
   assert.equal(host.querySelectorAll("article").length, cards);
-  assert.equal(host.querySelector('[aria-busy="true"]'), null, "no skeleton for a day that is still loading");
+  assert.equal(host.querySelector('[aria-busy="true"]') === null, true, "no skeleton for a day that is still loading");
   assert.equal(host.querySelector("[data-sessions-stale]")?.textContent, "Updating");
   assert.deepEqual(workerButtons(host).filter(button => !button.disabled).map(button => button.getAttribute("aria-label")), []);
   assert.equal(addWorkers(host)?.disabled, true);
   await render({ state: "loaded", value: FIXTURE_DAY_WIRE });
-  assert.equal(host.querySelector("[data-sessions-stale]"), null);
+  assert.equal(host.querySelector("[data-sessions-stale]") === null, true);
   assert.equal(addWorkers(host)?.disabled, false);
 });
 
@@ -61,6 +61,6 @@ it("shows the loading placeholder, with Add workers disabled, when a day loads a
   await render({ state: "loading" });
   assert.equal(host.querySelectorAll("article").length, 0);
   assert.equal(host.querySelector('[role="status"][aria-label="Loading sessions"]')?.getAttribute("aria-busy"), "true");
-  assert.equal(host.querySelector("[data-sessions-stale]"), null);
+  assert.equal(host.querySelector("[data-sessions-stale]") === null, true);
   assert.equal(addWorkers(host)?.disabled, true);
 });
