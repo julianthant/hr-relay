@@ -42,12 +42,12 @@ function ToastBelowTop() {
   </>;
 }
 
-/** The Sessions panel open under a button that raises one more toast per press. */
+/** The Sessions panel open and, at the left edge clear of the toasts, a button that raises one more toast per press. */
 function RaiseToasts() {
   const { toast } = useToasts();
   const [raised, setRaised] = useState(0);
   return <>
-    <Button onClick={() => { toast({ tone: "success", sticky: true, title: `Result ${String(raised + 1)}` }); setRaised(raised + 1); }}>Raise toast</Button>
+    <div><Button onClick={() => { toast({ tone: "success", sticky: true, title: `Result ${String(raised + 1)}` }); setRaised(raised + 1); }}>Raise toast</Button></div>
     <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
   </>;
 }
