@@ -10,7 +10,7 @@ import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admi
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { DuoCredentialRecordSchema, DuoReenrolCommitIntentSchema, type DuoReenrolCommitIntent } from "../../../../src/models/config/duo-credential-store.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { createBoundProfileFixture, readAuthenticatedCredentialFixture, rewriteAuthenticatedCredentialFixture, signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, rewriteAuthenticatedCredentialFixture, signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 type Fixture = Awaited<ReturnType<typeof createBoundProfileFixture>>;
@@ -91,7 +91,7 @@ it("renames one key across a restart and recovers removal of only the selected k
   const fixture = await createBoundProfileFixture();
   const clock = manualClock(new Date("2026-11-01T12:00:01.000Z"));
   const profileId = fixture.admission.profileBinding.profileId, machineRoot = fixture.machine.stateRoot;
-  const record = () => DuoCredentialRecordSchema.parse(readAuthenticatedCredentialFixture(machineRoot, profileId, "duo"));
+  const rowsFor = (admission: typeof fixture.admission) => DuoCredentialRecordSchema.parse(createCanonicalCredentials(admission).readRecord("duo")?.value).credentials;
   try {
     const store = createDuoCredentialStore(fixture.admission, clock);
     const added = material(randomUUID());
@@ -100,7 +100,7 @@ it("renames one key across a restart and recovers removal of only the selected k
     store.confirm(added.credentialId, added.scope);
     assert.equal(store.readSettings().keys[1].lastUsedAt, undefined);
     await store.sign(signRequest(added));
-    const before = store.readSettings(), rows = record().credentials, identity = store.identity();
+    const before = store.readSettings(), rows = rowsFor(fixture.admission), identity = store.identity();
     const [old, work] = before.keys;
     assert.deepEqual(Object.keys(old).sort(), ["addedAt", "id", "shortId"]);
     assert.equal(work.name, "Duo Work Key (Laptop)");
@@ -113,7 +113,7 @@ it("renames one key across a restart and recovers removal of only the selected k
     const renamed = { revision: before.revision + 1, keys: [{ ...old, name: "Duo Backup Key" }, work] };
     assert.deepEqual(store.readSettings(), renamed);
     assert.equal(store.identity(), identity);
-    assert.deepEqual(record().credentials, [{ ...rows[0], name: "Duo Backup Key" }, rows[1]]);
+    assert.deepEqual(rowsFor(fixture.admission), [{ ...rows[0], name: "Duo Backup Key" }, rows[1]]);
 
     const remove = { kind: "remove" as const, commandId: randomUUID().toUpperCase(), keyId: work.id, expectedRevision: renamed.revision };
     crashBeforeRename(join(machineRoot, "machine", "duo-credentials", `${profileId}.json`), () => store.changeKey(remove));
@@ -130,7 +130,7 @@ it("renames one key across a restart and recovers removal of only the selected k
           const removed = { revision: renamed.revision + 1, keys: [renamed.keys[0]] };
           assert.deepEqual(reopened.readSettings(), removed);
           assert.equal(reopened.changeKey(remove), "changed");
-          assert.deepEqual(record().credentials, [{ ...rows[0], name: "Duo Backup Key" }]);
+          assert.deepEqual(rowsFor(admission), [{ ...rows[0], name: "Duo Backup Key" }]);
           await assert.rejects(reopened.sign(signRequest(added)));
         } finally { admission.release(); }
       } finally { machine.release(); }
