@@ -402,7 +402,7 @@ afterEach_m1(_afterEachFixture0);
   it_m1("Settings gear opens the surface, Close settings closes it and competing keys resolve one takeover", async () => {
     await mount("?settings=keyboard&archive=&explore=missing");
     assert_m1.ok(document.querySelector('[aria-label="Settings"]'));
-    assert_m1.equal(document.querySelector('[aria-label="Session actions"]'), null);
+    assert_m1.equal(document.querySelector('[aria-label="Session actions"]') === null, true);
     const cursor = Number(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"));
     await click(button("Close settings"));
     assert_m1.equal(new URLSearchParams(location.search).has("settings"), false);
@@ -455,12 +455,12 @@ try {
 
   await mount(search);
   assert_m1.doesNotMatch(document.body.textContent ?? "", /Archive page removed/u);
-  assert_m1.equal(document.querySelector('[aria-label="Archive"]'), null);
-  assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
+  assert_m1.equal(document.querySelector('[aria-label="Archive"]') === null, true);
+  assert_m1.equal(document.querySelector('a[href="?settings=archive"]') === null, true);
   // Subscription folded into General (1f9149b4fe); Archive is retired.
   assert_m1.deepEqual([...document.querySelectorAll('nav[aria-label="Settings sections"] a')].map(link => link.getAttribute("href")),
     ["general", "account", "spreadsheets", "explorer", "activity", "keyboard"].map(id => `?settings=${id}`));
-  assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'), null);
+  assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]') === null, true);
   await click(button("Close settings"));
   assert_m1.equal(parseRoute_m1(location.search).archive, undefined);
   assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
@@ -480,7 +480,7 @@ try {
     await act_m1(async()=>window.dispatchEvent(new KeyboardEvent("keydown",{key,bubbles:true,cancelable:true})));
   }
   assert_m1.equal(location.search,before);
-  assert_m1.equal(document.querySelector('[role="dialog"][aria-label="Workflow Panel"]'),null);
+  assert_m1.equal(document.querySelector('[role="dialog"][aria-label="Workflow Panel"]') === null, true);
 
 } finally {
 await _afterEachFixture0();

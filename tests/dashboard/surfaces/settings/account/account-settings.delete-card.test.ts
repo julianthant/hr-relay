@@ -24,7 +24,7 @@ describe("Settings > Account Delete card", () => {
       createElement(DeleteAccountControl, { presentation: { state: "ready", personName: "Alex Morgan", onConfirm: () => {} } }),
       createElement("span", { id: "reference" }, createElement(Button, { variant: "danger" }, "Delete"))));
     const card = host?.firstElementChild?.firstElementChild as HTMLElement;
-    assert.equal(card.querySelector("h1, h2, h3, h4"), null);
+    assert.equal(card.querySelector("h1, h2, h3, h4") === null, true);
     assert.equal(card.textContent, "Delete accountDelete");
     const button = card.querySelector("button");
     assert.equal(button?.textContent, "Delete");

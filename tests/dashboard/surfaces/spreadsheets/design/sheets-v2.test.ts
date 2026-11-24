@@ -30,7 +30,7 @@ it('shows a busy region and no guessed rows while the spreadsheet list loads', a
   await render();
   const loading = host.querySelector('[role="status"][aria-busy="true"][aria-label="Loading spreadsheets"]');
   assert.ok(loading, 'a labelled loading region');
-  assert.equal(loading.querySelector('[data-slot="skeleton"]'), null, 'no guessed rows');
+  assert.equal(loading.querySelector('[data-slot="skeleton"]') === null, true, 'no guessed rows');
   assert.doesNotMatch(host.textContent ?? '', /Loading spreadsheets…/u);
 });
 

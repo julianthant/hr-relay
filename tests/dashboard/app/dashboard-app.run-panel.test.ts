@@ -137,7 +137,7 @@ for (const catchesUp of [false, true]) it(`retains stale Logs while the streamed
     await new Promise(resolve => setTimeout(resolve, 20));
   });
   assert.equal(subscriptions.length, 1, 'a lagging panel asks for no day refresh');
-  assert.equal(host.querySelector('form[aria-label="Is this the right person?"]'), block, 'the loaded Logs mount survives loading');
+  assert.equal(host.querySelector('form[aria-label="Is this the right person?"]') === block, true, 'the loaded Logs mount survives loading');
   assert.ok(host.querySelector('.dashboard-log-column')?.textContent?.includes('Refreshing'));
   assert.equal(approve.disabled, true, 'stale authority cannot approve a gate');
   await act(async () => approve.click());

@@ -79,7 +79,7 @@ it("opens shared-lookup records through real routes and keyboard selection witho
     assert.deepEqual(readSelection(), { kind: "record", record: { runId: owner.runId, recordId: records[0].recordId } });
     // Review records is a dialog; queue shortcuts resume once it closes.
     await act(async () => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    await vi.waitFor(() => assert.equal(document.querySelector('[role="dialog"][data-state="open"]'), null));
+    await vi.waitFor(() => assert.equal(document.querySelector('[role="dialog"][data-state="open"]') === null, true));
     await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true })));
     await vi.waitFor(() => assert.deepEqual(readSelection(), { kind: "record", record: { runId: owner.runId, recordId: records[1].recordId } }));
     assert.ok(requestedRuns.length > 0); assert.ok(requestedRuns.every(runId => runId === owner.runId));

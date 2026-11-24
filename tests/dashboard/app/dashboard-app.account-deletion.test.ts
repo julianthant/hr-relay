@@ -62,7 +62,7 @@ it("enables the served account control and deletes only after explicit confirmat
   assert.ok(cancelledDialog.textContent?.includes(`Delete ${FIXTURE_BOOTSTRAP.actor.label}’s account?`));
   await act(async () => button("Cancel", cancelledDialog).click());
   assert.deepEqual(requests, []);
-  assert.equal(document.querySelector('[role="dialog"]'), null);
+  assert.equal(document.querySelector('[role="dialog"]') === null, true);
   await act(async () => trigger.click());
   const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
   await act(async () => button("Delete account", dialog).click());
@@ -72,7 +72,7 @@ it("enables the served account control and deletes only after explicit confirmat
   assert.match(document.querySelector('[aria-label="Account"]')?.textContent ?? "", /Deleting your account…/u);
   await act(async () => response.resolve(Response.json({ state: "signed-out", signUpRequired: true })));
   await vi.waitFor(() => assert.equal(document.querySelector("h1")?.textContent, "Create your profile"));
-  assert.equal(document.querySelector('[aria-label="Account"]'), null);
+  assert.equal(document.querySelector('[aria-label="Account"]') === null, true);
   assert.equal(requests.length, 1);
 });
 

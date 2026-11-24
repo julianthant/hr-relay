@@ -74,7 +74,7 @@ it("opens the exact stable record, retains operator focus on refresh, and retrie
     const target = new URL(source);
     return target.pathname.startsWith(`/api/v1/runs/${SOURCE_RUN_ID}/ocr/pages/`) && target.searchParams.get("revision") === "2";
   }));
-  assert.equal(document.activeElement, firstHeading);
+  assert.equal(document.activeElement === firstHeading, true);
   assert.equal(host.querySelectorAll('input:not([disabled])').length, 0);
   assert.doesNotMatch(host.textContent ?? "", /Approved/u);
 });

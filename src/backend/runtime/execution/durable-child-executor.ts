@@ -10,7 +10,7 @@ import { CommandIdSchema, DelegationManifestIdSchema, RunIdSchema } from "../../
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { DelegationManifestSchema, type DelegationManifest } from "../../../rules/workflow/dependencies.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import type { ChildRunBatchContext, ChildRunContext, ChildRunExecutor } from "./run-executor.js";
+import type { ChildRunBatchContext, ChildRunContext, ChildRunExecutor } from "./run-execution-contract.js";
 import { descriptorRuntimeNodes, workflowProjections, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { planCanonicalDelegation } from "../../runs/lifecycle/delegation-planning.js";
 import { resolveInstances } from "../../runs/start/plan.js";

@@ -66,6 +66,9 @@ A test that opens a database, including `:memory:`, starts a process or socket, 
 or executes a composed workflow belongs in integration unless it is a repository-wide architecture
 guard or a performance test under `tests/perf/**` in the dedicated `perf` project. A DOM test opts
 into `@vitest-environment jsdom` per file. DOM wiring assertions do not establish visual parity.
+Compare DOM nodes by identity, as in `assert.equal(document.activeElement === button, true)`: a
+failing `node:assert` equality formats a jsdom node without bound and exhausts the runner's memory.
+`dom-node-assertions` rejects node-typed arguments to those comparisons.
 
 Shared reusable fixtures, helpers, and executable child entrypoints live under
 `tests/support/{fixtures,helpers,processes}/`. Architecture fixtures and helpers may sit beside

@@ -14,7 +14,7 @@ import { createBoundProfileFixture } from "./admission-fixture.js";
 import { manualClock, type TestClock } from "../../../src/rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { taskImplFingerprint } from "../../../src/workflow-kit/fingerprints.js";
-import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-executor.js";
+import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-execution-write.js";
 import {
   createWriteSequencer,
   type ProductionWriteSequencer,

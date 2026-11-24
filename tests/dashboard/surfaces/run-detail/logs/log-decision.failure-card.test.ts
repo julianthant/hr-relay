@@ -52,7 +52,7 @@ it("offers no Retry step, no disabled Confirm, no Note box and no Add note when 
   const { host, done } = await mount({ ...base, served: noRetry, unavailableCapture: "No screenshot was taken." });
   try {
     assert.deepEqual(buttons(host), ["Cancel run"]);
-    assert.equal(host.querySelector("textarea, input"), null);
+    assert.equal(host.querySelector("textarea, input") === null, true);
     assert.doesNotMatch(host.textContent ?? "", /Add note|Note/u);
     assert.match(host.textContent ?? "", /No screenshot was taken\./u);
   } finally { await done(); }
@@ -62,6 +62,6 @@ it("leaves out the rows the backend does not serve", async () => {
   const { host, done } = await mount({ title: "Read timecard", state: "failed", message: "The page did not load.", served: retry });
   try {
     assert.doesNotMatch(host.textContent ?? "", /While trying to|Last completed/u);
-    assert.equal(host.querySelector(".log-failed-field"), null);
+    assert.equal(host.querySelector(".log-failed-field") === null, true);
   } finally { await done(); }
 });

@@ -568,7 +568,7 @@ it.each(["outside-day", "empty", "skipped", "cancelled"] as const)("keeps the se
     const article = host.querySelector("article"); assert(article);
     assert(!article.textContent?.includes(reason), "the served timeline refusal is a data gap, not card text");
     assert.equal((sessionsFromDay(h.day(), catalog, now) as Extract<ReturnType<typeof sessionsFromDay>, { state: "ready" }>).workers[0].timelineUnavailable, reason);
-    assert.equal(article.querySelector('[role="progressbar"]'), null);
+    assert.equal(article.querySelector('[role="progressbar"]') === null, true);
     assert.equal(h.sent.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -582,7 +582,7 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
   try {
     h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state: "running", currentRun: { state: "present", runId: row.runId, traceId: row.traceId } }],
       queueSurfaces: [{ ...row, pipeline: [{ id: "served-active", label: "Served active step", state: "active" }] }] }));
-    await act(async () => render()); assert.equal(host.querySelector('[role="progressbar"]'), null);
+    await act(async () => render()); assert.equal(host.querySelector('[role="progressbar"]') === null, true);
     const served = sessionsFromDay(h.day(), catalog, now); assert(served.state === "ready");
     assert.deepEqual(served.workers[0].timeline, [{ id: "served-active", label: "Served active step", state: "active" }]);
     assert.doesNotMatch(host.textContent ?? "", /Run timeline is not served|No steps are served|states unavailable/);
@@ -591,7 +591,7 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
         ...(state === "failed" ? { endedAt: now, stopReason: "crashed" } : {}) }] }));
       await act(async () => render());
       assert.doesNotMatch(host.textContent ?? "", /No current claimed run|Run timeline is not served|No steps are served|states unavailable/);
-      assert.equal(host.querySelector('[role="progressbar"]'), null);
+      assert.equal(host.querySelector('[role="progressbar"]') === null, true);
       if (state === "idle") { assert.match(host.textContent ?? "", /Idle/); assert.doesNotMatch(host.textContent ?? "", /No run assigned/); }
       if (state === "starting") assert.match(host.textContent ?? "", /Starting.*No run assigned/s);
       if (state === "failed") assert(host.textContent?.includes("Its run is no longer on record."));
@@ -784,6 +784,6 @@ it("keeps a system nickname's full name and an unavailable reason in the chip's 
     assert.equal(chip.textContent, "SNowServiceNowUnavailable. ServiceNow did not answer");
     assert.equal(chip.querySelector("span[aria-hidden='true']")?.textContent, "SNow");
     assert.equal(chip.querySelector("[tabindex='0']")?.getAttribute("tabindex"), "0");
-    assert.equal(plain.querySelector("[tabindex]"), null, "a chip with nothing to add is not a tab stop");
+    assert.equal(plain.querySelector("[tabindex]") === null, true, "a chip with nothing to add is not a tab stop");
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
