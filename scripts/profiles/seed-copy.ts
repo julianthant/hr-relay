@@ -100,7 +100,8 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   const id = (kind: string) => deriveStableUuid(seedNamespace, `${kind}/${key}`);
   const hash = sha256Hex(key);
   const durationMs = 35_000 + Number.parseInt(hash.slice(0, 4), 16) * 5;
-  const timeMs = Math.min(now.getTime(), Date.parse(`${day}T20:00:00.000Z`));
+  const minuteOffsetMs = Number.parseInt(hash.slice(8, 12), 16) % 3_600_000;
+  const timeMs = Math.min(now.getTime(), Date.parse(`${day}T19:00:00.000Z`) + minuteOffsetMs);
   const enqueuedAt = new Date(timeMs).toISOString();
   const settledAt = new Date(Math.min(now.getTime(), timeMs + durationMs)).toISOString();
   const runId = id("run");
@@ -268,6 +269,7 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
     try { process.stdout.write(`${JSON.stringify(await seedCopy(profile), null, 2)}\n`); }
     catch (error) {
       const reason = error instanceof SeedCopyError ? error.message
+        : error instanceof z.ZodError ? `seed-copy-invalid-data: ${error.issues.map(issue => issue.code).join(", ")}`
         : error instanceof Error && /^[a-z-]{5,80}(?:: [a-z_]+)?$/u.test(error.message) ? error.message : "seed-copy-failed";
       process.stderr.write(`${reason}\n`);
       process.exitCode = 1;

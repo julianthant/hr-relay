@@ -51,7 +51,7 @@ function isolatedHome() {
   mkdirSync(data, { recursive: true, mode: 0o700 });
   return {
     data,
-    run(profile: string) {
+    run: (profile: string) => {
       const env = { ...process.env, HOME: home, USERPROFILE: home, LOCALAPPDATA: home };
       return spawnSync(process.execPath, ["--import", "tsx", "--import", pathToFileURL(preload).href, entry, profile], {
         env, encoding: "utf8", timeout: 20_000,
@@ -174,14 +174,10 @@ it("replaces its synthetic history and retains imported rows outside operational
   expect(seeded.generated.every(row => row.displayName?.startsWith("Synthetic ") === true && row.envelope.dryRun)).toBe(true);
   for (const { descriptor } of READABLE_WORKFLOW_MODULES) {
     const runs = seeded.generated.filter(row => row.envelope.workflow === descriptor.id);
-    expect(runs, descriptor.id).toEqual(expect.arrayContaining([
-      expect.objectContaining({ lifecycle: expect.objectContaining({ state: "terminal", outcome: "done" }) }),
-      expect.objectContaining({ lifecycle: expect.objectContaining({ state: "terminal", outcome: "failed" }) }),
-      expect.objectContaining({ lifecycle: expect.objectContaining({ state: "parked-gate" }) }),
-      expect.objectContaining({ pause: expect.objectContaining({ state: "paused" }) }),
-      expect.objectContaining({ lifecycle: expect.objectContaining({ state: "terminal", outcome: "cancelled" }) }),
-      expect.objectContaining({ lifecycle: expect.objectContaining({ state: "terminal", outcome: "interrupted" }) }),
-    ]));
+    const outcomes = runs.flatMap(({ lifecycle }) => lifecycle.state === "terminal" ? [lifecycle.outcome] : []);
+    for (const outcome of ["done", "failed", "cancelled", "interrupted"]) expect(outcomes, descriptor.id).toContain(outcome);
+    expect(runs.some(({ lifecycle }) => lifecycle.state === "parked-gate"), descriptor.id).toBe(true);
+    expect(runs.some(({ pause }) => pause?.state === "paused"), descriptor.id).toBe(true);
   }
   expect(new Set(seeded.notices.map(row => row.trigger))).toEqual(new Set(NotificationTriggerSchema.options));
   expect(seeded.notices.some(row => row.count > 1)).toBe(true);

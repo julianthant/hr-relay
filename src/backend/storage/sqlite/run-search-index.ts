@@ -93,7 +93,7 @@ export function copySeedSearchColumns(run: PredecessorRunRecord, queued: z.infer
   const [actor] = sourceActors(sources, run);
   const metadata = SearchMetadataSchema.parse({ subject: { state: "unavailable", reason: "declaration-unavailable" },
     actor: { state: "available", value: actor }, version: run.envelope.descriptorVersion, failureCode,
-    evidence: { receipt: false, diagnostic: false } });
+    evidence: { receipt: false, failure: failureCode !== null, diagnostic: false } });
   return { ...runSearchColumns(run, metadata, 0, null, sources, run.createdAt, run.updatedAt), ocr_subject_terms: null };
 }
 const LIMIT = 10000;
