@@ -7,8 +7,7 @@ import type { ActivityDrilldownData, ActivityBrowse, ActivitySelectionHandler } 
 import { ActivitySkeleton } from "./activity-loading.js";
 import type { ActivityDateRange } from "./activity-model.js";
 import { analyticsPeriodLabel, finished, type AnalyticsData, type AnalyticsDesign } from "./analytics-model.js";
-import { AnalyticsRedesignHeading, AnalyticsRedesignSections } from "./analytics-redesign-view.js";
-import { AnalyticsSections, AnalyticsToolbar } from "./analytics-view.js";
+import { AnalyticsRedesignHeading, AnalyticsRedesignSections, AnalyticsSections, AnalyticsToolbar } from "./analytics-view.js";
 import type { ActivityViewState } from "./activity-view-model.js";
 
 const noRuns = (analytics: AnalyticsData) => analytics.running === 0 && analytics.workflows.every(row => finished(row) === 0);
