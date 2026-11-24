@@ -231,6 +231,7 @@ test("Work-Study: Cancel on a run parked at its gate ends it as Cancelled and wr
   await expect(row).toBeVisible();
   const run = await seeded.scripted.drive(runId);
   expect(await run.advance()).toMatchObject({ at: "settled", outcome: { state: "parked-gate" } });
+  await expect(row).toContainText("Review");
   await dashboard.clearToasts();
   const cancel = await dashboard.holdCommands("cancel");
   await page.getByRole("button", { name: "Cancel run" }).click();
