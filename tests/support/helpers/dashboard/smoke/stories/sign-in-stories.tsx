@@ -48,7 +48,7 @@ function scene(title: string, input: SignInScene, shows?: string): Story {
     : input.setup !== undefined ? 'h1:has-text("Set up Duo"), h2:has-text("Set up Duo")'
     : input.step === "signup" ? 'button:has-text("Create profile")' : input.step === "ready" ? 'button:has-text("Go to dashboard")'
     : input.step === "duo" ? '[aria-label="Duo methods"]' : 'button:has-text("Log in")';
-  const breaksFocus = (input.setup === undefined && input.confirm !== true) || input.reenrol === true;
+  const breaksFocus = (input.setup === undefined && shows !== "Cancel sign-up?") || input.reenrol === true;
   return { title, render: () => <SignInPage scene={input} />, ready, ...(breaksFocus ? { knownFailures: FOCUS_BREAK } : {}), play: page => play(page, input), ...(waits ? { clock: true as const } : {}) };
 }
 
