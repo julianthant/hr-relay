@@ -458,7 +458,7 @@ export class RunQueueProjection {
     }
   }
 
-  #ingestTail(tail: ReturnType<typeof readTimelineRecords>, background = false): void {
+  #ingestTail(tail: ReturnType<typeof readTimelineRecords>): void {
     this.#timelineCursor = tail.cursor;
     if (tail.records.length === 0) return;
     const touched = new Set<RunId>();
@@ -475,12 +475,6 @@ export class RunQueueProjection {
       workerChanged ||= affected.workerChanged;
     }
     const affected = { runIds: [...runIds], workerChanged };
-    if (background && queueRevisions > 0) {
-      this.#invalidateDays(affected);
-      this.#notifiedRows.clear();
-      this.#publishBackgroundSnapshot();
-      return;
-    }
     const carried = queueRevisions > 0 ? this.#notify(affected, queueRevisions > 1) : { snapshot: false, runIds: [] };
     const uncarried = carried.snapshot ? [] : [...touched].filter(runId => !carried.runIds.includes(runId));
     if (uncarried.length > 0) this.#emit({ kind: "runs", runIds: uncarried, position: this.#timelineCursor });
@@ -522,7 +516,7 @@ export class RunQueueProjection {
         replay[level] = events;
       } else if (!rebuilding && page.cursor > this.#timelineCursor) {
         // A synchronous command may already have consumed part or all of this page.
-        this.#ingestTail({ records: page.records.filter(row => row.cursor > this.#timelineCursor), cursor: page.cursor }, true);
+        this.#ingestTail({ records: page.records.filter(row => row.cursor > this.#timelineCursor), cursor: page.cursor });
       }
       if (page.cursor >= through && !moreWorkerFacts) break;
       const workerCursor = moreWorkerFacts ? page.workers.next : null;
@@ -905,18 +899,14 @@ export class RunQueueProjection {
     for (const listener of this.#listeners) listener(change);
   }
 
-  #invalidateDays(affected: { runIds: readonly string[]; workerChanged: boolean }): void {
+  /** Publishes day changes and reports which runs they carried. A snapshot carries every run. */
+  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, forceSnapshot = false): { snapshot: boolean; runIds: readonly string[] } {
     if (affected.workerChanged) this.#dayCache.clear();
     else {
       for (const cached of this.#dayCache.values()) {
         for (const id of affected.runIds) cached.refreshedRuns.add(id);
       }
     }
-  }
-
-  /** Publishes day changes and reports which runs they carried. A snapshot carries every run. */
-  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, forceSnapshot = false): { snapshot: boolean; runIds: readonly string[] } {
-    this.#invalidateDays(affected);
     const publications = this.#deps.reader.withRunTreeSnapshot([], () => {
       const patches: { day: string; patch: z.infer<typeof DashboardDayPatchSchema> }[] = [];
       let snapshotNeeded = affected.workerChanged;

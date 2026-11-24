@@ -219,7 +219,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       clock,
     };
     const hub = createDashboardStreamHub({
-      projection, backfillGaps: trustNotifications?.backfillGapNotifier ?? UNOBSERVED_BACKFILL_GAP_NOTIFIER,
+      projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
       runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
       ...(trustNotifications === undefined || notificationRoutes === undefined ? {} : {
         notificationPublications: composeNotificationPublications({
