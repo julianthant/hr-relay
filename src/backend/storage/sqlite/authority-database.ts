@@ -1641,7 +1641,7 @@ function includeAuthorityChange(closure: ReturnType<typeof authorityChangeClosur
 export const CHANGE_LOG_PAGE_ENTRIES = 1_000;
 
 /** One closure per unread change-log page, or `undefined` on a gap; with nothing unread, one empty closure re-checks the singleton. */
-export function readAuthorityChangePages(database: DatabaseSync, after: number, high: number, observe?: (entry: ChangeEntry) => void) {
+function readAuthorityChangePages(database: DatabaseSync, after: number, high: number, observe?: (entry: ChangeEntry) => void) {
   const tail = z.strictObject({ first: z.number().nullable(), last: z.number().nullable() }).parse(database.prepare(`SELECT
     (SELECT seq FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq LIMIT 1) AS first,
     (SELECT seq FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq DESC LIMIT 1) AS last`).get(after, after));
@@ -1690,10 +1690,9 @@ function admitChanges(database: DatabaseSync, reader: ChangeLogReader, search: "
   const closures = reader.wholeStore ? undefined : readAuthorityChangePages(database, reader.cursor, high, observe);
   if (closures === undefined) reader.wholeStore = true;
   const singleton = readSingletonImage(database);
-  // Validating the union of the page closures equals validating each one, since every check reads current rows; a whole-store route covers the rest.
   const check = closures === undefined
     ? (value: typeof search) => { validateAuthorityStore(database, value); }
-    : (value: typeof search) => { closures.find(closure => validateAuthorityChangeClosure(database, closure, singletonChangeKeys(reader.singleton, singleton), value) === "whole"); };
+    : (value: typeof search) => { validateAuthorityChangePages(database, closures, singletonChangeKeys(reader.singleton, singleton), value); };
   try { check(search); }
   catch (error) {
     // The refusal is rethrown either way; this only names which half failed.
@@ -1732,9 +1731,21 @@ export type AuthorityChangeRoute = "scoped" | "whole";
  */
 export function validateAuthorityChanges(database: DatabaseSync, entries: readonly ChangeEntry[], singletonKeys: readonly DependencyKey[],
   search: "all" | "progress" | "none" = "all"): AuthorityChangeRoute {
-  const closure = authorityChangeClosure();
-  for (const entry of entries) includeAuthorityChange(closure, entry);
-  return validateAuthorityChangeClosure(database, closure, singletonKeys, search);
+  const pages = Array.from({ length: Math.max(1, Math.ceil(entries.length / CHANGE_LOG_PAGE_ENTRIES)) }, (_, page) => {
+    const closure = authorityChangeClosure();
+    for (const entry of entries.slice(page * CHANGE_LOG_PAGE_ENTRIES, (page + 1) * CHANGE_LOG_PAGE_ENTRIES)) includeAuthorityChange(closure, entry);
+    return closure;
+  });
+  return validateAuthorityChangePages(database, pages, singletonKeys, search);
+}
+
+/**
+ * Validates each page's closure on its own, so one scoped check never covers more than one page; this equals validating their
+ * union, since every check reads current rows. A whole-store route covers the remaining pages.
+ */
+function validateAuthorityChangePages(database: DatabaseSync, pages: readonly ReturnType<typeof authorityChangeClosure>[],
+  singletonKeys: readonly DependencyKey[], search: "all" | "progress" | "none"): AuthorityChangeRoute {
+  return pages.some(page => validateAuthorityChangeClosure(database, page, singletonKeys, search) === "whole") ? "whole" : "scoped";
 }
 
 function validateAuthorityChangeClosure(database: DatabaseSync, closure: ReturnType<typeof authorityChangeClosure>,

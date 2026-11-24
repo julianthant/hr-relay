@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
 import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { QUERY_INDEXES, SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
-import { CHANGE_LOG_PAGE_ENTRIES, readAuthorityChangePages } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { DatabaseSync, StatementSync } from "node:sqlite";
+import { CHANGE_LOG_PAGE_ENTRIES, readAuthorityChanges, validateAuthorityChanges } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { seedCheckClosureStore } from "../../support/fixtures/storage/check-closure-store.js";
+import { logCursor } from "../../support/fixtures/storage/raw-authority-writer.js";
 import { seedStorageReadFixture } from "../../perf/storage-read-fixture.js";
 import { traceSqliteStatements } from "../../perf/sqlite-statement-counter.js";
 import { auditPlans, auditStoreQueryPlans, literalStatements, normalizeSql, tracedStatements, WHOLE_TABLE_READS, type PlanAudit } from "./helpers/query-plan-audit.js";
@@ -145,6 +147,21 @@ const PINNED_PLANS: readonly (readonly [RegExp, RegExp, string?])[] = [
   [/^SELECT 1 FROM commands WHERE family IN \('settings','settings-initialization'\) LIMIT 1$/u, /SEARCH commands USING (?:COVERING )?INDEX commands_\w+ \(family=\?\)/u],
 ];
 
+/** The sorted command ids each scoped command-group read is bound to while `work` runs, in call order. */
+function commandGroupBindings(work: () => unknown): readonly (readonly string[])[] {
+  const bindings: string[][] = [];
+  const all = Object.getOwnPropertyDescriptor(StatementSync.prototype, "all");
+  assert.ok(all !== undefined && typeof all.value === "function");
+  const original = all.value as (this: StatementSync, ...values: unknown[]) => unknown;
+  Object.defineProperty(StatementSync.prototype, "all", { ...all, value(this: StatementSync, ...values: unknown[]) {
+    if (PINNED_PLANS[0]?.[0].test(normalizeSql(this.sourceSQL)) === true) bindings.push(z.array(z.string()).parse(JSON.parse(z.string().parse(values[0]))).sort(byNumber));
+    return original.apply(this, values);
+  } });
+  try { work(); } finally { Object.defineProperty(StatementSync.prototype, "all", all); }
+  return bindings;
+}
+const byNumber = (left: string, right: string) => Number(left.slice(5)) - Number(right.slice(5));
+
 /** Every literal statement under src/backend, the dashboard reads' traced statements, and both run-page rebuilds, which are built at run time, and the failure list. */
 async function shippedStatements(): Promise<readonly string[]> {
   const statements = new Set([...literalStatements().statements.keys(), ...(await tracedStatements()).keys()]);
@@ -180,18 +197,19 @@ describe("list index plans", () => {
     } finally { database.close(); }
   }, 120_000);
 
-  it("bounds the command-group sort's scope to one change-log page's closure", () => {
-    const database = new DatabaseSync(":memory:");
+  it("binds each command-group sort, at peer admission and at startup, to one change-log page's commands", async () => {
+    const store = await seedCheckClosureStore();
+    const peer = new DatabaseSync(store.databasePath);
     try {
-      for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) database.exec(statement);
-      const entries = 2 * CHANGE_LOG_PAGE_ENTRIES + 1;
-      database.prepare(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?)
-        INSERT INTO authority_changes(table_name,row_key,op,keys_json) SELECT 'commands',json_array('c'||i),'update',json_array('command:c'||i) FROM n`).run(entries);
-      const pages = readAuthorityChangePages(database, 0, entries);
-      assert.ok(pages !== undefined);
-      expect(pages.map(page => page.keys.size)).toEqual([CHANGE_LOG_PAGE_ENTRIES, CHANGE_LOG_PAGE_ENTRIES, 1]);
-      pages.forEach((page, index) => { expect([...page.keys]).toEqual(Array.from({ length: page.keys.size }, (_, at) => `command:c${String(index * CHANGE_LOG_PAGE_ENTRIES + at + 1)}`)); });
-      expect(readAuthorityChangePages(database, entries, entries)?.map(page => page.keys.size)).toEqual([0]);
-    } finally { database.close(); }
-  });
+      const track = store.database.trackAuthorityTables(["commands"]);
+      track();
+      const entries = 2 * CHANGE_LOG_PAGE_ENTRIES + 1, from = logCursor(peer);
+      peer.prepare(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?)
+        INSERT INTO authority_changes(table_name,row_key,op,keys_json) SELECT 'commands',json_array('peer-'||i),'update',json_array('command:peer-'||i) FROM n`).run(entries);
+      const pages = Array.from({ length: 3 }, (_, page) => Array.from({ length: Math.min(CHANGE_LOG_PAGE_ENTRIES, entries - page * CHANGE_LOG_PAGE_ENTRIES) },
+        (_, at) => `peer-${String(page * CHANGE_LOG_PAGE_ENTRIES + at + 1)}`));
+      expect(commandGroupBindings(() => track())).toEqual(pages);
+      expect(commandGroupBindings(() => validateAuthorityChanges(peer, readAuthorityChanges(peer, from), []))).toEqual(pages);
+    } finally { peer.close(); await store.cleanup(); }
+  }, 120_000);
 });
