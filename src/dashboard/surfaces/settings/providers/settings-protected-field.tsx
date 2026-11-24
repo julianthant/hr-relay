@@ -5,13 +5,15 @@ import { formatSetting } from "../editor/settings-draft-model.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
-export function ProtectedSettingField({ editor, name, description, controlWidth = "medium", className, onRemove }: {
+export function ProtectedSettingField({ editor, name, description, controlWidth = "medium", className, onRemove, inDialog = false }: {
   editor: Editor;
   name: Parameters<Editor["protectedEditor"]["update"]>[0];
   description: string;
   controlWidth?: "medium" | "wide";
   className?: string;
   onRemove: (hasSaved: boolean, label: string) => void;
+  /** Inside an edit dialog: label above the input, no helper line, and Remove lives in the dialog footer. */
+  inDialog?: boolean;
 }) {
   if (editor.editor.state !== "loaded") return null;
   const authority = editor.editor.document.protectedSettings;
@@ -22,11 +24,11 @@ export function ProtectedSettingField({ editor, name, description, controlWidth 
   const stored = authority.state === "available" ? authority.entries[name] : undefined;
   const value = operation?.kind === "set" ? operation.raw : operation?.kind === "clear" ? "" : stored === undefined || name !== "ucpathUserId" ? "" : formatSetting(stored.value);
   const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
-  const canRemove = stored !== undefined || operation?.kind === "set";
+  const canRemove = !inDialog && (stored !== undefined || operation?.kind === "set");
   const visible = name === "ucpathUserId";
   const label = name === "ucpathUserId" ? "UCPath username" : row.label;
-  return <Field data-settings-path={`protected.${name}`} label={label} description={description} error={credentials.errors[name]}
-    orientation="horizontal" controlWidth={controlWidth} className={className}
+  return <Field data-settings-path={`protected.${name}`} label={label} {...inDialog ? {} : { description }} error={credentials.errors[name]}
+    orientation={inDialog ? "vertical" : "horizontal"} controlWidth={controlWidth} className={className}
     disabled={disabled}>
     {visible ? <div className="ds-secret-field">
       <Input type="text" name={name} value={value} disabled={disabled} autoComplete={name === "ucpathUserId" ? "section-ucpath username" : "off"} spellCheck={false} placeholder="Enter value"

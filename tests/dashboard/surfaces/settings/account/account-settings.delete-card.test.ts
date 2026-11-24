@@ -19,12 +19,13 @@ async function mount(node: ReturnType<typeof createElement>): Promise<void> {
 const triggers = () => [...(host?.querySelectorAll("button") ?? [])];
 
 describe("Settings > Account Delete card", () => {
-  it("is one row: no heading, no description, a filled red Delete", async () => {
+  it("is one titled row: a Delete Account title, no description, a filled red Delete", async () => {
     await mount(createElement("div", null,
       createElement(DeleteAccountControl, { presentation: { state: "ready", personName: "Alex Morgan", onConfirm: () => {} } }),
       createElement("span", { id: "reference" }, createElement(Button, { variant: "danger" }, "Delete"))));
-    const card = host?.firstElementChild?.firstElementChild as HTMLElement;
-    assert.equal(card.querySelector("h1, h2, h3, h4") === null, true);
+    const section = host?.firstElementChild as HTMLElement;
+    assert.equal(section.querySelector("h1, h2, h3, h4")?.textContent, "Delete Account");
+    const card = section.querySelector<HTMLElement>('[role="group"]') as HTMLElement;
     assert.equal(card.textContent, "Delete accountDelete");
     const button = card.querySelector("button");
     assert.equal(button?.textContent, "Delete");

@@ -260,16 +260,14 @@ async function press(button: HTMLButtonElement): Promise<void> {
   });
 }
 
-async function dirtyBrowserSettings(): Promise<{ input: HTMLButtonElement; value: string }> {
-  const input = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
-  assert_m1.ok(input instanceof HTMLButtonElement, "Settings browser window control did not mount");
-  assert_m1.notEqual(input.dataset.value, "Small");
-  await act_m1(async () => input.click());
-  const option = document.querySelector('[role="option"][data-value="Small"]');
-  assert_m1.ok(option instanceof HTMLElement);
-  await act_m1(async () => option.click());
-  assert_m1.equal(input.dataset.value, "Small");
-  return { input, value: "Small" };
+const JOB_END_DATE = '[data-settings-path="annualDates.FY2027.jobEndDate"] input[type="date"]';
+async function dirtyBrowserSettings(): Promise<{ input: HTMLInputElement; value: string }> {
+  const input = document.querySelector<HTMLInputElement>(JOB_END_DATE);
+  assert_m1.ok(input instanceof HTMLInputElement, "Settings job-end date control did not mount");
+  const value = input.value === "2027-06-29" ? "2027-06-28" : "2027-06-29";
+  await act_m1(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  assert_m1.equal(input.value, value);
+  return { input, value };
 }
 
 // jsdom does not implement Tab navigation; assert the first enabled descendant order directly.
@@ -641,7 +639,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
     await press(notifications);
     assert_m1.equal(frameOf("Settings") === frame, true, "opening notifications preserves the runtime draft owner");
-    assert_m1.equal(input.dataset.value, value, "browser appearance and notification controls preserve runtime edits");
+    assert_m1.equal(input.value, value, "appearance and notification controls preserve runtime edits");
     await press(notifications);
     const sectionLink = (label: string): HTMLAnchorElement => {
       const link = [...document.querySelectorAll("nav[aria-label='Settings sections'] a")]
@@ -669,9 +667,9 @@ afterEach_m1(_afterEachFixture0);
     });
     assert_m1.equal(document.querySelector('[role="dialog"]') === null, true, "Escape closes the pending dirty-exit dialog");
     assert_m1.equal(document.activeElement === dashboard, true, "Escape restores focus to the persistent navigation control");
-    const restored = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
-    assert_m1.ok(restored instanceof HTMLButtonElement);
-    assert_m1.equal(restored.dataset.value, value);
+    const restored = document.querySelector<HTMLInputElement>(JOB_END_DATE);
+    assert_m1.ok(restored instanceof HTMLInputElement);
+    assert_m1.equal(restored.value, value);
     await press(buttonNamed("Close settings"));
     await press(buttonNamed("Discard changes"));
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);

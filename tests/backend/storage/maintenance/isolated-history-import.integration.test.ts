@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -11,7 +11,9 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
-import { LOCAL_OPERATOR_ACTOR_ID, WriteAttemptIdSchema } from "../../../../src/rules/identity/ids.js";
+import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { readQueueRecordMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
+import { ConfigSnapshotIdSchema, LOCAL_OPERATOR_ACTOR_ID, WriteAttemptIdSchema } from "../../../../src/rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -26,13 +28,19 @@ import { readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "../.
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
+import { searchPartitionDay } from "../../../../src/models/dashboard/search-calendar.js";
+import { OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
+import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT, NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { restoreSchema36QueryIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { boundProfileAdmission } from "../../../support/helpers/admission-fixture.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
+import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
+import { sessionFactoryHarness, healthyUcpathDriver } from "../../../support/helpers/phase1f-executor-harness.js";
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { createBackupFixtures } from "../../../support/helpers/storage/backup-fixtures.js";
 import { historyWorld } from "../../../support/helpers/storage/transaction-history-fixture.js";
 
@@ -45,6 +53,37 @@ const queryIndexes = (db: DatabaseSync) => db.prepare(`SELECT name FROM sqlite_m
   AND tbl_name IN (SELECT name FROM sqlite_master WHERE type='table') ORDER BY name`).all().map(row => String(row.name)).filter(name => !/_(lookup|owner)$/u.test(name));
 const invocationPlan = (db: DatabaseSync) => db.prepare(`EXPLAIN QUERY PLAN SELECT * FROM commands WHERE family='run-lifecycle'
   AND json_extract(request_json,'$.operation')='delegation-invocation' AND json_extract(request_json,'$.request.manifestId')=? ORDER BY id`).all("x").map(row => String(row.detail)).join("\n");
+
+function initializeCopyConfig(copy: Awaited<ReturnType<typeof openCurrentWorld>>, at: Clock) {
+  const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), at,
+    { stateRoot: copy.stateRoot, artifactRoot: join(copy.stateRoot, "artifacts") });
+  const configSnapshotId = ConfigSnapshotIdSchema.parse(randomUUID());
+  copy.database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, configSnapshotId,
+    fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance });
+  return { configSnapshotId, fingerprint: resolved.fingerprint };
+}
+
+async function openCopyDashboard(copy: Awaited<ReturnType<typeof openCurrentWorld>>, at: Clock) {
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(copy.workspace, name));
+  const runtime = composeProfileRuntime({ admission: copy.machine, clock: at, hostFacts: { primaryDisplay: null } });
+  cleanups.push(() => runtime.close());
+  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: at.now().toISOString() });
+  assert.ok(active.state === "active");
+  const lock = copy.admission.lifetime;
+  assert.ok(lock instanceof RuntimeLifetimeLock);
+  const realFetch = globalThis.fetch, outbound: string[] = [];
+  vi.stubGlobal("fetch", ((url, options) => {
+    const host = new URL(url instanceof Request ? url.url : url).hostname;
+    if (host !== "127.0.0.1") { outbound.push(host); throw new Error("unexpected-external-request"); }
+    return realFetch(url, options);
+  }) satisfies typeof fetch);
+  const spawn = vi.fn(() => { throw new Error("unexpected-worker-start"); });
+  const dashboard = await composeDashboardRuntime({ lifetimeLock: lock, admission: copy.machine, profile: { runtime, token: active.token },
+    repoRoot: copy.workspace, clock: at, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
+    preflightRunnerFactory: healthyRuntimePreflightRunners, workerProcess: { spawn } });
+  cleanups.push(() => dashboard.stop());
+  return { client: createDashboardClient({ baseUrl: `http://127.0.0.1:${String(dashboard.port)}` }), outbound, spawn };
+}
 
 it("preserves the migration error when closing the private import copy fails", async () => {
   const world = await openCurrentWorld();
@@ -187,9 +226,7 @@ it.each([CURRENT_AUTHORITY_SCHEMA_VERSION, 36])("imports schema %i runs, history
 it("refreshes imported runs beside copy-created runs and starts the dashboard on a schema-39 archive with no imported work or outbound requests", async () => {
   const source = await openCurrentWorld(), copy = await openCurrentWorld();
   source.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), clock,
-    { stateRoot: copy.stateRoot, artifactRoot: join(copy.stateRoot, "artifacts") });
-  copy.database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance });
+  const copyConfig = initializeCopyConfig(copy, clock);
   const sourceRun = runRecordOf({ seed: 596, enqueuedAt: clock.now().toISOString() });
   source.database.authority.runs.enqueue(sourceRun);
   const timeline = source.database.authority.timelineEvents;
@@ -204,7 +241,8 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
   };
   await refresh();
   const local = runRecordOf({ seed: 598, enqueuedAt: clock.now().toISOString() });
-  local.envelope.configFingerprint = resolved.fingerprint;
+  local.envelope.configFingerprint = copyConfig.fingerprint;
+  local.envelope.configSnapshotId = copyConfig.configSnapshotId;
   copy.database.authority.runs.enqueue(local);
   source.database.authority.runs.enqueue(runRecordOf({ seed: 597, enqueuedAt: clock.now().toISOString() }));
   expect((await refresh()).history.runs).toBe(2);
@@ -213,34 +251,17 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
   source.database.authority.runs.enqueue(runRecordOf({ seed: 598, enqueuedAt: clock.now().toISOString() }));
   await expect(refresh()).rejects.toThrow("isolated-history-local-id-collision: runs");
   copy.closeDatabase();
-  // A schema-39 build wrote this archive: no dependency parent column and no native index. The dashboard upgrades it in place at boot.
+  // Restore the schema-39, format-1 layout and let dashboard startup upgrade it.
   const archivePath = join(copy.stateRoot, "files", "imported-history.sqlite");
   const archive = new DatabaseSync(archivePath);
   let indexes: string[];
   try {
     indexes = queryIndexes(archive);
     for (const name of indexes) archive.exec(`DROP INDEX ${name}`);
-    archive.exec("ALTER TABLE run_search DROP COLUMN ocr_subject_terms; ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id; UPDATE history_header SET schema_version=39");
+    archive.exec(`ALTER TABLE run_search DROP COLUMN ocr_subject_terms; ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id;
+      DROP TABLE run_requests; DROP TABLE settings_snapshots; DROP TABLE artifacts; UPDATE history_header SET schema_version=39,format=1`);
   } finally { archive.close(); }
-  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(copy.workspace, name));
-  const runtime = composeProfileRuntime({ admission: copy.machine, clock, hostFacts: { primaryDisplay: null } });
-  cleanups.push(() => runtime.close());
-  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
-  assert.ok(active.state === "active");
-  const lock = copy.admission.lifetime;
-  assert.ok(lock instanceof RuntimeLifetimeLock);
-  const realFetch = globalThis.fetch, outbound: string[] = [];
-  vi.stubGlobal("fetch", ((url, options) => {
-    const host = new URL(url instanceof Request ? url.url : url).hostname;
-    if (host !== "127.0.0.1") { outbound.push(host); throw new Error("unexpected-external-request"); }
-    return realFetch(url, options);
-  }) satisfies typeof fetch);
-  const spawn = vi.fn(() => { throw new Error("unexpected-worker-start"); });
-  const dashboard = await composeDashboardRuntime({ lifetimeLock: lock, admission: copy.machine, profile: { runtime, token: active.token },
-    repoRoot: copy.workspace, clock, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
-    preflightRunnerFactory: healthyRuntimePreflightRunners, workerProcess: { spawn } });
-  cleanups.push(() => dashboard.stop());
-  const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(dashboard.port)}` });
+  const { client, outbound, spawn } = await openCopyDashboard(copy, clock);
   expect((await client.runDetail(sourceRun.envelope.runId)).runId).toBe(sourceRun.envelope.runId);
   const logs = await client.runSection(sourceRun.envelope.runId, "logs");
   assert.ok(logs.section === "logs");
@@ -252,9 +273,75 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
   const upgraded = new DatabaseSync(archivePath, { readOnly: true });
   try {
     expect(upgraded.prepare("SELECT schema_version FROM history_header").get()?.schema_version).toBe(CURRENT_AUTHORITY_SCHEMA_VERSION);
+    expect(upgraded.prepare("SELECT format FROM history_header").get()?.format).toBe(2);
     expect(upgraded.prepare("SELECT count(*) AS count FROM pragma_table_info('delegation_dependencies') WHERE name='parent_run_id'").get()?.count).toBe(1);
     expect(upgraded.prepare("SELECT count(*) AS count FROM pragma_table_info('run_search') WHERE name='ocr_subject_terms'").get()?.count).toBe(1);
     expect(indexes.length).toBeGreaterThan(0);
     expect(queryIndexes(upgraded)).toEqual(indexes);
   } finally { upgraded.close(); }
+});
+
+it("loads every imported dashboard day with delegated runs and failed Lookup start evidence", async () => {
+  const sourceWorld = createOcrReviewWorld();
+  cleanups.push(() => sourceWorld.cleanup());
+  const source = await sourceWorld.fixture({ coordinator: true, sessions: sessionFactoryHarness({
+    ucpath: () => ({ ...healthyUcpathDriver(), async searchPersonOrg() { throw new Error("synthetic-lookup-failure"); } }),
+  }) });
+  const { database, admission, parentRun, clock: sourceClock } = source;
+  expect(database.authority.runs.listChildren(parentRun.envelope.runId).length).toBeGreaterThan(0);
+  sourceClock.advanceWall(86_400_000);
+  const lookup = canonicalChildExecution(source.harness.deps, database, source.path, source.resolve);
+  const failed = lookup.start(personLookupDescriptor, { emplId: "10800000" }, { dryRun: false });
+  source.harness.manager.bindRunConfigFingerprint(failed.envelope.configFingerprint);
+  expect((await lookup.step(failed, new AbortController().signal)).outcome.state).toBe("failed");
+  const plans = [...source.canonical.plans, ...lookup.plans].map(plan => plan.startPlanId);
+  expect(plans).toHaveLength(2);
+  const days = new Set(database.authority.runs.listWorkflows().flatMap(workflow => database.authority.runs.listByWorkflow(workflow)
+    .map(run => searchPartitionDay(new Date(run.envelope.enqueuedAt)))));
+  expect(days.size).toBe(2);
+  const directory = join(admission.stateRoot, "backups", "authority");
+  const backup = await new AuthorityBackupService(admission, database, { directory }, sourceClock)
+    .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
+  const manifest = backup.manifests[0];
+  assert.ok(manifest);
+  const copy = await openCurrentWorld();
+  initializeCopyConfig(copy, sourceClock);
+  await importIsolatedProfileData(copy.admission, copy.database, { source: {
+    manifestPath: join(directory, `${manifest.backupFileName}.manifest.json`), binding: admission.profileBinding,
+  }, destination: copy.admission.profileBinding }, sourceClock);
+  const history = copy.database.dashboardHistory();
+  for (const planId of plans) {
+    expect(history.authority.startPlans.get(planId)).toEqual(database.authority.startPlans.get(planId));
+    expect(copy.database.authority.startPlans.get(planId)).toBeUndefined();
+  }
+  const snapshotId = failed.envelope.configSnapshotId;
+  expect(history.authority.configSnapshots.get(snapshotId)).toEqual(database.authority.configSnapshots.get(snapshotId));
+  expect(copy.database.authority.configSnapshots.get(snapshotId)).toBeUndefined();
+  const pages = database.authority.runs.listByWorkflow("ocr-page");
+  expect(pages.length).toBeGreaterThan(0);
+  for (const page of pages) {
+    const result = database.authority.runResults.get(page.envelope.runId);
+    const { extractionId } = OcrPageReadingSchema.parse(result?.result.value);
+    const extraction = database.authority.ocrExtractions.get(extractionId);
+    expect(extraction).toBeDefined();
+    expect(history.authority.ocrExtractions.get(extractionId)).toEqual(extraction);
+    expect(copy.database.authority.ocrExtractions.get(extractionId)).toBeUndefined();
+  }
+  const reader = new RunRecordService({ database: history, clock: sourceClock, ids: { uuid: randomUUID },
+    publishQueued() { throw new Error("unexpected-archive-queue-publication"); } });
+  const importedRoot = history.authority.runs.get(parentRun.envelope.runId);
+  assert.ok(importedRoot);
+  expect(history.withAuthorityReadSnapshot(() => readQueueRecordMembers(history.authority, reader, importedRoot,
+    history.authority.runs.listChildren(importedRoot.envelope.runId), source.resolve))).toBeDefined();
+  expect(copy.database.authority.runs.listNonTerminal()).toEqual([]);
+  copy.closeDatabase();
+
+  const { client, outbound, spawn } = await openCopyDashboard(copy, sourceClock);
+  const visible = new Set<string>();
+  for (const day of days) for (const row of (await client.dashboardDay(day)).queueSurfaces) visible.add(row.runId);
+  expect(visible).toContain(parentRun.envelope.runId);
+  expect(visible).toContain(failed.envelope.runId);
+  expect((await client.runDetail(failed.envelope.runId)).runId).toBe(failed.envelope.runId);
+  expect(outbound).toEqual([]);
+  expect(spawn).not.toHaveBeenCalled();
 });
