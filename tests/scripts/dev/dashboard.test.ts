@@ -75,6 +75,32 @@ describe("dashboard launcher", () => {
     children[1 - index].close(); assert.equal(await done, 4);
   });
 
+  it.each([
+    { childIndex: 1, signal: "SIGTERM", delivered: true, code: 143, expected: 0 },
+    { childIndex: 1, signal: "SIGTERM", delivered: false, code: 143, expected: 143 },
+    { childIndex: 1, signal: "SIGTERM", delivered: true, code: 7, expected: 7 },
+    { childIndex: 1, signal: "SIGINT", delivered: true, code: 143, expected: 143 },
+    { childIndex: 0, signal: "SIGTERM", delivered: true, code: 143, expected: 143 },
+  ])("returns $expected when child $childIndex exits $code after $signal delivery=$delivered", async ({ childIndex, signal, delivered, code, expected }) => {
+    const { children, signals, done } = await launch();
+    children[0].emit("message", { type: "hrauto-dashboard-ready" });
+    children[childIndex].kill.mockReturnValue(delivered);
+    signals.emit(signal);
+    assert.deepEqual(children[childIndex].kill.mock.calls, [[signal]]);
+    children[childIndex].close(code);
+    children[1 - childIndex].close();
+    assert.equal(await done, expected);
+  });
+
+  it("reports Vite exit 143 before the launcher stops it", async () => {
+    const { children, done } = await launch();
+    children[0].emit("message", { type: "hrauto-dashboard-ready" });
+    children[1].close(143);
+    assert.deepEqual(children[1].kill.mock.calls, []);
+    children[0].close();
+    assert.equal(await done, 143);
+  });
+
   it("keeps signal ownership through repeated Ctrl+C and reaps both children", async () => {
     const { children, signals, done } = await launch();
     children[0].emit("message", { type: "hrauto-dashboard-ready" });

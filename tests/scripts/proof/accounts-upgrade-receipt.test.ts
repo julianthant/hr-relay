@@ -2,10 +2,27 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, it } from "vitest";
-import { copySnapshots, runAccountsUpgradeProof, writeCopyRecoveryPasswords, type UpgradeProofDependencies } from "../../../scripts/proof/accounts-upgrade-receipt.js";
+import { describe, it, vi } from "vitest";
+import { runDevDashboard } from "../../../scripts/dev/dashboard.js";
+import { copySnapshots, runAccountsUpgradeProof, withCopySession, writeCopyRecoveryPasswords, type UpgradeProofDependencies } from "../../../scripts/proof/accounts-upgrade-receipt.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import type { PublicProfileState } from "../../../src/models/profiles/public-profile.js";
+import { ProtectedSettingsCommandRequestSchema } from "../../../src/rules/commands/commands.js";
+import { settingsStoryServer } from "../../support/fixtures/dashboard/settings-story-fixtures.js";
+
+vi.mock("../../../scripts/dev/dashboard.js", () => ({ runDevDashboard: vi.fn() }));
+vi.mock("../../../scripts/profiles/copy-signin.js", () => ({ assertCopySigninTarget: vi.fn() }));
+vi.mock("../../../src/backend/app/host/local-vite-probe.js", () => ({ probeOwnedViteServer: () => ({ state: "owned" }) }));
+vi.mock("../../../src/dashboard/client/index.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../src/dashboard/client/index.js")>();
+  return { ...actual, createDashboardClient: vi.fn(actual.createDashboardClient) };
+});
+vi.mock("playwright", () => ({ chromium: { launchPersistentContext: () => ({
+  route: async () => undefined,
+  pages: () => [{ goto: async () => undefined, evaluate: async () => "synthetic-resume-proof" }],
+  close: async () => undefined,
+}) } }));
 
 const profileId = "a52de557-89f5-4471-93bc-9d033951a769";
 const otherProfile = "c5632d33-ada5-443c-a2d2-06a5ba6d67e9";
@@ -13,6 +30,20 @@ const relayEmail = "receipt-email-sentinel@example.test";
 const oldPassword = "receipt-original-password-sentinel";
 const build = { candidate: "1".repeat(40), checkout: "2".repeat(40) };
 const active = { state: "active", profileId } as const;
+
+async function withTestDashboard(shutdownCode: number, run: (workspace: string) => Promise<void>): Promise<void> {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-upgrade-proof-")));
+  mkdirSync(join(workspace, "copy-signin-browser"), { mode: 0o700 });
+  const stop = vi.fn();
+  vi.mocked(runDevDashboard).mockImplementationOnce(options => new Promise(resolve => {
+    options?.signals?.once("SIGTERM", () => { stop(); resolve(shutdownCode); });
+    options?.copySignin?.ready("synthetic-owner-nonce");
+  }));
+  try {
+    await run(workspace);
+    assert.equal(stop.mock.calls.length, 1);
+  } finally { rmSync(workspace, { recursive: true }); }
+}
 
 function fixture(options: {
   resume?: Pick<Extract<PublicProfileState, { state: "refused" }>, "state" | "code">;
@@ -89,6 +120,41 @@ function fixture(options: {
 }
 
 describe("accounts upgrade proof receipt", () => {
+  it("posts a revision-bound protected UCPath save and reads the saved value back", async () => {
+    const server = settingsStoryServer();
+    vi.mocked(createDashboardClient).mockReturnValueOnce(server.client);
+    await withTestDashboard(0, workspace => withCopySession(workspace, async session => {
+      await session.saveUcpathPassword("synthetic-ucpath-value");
+      await session.verifyUcpathPassword("synthetic-ucpath-value");
+    }));
+    assert.equal(server.commands.length, 1);
+    const command = ProtectedSettingsCommandRequestSchema.parse(server.commands[0]);
+    assert.equal(command.target.expectedRevision, 2);
+    assert.deepEqual(command.payload.entries, { ucpathPassword: { set: "synthetic-ucpath-value" } });
+  });
+
+  it("keeps the UCPath command refusal in the receipt when dashboard shutdown also fails", async () => {
+    const server = settingsStoryServer({ save: "rejected" });
+    vi.mocked(createDashboardClient).mockReturnValueOnce(server.client);
+    const { dependencies } = fixture();
+    await withTestDashboard(7, async workspace => {
+      const receipt = await runAccountsUpgradeProof(build, {
+        ...dependencies,
+        withSession: run => withCopySession(workspace, dashboardSession => dependencies.withSession(fixtureSession =>
+          run({ ...fixtureSession, saveUcpathPassword: dashboardSession.saveUcpathPassword }))),
+      });
+      assert.equal(receipt.outcome, "failed");
+      assert.deepEqual(receipt.codes, ["not-editable"]);
+      assert.equal(server.commands.length, 1);
+    });
+  });
+
+  it("reports a dashboard shutdown failure after a successful operation", async () => {
+    await withTestDashboard(7, async workspace => {
+      await assert.rejects(withCopySession(workspace, async () => undefined), { code: "COPY_DASHBOARD_UNAVAILABLE" });
+    });
+  });
+
   it("reads the selected profile from the machine registry when the control witness also exists", () => {
     const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-upgrade-snapshot-")));
     try {
