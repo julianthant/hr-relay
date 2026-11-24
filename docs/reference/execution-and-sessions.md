@@ -578,7 +578,7 @@ During shutdown, final exit observation is bounded by `WORKER_EXIT_OBSERVATION_T
 
 ### 11.2 Durable worker and browser controls
 
-`src/backend/runs/commands/command-kernel.ts` admits `plan-worker-count`, `spawn-worker`,
+`src/backend/runs/commands/worker-pool-commands.ts` admits `plan-worker-count`, `spawn-worker`,
 `pause-worker`, `resume-worker`, `refresh-browser`, and `reopen-browser` into
 `worker_controls` before asynchronous effects. `src/models/run/worker-control.ts`
 defines worker browser observations and the control refusal error. Fresh ordinary targeted

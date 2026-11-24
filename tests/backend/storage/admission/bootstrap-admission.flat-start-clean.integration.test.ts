@@ -1,3 +1,4 @@
+import { withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { acquireFlatArchiveFixture } from "../../../support/helpers/storage/flat-archive-admission.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { FlatStartCleanIntentSchema } from "../../../../src/backend/storage/maintenance/flat-start-clean.js";
@@ -35,7 +36,7 @@ it("backs up a flat store without credentials, starts empty, and accepts an ordi
       assert.equal(completed.result.registryDigest, hash(Buffer.from(canonicalJsonStringify(machine.readProfileRegistry()))));
       const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
       try {
-        const draft = profile.session.signUp({ firstName: "Fresh", lastName: "Fixture", email: "fresh-fixture@ucsd.edu", password: "disposable-new-password", createdAt: systemClock.now().toISOString() });
+        const draft = profile.session.signUp(withFixtureUcpath({ firstName: "Fresh", lastName: "Fixture", email: "fresh-fixture@ucsd.edu", password: "disposable-new-password", createdAt: systemClock.now().toISOString() }));
         assert.equal(draft.state, "onboarding");
         assert.deepEqual(machine.readProfileRegistry().profiles, []);
         if (draft.state !== "onboarding") throw new Error("fresh draft required");

@@ -50,7 +50,7 @@ import { createCalendarQuery } from "../../../../../src/backend/runs/queries/cal
 import { createItemAttemptHistoryQuery } from "../../../../../src/backend/runs/queries/item-attempt-history.js";
 import { createCrossDateSearchService } from "../../../../../src/backend/runs/queries/search.js";
 import { createReceiptService } from "../../../../../src/backend/runs/trust/receipt-service.js";
-import { createProtectedSettingsRuntimeReader } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
+import { createProtectedSettingsRuntimeReader, readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/index.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -65,11 +65,16 @@ import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../src/ru
 import type { TestClock } from "../../../../../src/rules/time/clock.js";
 import { defineWorkflowRole } from "../../../../../src/workflow-kit/validation/module-role.js";
 import { protectedSecretSource } from "../../protected-secret-source.js";
+import { createSettingsApplicationExecutor } from "../../../../../src/backend/runs/commands/settings-service.js";
+import { buildSettingsEditor, type SettingsEditorQueryDeps } from "../../../../../src/backend/runs/queries/settings-editor.js";
+import { createCredentialStore } from "../../synthetic-storage-admission.js";
 
 export function createSeededServicesSetup({ createFixtureDashboardApp }: {
 createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
 }) {
-  function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices, productWorkflows, scripting }: {
+  function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices, productWorkflows, scripting, liveSettings }: {
+   /** Opt-in: ordinary settings save through the production executor, the editor reads the store, and each commit rides the stream. */
+   liveSettings?: boolean;
    /** Opt-in: run Work-Study through the real executor on a script the test holds (needs productWorkflows). */
    scripting?: Readonly<{ profilePath: string; reportWorker: (workerId: string, activity: WorkerActivity) => void }>;
    /** Serve the production catalog (same filter as composeShell) instead of person-lookup alone. */
@@ -134,13 +139,19 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     // A scripted plan binds the active runtime config, as production plans do.
     const activeConfig = scripting === undefined ? undefined : database.authority.runtimeConfig.get();
     if (scripting !== undefined && activeConfig === undefined) throw new Error("the seeded authority holds no runtime config");
+    const settingsChanges = new Set<() => void>();
+    const resolveSettings = (value: unknown) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock);
     const kernel = createCommandKernel({
       lifecycle: lifecycle,
       appVersion: SEEDED_APP_VERSION,
       configIdentity: UNSTORED_CONFIG_IDENTITY,
       intakeParser: UNWIRED_INTAKE_PARSER,
       intakeProjections: NO_INTAKE_PROJECTIONS,
-      authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
+      authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work), afterAuthorityCommit: publish => database.afterAuthorityCommit(publish) },
+      ...(liveSettings === true ? {
+        settings: createSettingsApplicationExecutor(resolveSettings, createCredentialStore({ stateRoot })),
+        settingsCommitted: () => { for (const listener of [...settingsChanges]) listener(); },
+      } : {}),
       clock,
       // A shared server accepts multiple commands; each audit needs its own ID.
       ids: sequentialIdFactory("d"),
@@ -196,6 +207,17 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     };
     const productDeps: Partial<ReturnType<typeof productAppDeps>> = trustNotifications === undefined ? {} : productAppDeps(trustNotifications);
     const notificationRoutes = productDeps.notifications;
+    const settingsEditor: SettingsEditorQueryDeps = {
+      protectedSettings: createProtectedSettingsRuntimeReader({ read: initialProtectedStoreRecord }),
+      settings: {
+        read: () => {
+          const record = liveSettings === true ? readSettings(database.authority) : initialSettingsFileRecord();
+          return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, resolveSettings(record.settings).fingerprint) } };
+        },
+      },
+      environment: {},
+      clock,
+    };
     const hub = createDashboardStreamHub({
       projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
       runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
@@ -204,6 +226,8 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
           database, clock, lifecycle, descriptors: strictDescriptors, runDetailDeps, notificationInbox: trustNotifications.inbox, target: notificationRoutes.target }),
         notificationStatus: { read: () => notificationRoutes.status(), onChange: listener => trustNotifications.observer.onStatusChange(listener) },
       }),
+      ...(liveSettings === true ? { settings: { read: () => buildSettingsEditor(settingsEditor),
+        onChange: (listener: () => void) => { settingsChanges.add(listener); return () => { settingsChanges.delete(listener); }; } } } : {}),
     });
     const app = createFixtureDashboardApp({
       ...productDeps,
@@ -261,17 +285,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     }, {
 
       settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [personLookupDescriptor] },
-      settingsEditor: {
-        protectedSettings: createProtectedSettingsRuntimeReader({ read: initialProtectedStoreRecord }),
-        settings: {
-          read: () => {
-            const record = initialSettingsFileRecord();
-            return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, resolveConfigWithProvenance({}, hostConfigFacts({}), clock).fingerprint) } };
-          },
-        },
-        environment: {},
-        clock,
-      },
+      settingsEditor,
       storage: {
         admission: syntheticStateRoot(stateRoot),
         doctorOptions: {

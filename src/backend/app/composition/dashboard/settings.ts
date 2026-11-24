@@ -8,6 +8,7 @@ import type { SettingsRouteDeps } from "../../../transports/http/routes/settings
 import { resolveConfigWithProvenance } from "../../config/resolve.js";
 import { DESCRIPTORS } from "../../registries/workflow-registry.js";
 import { buildSettingsFacts } from "../../../runs/queries/settings.js";
+import { buildSettingsEditor } from "../../../runs/queries/settings-editor.js";
 
 export function composeProfileSettings(input: Parameters<typeof createSettingsRuntimeReader>[0] & {
   readonly database: Pick<AuthorityDatabase, "withAuthorityReadSnapshot" | "authority">;
@@ -47,5 +48,7 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
       resolve: resolveSettings,
     },
   };
-  return { routes, executor: createSettingsApplicationExecutor(resolveSettings, input.credentials) };
+  // The document `GET /settings/editable` serves, also read for the stream's settings row.
+  const editable = () => buildSettingsEditor(routes.settingsEditor);
+  return { routes, editable, executor: createSettingsApplicationExecutor(resolveSettings, input.credentials) };
 }

@@ -22,16 +22,12 @@
 .workspace-rail { position: absolute; inset: 0 auto 0 0; z-index: 30; width: var(--shell-rail-width); display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--ui-stroke); background: var(--ds-surface-1); color: var(--ui-primary); pointer-events: none; }
 
 .workspace-rail-header { display: flex; height: 64px; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 0 calc(16px - (28px - 16px) / 2) 0 16px; background: var(--ds-surface-1); pointer-events: auto; }
-.workspace-rail-header button, .workspace-rail-header .rail-notification-toggle { width: 28px; height: 28px; min-width: 28px; border-radius: 8px; }
+.workspace-rail-header button { width: 28px; height: 28px; min-width: 28px; border-radius: 8px; }
 .workspace-rail { --rail-hover-fill: color-mix(in srgb, var(--ds-fg) 8.5%, var(--ds-surface-1)); }
 .workspace-rail-header button:not([aria-pressed="true"]):hover, .workspace-rail-header button:not([aria-pressed="true"]):focus-visible { background: var(--rail-hover-fill); color: var(--ui-primary); }
 .workspace-rail-header h2 { margin: 0; color: var(--ui-primary); font-size: var(--ds-text-section); line-height: var(--ds-lh-section); font-weight: 500; }
 .workspace-rail-body { display: flex; flex: 1; min-height: 0; flex-direction: column; pointer-events: auto; }
 
-.rail-notification-toggle { position: relative; width: 28px; height: 28px; min-width: 28px; border-radius: 8px; color: var(--ui-secondary); background: transparent; }
-.rail-notification-toggle[data-selected] { background: color-mix(in srgb,var(--ui-info) 14%,transparent); color: var(--ui-info); }
-.rail-notification-toggle[data-hovered] { background: var(--ui-hover); }
-.rail-notification-toggle[data-focus-visible] { outline: 2px solid var(--ui-info); outline-offset: 2px; }
 .workflow-rail { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: 8px 8px 16px; }
 .workflow-rail-groups { display: flex; flex-direction: column; gap: 20px; overflow-y: auto; min-height: 0; scrollbar-width: none; }
 .workflow-rail-groups::-webkit-scrollbar, .rail-scroll::-webkit-scrollbar { display: none; }

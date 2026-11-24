@@ -3,7 +3,7 @@ import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { bindWorkflowDelegationTargets,type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { childExecutionStores } from "../../fixtures/child-execution-workflows.js";

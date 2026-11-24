@@ -9,7 +9,7 @@ import { basename,dirname,join,relative,resolve } from "node:path";
 import { createNativeBrowserProbe,NativeBrowserClosureUnprovedError } from "../runtime/browser/native-browser.js";
 
 import { z } from "zod";
-import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema } from "../../models/config/protected-settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema,ProtectedValueSchemas } from "../../models/config/protected-settings.js";
 import { resolveConfigWithProvenance } from "../app/config/resolve.js";
 import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding-duo-provider.js";
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
@@ -25,7 +25,8 @@ import { operatorFailureSentence,type ErrorCatalogCode } from "../../models/fail
 import { assertFinishedProfileOnboarding,deriveProfileNames,DuoReenrolOperationSchema,LogoutOperationSchema,ProfileAuthoritySnapshotSchema,ProfileNameValidationError,ProfileOperationSchema,profileDetailsPatch,type DuoReenrolOperation,type LogoutOperation,type ProfileDetailsChange,type ProfileRegistryRow,type ProfileAuthoritySnapshot,type ProfileOperation,type SignUpOperation } from "../../models/profiles/profile.js";
 import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
 import { DuoReenrolStateSchema,ProfileOnboardingStateSchema,profileAccount,type DuoReenrolState,type ProfileAccount,type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
-import type { DuoReenrolCommitIntent } from "../../models/config/duo-credential-store.js";
+import type { DuoKeyChange, DuoReenrolCommitIntent } from "../../models/config/duo-credential-store.js";
+import type { DuoKeyChangeResult } from "../../models/profiles/public-profile.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { systemClock,type Clock } from "../../rules/time/clock.js";
 import { noSymlinkAncestry,withOperationProof,type DirectoryIdentity } from "../storage/configuration/credential-safe-file.js";
@@ -486,20 +487,28 @@ export function createProfileSession(input: {
     readonly lastName: string;
     readonly email: string;
     readonly password: string;
+    readonly ucpathUsername?: string;
+    readonly ucpathPassword?: string;
     readonly createdAt: string;
   }, names: ReturnType<typeof deriveProfileNames>): OnboardingProfileSession | ProfileRefusal {
     admission.assertWritable();
     const selection = registry.read();
     if (selection.profiles.some(row => row.lifecycle === "cancelling") || readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_LOGOUT_INCOMPLETE");
     if (selection.activeProfileId !== null) return refusal("PROFILE_SIGN_UP_OTHER_SIGNED_IN");
-    const emailKey = verifiers.emailKeyFor(fields.email);
     if (readOperations().some(entry => entry.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
+    const username = ProtectedValueSchemas.ucpathUserId.safeParse(fields.ucpathUsername);
+    const password = ProtectedValueSchemas.ucpathPassword.safeParse(fields.ucpathPassword);
+    if (!username.success || !password.success || !z.email().safeParse(username.data.trim()).success || !/@ucsd\.edu$/iu.test(username.data.trim())) {
+      return refusal("PROFILE_SIGN_IN_REFUSED");
+    }
     const identified = verifiers.identify(fields.email);
     if (identified !== "unknown" && registry.read().profiles.some((row) => row.profileId === identified.profileId)) {
       return refusal("PROFILE_OTHER_EMAIL");
     }
+    const { emailKey, salt, passwordVerifier } = verifiers.derive(fields.email, fields.password);
     let operation = admission.beginProfileSignUp({
-      emailKey, firstName: names.firstName, lastName: names.lastName, createdAt: IsoInstantSchema.parse(fields.createdAt), commandFingerprint: "a".repeat(64),
+      emailKey, relay: { email: fields.email, salt, passwordVerifier },
+      firstName: names.firstName, lastName: names.lastName, createdAt: IsoInstantSchema.parse(fields.createdAt), commandFingerprint: "a".repeat(64),
     });
     if (operation.onboarding === undefined || operation.phase !== "applying" && !(operation.phase === "publishing" && operation.onboarding.finish !== undefined)) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
     if (operation.onboarding.abort !== undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
@@ -529,8 +538,8 @@ export function createProfileSession(input: {
           writeId: operation.writeId,
           updatedAt: operation.createdAt,
           entries: {
-            ucpathUserId: { set: fields.email },
-            ucpathPassword: { set: fields.password },
+            ucpathUserId: { set: username.data },
+            ucpathPassword: { set: password.data },
           },
         }));
         if (applied.state !== "applied" && !store.ownsCommandId(operation.commandId)) {
@@ -545,8 +554,8 @@ export function createProfileSession(input: {
     }
     if (store.ownsCommandId(operation.commandId)) {
       const current = store.read().entries;
-      const same = current.ucpathUserId?.value === fields.email
-        && current.ucpathPassword?.value === fields.password;
+      const same = current.ucpathUserId?.value === username.data
+        && current.ucpathPassword?.value === password.data;
       if (!same) return refusal("PROFILE_SIGN_IN_REFUSED");
     }
     return issueOnboardingSession(operation);
@@ -819,6 +828,31 @@ export function createProfileSession(input: {
       }
     },
     closeOnboarding(): Promise<void> { return onboarding.close(); },
+    readDuoKeys(token: string) {
+      const session = requireSession(token);
+      if ("state" in session) throw new ProfileSessionRefusedError(session.code);
+      return duoStore(session.profileId).readSettings();
+    },
+    changeDuoKey(token: string, change: DuoKeyChange): DuoKeyChangeResult {
+      admission.assertWritable();
+      admission.lifetime.assertRuntimeAvailable();
+      return withProfileLock(machineRoot, () => {
+        const session = requireSession(token);
+        if ("state" in session) return { state: "refused", code: session.code };
+        if (reenrolmentFor(session.profileId) !== undefined) return { state: "refused", code: "PROFILE_DUO_REENROL_OPEN" };
+        const store = duoStore(session.profileId);
+        let outcome: ReturnType<typeof store.changeKey>;
+        try {
+          outcome = store.changeKey(change);
+        } catch (error) {
+          if (error instanceof DuoCredentialError && (error.code === "DUO_CREDENTIAL_CONFLICT" || error.code === "DUO_CREDENTIAL_BUSY")) {
+            return { state: "refused", code: error.code };
+          }
+          throw error;
+        }
+        return outcome === "name-in-use" ? { state: "name-in-use" } : { state: "changed", snapshot: store.readSettings() };
+      });
+    },
     /** Opens, or returns the open, Duo re-enrolment for the active session's Duo-ready profile; its old enrolment keeps signing. */
     beginDuoReenrol(token: string): DuoReenrolState {
       admission.assertWritable();

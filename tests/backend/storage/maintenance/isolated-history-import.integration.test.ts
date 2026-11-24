@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { copyFileSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
@@ -15,17 +16,23 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { importIsolatedProfileData } from "../../../../src/backend/storage/maintenance/isolated-library-import.js";
+import { importedLibraryId, importIsolatedProfileData } from "../../../../src/backend/storage/maintenance/isolated-library-import.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { withUpgradedBackupCopy } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
+import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT, NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { restoreSchema36QueryIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { boundProfileAdmission } from "../../../support/helpers/admission-fixture.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import { createBackupFixtures } from "../../../support/helpers/storage/backup-fixtures.js";
 import { historyWorld } from "../../../support/helpers/storage/transaction-history-fixture.js";
 
@@ -33,12 +40,64 @@ const clock = manualClock(new Date("2026-11-23T12:00:00.000Z"));
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { try { for (const close of cleanups.splice(0).reverse()) await close(); } finally { vi.unstubAllGlobals(); } });
 const { openCurrentWorld, takeBackup } = createBackupFixtures(cleanups, clock);
+/** Named indexes on the tables the archive carries; the archive's own id and owner lookups are not native. */
+const queryIndexes = (db: DatabaseSync) => db.prepare(`SELECT name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL
+  AND tbl_name IN (SELECT name FROM sqlite_master WHERE type='table') ORDER BY name`).all().map(row => String(row.name)).filter(name => !/_(lookup|owner)$/u.test(name));
+const invocationPlan = (db: DatabaseSync) => db.prepare(`EXPLAIN QUERY PLAN SELECT * FROM commands WHERE family='run-lifecycle'
+  AND json_extract(request_json,'$.operation')='delegation-invocation' AND json_extract(request_json,'$.request.manifestId')=? ORDER BY id`).all("x").map(row => String(row.detail)).join("\n");
 
-it("retains confirmed write evidence for dashboard history without admitting it to the local write sequencer", async () => {
+it("preserves the migration error when closing the private import copy fails", async () => {
+  const world = await openCurrentWorld();
+  const { manifest } = await takeBackup(world);
+  const backupPath = join(world.backupDirectory, manifest.backupFileName);
+  const predecessor = new DatabaseSync(backupPath);
+  try {
+    restoreSchema36QueryIndexes(predecessor);
+    predecessor.exec("DROP INDEX checkpoints_replay_idx");
+  } finally { predecessor.close(); }
+  const before = readFileSync(backupPath);
+  const closeError = new Error("private-import-copy-close-refused");
+  const actualClose: unknown = Reflect.get(DatabaseSync.prototype, "close");
+  assert.ok(typeof actualClose === "function");
+  let retained: { database: DatabaseSync; directory: string } | undefined;
+  const close = vi.spyOn(DatabaseSync.prototype, "close").mockImplementation(function (this: DatabaseSync) {
+    const path = this.location();
+    if (path !== null && basename(dirname(path)).startsWith(`${readonlyAuthorityCopyPrefix}${process.pid}-import-`)) {
+      retained = { database: this, directory: dirname(path) };
+      throw closeError;
+    }
+    Reflect.apply(actualClose, this, []);
+  });
+  try {
+    assert.throws(() => withReadonlyAuthoritySnapshot(backupPath, source =>
+      withUpgradedBackupCopy(world.admission, source, 36, world.admission.profileBinding, clock.now().toISOString(),
+        () => assert.fail("the migration must finish before reading"))), (error: unknown) => {
+      assert.ok(error instanceof AuthoritySourceClosureUnprovedError);
+      assert.ok(error.cause instanceof Error);
+      assert.match(error.cause.message, /no such index: checkpoints_replay_idx/u);
+      assert.deepEqual(error.errors, [error.cause, closeError]);
+      return true;
+    });
+    assert.ok(retained);
+    assert.equal(existsSync(retained.directory), true);
+    assert.deepEqual(readFileSync(backupPath), before);
+  } finally {
+    close.mockRestore();
+    if (retained !== undefined) {
+      retained.database.close();
+      rmSync(retained.directory, { recursive: true, force: true });
+    }
+  }
+});
+
+it.each([CURRENT_AUTHORITY_SCHEMA_VERSION, 36])("imports schema %i runs, history and workbooks without admitting their writes", async schemaVersion => {
   const source = await historyWorld();
   cleanups.push(() => source.dispose());
   const fixture = source.commit(596);
   const ledger = fixture.commit.transaction;
+  const workbook = createWorkbookLibraryService({ repository: source.database.authority.workbooks, sync: unexpectedWorkbookSync, clock })
+    .create({ name: "Source workbook", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Sheet", width: 1,
+      hidden: [], rows: [{ id: "row", cells: [{ value: "Source cell" }] }] }] });
   source.database.authority.notifications.create({ ...NOTIFICATION, links: [{ kind: "run", runId: ledger.runId }] });
   const active = source.database.authority.runs.get(ledger.runId);
   assert.ok(active?.lifecycle.state === "running");
@@ -51,6 +110,21 @@ it("retains confirmed write evidence for dashboard history without admitting it 
     .request({ trigger: "schema-migration", requiredGeneration: source.database.getMeta().authorityGeneration });
   const manifest = backup.manifests[0];
   assert.ok(manifest);
+  const backupPath = join(directory, manifest.backupFileName);
+  const manifestPath = backupPath + ".manifest.json";
+  if (schemaVersion === 36) {
+    const predecessor = new DatabaseSync(backupPath);
+    try { restoreSchema36QueryIndexes(predecessor); } finally { predecessor.close(); }
+    const verification = withReadonlyAuthoritySnapshot(backupPath, database => inspectNativeAuthority(database, schemaVersion));
+    const bytes = readFileSync(backupPath);
+    writeFileSync(manifestPath, JSON.stringify({ ...manifest, schemaVersion, pageCount: verification.pageCount,
+      authorityContentFingerprint: verification.authorityContentFingerprint, byteSize: bytes.byteLength,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      verification: { ...manifest.verification, schemaVersion, pageCount: verification.pageCount,
+        authorityContentFingerprint: verification.authorityContentFingerprint } }));
+  }
+  const backupFiles = () => readdirSync(directory).sort().map(name => [name, readFileSync(join(directory, name))] as const);
+  const beforeImport = backupFiles();
   const copy = await openCurrentWorld();
   const privateFiles = () => {
     const folder = join(copy.stateRoot, "credentials");
@@ -60,16 +134,36 @@ it("retains confirmed write evidence for dashboard history without admitting it 
   };
   const before = privateFiles();
   expect(before.length).toBeGreaterThan(2);
-  const report = await importIsolatedProfileData(copy.admission, copy.database, { source: { manifestPath: join(directory, manifest.backupFileName + ".manifest.json"),
+  const refresh = () => importIsolatedProfileData(copy.admission, copy.database, { source: { manifestPath,
     binding: admission.profileBinding }, destination: copy.admission.profileBinding }, clock);
+  const upgradeScratch = () => readdirSync(tmpdir()).filter(name => name.startsWith(`${readonlyAuthorityCopyPrefix}${process.pid}-import-`));
+  const scratchBefore = upgradeScratch();
+  const report = await refresh();
+  expect(backupFiles()).toEqual(beforeImport);
+  expect(upgradeScratch()).toEqual(scratchBefore);
   expect(privateFiles()).toEqual(before);
+  expect(report.created).toBe(1);
+  const libraryId = importedLibraryId(admission.profileBinding, copy.admission.profileBinding, workbook.libraryId);
+  expect(copy.database.authority.workbooks.read(libraryId)?.workbook).toEqual({ ...workbook.workbook, libraryId });
   const historyPath = join(copy.stateRoot, "files", "imported-history.sqlite");
   const counts = (path: string) => withReadonlyAuthoritySnapshot(path, db => Object.fromEntries([
     "runs", "run_batches", "deleted_runs", "run_delegations", "delegation_dependencies", "run_search",
     "diagnostic_snapshots", "diagnostic_files", "dryrun_results", "ocr_approved_snapshots", "ocr_review_revisions", "run_checkpoints", "gate_results", "write_intents", "write_attempts", "run_results", "run_failures", "run_receipts", "timeline_events", "notifications",
   ].map(name => [name, db.prepare(`SELECT count(*) AS count FROM ${name}`).get()?.count])));
-  expect(counts(historyPath)).toEqual(counts(join(directory, manifest.backupFileName)));
+  expect(counts(historyPath)).toEqual(counts(backupPath));
+  expect(withReadonlyAuthoritySnapshot(historyPath, database => database.prepare("SELECT schema_version FROM history_header").get()?.schema_version))
+    .toBe(CURRENT_AUTHORITY_SCHEMA_VERSION);
   expect(report.history).toMatchObject({ write_intents: 1, write_attempts: 1, notifications: 1 });
+  // The archive answers the native statements, so it seeks where the native store seeks.
+  const archived = new DatabaseSync(historyPath, { readOnly: true }), native = new DatabaseSync(join(copy.stateRoot, "state.db"), { readOnly: true });
+  try {
+    const carried = new Set(archived.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => String(row.name)));
+    const expected = native.prepare("SELECT name,tbl_name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL ORDER BY name").all()
+      .filter(row => carried.has(String(row.tbl_name))).map(row => String(row.name));
+    expect(expected).toContain("commands_manifest_idx");
+    expect(queryIndexes(archived)).toEqual(expected);
+    expect(invocationPlan(archived)).toMatch(/SEARCH commands USING INDEX commands_manifest_idx/u);
+  } finally { archived.close(); native.close(); }
   const history = copy.database.dashboardHistory();
   const range = { from: "0001-01-01", to: "9999-12-31" };
   expect(createTransactionHistory(history.authority).query(range).rows).toEqual(source.history.query(range).rows);
@@ -80,6 +174,14 @@ it("retains confirmed write evidence for dashboard history without admitting it 
   expect(copy.database.authority.writeAttempts.get(WriteAttemptIdSchema.parse(fixture.attempt.writeAttemptId))).toBeUndefined();
   expect(copy.database.authority.runCheckpoints.listByItem(ledger.workflowId, ledger.itemId)).toEqual([]);
   expect(() => history.withAuthorityTransaction(() => undefined)).toThrow("isolated-history-read-only");
+  if (schemaVersion === 36) {
+    copy.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    const run = runRecordOf({ seed: 598, enqueuedAt: clock.now().toISOString() });
+    copy.database.authority.runs.enqueue({ ...run, envelope: { ...run.envelope, runId: ledger.runId } });
+    await expect(refresh()).rejects.toThrow("isolated-history-local-id-collision: runs");
+    expect(upgradeScratch()).toEqual(scratchBefore);
+    expect(backupFiles()).toEqual(beforeImport);
+  }
 });
 
 it("refreshes imported runs beside copy-created runs and starts the dashboard on a schema-39 archive with no imported work or outbound requests", async () => {
@@ -111,10 +213,13 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
   source.database.authority.runs.enqueue(runRecordOf({ seed: 598, enqueuedAt: clock.now().toISOString() }));
   await expect(refresh()).rejects.toThrow("isolated-history-local-id-collision: runs");
   copy.closeDatabase();
-  // A schema-39 build wrote this archive: no dependency parent column. The dashboard upgrades it in place at boot.
+  // A schema-39 build wrote this archive: no dependency parent column and no native index. The dashboard upgrades it in place at boot.
   const archivePath = join(copy.stateRoot, "files", "imported-history.sqlite");
   const archive = new DatabaseSync(archivePath);
+  let indexes: string[];
   try {
+    indexes = queryIndexes(archive);
+    for (const name of indexes) archive.exec(`DROP INDEX ${name}`);
     archive.exec("ALTER TABLE run_search DROP COLUMN ocr_subject_terms; ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id; UPDATE history_header SET schema_version=39");
   } finally { archive.close(); }
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(copy.workspace, name));
@@ -149,5 +254,7 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
     expect(upgraded.prepare("SELECT schema_version FROM history_header").get()?.schema_version).toBe(CURRENT_AUTHORITY_SCHEMA_VERSION);
     expect(upgraded.prepare("SELECT count(*) AS count FROM pragma_table_info('delegation_dependencies') WHERE name='parent_run_id'").get()?.count).toBe(1);
     expect(upgraded.prepare("SELECT count(*) AS count FROM pragma_table_info('run_search') WHERE name='ocr_subject_terms'").get()?.count).toBe(1);
+    expect(indexes.length).toBeGreaterThan(0);
+    expect(queryIndexes(upgraded)).toEqual(indexes);
   } finally { upgraded.close(); }
 });

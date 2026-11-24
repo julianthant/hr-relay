@@ -158,6 +158,8 @@ function KeptDayMark() {
 }
 
 function commandResultRun(destination: NotificationDestination): NotificationDestination | undefined {
+  // A storage notice opens Settings > General, where storage lives.
+  if (destination.kind === "storage") return { kind: "settings", section: "general" };
   if (destination.kind !== "command-result") return destination;
   const request = destination.request;
   if (!("target" in request) || !("runId" in request.target) || destination.day === undefined) return undefined;
@@ -319,6 +321,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const binding = currentPreferenceBinding.current;
     return preferences.connect(client, { ...binding, scope: commandScope, authority: { ...binding.authority, epoch: authorityEpoch } }, () => currentPreferenceBinding.current);
   }, [preferences, client, authorityEpoch, commandScope]);
+  useEffect(() => { preferences.streamChanged(); }, [preferences, dayState.rows, dayState.connection.state]);
   const preferenceState = usePersonPreferences();
   useConfirmCloseDuringRun(preferenceState.value.confirmCloseDuringRun, (application?.targets.length ?? 0) > 0);
   useEffect(() => { if (preferenceState.problem) toast({ ...settingsSaveFailure(), title: preferenceState.problem }); }, [preferenceState.problem, toast]);

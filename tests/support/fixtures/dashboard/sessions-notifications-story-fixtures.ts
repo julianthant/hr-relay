@@ -55,7 +55,7 @@ const run = (n: number) => RunIdSchema.parse(`00000000-000${n}-4000-8000-0000000
 const none = { kind: "none" } as const;
 const NOTICE_BASE = { subject: "", workflow: "", age: "2 min ago", at, read: false, action: "", destination: none } as const;
 
-/** One notice for each tone; the panel colors and sorts by it. */
+/** One notice for each tone. */
 export const NOTICE_BY_TONE: Readonly<Record<NotificationItem["tone"], NotificationItem>> = {
   danger: { ...NOTICE_BASE, id: "tone-danger", kind: "run", priority: true, title: "Run failed", subject: "EID 10555001", workflow: "Person Lookup", detail: "Cross Verification failed.", tone: "danger", action: "Open log",
     destination: { kind: "run", runId: run(4), day: "2026-08-26" } },
@@ -66,21 +66,40 @@ export const NOTICE_BY_TONE: Readonly<Record<NotificationItem["tone"], Notificat
   info: { ...NOTICE_BASE, id: "tone-info", kind: "storage", title: "Relay repaired a saved file", detail: "Nothing needs your attention.", tone: "info" },
 };
 
-/** One notice for each source the panel names. */
+/** One notice for each source. */
 export const NOTICE_BY_KIND: Readonly<Record<NotificationKind, NotificationItem>> = {
   storage: { ...NOTICE_BASE, id: "kind-storage", kind: "storage", priority: true, title: "Your disk is full", detail: "Free up space; Relay cannot save anything until then.", tone: "danger" },
   chatgpt: { ...NOTICE_BASE, id: "kind-chatgpt", kind: "chatgpt", priority: true, title: "ChatGPT usage limit reached", detail: "Runs that read scans wait until 3:40 PM.", tone: "warning", action: "Open settings",
     destination: { kind: "settings", section: "general", target: "chatgpt.account" } },
   run: NOTICE_BY_TONE.warning,
   command: { ...NOTICE_BASE, id: "kind-command", kind: "command", priority: true, title: "Pause worker was not confirmed", subject: "Worker 1", workflow: "Separations",
-    detail: "Relay could not confirm whether this finished. Open it to check before trying again.", tone: "danger", action: "Open result", destination: { kind: "local-command-result", id: "operation-1" } },
+    detail: "Relay could not confirm whether this finished.", tone: "danger", action: "Open result", destination: { kind: "local-command-result", id: "operation-1" } },
 };
 
-export const STORAGE_DEGRADED_NOTICE: NotificationItem = { ...NOTICE_BASE, id: "storage-degraded", kind: "storage", priority: true, title: "Relay could not save everything",
-  detail: "Relay could not save everything. Reopen Relay before starting more work.", tone: "warning" };
-export const BACKFILL_GAP_NOTICE: NotificationItem = { ...NOTICE_BASE, id: "backfill-gap", kind: "storage", priority: true, title: "Notification history is incomplete",
-  detail: "Notification history is incomplete. Reconcile the affected work.", tone: "warning" };
-
 export const notificationsReady = (...items: readonly NotificationItem[]): NotificationsState => ({ state: "ready", items, pinned: [] });
-export const MIXED_NOTICES: NotificationsState = notificationsReady(NOTICE_BY_KIND.storage, NOTICE_BY_KIND.chatgpt, NOTICE_BY_TONE.warning, NOTICE_BY_TONE.danger,
-  { ...NOTICE_BY_TONE.info, day: "Today" }, { ...NOTICE_BY_TONE.positive, day: "Yesterday", age: "1 days ago" });
+
+/** Notices for the bell popover stories, shaped like a real week: repeats folded with a count, storage with hundreds, a long name, one deleted run. */
+const notice = (id: string, item: Partial<NotificationItem> & Pick<NotificationItem, "title" | "detail" | "tone">): NotificationItem =>
+  ({ ...NOTICE_BASE, id, kind: "run", priority: item.tone === "danger" || item.tone === "warning", action: "Open log", destination: { kind: "run", runId: run(4), day: "2026-08-26" }, ...item });
+export const POPOVER_FAILED = notice("popover-failed", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10555001", detail: "CRM sign-in failed.", tone: "danger", count: 3, age: "12 min ago" });
+export const POPOVER_WAITING = notice("popover-waiting", { title: "Run waiting", workflow: "Onboarding", subject: "Morrow, Bea", detail: "Waiting for hire review.", tone: "warning", age: "34 min ago" });
+export const POPOVER_DONE = notice("popover-done", { title: "Run completed", workflow: "Separations", subject: "Separation 5017", detail: "Completed and verified.", tone: "positive", read: true, day: "Today", age: "2 hr ago" });
+export const POPOVER_STORAGE = notice("popover-storage", { kind: "storage", title: "Storage needs attention", detail: "Relay couldn't save everything.", tone: "warning", count: 213, action: "", age: "4 days ago" });
+export const POPOVER_GONE = notice("popover-gone", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10101010", detail: "Couldn't save the browser screenshot.", tone: "danger", read: true, gone: true, day: "Monday", age: "8 days ago" });
+export const POPOVER_LONG = notice("popover-long", { title: "Run failed", workflow: "Separations", subject: "Featherstonehaugh-Montgomery, Alexandria Josephine Wilhelmina · EID 10554120",
+  detail: "Kronos couldn't verify the timecard.", tone: "danger", age: "59 min ago" });
+export const POPOVER_FEW: NotificationsState = notificationsReady(POPOVER_FAILED, POPOVER_WAITING, POPOVER_DONE);
+export const POPOVER_MANY: NotificationsState = notificationsReady(
+  POPOVER_FAILED, POPOVER_WAITING,
+  notice("many-1", { title: "Run failed", workflow: "Separations", subject: "Separation 5015", detail: "Couldn't open the Kuali document.", tone: "danger", count: 4, age: "1 hr ago" }),
+  notice("many-2", { title: "Run failed", workflow: "Work-Study", subject: "EID 10777012", detail: "UCPath sign-in failed.", tone: "danger", count: 2, age: "3 hr ago" }),
+  POPOVER_STORAGE,
+  POPOVER_DONE,
+  notice("many-3", { title: "Run completed", workflow: "Person Lookup", subject: "EID 10333015", detail: "Completed and verified.", tone: "positive", read: true, day: "Today", age: "5 hr ago" }),
+  notice("many-4", { title: "Run failed", workflow: "Onboarding", subject: "Okafor, Ines", detail: "Couldn't verify CRM hire data.", tone: "danger", read: true, count: 5, day: "Yesterday", age: "1 day ago" }),
+  notice("many-5", { title: "Run completed", workflow: "Onboarding", subject: "Morrow, Bea", detail: "Completed and verified.", tone: "positive", read: true, day: "Yesterday", age: "1 day ago" }),
+  notice("many-6", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10221844", detail: "Couldn't save the browser screenshot.", tone: "danger", read: true, count: 12, day: "Friday", age: "4 days ago" }),
+  notice("many-7", { title: "Run waiting", workflow: "Onboarding", subject: "Okafor, Ines", detail: "Waiting for hire review.", tone: "warning", read: true, day: "Friday", age: "4 days ago" }),
+  POPOVER_GONE,
+);
+export const POPOVER_LONG_NOTICES: NotificationsState = notificationsReady(POPOVER_LONG, POPOVER_STORAGE, POPOVER_FAILED, POPOVER_DONE);

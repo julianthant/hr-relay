@@ -34,7 +34,7 @@ import { LogoutOperationSchema,SignUpOperationSchema } from "../../../../../src/
 import { seedRegisteredSignupBrowser } from "../../../../support/helpers/browser/browser-roots.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
-import { createBoundProfileFixture,syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture,syntheticOnboardingDuo, withFixtureUcpath } from "../../../../support/helpers/admission-fixture.js";
 import { CANONICAL_WORKER_ID,createRunRecordServiceTestWorld } from "../../../../support/helpers/backend/run-record-service-world.js";
 import { assertRuntimeLifetimeHeld,runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 
@@ -470,7 +470,7 @@ it("upgrades a pending sign-up database before onboarding recovery without publi
     runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts, onboardingDuo: syntheticOnboardingDuo() });
     await runtime.session.recoverOnboarding();
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(f.stateRoot), false);
-    const resumed = runtime.session.signUp({ ...login, firstName: "Fixture", lastName: "Example", createdAt: new Date().toISOString() });
+    const resumed = runtime.session.signUp(withFixtureUcpath({ ...login, firstName: "Fixture", lastName: "Example", createdAt: new Date().toISOString() }));
     assert.equal(resumed.state, "onboarding");
     assert.notEqual("profileId" in resumed ? resumed.profileId : undefined, profileId);
   } finally { await runtime?.close(); machine?.release(); await f.close(); await lifetime.close(); }

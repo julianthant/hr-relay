@@ -140,6 +140,8 @@ describe("Settings > Account details rows", () => {
   it("reads a lost reply back and shows the saved name with no message", async () => {
     const reads: string[] = [];
     await mount(async () => { throw new Error("offline"); }, async () => { reads.push("read"); return account({ name: "Sam Rivera" }); });
+    await settle();
+    reads.length = 0; // the page's own read when it opens is not the read-back
     await click("Edit name");
     await typeInto("Name", "Sam Rivera");
     await press("Save");

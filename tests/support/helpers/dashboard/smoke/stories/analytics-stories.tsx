@@ -66,7 +66,7 @@ const PICK = {
   "range-90d": scene("The last 90 days", { play: period("90d"), story: { ready: 'text="Runs"' } }),
   "range-refused": scene("An address with a date range that is not valid", { range: "later..earlier", story: { ready: 'text="That date range is not valid. Pick a period above."' } }),
   "period-updating": scene("The next period read while the last one stays", { range: "2026-08-28..2026-09-26", report: { held: true }, story: { ready: '[data-analytics-stale]' } }),
-  "one-workflow": scene("One workflow chosen", { play: then(click("By workflow"), click("Separations", "menuitemradio")), story: { ready: 'button:has-text("Separations")' } }),
+  "one-workflow": scene("One workflow chosen", { play: then(click("All workflows"), click("Separations", "menuitemradio")), story: { ready: 'button:has-text("Separations")' } }),
   "workflow-details": scene("A workflow row opened", { play: click("Show Separations details"), story: { ready: 'text="Open runs"' } }),
 } satisfies Record<View, Story>;
 
@@ -106,8 +106,6 @@ const AUDIT_FIXES = "#532";
 const BREAK_SETS = {
   /** A control on the report shows no visible focus ring on its keyboard stop: the period choice, or in a drilldown its search and order. */
   FOCUS: ["named-and-focusable"],
-  /** FOCUS, and the opened workflow row lists a raw code, id or path the banned-text rule rejects. */
-  FOCUS_AND_RAW_TEXT: ["named-and-focusable", "no-banned-text"],
 } as const;
 
 /** By `<state type>/<member>`. */
@@ -135,7 +133,7 @@ const KNOWN_BREAKS = {
   "pick/range-30d": BREAK_SETS.FOCUS,
   "pick/range-90d": BREAK_SETS.FOCUS,
   "view/loaded": BREAK_SETS.FOCUS,
-  "pick/workflow-details": BREAK_SETS.FOCUS_AND_RAW_TEXT,
+  "pick/workflow-details": BREAK_SETS.FOCUS,
 } as const;
 
 export const ANALYTICS_STORIES = withKnownBreaks(

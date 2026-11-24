@@ -19,7 +19,7 @@ import { PreflightObservationChangedError } from "../../../../src/rules/prefligh
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { type GateSourcePort } from "../../../../src/backend/runtime/gates/gate-source-runtime.js";
 
 import { AppSettingsSchema } from "../../../../src/models/config/app-settings.js";

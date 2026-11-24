@@ -1,7 +1,7 @@
 import { unusedWorkerPool } from "../../support/helpers/backend/unused-worker-pool.js";
 import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
-import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
+import { syntheticOnboardingDuo, finishProfileOnboarding, withFixtureUcpath } from "../../support/helpers/admission-fixture.js";
 
 
 
@@ -18,7 +18,8 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { composeProfileAssistantAuthorization, composeProfileRuntime } from "../../../src/backend/app/composition/storage-compose.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createCommandKernel, executeSettingsCommand } from "../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../src/backend/runs/commands/settings-command.js";
 import { createNotificationInbox } from "../../../src/backend/runs/notifications/inbox.js";
 import { createSettingsApplicationExecutor } from "../../../src/backend/runs/commands/settings-service.js";
 import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -46,7 +47,7 @@ async function fixture() {
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
   const signUpFields = { firstName: "Synthetic", lastName: "Operator", email: "operator@ucsd.edu", password: "synthetic-password", createdAt: clock.now().toISOString() };
   const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(), admission: machine, clock, hostFacts: { primaryDisplay: null } });
-  const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(signUpFields));
+  const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(withFixtureUcpath(signUpFields)));
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("signup required");
   const context = runtime.selectedContext(active.token), database = context.database;
   const unavailable = (): never => { throw new Error("unused runtime port invoked"); };
