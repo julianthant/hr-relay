@@ -227,6 +227,8 @@ export function removeEmptySchema26AssistantHistory(database: DatabaseSync): voi
 /** Returns a current store to the schema-22 worker custody DDL, keeping each worker slot in its predecessor row shape; the schema version is left to the caller. */
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  // The dependency table goes back to its old DDL in place, so the comparison below keeps its rows.
+  restoreSchema39ListIndexes(database);
   embedWorkbookPayloads(database);
   dropSchema36WorkbookSyncStatusColumn(database);
   removeSchema30WorkbookPinTags(database);
