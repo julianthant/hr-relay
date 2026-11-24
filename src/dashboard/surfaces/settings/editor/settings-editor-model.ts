@@ -76,8 +76,9 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const rowWaiters = useRef(new Set<() => void>());
   useEffect(() => { for (const check of [...rowWaiters.current]) check(); }, [rowStore, streamStopped]);
   // A first row the stream could not read, with nothing shown yet, is the initial read's failure.
-  const editor: EditableSettingsState = streamed?.unavailable === true && shownEditor.state === "loading"
-    ? { state: "failed", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text } : shownEditor;
+  const streamUnavailable = streamed?.unavailable === true;
+  const editor = useMemo<EditableSettingsState>(() => streamUnavailable && shownEditor.state === "loading"
+    ? { state: "failed", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text } : shownEditor, [streamUnavailable, shownEditor]);
   const [draft, setDraft] = useState<SettingsDraft>({});
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
@@ -127,21 +128,21 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     if (shown === undefined ? editor.state !== "failed" : document.revision <= shown.revision) return;
     acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined);
   }, [streamed, request, resource, editor.state, setEditor]);
-  /** The first held settings row at or above `revision`. Unresolved at once on an unavailable row or a stopped stream,
-   * and after SETTINGS_ROW_WAIT_MS without one; a reset waits for the snapshot's row. */
+  /** The first held settings row at or above `revision`. Unresolved at once on an unavailable row, a stopped stream or a stream
+   * that holds no settings row (none carried yet, or reset), and after SETTINGS_ROW_WAIT_MS without one. */
   const settingsRowAt = (revision: number): Promise<EditableSettingsWire> => new Promise((resolve, reject) => {
     const rows = stream.current.rows;
-    let unsubscribe: (() => void) | undefined;
     const finish = (settle: () => void): void => { clearTimeout(timer); unsubscribe?.(); rowWaiters.current.delete(check); settle(); };
     const check = (): void => {
       const held = rows?.settings();
       if (held?.unavailable === true) finish(() => reject(new Error("settings-row-unavailable")));
       else if (held?.document !== undefined && held.document.revision >= revision) { const document = held.document; finish(() => resolve(document)); }
-      else if (rows === undefined || stream.current.rows !== rows || stream.current.stopped) finish(() => reject(new Error("settings-row-stream-stopped")));
+      else if (held === undefined) finish(() => reject(new Error("settings-row-not-held")));
+      else if (stream.current.rows !== rows || stream.current.stopped) finish(() => reject(new Error("settings-row-stream-stopped")));
     };
     const timer = setTimeout(() => finish(() => reject(new Error("settings-row-wait-expired"))), SETTINGS_ROW_WAIT_MS);
     rowWaiters.current.add(check);
-    unsubscribe = rows?.subscribe(check);
+    const unsubscribe = rows?.subscribe(check);
     check();
   });
   const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
@@ -183,11 +184,11 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const discard = (): void => setDraft({});
   /** Drops only what this save sent; an edit made while it was in flight stays and saves next. */
   const settle = (sent: SettingsDraft): void => setDraft(previous => Object.fromEntries(Object.entries(previous).filter(([path, operation]) => sent[path] !== operation)));
-  const failed = (sent: SettingsDraft): void => {
+  const failed = (sent: SettingsDraft, held = false): void => {
     settle(sent);
     input.onSaveProblem?.(settingsSaveFailure());
-    // The control shows what the backend holds, never a guess about an unknown outcome.
-    void refresh().catch(() => undefined);
+    // The control shows what the backend holds, never a guess about an unknown outcome; a readback row already holds it.
+    if (!held) void refresh().catch(() => undefined);
   };
   const perform = async (command: OrdinarySettingsAttempt, sent: SettingsDraft): Promise<void> => {
     if (busy.current) return;
@@ -216,7 +217,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
           }
           const next = commandSaveState(outcome);
           if (next.state === "unconfirmed") return;
-          if (next.state !== "applied") { failed(sent); return; }
+          if (next.state !== "applied") { failed(sent, readDocument !== undefined); return; }
           saved(next.replayed);
         },
       };

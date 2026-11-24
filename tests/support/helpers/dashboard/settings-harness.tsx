@@ -63,6 +63,8 @@ export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof 
       rows.apply([StreamRowSchema.parse({ model: "settings", key: "editable", value })]);
     },
   };
+  // The snapshot's settings row.
+  ports.deliver();
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
     requests.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
     if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(ports.read()), { status: 200 });

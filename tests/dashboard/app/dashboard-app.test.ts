@@ -785,7 +785,9 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
   const requests: { url: string; resume?: string | null }[] = [];
   let open = true;
   const publish = (stream: ReadableStreamDefaultController<Uint8Array>, message: unknown) => stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(message)}\n\n`));
+  let cursor = 0;
   const snapshot = (stream: ReadableStreamDefaultController<Uint8Array>, day: DashboardDayWire_m2) => {
+    cursor = Number(String(day.snapshotCursor).slice('pc:'.length));
     publish(stream, { type: 'hello', wireVersion: 1, descriptorHash: day.descriptorHash, projectionGeneration: day.projectionGeneration, cursor: day.snapshotCursor });
     publish(stream, { type: 'snapshot', topic: 'dashboard-day', rows: [], cursor: day.snapshotCursor, position: 0, payload: day });
   };
@@ -824,6 +826,13 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
   return { host, requests, streams,
     deliver: async (day: DashboardDayWire_m2, index = streams.length - 1) => { await act_m2(async () => snapshot(streams[index], day)); await settle(); },
     disconnect: async () => { await act_m2(async () => streams.at(-1)!.error(new Error('Synthetic disconnect'))); await settle(); },
+    /** The settings row the hub sends after an ordinary commit, as a rows-only change. */
+    settingsRow: (value: unknown) => {
+      const stream = streams.at(-1); assert_m2(stream, 'no stream to carry the settings row');
+      cursor += 1;
+      publish(stream, { type: 'change', topic: 'dashboard-day', after: `pc:${String(cursor - 1)}`, cursor: `pc:${String(cursor)}`, position: 0,
+        rows: [{ model: 'settings', key: 'editable', value: { state: 'available', value } }] });
+    },
     stale: async (day: DashboardDayWire_m2) => { await act_m2(async () => publish(streams.at(-1)!, { type: 'snapshot', topic: 'dashboard-day', rows: [], cursor: day.snapshotCursor, position: 0, payload: day })); await settle(); },
   };
 }
@@ -895,7 +904,12 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
       commands.push(body);
       const command = CommandRequestSchema.parse(body);
-      return Promise.resolve(settlement === "confirmed" ? Response.json(authority.execute(command)) : Response.json(settlement === "conflict"
+      if (settlement === "confirmed") {
+        const reply = authority.execute(command);
+        h.settingsRow(authority.read());
+        return Promise.resolve(Response.json(reply));
+      }
+      return Promise.resolve(Response.json(settlement === "conflict"
         ? { state: "conflict", commandId: command.commandId, currentVersion: 0, message: "Synthetic conflict" }
         : { state: "rejected", commandId: command.commandId, code: "invalid-value", message: "Synthetic refusal" }));
     } });

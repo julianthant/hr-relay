@@ -212,7 +212,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       settings: {
         read: () => {
           const record = liveSettings === true ? readSettings(database.authority) : initialSettingsFileRecord();
-          return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, resolveSettings({}).fingerprint) } };
+          return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, resolveSettings(record.settings).fingerprint) } };
         },
       },
       environment: {},

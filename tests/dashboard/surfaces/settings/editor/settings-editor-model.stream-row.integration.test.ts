@@ -21,12 +21,12 @@ const labelValue = (h: Harness): unknown => {
 const settled = async (check: () => void): Promise<void> => {
   await vi.waitFor(async () => { await settingsAction(() => undefined); check(); }, { timeout: 5000, interval: 50 });
 };
-/** Holds each row the save would deliver until the test releases it, so the reply arrives first. */
+/** Holds each row the save would deliver until the test releases them, so the reply arrives first; releasing delivers at once again. */
 const holdRows = (h: Harness): (() => void) => {
   const deliver = h.ports.deliver;
   let held = 0;
   h.ports.deliver = () => { held += 1; };
-  return () => { for (; held > 0; held -= 1) deliver(); };
+  return () => { h.ports.deliver = deliver; for (; held > 0; held -= 1) deliver(); };
 };
 const save = async (h: Harness, value: string): Promise<void> => {
   await settingsAction(() => h.controller().update("actor.label", value, true));
