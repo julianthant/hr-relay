@@ -63,24 +63,33 @@ export function withUpgradedBackupCopy<T>(admission: RuntimeAdmission, source: D
     throw new Error("authority-backup-upgrade-source-schema-mismatch");
   }
   const root = isolatedBackupScratchRoot(admission, image.path);
-  const directory = join(root, `${readonlyAuthorityCopyPrefix}${String(process.pid)}-import-${randomUUID()}`);
-  createPrivateDirectory(directory, { mode: 0o700 });
+  const directory = { path: join(root, `${readonlyAuthorityCopyPrefix}${String(process.pid)}-import-${randomUUID()}`) };
+  createPrivateDirectory(directory.path, { mode: 0o700 });
+  let database: DatabaseSync | undefined;
+  let result: { value: T } | { error: unknown };
   try {
-    const path = join(directory, "authority.sqlite");
+    const path = join(directory.path, "authority.sqlite");
     writeFileSync(path, source.serialize(), { flag: "wx", mode: 0o600 });
-    const database = new DatabaseSync(path, { enableForeignKeyConstraints: true, enableDoubleQuotedStringLiterals: false,
+    database = new DatabaseSync(path, { enableForeignKeyConstraints: true, enableDoubleQuotedStringLiterals: false,
       allowExtension: false, allowBareNamedParameters: false, allowUnknownNamedParameters: false, defensive: true });
-    try {
-      database.exec("BEGIN EXCLUSIVE");
-      applyAuthorityMigrationsAfter(database, version, { now, binding,
-        captureFile: () => { throw new Error("authority-backup-upgrade-artifact-unavailable"); } });
-      database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
-      database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
-      inspectNormalAuthority(database);
-      database.exec("COMMIT; PRAGMA query_only=ON");
-      return read(database);
-    } finally { database.close(); }
-  } finally { rmSync(directory, { recursive: true, force: true, maxRetries: 3 }); }
+    database.exec("BEGIN EXCLUSIVE");
+    applyAuthorityMigrationsAfter(database, version, { now, binding,
+      captureFile: () => { throw new Error("authority-backup-upgrade-artifact-unavailable"); } });
+    database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
+    database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+    inspectNormalAuthority(database);
+    database.exec("COMMIT; PRAGMA query_only=ON");
+    result = { value: read(database) };
+  } catch (error) { result = { error }; }
+  const failures = "error" in result ? [result.error] : [];
+  if (database !== undefined) {
+    try { database.close(); }
+    catch (error) { throw retainAuthoritySourceClosure([...failures, error], { database, directory }); }
+  }
+  try { rmSync(directory.path, { recursive: true, force: true, maxRetries: 3 }); }
+  catch (error) { throw retainAuthoritySourceClosure([...failures, error], { directory }); }
+  if ("error" in result) throw result.error;
+  return result.value;
 }
 
 
