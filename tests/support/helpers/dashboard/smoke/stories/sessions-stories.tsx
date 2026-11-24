@@ -18,7 +18,7 @@ const bar = (title: string, data: SessionsViewState, { open = true, operations }
     {...(operations === undefined ? {} : { operations })} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame>, ...extra });
 /** The Add workers control stays shown and switched off whenever the bar cannot act, with nothing to choose. */
 const DEAD_ADD = { knownFailures: { "no-dead-disabled-control": "#532" } } as const;
-/** A focusable browser chip (a nickname or a served reason) and the dialog surface carry no accessible name of their own. */
+/** A focusable browser chip (a nickname or a served reason) carries no accessible name of its own. */
 const UNNAMED_CONTROL = { knownFailures: { "named-and-focusable": "#532" } } as const;
 const ready = (...workers: readonly SessionWorker[]): SessionsViewState => ({ state: "ready", workers });
 
@@ -59,7 +59,7 @@ const COMBINATION = {
   "all-states": bar("One worker in every state", ready(...Object.values(SESSION_WORKER_BY_STATE))),
   stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }, {}, DEAD_ADD),
   wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER), {}, UNNAMED_CONTROL),
-  "add-workers": bar("The Add workers dialog", ready(SESSION_WORKER_BY_STATE.running), {}, { ready: '[role="dialog"]', ...UNNAMED_CONTROL,
+  "add-workers": bar("The Add workers dialog", ready(SESSION_WORKER_BY_STATE.running), {}, { ready: '[role="dialog"]',
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } }),
 } satisfies Record<string, Story>;
 

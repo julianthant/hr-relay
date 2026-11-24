@@ -67,8 +67,8 @@ const rerunClient = (served: Partial<DashboardClient> = {}) => () => runDialogCl
 const planning = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ submitStartPlan: async () => runDialogPlan(), executeCommand: async () => RUN_DIALOG_APPLIED, ...served });
 const start = (page: Page) => press(page, "Start run");
 
-/** Every dialog is built from the same large banded shell, which draws its body padding off the design system's, and holds a control no keyboard reaches. */
-const SHELL_BREAK = { "dialogs-share-shape": "#532", "named-and-focusable": "#532" } as const;
+/** The run dialog pads its body 20px, off the design system's 12px 24px. */
+const SHELL_BREAK = { "dialogs-share-shape": "#532" } as const;
 const stage = (title: string, client: () => DashboardClient, at: RunStartStage, extra: Partial<Story> & SceneOptions = {}) =>
   scene(title, client, at, { knownFailures: SHELL_BREAK, ...extra });
 
@@ -178,6 +178,25 @@ const REFERENCE = {
   "check-failed": reference("The optional check's list could not be read", { workbookCatalog: async () => unreadable(), workbookCompatibility: async () => ({ workflows: [], libraries: [] }) }, RUN_DIALOG_CHECK_CATALOG),
 } satisfies Record<ReferenceState, Story>;
 
+/** The dialog's controls show no keyboard stop in these stories. */
+const FOCUS_BREAKS: ReadonlySet<string> = new Set([
+  "activity/checking-warnings",
+  "activity/planning",
+  "activity/replanning",
+  "activity/submitting",
+  "check-combination/failure-and-warning",
+  "check-combination/fixable-failure",
+  "check-combination/unfixable-failure",
+  "checks/checking",
+  "checks/ready",
+  "pdf/choice-unpicked",
+  "refusal/active-run-exists",
+  "refusal/capability-unavailable",
+  "refusal/dry-run-unsupported",
+  "refusal/input-invalid",
+  "refusal/preflight-failed",
+]);
+
 export const RUN_DIALOG_STORIES = defineSurface("run-dialog", {
   stage: STAGE, checks: CHECKS, "check-combination": CHECK_COMBINATION, "rerun-load": RERUN_LOAD, activity: ACTIVITY, refusal: REFUSAL, answer: ANSWER, recovery: RECOVERY, options: OPTIONS, pdf: PDF, reference: REFERENCE,
-});
+}).map(entry => FOCUS_BREAKS.has(entry.id.slice("run-dialog/".length)) ? { ...entry, story: { ...entry.story, knownFailures: { ...entry.story.knownFailures, "named-and-focusable": "#532" } } } : entry);

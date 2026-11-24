@@ -23,6 +23,10 @@ export function ocrRecordName(fields: AdmittedRecord): string | null {
   const first = fields.answers.find(answer => answer.path === "firstName"), last = fields.answers.find(answer => answer.path === "lastName");
   return first?.state === "read" && last?.state === "read" ? `${last.value}, ${first.value}` : null;
 }
+
+export function ocrEmployeeIdAnswer(fields: AdmittedRecord) {
+  return fields.answers.find(answer => answer.path === "employee.employeeId" || answer.path === "employeeId");
+}
 export const OcrIdentityHoldReasonSchema = z.enum(["lookup-failed", "not-looked-up", "no-match", "multiple-matches", "name-differs", "eid-differs", "awaiting-assertion"]);
 export const OcrIdentityHoldSchema = z.strictObject({ recordId: StableRecordIdSchema, reason: OcrIdentityHoldReasonSchema });
 type OcrSeed = z.output<typeof OcrResultSchema>;
@@ -49,7 +53,7 @@ function assessOcrIdentity(seed: OcrSeed, recordId: StableRecordId, subjectName:
   if (status.ucpathSelection === "ambiguous") return { hold: "multiple-matches" };
   if (status.ucpathSelection !== "resolved" || status.details.ucpath !== "Found" || status.details.foundInUcpath === false) return { hold: "no-match" };
   const observed = EidSchema.parse(status.details.eid);
-  const fieldEid = fields.answers.find(answer => ["employee.employeeId", "employeeId"].includes(answer.path));
+  const fieldEid = ocrEmployeeIdAnswer(fields);
   if (fieldEid?.state === "read" && fieldEid.value !== observed) return { hold: "eid-differs" };
   return namesAgree(subjectName, status.details.name, nameRule === "subset" && fieldEid?.state === "read") ? { eid: observed } : { hold: "name-differs" };
 }
@@ -150,7 +154,7 @@ export const OcrReviewRevisionSchema = z.strictObject({
     context.addIssue({ code: "custom", message: "OCR revision must retain its exact run, seed and record membership" });
   }
   for (const entry of record.records) {
-    const fieldEid = entry.fields.answers.find(answer => ["employee.employeeId", "employeeId"].includes(answer.path));
+    const fieldEid = ocrEmployeeIdAnswer(entry.fields);
     if (entry.assertedEid !== null && fieldEid?.state === "read" && fieldEid.value !== entry.assertedEid) {
       context.addIssue({ code: "custom", message: "The asserted identity must agree with the corrected employee ID" });
     }

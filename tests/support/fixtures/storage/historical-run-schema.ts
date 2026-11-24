@@ -71,8 +71,15 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
   }
 }
 
-/** Steps a current authority back to schema 39: none of the list indexes and no generated dependency parent column. */
+/** Steps an authority back to schema 40, which has no OCR terms in the search projection. */
+export function restoreSchema40OcrSearchTerms(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 41);
+  database.exec("ALTER TABLE run_search DROP COLUMN ocr_subject_terms; UPDATE database_states SET schema_version=40; PRAGMA user_version=40");
+}
+
+/** Steps an authority back to schema 39: none of the list indexes and no generated dependency parent column. */
 export function restoreSchema39ListIndexes(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 41) restoreSchema40OcrSearchTerms(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 40);
   dropListIndexObjects(database);
   database.exec("UPDATE database_states SET schema_version=39; PRAGMA user_version=39");
@@ -88,7 +95,7 @@ function dropListIndexObjects(database: DatabaseSync): void {
  * cursor space, and no debug table.
  */
 export function restoreSchema38DebugEvents(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 40) restoreSchema39ListIndexes(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 40) restoreSchema39ListIndexes(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 39);
   database.exec(`CREATE TEMP TABLE debug_capture AS SELECT row_number() OVER (ORDER BY cursor)
       + COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0) AS timeline_cursor, * FROM debug_events;
@@ -231,6 +238,7 @@ export function removeEmptySchema26AssistantHistory(database: DatabaseSync): voi
 /** Returns a current store to the schema-22 worker custody DDL, keeping each worker slot in its predecessor row shape; the schema version is left to the caller. */
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  database.exec("ALTER TABLE run_search DROP COLUMN ocr_subject_terms");
   // The dependency table goes back to its old DDL in place, so the comparison below keeps its rows.
   dropListIndexObjects(database);
   embedWorkbookPayloads(database);

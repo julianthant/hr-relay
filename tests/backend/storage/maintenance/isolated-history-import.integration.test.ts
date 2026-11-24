@@ -115,7 +115,7 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
   const archivePath = join(copy.stateRoot, "files", "imported-history.sqlite");
   const archive = new DatabaseSync(archivePath);
   try {
-    archive.exec("ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id; UPDATE history_header SET schema_version=39");
+    archive.exec("ALTER TABLE run_search DROP COLUMN ocr_subject_terms; ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id; UPDATE history_header SET schema_version=39");
   } finally { archive.close(); }
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(copy.workspace, name));
   const runtime = composeProfileRuntime({ admission: copy.machine, clock, hostFacts: { primaryDisplay: null } });
@@ -148,5 +148,6 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
   try {
     expect(upgraded.prepare("SELECT schema_version FROM history_header").get()?.schema_version).toBe(CURRENT_AUTHORITY_SCHEMA_VERSION);
     expect(upgraded.prepare("SELECT count(*) AS count FROM pragma_table_info('delegation_dependencies') WHERE name='parent_run_id'").get()?.count).toBe(1);
+    expect(upgraded.prepare("SELECT count(*) AS count FROM pragma_table_info('run_search') WHERE name='ocr_subject_terms'").get()?.count).toBe(1);
   } finally { upgraded.close(); }
 });
