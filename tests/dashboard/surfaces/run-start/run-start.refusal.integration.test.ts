@@ -7,6 +7,7 @@ import { requiredPreflightChecks } from "../../../../src/models/preflight/prefli
 import { PREFLIGHT_CHECKS } from "../../../../src/models/runtime/runtime-dependencies.js";
 import { createTimeoutDeadlineScheduler } from "../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 import { StartCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { act } from "react";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
@@ -18,19 +19,22 @@ const { setup, mount, cleanup, press, reachChecks, checkbox, button, fill, field
 afterEach(async () => { vi.restoreAllMocks(); await cleanup(); });
 
 for (const rerun of [false, true]) {
+  const warned = rerun ? 1 : 0;
   /** Reaches the last stage with a dry run chosen; the plan the first Start requests expires before it is submitted. */
   async function review(h: Awaited<ReturnType<typeof setup>>, client: DashboardClient = h.client, expireAfterPlan = true) {
     let planned = false;
     const expiring = { ...client, submitStartPlan: async (request: unknown) => {
       const plan = await client.submitStartPlan(request);
+      if ((plan.rerun?.warnings.length ?? 0) > 0 && StartPlanRequestSchema.parse(request).warningAcknowledgment === undefined) return plan;
       if (!planned && expireAfterPlan) { h.clock.advanceWall(600_000); h.clock.advanceMonotonic(600_000); }
       planned = true;
       return plan;
     } };
     const replaceBinding = await mount(h, rerun ? await h.completeSource() : undefined, expiring);
-    if (rerun) { await press("Continue"); await press("Confirm"); }
+    if (rerun) { await press("Continue"); }
     else { const box = document.querySelector("textarea"); assert.ok(box); await fill(box, "10812345"); await press("Continue"); }
     await act(async () => checkbox("Dry run").click());
+    if (rerun) await reachChecks("Start dry run");
     return replaceBinding;
   }
   it(`${rerun ? "Rerun" : "Run"} re-previews an expired plan and requires another Start`, async () => {
@@ -39,8 +43,8 @@ for (const rerun of [false, true]) {
     assert.ok(text().includes("The plan expired and was rebuilt. Review it again."));
     assert.equal(document.querySelector('[role="dialog"]') !== null, true);
     assert.equal(text().includes("Run not started"), false);
-    assert.equal(h.submissions.length, 2);
-    assert.deepEqual(h.submissions[1], h.submissions[0]);
+    assert.equal(h.submissions.length, 2 + warned);
+    assert.deepEqual(h.submissions[1 + warned], h.submissions[warned]);
     assert.equal(h.finalCommands.length, 1);
     assert.equal(window.sessionStorage.length, 0);
     await press("Start dry run");
@@ -52,7 +56,7 @@ for (const rerun of [false, true]) {
     assert.notEqual(original.commandId, refreshed.commandId);
   });
   it(`${rerun ? "Rerun" : "Run"} closes a real readiness refusal and emits one 6000 ms catalog toast`, async () => {
-    let blocked = false;
+    let blocked = false; let asked = 0;
     const h = await setup(clock => createPreflightAdmission({ clock, scheduler: createTimeoutDeadlineScheduler(clock), validate() {},
       runners: scope => requiredPreflightChecks(scope.requestedCapabilities).map(check => {
         const spec = PREFLIGHT_CHECKS.find(entry => entry.id === check); assert.ok(spec);
@@ -60,7 +64,7 @@ for (const rerun of [false, true]) {
           ? { check, state: "unhealthy" as const, summary: "PRIVATE_KERNEL_MARKER", impact: "Controlled failure" }
           : { check, state: "healthy" as const, summary: "Controlled healthy detector" }; } };
       }) }));
-    await review(h, { ...h.client, submitStartPlan: async request => { const plan = await h.client.submitStartPlan(request); blocked = true; return plan; } }, false);
+    await review(h, { ...h.client, submitStartPlan: async request => { const plan = await h.client.submitStartPlan(request); if (++asked > warned) blocked = true; return plan; } }, false);
     const timer = vi.spyOn(globalThis, "setTimeout");
     await press("Start dry run");
     assert.equal(document.querySelector('[role="dialog"]') === null, true);
@@ -78,7 +82,7 @@ for (const rerun of [false, true]) {
   it(`${rerun ? "Rerun" : "Run"} closes and toasts safely if expiry re-preview fails`, async () => {
     const h = await setup(); let previews = 0;
     await review(h, { ...h.client, submitStartPlan: async request => {
-      if (++previews > 1) throw new Error("PRIVATE_REPREVIEW_MARKER");
+      if (++previews > 1 + warned) throw new Error("PRIVATE_REPREVIEW_MARKER");
       return h.client.submitStartPlan(request);
     } });
     await press("Start dry run");
@@ -86,17 +90,17 @@ for (const rerun of [false, true]) {
     assert.equal(text().split("Run not started").length - 1, 1);
     assert.ok(text().includes(ERROR_CATALOG.RUN_START_READINESS_UNAVAILABLE.text));
     assert.equal(text().includes("PRIVATE_REPREVIEW_MARKER"), false);
-    assert.equal(h.finalCommands.length, 1); assert.equal(previews, 2);
+    assert.equal(h.finalCommands.length, 1); assert.equal(previews, 2 + warned);
     assert.equal(window.sessionStorage.length, 0);
   });
   it(`${rerun ? "Rerun" : "Run"} coalesces Start while expiry re-preview is pending`, async () => {
     const h = await setup(); const gate = Promise.withResolvers<void>(); let previews = 0;
     await review(h, { ...h.client, submitStartPlan: async request => {
-      if (++previews > 1) await gate.promise;
+      if (++previews > 1 + warned) await gate.promise;
       return h.client.submitStartPlan(request);
     } });
-    await reachChecks("Start dry run"); await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
-    assert.equal(previews, 2); assert.equal(h.finalCommands.length, 1);
+    await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
+    assert.equal(previews, 2 + warned); assert.equal(h.finalCommands.length, 1);
     await act(async () => gate.resolve());
     assert.equal(text().includes("Run not started"), false);
     assert.equal(h.finalCommands.length, 1);
@@ -105,11 +109,11 @@ for (const rerun of [false, true]) {
   for (const replacement of ["draft", "scope", "close"] as const) it(`${rerun ? "Rerun" : "Run"} ignores an expiry response after ${replacement} replacement`, async () => {
     const h = await setup(); const gate = Promise.withResolvers<void>(); let previews = 0;
     const client = { ...h.client, submitStartPlan: async (request: unknown) => {
-      if (++previews > 1) await gate.promise;
+      if (++previews > 1 + warned) await gate.promise;
       return h.client.submitStartPlan(request);
     } };
     const replaceBinding = await review(h, client);
-    await reachChecks("Start dry run"); await act(async () => button("Start dry run").click());
+    await act(async () => button("Start dry run").click());
     if (replacement === "draft") {
       await press("Back");
       const box = rerun ? field("Employee ID") : document.querySelector("textarea");
@@ -128,13 +132,13 @@ for (const rerun of [false, true]) {
     h.loseResponse();
     await press("Start dry run");
     assert.equal(document.querySelector('[role="dialog"]') !== null, true);
-    assert.equal(window.sessionStorage.length, 1); assert.equal(h.submissions.length, 1);
+    assert.equal(window.sessionStorage.length, 1); assert.equal(h.submissions.length, 1 + warned);
     await unmount(); document.body.replaceChildren();
     await mount(h, rerun ? h.database.authority.runs.listByWorkflow(h.descriptor.id)[0] : undefined);
     await press("Replay exact submission");
     assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.deepEqual(h.finalCommands[1], h.finalCommands[0]);
-    assert.equal(h.submissions.length, 1); assert.equal(window.sessionStorage.length, 0);
+    assert.equal(h.submissions.length, 1 + warned); assert.equal(window.sessionStorage.length, 0);
     assert.equal(text().split("Run not started").length - 1, 1);
   });
 

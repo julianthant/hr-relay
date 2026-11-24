@@ -2,6 +2,7 @@
 import type { Page } from "@playwright/test";
 import type { DashboardClient } from "../../../../../../src/dashboard/client/index.js";
 import { CommandResultSchema } from "../../../../../../src/rules/commands/commands.js";
+import { StartPlanRequestSchema } from "../../../../../../src/models/dashboard/start-plan.js";
 import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
 import { DashboardClientError } from "../../../../../../src/dashboard/client/errors.js";
 import { RunStartDialog } from "../../../../../../src/dashboard/surfaces/run-start/run-start.js";
@@ -63,7 +64,7 @@ const PASS: ServedCheck = { check: PreflightCheckIdSchema.parse("config.valid"),
 const WARN: ServedCheck = { check: PreflightCheckIdSchema.parse("fiscal.current"), status: "warning", summary: "The fiscal year ends soon." };
 const FIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("secrets.ucpath-sso"), status: "fail", summary: "The UCPath password is missing." };
 const UNFIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("filesystem.health"), status: "fail", summary: "Relay is out of disk space." };
-const rerunClient = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ rerunValues: async () => runDialogRerunSnapshot(), previewRerunWarnings: async () => runDialogRerunWarning(false), ...served });
+const rerunClient = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ rerunValues: async () => runDialogRerunSnapshot(), ...served });
 const planning = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ submitStartPlan: async () => runDialogPlan(), executeCommand: async () => RUN_DIALOG_APPLIED, ...served });
 const start = (page: Page) => press(page, "Start run");
 
@@ -72,8 +73,8 @@ const stage = scene;
 const STAGE = {
   Input: stage("Input, nothing typed", () => runDialogClient(), "Input"),
   RerunInput: stage("A rerun's Input, the values the source ran on", rerunClient(), "Input", { rerun: true }),
-  Warning: stage("A rerun's warning that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }), "Input", { rerun: true,
-    then: async page => { await press(page, "Continue"); await dialog(page).getByText("already submitted").waitFor(); } }),
+  Warning: stage("A rerun's warning that the source already filed", rerunClient({ submitStartPlan: async request => ({ ...runDialogPlan(), rerun: { ...runDialogRerunWarning().rerun, source: StartPlanRequestSchema.parse(request).rerunSource ?? runDialogRerunWarning().rerun.source } }) }), "Input", { rerun: true,
+    then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
   Start: stage("Start, options, steps and checks, every check ready", reading(PASS), "Start"),
   RerunStart: stage("A rerun's Start, each step as the source ended", rerunClient(), "Start", { rerun: true }),
 } satisfies Record<string, Story>;
@@ -98,7 +99,6 @@ const RERUN_LOAD = {
 
 const ACTIVITY = {
   planning: stage("Start pressed, the plan being built", planning({ submitStartPlan: never }), "Start", { then: start }),
-  "checking-warnings": stage("A rerun looking for repeat warnings", rerunClient({ previewRerunWarnings: never }), "Input", { rerun: true, then: page => press(page, "Continue") }),
   submitting: stage("The plan sent, waiting on the answer", planning({ executeCommand: never }), "Start", { then: start }),
   replanning: stage("An expired plan being built again", planning({ executeCommand: async () => CommandResultSchema.parse({ state: "rejected", commandId: "3a000000-0000-4000-8000-000000000003",
     code: "RUN_START_PLAN_EXPIRED", message: "The plan expired." }), submitStartPlan: never }), "Start", { then: start }),

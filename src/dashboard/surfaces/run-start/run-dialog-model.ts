@@ -50,8 +50,6 @@ export type LaunchRecovery =
 export type LaunchActivity =
   | { readonly kind: "idle" }
   | { readonly kind: "planning"; readonly request: number; readonly for: string }
-  | { readonly kind: "checking-warnings"; readonly request: number; readonly for: string;
-      readonly acknowledgmentAtDispatch?: string }
   | { readonly kind: "submitting"; readonly request: number; readonly for: string; readonly command: LaunchFinalCommand;
       readonly expiryRequest?: StartPlanRequest; readonly plannedCount?: number }
   | { readonly kind: "replanning"; readonly request: number; readonly for: string; readonly planRequest: StartPlanRequest };
@@ -96,8 +94,6 @@ export type RunDialogEvent =
   | { type: "continue"; gates: LaunchGates }
   | { type: "plan-settled"; request: number; plan: StartPlanResponse; planRequest: StartPlanRequest }
   | { type: "plan-failed"; request: number; message: string }
-  | { type: "warnings-settled"; request: number; warning: RerunWarningWire }
-  | { type: "warnings-failed"; request: number; message: string }
   | { type: "acknowledge"; via: "button" | "enter" } | { type: "cancel-warning" }
   | { type: "start"; gates: LaunchGates; authority: AuthorityCheck; planRequest: () => StartPlanRequest;
       prepare: (plan: StartPlanResponse) => LaunchFinalCommand }
@@ -115,7 +111,6 @@ export type RunDialogStep =
 export type RunDialogEffect =
   | { kind: "load-source"; request: number }
   | { kind: "request-plan"; request: number; planRequest: StartPlanRequest }
-  | { kind: "check-warnings"; request: number }
   | { kind: "retain-and-submit"; request: number; command: LaunchFinalCommand; plan?: StartPlanResponse }
   | { kind: "dismiss-recovery"; command: LaunchFinalCommand }
   | { kind: "feedback" }
@@ -333,31 +328,16 @@ export function runDialogTransition(state: RunDialogState, event: RunDialogEvent
     case "continue": {
       const refusal = continueRefusal(state, event.gates);
       if (refusal !== undefined) return { refused: refusal };
-      if (state.stage === "Input" && state.source.kind === "rerun" && state.source.load.state === "ready") {
-        const request = state.nextRequest;
-        const acknowledgment = state.source.load.acknowledgment;
-        return step({ ...cleared(state, ["problem"]), nextRequest: request + 1,
-          activity: { kind: "checking-warnings", request, for: fingerprint, ...(acknowledgment === undefined ? {} : { acknowledgmentAtDispatch: acknowledgment }) } },
-          [{ kind: "check-warnings", request }]);
-      }
       return step({ ...state, stage: event.gates.next ?? state.stage });
     }
-    case "warnings-settled":
-      return settle(state, event.request, ["checking-warnings"], fingerprint, (released, owner) => {
-        const digest = event.warning.rerun.warningDigest;
-        if (event.warning.rerun.warnings.length > 0 && digest !== owner.acknowledgmentAtDispatch) {
-          return step({ ...released, source: withWarning(released.source, event.warning), stage: "Warning" });
-        }
-        return step({ ...released, source: withWarning(released.source, event.warning, digest), stage: "Start" });
-      });
-    case "warnings-failed": case "plan-failed":
-      if (event.type === "plan-failed" && findOwner(state, event.request, ["replanning"]) !== undefined) {
+    case "plan-failed":
+      if (findOwner(state, event.request, ["replanning"]) !== undefined) {
         return settle(state, event.request, ["replanning"], fingerprint, released => {
           const { next, effects } = closeState(released);
           return step(next, [...effects, { kind: "close-dialog" }, { kind: "refusal-toast" }]);
         });
       }
-      return settle(state, event.request, [event.type === "plan-failed" ? "planning" : "checking-warnings"], fingerprint,
+      return settle(state, event.request, ["planning"], fingerprint,
         released => step({ ...released, problem: event.message }));
     case "plan-settled":
       return settle(state, event.request, ["planning", "replanning"], fingerprint, (released, owner) => owner.kind === "planning"
@@ -370,7 +350,7 @@ export function runDialogTransition(state: RunDialogState, event: RunDialogEvent
       return step({ ...cleared(state, ["shown"]), source: withWarning(state.source, warning, warning.rerun.warningDigest), stage: "Start" });
     }
     case "cancel-warning":
-      return state.stage === "Warning" ? step({ ...state, stage: "Input" }) : { refused: "not-here" };
+      return state.stage === "Warning" ? step({ ...cleared(state, ["shown"]), stage: "Start" }) : { refused: "not-here" };
     case "start": {
       const current = currentShown(state, fingerprint);
       const refusal = startRefusal(state, event.gates, current);
@@ -413,7 +393,7 @@ export function runDialogTransition(state: RunDialogState, event: RunDialogEvent
     case "submit-settled":
       return submitSettled(state, event, fingerprint);
     case "binding-changed": {
-      const reads = (entry: DetachedRequest) => entry.kind === "planning" || entry.kind === "checking-warnings";
+      const reads = (entry: DetachedRequest) => entry.kind === "planning";
       const moved = state.activity.kind !== "idle" && reads(state.activity) ? [state.activity] : [];
       return step({ ...state, activity: IDLE, detached: [...state.detached.filter(reads), ...moved] });
     }
@@ -471,7 +451,6 @@ export type RunDialogEffects = Readonly<{
   /** Restores the draft from a matching snapshot; a throw settles the load as failed. */
   restoreSource: (snapshot: RerunValuesSnapshot) => void;
   requestPlan: (planRequest: StartPlanRequest) => Promise<StartPlanResponse>;
-  checkWarnings: () => Promise<RerunWarningWire>;
   /** Retains the command (retainLaunchFinal) and reads its verification plan. */
   retain: (command: LaunchFinalCommand, plan: StartPlanResponse | undefined) => LaunchVerificationPlan | undefined;
   submit: (command: LaunchFinalCommand, verification: LaunchVerificationPlan | undefined) => Promise<CommandOutcome>;
@@ -524,12 +503,6 @@ export function useRunDialogMachine(input: Readonly<{ stage: RunStartStage; setS
           const { request, planRequest } = effect;
           void fx.requestPlan(planRequest).then(plan => send({ type: "plan-settled", request, plan, planRequest }),
             (caught: unknown) => send({ type: "plan-failed", request, message: messageOf(caught) }));
-          break;
-        }
-        case "check-warnings": {
-          const { request } = effect;
-          void fx.checkWarnings().then(warning => send({ type: "warnings-settled", request, warning }),
-            (caught: unknown) => send({ type: "warnings-failed", request, message: messageOf(caught) }));
           break;
         }
         case "retain-and-submit": {

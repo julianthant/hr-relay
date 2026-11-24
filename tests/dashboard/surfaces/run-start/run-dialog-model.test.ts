@@ -44,7 +44,6 @@ const SNAPSHOT = RerunValuesSnapshotSchema.parse({ source: { runId: RERUN.runId,
 const RERUN_PLAN_SOURCE = { runId: RERUN.runId, expectedVersion: RERUN.expectedVersion, intent: "rerun", selectedStepKeys: ["save"] };
 const REPEAT = { nodeId: "save-row", taskId: "ucpath/save-row", system: "ucpath", businessKeyDigest: HASH, writeIntentId: "d1000000-0000-4000-8000-000000000001", evidenceDigest: HASH };
 const WARNING = RerunWarningWireSchema.parse({ workflowId: WORKFLOW, rerun: { source: RERUN_PLAN_SOURCE, warnings: [REPEAT], warningDigest: DIGEST } });
-const NO_WARNING = RerunWarningWireSchema.parse({ workflowId: WORKFLOW, rerun: { source: RERUN_PLAN_SOURCE, warnings: [], warningDigest: DIGEST } });
 const PARSED_ANSWER = CommandResultSchema.parse({ state: "confirmation-required", commandId: "c1000000-0000-4000-8000-000000000001", warningDigest: HASH, message: "Confirm the repeat." });
 if (PARSED_ANSWER.state !== "confirmation-required") throw new Error("the answer fixture must ask for confirmation");
 const ANSWER = PARSED_ANSWER;
@@ -251,36 +250,16 @@ describe("moving between stages", () => {
 });
 
 describe("rerun warnings", () => {
-  it("rerun Input continue reads the warnings with the acknowledgment at dispatch", () => {
+  it("rerun Input continue goes straight to the editable Start, with no warning read before the steps can be changed", () => {
     const result = moved(at({ stage: "Input", nextRequest: 4, problem: "p", source: rerunReady({ acknowledgment: HASH }) }), { type: "continue", gates: gates({ next: "Start" }) });
-    assert.deepEqual(result.next.activity, { kind: "checking-warnings", request: 4, for: FP, acknowledgmentAtDispatch: HASH });
-    assert.equal(result.next.problem, undefined);
-    assert.equal(result.next.stage, "Input");
-    assert.deepEqual(result.effects, [{ kind: "check-warnings", request: 4 }]);
-  });
-
-  it("warnings that differ from the acknowledgment at dispatch move to Warning", () => {
-    const state = at({ stage: "Input", source: rerunReady({ acknowledgment: DIGEST }), activity: { kind: "checking-warnings", request: 4, for: FP, acknowledgmentAtDispatch: HASH } });
-    const result = moved(state, { type: "warnings-settled", request: 4, warning: WARNING });
-    assert.equal(result.next.stage, "Warning");
-    assert.deepEqual(result.next.source, rerunReady({ acknowledgment: DIGEST, warning: WARNING }));
-    assert.deepEqual(result.next.activity, { kind: "idle" });
-    assert.equal(refusal(state, { type: "warnings-settled", request: 5, warning: WARNING }), "superseded");
-  });
-
-  it("no warnings, or an acknowledged digest, records the digest and moves to Start", () => {
-    const state = at({ stage: "Input", source: rerunReady(), activity: { kind: "checking-warnings", request: 4, for: FP } });
-    const result = moved(state, { type: "warnings-settled", request: 4, warning: NO_WARNING });
     assert.equal(result.next.stage, "Start");
-    assert.deepEqual(result.next.source, rerunReady({ warning: NO_WARNING, acknowledgment: DIGEST }));
-    const acknowledged = at({ stage: "Input", source: rerunReady(), activity: { kind: "checking-warnings", request: 4, for: FP, acknowledgmentAtDispatch: DIGEST } });
-    assert.equal(moved(acknowledged, { type: "warnings-settled", request: 4, warning: WARNING }).next.stage, "Start");
+    assert.deepEqual(result.next.activity, { kind: "idle" });
+    assert.deepEqual(result.effects, []);
   });
 
-  it("warnings-failed sets the problem", () => {
-    const result = moved(at({ stage: "Input", source: rerunReady(), activity: { kind: "checking-warnings", request: 4, for: FP } }), { type: "warnings-failed", request: 4, message: "down" });
-    assert.equal(result.next.problem, "down");
-    assert.deepEqual(result.next.activity, { kind: "idle" });
+  it("cancelling a warning returns to the editable Start", () => {
+    const state = at({ stage: "Warning", shown: shownA, source: rerunReady({ warning: WARNING }) });
+    assert.equal(moved(state, { type: "cancel-warning" }).next.stage, "Start");
   });
 
   it("the Confirm button acknowledges unguarded and drops the plan", () => {
@@ -300,8 +279,8 @@ describe("rerun warnings", () => {
     assert.equal(refusal(at({ stage: "Warning", source: rerunReady() }), { type: "acknowledge", via: "enter" }), "not-here");
   });
 
-  it("cancel-warning returns to Input", () => {
-    assert.equal(moved(at({ stage: "Warning", source: rerunReady({ warning: WARNING }) }), { type: "cancel-warning" }).next.stage, "Input");
+  it("cancel-warning returns to Start", () => {
+    assert.equal(moved(at({ stage: "Warning", source: rerunReady({ warning: WARNING }) }), { type: "cancel-warning" }).next.stage, "Start");
     assert.equal(refusal(at({ stage: "Start" }), { type: "cancel-warning" }), "not-here");
   });
 });
@@ -496,11 +475,10 @@ describe("start, replay and the outcome", () => {
 describe("binding change", () => {
   it("moves reads into detached and drops every submit and re-plan", () => {
     const read = { kind: "planning", request: 3, for: FP } as const;
-    const warnings = { kind: "checking-warnings", request: 4, for: FP } as const;
     const replanning = { kind: "replanning", request: 5, for: FP, planRequest: REQUEST } as const;
     assert.deepEqual(moved(at({ activity: read }), { type: "binding-changed" }).next, at({ activity: { kind: "idle" }, detached: [read] }));
-    assert.deepEqual(moved(at({ activity: submitting(), detached: [warnings, replanning] }), { type: "binding-changed" }).next,
-      at({ activity: { kind: "idle" }, detached: [warnings] }));
+    assert.deepEqual(moved(at({ activity: submitting(), detached: [replanning] }), { type: "binding-changed" }).next,
+      at({ activity: { kind: "idle" }, detached: [] }));
     assert.equal(refusal(at({ activity: { kind: "idle" } }), { type: "submit-settled", request: 7, view: { view: "landed", replayed: false } }), "superseded");
   });
 });
@@ -509,8 +487,6 @@ describe("settlement", () => {
   const terminal: readonly RunDialogEvent[] = [
     { type: "plan-settled", request: 99, plan: plan(PLAN_A), planRequest: REQUEST },
     { type: "plan-failed", request: 99, message: "x" },
-    { type: "warnings-settled", request: 99, warning: WARNING },
-    { type: "warnings-failed", request: 99, message: "x" },
     { type: "submit-settled", request: 99, view: { view: "landed", replayed: false } },
     { type: "submit-threw", request: 99, message: "x" },
     { type: "retained", request: 99 },
@@ -602,7 +578,6 @@ describe("useRunDialogMachine", () => {
       const effects: RunDialogEffects = {
         loadSource: () => Promise.reject(new Error("unused")), restoreSource: () => {},
         requestPlan: request => { calls.push(`plan ${String(request.dryRun)}`); return Promise.resolve(plan(PLAN_A)); },
-        checkWarnings: () => Promise.reject(new Error("unused")),
         retain: retained => { calls.push(`retain ${retained.target.startPlanId}`); return undefined; },
         submit: () => { calls.push("submit"); return Promise.resolve(outcome); },
         dismissRecovery: () => calls.push("dismiss"), feedback: settled => calls.push(`feedback ${settled.kind}`),

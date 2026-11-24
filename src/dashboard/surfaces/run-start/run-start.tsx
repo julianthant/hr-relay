@@ -373,11 +373,6 @@ export function RunStartDialog({
         setDraft(next);
       },
       requestPlan: planRequest => launchService.preview(planRequest),
-      checkWarnings: () => {
-        if (snapshot === null) return Promise.reject(new Error("RERUN_SOURCE_UNAVAILABLE"));
-        return launchService.previewWarnings({ workflowId, source: { runId: snapshot.source.runId,
-          expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys } });
-      },
       retain: (command, planned) => {
         retainLaunchFinal(window.sessionStorage, command, planned);
         return readLaunchVerificationPlan(window.sessionStorage, command.requestedBy);
