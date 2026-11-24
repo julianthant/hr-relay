@@ -25,10 +25,10 @@ const SignInCredentialsSchema = z.strictObject({
   UCPATH_PASSWORD: z.string().min(1),
 });
 type SignInCredentials = z.infer<typeof SignInCredentialsSchema>;
-const stateRoute = "/api/v1/profile/state", resumeRoute = "/api/v1/profile/resume";
-const resumeKey = "relay.profile.resume";
+export const stateRoute = "/api/v1/profile/state", resumeRoute = "/api/v1/profile/resume";
+export const resumeKey = "relay.profile.resume";
 
-class CopySigninError extends Error {
+export class CopySigninError extends Error {
   constructor(code: string) { super(code); this.name = "CopySigninError"; }
 }
 
@@ -126,7 +126,7 @@ export function formatCopyDuoScreens(screens: readonly CopyDuoScreen[]): string 
     `duo ${stage}: ${screen} (frames: ${frames.join(", ") || "none"}${framesTruncated ? ", truncated" : ""})\n`).join("");
 }
 
-function operatorCredentials(): SignInCredentials {
+export function operatorCredentials(): SignInCredentials {
   return readCopySigninCredentials(join(homedir(), ".config", "relay", "operator-signin.env"));
 }
 
@@ -153,7 +153,7 @@ async function runCopyBackend(profile: CopyProfile, fixtureWorkspace: string | u
   });
 }
 
-async function waitForFrontend(port: number, ownerNonce: string, signal: AbortSignal): Promise<void> {
+export async function waitForFrontend(port: number, ownerNonce: string, signal: AbortSignal): Promise<void> {
   const deadline = systemClock.monotonicMs() + 30_000;
   while (!signal.aborted && systemClock.monotonicMs() < deadline) {
     const result = await probeOwnedViteServer({ port, ownerNonce, signal, clock: systemClock,
