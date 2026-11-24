@@ -1,5 +1,5 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { COMMAND_ROW_STATE_MIGRATION, CURRENT_AUTHORITY_SCHEMA_VERSION, SCHEMA_37_QUERY_INDEXES, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { COMMAND_ROW_STATE_MIGRATION, CURRENT_AUTHORITY_SCHEMA_VERSION, LIST_INDEXES, SCHEMA_37_QUERY_INDEXES, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -71,11 +71,24 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
   }
 }
 
+/** Steps a current authority back to schema 39: none of the list indexes and no generated dependency parent column. */
+export function restoreSchema39ListIndexes(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 40);
+  dropListIndexObjects(database);
+  database.exec("UPDATE database_states SET schema_version=39; PRAGMA user_version=39");
+}
+
+function dropListIndexObjects(database: DatabaseSync): void {
+  for (const name of Object.keys(LIST_INDEXES)) database.exec(`DROP INDEX ${name}`);
+  database.exec("ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id");
+}
+
 /**
  * Steps a current authority back to schema 38: debug entries back in the timeline, after its own events in the timeline's
  * cursor space, and no debug table.
  */
 export function restoreSchema38DebugEvents(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 40) restoreSchema39ListIndexes(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 39);
   database.exec(`CREATE TEMP TABLE debug_capture AS SELECT row_number() OVER (ORDER BY cursor)
       + COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0) AS timeline_cursor, * FROM debug_events;
@@ -90,7 +103,7 @@ export function restoreSchema38DebugEvents(database: DatabaseSync): void {
 
 /** Restores the embedded workbooks and run indexes of schema 37. */
 export function restoreSchema37WorkbookPayloads(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 39) restoreSchema38DebugEvents(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 39) restoreSchema38DebugEvents(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 38);
   embedWorkbookPayloads(database);
   database.exec(`DROP INDEX runs_workflow_day_idx;
@@ -218,6 +231,8 @@ export function removeEmptySchema26AssistantHistory(database: DatabaseSync): voi
 /** Returns a current store to the schema-22 worker custody DDL, keeping each worker slot in its predecessor row shape; the schema version is left to the caller. */
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  // The dependency table goes back to its old DDL in place, so the comparison below keeps its rows.
+  dropListIndexObjects(database);
   embedWorkbookPayloads(database);
   dropSchema36WorkbookSyncStatusColumn(database);
   removeSchema30WorkbookPinTags(database);

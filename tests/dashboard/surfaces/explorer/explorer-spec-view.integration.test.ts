@@ -6,7 +6,7 @@ import { afterEach, it } from "vitest";
 import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { resolveExplorer } from "../../../../src/dashboard/surfaces/explorer/explorer-spec.js";
 import { ExplorerPage, ExplorerSpecView } from "../../../../src/dashboard/surfaces/explorer/explorer-spec-view.js";
-import { FIXTURE_EXPLORER_WIRE } from "../../../mocks/helpers/fixture-explorer.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../../support/helpers/dashboard/mock-world/fixture-explorer.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 class ResizeObserverStub { observe() {} disconnect() {} unobserve() {} }

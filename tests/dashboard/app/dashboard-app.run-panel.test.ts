@@ -9,9 +9,9 @@ import { IdentityGateDetailWireSchema, RunDetailSectionResponseSchema } from '..
 import { FIXTURE_IDENTITY_GATE } from '../../support/fixtures/dashboard/run-detail/gates-park.js';
 import { DashboardClientProvider } from '../../../src/dashboard/state/client-context.js';
 import { RowRevisionSchema } from '../../../src/models/dashboard/primitives.js';
-import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from '../../mocks/helpers/fixture-queue.js';
+import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from '../../support/helpers/dashboard/mock-world/fixture-queue.js';
 import { DashboardCommandRequestSchema, type DashboardCommandRequest } from '../../../src/rules/commands/commands.js';
-import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../mocks/helpers/workflow-composition.js';
+import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../support/helpers/dashboard/mock-world/workflow-composition.js';
 import { serveRunPanel, streamingRunPanel } from '../../support/helpers/dashboard/serve-run-panel.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
 

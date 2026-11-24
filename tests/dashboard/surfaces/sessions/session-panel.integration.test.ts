@@ -11,9 +11,9 @@ import type { SessionCommandBinding } from "../../../../src/dashboard/surfaces/s
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../mocks/helpers/fixture-day.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../support/helpers/dashboard/mock-world/fixture-day.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { createRowStore } from "../../../../src/dashboard/client/index.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

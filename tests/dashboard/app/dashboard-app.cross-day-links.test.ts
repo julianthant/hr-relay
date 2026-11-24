@@ -13,8 +13,8 @@ import { RunDetailWireSchema, NotePageSchema } from '../../../src/models/dashboa
 import { queueParentFixture } from '../../support/helpers/dashboard/queue-parent-fixture.js';
 import { FrontendBootstrapWireSchema } from '../../../src/models/dashboard/bootstrap.js';
 import { FIXTURE_NOW } from '../../support/fixtures/dashboard/fixture-identity.js';
-import { FIXTURE_DAY_WIRE } from '../../mocks/helpers/fixture-queue.js';
-import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../mocks/helpers/workflow-composition.js';
+import { FIXTURE_DAY_WIRE } from '../../support/helpers/dashboard/mock-world/fixture-queue.js';
+import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../support/helpers/dashboard/mock-world/workflow-composition.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);

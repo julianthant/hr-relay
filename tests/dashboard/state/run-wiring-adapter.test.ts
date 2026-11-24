@@ -10,14 +10,14 @@ import { readRunLogs, projectRunLogs, useRunWiring } from "../../../src/dashboar
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
 import { LogPreview } from "../../support/fixtures/dashboard/log-preview/log-preview.js";
-import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
-import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
+import { mockQueueSurface } from "../../support/fixtures/dashboard/workflow-mocks/workflow-queue-model.js";
+import { initialMockDraft } from "../../support/fixtures/dashboard/workflow-mocks/workflow-mock-model.js";
 import { RunDetailWireSchema, NativeRunEventWireSchema, IdentityGateDetailWireSchema, NotePageSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
 import { appendLogPage } from "../../../src/dashboard/surfaces/run-detail/logs-model.js";
 import { createIdentityCeremonyFixtures } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../support/fixtures/dashboard/run-detail/receipts-failures.js";
-import { FIXTURE_RUN_DETAILS, FIXTURE_SECTIONS } from "../../mocks/helpers/fixture-detail.js";
-import { FIXTURE_START_PICKER_DAY_WIRE } from "../../mocks/helpers/fixture-start.js";
+import { FIXTURE_RUN_DETAILS, FIXTURE_SECTIONS } from "../../support/helpers/dashboard/mock-world/fixture-detail.js";
+import { FIXTURE_START_PICKER_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-start.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { FIXTURE_PARKED_WRITE } from "../../support/fixtures/dashboard/run-detail/gates-park.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";

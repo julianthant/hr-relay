@@ -2,22 +2,22 @@ import { Hono } from "hono";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
-import { FIXTURE_EDITABLE_SETTINGS,FIXTURE_SETTINGS_FACTS,FIXTURE_STORAGE_DOCTOR } from "../../mocks/helpers/fixture-day.js";
-import { registerFixtureExplorerRoutes } from "../../mocks/helpers/fixture-explorer-routes.js";
-import { FIXTURE_EXPLORER_WIRE } from "../../mocks/helpers/fixture-explorer.js";
-import { registerFixtureIntakeRoutes } from "../../mocks/helpers/fixture-intake-routes.js";
+import { FIXTURE_EDITABLE_SETTINGS,FIXTURE_SETTINGS_FACTS,FIXTURE_STORAGE_DOCTOR } from "../../support/helpers/dashboard/mock-world/fixture-day.js";
+import { registerFixtureExplorerRoutes } from "../../support/helpers/dashboard/mock-world/fixture-explorer-routes.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-explorer.js";
+import { registerFixtureIntakeRoutes } from "../../support/helpers/dashboard/mock-world/fixture-intake-routes.js";
 import { FIXTURE_INTAKE_IDS } from "../../support/fixtures/dashboard/fixture-intake.js";
-import { registerFixtureSettingsRoutes } from "../../mocks/helpers/fixture-settings-routes.js";
-import * as settings from "../../mocks/helpers/fixture-settings.js";
-import { registerFixtureStorageRoutes } from "../../mocks/helpers/fixture-storage-routes.js";
-import * as storage from "../../mocks/helpers/fixture-storage.js";
-import { SCENES as activity } from "../../mocks/helpers/reference-activity-scenes.js";
-import { SCENES as detail } from "../../mocks/helpers/reference-detail-scenes.js";
-import { SCENES as explorer } from "../../mocks/helpers/reference-explorer-scenes.js";
-import { SCENES as intake } from "../../mocks/helpers/reference-intake-scenes.js";
-import { SCENES as settingsScenes } from "../../mocks/helpers/reference-settings-scenes.js";
-import { SCENES as shell } from "../../mocks/helpers/reference-shell-scenes.js";
-import { SCENES as start } from "../../mocks/helpers/reference-start-scenes.js";
+import { registerFixtureSettingsRoutes } from "../../support/helpers/dashboard/mock-world/fixture-settings-routes.js";
+import * as settings from "../../support/helpers/dashboard/mock-world/fixture-settings.js";
+import { registerFixtureStorageRoutes } from "../../support/helpers/dashboard/mock-world/fixture-storage-routes.js";
+import * as storage from "../../support/helpers/dashboard/mock-world/fixture-storage.js";
+import { SCENES as activity } from "../../support/helpers/dashboard/mock-world/reference-activity-scenes.js";
+import { SCENES as detail } from "../../support/helpers/dashboard/mock-world/reference-detail-scenes.js";
+import { SCENES as explorer } from "../../support/helpers/dashboard/mock-world/reference-explorer-scenes.js";
+import { SCENES as intake } from "../../support/helpers/dashboard/mock-world/reference-intake-scenes.js";
+import { SCENES as settingsScenes } from "../../support/helpers/dashboard/mock-world/reference-settings-scenes.js";
+import { SCENES as shell } from "../../support/helpers/dashboard/mock-world/reference-shell-scenes.js";
+import { SCENES as start } from "../../support/helpers/dashboard/mock-world/reference-start-scenes.js";
 
 describe("released surface fixtures", () => {
   it("keeps compatibility exports as the exact schema-backed leaf objects", () => {

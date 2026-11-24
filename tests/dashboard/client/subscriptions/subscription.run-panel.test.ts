@@ -7,7 +7,7 @@ import type { DashboardTransport, SseMessage, StreamHandle } from "../../../../s
 import { StreamRowSchema, type StreamRow } from "../../../../src/models/dashboard/subscription.js";
 
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
-import { FIXTURE_IDS } from "../../../mocks/helpers/fixture-queue.js";
+import { FIXTURE_IDS } from "../../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { createFixtureBff } from "../../../support/helpers/dashboard/fixture-bff.js";
 import { readRunPanel } from "../../../support/helpers/dashboard/serve-run-panel.js";
 

@@ -13,7 +13,7 @@ import { RunDetailWireSchema, NotePageSchema } from "../../../src/models/dashboa
 import { parseViewRoute } from "../../../src/dashboard/app/navigation/view-route-model.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
 import { ocrReviewPageFixture } from "../../support/fixtures/dashboard/ocr-review.js";
 

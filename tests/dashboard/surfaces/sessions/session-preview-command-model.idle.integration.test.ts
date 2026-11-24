@@ -13,8 +13,8 @@ import { sessionWorkerAuthorityKey } from "../../../../src/dashboard/surfaces/se
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
-import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../mocks/helpers/fixture-day.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../support/helpers/dashboard/mock-world/fixture-day.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { sessionsSample } from "../../../support/fixtures/dashboard/sessions-sample.js";
 import { createRowStore } from "../../../../src/dashboard/client/index.js";
 

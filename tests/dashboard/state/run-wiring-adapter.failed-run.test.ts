@@ -18,8 +18,8 @@ import { serveRunPanel } from "../../support/helpers/dashboard/serve-run-panel.j
 import { projectRunLogs, useRunWiring } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
-import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
-import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
+import { mockQueueSurface } from "../../support/fixtures/dashboard/workflow-mocks/workflow-queue-model.js";
+import { initialMockDraft } from "../../support/fixtures/dashboard/workflow-mocks/workflow-mock-model.js";
 import { NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../src/models/dashboard/projection.js";
 import { projectFailureDisplay } from "../../../src/models/dashboard/failure-display.js";

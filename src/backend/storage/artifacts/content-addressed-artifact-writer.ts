@@ -324,7 +324,10 @@ export function pendingDiagnosticArtifacts(admission: RuntimeAdmission, ordinary
   try { names = readdirSync(admission.artifactRoot); }
   catch (error) { if (error instanceof Error && "code" in error && error.code === "ENOENT") return []; throw error; }
   return names.filter(name => name.endsWith(".diagnostic.tmp")).flatMap(name => {
-    const stage = inspectDiagnosticStage(admission, join(admission.artifactRoot, name));
+    let stage: ReturnType<typeof inspectDiagnosticStage>;
+    // Captures dispose stages outside the authority lock, after their bundle commits or fails, so a stage gone mid-inventory is no longer pending.
+    try { stage = inspectDiagnosticStage(admission, join(admission.artifactRoot, name)); }
+    catch (error) { if (error instanceof Error && "code" in error && error.code === "ENOENT") return []; throw error; }
     return !ordinaryOnly || stage.retention === "ordinary" ? [stage.ref] : [];
   });
 }

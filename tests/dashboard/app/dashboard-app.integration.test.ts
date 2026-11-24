@@ -2,13 +2,13 @@ import { createPersonPreferences } from "../../../src/dashboard/state/person-pre
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
-import { FIXTURE_EXPLORER_WIRE } from "../../mocks/helpers/fixture-explorer.js";
-import { servedFixtureSources } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-explorer.js";
+import { servedFixtureSources } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { workflowComposition as servedWorkflowComposition } from "../../../src/dashboard/app/workflow-sources.js";
 import { vi } from "vitest";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
 import { disposeHttpRouteHarness, harness as backendHarness, type Harness as BackendHarness } from "../../support/helpers/backend/http-route-harness.js";
-import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m0 } from "../../mocks/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m0 } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
 import { loadLazyPages } from "../../support/helpers/dashboard/lazy-pages.js";
@@ -20,7 +20,7 @@ import { DashboardApp as DashboardApp_m0 } from "../../../src/dashboard/app/dash
 import { createDashboardClient as createDashboardClient_m0,type DashboardClient as DashboardClient_m0 } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider as DashboardClientProvider_m0 } from "../../../src/dashboard/state/client-context.js";
 import { importWorkbook as importSpreadsheet_m0 } from '../../../src/rules/spreadsheets/workbook-io.js';
-import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../mocks/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { createFixtureBff as createFixtureBff_m0 } from "../../support/helpers/dashboard/served-fixtures/fixture-bff.js";
 // @vitest-environment jsdom
@@ -398,6 +398,15 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(route.settingsFrom, undefined);
     assert_m1.equal(route.start, true);
     assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"]') === null, true);
+  });
+  it_m1("Escape closes Settings opened from the Run dialog's Fix button and returns to the dialog", async () => {
+    await mount("?day=" + FIXTURE_DAY_WIRE_m1.day + "&start=1&settings=account&settingsFrom=run");
+    assert_m1.ok(document.querySelector('nav[aria-label="Settings sections"]'));
+    await act_m1(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    const route = parseRoute_m1(location.search);
+    assert_m1.equal(route.settings, undefined);
+    assert_m1.equal(route.settingsFrom, undefined);
+    assert_m1.equal(route.start, true);
   });
   it_m1("Settings gear opens the surface, Close settings closes it and competing keys resolve one takeover", async () => {
     await mount("?settings=keyboard&archive=&explore=missing");

@@ -30,7 +30,7 @@ export function authenticateSavedSettings(currentInput:unknown,commandInput:unkn
 export function readAppSettings(database: DatabaseSync, convertRow: (table: string, row: unknown) => unknown = (_table, row) => row): AppSettings | undefined {
   const raw = database.prepare("SELECT * FROM settings WHERE id='current'").get();
   if (raw === undefined) {
-    const history=database.prepare("SELECT 1 FROM commands WHERE family='settings' OR json_extract(request_json,'$.kind')='settings-initialization' LIMIT 1").get();
+    const history=database.prepare("SELECT 1 FROM commands WHERE family IN ('settings','settings-initialization') LIMIT 1").get();
     if(history!==undefined || database.prepare("SELECT 1 FROM settings_snapshots LIMIT 1").get()!==undefined)throw new Error("settings-current-missing-with-history");
     return undefined;
   }
