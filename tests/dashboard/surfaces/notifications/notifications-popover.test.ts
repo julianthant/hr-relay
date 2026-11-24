@@ -36,6 +36,19 @@ it("lists unread failures and waits under Needs you and everything read under it
   assert.equal(view.host.querySelector(".notice-bell-count")?.textContent, "2");
   assert.equal(view.row(0).dataset.unread, "true");
   assert.equal(view.row(2).dataset.unread, undefined);
+  assert(view.host.querySelector(".notice-bell-dot"), "an unread dot sits with the count");
+});
+
+it("draws no dot and no number on the bell with nothing unread", async () => {
+  const view = await draw({ state: "ready", items: [item("read", { read: true })], pinned: [] });
+  assert(view.host.querySelector('button[aria-label="Notifications, 0 unread"]'));
+  assert.ok(view.host.querySelector(".notice-bell-dot, .notice-bell-count") === null);
+});
+
+it("reads 99+ on the bell above 99 and keeps the exact count in its name", async () => {
+  const view = await draw({ state: "ready", items: Array.from({ length: 140 }, (_, index) => item(`n${String(index)}`)), pinned: [] });
+  assert(view.host.querySelector('button[aria-label="Notifications, 140 unread"]'));
+  assert.equal(view.host.querySelector(".notice-bell-count")?.textContent, "99+");
 });
 
 it("shows repeats as one row with a count badge, and a storage notice as title, count and body only", async () => {
