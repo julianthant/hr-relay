@@ -37,7 +37,7 @@ it("renders the collapsed rail as the initials of each workflow with the full na
   const host = await mount(createElement(TooltipProvider, null, createElement(WorkflowNavigation, { groups, active: "ocr", onSelect: () => undefined, label: "Workflows", collapsed: true })));
   for (const entry of entries) {
     const tile = host.querySelector<HTMLButtonElement>(`button[aria-label="${entry.label}"]`); assert.ok(tile, entry.label);
-    assert.equal(tile.textContent, workflowInitials(entry.label)); assert.equal(tile.querySelector("svg"), null); assert.ok(tile.tabIndex >= 0);
+    assert.equal(tile.textContent, workflowInitials(entry.label)); assert.ok(!tile.querySelector("svg")); assert.ok(tile.tabIndex >= 0);
   }
   assert.equal(host.querySelector<HTMLButtonElement>('button[aria-current="page"]')?.getAttribute("aria-label"), "OCR");
 });
