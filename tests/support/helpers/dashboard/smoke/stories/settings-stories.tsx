@@ -137,7 +137,8 @@ const DELETE = {
   uncertain: deleting("Account deletion not confirmed", { state: "uncertain", personName: "Jordan Lee", message: "Couldn't confirm the deletion. Reopen Relay to check." }, 'text="Couldn\'t confirm the deletion. Reopen Relay to check."'),
 } satisfies Record<DeleteAccountPresentation["state"], Story>;
 
-const find = (query: string) => type("Search settings", query);
+/** Typing leaves focus in the search box; a click on the sidebar title puts the keyboard walk back at the top of the page, as a user's Tab would start. */
+const find = (query: string): ((page: Page) => Promise<void>) => then(type("Search settings", query), async page => { await page.getByRole("heading", { name: "Settings", exact: true }).click(); });
 const SEARCH = {
   results: scene("Search with matching settings", { play: then(loaded, find("browser")), story: { ready: '[role="status"]:has-text("found")' } }),
   none: scene("Search with no matching setting", { play: then(loaded, find("zzzz")), story: { ready: 'text="No settings found"' } }),
@@ -182,14 +183,10 @@ const NOTICE = {
 const AUDIT_FIXES = "#532";
 const breaks = (...rules: readonly StateRuleName[]): Readonly<Partial<Record<StateRuleName, string>>> => Object.fromEntries(rules.map(rule => [rule, AUDIT_FIXES]));
 const BREAK_SETS = {
-  /** The Downloads row shows a file path. */
-  PATH: breaks("no-banned-text"),
   /** Save is not the accent while the Account edit dialog shows a refusal. */
   ACCENT: breaks("primary-button-accent"),
-  /** The sidebar section buttons, and "Clear search" and "Close settings" while the search is open, have no keyboard stop. */
+  /** The Tab walk reaches no control while a toast is on screen. */
   FOCUS: breaks("named-and-focusable"),
-  /** FOCUS, and the Downloads row shows a file path. */
-  FOCUS_AND_PATH: breaks("named-and-focusable", "no-banned-text"),
   /** FOCUS, and Save is not the accent while the dialog shows a refusal. */
   FOCUS_ACCENT: breaks("named-and-focusable", "primary-button-accent"),
 } as const;
@@ -213,46 +210,21 @@ const TOAST_STORIES: ReadonlySet<string> = new Set([
 
 /** By `<state type>/<member>`. */
 const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleName, string>>>>> = {
-  "chatgpt/connected": BREAK_SETS.PATH,
-  "chatgpt/expired": BREAK_SETS.PATH,
-  "chatgpt/loading": BREAK_SETS.PATH,
-  "chatgpt/sign-in-expired": BREAK_SETS.PATH,
-  "chatgpt/signed-out": BREAK_SETS.PATH,
-  "chatgpt/signing-in": BREAK_SETS.PATH,
-  "chatgpt/unavailable": BREAK_SETS.PATH,
-  "dialog/discard-changes": BREAK_SETS.PATH,
-  "dialog/disconnect-chatgpt": BREAK_SETS.PATH,
-  "load/loaded": BREAK_SETS.PATH,
-  "plan/disabled": BREAK_SETS.PATH,
-  "plan/enabled": BREAK_SETS.PATH,
-  "plan/limit-reached": BREAK_SETS.PATH,
-  "resolution/open": BREAK_SETS.PATH,
-  "resolution/unknown": BREAK_SETS.PATH,
-  "runtime/current": BREAK_SETS.PATH,
-  "save/idle": BREAK_SETS.PATH,
-  "save/saving": BREAK_SETS.FOCUS_AND_PATH,
-  "search/none": BREAK_SETS.FOCUS_AND_PATH,
-  "search/results": BREAK_SETS.FOCUS_AND_PATH,
-  "section/general": BREAK_SETS.PATH,
+  "save/saving": BREAK_SETS.FOCUS,
   "dialog/change-password-refused": BREAK_SETS.ACCENT,
   "dialog/edit-name-refused": BREAK_SETS.ACCENT,
   "dialog/edit-username-refused": BREAK_SETS.ACCENT,
   "notice/opened-for-check": BREAK_SETS.FOCUS,
-  "search/reading": BREAK_SETS.FOCUS,
-  "search/unavailable": BREAK_SETS.FOCUS,
   "action/duo-not-opened": BREAK_SETS.FOCUS,
   "action/name-not-saved": BREAK_SETS.FOCUS,
   "action/password-changed": BREAK_SETS.FOCUS,
   "action/password-not-confirmed": BREAK_SETS.FOCUS,
-  "notice/restart-required": BREAK_SETS.PATH,
-  "notice/setting-unavailable": BREAK_SETS.PATH,
-  "runtime/restart-required": BREAK_SETS.PATH,
-  "save-combo/replayed": BREAK_SETS.FOCUS_AND_PATH,
-  "save-combo/restart-required": BREAK_SETS.FOCUS_AND_PATH,
-  "save/applied": BREAK_SETS.FOCUS_AND_PATH,
-  "save/conflict": BREAK_SETS.FOCUS_AND_PATH,
-  "save/refused": BREAK_SETS.FOCUS_AND_PATH,
-  "save/unconfirmed": BREAK_SETS.FOCUS_AND_PATH,
+  "save-combo/replayed": BREAK_SETS.FOCUS,
+  "save-combo/restart-required": BREAK_SETS.FOCUS,
+  "save/applied": BREAK_SETS.FOCUS,
+  "save/conflict": BREAK_SETS.FOCUS,
+  "save/refused": BREAK_SETS.FOCUS,
+  "save/unconfirmed": BREAK_SETS.FOCUS,
 };
 const SETTINGS_TABLES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,

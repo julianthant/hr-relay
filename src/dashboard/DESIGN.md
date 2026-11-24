@@ -55,6 +55,7 @@ the `i9-check` person workflow remains a child. Its production source stays mock
 | Overlays | `Dialog`, `Drawer`, `Popover`, `ContextMenu`, `Tooltip`, their companion components, `TooltipProvider`, `ToastProvider`, `useToasts`, `Notice` |
 | Data | `Table`, `THead`, `TBody`, `TR`, `TH`, `TD`, `ProgressBar`, `TimelineSteps`, `KeyValueList`, `RankedList` |
 
+`PathControl` names a folder or file by its last segment and never prints, titles or announces the full path; the Settings Downloads row reads `Downloads` with that name and a `Change` button.
 The ContextMenu primitive remains available, but Queue rows do not mount row context menus.
 `DatePicker` exports `DateInput` under another name. Date controls display `MM/DD/YYYY` while wire
 values remain ISO dates. Partial segments remain editor state.
