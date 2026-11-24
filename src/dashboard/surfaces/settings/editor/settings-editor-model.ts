@@ -23,6 +23,9 @@ export type { SettingsSaveState } from "./settings-attempt-model.js";
 
 /** Ordinary Settings never lock or show a save row: the control keeps the new value while the save runs. */
 const IDLE_SAVE: SettingsSaveState = Object.freeze({ state: "idle" });
+/** How long a save's readback waits for the stream's settings row at its revision before it ends unresolved. */
+export const SETTINGS_ROW_WAIT_MS = 10_000;
+const noRows = (): (() => void) => () => undefined;
 
 /** One ordinary atomic draft, independent protected draft, no browser-persisted values or attempts. */
 export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; view?: string; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener }>) {
@@ -57,11 +60,24 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const staleRef = useRef(stale);
   staleRef.current = stale;
   // A document the shared read settled since (a fresh read after a reset, a preference save's readback) replaces the shown one.
-  const editor = useMemo<EditableSettingsState>(() => observation.state === "loaded" && (observed.resource !== resource || observed.editor.state !== "loaded" || observed.editor.document !== observation.value)
+  const shownEditor = useMemo<EditableSettingsState>(() => observation.state === "loaded" && (observed.resource !== resource || observed.editor.state !== "loaded" || observed.editor.document !== observation.value)
     ? { state: "loaded", document: observation.value }
     : observed.resource === resource && observed.stale === stale ? observed.editor : held === undefined ? { state: "loading" } : { state: "loaded", document: held }, [observed, resource, held, observation, stale]);
   const setEditor = useCallback((editor: EditableSettingsState): void => setObserved({ resource, stale: staleRef.current, editor }), [resource]);
   const [reportedReadProblem, setReadProblem] = useState<string | undefined>(undefined);
+  // The stream's settings row: another session's commit, and the document a save's readback joins its reply to.
+  const rowStore = binding?.authority.dayState.rows;
+  const streamStopped = binding?.authority.dayState.connection.state === "stopped";
+  const subscribeRows = useCallback((listener: () => void) => rowStore?.subscribe(listener) ?? noRows(), [rowStore]);
+  const readRows = useCallback(() => rowStore?.settings(), [rowStore]);
+  const streamed = useSyncExternalStore(subscribeRows, readRows, readRows);
+  const stream = useRef({ rows: rowStore, stopped: streamStopped });
+  stream.current = { rows: rowStore, stopped: streamStopped };
+  const rowWaiters = useRef(new Set<() => void>());
+  useEffect(() => { for (const check of [...rowWaiters.current]) check(); }, [rowStore, streamStopped]);
+  // A first row the stream could not read, with nothing shown yet, is the initial read's failure.
+  const editor: EditableSettingsState = streamed?.unavailable === true && shownEditor.state === "loading"
+    ? { state: "failed", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text } : shownEditor;
   const [draft, setDraft] = useState<SettingsDraft>({});
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
@@ -69,7 +85,9 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const saveAtOnce = useRef(false);
   // Edits wait for a fresh read of what is shown: a kept copy, or a document the resource has since replaced, decides nothing.
   const readReady = acceptedRequest.current === request && observation.state === "loaded" && editor.state === "loaded" && editor.document === observation.value;
-  const readProblem = reportedReadProblem;
+  // A row the stream could not read keeps the shown document display-only until the next good row.
+  const readProblem = reportedReadProblem ?? (streamed?.unavailable === true
+    ? formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_REFRESH_UNAVAILABLE", {})).text : undefined);
   const refresh = useCallback(async (publish = true): Promise<EditableSettingsWire> => {
     try {
       const read = async (): Promise<EditableSettingsWire> => {
@@ -101,6 +119,31 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     return () => { active = false; };
     // A section return and a stream reset read again; the shown document stays, locked, until the fresh one lands.
   }, [refresh, resource, setEditor, stale]);
+  // A row above the shown document replaces it; with nothing shown, only once the editor's own read has failed.
+  useEffect(() => {
+    const document = streamed?.document;
+    if (document === undefined || streamed?.unavailable === true || generation.current !== request) return;
+    const shown = resource.snapshot().value;
+    if (shown === undefined ? editor.state !== "failed" : document.revision <= shown.revision) return;
+    acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined);
+  }, [streamed, request, resource, editor.state, setEditor]);
+  /** The first held settings row at or above `revision`. Unresolved at once on an unavailable row or a stopped stream,
+   * and after SETTINGS_ROW_WAIT_MS without one; a reset waits for the snapshot's row. */
+  const settingsRowAt = (revision: number): Promise<EditableSettingsWire> => new Promise((resolve, reject) => {
+    const rows = stream.current.rows;
+    let unsubscribe: (() => void) | undefined;
+    const finish = (settle: () => void): void => { clearTimeout(timer); unsubscribe?.(); rowWaiters.current.delete(check); settle(); };
+    const check = (): void => {
+      const held = rows?.settings();
+      if (held?.unavailable === true) finish(() => reject(new Error("settings-row-unavailable")));
+      else if (held?.document !== undefined && held.document.revision >= revision) { const document = held.document; finish(() => resolve(document)); }
+      else if (rows === undefined || stream.current.rows !== rows || stream.current.stopped) finish(() => reject(new Error("settings-row-stream-stopped")));
+    };
+    const timer = setTimeout(() => finish(() => reject(new Error("settings-row-wait-expired"))), SETTINGS_ROW_WAIT_MS);
+    rowWaiters.current.add(check);
+    unsubscribe = rows?.subscribe(check);
+    check();
+  });
   const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
@@ -160,7 +203,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
         scope: binding.scope,
         readback: async (_request, reply) => {
           const result = checkedSettingsResult(command, reply);
-          readDocument = await refresh(false);
+          if ((result.state !== "applied" && result.state !== "already-applied") || result.settingsRevision === undefined) throw new Error("settings-result-unconfirmed");
+          readDocument = await settingsRowAt(result.settingsRevision);
           const readback = ordinaryReadbackState(command, result, readDocument);
           return { state: readback === "confirmed" ? "matched" : readback === "superseded" ? "conflict" : "mismatch", evidence: readDocument };
         },
