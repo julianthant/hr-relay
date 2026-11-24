@@ -62,7 +62,8 @@ it("preserves the migration error when closing the private import copy fails", a
     } finally { predecessor.close(); }
     const before = readFileSync(f.path);
     const closeError = new Error("private-import-copy-close-refused");
-    const actualClose = DatabaseSync.prototype.close;
+    const actualClose: unknown = Reflect.get(DatabaseSync.prototype, "close");
+    assert.ok(typeof actualClose === "function");
     let retained: { database: DatabaseSync; directory: string } | undefined;
     const close = vi.spyOn(DatabaseSync.prototype, "close").mockImplementation(function (this: DatabaseSync) {
       const path = this.location();
@@ -70,7 +71,7 @@ it("preserves the migration error when closing the private import copy fails", a
         retained = { database: this, directory: dirname(path) };
         throw closeError;
       }
-      actualClose.call(this);
+      Reflect.apply(actualClose, this, []);
     });
     try {
       assert.throws(() => withReadonlyAuthoritySnapshot(f.path, source =>
