@@ -14,6 +14,7 @@ import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDu
 import { DuoReenrolStateSchema, ProfileOnboardingStateSchema } from "../../../../src/models/profiles/public-profile.js";
 
 interface CopyPortalFixture {
+  screen?(stage: string, png: Buffer): void;
   buttons(): readonly string[];
   click(name: string): void | Promise<void>;
   wait(): Promise<void>;
@@ -149,7 +150,7 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false, copyPort
         evaluate: async () => true, fill: async () => { typedCount++; }, dispose: async () => undefined,
         click: async () => { typedCount++; if (portalSubmitFailure) throw portalSubmitFailure; throw new Error("unexpected synthetic submit"); },
       }) }),
-      close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
+      screenshot: async () => Buffer.from(url), close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }
   let pages = [makePage()];
   const pageWaiters: ((page: Page) => void)[] = [];
@@ -161,7 +162,8 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false, copyPort
   const browserRoots = mockBrowserRootPort().browserRoots;
   const realProvider = createProfileOnboardingDuoProvider({ browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50, platform,
     ...(copyPortal === undefined ? {} : { copySignin: { profile: "development" as const,
-      credentials() { throw new Error("direct Duo landing must not read SSO credentials"); }, phone: () => copyPortal.phone() } }),
+      credentials() { throw new Error("direct Duo landing must not read SSO credentials"); }, phone: () => copyPortal.phone(),
+      screen: (stage: string, png: Buffer) => copyPortal.screen?.(stage, png) } }),
     focus: { async captureRelay() { capturedRelay++; if (captureFailure) throw captureFailure; return relayTarget; }, async show(owned) { assert.equal(owned, context); osFocusCount++; if (focusFailure) throw focusFailure; },
       async returnToRelay(target) { assert.equal(target, relayTarget); returnedRelay++; if (returnFailure) throw returnFailure; } },
     launcher: { launch: async input => {
@@ -628,9 +630,10 @@ describe("draft Duo provider", () => {
         buttons = label === "Other options" ? ["Security key", "Duo Push Send to phone"] : [];
         if (label === "Duo Push Send to phone") {
           pushed.resolve();
-          await approved.promise;
-          w.reachDuo(destination);
-          if (!accepted) buttons = ["Add a device"];
+          void approved.promise.then(() => {
+            w.reachDuo(destination);
+            if (!accepted) buttons = ["Add a device"];
+          });
         }
       },
       phone() { actions.push("phone prompt"); },
@@ -645,16 +648,16 @@ describe("draft Duo provider", () => {
     try {
       const opening = w.provider.openPortal(w.owner);
       const premature = opening.then(() => { throw new Error("Duo portal completed before verification"); });
-      await Promise.race([pushed.promise, premature]);
-      const expectedActions = ["Other options", "phone prompt", "Duo Push Send to phone"];
+      await Promise.race([waiting.promise, premature]);
+      const expectedActions = ["Other options", "Duo Push Send to phone", "phone prompt"];
       assert.deepEqual(actions, expectedActions);
       approved.resolve();
       if (!accepted) {
+        devices.resolve();
         await assert.rejects(opening, { cause: new Error("copy-signin-duo-scope") });
         assert.deepEqual(actions, expectedActions);
         return;
       }
-      await Promise.race([waiting.promise, premature]);
       buttons = ["Add a device"];
       devices.resolve();
       await opening;
@@ -666,6 +669,29 @@ describe("draft Duo provider", () => {
       await assert.rejects(w.provider.openPortal(w.owner), { cause: new Error("copy-signin-duo-phone-already-requested") });
       assert.deepEqual(actions, [...expectedActions, "Other options"]);
     } finally { approved.resolve(); devices.resolve(); await w.cleanup(); }
+  });
+
+  it("records the Duo screens and refuses with a logged code when the device list never follows the push", async () => {
+    const actions: string[] = [], screens: string[] = [];
+    let buttons = ["Other options"];
+    const w = world("darwin", { copyPortal: {
+      buttons: () => buttons,
+      click(label) { actions.push(label); buttons = label === "Other options" ? ["Duo Push Send to phone"] : []; },
+      phone() { actions.push("phone prompt"); },
+      screen(stage, png) { screens.push(`${stage}:${png.toString()}`); },
+      async wait() { throw Object.assign(new Error("synthetic Add a device wait"), { name: "TimeoutError" }); },
+    } });
+    w.landPortal("https://test.duosecurity.com/");
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open", generation: 1 }, state: "onboarding",
+      operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", methods: { key: idle } });
+    w.owner.readState = () => state;
+    try {
+      await assert.rejects(w.provider.openPortal(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.cause instanceof Error && error.cause.message === "copy-signin-duo-push-unanswered");
+      assert.deepEqual(actions, ["Other options", "Duo Push Send to phone", "phone prompt"]);
+      assert.deepEqual(screens, ["gate", "push-options", "after-push"].map(stage => `${stage}:https://test.duosecurity.com/`));
+      assert.equal(w.events.find(event => event.operation === "portal-open")?.code, "copy-signin-duo-push-unanswered");
+    } finally { await w.cleanup(); }
   });
 
   it("leaves the UCSD sign-in form empty and continues when the page reaches Duo", async () => {

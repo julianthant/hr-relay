@@ -87,6 +87,7 @@ export interface OnboardingDuoProviderOptions {
     profile: Exclude<RuntimeProfile, "production">;
     credentials(): Readonly<{ userId: string; password: string }>;
     phone(): void;
+    screen?(stage: "gate" | "push-options" | "after-push", png: Buffer): void;
   }>;
 }
 
@@ -563,20 +564,30 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         if (approval === "phone") {
           if (copyPhonePrompted) throw new Error("copy-signin-duo-phone-already-requested");
           copyPhonePrompted = true;
-          copy.phone();
         }
         await target.click({ timeout });
+        if (approval === "phone") copy.phone();
       } finally { await target.dispose(); }
       if (approval === "phone") ownedDuoOrigin();
       else current();
     };
+    // The copy's private logs keep what Duo showed, since the onboarding browser profile is removed at close.
+    const screen = async (stage: "gate" | "push-options" | "after-push") => {
+      try { copy.screen?.(stage, await page.screenshot({ timeout: 5000 })); } catch { /* evidence never masks the gate's own outcome */ }
+    };
+    const timedOut = (code: string) => (cause: unknown) => {
+      if (cause instanceof Error && cause.name === "TimeoutError") throw new Error(code, { cause });
+      throw cause;
+    };
     const add = control(/^Add a device\b/iu);
     const other = control(/^Other options$/iu);
-    await add.or(other).first().waitFor({ timeout });
+    await add.or(other).first().waitFor({ timeout }).catch(async (cause: unknown) => { await screen("gate"); timedOut("copy-signin-duo-gate-unavailable")(cause); });
     if (!await add.isVisible()) {
+      await screen("gate");
       await click(other);
+      await screen("push-options");
       await click(control(/^(?:Verified )?Duo Push\b/iu), "phone");
-      await add.waitFor({ timeout });
+      await add.waitFor({ timeout }).catch(async (cause: unknown) => { await screen("after-push"); timedOut("copy-signin-duo-push-unanswered")(cause); });
       origin = ownedDuoOrigin();
       if (!await add.isVisible()) throw new Error("copy-signin-duo-device-list-unavailable");
     }

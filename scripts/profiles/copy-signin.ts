@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdirSync, realpathSync, statSync, writeSync } from "node:fs";
+import { mkdirSync, realpathSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -140,6 +140,9 @@ async function runCopyBackend(profile: CopyProfile, fixtureWorkspace: string | u
       phone() {
         writeSync(process.stdout.fd, "approve the Duo request on your phone\n");
         process.send?.({ type: "relay-copy-signin-phone" });
+      },
+      screen(stage, png) {
+        writeFileSync(join(applicationDataWorkspace(undefined, profile), ".tracker", "data", "logs", `copy-signin-duo-${stage}.png`), png, { mode: 0o600 });
       },
     },
   });

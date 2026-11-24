@@ -173,6 +173,8 @@ export const DuoDiagnosticExceptionTypeSchema = z.string().regex(/^[A-Za-z][A-Za
 export const DuoPortalDiagnosticCodeSchema = z.enum([
   "UCSD_SSO_SCOPE", "UCSD_SSO_FIELDS", "UCSD_SSO_REDIRECT_TIMEOUT", "UCSD_SSO_FORM_TIMEOUT", "ONBOARDING_DUO_FOCUS_FAILED",
   "UCSD_DUO_NAVIGATION_TIMEOUT", "UCSD_SSO_SUBMIT_TIMEOUT",
+  "copy-signin-duo-scope", "copy-signin-duo-gate-unavailable", "copy-signin-duo-phone-already-requested", "copy-signin-duo-push-unanswered",
+  "copy-signin-duo-device-list-unavailable", "copy-signin-duo-method-unavailable", "copy-signin-duo-receipt-unavailable",
 ]);
 export const DuoDiagnosticCodeSchema = z.enum([
   ...DuoPortalDiagnosticCodeSchema.options,
