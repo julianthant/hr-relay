@@ -4,7 +4,8 @@ import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtur
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { executeClaimedRun,type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { UUID_5,UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID,WORKFLOW_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import {

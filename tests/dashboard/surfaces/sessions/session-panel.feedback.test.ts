@@ -38,7 +38,7 @@ it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, succes
   const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === "Add workers");
   assert(confirm instanceof HTMLButtonElement);
   await act(async () => { confirm.focus(); confirm.click(); });
-  assert.equal(document.querySelector('[role="dialog"]'), null);
+  assert.equal(document.querySelector('[role="dialog"]') === null, true);
   assert.doesNotMatch(panel.textContent ?? "", /Adding workers|Workers added/);
   assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 1);
   assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Adding workers…");
@@ -55,7 +55,7 @@ it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, succes
     assert.equal(trigger.disabled, false);
     return;
   }
-  assert.equal(panel.querySelector('[role="alert"]'), null);
+  assert.equal(panel.querySelector('[role="alert"]') === null, true);
   assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, outcome === "uncertain" ? undefined : "Workers added");
   assert.equal(panel.querySelectorAll("article").length, 1, "the read-back confirms the addition once");
   assert.equal(trigger.disabled, false);
@@ -76,7 +76,7 @@ it("dismisses add progress when the panel unmounts and ignores its late settleme
   await act(async () => confirm.click());
   assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Adding workers…");
   shown = false; await act(async () => render());
-  assert.equal(document.querySelector('[data-slot="toast-title"]'), null);
+  assert.equal(document.querySelector('[data-slot="toast-title"]') === null, true);
   await act(async () => vi.advanceTimersByTimeAsync(600));
-  assert.equal(document.querySelector('[data-slot="toast-title"]'), null, "late confirmation cannot recreate a toast");
+  assert.equal(document.querySelector('[data-slot="toast-title"]') === null, true, "late confirmation cannot recreate a toast");
 });

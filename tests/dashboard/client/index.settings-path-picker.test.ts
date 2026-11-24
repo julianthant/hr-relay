@@ -62,7 +62,7 @@ for (const replacement of ["client", "scope", "field", "value", "disabled"] as c
       await act(async () => resolveReply?.(responseState === "selected"
         ? { state: "selected", field: "paths.i9CheckTrackerPath", path: "/tmp/late.json" }
         : { state: "unavailable", field: "paths.i9CheckTrackerPath", reason: "dialog-failed" }));
-      assert.deepEqual(selected, []); assert.equal(host.querySelector('[role="alert"]'), null);
+      assert.deepEqual(selected, []); assert.equal(host.querySelector('[role="alert"]') === null, true);
       assert.equal(button.disabled, replacement === "disabled");
     });
   }

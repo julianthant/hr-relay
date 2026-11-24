@@ -56,7 +56,7 @@ it("Back to a kept day with its run open shows both at once, marked Updating, th
   await forward(`/?day=${otherDay}`);
   assert.equal(streams.at(-1)?.day, otherDay);
   await act(async () => streams.at(-1)?.serve(other));
-  await vi.waitFor(() => assert.equal(runRow(), null));
+  await vi.waitFor(() => assert.equal(runRow() === null, true));
 
   await back();
   assert.equal(new URLSearchParams(window.location.search).get("run"), run.runId);
@@ -64,14 +64,14 @@ it("Back to a kept day with its run open shows both at once, marked Updating, th
   assert.ok(runRow(), "the kept day's queue shows at once");
   assert.equal(queueColumn()?.getAttribute("aria-busy"), "true");
   assert.equal(runTitle(), run.title, "the open run shows from the kept day, not a skeleton");
-  assert.equal(host.querySelector(`[data-demo-row-id="${run.runId}"] [aria-label^="Actions"]`), null);
+  assert.equal(host.querySelector(`[data-demo-row-id="${run.runId}"] [aria-label^="Actions"]`) === null, true);
   assert.ok(updating()?.classList.contains("invisible"), "a fast reload shows no mark");
   await settle(350);
   assert.equal(updating()?.classList.contains("invisible"), false, "a slow reload shows Updating");
 
   await act(async () => streams.at(-1)?.serve(FIXTURE_DAY_WIRE));
   await vi.waitFor(() => assert.equal(queueColumn()?.hasAttribute("aria-busy"), false));
-  assert.equal(updating(), undefined);
+  assert.equal(updating() === undefined, true);
   assert.ok(runRow());
   assert.equal(runTitle(), run.title);
 });
@@ -106,7 +106,7 @@ it("Back to a kept day gives the held run's Logs no Pause, Stop or Cancel, and s
 
   await forward(`/?day=${otherDay}`);
   await act(async () => streams.at(-1)?.serve(other));
-  await vi.waitFor(() => assert.equal(logs(), null));
+  await vi.waitFor(() => assert.equal(logs() === null, true));
 
   await back();
   assert.equal(streams.at(-1)?.day, day);
@@ -144,7 +144,7 @@ it("a stream reset with a run open shows neither the pre-reset row nor its logs 
 
   await act(async () => streams.at(-1)?.reset());
   await settle();
-  assert.equal(runRow(), null, "the pre-reset queue is not shown");
+  assert.equal(runRow() === null, true, "the pre-reset queue is not shown");
   assert.notEqual(runTitle(), run.title, "the pre-reset run is not shown in Logs");
 
   await act(async () => streams.at(-1)?.serve(FIXTURE_DAY_WIRE));

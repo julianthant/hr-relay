@@ -47,6 +47,6 @@ describe("Settings > Account Security group", () => {
 
   it("offers no Set up again where no served re-enrolment exists", async () => {
     await mount({ onDuoSetup: undefined });
-    assert.equal(button("Set up again"), undefined);
+    assert.equal(button("Set up again") === undefined, true);
   });
 });

@@ -30,7 +30,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await act(async () => checkbox("Dry run").click()); await press("Start dry run");
     assert.equal(h.queueRoots.length, 2); assert.doesNotMatch(text(), /needs readback/u);
     await act(async () => release());
-    assert.equal(document.querySelector('[role="dialog"]'), null); assert.doesNotMatch(text(), /needs readback/u);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true); assert.doesNotMatch(text(), /needs readback/u);
     assert.equal(window.sessionStorage.length, 0); assert.equal(h.finalCommands.length, 1);
   });
   it("rapid clicks share one envelope and a delayed response cannot overwrite a reopened launch", async () => {
@@ -49,7 +49,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   it("the started toast is text only", async () => {
     const h = await setup(); const source = await h.completeSource(); await mount(h, source); await press("Continue"); await press("Confirm"); await press("Continue");
     await act(async () => checkbox("Dry run").click()); await press("Start dry run");
-    assert.equal(document.querySelector('[role="dialog"]'), null); assert.match(text(), /Rerun created/u);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true); assert.match(text(), /Rerun created/u);
     assert.equal([...document.querySelectorAll("button")].some(node => node.textContent === "Open run"), false);
   });
   it("reopening a start after closing with typed input says the draft was kept; an untouched start says nothing", async () => {

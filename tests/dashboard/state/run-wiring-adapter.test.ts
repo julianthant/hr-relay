@@ -134,7 +134,7 @@ describe("served Logs wiring", () => {
     assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
     selected = { ...selected, row: { ...selected.row, actions: [] } };
     await act(async () => root?.render(render()));
-    assert.equal(document.querySelector('header button[aria-label="Retry child"]'), null);
+    assert.equal(document.querySelector('header button[aria-label="Retry child"]') === null, true);
     await act(async () => replay.click());
     assert.equal(sent.length, 2);
   });

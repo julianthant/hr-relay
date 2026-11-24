@@ -10,7 +10,7 @@ import { initialProtectedStoreRecord } from "../../../../src/models/config/prote
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { boundProfileCredentials } from "../admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";

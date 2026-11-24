@@ -11,7 +11,7 @@ it("shows the loading screen, not the sign-in page, while the session is unknown
   const app = await start({ "/api/v1/profile/state": never });
   try {
     assert.equal(loadingLabel(app.host), "Starting Relay");
-    assert.equal(app.host.querySelector("form"), null);
+    assert.equal(app.host.querySelector("form") === null, true);
     assert.equal(app.signInFrames(), 0);
   } finally { await app.stop(); }
 });
@@ -24,7 +24,7 @@ it("resumes a signed-in start behind the loading screen without ever mounting th
   });
   try {
     assert.equal(loadingLabel(app.host), "Starting Relay");
-    assert.equal(app.host.querySelector("form"), null);
+    assert.equal(app.host.querySelector("form") === null, true);
     assert.ok(resumed, "the resume starts from the loading screen");
     await act(async () => resumed?.(profileActivationResponse(active)));
     assert.equal(loadingLabel(app.host), undefined);
@@ -44,7 +44,7 @@ it("hands a signed-in start to the dashboard without ever mounting the sign-in p
     assert.equal(resumes, 1);
     assert.equal(loadingLabel(app.host), undefined);
     assert.equal(app.signInFrames(), 0);
-    assert.equal(app.host.querySelector(".hub-onboarding"), null);
+    assert.equal(app.host.querySelector(".hub-onboarding") === null, true);
     assert.equal(app.frames[0], "loading");
     assert.equal(app.frames.at(-1), "dashboard");
     assert.ok(!app.frames.includes("sign-in") && !app.frames.includes("skeleton"), `frames: ${app.frames.join(" > ")}`);

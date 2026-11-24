@@ -95,7 +95,7 @@ it('draws Messages and Actions, with the served counts', async () => {
 it('shows no tools section and no not-recorded line, since neither is recorded', async () => {
   await render(withAssistant([1], [1]));
   assert.equal(headings().includes('Tools used'), false);
-  assert.equal(document.querySelector('figure[aria-label="Tool calls per day"]'), null);
+  assert.equal(document.querySelector('figure[aria-label="Tool calls per day"]') === null, true);
   assert.doesNotMatch(document.body.textContent, /not recorded yet/);
 });
 
@@ -104,8 +104,8 @@ it('shows each assistant section empty when the range has no assistant use', asy
   assert.match(document.body.textContent, /No messages in this period/);
   assert.match(document.body.textContent, /No actions proposed in this period/);
   assert.doesNotMatch(document.body.textContent, /not recorded yet/);
-  assert.equal(document.querySelector('figure[aria-label="Messages per day"]'), null);
-  assert.equal(document.querySelector('figure[aria-label="Proposed actions per day"]'), null);
+  assert.equal(document.querySelector('figure[aria-label="Messages per day"]') === null, true);
+  assert.equal(document.querySelector('figure[aria-label="Proposed actions per day"]') === null, true);
 });
 
 it('leaves the run sections as they were', async () => {
@@ -156,7 +156,7 @@ it('while the report loads, shows a busy region and no guessed sections', async 
   const frame = document.querySelector('[role="status"][aria-busy="true"][aria-label="Loading analytics report"]');
   assert(frame);
   assert.equal(frame.childElementCount, 0);
-  assert.equal(document.querySelector('[data-slot="skeleton"]'), null);
+  assert.equal(document.querySelector('[data-slot="skeleton"]') === null, true);
 });
 
 const openRuns = () => [...document.querySelectorAll('button')].filter(link => link.textContent?.includes('Open runs'));
@@ -173,11 +173,11 @@ it('while another range loads, keeps the last report under its own period with E
   assert.equal(link.disabled, false);
   await act(async () => link.click());
   assert.equal(opened.length, 1);
-  assert.equal(document.querySelector('[data-analytics-stale]'), null);
+  assert.equal(document.querySelector('[data-analytics-stale]') === null, true);
   assert.equal(button().disabled, false);
   await act(async () => root?.render(createElement(ActivityView, { ...props, range: next, blocked: true })));
   assert(document.querySelector('table[aria-label="Workflows"] button[aria-expanded="true"]'));
-  assert.deepEqual(openRuns(), [link]);
+  assert.deepEqual(openRuns().map(run => run === link), [true]);
   assert.equal(link.disabled, true);
   await act(async () => link.click());
   assert.equal(opened.length, 1);
@@ -189,9 +189,9 @@ it('while another range loads, keeps the last report under its own period with E
   assert.equal(mark.classList.contains('invisible'), false);
   assert.match(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
   assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(next)));
-  assert.equal(document.querySelector('[aria-label="Loading analytics report"]'), null);
+  assert.equal(document.querySelector('[aria-label="Loading analytics report"]') === null, true);
   await act(async () => root?.render(createElement(ActivityView, { ...props, range: ACTIVITY_SAMPLE_RANGE })));
-  assert.deepEqual(openRuns(), [link]);
+  assert.deepEqual(openRuns().map(run => run === link), [true]);
   assert.equal(link.getAttribute('aria-disabled'), null);
   await act(async () => link.click());
   assert.equal(opened.length, 2);
@@ -211,7 +211,7 @@ it('a held empty report names its own period until the chosen period arrives', a
   await act(async () => root?.render(createElement(ActivityView, { ...props, data: activitySample(next, 'empty'), range: next })));
   assert.match(document.body.textContent, /No runs in this period/);
   assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
-  assert.equal(document.querySelector('[data-analytics-stale]'), null);
+  assert.equal(document.querySelector('[data-analytics-stale]') === null, true);
 });
 
 it('agrees on one run total across the header, the legend and the table for the seeded day', async () => {
@@ -230,5 +230,5 @@ it('agrees on one run total across the header, the legend and the table for the 
 
 it('opens runs with a real button', async () => {
   await render(data);
-  assert.equal(document.querySelector('a[href="#"]'), null);
+  assert.equal(document.querySelector('a[href="#"]') === null, true);
 });

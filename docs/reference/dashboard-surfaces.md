@@ -1,7 +1,7 @@
 # Dashboard surfaces
 
 The dashboard is a browser app for one local operator. `src/dashboard/app/main.tsx` mounts
-`DashboardApp`; `app/dashboard-app.tsx` composes the workspace, Queue, Logs, launcher, Settings,
+`DashboardApp`; `app/dashboard-app.tsx` boots it and `app/loaded-app.tsx` composes the workspace, Queue, Logs, launcher, Settings,
 and Sessions. `app/dashboard-takeovers.tsx` mounts Settings, Analytics, Explorer, and intake.
 The workflow policy serves Person Lookup, Separations, Onboarding, Work-Study and the public I-9 Check PDF parent. OCR and I-9 Lookup are hidden children; the other configured workflows use mocks. Bootstrap, Settings,
 Preflight, storage, and the served intake workspace use the typed client. Retained backend
