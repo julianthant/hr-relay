@@ -1,5 +1,5 @@
 import { createIntakeParser } from "../../../processing/spreadsheet/intake-parser.js";
-import { type WriteResolutionExecutor } from "../../../runs/commands/command-kernel.js";
+import { type WriteResolutionExecutor } from "../../../runs/commands/write-resolution-command.js";
 import { runContinuationPort } from "../../../runs/lifecycle/run-record-service.js";
 import { createWriteResolutionExecutor } from "../../../runtime/writes/write-recovery.js";
 import { createContentAddressedArtifactWriter } from "../../../storage/artifacts/content-addressed-artifact-writer.js";

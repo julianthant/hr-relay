@@ -7,7 +7,7 @@ This reference describes spreadsheet preparation, OCR admission, artifact record
 | Canonical fields and cell coercion | `src/models/fields/` |
 | Intake projections, mappings, validation, manifests, and wires | `src/models/intake/` |
 | Upload, readback, and command preparation | `src/backend/runs/commands/intake-service.ts` |
-| Intake mutations and enqueue | `src/backend/runs/commands/command-kernel.ts` |
+| Intake mutations and enqueue | `src/backend/runs/commands/intake-commands.ts` |
 | CSV and XLSX parsing | `src/backend/processing/spreadsheet/` |
 | OCR form vocabulary, instructions, and admission | `src/models/ocr/` |
 | Processing tasks | `src/backend/processing/{extraction,ocr,roster,normalization}/` |
@@ -315,7 +315,7 @@ Current dispositions are `valid`, `rejected`, or `excluded`. Rejection entries a
 
 ### 5.2 Commands and atomic fan-out
 
-The six intake commands target `{intakeSessionId, expectedVersion}`. `src/rules/commands/commands.ts` owns their envelopes and payloads; `command-kernel.ts` owns application.
+The six intake commands target `{intakeSessionId, expectedVersion}`. `src/rules/commands/commands.ts` owns their envelopes and payloads. `intake-commands.ts` owns application.
 
 | Command | Effect |
 | --- | --- |
@@ -382,7 +382,7 @@ These rules identify the enforcing seam rather than relying on presentation alon
 2. `mapping.ts` resolves column identity before using its index and refuses mismatched saved layouts.
 3. `validate.ts` converts only typed coercion refusals and rejects all colliding identities.
 4. `manifest.ts` checks row coverage and totals; `enqueueReadiness` blocks unresolved and empty plans.
-5. `command-kernel.ts` rechecks version, exact review binding, reserved identity, snapshot, and canonical inputs before atomic enqueue.
+5. `intake-commands.ts` rechecks version, exact review binding, reserved identity, snapshot, and canonical inputs before atomic enqueue.
 6. `defineIntakeProjection` requires the canonical schema object at every mapped leaf; `intakeProjectionRegistry` requires the descriptor's input schema object.
 7. `admitOcrExtraction` checks every declared field and typed absence without granting weaker admission to a producer.
 8. `groupStack` matches exact name keys across the supplied stack and keeps unidentified, duplicate, incomplete, and wrong-form pages visible.

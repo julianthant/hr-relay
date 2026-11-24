@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
-import { executeSettingsCommand, type CommandAuthority, type SettingsCommitted } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand, type SettingsCommitted } from "../../../../src/backend/runs/commands/settings-command.js";
+import type { CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";

@@ -33,11 +33,8 @@ import {
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { rejectCommandRequest } from "../../runs/commands/command-refusal.js";
 import { lifecycleCommandId, type RunContinuationPort } from "../../runs/lifecycle/run-record-service.js";
-import type {
-  WriteResolutionContext,
-  WriteResolutionExecutor,
-  WorkflowDescriptorResolver,
-} from "../../runs/commands/command-kernel.js";
+import type { WriteResolutionContext, WriteResolutionExecutor } from "../../runs/commands/write-resolution-command.js";
+import type { WorkflowDescriptorResolver } from "../../runs/commands/run-command-context.js";
 import {
   type ProbeReadDeps,
   type TransactionSessionHost,
