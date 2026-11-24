@@ -9,9 +9,6 @@ import { namedNativeRefusal, nativeRunExcludes } from "../../../vitest.config.js
 
 const linuxNativeReport = [
   "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
-  "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
-  "tests/backend/storage/maintenance/evidence-schema-upgrade.interrupted.integration.test.ts",
-  "tests/backend/storage/maintenance/evidence-schema-upgrade.rerun.integration.test.ts",
   "tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts",
   "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
   "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",

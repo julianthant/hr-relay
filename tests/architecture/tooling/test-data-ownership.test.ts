@@ -17,7 +17,6 @@ const ARCHITECTURE_HELPERS_ROOT = /^tests\/architecture\/(?:support|[^/]+)\/help
 const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/helpers/predecessor-profile-credentials.ts",
   "tests/support/helpers/exclusive-session-leases.ts",
-  "tests/support/helpers/backend/evidence-schema-upgrade-startup.ts",
   "tests/support/helpers/backend/storage-restore-world.ts",
   "tests/support/helpers/backend/emergency-contact-retry-world.ts",
   'tests/support/helpers/backend/dashboard-port-world.ts',
@@ -72,7 +71,6 @@ function importsOf(path: string) {
 const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/helpers/predecessor-profile-credentials.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "authenticateDocument" },
   { importer: "tests/support/helpers/exclusive-session-leases.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/helpers/backend/evidence-schema-upgrade-startup.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/backend/storage-restore-world.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/backend/emergency-contact-retry-world.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/backend/emergency-contact-retry-world.ts", module: "node:sqlite", symbol: "backup" },
