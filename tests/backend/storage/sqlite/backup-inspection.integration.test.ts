@@ -10,19 +10,17 @@ import { detachBoundFixtureWorkers, stopSyntheticDatabaseWorkers } from "../../.
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { default as assert } from "node:assert/strict";
-import { existsSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { backupStoppedAuthority, upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { inspectAuthorityBackupReadOnly, withUpgradedBackupCopy } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { restoreSchema36QueryIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
 
 const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -51,51 +49,6 @@ async function fixture() {
   return { admission, machine: bound.machine, stateRoot, path, clock,
     processLockRoot: join(bound.workspace, rebuildRuntimeIsolation.processLockRoot) };
 }
-
-it("preserves the migration error when closing the private import copy fails", async () => {
-  try {
-    const f = await fixture();
-    const predecessor = new DatabaseSync(f.path);
-    try {
-      restoreSchema36QueryIndexes(predecessor);
-      predecessor.exec("DROP INDEX checkpoints_replay_idx");
-    } finally { predecessor.close(); }
-    const before = readFileSync(f.path);
-    const closeError = new Error("private-import-copy-close-refused");
-    const actualClose: unknown = Reflect.get(DatabaseSync.prototype, "close");
-    assert.ok(typeof actualClose === "function");
-    let retained: { database: DatabaseSync; directory: string } | undefined;
-    const close = vi.spyOn(DatabaseSync.prototype, "close").mockImplementation(function (this: DatabaseSync) {
-      const path = this.location();
-      if (path !== null && basename(dirname(path)).startsWith(`${readonlyAuthorityCopyPrefix}${process.pid}-import-`)) {
-        retained = { database: this, directory: dirname(path) };
-        throw closeError;
-      }
-      Reflect.apply(actualClose, this, []);
-    });
-    try {
-      assert.throws(() => withReadonlyAuthoritySnapshot(f.path, source =>
-        withUpgradedBackupCopy(f.admission, source, 36, f.admission.profileBinding, clock.now().toISOString(),
-          () => assert.fail("the migration must finish before reading"))), (error: unknown) => {
-        assert.ok(error instanceof AuthoritySourceClosureUnprovedError);
-        assert.ok(error.cause instanceof Error);
-        assert.match(error.cause.message, /no such index: checkpoints_replay_idx/u);
-        assert.deepEqual(error.errors, [error.cause, closeError]);
-        return true;
-      });
-      assert.ok(retained);
-      assert.equal(existsSync(retained.directory), true);
-      assert.deepEqual(readFileSync(f.path), before);
-    } finally {
-      close.mockRestore();
-      if (retained !== undefined) {
-        retained.database.close();
-        rmSync(retained.directory, { recursive: true, force: true });
-      }
-    }
-  } finally { await _afterEachFixture0(); }
-});
-
 {
 it("keeps a current authority unchanged through stopped plan and no-op apply", async () => {
 try {

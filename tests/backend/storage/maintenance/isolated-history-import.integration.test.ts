@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { copyFileSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
@@ -17,7 +17,9 @@ import { initialSettingsFileRecord } from "../../../../src/models/config/setting
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { importedLibraryId, importIsolatedProfileData } from "../../../../src/backend/storage/maintenance/isolated-library-import.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { withUpgradedBackupCopy } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
@@ -38,6 +40,50 @@ const clock = manualClock(new Date("2026-11-23T12:00:00.000Z"));
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { try { for (const close of cleanups.splice(0).reverse()) await close(); } finally { vi.unstubAllGlobals(); } });
 const { openCurrentWorld, takeBackup } = createBackupFixtures(cleanups, clock);
+
+it("preserves the migration error when closing the private import copy fails", async () => {
+  const world = await openCurrentWorld();
+  const { manifest } = await takeBackup(world);
+  const backupPath = join(world.backupDirectory, manifest.backupFileName);
+  const predecessor = new DatabaseSync(backupPath);
+  try {
+    restoreSchema36QueryIndexes(predecessor);
+    predecessor.exec("DROP INDEX checkpoints_replay_idx");
+  } finally { predecessor.close(); }
+  const before = readFileSync(backupPath);
+  const closeError = new Error("private-import-copy-close-refused");
+  const actualClose: unknown = Reflect.get(DatabaseSync.prototype, "close");
+  assert.ok(typeof actualClose === "function");
+  let retained: { database: DatabaseSync; directory: string } | undefined;
+  const close = vi.spyOn(DatabaseSync.prototype, "close").mockImplementation(function (this: DatabaseSync) {
+    const path = this.location();
+    if (path !== null && basename(dirname(path)).startsWith(`${readonlyAuthorityCopyPrefix}${process.pid}-import-`)) {
+      retained = { database: this, directory: dirname(path) };
+      throw closeError;
+    }
+    Reflect.apply(actualClose, this, []);
+  });
+  try {
+    assert.throws(() => withReadonlyAuthoritySnapshot(backupPath, source =>
+      withUpgradedBackupCopy(world.admission, source, 36, world.admission.profileBinding, clock.now().toISOString(),
+        () => assert.fail("the migration must finish before reading"))), (error: unknown) => {
+      assert.ok(error instanceof AuthoritySourceClosureUnprovedError);
+      assert.ok(error.cause instanceof Error);
+      assert.match(error.cause.message, /no such index: checkpoints_replay_idx/u);
+      assert.deepEqual(error.errors, [error.cause, closeError]);
+      return true;
+    });
+    assert.ok(retained);
+    assert.equal(existsSync(retained.directory), true);
+    assert.deepEqual(readFileSync(backupPath), before);
+  } finally {
+    close.mockRestore();
+    if (retained !== undefined) {
+      retained.database.close();
+      rmSync(retained.directory, { recursive: true, force: true });
+    }
+  }
+});
 
 it.each([CURRENT_AUTHORITY_SCHEMA_VERSION, 36])("imports schema %i runs, history and workbooks without admitting their writes", async schemaVersion => {
   const source = await historyWorld();
