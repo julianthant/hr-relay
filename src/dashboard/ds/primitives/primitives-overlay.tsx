@@ -799,7 +799,8 @@ export function useToasts(): ToastContextValue {
   return ctx;
 }
 
-export function ToastProvider({ children }: { children: ReactNode }) {
+/** `hold` keeps every toast until it is dismissed: a state gallery that walks the page by keyboard must find the toast still there. */
+export function ToastProvider({ children, hold = false }: { children: ReactNode; hold?: boolean }) {
   const manager = useMemo(() => ToastPrimitive.createToastManager(), []);
   const nextId = useRef(0);
   const byKey = useRef(new Map<string, string>());
@@ -812,12 +813,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       byKey.current.set(key, id);
       manager.add({ id, title: input.description === undefined ? input.title : `${input.title}: ${input.description}`,
         type: input.tone === "danger" ? "error" : input.tone,
-        timeout: input.sticky ? 0 : input.duration ?? (input.tone === "danger" ? 12000 : 3000),
+        timeout: input.sticky || hold ? 0 : input.duration ?? (input.tone === "danger" ? 12000 : 3000),
       });
       return id;
     },
     dismiss: id => manager.close(id),
-  }), [manager]);
+  }), [manager, hold]);
   return <ToastContext.Provider value={value}><ToastPrimitive.Provider toastManager={manager} limit={3}>
     {children}<ToastViewport />
   </ToastPrimitive.Provider></ToastContext.Provider>;
