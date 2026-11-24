@@ -22,15 +22,27 @@ function projectionDependencies({ database, lifecycle, descriptors, runDetailDep
   };
 }
 
-export function composeNotificationPublications(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "notificationInbox">): NonNullable<Parameters<typeof composeShell>[0]["notificationPublications"]> {
-  const { database, clock, notificationInbox } = input;
+/** `target` is the read `GET /notifications/{id}/target` serves; each publication carries its answer.
+ * `listed` is the row as `GET /notifications` lists it in the same read snapshot: a storage notice inside its concern's group. */
+export function composeNotificationPublications(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "notificationInbox">
+  & { target: ReturnType<typeof composeNotificationRoutes>["target"] }): NonNullable<Parameters<typeof composeShell>[0]["notificationPublications"]> {
+  const { database, clock, notificationInbox, target } = input;
   const deps = projectionDependencies(input);
-  return { subscribe: notificationInbox.onPublication, project: publication => database.withAuthorityReadSnapshot(() => ({
-    sourceId: FingerprintSchema.parse(publication.sourceId), actorId: publication.notification.actorId, durable: publication.durable,
-    notification: notificationProjection(publication.notification, clock.nowMs(), { ...deps,
-      source: () => ({ actorId: publication.notification.actorId, notificationId: publication.notification.notificationId, adopted: false, event: publication.event }),
-    }),
-  })) };
+  return { subscribe: notificationInbox.onPublication,
+    target: publication => target(publication.notification.notificationId, publication.notification.actorId),
+    project: publication => database.withAuthorityReadSnapshot(() => {
+      const { actorId, notificationId } = publication.notification;
+      const now = clock.nowMs();
+      const notification = notificationProjection(publication.notification, now, { ...deps,
+        source: () => ({ actorId, notificationId, adopted: false, event: publication.event }),
+      });
+      const listed = notificationListProjection(database.authority.notifications.listByActor(actorId), now, deps)
+        .find(row => row.notificationId === notificationId || (row.kind === "notification" && row.group?.members.some(member => member.notificationId === notificationId) === true));
+      return {
+        publication: { sourceId: FingerprintSchema.parse(publication.sourceId), actorId, durable: publication.durable, notification },
+        listed: listed ?? notification,
+      };
+    }) };
 }
 
 export function composeNotificationRoutes(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "assertCurrent" | "notificationObserver"> & { notificationTarget: ReturnType<typeof createNotificationTargetQuery> }): NonNullable<Parameters<typeof createDashboardApp>[0]["notifications"]> {

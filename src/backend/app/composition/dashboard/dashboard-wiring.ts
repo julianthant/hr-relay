@@ -349,7 +349,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       return `${person.firstName} ${person.lastName}`;
     },
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
-    notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox }),
+    notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox, target: notifications.target }),
+    notificationStatus: { read: notifications.status, onChange: notificationObserver.onStatusChange },
     runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
     preflightReport: () => preflightAuthority.readLatest(),
   });

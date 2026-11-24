@@ -194,13 +194,17 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         assistant,
       };
     };
+    const productDeps: Partial<ReturnType<typeof productAppDeps>> = trustNotifications === undefined ? {} : productAppDeps(trustNotifications);
+    const notificationRoutes = productDeps.notifications;
     const hub = createDashboardStreamHub({
       projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
       runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
-      ...(trustNotifications === undefined ? {} : { notificationPublications: composeNotificationPublications({
-        database, clock, lifecycle, descriptors: strictDescriptors, runDetailDeps, notificationInbox: trustNotifications.inbox }) }),
+      ...(trustNotifications === undefined || notificationRoutes === undefined ? {} : {
+        notificationPublications: composeNotificationPublications({
+          database, clock, lifecycle, descriptors: strictDescriptors, runDetailDeps, notificationInbox: trustNotifications.inbox, target: notificationRoutes.target }),
+        notificationStatus: { read: notificationRoutes.status, onChange: trustNotifications.observer.onStatusChange },
+      }),
     });
-    const productDeps = trustNotifications === undefined ? {} : productAppDeps(trustNotifications);
     const app = createFixtureDashboardApp({
       ...productDeps,
       requestIdentity: createSoloRequestIdentityCheckpoint({

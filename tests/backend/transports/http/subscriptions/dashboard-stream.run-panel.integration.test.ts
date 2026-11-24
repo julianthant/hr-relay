@@ -215,8 +215,9 @@ describe("dashboard stream run panel rows", () => {
     taskEventsOf(w, 1, "searching"); // pc:held+1, a retained row patch for Q
 
     const resumed = await hub.connect({ day: DAY, run: R, lastEventId: held, lastProjectionGeneration: w.projection.generation() });
-    assert.deepEqual(resumed.initial.map(({ type }) => type), ["hello", "change"]);
-    const replayed = changeOf(resumed.initial[1]);
+    assert.deepEqual(resumed.initial.map(({ type }) => type), ["hello", "health", "change"], "a resume is live before its replay");
+    assert.deepEqual(resumed.initial[1], { type: "health", state: "live" });
+    const replayed = changeOf(resumed.initial[2]);
     assert.equal(replayed.day?.target.runId, Q);
     assert.equal(replayed.after, held);
     assert.deepEqual(replayed.rows, [], "row values are never replayed");
@@ -228,11 +229,10 @@ describe("dashboard stream run panel rows", () => {
     await vi.waitFor(() => assert.equal(reader.reads.length, 2));
     reader.reads[1]?.resolve(4);
 
-    const [handoff, health, live] = await take(resumed, 3);
+    const [handoff, live] = await take(resumed, 2);
     assert.equal(changeOf(handoff).after, replayed.cursor);
     assert.equal(changeOf(handoff).day, undefined);
     assert.deepEqual(panelRevisions(changeOf(handoff).rows), [3]);
-    assert.deepEqual(health, { type: "health", state: "live" });
     assert.equal(changeOf(live).after, changeOf(handoff).cursor);
     assert.equal(cursorNumberOf(changeOf(live).cursor), cursorNumberOf(changeOf(handoff).cursor) + 1);
     assert.equal(changeOf(live).day?.target.runId, R);

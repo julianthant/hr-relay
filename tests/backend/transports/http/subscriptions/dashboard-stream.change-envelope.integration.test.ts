@@ -179,8 +179,8 @@ describe("dashboard stream change envelope", () => {
     assert.equal(cursorNumberOf(cursorOf(other.initial[1])), cursorNumberOf(held) + 1, "the other connection's handoff took the next cursor");
 
     const resumed = await hub.connect({ day: DAY, lastEventId: held, lastProjectionGeneration: w.projection.generation() });
-    assert.deepEqual(resumed.initial.map(({ type }) => type), ["hello", "change", "health"]);
-    const handoff = changeOf(resumed.initial[1]);
+    assert.deepEqual(resumed.initial.map(({ type }) => type), ["hello", "health", "change"]);
+    const handoff = changeOf(resumed.initial[2]);
     assert.equal(handoff.day, undefined);
     assert.equal(handoff.after, held);
     assert.equal(cursorNumberOf(handoff.cursor), cursorNumberOf(held) + 2);
@@ -199,9 +199,9 @@ describe("dashboard stream change envelope", () => {
     taskEventsOf(w, 1, "searching"); // count-neutral: one retained shared change
 
     const resumed = await hub.connect({ day: DAY, lastEventId: held, lastProjectionGeneration: w.projection.generation() });
-    assert.deepEqual(resumed.initial.map(({ type }) => type), ["hello", "change", "change", "health"]);
-    const replayed = changeOf(resumed.initial[1]);
-    const handoff = changeOf(resumed.initial[2]);
+    assert.deepEqual(resumed.initial.map(({ type }) => type), ["hello", "health", "change", "change"]);
+    const replayed = changeOf(resumed.initial[2]);
+    const handoff = changeOf(resumed.initial[3]);
     assert.equal(replayed.day?.target.runId, uuidOf(1));
     assert.equal(replayed.after, held);
     assert.equal(handoff.after, replayed.cursor);
@@ -222,7 +222,7 @@ describe("dashboard stream change envelope", () => {
 
     // The cursor of the evicted change is still covered: everything above it is retained.
     const covered = await hub.connect({ day: DAY, lastEventId: `pc:${String(cursorNumberOf(held) + 1)}`, lastProjectionGeneration: generation });
-    assert.deepEqual(covered.initial.map(({ type }) => type), ["hello", "change", "change", "change", "change", "health"]);
+    assert.deepEqual(covered.initial.map(({ type }) => type), ["hello", "health", "change", "change", "change", "change"]);
     assert.deepEqual(gaps, []);
     covered.close();
 
@@ -243,7 +243,7 @@ describe("dashboard stream change envelope", () => {
     first.close();
 
     const resumed = await hub.connect({ day: DAY, lastEventId: held, lastProjectionGeneration: w.projection.generation() });
-    assert.deepEqual(resumed.initial.map(({ type }) => type), ["hello", "change", "health"]);
+    assert.deepEqual(resumed.initial.map(({ type }) => type), ["hello", "health", "change"]);
     assert.deepEqual(gaps, []);
     resumed.close();
   });
