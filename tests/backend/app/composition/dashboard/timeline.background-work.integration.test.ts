@@ -5,6 +5,7 @@ import { expect, it, vi } from "vitest";
 import { admitFixtureSlot } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
 import { NotificationTriggerEventSchema } from "../../../../../src/rules/notifications/notification-triggers.js";
+import { searchPartitionDay } from "../../../../../src/models/dashboard/search-calendar.js";
 import { composeDashboardTimeline } from "../../../../../src/backend/app/composition/dashboard/timeline.js";
 import { startNotificationPolling } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { readNotificationSources } from "../../../../../src/backend/app/composition/dashboard/notification-sources.js";
@@ -12,14 +13,112 @@ import { createNotificationObserver } from "../../../../../src/backend/runs/noti
 import type { StartupCleanup } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
 import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
 import { createOperatorProjection } from "../../../../../src/backend/app/composition/dashboard/queue.js";
+import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
+import { createDashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { declareProjectionWorker, DESCRIPTOR_SET_HASH, runRecordOf, workerMemberOf } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 import { trustWorld } from "../../../../support/helpers/backend/trust-authority-fixture.js";
+
+it("closes the timeline on an operator-sized synthetic store without using its cold read", async () => {
+  const f = await trustWorld();
+  const { database, world: { clock } } = f;
+  const loggingRepository = database.authority.timelineEvents;
+  const noteWriter = createNoteTimelineWriter({ repository: loggingRepository, clock });
+  const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: "test" });
+  const startupCleanups: StartupCleanup[] = [];
+  const start = () => {
+    const projection = createOperatorProjection({ database, reader: f.service, clock, stateRoot: f.profile.stateRoot,
+      appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, descriptors: { resolve: () => personLookupDescriptor },
+      ledger: createTransactionHistory(database.authority) });
+    const poll = projection.pollBackground.bind(projection);
+    let readMs: number | undefined;
+    vi.spyOn(projection, "pollBackground").mockImplementationOnce((read, now, changed) => poll(async request => {
+      const started = performance.now();
+      const page = await read(request);
+      readMs ??= performance.now() - started;
+      return page;
+    }, now, changed));
+    const runtime = composeDashboardTimeline({ database, clock, projection, startupCleanups, admission: f.profile.admission,
+      lifecycle: f.service, loggingRepository, debugEvents });
+    return { runtime, projection, readMs: () => readMs };
+  };
+  try {
+    const runCount = 1600, notesPerRun = 13;
+    database.withAuthorityTransaction(repositories => {
+      for (let seed = 1; seed <= runCount; seed++) {
+        const run = runRecordOf({ seed, enqueuedAt: clock.now().toISOString() });
+        repositories.runs.enqueue(run);
+        const { workflow, runId, traceId, attempt } = run.envelope;
+        for (let note = 0; note < notesPerRun; note++) {
+          noteWriter.emitNote({ workflow, address: { runId, traceId, attempt, spanPath: traceId }, level: "step", message: "Fixture note" });
+        }
+      }
+    });
+    const first = start();
+    await first.runtime.settled();
+    expect(first.projection.health().state).toBe("live");
+    expect(first.readMs()).toBeDefined();
+    await first.runtime.stopTimeline();
+
+    const cold = start(), began = performance.now();
+    await cold.runtime.stopTimeline();
+    const stopMs = performance.now() - began;
+    console.info("Timeline cold-read and stop timings", { runs: runCount, notes: runCount * notesPerRun,
+      firstReadMs: first.readMs(), stopMs, stoppedReadMs: cold.readMs() });
+    expect(cold.readMs()).toBeUndefined();
+    database.close();
+  } finally {
+    for (const cleanup of startupCleanups.reverse()) await cleanup();
+    vi.restoreAllMocks();
+    await f.dispose();
+  }
+});
+
+it("replays a count-neutral background task step across a dashboard reconnect", async () => {
+  const f = await trustWorld();
+  const { database, world: { clock } } = f;
+  const projection = createOperatorProjection({ database, reader: f.service, clock, stateRoot: f.profile.stateRoot,
+    appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, descriptors: { resolve: () => personLookupDescriptor },
+    ledger: createTransactionHistory(database.authority) });
+  const loggingRepository = database.authority.timelineEvents;
+  const startupCleanups: StartupCleanup[] = [];
+  const detected = vi.fn(() => { throw new Error("step-only reconnect created a backfill gap"); });
+  const hub = createDashboardStreamHub({ projection, backfillGaps: { detected } });
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    const run = f.create(823), { runId, traceId, attempt, workflow } = run.envelope;
+    const writer = createTimelineEmitter({ repository: loggingRepository, clock });
+    writer.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Queued run" }));
+    const runtime = composeDashboardTimeline({ database, clock, projection, startupCleanups, admission: f.profile.admission,
+      lifecycle: f.service, loggingRepository, debugEvents: createDebugEventWriter({ repository: loggingRepository, clock, build: "test" }) });
+    await runtime.settled();
+    projection.refreshRun(runId);
+    const day = searchPartitionDay(clock.now());
+    const first = await hub.connect({ day });
+    const lastEventId = projection.cursor(), lastProjectionGeneration = projection.generation();
+    first.close();
+
+    clock.advanceWall(20);
+    writer.emit({ t: "span.started", kind: "task", ts: clock.now().toISOString(), workflow, runId, traceId, attempt,
+      spanPath: `${traceId}/searching#1`, parentSpanPath: traceId, name: "searching" });
+    vi.advanceTimersByTime(250);
+    await runtime.settled();
+    const resumed = await hub.connect({ day, lastEventId, lastProjectionGeneration });
+    expect(resumed.initial.map(event => event.type)).toEqual(["hello", "health", "change", "change"]);
+    expect(detected).not.toHaveBeenCalled();
+    resumed.close();
+  } finally {
+    hub.close();
+    for (const cleanup of startupCleanups.reverse()) await cleanup();
+    vi.useRealTimers();
+    await f.dispose();
+  }
+});
 
 it("publishes a peer commit on the next tick while an earlier publication is still in flight", async () => {
   const { fixture, seedRun } = createNotificationCompositionTestWorld();
