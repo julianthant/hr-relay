@@ -20,7 +20,7 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } fro
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { runLogoutSettlementCase } from "../../../support/helpers/credential-source-retention.js";
-import { createBoundProfileFixture, finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, finishProfileOnboarding, syntheticOnboardingDuo, withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { composeDashboardApplication } from "../../../../src/backend/app/composition/dashboard/profile-session-routes.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
@@ -150,7 +150,7 @@ it("serves the unfinished logout after restart, truthfully refuses signup, conti
       return { status: response.status, body: PublicProfileStateSchema.parse(await response.json()) };
     };
     assert.deepEqual(await (await fetch(`${base}/api/v1/profile/state`)).json(), { state: "signed-out", signUpRequired: false, logoutIncomplete: true });
-    assert.deepEqual(await post("sign-up", { email: fields.email, password: fields.password, firstName: "New", lastName: "Fixture" }), {
+    assert.deepEqual(await post("sign-up", withFixtureUcpath({ email: fields.email, password: fields.password, firstName: "New", lastName: "Fixture" })), {
       status: 200, body: { state: "refused", code: "PROFILE_LOGOUT_INCOMPLETE" },
     });
     assert.equal((await post("sign-in", { email: fields.email, password: fields.password })).body.state, "cancelling");
@@ -233,7 +233,7 @@ it("keeps schema-4 login refused until stopped startup converts a ready saved pr
   createProfileRegistry(f.machine).advanceSession(null);
   const otherFields = { email: "other@ucsd.edu", password: "disposable-other-password", at: fields.at };
   const setup = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine, clock, onboardingDuo: syntheticOnboardingDuo() });
-  await finishProfileOnboarding(setup, setup.signUp({ ...otherFields, firstName: "Other", lastName: "Fixture", createdAt: fields.at }));
+  await finishProfileOnboarding(setup, setup.signUp(withFixtureUcpath({ ...otherFields, firstName: "Other", lastName: "Fixture", createdAt: fields.at })));
   setup.close(); createProfileRegistry(f.machine).advanceSession(null);
   await f.closeController();
   installPredecessorProfileCredentials(source, "FX");

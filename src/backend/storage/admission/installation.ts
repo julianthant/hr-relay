@@ -983,6 +983,13 @@ function profileOnboardingCompletion(operation: z.infer<typeof SignUpOperationSc
       confirmation: key.operatorConfirmedAt === undefined ? key.portal?.acceptance : "operator" } });
 }
 
+type OnboardingVerifierRow = z.infer<typeof ProfileVerifierDocumentSchema>["profiles"][number];
+
+function matchesOnboardingRelay(relay: NonNullable<z.infer<typeof SignUpOperationSchema>["relay"]>, verifier: OnboardingVerifierRow): boolean {
+  return verifier.salt === relay.salt && verifier.passwordVerifier === relay.passwordVerifier
+    && verifier.consecutiveFailures === 0 && verifier.lockedUntilMs === undefined;
+}
+
 function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
   intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "onboarding-finish" }>): void {
   const { operation, prior, priorDocument, document, priorVerifiers, verifiers } = intent;
@@ -991,6 +998,7 @@ function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
   if (intent.installationId !== locator.installationId || operation.phase !== "publishing" || operation.credentials.phase !== "ready"
     || added.length !== 1 || verifier.length !== 1 || added[0]?.profileId !== operation.profileId || verifier[0]?.profileId !== operation.profileId
     || verifier[0].emailKey !== operation.emailKey || priorVerifiers.profiles.some(row => row.emailKey === operation.emailKey)
+    || added[0].relayEmail !== operation.relay?.email || operation.relay !== undefined && !matchesOnboardingRelay(operation.relay, verifier[0])
     || priorDocument.installationId !== locator.installationId || document.installationId !== locator.installationId
     || priorDocument.activeProfileId !== null || priorDocument.revision !== prior.revision || priorDocument.sessionGeneration !== prior.generation
     || createHash("sha256").update(canonicalJsonStringify(priorDocument)).digest("hex") !== prior.digest
@@ -1007,6 +1015,7 @@ function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
   const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
   if (pepper === undefined || pepper.bytes.length !== 32 || !sameDirectory(pepper.identity, intent.pepper)
     || createHash("sha256").update(pepper.bytes).digest("hex") !== intent.pepper.digest) fail("profile-onboarding-finish-pepper-changed");
+  if (operation.relay !== undefined && emailKey(pepper.bytes, operation.relay.email) !== operation.emailKey) fail("profile-onboarding-finish-verifier-changed");
 }
 
 function prepareProfileOnboardingFinish(control: string, locator: RuntimeLocator,
@@ -1746,6 +1755,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
             const stable = (operation: z.infer<typeof SignUpOperationSchema>) => ({ operationId: operation.operationId, profileId: operation.profileId,
               commandId: operation.commandId, writeId: operation.writeId, emailKey: operation.emailKey, firstName: operation.firstName,
               lastName: operation.lastName, createdAt: operation.createdAt, commandFingerprint: operation.commandFingerprint,
+              relay: operation.relay ?? null,
               credentials: { operationId: operation.credentials.operationId, keyId: operation.credentials.keyId, generation: operation.credentials.generation } });
             if (canonicalJsonStringify(stable(before)) !== canonicalJsonStringify(stable(input))
               || before.expectedRevision !== undefined && before.expectedRevision !== input.expectedRevision
@@ -1787,16 +1797,21 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         try {
           const inspect = () => { current(); return requireRuntimeAdmission(registration.profile, scope).readProfileRegistration(registration.lease, operation, scope, registration.proof); };
           const captured = inspect();
+          const assertVerifier = ({ login }: typeof captured, verifier: OnboardingVerifierRow | undefined) => {
+            const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
+            if (pepper === undefined || verifier === undefined || verifier.emailKey !== operation.emailKey
+              || emailKey(pepper.bytes, login.email) !== operation.emailKey
+              || (login.kind === "relay" ? !matchesOnboardingRelay(login, verifier) : !passwordMatches(login.password, verifier))) {
+              fail("profile-onboarding-finish-verifier-changed");
+            }
+          };
           if (lstatMaybe(intentPath)) {
             const pending = readStrict(intentPath, ProfilePublicationSchema);
             if (pending.kind !== "onboarding-finish" || canonicalJsonStringify(pending.operation) !== canonicalJsonStringify(operation)) fail("profile-onboarding-finish-pending");
             const revalidate = () => {
               const next = inspect();
               if (next.revision !== captured.revision || canonicalJsonStringify(next.credentials) !== canonicalJsonStringify(pending.credentials)) fail("profile-onboarding-finish-source-changed");
-              const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 }),
-                verifier = pending.verifiers.profiles.find(row => row.profileId === operation.profileId);
-              if (pepper === undefined || verifier === undefined || emailKey(pepper.bytes, next.email) !== operation.emailKey
-                || !passwordMatches(next.password, verifier)) fail("profile-onboarding-finish-verifier-changed");
+              assertVerifier(next, pending.verifiers.profiles.find(row => row.profileId === operation.profileId));
             };
             revalidate(); prepareProfileOnboardingFinish(control, locator, pending, revalidate)(); return;
           }
@@ -1804,18 +1819,23 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
             const row = before.profiles.find(row => row.profileId === operation.profileId);
             if (row?.registration.operationId !== operation.operationId || row.registration.commandId !== operation.commandId
               || row.registration.writeId !== operation.writeId || row.registration.credentialRevision !== captured.revision
+              || operation.relay !== undefined && row.relayEmail !== operation.relay.email
               || canonicalJsonStringify(row.registration.onboardingCompletion) !== canonicalJsonStringify(profileOnboardingCompletion(operation))) fail("profile-signup-intent-mismatch");
             return;
           }
           assertCanonicalProfileBinding(join(locator.stateRoot, "profiles", operation.profileId, "state.db"),
             { installationId: locator.installationId, profileId: operation.profileId });
-          const verifierOwner = createProfileVerifiers(locator.stateRoot), prepared = verifierOwner.prepare(operation.profileId, captured.email, captured.password),
+          const verifierOwner = createProfileVerifiers(locator.stateRoot), { login } = captured,
+            prepared = login.kind === "relay"
+              ? verifierOwner.prepareFromRow(operation.profileId, { emailKey: operation.emailKey, salt: login.salt, passwordVerifier: login.passwordVerifier })
+              : verifierOwner.prepare(operation.profileId, login.email, login.password),
             verifier = verifyPreparedProfileVerifier(prepared, locator.stateRoot, operation.profileId, operation.emailKey),
             verifierPath = join(locator.stateRoot, "machine", "profile-verifiers.json"), priorVerifiers = readStrict(verifierPath, ProfileVerifierDocumentSchema);
           if (priorVerifiers.profiles.some(row => row.profileId === operation.profileId || row.emailKey === operation.emailKey)) fail("profile-onboarding-verifier-binding-invalid");
           const row = ProfileRegistryRowSchema.parse({ profileId: operation.profileId, ...deriveProfileNames(operation.firstName, operation.lastName),
             registration: { operationId: operation.operationId, commandId: operation.commandId, writeId: operation.writeId,
               credentialRevision: captured.revision, onboardingCompletion: profileOnboardingCompletion(operation) },
+            ...(operation.relay === undefined ? {} : { relayEmail: operation.relay.email }),
             createdAt: operation.createdAt, lastSignedInAt: operation.createdAt, credentialState: "saved", duoState: "ready", lifecycle: "ready" }),
             next = advanceProfileRegistryDocument(before, { profiles: [...before.profiles, row] }),
             prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema), root = join(locator.stateRoot, "profiles", operation.profileId);
@@ -1826,8 +1846,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           const revalidate = () => {
             const next = inspect();
             if (next.revision !== captured.revision || canonicalJsonStringify(next.credentials) !== canonicalJsonStringify(captured.credentials)) fail("profile-onboarding-finish-source-changed");
-            const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
-            if (pepper === undefined || emailKey(pepper.bytes, next.email) !== operation.emailKey || !passwordMatches(next.password, verifier)) fail("profile-onboarding-finish-verifier-changed");
+            assertVerifier(next, verifier);
           };
           revalidate(); verifyPreparedProfileVerifier(prepared, locator.stateRoot, operation.profileId, operation.emailKey);
           current(); atomicJson(intentPath, intent);
