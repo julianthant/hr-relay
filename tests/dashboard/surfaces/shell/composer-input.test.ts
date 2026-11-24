@@ -124,7 +124,7 @@ function preferenceServer() {
     async executeCommand(input: unknown): Promise<CommandResult> {
       const command = AssistantModelPreferenceCommandRequestSchema.parse(input);
       await held.gate;
-      if (held.refuse) return CommandResultSchema.parse({ state: 'refused', commandId: command.commandId, code: 'policy-refused', message: 'Refused' });
+      if (held.refuse) return CommandResultSchema.parse({ state: 'rejected', commandId: command.commandId, code: 'capability-unavailable', message: 'assistant-preference-unavailable' });
       view = AssistantModelPreferenceViewSchema.parse({ ...view, revision: command.target.expectedRevision + 1, preference: command.payload });
       return CommandResultSchema.parse({ state: 'applied', commandId: command.commandId,
         affectedTargets: [{ family: 'assistant-model-preference', profileId: command.target.profileId, revision: view.revision }] });
