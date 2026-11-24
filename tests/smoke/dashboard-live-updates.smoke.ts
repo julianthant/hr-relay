@@ -131,6 +131,7 @@ for (const view of Object.keys(DECLARED_GATE_BASELINE) as View[]) {
     expect(await run.advance()).toMatchObject({ at: "settled", outcome: { state: "parked-gate" } });
 
     await expect(row, "the queue row shows the run's new status").toContainText(PARKED);
+    if (view === "that run open") await expect(dashboard.runPanel.getByRole("button", { name: "Continue anyway", exact: true }), "the open panel shows the gate").toBeVisible();
     await quiet(page, seen);
     expect([...seen].sort()).toEqual([...DECLARED_GATE_BASELINE[view] ?? []].sort());
   });
@@ -276,10 +277,13 @@ test("the open-gate run's refusal shows from the stream, with no run read and no
   await expect(dashboard.runPanel.getByText("These logs don't match this run.", { exact: true })).toBeVisible();
   await quiet(page, seen);
   expect(seen, "opening a run costs its one stream request").toEqual([STREAM]);
+  const runningRow = page.locator(`[data-demo-row-id="${seeded.runIds["runningRun"]}"]`).first();
+  const before = await runningRow.textContent();
   seen.length = 0;
 
-  const eventRun = seeded.drive.finishRunningStep();
-  await expect(page.locator(`[data-demo-row-id="${eventRun}"]`).first()).toBeVisible();
+  seeded.drive.finishRunningStep();
+  await expect.poll(() => runningRow.textContent(), { message: "the queue row shows the event" }).not.toBe(before);
+  await expect(dashboard.runPanel.getByText("These logs don't match this run.", { exact: true }), "the refusal is still shown").toBeVisible();
   await quiet(page, seen);
   expect(seen, "the queue keeps updating and the refused panel reads nothing").toEqual([]);
 });
