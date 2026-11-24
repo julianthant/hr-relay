@@ -74,6 +74,7 @@ function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap
 type ListedRow = Exclude<NotificationWire, { kind: "backfill-gap" }>;
 const linkedRun = (row: ListedRow) => row.kind === "notification" && row.link !== undefined && "runId" in row.link ? row.link.runId : undefined;
 const repeatingNotice = (row: ListedRow) => row.kind === "notification" && row.trigger === "repeating";
+const historyKey = (row: ListedRow, key: string) => row.readOnlyHistory === true ? `history\u0000${key}` : key;
 
 /** Repeats fold into one item. A failure repeats across runs: the same workflow, person and failure text. Every other event repeats
  * for one run, or for storage. */
@@ -89,10 +90,15 @@ function foldKey(row: ListedRow): string | undefined {
 export function foldRows(served: readonly NotificationWire[]): readonly (readonly ListedRow[])[] {
   const rows = served.flatMap(row => row.kind === "backfill-gap" ? [] : [row]);
   const failures = new Map<string, string>();
-  for (const row of rows) { const run = linkedRun(row), key = foldKey(row); if (run !== undefined && key !== undefined && row.kind === "notification" && row.trigger === "failed") failures.set(run, key); }
+  for (const row of rows) {
+    const run = linkedRun(row), key = foldKey(row);
+    if (run !== undefined && key !== undefined && row.kind === "notification" && row.trigger === "failed") failures.set(historyKey(row, run), key);
+  }
   const byKey = new Map<string, ListedRow[]>(), groups: ListedRow[][] = [];
   for (const row of rows.sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt))) {
-    const key = (repeatingNotice(row) ? failures.get(linkedRun(row) ?? "") : undefined) ?? foldKey(row);
+    const run = linkedRun(row);
+    const fold = (repeatingNotice(row) && run !== undefined ? failures.get(historyKey(row, run)) : undefined) ?? foldKey(row);
+    const key = fold === undefined ? undefined : historyKey(row, fold);
     const group = key === undefined ? undefined : byKey.get(key);
     if (group === undefined) { const made = [row]; if (key !== undefined) byKey.set(key, made); groups.push(made); }
     else if (repeatingNotice(group[0]) && !repeatingNotice(row)) group.unshift(row);
@@ -116,6 +122,7 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
       ...(row.kind === "notification" && row.count > 1 ? { count: row.count } : {}),
       age: notificationAge(row.occurredAt, nowIso), at: row.occurredAt,
       day: notificationDay(row.occurredAt, nowIso),
+      ...(row.readOnlyHistory === true ? { readOnlyHistory: true } : {}),
       read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },
     };
@@ -238,6 +245,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     if (!enabled || current.current.request !== request || !current.current.usable) return false;
     const row = rowsRef.current?.find(row => row.notificationId === id);
     if (row?.kind !== "notification" || row.actorId !== request.scope.actorId) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
+    if (row.readOnlyHistory === true) return false;
     const owner = current.current.binding;
     // Marking an item read marks every unread row it stands for.
     const group = action === "read" ? foldRows(rowsRef.current ?? []).find(members => members.includes(row)) ?? [] : [];

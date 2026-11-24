@@ -166,6 +166,15 @@ export async function waitForFrontend(port: number, ownerNonce: string, signal: 
   throw new CopySigninError("copy-signin-dashboard-not-owned");
 }
 
+/** A visible window follows the OS size. Headless keeps Playwright's default viewport. */
+export function copySigninLaunchOptions(headless: boolean) {
+  return {
+    headless, channel: "chromium" as const, acceptDownloads: false as const,
+    args: ["--no-proxy-server", "--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"],
+    ...(headless ? {} : { viewport: null }),
+  };
+}
+
 async function openCopyDashboard(profile: CopyProfile, fixtureWorkspace: string | undefined): Promise<void> {
   if (fixtureWorkspace !== undefined) useCopySigninFixture(profile, fixtureWorkspace);
   const ports = runtimeProfiles[profile], workspace = applicationDataWorkspace(undefined, profile);
@@ -191,10 +200,7 @@ async function openCopyDashboard(profile: CopyProfile, fixtureWorkspace: string 
     mkdirSync(browserDirectory, { mode: 0o700, recursive: true });
     statDirectory(browserDirectory, "copy sign-in browser", 0o700);
     const { chromium } = await import("playwright");
-    context = await chromium.launchPersistentContext(browserDirectory, {
-      headless: fixtureWorkspace !== undefined, channel: "chromium", acceptDownloads: false,
-      args: ["--no-proxy-server", "--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"],
-    });
+    context = await chromium.launchPersistentContext(browserDirectory, copySigninLaunchOptions(fixtureWorkspace !== undefined));
     const closed = new Promise<void>(resolve => { context?.once("close", () => { resolve(); }); });
     const page = context.pages()[0] ?? await context.newPage();
     await page.goto(`${origin}${stateRoute}`);
