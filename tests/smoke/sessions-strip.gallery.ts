@@ -47,3 +47,12 @@ test("the Starting card is first and the row's own shape", async ({ mount, page 
   await expect(page.locator("[data-session-strip] > :first-child li[aria-busy]")).toContainText("Starting");
   expect(await measure(page)).toMatchObject({ tops: 1, heights: 1 });
 });
+
+test("a 340px-high window (680px at 200% zoom) keeps the open panel's worker controls reachable", async ({ mount, page }) => {
+  await page.setViewportSize({ width: 1280, height: 340 });
+  await mount("sessions/combination/all-states");
+  expect((await measure(page)).bodyHeight, "the open panel shows its cards").toBeGreaterThan(100);
+  const retry = page.getByRole("group", { name: "Workers", exact: true }).getByRole("article").filter({ hasText: "Failed" }).getByRole("button", { name: "Retry" });
+  await retry.focus();
+  await expect(retry).toBeInViewport({ ratio: 1 });
+});

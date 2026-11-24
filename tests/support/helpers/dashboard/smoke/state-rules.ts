@@ -316,6 +316,8 @@ export function noDeadDisabledControl({ page }: StateRuleContext): Promise<reado
       if (!disabled(control) || control.getBoundingClientRect().width <= 1) continue;
       // A control held off while its own request is in flight says so on itself: that is a lock, not a dead control.
       if (control.matches('[aria-haspopup][aria-busy="true"]')) continue;
+      // A button that opens a dialog is not a picker; the approved mock keeps Add workers shown and switched off until it can act.
+      if (control.matches('button[aria-haspopup="dialog"]')) continue;
       if (control instanceof HTMLSelectElement && [...control.options].filter(option => !option.disabled).length > 1) continue;
       found.push(`the picker "${name(control)}" is shown switched off with nothing to choose`);
     }
