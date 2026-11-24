@@ -1,7 +1,18 @@
 import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
-import { ASSISTANT_MODEL_COMMAND } from '../../../models/dashboard/assistant.js';
+import { ASSISTANT_FAILURES, ASSISTANT_MODEL_COMMAND } from '../../../models/dashboard/assistant.js';
 import type { AssistantActionIdentity, AssistantActionProposal } from "../../../models/dashboard/assistant.js";
 import type { AssistantFailureCode } from "../../../models/dashboard/assistant.js";
+/** What a refused reply offers: a refusal about the ChatGPT account is fixed in Settings; every other is answered by sending the message again. */
+export type AssistantRefusalAction = 'open-settings' | 'retry';
+export const assistantRefusalAction = (code: AssistantFailureCode): AssistantRefusalAction =>
+  code === 'ASSISTANT_PLAN_DISABLED' || code === 'ASSISTANT_ACCOUNT_EXPIRED' || code.startsWith('CHATGPT_AUTH') ? 'open-settings' : 'retry';
+/** How the panel stands on the saved chat: still being read, unreadable, read with a note to show, or read clean. */
+export type AssistantHistoryState = 'loading' | 'failed' | 'notice' | 'ready';
+export function assistantHistoryState(loading: boolean, notice: string | undefined): AssistantHistoryState {
+  if (loading) return 'loading';
+  if (notice === ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE) return 'failed';
+  return notice ? 'notice' : 'ready';
+}
 export const ASSISTANT_UNKNOWN_NOTICE = ERROR_CATALOG.ASSISTANT_OUTCOME_UNKNOWN.text;
 export interface AssistantSource {
   readonly id: string;
