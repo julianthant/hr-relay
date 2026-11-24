@@ -9,6 +9,9 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/app/composition/dashboard/profile-session-routes.duo-reenrol.macos-native.integration.test.ts",
   "tests/backend/app/composition/dashboard/profile-session-routes.restart.integration.test.ts",
   "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.interrupted.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.rerun.integration.test.ts",
   "tests/backend/storage/maintenance/evidence-schema-upgrade.retired-generation.integration.test.ts",
   "tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts",
   "tests/scripts/dev/relay.windows-native.integration.test.ts",
@@ -82,6 +85,8 @@ export const SERIAL_STORAGE_FILES: readonly string[] = [
 export const LINUX_NATIVE_FILES: readonly string[] = [
   "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
   "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.interrupted.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.rerun.integration.test.ts",
   "tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts",
   "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
   "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
