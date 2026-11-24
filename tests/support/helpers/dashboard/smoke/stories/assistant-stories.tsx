@@ -11,6 +11,7 @@ import { ASSISTANT_FAILURES } from "../../../../../../src/models/dashboard/assis
 import { ASSISTANT_STORY_CHATS, ASSISTANT_STORY_PROMPT, type AssistantProposalKind } from "../../../../fixtures/dashboard/assistant-story-fixtures.js";
 import { withKnownBreaks } from "../known-breaks.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
+import type { ComposerMenu } from "../../../../../../src/dashboard/surfaces/shell/composer-model.js";
 import { AssistantHost, ChatListHost, CONNECTED, type AssistantHostProps } from "./assistant-story-host.js";
 
 const PANEL = '[aria-label="Relay assistant"]';
@@ -110,6 +111,11 @@ const CHATS = {
   "no-match": chatList("A search that matches no chat", ASSISTANT_STORY_CHATS, 'text="No matching chats."', async page => { await page.getByLabel("Search chats").fill("zzzz"); }),
 } satisfies Record<ChatListView, Story>;
 
+const MENU = {
+  model: scene("Served model choices in the composer", { account: CONNECTED, modelPreference: { slug: "gpt-6.1-sol", effort: "medium" }, modelChoices: true },
+    { ready: "#hub-model-trigger" }),
+} satisfies Record<Extract<ComposerMenu, "model">, Story>;
+
 const AUDIT_FIXES = "#532";
 const BREAK_SETS = {
   /** The composer's approval picker is switched off while no model preference is served, and its Send button is not painted the accent. */
@@ -146,6 +152,7 @@ const KNOWN_BREAKS = {
   "history/failed": BREAK_SETS.COMPOSER_FOCUS,
   "history/notice": BREAK_SETS.COMPOSER_FOCUS,
   "history/ready": BREAK_SETS.COMPOSER_FOCUS,
+  "menu/model": ["named-and-focusable", "primary-button-accent"],
   "kind/pause": BREAK_SETS.COMPOSER_FOCUS,
   "kind/rerun": BREAK_SETS.COMPOSER_FOCUS,
   "kind/separations-many": BREAK_SETS.COMPOSER_FOCUS,
@@ -164,5 +171,5 @@ const KNOWN_BREAKS = {
 } as const;
 
 export const ASSISTANT_STORIES = withKnownBreaks(
-  defineSurface("assistant", { account: ACCOUNT, plan: PLAN, turn: TURN, reply: REPLY, kind: KIND, disposition: DISPOSITION, refusal: REFUSAL, attachment: ATTACHMENT, history: HISTORY, chats: CHATS }),
+  defineSurface("assistant", { account: ACCOUNT, plan: PLAN, turn: TURN, reply: REPLY, kind: KIND, disposition: DISPOSITION, refusal: REFUSAL, attachment: ATTACHMENT, history: HISTORY, chats: CHATS, menu: MENU }),
   "assistant", AUDIT_FIXES, KNOWN_BREAKS);
