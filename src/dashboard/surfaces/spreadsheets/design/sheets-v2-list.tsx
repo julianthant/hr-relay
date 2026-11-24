@@ -28,7 +28,7 @@ export function SheetRow({ sheet, narrow, actions }: { sheet: Sheet; narrow: boo
     </div>
     <TagsFit sheet={sheet} />
     <div className="min-w-0 text-ui-muted"><SourceCell sheet={sheet} /></div>
-    <div onClick={stop}><V2Button look="plain" className="tabular-nums" aria-label={`Versions of ${sheet.name}, now v${sheet.version}`} onClick={() => actions.version(sheet.id)}>v{sheet.version}</V2Button></div>
+    <div onClick={stop}><V2Button look="plain" className="-ml-3 tabular-nums" aria-label={`Versions of ${sheet.name}, now v${sheet.version}`} onClick={() => actions.version(sheet.id)}>v{sheet.version}</V2Button></div>
     <div className="flex justify-end" onClick={stop}>{!narrow && <DownloadIcon name={sheet.name} onClick={() => actions.menu(sheet.id, 'download')} />}<SheetMenu sheet={sheet} label={sheet.name} withDownload={narrow} onAction={action => actions.menu(sheet.id, action)} /></div>
   </li>;
 }
