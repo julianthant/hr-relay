@@ -32,6 +32,10 @@
   --ds-surface-3: var(--ui-hover); /* hover / pressed / selected fill */
   --ds-surface-overlay: var(--ui-field); /* dialogs, drawers, menus, tooltips */
   --ds-surface-scrim: color-mix(in srgb, hsl(0 0% 0%) 66%, transparent);
+  --ds-dialog-bg: var(--ds-surface-overlay); /* every dialog card: a step lighter than the page */
+  --ds-dialog-field-bg: var(--ds-dialog-bg); /* a text field inside a dialog, close to the card */
+  --ds-button-off-bg: color-mix(in srgb, var(--ds-fg) 40%, var(--ds-dialog-bg)); /* a dialog's confirm while there is nothing to save */
+  --ds-button-off-fg: var(--ds-dialog-bg);
   /* SELECTION — one shade off the card it sits on, and no more. It mixes toward
    the FOREGROUND rather than the accent, which keeps it hueless on either */
   --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 8%, var(--ds-surface-1));
@@ -449,7 +453,7 @@
   --ds-radius-lg: var(--radius); /* 8px — cards, panels */
   --ds-radius-xl: calc(var(--radius) + 4px); /* 12px — dialogs, drawers */
   --ds-radius-search: calc(var(--radius) + 4px);
-  --ds-radius-dialog: 24px; /* every dialog: soft card, no border */
+  --ds-radius-dialog: 20px; /* every dialog: soft card, no border */
   --ds-dialog-title-size: 20px;
   --ds-dialog-title-lh: 28px;
   --ds-dialog-pad: var(--ds-space-section); /* 24px: header, body and footer inset */
@@ -592,6 +596,10 @@ body[data-demo-theme="dark"] {
   --ds-surface-3: var(--ui-hover);
   --ds-surface-overlay: var(--ui-field);
   --ds-surface-scrim: rgba(0, 0, 0, 0.66);
+  --ds-dialog-bg: #202022;
+  --ds-dialog-field-bg: #222224;
+  --ds-button-off-bg: #6e6f70;
+  --ds-button-off-fg: #202022;
   /* Body-only lift — see :root. Footer stays on --ds-recess-bg. */
   --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 8%, var(--ds-surface-1));
   --ds-surface-disabled: color-mix(in srgb, var(--muted) 60%, transparent);
@@ -783,6 +791,10 @@ body[data-demo-theme="light"] {
   --ds-surface-3: var(--ui-hover);
   --ds-surface-overlay: var(--ui-field);
   --ds-surface-scrim: rgba(16, 24, 40, 0.45);
+  --ds-dialog-bg: #ffffff;
+  --ds-dialog-field-bg: #ffffff;
+  --ds-button-off-bg: #e4e4e6;
+  --ds-button-off-fg: #a1a1a6;
   /* Paper needs a hair more mix than Graphite Warm's 4% for the same read. */
   --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 8%, var(--ds-surface-1));
   --ds-surface-disabled: color-mix(in srgb, var(--muted) 70%, transparent);
@@ -1020,14 +1032,9 @@ body[data-demo-theme="light"] {
   --ds-settings-section-gap: 48px;
   --ds-settings-card-gap: 40px;
 }
-.ds-segment {
-  --ds-segment-track: color-mix(in srgb, var(--ds-fg) 8%, var(--ui-canvas));
-  --ds-segment-thumb: #fff;
-}
-[data-demo-theme="dark"] .ds-segment {
-  --ds-segment-track: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-panel));
-  --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 26%, var(--ui-panel));
-}
+/* The selected pill of a two- or three-way switch: a soft step above whatever surface it sits on. */
+.ds-segment { --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 5%, transparent); --ds-segment-fg: color-mix(in srgb, var(--ds-fg) 50%, transparent); }
+[data-demo-theme="light"] .ds-segment { --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 7%, transparent); }
 /* Collapse the line box to the em. Compose AFTER a `ds-text-*` size class on a
    single-line label that shares a flex/grid row with an icon or a taller */
 .ds-leading-flush {
@@ -1403,13 +1410,13 @@ body[data-demo-theme="light"] {
 .ds-menu-search-row input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; box-shadow: none; background: transparent; color: var(--ui-primary); font: inherit; font-size: 13px; line-height: 18px; }
 .ds-menu-search-row input::placeholder { color: var(--ui-muted); opacity: 1; }
 /* Sidebar search: a 32px outlined pill with a barely-there fill; `field` above is the page pill with a thin border and a muted fill. */
-.ds-search-field--sidebar { --field: color-mix(in srgb, var(--ds-fg) 2%, transparent); --field-hover: var(--field); --field-focus: var(--field); --field-border: color-mix(in srgb, var(--ds-fg) 14%, transparent); --field-border-hover: var(--field-border); --field-border-focus: color-mix(in srgb, var(--ds-fg) 40%, transparent); --border-width-field: 1px; }
-[data-demo-theme="dark"] .ds-search-field--sidebar { --field-border: color-mix(in srgb, var(--ds-fg) 22%, transparent); }
+/* Focus is the caret plus the thin border one step brighter; no second ring. */
+.ds-search-field--sidebar { --field: color-mix(in srgb, var(--ds-fg) 2%, transparent); --field-hover: var(--field); --field-focus: var(--field); --field-border: color-mix(in srgb, var(--ds-fg) 14%, transparent); --field-border-hover: var(--field-border); --field-border-focus: color-mix(in srgb, var(--ds-fg) 26%, transparent); --border-width-field: 1px; }
+[data-demo-theme="dark"] .ds-search-field--sidebar { --field-border: color-mix(in srgb, var(--ds-fg) 16%, transparent); --field-border-focus: color-mix(in srgb, var(--ds-fg) 28%, transparent); }
 .ds-search-field--sidebar [data-slot="search-field-group"] { height: 32px; min-height: 32px; max-height: 32px; padding-inline: 12px 6px; border-radius: 9999px; border: 1px solid var(--field-border); }
 .ds-search-field--sidebar [data-slot="search-field-search-icon"] { width: 14px; height: 14px; margin: 0; }
 .ds-search-field--sidebar [data-slot="search-field-input"] { font-size: 13px; line-height: 18px; }
 /* The sidebar field has no edge to step up, so the input itself draws the ring. */
-.ds-search-field.ds-search-field--sidebar [data-slot="search-field-input"]:focus-visible { outline: var(--ds-focus-ring-w) solid var(--ds-focus-ring); outline-offset: 2px; border-radius: 9999px; }
 .ds-search-shortcut { margin-right: var(--ds-space-base); color: var(--ds-fg-muted); }
 
 .ds-body-scope .ds-date-picker--inline {
@@ -2058,7 +2065,19 @@ body[data-demo-theme],
 
 @media (max-width: 1099px) { :root { --ds-w-queue-column: 336px; } }
 
-/* The small dialog (confirmations and single-field edits): a light 16px title, the × level with it, tight even spacing. */
-[data-size="sm"][role="dialog"] { --ds-dialog-title-size: 16px; --ds-dialog-title-lh: 24px; }
-[data-size="sm"][role="dialog"] > header { align-items: center; padding-bottom: var(--ds-space-base); }
-[data-size="sm"][role="dialog"] > header h2 { font-weight: 500; }
+/* Every dialog: a plain 16px close X with no box at rest; footer buttons 32px tall with a 10px corner, sized to their label, 12px apart; the confirm is a flat grey while there is nothing to save. */
+[role="dialog"] .ds-dialog-close:not(:hover) { background: transparent; }
+[role="dialog"] .ds-dialog-close { color: var(--ds-fg-secondary); }
+[role="dialog"] { --ds-dialog-footer-gap: 12px; }
+[data-slot="dialog-footer"] [data-slot="button"][data-variant] { height: 32px; min-height: 32px; border-radius: 10px; padding-inline: 16px; font-size: 14px; }
+[data-slot="dialog-footer"] [data-variant="primary"]:disabled { opacity: 1; background: var(--ds-button-off-bg); color: var(--ds-button-off-fg); }
+
+/* The small dialog (single-field edits, renames and confirmations): 520 wide, 20px inset, the title centred 34px down, the X centred 28px in from the top right corner, a 36px field 20px above the footer. */
+[data-size="sm"][role="dialog"] { --ds-dialog-pad: 20px; --ds-dialog-header-pb: 0px; --ds-dialog-body-pt: 21px; --ds-dialog-body-pb: 0px; --ds-dialog-footer-pt: 20px; }
+[data-size="sm"][role="dialog"] > header { position: relative; padding-right: 48px; }
+[data-size="sm"][role="dialog"] .ds-dialog-close { position: absolute; top: 14px; right: 14px; }
+[data-size="sm"][role="dialog"] .ds-field-label { font-size: 13px; line-height: 18px; font-weight: 500; color: var(--ds-fg); }
+[data-size="sm"][role="dialog"] div:has(> .ds-field-label) { margin-bottom: calc(-1 * var(--ds-space-tight)); }
+[data-size="sm"][role="dialog"] .ds-control-input:not(.ds-secret-input *), [data-size="sm"][role="dialog"] .ds-secret-input { height: 36px; min-height: 36px; border-radius: 8px; background: var(--ds-dialog-field-bg); font-size: 14px; padding-inline: 11px; }
+[data-size="sm"][role="dialog"] .ds-secret-input .ds-control-input { height: 100%; min-height: 0; padding-inline: 0; font-size: 14px; }
+[data-size="sm"][role="dialog"] .ds-control-input:not(.ds-secret-input *):focus-visible, [data-size="sm"][role="dialog"] .ds-secret-input:focus-within { outline: none; border-color: color-mix(in srgb, var(--ds-accent) 60%, var(--ds-dialog-bg)); }

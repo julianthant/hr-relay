@@ -30,8 +30,6 @@ html[data-hub] :is(.ds-focus-within, .ds-secret-input, .ds-unit-field):focus-wit
 html[data-hub] :is(.date-input-group, .ds-secret-input, .ds-unit-field):is(:focus-within, [data-focus-within="true"]),
 html[data-hub] :is(textarea, input.input):focus-visible { border-color: var(--ds-field-focus-edge); box-shadow: none; }
 html[data-hub] .date-input-group:is(:focus-within, [data-focus-within="true"]) { box-shadow: none !important; outline: none; }
-html[data-hub] .ds-search-field [data-slot="search-field-group"]:focus-within { border-color: var(--ds-field-focus-edge); box-shadow: inset 0 0 0 1px var(--ds-field-focus-edge); }
-html[data-hub] .launch-picker-search .ds-search-field [data-slot="search-field-group"]:focus-within { box-shadow: none; }
 html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="off"] *::after {
   animation: none !important; transition: none !important; scroll-behavior: auto !important;
 }
