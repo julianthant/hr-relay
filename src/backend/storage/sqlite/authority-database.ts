@@ -93,7 +93,7 @@ import { createOcrReviewRepository } from "./ocr-review.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { createGeneratedArtifactRepository,generatedArtifactFromRow } from "./generated-artifacts.js";
 import { createImportedArtifactRepositories,importedArtifactFromRow } from "./imported-artifacts.js";
-import { isNativeOrdinaryTable,isNativeRecordIntegrityFailure,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
+import { initialFailureColumns,initialNotificationColumns,isNativeOrdinaryTable,isNativeRecordIntegrityFailure,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
 import { deletionArtifactValues,executeNativeRunDeletion,prepareNativeRunDeletion } from "./native-run-deletion.js";
 import { createNotificationMetadataRepositories,validateNotificationMetadata } from "./notification-publications.js";
 import { createReadonlyAuthoritySnapshot,readonlyAuthorityImage,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
@@ -5728,12 +5728,12 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #insertFailure(record: FailureRecord): void {
-    const json = canonicalJsonStringify(record);
+    const columns = initialFailureColumns(record);
     this.#authorityWrite("run_failures", () => {
       const result = this.#database.prepare(`
         INSERT INTO run_failures (id, run_id, fingerprint, code, resolution_json, resolution_version, payload_json, created_at)
-        VALUES (?, ?, ?, ?, '{"status":"unresolved","version":1}', 1, ?, ?)
-      `).run(record.failureId, record.runId, record.fingerprint, record.code, json, record.occurredAt);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(...Object.values(columns));
       return { result: undefined, changes: sqliteChanges(result.changes) };
     });
   }
@@ -6072,6 +6072,8 @@ export class AuthorityDatabase implements Disposable {
       || this.#validatedExternalDataVersion !== this.#snapshotExternalDataVersion) return undefined;
     if (this.#lifecycleCommandReadSnapshot === undefined) {
       const batch: LifecycleCommandBatch = { byRun: new Map(), byManifest: new Map() };
+      const historyOrder = this.#historyOwner === undefined ? "" : " JOIN history_command_order position ON position.command_id=commands.id";
+      const commandOrder = this.#historyOwner === undefined ? "commands.rowid" : "position.source,position.ordinal";
       const rows = this.#database.prepare(`SELECT commands.*, json_object(
         'commandId', id, 'operation', json_extract(request_json,'$.operation'), 'targetId', target_id,
         'requestRunId', json_extract(request_json,'$.request.runId'),
@@ -6086,10 +6088,10 @@ export class AuthorityDatabase implements Disposable {
         'currentNodeKind', json_type(request_json,'$.request.lifecycle.currentNodeId'),
         'claimGeneration', json_extract(request_json,'$.request.claim.claimGeneration'),
         'expectedVersion', json_extract(request_json,'$.request.expectedVersion')) AS lookup_json
-        FROM commands WHERE id IN (SELECT json_extract(row_key,'$[0]') FROM ${RUN_REFERENCES_TABLE} WHERE table_name='commands')
+        FROM commands${historyOrder} WHERE id IN (SELECT json_extract(row_key,'$[0]') FROM ${RUN_REFERENCES_TABLE} WHERE table_name='commands')
         AND family='run-lifecycle' AND json_extract(request_json,'$.operation') IN (
           'create','retry','recover','resume','delegation-retry','worker-transition','transition','terminalize',
-          'delegation-refresh','delegation-invocation','delegation-admission') ORDER BY commands.rowid`).all();
+          'delegation-refresh','delegation-invocation','delegation-admission') ORDER BY ${commandOrder}`).all();
       for (const { lookup_json, ...row } of rows) {
         const fields = LifecycleLookupSchema.parse(JSON.parse(z.string().parse(lookup_json)));
         const entry = { ...fields, row };
@@ -6409,22 +6411,18 @@ export class AuthorityDatabase implements Disposable {
 
   #buildNotificationRepository(): AuthorityRepositories["notifications"] {
     const write = (record: NotificationRecord, mode: "insert" | "update"): void => {
-      const json = canonicalJsonStringify(record);
       const result = mode === "insert"
         ? this.#database.prepare(`
             INSERT INTO notifications
               (id, actor_id, dedupe_fingerprint, status, seen_count, version, run_id, payload_json, publications_json, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)
-          `).run(
-            record.notificationId, record.actorId, record.dedupeFingerprint,
-            record.status, record.count, record.version, record.links.find(link => "runId" in link)?.runId ?? null, json, record.createdAt, record.updatedAt,
-          )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(...Object.values(initialNotificationColumns(record)))
         : this.#database.prepare(`
             UPDATE notifications
             SET status = ?, seen_count = ?, version = ?, payload_json = ?, updated_at = ?
             WHERE id = ? AND version = ?
           `).run(
-            record.status, record.count, record.version, json, record.updatedAt,
+            record.status, record.count, record.version, canonicalJsonStringify(record), record.updatedAt,
             record.notificationId, record.version - 1,
           );
       const changes = sqliteChanges(result.changes);

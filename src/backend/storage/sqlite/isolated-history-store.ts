@@ -1,14 +1,23 @@
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { join } from "node:path";
 import { lstatSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { SpanEventWireSchema, type SpanEventWire } from "../../../models/events/types.js";
+import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { NotificationRecordSchema, type NotificationRecord } from "../../../models/notifications/notifications.js";
+import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
+import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
 import type { IsoInstant } from "../../../rules/identity/ids.js";
 import type { ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
+import { deriveStableUuid } from "../../../rules/identity/stable-uuid.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, OCR_SEARCH_TERMS_COLUMN_SQL } from "./migrations.js";
-import { openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
+import { initialFailureColumns, initialNotificationColumns } from "./native-record-row.js";
+import { backupReadOnlyDatabase, openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
 import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
-import { backfillRunSearchOcrSubjects } from "./run-search-index.js";
+import { backfillRunSearchOcrSubjects, copySeedSearchColumns } from "./run-search-index.js";
+import { timelineEventColumns } from "./timeline-repository.js";
 import { privatePathRejects } from "../private-path.js";
 
 export function historyArchivePath(stateRoot: string): string {
@@ -21,6 +30,12 @@ export function historyArchivePath(stateRoot: string): string {
 }
 
 const commandFamilies = "family IN ('run-lifecycle','run','start','bulk-parent','bulk-child','failure-resolution','ocr-review','gate','workflow-batch') OR (family='worker-browser' AND json_extract(request_json,'$.type')='check-parked-write')";
+const archiveFormat = 2;
+const dashboardEvidenceTables = {
+  run_requests: " WHERE id IN (SELECT json_extract(payload_json,'$.origin.startPlanId') FROM run_batches WHERE id IN (SELECT session_id FROM runs))",
+  settings_snapshots: " WHERE id IN (SELECT settings_snapshot_id FROM runs)",
+  artifacts: " WHERE kind='extracted' AND id IN (SELECT json_extract(payload_json,'$.result.value.extractionId') FROM run_results WHERE workflow='ocr-page')",
+} as const;
 const historyTables = {
   runs: "", run_batches: "", deleted_runs: "", run_delegations: "", delegation_dependencies: "",
   run_checkpoints: "", gate_results: "", run_results: "", run_failures: "", run_receipts: "",
@@ -30,11 +45,12 @@ const historyTables = {
   command_audits: ` WHERE command_id IN (SELECT id FROM commands WHERE ${commandFamilies})`,
   run_references: " WHERE table_name IN ('commands','command_audits','run_delegations','delegation_dependencies','run_results','run_receipts')",
   workbook_operations: " WHERE json_extract(request_json,'$.source.kind') IN ('run','run-reference') AND receipt_json IS NOT NULL",
+  ...dashboardEvidenceTables,
 } as const;
 const tables = Object.entries(historyTables);
-const headers = z.strictObject({ format: z.literal(1), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+const headers = z.strictObject({ format: z.literal(archiveFormat), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   installation_id: z.uuid(), profile_id: z.uuid() });
-const Column = z.string().regex(/^[a-z_]+$/u);
+const Column = z.string().regex(/^[a-z_][a-z0-9_]*$/u);
 const validatedVersion = new WeakMap<DatabaseSync, number>();
 
 /** The archive answers the statements written for the native tables, so it carries their indexes: without one a lookup scans every archived row. */
@@ -51,20 +67,31 @@ export function runIndex(database: DatabaseSync, name: "runs_day_idx" | "runs_wo
 }
 
 export function writeHistoryArchive(source: DatabaseSync, path: string, binding: ProfileDatabaseBinding, at: IsoInstant) {
+  return materializeHistoryArchive(source, path, binding, at);
+}
+
+function createHistoryTable(archive: DatabaseSync, name: string, columns: readonly string[]): void {
+  archive.exec(`CREATE TABLE ${name} (${columns.join(",")})`);
+  const key = columns.includes("id") ? "id" : columns.includes("run_id") ? "run_id" : columns[0];
+  archive.exec(`CREATE INDEX ${name}_lookup ON ${name}(${key})`);
+  if (columns.includes("run_id") && key !== "run_id") archive.exec(`CREATE INDEX ${name}_owner ON ${name}(run_id)`);
+}
+
+function materializeHistoryArchive(source: DatabaseSync, path: string, binding: ProfileDatabaseBinding, at?: IsoInstant) {
   const archive = new DatabaseSync(path);
   try {
     archive.exec("BEGIN");
     archive.exec("CREATE TABLE history_header(format INTEGER, schema_version INTEGER, installation_id TEXT, profile_id TEXT)");
-    archive.prepare("INSERT INTO history_header VALUES(1,?,?,?)").run(CURRENT_AUTHORITY_SCHEMA_VERSION, binding.installationId, binding.profileId);
+    archive.prepare("INSERT INTO history_header VALUES(?,?,?,?)").run(archiveFormat, CURRENT_AUTHORITY_SCHEMA_VERSION, binding.installationId, binding.profileId);
     const counts: Record<string, number> = {};
     for (const [name, where] of tables) {
-      const select = source.prepare(`SELECT * FROM ${name}${where}`);
+      const select = source.prepare(`SELECT * FROM ${name}${at === undefined ? " WHERE 0" : where}${name === "commands" ? " ORDER BY rowid" : ""}`);
       const columns = select.columns().map(column => Column.parse(column.name));
-      archive.exec(`CREATE TABLE ${name} (${columns.join(",")})`);
+      createHistoryTable(archive, name, columns);
       const insert = archive.prepare(`INSERT INTO ${name} VALUES(${columns.map(() => "?").join(",")})`);
       let count = 0;
       for (let row of select.iterate()) {
-        if (name === "runs" && row.state !== "terminal") {
+        if (at !== undefined && name === "runs" && row.state !== "terminal") {
           const record = { ...runRecordFromRow(row) };
           delete record.cancelRequested;
           delete record.pause;
@@ -74,9 +101,6 @@ export function writeHistoryArchive(source: DatabaseSync, path: string, binding:
         insert.run(...columns.map(key => row[key]));
         count++;
       }
-      const key = columns.includes("id") ? "id" : columns.includes("run_id") ? "run_id" : columns[0];
-      archive.exec(`CREATE INDEX ${name}_lookup ON ${name}(${key})`);
-      if (columns.includes("run_id") && key !== "run_id") archive.exec(`CREATE INDEX ${name}_owner ON ${name}(run_id)`);
       counts[name] = count;
     }
     archive.exec("UPDATE run_search SET state='discarded' WHERE run_id IN (SELECT id FROM runs WHERE outcome='discarded') AND state NOT IN ('done','failed','cancelled','discarded','interrupted','superseded')");
@@ -84,6 +108,98 @@ export function writeHistoryArchive(source: DatabaseSync, path: string, binding:
     for (const index of missingNativeIndexes(source, archive)) archive.exec(index);
     archive.exec("COMMIT");
     return counts;
+  } finally { archive.close(); }
+}
+
+export const COPY_HISTORY_SEED_BUILD = sha256Hex("relay-copy-seed");
+
+export type CopyHistorySeed = Readonly<{
+  fromDay: string;
+  build(runs: readonly RunRecord[]): Readonly<{
+    runs: readonly Readonly<{ run: RunRecord; failure?: FailureRecord; events: readonly SpanEventWire[] }>[];
+    notifications: readonly NotificationRecord[];
+  }>;
+}>;
+
+export async function cloneHistoryArchive(path: string, stage: string): Promise<boolean> {
+  if (lstatSync(path, { throwIfNoEntry: false }) === undefined) return false;
+  assertArchiveFile(path);
+  await backupReadOnlyDatabase(path, stage, 5000);
+  return true;
+}
+
+const SeedMemberSchema = z.strictObject({ kind: z.enum(["run", "notification"]), id: z.uuid() });
+
+function removePreviousSeed(archive: DatabaseSync): void {
+  archive.exec(`CREATE TABLE IF NOT EXISTS copy_seed_members(kind TEXT NOT NULL CHECK(kind IN ('run','notification')),
+    id TEXT NOT NULL, PRIMARY KEY(kind,id)) STRICT`);
+  for (const raw of archive.prepare("SELECT kind,id FROM copy_seed_members").iterate()) {
+    const { kind, id } = SeedMemberSchema.parse(raw);
+    if (kind === "run") {
+      const run = runRecordFromRow(archive.prepare("SELECT * FROM runs WHERE id=?").get(id));
+      if (run.envelope.buildId !== COPY_HISTORY_SEED_BUILD || run.displayName?.startsWith("Synthetic ") !== true) throw new Error("copy-seed-run-membership-mismatch");
+    } else {
+      const row = z.object({ payload_json: z.string() }).parse(archive.prepare("SELECT payload_json FROM notifications WHERE id=?").get(id));
+      if (!NotificationRecordSchema.parse(JSON.parse(row.payload_json)).title.startsWith("Synthetic ")) throw new Error("copy-seed-notification-membership-mismatch");
+    }
+  }
+  for (const table of ["run_search", "timeline_events", "run_failures", "runs"] as const) {
+    archive.exec(`DELETE FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"} IN (SELECT id FROM copy_seed_members WHERE kind='run')`);
+  }
+  archive.exec("DELETE FROM notifications WHERE id IN (SELECT id FROM copy_seed_members WHERE kind='notification'); DELETE FROM copy_seed_members");
+}
+
+export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding: ProfileDatabaseBinding, cloned: boolean, seed: CopyHistorySeed) {
+  if (!cloned) materializeHistoryArchive(local, path, binding);
+  const archive = new DatabaseSync(path);
+  try {
+    archive.exec("BEGIN IMMEDIATE");
+    removePreviousSeed(archive);
+    const from = z.iso.date().parse(seed.fromDay);
+    const existing = [archive, local].flatMap(database => database.prepare("SELECT * FROM runs WHERE local_day>=?").all(from).map(runRecordFromRow));
+    const population = seed.build(existing);
+    let { cursor } = z.strictObject({ cursor: z.number().int().nonnegative() }).parse(
+      archive.prepare("SELECT coalesce(max(cursor),0) AS cursor FROM timeline_events").get());
+    const membership = archive.prepare("INSERT INTO copy_seed_members(kind,id) VALUES(?,?)");
+    const insert = (table: "runs" | "run_search" | "run_failures" | "timeline_events" | "notifications", columns: Record<string, SQLInputValue>) => {
+      const key = table === "run_search" ? "run_id" : "id";
+      if (archive.prepare(`SELECT 1 FROM ${table} WHERE ${key}=? LIMIT 1`).get(columns[key]) !== undefined) throw new Error(`copy-seed-id-collision: ${table}`);
+      const keys = Object.keys(columns);
+      archive.prepare(`INSERT INTO ${table} (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...Object.values(columns));
+    };
+    const byWorkflow: Record<string, number> = {};
+    for (const row of population.runs) {
+      const run = RunRecordSchema.parse(row.run), { runId, workflow } = run.envelope;
+      if (run.envelope.buildId !== COPY_HISTORY_SEED_BUILD || !run.envelope.dryRun || run.displayName?.startsWith("Synthetic ") !== true || run.envelope.parent !== undefined) throw new Error("copy-seed-run-invalid");
+      const failure = row.failure === undefined ? undefined : FailureRecordSchema.parse(row.failure);
+      if (failure !== undefined && (failure.runId !== runId || run.lifecycle.state !== "terminal" || run.lifecycle.failureId !== failure.failureId)) throw new Error("copy-seed-failure-owner-mismatch");
+      insert("runs", runRecordColumns(run));
+      if (failure !== undefined) insert("run_failures", initialFailureColumns(failure));
+      let queued: z.infer<typeof TimelineEventRecordSchema> | undefined;
+      for (const [index,event] of SpanEventWireSchema.array().parse(row.events).entries()) {
+        const record = TimelineEventRecordSchema.parse({ schemaVersion: 1, cursor: ++cursor,
+          eventId: deriveStableUuid("relay-copy-seed-event", `${runId}/${String(index)}`), workflow,
+          scope: { kind: "run", runId }, occurredAt: event.ts, recordedAt: event.ts,
+          retentionDate: event.ts.slice(0, 10), payload: { kind: "span", event }, source: { kind: "native" } });
+        if (event.t === "run.queued") {
+          if (queued !== undefined) throw new Error("copy-seed-duplicate-queue-event");
+          queued = record;
+        }
+        insert("timeline_events", timelineEventColumns(record));
+      }
+      if (queued === undefined) throw new Error("copy-seed-queue-event-missing");
+      insert("run_search", copySeedSearchColumns(run, queued, failure?.code ?? null));
+      membership.run("run", runId);
+      byWorkflow[workflow] = (byWorkflow[workflow] ?? 0) + 1;
+    }
+    for (const input of population.notifications) {
+      const notice = NotificationRecordSchema.parse(input);
+      if (!notice.title.startsWith("Synthetic ")) throw new Error("copy-seed-notification-invalid");
+      insert("notifications", initialNotificationColumns(notice));
+      membership.run("notification", notice.notificationId);
+    }
+    archive.exec("COMMIT");
+    return { runs: population.runs.length, byWorkflow, notifications: population.notifications.length };
   } finally { archive.close(); }
 }
 
@@ -120,9 +236,13 @@ export function checkStagedHistory(localPath: string, archivePath: string, bindi
   } finally { local.close(); }
 }
 
-function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
+function assertArchiveFile(path: string) {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.nlink !== 1 || privatePathRejects(path, stat, "private")) throw new Error("isolated-history-unsafe");
+}
+
+function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
+  assertArchiveFile(path);
   upgradeHistoryArchive(database, path, binding);
   const url = pathToFileURL(path);
   url.search = "mode=ro&immutable=1";
@@ -140,31 +260,42 @@ const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync) => void>
     backfillRunSearchOcrSubjects(archive);
   },
 };
-const ArchiveVersion = z.object({ schema_version: z.number().int(), installation_id: z.string(), profile_id: z.string() });
+const ArchiveVersion = z.strictObject({ format: z.literal([1, archiveFormat]), schema_version: z.number().int(), installation_id: z.uuid(), profile_id: z.uuid() });
 
-/** Brings an archive an older build wrote up to the current schema and the native store's indexes in place, in one transaction. */
+function readArchiveVersion(archive: DatabaseSync, binding: ProfileDatabaseBinding) {
+  const header = ArchiveVersion.parse(archive.prepare("SELECT format,schema_version,installation_id,profile_id FROM history_header").get());
+  if (header.installation_id !== binding.installationId || header.profile_id !== binding.profileId) throw new Error("isolated-history-binding-mismatch");
+  if (header.schema_version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("isolated-history-schema-unsupported");
+  return header;
+}
+
+/** Upgrades an archive's schema, format and native indexes in one transaction. */
 function upgradeHistoryArchive(native: DatabaseSync, path: string, binding: ProfileDatabaseBinding): void {
   const probe = new DatabaseSync(path, { readOnly: true });
-  let header: z.infer<typeof ArchiveVersion>, indexed: boolean;
   try {
-    header = ArchiveVersion.parse(probe.prepare("SELECT schema_version,installation_id,profile_id FROM history_header").get());
-    indexed = missingNativeIndexes(native, probe).length === 0;
+    const header = readArchiveVersion(probe, binding);
+    if (header.schema_version === CURRENT_AUTHORITY_SCHEMA_VERSION && header.format === archiveFormat
+      && missingNativeIndexes(native, probe).length === 0) return;
   } finally { probe.close(); }
-  if (header.schema_version >= CURRENT_AUTHORITY_SCHEMA_VERSION && indexed) return;
-  if (header.installation_id !== binding.installationId || header.profile_id !== binding.profileId) throw new Error("isolated-history-binding-mismatch");
-  let version: number;
   const archive = new DatabaseSync(path);
   try {
     archive.exec("BEGIN IMMEDIATE");
     try {
-      for (version = ArchiveVersion.parse(archive.prepare("SELECT schema_version,installation_id,profile_id FROM history_header").get()).schema_version;
-        version < CURRENT_AUTHORITY_SCHEMA_VERSION; version += 1) {
+      const start = readArchiveVersion(archive, binding);
+      let version = start.schema_version;
+      for (; version < CURRENT_AUTHORITY_SCHEMA_VERSION; version += 1) {
         const step = ARCHIVE_UPGRADES[version];
         if (step === undefined) throw new Error(`isolated-history-schema-unsupported: ${String(version)}`);
         step(archive);
       }
-      archive.prepare("UPDATE history_header SET schema_version=?").run(version);
+      if (start.format === 1) {
+        for (const name of Object.keys(dashboardEvidenceTables)) {
+          const columns = native.prepare(`SELECT * FROM main.${name} LIMIT 0`).columns().map(column => Column.parse(column.name));
+          createHistoryTable(archive, name, columns);
+        }
+      }
       for (const index of missingNativeIndexes(native, archive)) archive.exec(index);
+      archive.prepare("UPDATE history_header SET schema_version=?,format=?").run(version, archiveFormat);
       archive.exec("COMMIT");
     } catch (error) { archive.exec("ROLLBACK"); throw error; }
   } finally { archive.close(); }
@@ -183,6 +314,9 @@ export function attachHistoryArchive(database: DatabaseSync, path: string, bindi
     });
     database.exec(`CREATE TEMP VIEW ${name} AS SELECT ${selection.join(",")} FROM main.${name} UNION ALL SELECT ${columns.join(",")} FROM history.${name}`);
   }
+  database.exec(`CREATE TEMP VIEW history_command_order AS
+    SELECT id AS command_id, 0 AS source, rowid AS ordinal FROM history.commands
+    UNION ALL SELECT id AS command_id, 1 AS source, rowid AS ordinal FROM main.commands`);
   checkIdentities(database);
   validatedVersion.set(database, -1);
   return offset;
