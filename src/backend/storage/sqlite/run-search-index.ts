@@ -4,10 +4,11 @@ import { CHANGE_LOG_SCHEMA_VERSION } from "./authority-change-log.js";
 import { RUN_REFERENCES_TABLE } from "../../../models/config/authority.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
+import { OcrReviewRevisionSchema, ocrRecordName } from "../../../models/ocr/review.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
-import { ActorIdSchema } from "../../../rules/identity/ids.js";
+import { ActorIdSchema, RunIdSchema } from "../../../rules/identity/ids.js";
 import { type PredecessorRunRecord } from "../../../models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import { FailureRecordSchema } from "../../../models/trust/failure.js";
@@ -88,6 +89,39 @@ function safeSubject(database: DatabaseSync, run: PredecessorRunRecord, declarat
   }
   if (typeof value !== "string" || value.trim().length === 0 || value.length > 500) throw new Error("run-search-subject-invalid");
   return { state: "available", value: value.trim() };
+}
+
+const SEARCH_ROWS = `(SELECT run_id AS id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,
+  subject,actor_id AS actor,descriptor_version AS version,failure_code AS failure,has_receipt AS receipt,
+  has_diagnostic AS diagnostic,systems_json AS systems,metadata_json AS payload_json FROM run_search) s`;
+const OCR_SUBJECT_MATCH = "s.id IN (SELECT value FROM json_each(?))";
+const OcrSearchRowSchema = z.strictObject({ target_id: RunIdSchema, records_json: z.string() });
+
+// A hosted review contributes matches to its visible host. Only matching run IDs reach ranking and paging.
+function readOcrSubjectMatches(database: DatabaseSync, query: string, facet: string | undefined, where: string, parameters: readonly (string | number)[]) {
+  const matches = { exact: new Set<string>(), prefix: new Set<string>(), contains: new Set<string>(), facet: new Set<string>() };
+  const reviews = database.prepare(`SELECT s.id AS target_id,json_extract(review.payload_json,'$.records') AS records_json FROM runs ocr
+    JOIN ${SEARCH_ROWS} ON s.id=COALESCE(ocr.parent_id,ocr.id)
+    JOIN ocr_review_revisions review ON review.run_id=ocr.id AND review.revision=(
+      SELECT max(revision) FROM ocr_review_revisions WHERE run_id=ocr.id
+    )
+    WHERE ocr.workflow='ocr' AND json_extract(s.payload_json,'$.metadata.subject.reason') IS NOT 'withheld' AND ${where}`);
+  for (const row of reviews.iterate(...parameters)) {
+    const { target_id: target, records_json } = OcrSearchRowSchema.parse(row);
+    for (const record of OcrReviewRevisionSchema.shape.records.parse(JSON.parse(records_json))) {
+      const employeeId = record.fields.answers.find(answer => answer.path === "employee.employeeId" || answer.path === "employeeId");
+      for (const value of [ocrRecordName(record.fields), record.assertedEid, employeeId?.state === "read" ? employeeId.value : undefined]) {
+        if (typeof value !== "string") continue;
+        const subject = value.trim().toLowerCase();
+        if (facet !== undefined && subject.includes(facet)) matches.facet.add(target);
+        if (query.length === 0 || !subject.includes(query)) continue;
+        matches.contains.add(target);
+        if (subject.startsWith(query)) matches.prefix.add(target);
+        if (subject === query) matches.exact.add(target);
+      }
+    }
+  }
+  return matches;
 }
 
 type RunSearchPublication = z.infer<typeof RunSearchPublicationSchema>;
@@ -380,23 +414,38 @@ export function createRunSearchIndex(database: DatabaseSync) {
       const { facets, q, scope } = request;
       const fields = { run: "s.id", trace: "s.trace", workflow: "s.workflow", subject: "s.subject", actor: "lower(s.actor)" };
       add("NOT (s.workflow='ocr' AND EXISTS(SELECT 1 FROM runs r WHERE r.id=s.id AND r.parent_id IS NOT NULL))");
-      if (q.length > 0) {
-        const scopedFields = scope === "all" ? Object.values(fields) : [fields[scope]];
-        add(`(${scopedFields.map(field => `instr(${field},?)>0`).join(" OR ")})`, ...scopedFields.map(() => q));
-      }
       for (const [field, value] of Object.entries({ workflow: facets.workflow, state: facets.state, shape: facets.shape, actor: facets.actor, version: facets.version, failure: facets.failure })) if (value !== undefined) add(`s.${field}=?`, value);
       if (facets.from !== undefined) add("s.local_day>=?", facets.from);
       if (facets.to !== undefined) add("s.local_day<=?", facets.to);
       if (facets.day !== undefined) add("s.enqueued_ms>=? AND s.enqueued_ms<?", Date.parse(facets.day.startsAt), Date.parse(facets.day.endsBefore));
       if (facets.dryRun !== undefined) add("s.dry_run=?", Number(facets.dryRun));
       if (facets.system !== undefined) add("EXISTS(SELECT 1 FROM json_each(s.systems) WHERE value=?)", facets.system);
-      if (facets.subject !== undefined) add("instr(s.subject,?)>0",facets.subject.toLowerCase());
       if (facets.evidence === "receipt") add("s.receipt=1");
       if (facets.evidence === "failure") add("s.failure IS NOT NULL");
       if (facets.evidence === "diagnostic") add("s.diagnostic=1");
       if (facets.evidence === "none") add("s.receipt=0 AND s.failure IS NULL AND s.diagnostic=0");
-      const where = clauses.length === 0 ? "1" : clauses.join(" AND ");
-      const candidateCount = CountSchema.parse(database.prepare(`SELECT count(*) AS count FROM (SELECT 1 FROM (SELECT run_id AS id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,subject,actor_id AS actor,descriptor_version AS version,failure_code AS failure,has_receipt AS receipt,has_diagnostic AS diagnostic,systems_json AS systems,metadata_json AS payload_json FROM run_search) s WHERE ${where} LIMIT ?)`)
+
+      const subjectQuery = scope === "all" || scope === "subject" ? q : "";
+      const subjectFacet = facets.subject?.toLowerCase();
+      const ocrMatches = subjectQuery.length > 0 || subjectFacet !== undefined
+        ? readOcrSubjectMatches(database, subjectQuery, subjectFacet, clauses.join(" AND "), parameters)
+        : undefined;
+      if (q.length > 0) {
+        const scopedFields = scope === "all" ? Object.values(fields) : [fields[scope]];
+        const conditions = scopedFields.map(field => `instr(${field},?)>0`);
+        const queryBindings = scopedFields.map(() => q);
+        if (ocrMatches?.contains.size) {
+          conditions.push(OCR_SUBJECT_MATCH);
+          queryBindings.push(JSON.stringify([...ocrMatches.contains]));
+        }
+        add(`(${conditions.join(" OR ")})`, ...queryBindings);
+      }
+      if (subjectFacet !== undefined) {
+        if (ocrMatches?.facet.size) add(`(instr(s.subject,?)>0 OR ${OCR_SUBJECT_MATCH})`, subjectFacet, JSON.stringify([...ocrMatches.facet]));
+        else add("instr(s.subject,?)>0", subjectFacet);
+      }
+      const where = clauses.join(" AND ");
+      const candidateCount = CountSchema.parse(database.prepare(`SELECT count(*) AS count FROM (SELECT 1 FROM ${SEARCH_ROWS} WHERE ${where} LIMIT ?)`)
         .get(...parameters, LIMIT + 1)).count;
       if (candidateCount > LIMIT) throw new Error("run-search-query-too-broad: narrow dates or metadata filters (maximum 10000 candidates)");
       const rankParameters: string[] = [];
@@ -405,11 +454,16 @@ export function createRunSearchIndex(database: DatabaseSync) {
         rankParameters.push(q);
         const field = fields[match.field];
         const condition = match.strength === "exact" ? `${field}=?` : match.strength === "prefix" ? `substr(${field},1,${String(q.length)})=?` : `instr(${field},?)>0`;
+        const ocrIds = match.field === "subject" ? ocrMatches?.[match.strength] : undefined;
+        if (ocrIds?.size) {
+          rankParameters.push(JSON.stringify([...ocrIds]));
+          return [`WHEN (${condition} OR ${OCR_SUBJECT_MATCH}) THEN ${String(rank)}`];
+        }
         return [`WHEN ${condition} THEN ${String(rank)}`];
       });
       const rank = q.length === 0 ? "0" : `CASE ${rankClauses.join(" ")} ELSE NULL END`;
       const bindings = q.length === 0 ? parameters : [...rankParameters, ...parameters];
-      const matched = `WITH ranked AS (SELECT s.*,${rank} AS match_rank FROM (SELECT run_id AS id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,subject,actor_id AS actor,descriptor_version AS version,failure_code AS failure,has_receipt AS receipt,has_diagnostic AS diagnostic,systems_json AS systems,metadata_json AS payload_json FROM run_search) s WHERE ${where})`;
+      const matched = `WITH ranked AS (SELECT s.*,${rank} AS match_rank FROM ${SEARCH_ROWS} WHERE ${where})`;
       const after = request.after;
       const afterSql = after === undefined ? "" : "AND (match_rank>? OR (match_rank=? AND enqueued_ms<?) OR (match_rank=? AND enqueued_ms=? AND id>?))";
       const cursorBindings = after === undefined ? [] : [after.matchRank, after.matchRank, Date.parse(after.enqueuedAt), after.matchRank, Date.parse(after.enqueuedAt), after.runId];
