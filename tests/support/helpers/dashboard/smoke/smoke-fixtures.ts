@@ -15,11 +15,18 @@ export const SEEDED_PREFERENCE_WRITE = /^(?:http 500: POST |console: Failed to l
 export function watchPageDiagnostics(page: Page): string[] {
   const seen: string[] = [];
   page.on("console", message => { if (message.type() === "error") seen.push(`console: ${message.text()} ${message.location().url}`); });
-  page.on("request", request => { if (request.url().includes("/api/v1/settings/editable")) console.log(`[diag] start settings/editable now=${String(Date.now())}`); });
+  const t0 = Date.now();
+  const log = (line: string) => diagLog.push(`${String(Date.now() - t0)}ms ${line}`);
+  const diagLog: string[] = [];
+  (page as unknown as { diagLog: string[] }).diagLog = diagLog;
+  page.on("request", request => { const path = new URL(request.url()).pathname; if (path.startsWith("/api/") || path.startsWith("/events/")) log(`start ${request.method()} ${path}`); });
+  page.on("requestfinished", request => { const path = new URL(request.url()).pathname; if (path.startsWith("/api/") || path.startsWith("/events/")) log(`done ${path}`); });
+  page.on("framenavigated", frame => { if (frame === page.mainFrame()) log(`navigated ${frame.url()}`); });
+  page.on("close", () => log("page closed"));
   page.on("pageerror", error => seen.push(`pageerror: ${error.message}`));
   page.on("requestfailed", request => {
     const reason = request.failure()?.errorText ?? "";
-    console.log(`[diag] requestfailed ${request.url()} ${reason} started=${String(Math.round(request.timing().startTime))} now=${String(Date.now())}`);
+    log(`FAILED ${new URL(request.url()).pathname} ${reason}`);
     // Leaving or reloading the page aborts its open event stream.
     if (reason === "net::ERR_ABORTED" && new URL(request.url()).pathname.startsWith("/events/")) return;
     seen.push(`requestfailed: ${request.url()} ${reason}`);
@@ -50,6 +57,7 @@ export const test = base.extend<TestFixtures>({
     const seen = watchPageDiagnostics(page);
     const allowed: RegExp[] = [];
     await use({ allow: pattern => { allowed.push(pattern); } });
+    if (seen.some(entry => !allowed.some(pattern => pattern.test(entry)))) console.log(`[diag] ${base.info().title}\n${(page as unknown as { diagLog: string[] }).diagLog.join("\n")}`);
     expect(seen.filter(entry => !allowed.some(pattern => pattern.test(entry))), "unexpected page diagnostics").toEqual([]);
   }, { auto: true }],
   dashboard: async ({ page, seeded }, use) => {
