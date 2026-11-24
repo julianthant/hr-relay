@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { BrowserContext, CDPSession, Page } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import { z } from "zod";
 
 const ProcessIdSchema = z.number().int().positive().max(0xffff_ffff);
@@ -109,7 +109,6 @@ export function createDuoBrowserFocus(timeoutMs: number, platform: NodeJS.Platfo
   run: FocusCommandRunner = runFocusCommand): DuoBrowserFocus {
   const command = (file: string, args: readonly string[]) => run(file, args, timeoutMs);
   const powershell = (script: string) => command("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script]);
-  const windows = new WeakMap<Page, CDPSession>();
   async function activate(processId: number, windowHandle?: string): Promise<void> {
     const id = ProcessIdSchema.parse(processId);
     let result: string;
@@ -141,12 +140,16 @@ Write-Output 'focused'
       if (platform !== "darwin" && platform !== "win32") return;
       const processId = await browserProcessId(context);
       if (platform === "darwin") {
-        // Detaching any page session disables Chromium's virtual authenticators for the whole tab.
-        const pipe = windows.get(page) ?? await context.newCDPSession(page);
-        windows.set(page, pipe);
-        const { windowId } = await pipe.send("Browser.getWindowForTarget");
-        await pipe.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } });
-        await pipe.send("Page.bringToFront");
+        const pipe = await context.newCDPSession(page);
+        let failure: { error: unknown } | undefined;
+        try {
+          const { windowId } = await pipe.send("Browser.getWindowForTarget");
+          await pipe.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } });
+          await pipe.send("Page.bringToFront");
+        } catch (error) { failure = { error }; }
+        try { await pipe.detach(); }
+        catch (cleanup) { throw new AggregateError(failure ? [failure.error, cleanup] : [cleanup], "duo-browser-focus-restoration-unproved", { cause: cleanup }); }
+        if (failure) throw failure.error;
       }
       await activate(processId);
     },
