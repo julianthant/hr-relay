@@ -7,14 +7,14 @@ import { PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../../src/models/config
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
-import { readAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
+import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect } from "@playwright/test";
 import { chromium, type BrowserContext } from "playwright";
-import { it } from "vitest";
+import { beforeAll, it } from "vitest";
 import { z } from "zod";
 import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoBrowserOwner } from "../../../../src/backend/profiles/onboarding-duo.js";
@@ -27,6 +27,14 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const FORM = `<!doctype html><form action="${SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="username"><label for="ssopassword">Password</label><input id="ssopassword" name="password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
+
+// A fresh runner's first Chromium start pages in the binary; doing it here keeps that cost out of each test's 5 s launch window.
+beforeAll(async () => {
+  const extension = realpathSync(join(process.cwd(), "fast-duo")), profile = mkdtempSync(join(tmpdir(), "onboarding-warm-"));
+  const context = await chromium.launchPersistentContext(profile, { channel: "chromium", headless: true,
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
+  await context.close();
+});
 
 for (const pendingClose of [false, true]) it(pendingClose
   ? "real synthetic MV3 pending software-key attempt retains UNKNOWN across whole-window closure and reopen"
@@ -339,8 +347,11 @@ for (const scenario of ["software", "abort", "timeout"] as const) it(`real enrol
       finished = true;
       assert.equal(active.profileId, draft.profileId);
       assert.equal(machine.readProfileRegistry().profiles.filter(row => row.profileId === draft.profileId).length, 1);
+      const owner = machine.admitProfile(draft.profileId);
+      let stored: unknown;
+      try { stored = createCanonicalCredentials(owner).readRecord("duo")?.value; } finally { owner.release(); }
       const rows = z.strictObject({ credentials: z.array(z.looseObject({ state: z.string(), authenticator: z.looseObject({ transport: z.string() }).optional() })) })
-        .parse(readAuthenticatedCredentialFixture(machine.stateRoot, draft.profileId, "duo")).credentials;
+        .parse(stored).credentials;
       assert.deepEqual(rows.map(row => [row.state, row.authenticator?.transport]), [["ready", "usb"]]);
     }
   } catch (error) {
