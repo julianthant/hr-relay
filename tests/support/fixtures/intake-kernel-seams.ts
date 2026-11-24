@@ -7,10 +7,8 @@ import { intakeReviewBinding, resolveIntakeComparison } from "../../../src/model
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 
 import type { IntakeParser } from "../../../src/workflow-kit/intake-parser.js";
-import type {
-  IntakeProjectionResolver,
-  RunConfigIdentity,
-} from "../../../src/backend/runs/commands/command-kernel.js";
+import type { IntakeProjectionResolver } from "../../../src/backend/runs/commands/intake-commands.js";
+import type { RunConfigIdentity } from "../../../src/backend/runs/commands/start-command.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import type { IntakeService } from "../../../src/backend/runs/commands/intake-service.js";
 

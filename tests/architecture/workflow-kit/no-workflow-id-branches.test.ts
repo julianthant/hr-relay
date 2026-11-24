@@ -40,7 +40,7 @@ const ALLOWED_SITES: readonly WorkflowIdSite[] = [
   { path: "src/backend/app/composition/dashboard/queue.ts", workflowIds: ["ocr"], reason: OCR_SERVICE },
   { path: "src/backend/app/composition/runtime-composition.ts", workflowIds: ["ocr"], reason: OCR_SERVICE },
   { path: "src/backend/app/composition/worker/run-resources.ts", workflowIds: ["ocr", "ocr-page"], reason: OCR_SERVICE },
-  { path: "src/backend/runs/commands/command-kernel.ts", workflowIds: ["ocr"], reason: OCR_SERVICE },
+  { path: "src/backend/runs/commands/gate-command.ts", workflowIds: ["ocr"], reason: OCR_SERVICE },
   { path: "src/backend/runs/queries/run-detail.ts", workflowIds: ["ocr"], reason: OCR_SERVICE },
   { path: "src/backend/runs/queries/ocr-record-members.ts", workflowIds: ["ocr", "person-lookup", "i9-lookup"],
     reason: `${OCR_SERVICE} Record members name the lookup child families OCR starts.` },

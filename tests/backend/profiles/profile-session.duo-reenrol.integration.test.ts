@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import fs, { existsSync } from "node:fs";
+import fs, { existsSync, readFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
@@ -40,6 +40,35 @@ function workflowDuo(machine: World, profileId: string) {
 }
 
 describe("Duo re-enrolment for an active profile", () => {
+  it("removes only the active person's key and lets that person set up a new key from empty", async () => {
+    const machine = await world();
+    const session = machine.open({ idleFence });
+    const peer = await machine.signUp(session, { ...alexFields, email: "duo-peer@ucsd.edu" });
+    assert.equal((await machine.logOut(session, peer.token, "2026-09-06T12:01:00.000Z")).state, "signed-out");
+    const peerDuoPath = join(machine.machineRoot, "machine", "duo-credentials", `${peer.profileId}.json`);
+    const peerDuo = readFileSync(peerDuoPath), peerCredentials = machine.credentialBytes(peer.profileId);
+    const alex = await machine.signUp(session, alexFields);
+    const before = session.readDuoKeys(alex.token);
+    assert.equal(before.keys.length, 1);
+    assert.deepEqual(Object.keys(before.keys[0]).sort(), ["addedAt", "id", "shortId"]);
+    assert.throws(() => session.readDuoKeys(peer.token), { code: "PROFILE_SESSION_STALE" });
+    const change = { kind: "remove" as const, commandId: randomUUID(), keyId: before.keys[0].id, expectedRevision: before.revision };
+    assert.deepEqual(session.changeDuoKey(peer.token, change), { state: "refused", code: "PROFILE_SESSION_STALE" });
+    const removed = { state: "changed", snapshot: { revision: before.revision + 1, keys: [] } };
+    assert.deepEqual(session.changeDuoKey(alex.token, change), removed);
+    assert.deepEqual(session.changeDuoKey(alex.token, change), removed);
+    assert.equal(session.prepareCurrentStorage(alex.token).state, "available");
+    assert.deepEqual(readFileSync(peerDuoPath), peerDuo);
+    assert.deepEqual(machine.credentialBytes(peer.profileId), peerCredentials);
+
+    const opened = session.beginDuoReenrol(alex.token);
+    await proveSecurityKey(session, alex.token, opened.operationId);
+    assert.equal((await session.commitDuoReenrol(alex.token, opened.operationId)).profileId, alex.profileId);
+    const after = session.readDuoKeys(alex.token);
+    assert.equal(after.keys.length, 1);
+    assert.notEqual(after.keys[0].id, before.keys[0].id);
+  });
+
   it("opens beside the active session, which stays usable and keeps signing with the old enrolment", async () => {
     const machine = await world();
     const session = machine.open();
