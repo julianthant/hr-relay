@@ -7,7 +7,7 @@ import { createDashboardStreamHub, type DashboardStreamHub } from "../../../../.
 import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
 import { initialProtectedStoreRecord } from "../../../../../src/models/config/protected-settings.js";
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../../../src/models/config/settings.js";
-import type { EditableSettingsWire } from "../../../../../src/models/dashboard/settings-editor.js";
+import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../../../src/models/dashboard/settings-editor.js";
 import type { DashboardStreamEnvelope, StreamRow } from "../../../../../src/models/dashboard/subscription.js";
 import { DAY, makeWorld, type DashboardWorld } from "../../../../support/helpers/backend/dashboard-harness.js";
 
@@ -36,19 +36,26 @@ async function setup() {
   }); hubs.push(hub);
   return {
     world, hub, initial, listeners,
-    commit: (revision: number) => { document = { ...initial, revision }; for (const listener of [...listeners]) listener(); },
+    commit: (revision: number) => {
+      assert(initial.runtimeStatus.state === "current");
+      // The document's revision must match its runtime identity's, or the row fails its schema.
+      document = EditableSettingsWireSchema.parse({ ...initial, revision,
+        runtimeStatus: { state: "current", identity: { ...initial.runtimeStatus.identity, settingsRevision: revision } } });
+      for (const listener of [...listeners]) listener();
+    },
     failReads: (value: boolean) => { throws = value; },
     fire: () => { const due = timers.splice(0).filter(timer => !timer.cancelled); for (const timer of due) timer.task(); return due; },
   };
 }
 
-const settingsOf = (envelope: DashboardStreamEnvelope | undefined): StreamRow["value"] | undefined => {
+type SettingsRow = Extract<StreamRow, { model: "settings" }>;
+const settingsOf = (envelope: DashboardStreamEnvelope | undefined): SettingsRow["value"] | undefined => {
   if (envelope?.type !== "snapshot" && envelope?.type !== "change") return undefined;
-  return envelope.rows.find(row => row.model === "settings")?.value;
+  return envelope.rows.find((row): row is SettingsRow => row.model === "settings")?.value;
 };
 const revisionOf = (envelope: DashboardStreamEnvelope | undefined): number | undefined => {
   const value = settingsOf(envelope);
-  return value?.state === "available" && "revision" in value.value ? value.value.revision : undefined;
+  return value?.state === "available" ? value.value.revision : undefined;
 };
 
 it("carries the settings row in the snapshot and one rows-only change per commit", async () => {
