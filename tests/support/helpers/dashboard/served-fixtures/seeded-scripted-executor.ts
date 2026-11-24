@@ -157,6 +157,7 @@ export function createScriptedExecutor(deps: Readonly<{
     const current = active();
     if (current.failing) throw new Error("the script failed this step");
     if (current.releaseAll) return;
+    console.log(`[diag-exec] hold ${heldNode(current.execId)} at=${String(Date.now())}`);
     const verdict = await new Promise<Verdict>((resolve) => {
       current.release = resolve;
       current.arrive({ at: "step", nodeId: heldNode(current.execId) });
@@ -206,6 +207,7 @@ export function createScriptedExecutor(deps: Readonly<{
   const refuseOcr: ChatGptOcrAdapter = { capability: "ocr.extract", policy: { kind: "chatgpt-subscription-only", timeoutMs: 120_000 },
     invoke: () => { throw new Error("the scripted workflow reads no page with the OCR provider"); } };
   const start = async (script: ScriptedWorkflow): Promise<Runtime> => {
+    const t = Date.now(); const mark = (what: string) => console.log(`[diag-exec] ${script.module.descriptor.id} ${what} +${String(Date.now() - t)}ms at=${String(Date.now())}`);
     const descriptor = script.module.descriptor;
     const tree = [script.module, ...(script.children ?? [])].map(module => module.descriptor);
     // The next free slot, so a workflow the seed already runs workers for keeps its own.
@@ -213,12 +215,14 @@ export function createScriptedExecutor(deps: Readonly<{
     const slot = testAdmittedWorker(database, clock, { path: deps.profilePath, workflow: descriptor.id, poolIndex,
       browserSystems: [...new Set(tree.flatMap(member => workflowProjections(member).systems))] }).member;
     deps.reportWorker(slot.workerId, WorkerActivitySchema.parse({ state: "idle" }));
+    mark("slot");
     const scheduler = new ManualScheduler(clock);
     const overrides = script.stores?.(world) ?? [];
     const entries = [...taskStoreRegistry.stores.filter(store => !overrides.some(override => override.namespace === store.namespace)), ...overrides];
     const tasks = entries.flatMap(store => Object.values(store.tasks));
     const stores = overrides.length === 0 ? taskStoreRegistry : defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
       tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
+    mark("registry");
     const manager = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(slot.workerId), workflowId: WorkflowIdSchema.parse(descriptor.id),
       stores, factory: sessionFactoryHarness(script.drivers(world)).factory,
       browserScreenshotCapture: { capture: async () => undefined }, clock, scheduler, acquireDeadlineMs: 60_000,
@@ -233,6 +237,7 @@ export function createScriptedExecutor(deps: Readonly<{
         } }),
       taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }),
       clock, ids, scheduler, taskDeadlineMs: 60_000, log: recordingLogger().log };
+    mark("manager");
     const writeSequencer = createWriteSequencer({ ...common, operator: "local-operator" });
     const executeOne = (rootId: string): Promise<Readonly<{ run: RunRecord; outcome: ScriptedOutcome }>> => {
       const config = database.authority.runtimeConfig.get();
@@ -260,6 +265,7 @@ export function createScriptedExecutor(deps: Readonly<{
             publicationSource: () => ({ workflowId: target.id, workflowLabel: target.label, partitionDay: searchPartitionDay(new Date(claimed.envelope.enqueuedAt)) }),
             references: { runId: claimed.envelope.runId, write: command => { if (target.id !== "onboarding") throw new Error("the scripted workflow writes no reference"); return runWorkbooks.write(claimed, command); }, read: command => runWorkbooks.read(claimed, command),
               verifyPerson: command => runWorkbooks.verifyPerson(claimed, command) } })) } };
+      mark(`claimed ${claimed.envelope.workflow}`);
       deps.reportWorker(slot.workerId, WorkerActivitySchema.parse({ state: "busy", runId: claimed.envelope.runId }));
       return withBoundRunConfigFingerprint(manager, claimed.envelope.configFingerprint, () => executeClaimedRun(
         { ...common, descriptor: target, writeSequencer, providers, artifacts, artifactProjector,

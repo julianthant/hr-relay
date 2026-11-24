@@ -24,7 +24,7 @@ export function watchPageDiagnostics(page: Page): string[] {
   page.on("framenavigated", frame => { if (frame === page.mainFrame()) log(`navigated ${frame.url()}`); });
   page.on("close", () => log("page closed"));
   let tick = Date.now();
-  const lag = setInterval(() => { const now = Date.now(); if (now - tick > 300) log(`event loop blocked ${String(now - tick - 100)}ms`); tick = now; }, 100);
+  const lag = setInterval(() => { const now = Date.now(); if (now - tick > 300) log(`event loop blocked ${String(now - tick - 100)}ms until=${String(now)}`); tick = now; }, 100);
   page.on("close", () => clearInterval(lag));
   page.on("pageerror", error => seen.push(`pageerror: ${error.message}`));
   page.on("requestfailed", request => {
