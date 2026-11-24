@@ -33,14 +33,6 @@ function settingsWithDistinctRuntimeValues() {
   assert.ok(actor); assert.equal(actor.settingsValue, "Saved operator"); assert.equal(actor.activeValue, "Running operator"); assert.equal(actor.defaultValue, defaultValue);
   return document;
 }
-async function chooseBrowserWindow(trigger: HTMLElement, value: string): Promise<void> {
-  await settingsAction(() => trigger.click());
-  const option = document.querySelector<HTMLElement>(`[role="option"][data-value="${value}"]`);
-  assert.ok(option);
-  await settingsAction(() => option.click());
-}
-
-const patchOf = (command: unknown): unknown => (command as { payload: { patch: unknown } }).payload.patch;
 
 describe("typed Settings catalog controls", () => {
   it("omits the actor label control while retaining the General settings", async () => {
@@ -60,38 +52,13 @@ describe("typed Settings catalog controls", () => {
   it("shows the approved General browser controls without observed host details", async () => {
     const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "general"); cleanups.push(mounted.close);
-    assert.equal(mounted.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Hidden");
+    assert.equal(mounted.host.querySelector('[data-settings-path="browser.headless"]') === null, true);
     assert.equal(mounted.host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 0);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Observed host/u);
   });
-  it("saves Browser window size through canonical Settings authority and matching readback", async () => {
+  it("omits the retired General controls", async () => {
     const h = await setup("general");
-    const select = h.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
-    assert.ok(select); assert.equal(select.hasAttribute("disabled"), false);
-    // dd20a218a6: a choice saves at once, so no draft is left to submit.
-    await chooseBrowserWindow(select, "Medium");
-    await settingsAction(() => undefined);
-    assert.equal(h.commands.length, 1);
-    assert.deepEqual(patchOf(h.commands[0]), { "browser.headless": { set: false }, "display.screenWidth": { set: 1440 }, "display.screenHeight": { set: 1000 } });
-    assert.equal(h.controller().dirtyCount, 0);
-    const leaves = h.authority.read().sections.flatMap(section => section.leaves);
-    assert.equal(leaves.find(leaf => leaf.path === "display.screenWidth")?.effectiveValue, 1440);
-    assert.equal(leaves.find(leaf => leaf.path === "display.screenHeight")?.effectiveValue, 1000);
-    assert.equal(select.dataset.value, "Medium");
-  });
-  it("autosaves the approved General browser window choice and omits retired controls", async () => {
-    const h = await setup("general");
-    const row = h.host.querySelector('[data-settings-path="browser.headless"]');
-    assert.ok(row);
-    const select = row.querySelector<HTMLElement>('button[aria-label="Browser window"]');
-    assert.ok(select);
-    assert.equal(select.dataset.value, "Hidden");
-    await chooseBrowserWindow(select, "Small");
-    assert.equal(select.dataset.value, "Small");
-    await settingsAction(() => undefined);
-    assert.equal(h.commands.length, 1);
-    assert.deepEqual(patchOf(h.commands[0]), { "browser.headless": { set: false }, "display.screenWidth": { set: 1280 }, "display.screenHeight": { set: 800 } });
-    assert.equal(h.controller().dirtyCount, 0);
+    assert.equal(h.host.querySelector('[data-settings-path="browser.headless"]') === null, true);
     assert.equal(h.host.querySelector('[data-settings-path="features.debugScreenshots"]') === null, true);
     assert.equal(h.host.querySelector('[data-settings-path="features.duoWebAuthn"]') === null, true);
   });

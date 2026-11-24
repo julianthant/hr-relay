@@ -47,14 +47,14 @@ const click = (name: string | RegExp, exact = true) => async (page: Page): Promi
   await page.getByRole("button", { name, exact }).first().click();
 };
 const then = (...steps: readonly ((page: Page) => Promise<void>)[]) => async (page: Page): Promise<void> => { for (const step of steps) await step(page); };
-/** Waits for the editable settings to arrive: the General page's Browser window choice is on screen. */
-const WINDOW = '[role="combobox"][aria-label="Browser window"]';
+/** Waits for the editable settings to arrive: the General page's job-end date is on screen. */
+const WINDOW = '[data-settings-path$=".jobEndDate"] [role="spinbutton"][data-type="day"]';
 const loaded = async (page: Page): Promise<void> => { await page.locator(WINDOW).waitFor(); };
-/** The immediate-save choice every save story presses: the browser window starts hidden, so a size is a change. */
+/** The immediate-save edit every save story makes: the job-end day starts at 30, so typing 15 is a change. */
 const chooseWindow = async (page: Page): Promise<void> => {
   await loaded(page);
-  await page.locator(WINDOW).click();
-  await page.getByRole("option", { name: "Small", exact: true }).click();
+  await page.locator(WINDOW).press("1");
+  await page.locator(WINDOW).press("5");
 };
 const type = (label: string, value: string) => async (page: Page): Promise<void> => { await page.getByLabel(label, { exact: true }).fill(value); };
 
