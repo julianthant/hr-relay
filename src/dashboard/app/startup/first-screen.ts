@@ -60,7 +60,7 @@ export function startupDeadlineClient(client: DashboardClient) {
       let settled = false;
       const settle = () => { settled = true; expiries.delete(expire); };
       const subscription = call.call(client, { ...input,
-        onDay: (day: Parameters<typeof input.onDay>[0]) => { settle(); input.onDay(day); },
+        onDay: (day: Parameters<typeof input.onDay>[0], cursor: Parameters<typeof input.onDay>[1]) => { settle(); input.onDay(day, cursor); },
         onState: (state: Parameters<typeof input.onState>[0]) => { if (state.state === "stopped") settle(); input.onState(state); } }) as ReturnType<DashboardClient["subscribeDay"]>;
       function expire() { subscription.close(); input.onState({ state: "stopped", error: failure() }); }
       if (!settled) expiries.add(expire);

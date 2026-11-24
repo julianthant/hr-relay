@@ -18,7 +18,7 @@ export default defineConfig({
     viewport: { width: 1280, height: 720 },
   },
   projects: [
-    // Keep cross-story references and frame collection on one worker while smoke files run alongside it.
+    // Keep each gallery shard's ordered story references and frame collection on one worker.
     { name: "gallery", testMatch: "**/*.gallery.ts", workers: 1 },
     { name: "smoke", testMatch: "**/*.smoke.ts", workers: 2 },
   ],

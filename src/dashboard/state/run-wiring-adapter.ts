@@ -23,6 +23,7 @@ import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-mod
 import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
 import { formatDuration, formatTimeWithSeconds } from "../lib/date-format.js";
 import { plainStepLabel } from "./log-display.js";
+import { createKeptResults } from "./async-resource.js";
 import { REPLACED_READING, typedValuesEntry, usesTypedEntry } from "../surfaces/run-detail/logs/typed-values-model.js";
 import { SYSTEM_NAME } from "../surfaces/shared/status/system-chip-model.js";
 import { ucpathFoundPresentation, type UcpathFoundDecision, type UcpathFoundPresentation } from "../surfaces/run-detail/logs/ucpath-found-model.js";
@@ -133,39 +134,33 @@ export const KEPT_RUN_LOGS_LIMIT = 20;
 
 /** The authority a kept snapshot was read under: a sign-in, profile or actor change discards everything kept. */
 interface RunLogAuthority { readonly epoch: object | undefined; readonly actorId: string | undefined }
-const keptRunLogs = new WeakMap<object, { authority: RunLogAuthority; runs: Map<string, RunLogSnapshot> }>();
-
-function keptFor(client: object, authority: RunLogAuthority): Map<string, RunLogSnapshot> {
-  let kept = keptRunLogs.get(client);
-  if (kept === undefined || kept.authority.epoch !== authority.epoch || kept.authority.actorId !== authority.actorId) {
-    kept = { authority, runs: new Map() };
-    keptRunLogs.set(client, kept);
-  }
-  return kept.runs;
-}
+const keptRunLogs = createKeptResults<RunLogSnapshot>(KEPT_RUN_LOGS_LIMIT);
 
 function keepRunLogs(client: object, authority: RunLogAuthority, snapshot: RunLogSnapshot): void {
-  const runs = keptFor(client, authority);
-  runs.delete(snapshot.detail.runId);
-  runs.set(snapshot.detail.runId, snapshot);
-  for (const oldest of runs.keys()) {
-    if (runs.size <= KEPT_RUN_LOGS_LIMIT) break;
-    runs.delete(oldest);
-  }
+  keptRunLogs.keep(client, [authority.epoch, authority.actorId], snapshot.detail.runId, { value: snapshot, at: snapshot.detail.rowRevision });
 }
 
-/** The last loaded logs of this exact run under this authority. A finished run's logs cannot change, so a kept
- * snapshot of the same attempt at the same or a newer revision is final and is never read again; any other kept value is stale. */
+/** The last loaded logs of this exact run under this authority, shown while the fresh read runs. Display only:
+ * it stays `loading`, so no decision reads it, and every visit reads the run again. */
 export function keptRunLogsState(client: object, authority: RunLogAuthority, row: LogSelection["row"]): RunWiringState | undefined {
-  const runs = keptFor(client, authority);
-  const snapshot = runs.get(row.runId);
+  const snapshot = keptRunLogs.get(client, [authority.epoch, authority.actorId], row.runId)?.value;
   if (snapshot === undefined) return undefined;
   const { detail } = snapshot;
   const same = detail.header.traceId === row.traceId && detail.header.attempt === row.attempt && detail.header.workflowId === row.workflowId;
   if (!same) return undefined;
-  runs.delete(row.runId);
-  runs.set(row.runId, snapshot);
-  return detail.outcome.state === "terminal" && detail.rowRevision >= row.rowRevision ? { state: "loaded", snapshot } : { state: "loading", snapshot };
+  return { state: "loading", snapshot };
+}
+
+/** Sections whose answers can change without the run's revision, such as a failure's resolution annotation. */
+const DECISION_SECTIONS: ReadonlySet<string> = new Set(["failure", "identity-gate", "parked-write", "workbook-writes"]);
+
+/** This visit's own fresh read of a finished run still answers a re-served row of the same attempt at the
+ * same or an older revision under the same day stream, when it carries no decision section. A kept snapshot never qualifies. */
+function finishedFor(snapshot: RunLogSnapshot | undefined, row: LogSelection["row"]): boolean {
+  if (snapshot === undefined || snapshot.sections.some(section => DECISION_SECTIONS.has(section.section))) return false;
+  const { detail } = snapshot;
+  return detail.runId === row.runId && detail.header.traceId === row.traceId && detail.header.attempt === row.attempt
+    && detail.header.workflowId === row.workflowId && detail.outcome.state === "terminal" && detail.rowRevision >= row.rowRevision;
 }
 
 function validateRunLogSnapshot(snapshot: RunLogSnapshot): void {
@@ -634,8 +629,9 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     || !reading.current && (previous.rowRevision !== row.rowRevision || row !== settledRow.current && row !== previous)) readRow.current = row;
   const servedRow = readRow.current;
   const request = useMemo(() => ({ client, runId: servedRow.runId, revision: servedRow.rowRevision, day: binding?.authority.day, selection: { row: servedRow, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
-    epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
-  [client, servedRow, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
+    epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state, dayRequest: binding?.authority.dayState.request,
+    dayStream: binding?.authority.dayState.stream ?? binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
+  [client, servedRow, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.stream, binding?.authority.dayState.refresh]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),
   [client, row.runId, binding?.authority.day, binding?.authority.epoch, binding?.authority.dayState.request, binding?.scope]);
@@ -657,16 +653,26 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
     && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
   const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
-    : sameRun && settled.value.snapshot ? { state: "loading", snapshot: settled.value.snapshot }
+    : sameRun && settled.request.dayStream === request.dayStream && settled.value.state === "loaded" && finishedFor(settled.value.snapshot, servedRow) ? settled.value
+    // A snapshot read before a stream reset is not shown after it; the kept store was dropped with the reset too.
+    : sameRun && settled.request.dayStream === request.dayStream && settled.value.snapshot ? { state: "loading", snapshot: settled.value.snapshot }
     : keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" }, [settled, request, sameRun, client, servedRow]);
+  const freshFinished = useRef<{ request: typeof request; snapshot: RunLogSnapshot } | undefined>(undefined);
   useEffect(() => {
     if (request.dayState !== undefined && request.dayState !== "loaded") return;
-    if (keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, request.selection.row)?.state === "loaded") return;
+    const fresh = freshFinished.current;
+    if (fresh !== undefined && fresh.request.client === client && fresh.request.day === request.day && fresh.request.epoch === request.epoch
+      && fresh.request.actorId === request.actorId && fresh.request.dayStream === request.dayStream && finishedFor(fresh.snapshot, request.selection.row)) return;
     const controller = new AbortController();
     reading.current = true;
     const ended = () => { reading.current = false; settledRow.current = latestRow.current; };
     const read = () => void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
-      if (active.current === request && !controller.signal.aborted) { ended(); keepRunLogs(client, { epoch: request.epoch, actorId: request.actorId }, snapshot); setSettled({ request, value: { state: "loaded", snapshot } }); }
+      if (active.current === request && !controller.signal.aborted) {
+        ended();
+        freshFinished.current = { request, snapshot };
+        keepRunLogs(client, { epoch: request.epoch, actorId: request.actorId }, snapshot);
+        setSettled({ request, value: { state: "loaded", snapshot } });
+      }
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
       ended();
@@ -686,7 +692,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         : formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text;
       setSettled(current => ({ request, value: { state: "failed", error, retryable, diagnostic: cause,
         ...(cause instanceof RunLogSelectionBehindError ? { snapshot: cause.snapshot }
-          : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
+          : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.request.dayStream === request.dayStream && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
     // Start after the mount settles: a mount cancelled in the same tick sends nothing.
     queueMicrotask(() => { if (!controller.signal.aborted) read(); });
