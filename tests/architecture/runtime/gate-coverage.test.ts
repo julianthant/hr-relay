@@ -1,15 +1,16 @@
 import { describe, it } from "vitest";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { lintBatches } from "../../../scripts/test/lint.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
-
-
 
 const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
   scripts: Record<string, string>;
 };
 const eslintConfig = readFileSync(join(REPO_ROOT, "eslint.config.js"), "utf8");
+const lintRunner = readFileSync(join(REPO_ROOT, "scripts/test/lint.ts"), "utf8");
 const tsconfig = JSON.parse(readFileSync(join(REPO_ROOT, "tsconfig.json"), "utf8")) as {
   include: string[];
   exclude?: string[];
@@ -31,7 +32,7 @@ const rootTypeScriptConfigFiles = tsconfig.include
 
 const EXACT_GATE_COMMANDS = {
   typecheck: "node --max-old-space-size=6144 node_modules/typescript/bin/tsc --noEmit",
-  lint: "lint() { node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js --cache --cache-strategy content --cache-location node_modules/.cache/eslint/ --max-warnings 0 \"$@\"; }; lint src scripts vitest.config.ts vite.dashboard.config.ts vite.mocks.config.ts || exit $?; for dir in tests/*/; do lint \"$dir\" || exit $?; done; lint tests/*.ts || exit $?",
+  lint: "node scripts/test/lint.ts",
   test: "vitest run --project unit --project integration --project architecture --project perf",
   "test:coverage": "vitest run --coverage --project unit --project integration --project architecture",
   "test:perf": "vitest run --project perf --passWithNoTests=false",
@@ -75,33 +76,51 @@ describe("gate coverage", () => {
   });
 
   it("lints every authored root and fails on warnings", () => {
-    const lint = pkg.scripts.lint ?? "";
-    assert.match(lint, /--max-warnings 0/,
+    assert.match(lintRunner, /"--max-warnings",\s*"0"/,
       "npm run lint must carry --max-warnings 0; without it new warnings accumulate invisibly");
-    for (const root of ["src", "scripts"] as const) {
-      assert.match(lint, new RegExp(`(^|\\s)${root}(\\s|$)`), `lint must target ${root}`);
-    }
-    // A new tests directory or top-level test file has to be linted without editing this command.
-    assert.match(lint, /tests\/\*\//, "lint must visit every tests directory");
-    assert.match(lint, /tests\/\*\.ts/, "lint must visit top-level test files");
+    assert.match(lintRunner, /"--max-old-space-size=6144"/);
     assert.doesNotMatch(
-      Object.values(pkg.scripts).join("\n"),
+      [lintRunner, ...Object.values(pkg.scripts)].join("\n"),
       /--no-error-on-unmatched-pattern/,
       "an unmatched lint pattern must fail, never silently lint nothing",
     );
+
+    const root = mkdtempSync(join(tmpdir(), "relay-lint-batches-"));
+    try {
+      for (const directory of ["tests/new-suite", "tests/.new-suite"]) {
+        mkdirSync(join(root, directory), { recursive: true });
+      }
+      const topLevelFiles = [".hidden.ts", "new.cjs", "new.cts", "new.js", "new.mjs", "new.mts", "new.ts", "new.tsx"];
+      for (const file of [...topLevelFiles, "notes.md"]) writeFileSync(join(root, "tests", file), "");
+
+      const [source, ...tests] = lintBatches(root);
+      assert.deepEqual(source?.targets.toSorted(), [
+        ...AUTHORED_ROOTS.filter((name) => name !== "tests"),
+        ...EXPECTED_ROOT_TYPESCRIPT_CONFIG_FILES,
+      ].toSorted());
+      assert.deepEqual(
+        Object.fromEntries(tests.map(({ name, targets }) => [name, targets.toSorted()])),
+        {
+          "tests-dir-.new-suite": ["tests/.new-suite"],
+          "tests-dir-new-suite": ["tests/new-suite"],
+          "tests-files": topLevelFiles.map((file) => "tests/" + file).toSorted(),
+        },
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("lints every root TypeScript config the type program includes", () => {
-    const lint = pkg.scripts.lint ?? "";
+    const lintTargets = lintBatches(REPO_ROOT).flatMap(({ targets }) => targets);
     assert.deepEqual(
       rootTypeScriptConfigFiles,
       [...EXPECTED_ROOT_TYPESCRIPT_CONFIG_FILES].toSorted(),
       "root TypeScript entries in tsconfig must remain the approved exact set; a new typechecked root config requires deliberate lint coverage",
     );
     for (const configFile of rootTypeScriptConfigFiles) {
-      assert.match(
-        lint,
-        new RegExp(`(^|\\s)${configFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`),
+      assert.ok(
+        lintTargets.includes(configFile),
         `lint must target ${configFile}; otherwise a root config is typechecked but escapes lint`,
       );
       assert.match(
