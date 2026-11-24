@@ -2,7 +2,7 @@ import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { runLogoutSettlementCase } from "../../../support/helpers/credential-source-retention.js";
-import { syntheticOnboardingDuo, finishProfileOnboarding, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { syntheticOnboardingDuo, finishProfileOnboarding, boundProfileCredentials, createBoundProfileFixture, withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import * as accounts from "../../../../src/backend/accounts/chatgpt-account-service.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -88,7 +88,7 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
   const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(), admission: machine, clock, hostFacts: { primaryDisplay: null } });
   try {
 
-    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(fields)); assert.equal(active.state, "active");
+    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(withFixtureUcpath(fields))); assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("synthetic signup refused");
     const seed = machine.admitProfile(active.profileId);
     const credentialPath = join(seed.stateRoot, "credentials", "chatgpt-account.json");

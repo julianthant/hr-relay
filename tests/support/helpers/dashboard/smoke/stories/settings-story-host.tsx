@@ -49,7 +49,7 @@ export function chatGptPort(snapshot: ChatGptAccountSnapshot): ChatGptAccountPor
   return { mode: "preview", getSnapshot: () => snapshot, subscribe: () => noop, signIn: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), signOut: () => Promise.resolve(undefined) };
 }
 
-const ACCOUNT = { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: IsoInstantSchema.parse("2026-09-13T12:00:00.000Z") } satisfies AccountValues;
+const ACCOUNT = { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: IsoInstantSchema.parse("2026-09-13T12:00:00.000Z"), username: "jordan.lee@ucsd.edu" } satisfies AccountValues;
 
 export interface AccountStub {
   /** What a name, initials or timekeeper edit comes back as. */

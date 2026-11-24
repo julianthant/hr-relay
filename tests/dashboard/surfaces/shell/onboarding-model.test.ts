@@ -10,9 +10,9 @@ import { createServedOnboardingPort, duoMethodLabels, duoMethodPresentation, duo
 import type { ProfileOnboardingMethodState } from "../../../../src/models/profiles/public-profile.js";
 
 describe("onboarding validation", () => {
-  const details = { firstName: "Alex", lastName: "Rivera", email: "alex.rivera@ucsd.edu", password: "Relay-demo-42" };
+  const details = { firstName: "Alex", lastName: "Rivera", email: "alex.rivera@ucsd.edu", password: "Relay-demo-42", ucpathUsername: "alex-sso", ucpathPassword: "ucpath-demo-42" };
   it("validates every signup field and accepts only UCSD email", () => {
-    assert.deepEqual(Object.keys(validateOnboarding("signup", { firstName: " ", lastName: "", email: "alex@example.edu", password: "short" })), ["firstName", "lastName", "email", "password"]);
+    assert.deepEqual(Object.keys(validateOnboarding("signup", { firstName: " ", lastName: "", email: "alex@example.edu", password: "short" })), ["firstName", "lastName", "ucpathUsername", "ucpathPassword", "email", "password"]);
     assert.deepEqual(validateOnboarding("signup", details), {});
     for (const email of ["alex@ucsd.edu.evil", "a@b@ucsd.edu", "a b@ucsd.edu"]) assert.ok(validateOnboarding("login", { ...details, email }).email);
   });
@@ -31,7 +31,7 @@ it("uses the served profile client and holds no local Duo confirmation", async (
   } });
   const settled: unknown[] = [];
   const served = createServedOnboardingPort(client, value => { settled.push(value); });
-  const details = { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" };
+  const details = { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password", ucpathUsername: "fixture@ucsd.edu", ucpathPassword: "disposable-fixture-password" };
   assert.deepEqual(await served.submit("login", details), { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
   assert.deepEqual(requests, [{ path: "/api/v1/profile/sign-in", body: { email: details.email, password: details.password } }]);
   assert.equal(settled.length, 1);
@@ -57,7 +57,7 @@ it("ignores superseded session reads and login settlements after logout or unmou
   const root = createRoot(host);
   let session!: ReturnType<typeof usePublicProfileSession>;
   function Probe() { session = usePublicProfileSession(client, true); return null; }
-  const details = { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" };
+  const details = { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password", ucpathUsername: "fixture@ucsd.edu", ucpathPassword: "disposable-fixture-password" };
   try {
     await act(async () => root.render(createElement(Probe)));
     let login!: ReturnType<typeof session.port.submit>, logout!: Promise<void>;
@@ -122,7 +122,7 @@ it("signup can only settle a draft, never a premature active session", async () 
   let value: unknown = onboardingDraft();
   const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async () => profileActivationResponse(value) });
   const served = createServedOnboardingPort(client, state => settled.push(state));
-  const details = { firstName: "Test", lastName: "Operator", email: "test@example.invalid", password: "synthetic-test-password" };
+  const details = { firstName: "Test", lastName: "Operator", email: "test@example.invalid", password: "synthetic-test-password", ucpathUsername: "test-sso", ucpathPassword: "synthetic-ucpath-password" };
   assert.equal((await served.submit("signup", details)).state, "onboarding");
   value = { state: "active", profileId: onboardingDraft().profileId, epoch: 1, duoState: "ready" };
   await assert.rejects(served.submit("signup", details));
@@ -385,7 +385,7 @@ for (const code of ["PROFILE_LOGOUT_BLOCKED", "PROFILE_SIGN_IN_REFUSED", "BROWSE
   const host = document.createElement("div"), root = createRoot(host);
   let session!: ReturnType<typeof usePublicProfileSession>;
   function Probe() { session = usePublicProfileSession(client, true); return null; }
-  const details = { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" };
+  const details = { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password", ucpathUsername: "fixture@ucsd.edu", ucpathPassword: "disposable-fixture-password" };
   try {
     await act(async () => root.render(createElement(Probe)));
     assert.deepEqual(session.state, { state: "refused", code });

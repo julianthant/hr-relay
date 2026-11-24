@@ -21,10 +21,11 @@ import { it, vi } from "vitest";
 import { z } from "zod";
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
-import { readyProfileOnboarding, syntheticOnboardingDuo } from "../../support/helpers/admission-fixture.js";
+import { readyProfileOnboarding, syntheticOnboardingDuo, withFixtureUcpath } from "../../support/helpers/admission-fixture.js";
+import { signUpWithLegacyOperation } from "../../support/helpers/backend/profile-session-world.js";
 import { credentialKeyCustody } from "../../../src/backend/storage/configuration/credential-key-custody.js";
 import { FakeKeyringEntry, credentialKeychainTestEnvironment } from "../../support/helpers/credential-keychain-fake.js";
-import { ProfileVerifierDocumentSchema, SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
+import { ProfileRegistryDocumentSchema, ProfileVerifierDocumentSchema, SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../../src/backend/storage/admission/process-identity.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -108,7 +109,7 @@ it("refuses a canonical Chromium orphan after owner SIGKILL before erasure, then
   if(primary!==undefined)throw primary.error;
 }, scaledMs(60000));
 
-async function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider) {
+async function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider, legacy = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "draft-duo-recovery-")));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
   const lifetime = await runtimeLifetimeLock();
@@ -116,8 +117,10 @@ async function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider)
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
   const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock,
     ...(onboardingDuo === undefined ? {} : { onboardingDuo }) });
-  const draft = profile.session.signUp({ firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
-    password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
+  const fields = { firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
+    password: "disposable-draft-recovery", createdAt: new Date().toISOString() };
+  const signup = { ...fields, ucpathUsername: "draft-recovery-sso@ucsd.edu", ucpathPassword: "disposable-draft-ucpath" };
+  const draft = legacy ? signUpWithLegacyOperation(machine.stateRoot, profile.session, fields) : profile.session.signUp(signup);
   if (draft.state !== "onboarding") throw new Error("fixture genuine draft required");
   return { root, lifetime, machine, machineRoot: machine.stateRoot, profile, draft, processLockRoot };
 }
@@ -259,7 +262,7 @@ for (const changed of ["registry", "continuity"] as const) {
   });
 }
 
-async function readyFixture() {
+async function readyFixture(legacy = false) {
   let active = false, starts = 0, cancels = 0, browserCloses = 0;
   const remoteEnrollments: string[] = [];
   const provider: ProfileOnboardingDuoProvider = {
@@ -280,7 +283,7 @@ async function readyFixture() {
     },
     async cancel() { active = false; cancels++; return { state: "closed" }; },
   };
-  const f = await privateDraftFixture(provider);
+  const f = await privateDraftFixture(provider, legacy);
   const pending = await f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key");
   const attemptId = pending.methods.key.attemptId; assert.ok(attemptId);
   f.profile.session.confirmOnboardingDuo(f.draft.token, f.draft.operationId, "key", attemptId);
@@ -303,8 +306,9 @@ function installPredecessorRegistration(f: Awaited<ReturnType<typeof readyFixtur
   installPredecessorProfileCredentials(source, `${operation.firstName.charAt(0)}${operation.lastName.charAt(0)}`.toUpperCase());
 }
 
-async function recoverFinishBoundary(boundary: "phase" | "intent" | "verifier" | "registry" | "continuity" | "unlink" | "operation-consume", startup = false, predecessor = false) {
-    const f = await readyFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
+async function recoverFinishBoundary(boundary: "phase" | "intent" | "verifier" | "registry" | "continuity" | "unlink" | "operation-consume",
+  { startup = false, predecessor = false, legacy = false } = {}) {
+    const f = await readyFixture(legacy), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
     const verifierPath = join(f.machine.stateRoot, "machine", "profile-verifiers.json"), registryPath = join(f.machine.stateRoot, "machine", "profiles.json");
     const intentPath = join(f.root, ".tracker", "control", "profile-publication.json"), continuityPath = join(f.root, ".tracker", "control", "profile-registry.json");
     const rename = nativeFs.renameSync, unlink = nativeFs.unlinkSync, failure = new Error("fixture Finish boundary");
@@ -331,6 +335,14 @@ async function recoverFinishBoundary(boundary: "phase" | "intent" | "verifier" |
     try { await assert.rejects(f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId)); }
     finally { renameSpy.mockRestore(); unlinkSpy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(fired, true); assert.ok(finishId);
+    if (boundary === "verifier" || boundary === "registry") {
+      const persisted = z.looseObject({ operation: SignUpOperationSchema, document: ProfileRegistryDocumentSchema, verifiers: ProfileVerifierDocumentSchema })
+        .parse(JSON.parse(readFileSync(intentPath, "utf8")));
+      assert.equal(persisted.operation.relay === undefined, legacy);
+      assert.equal(persisted.document.profiles[0]?.relayEmail, legacy ? undefined : "draft-recovery@ucsd.edu");
+      assert.deepEqual(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))), persisted.verifiers);
+      assert.equal(ProfileRegistryDocumentSchema.parse(JSON.parse(readFileSync(registryPath, "utf8"))).profiles.length, boundary === "registry" ? 1 : 0);
+    }
     await f.profile.close(); f.machine.release();
     if (predecessor) {
       installPredecessorRegistration(f);
@@ -377,11 +389,12 @@ async function recoverFinishBoundary(boundary: "phase" | "intent" | "verifier" |
         const upgraded = authenticateDocument(frame.value);
         assert.equal(upgraded.history[0]?.receipt.protectedSchemaHash, predecessor ? STOPPED_PROTECTED_SETTINGS_SCHEMA_HASH : upgraded.record.protectedSchemaHash);
         assert.equal(Object.hasOwn(upgraded.record.entries, "timekeeperName"), false);
-        assert.equal(upgraded.record.entries.ucpathUserId?.value, "draft-recovery@ucsd.edu");
+        assert.equal(upgraded.record.entries.ucpathUserId?.value, legacy ? "draft-recovery@ucsd.edu" : "draft-recovery-sso@ucsd.edu");
       } finally { owner.release(); }
     }
     const row = machine.readProfileRegistry().profiles.find(entry => entry.profileId === f.draft.profileId);
     assert.equal(row?.registration.onboardingCompletion?.finishId, finishId);
+    assert.equal(row?.relayEmail, "draft-recovery@ucsd.edu");
     assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 1);
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(intentPath), false);
     await profile.close(); machine.release(); rmSync(f.root, { recursive: true });
@@ -391,15 +404,18 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
   it(`recovers exact explicit Finish across ${boundary} with a coupled verifier and registration`, () => recoverFinishBoundary(boundary));
 }
 for (const predecessor of [false, true]) for (const boundary of ["phase", "continuity"] as const) {
-  it(`runs actual startup twice across ${boundary} Finish with predecessor credentials=${predecessor}`, () => recoverFinishBoundary(boundary, true, predecessor));
+  it(`runs actual startup twice across ${boundary} Finish with predecessor credentials=${predecessor}`, () => recoverFinishBoundary(boundary, { startup: true, predecessor }));
+}
+for (const boundary of ["verifier", "registry"] as const) {
+  it(`replays the recorded legacy Finish across the ${boundary} write`, () => recoverFinishBoundary(boundary, { legacy: true }));
 }
 
 for (const predecessor of [false, true]) it(`retains pending onboarding alongside an existing ready profile, predecessor=${predecessor}`, async () => {
   const f = await readyFixture();
   const active = await f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId); assert.equal(active.state, "active");
   createProfileRegistry(f.machine).advanceSession(null);
-  const draft = f.profile.session.signUp({ firstName: "Pending", lastName: "Next", email: "pending-next@ucsd.edu",
-    password: "disposable-pending-next", createdAt: new Date().toISOString() });
+  const draft = f.profile.session.signUp(withFixtureUcpath({ firstName: "Pending", lastName: "Next", email: "pending-next@ucsd.edu",
+    password: "disposable-pending-next", createdAt: new Date().toISOString() }));
   assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("pending fixture required");
   retainDraftBrowserDirectory(f, draft.operationId);
   if (predecessor) installPredecessorRegistration(f, draft);
@@ -619,7 +635,7 @@ it("close and reopen recovers an unproved Duo browser hold only after the owning
       await profile.session.recoverOnboarding();
       assert.equal(existsSync(operationPath), false); assert.equal(existsSync(join(stateRoot, "profiles", ready.profileId)), false);
       assert.deepEqual(machine.readProfileRegistry().profiles, []);
-      const replacement = profile.session.signUp({ firstName: "Fresh", lastName: "Fixture", email: "fresh-fixture@ucsd.edu", password: "disposable-fresh-fixture", createdAt: systemClock.now().toISOString() });
+      const replacement = profile.session.signUp(withFixtureUcpath({ firstName: "Fresh", lastName: "Fixture", email: "fresh-fixture@ucsd.edu", password: "disposable-fresh-fixture", createdAt: systemClock.now().toISOString() }));
       assert.equal(replacement.state, "onboarding"); if (replacement.state !== "onboarding") throw new Error("replacement draft required");
       assert.deepEqual(await profile.session.cancelOnboarding(replacement.token, replacement.operationId), { state: "signed-out" });
     } finally { await profile.close(); machine.release(); await lifetime.close(); }

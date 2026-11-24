@@ -21,7 +21,7 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT, HASH_A, NOW } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
-import { createBoundProfileFixture, createSyntheticProfileSession, finishProfileOnboarding, syntheticOnboardingDuo, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, createSyntheticProfileSession, finishProfileOnboarding, syntheticOnboardingDuo, releaseAdmissionFixtures, withFixtureUcpath } from "../../../../support/helpers/admission-fixture.js";
 import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 
@@ -116,7 +116,7 @@ it("binds Clear and result to the confirmed person and epoch despite a shared cr
     createProfileRegistry(fixture.machine).advanceSession(null);
     const setup = createSyntheticProfileSession({ admission: fixture.machine, machineRoot: fixture.machine.stateRoot, clock });
     try {
-      const draft = setup.signUp({ firstName: "Synthetic", lastName: "Second", email: "second@ucsd.edu", password, createdAt: NOW });
+      const draft = setup.signUp(withFixtureUcpath({ firstName: "Synthetic", lastName: "Second", email: "second@ucsd.edu", password, createdAt: NOW }));
       const active = await finishProfileOnboarding(setup, draft);
       assert.equal(active.state, "active");
     } finally { await setup.close(); }

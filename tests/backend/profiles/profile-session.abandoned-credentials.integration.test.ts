@@ -12,7 +12,7 @@ import { composeProfileRuntime, initializeRegisteredPersonStores } from "../../.
 import { CanonicalCredentialHeadSchema } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
-import { readAuthenticatedCredentialFixture, registerBoundProfile, rewriteAuthenticatedCredentialFixture, syntheticOnboardingDuo, unregisterBoundProfile } from "../../support/helpers/admission-fixture.js";
+import { readAuthenticatedCredentialFixture, registerBoundProfile, rewriteAuthenticatedCredentialFixture, syntheticOnboardingDuo, unregisterBoundProfile, withFixtureUcpath } from "../../support/helpers/admission-fixture.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
 
@@ -30,8 +30,8 @@ async function fixture() {
     await profile.close(); machine.release(); await lifetime.close(); stopped = true;
   };
   onTestFinished(async () => { await stop(); rmSync(root, { recursive: true }); });
-  const draft = profile.session.signUp({ email: "abandoned-fixture@ucsd.edu", firstName: "Synthetic", lastName: "Operator",
-    password: "synthetic-disposable-password", createdAt: systemClock.now().toISOString() });
+  const draft = profile.session.signUp(withFixtureUcpath({ email: "abandoned-fixture@ucsd.edu", firstName: "Synthetic", lastName: "Operator",
+    password: "synthetic-disposable-password", createdAt: systemClock.now().toISOString() }));
   assert.equal(draft.state, "onboarding");
   if (draft.state !== "onboarding") throw new Error("synthetic draft required");
   const headPath = join(machine.stateRoot, "machine", "credential-keys", `${draft.profileId}.json`);

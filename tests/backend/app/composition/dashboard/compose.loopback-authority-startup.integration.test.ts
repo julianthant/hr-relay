@@ -189,7 +189,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       assert.equal(vi.mocked(readFileSync).mock.calls.filter(([path]) => typeof path === "string" && path.includes("/credentials/")).length, 0);
       const origin = `http://127.0.0.1:${String(application.port)}`;
       const response = await fetch(`${origin}/api/v1/profile/sign-up`, { method: "POST", headers: { origin, "content-type": "application/json" },
-        body: JSON.stringify({ firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
+        body: JSON.stringify({ firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password",
+          ucpathUsername: "fixture@ucsd.edu", ucpathPassword: "disposable-fixture-password" }) });
       const draft = PublicProfileStateSchema.parse(await response.json()); assert.equal(draft.state, "onboarding");
       if (draft.state !== "onboarding") throw new Error("actual onboarding required");
       let credential = response.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
