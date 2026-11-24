@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { copyFileSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
@@ -15,6 +16,7 @@ import { initialSettingsFileRecord } from "../../../../src/models/config/setting
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { importIsolatedProfileData } from "../../../../src/backend/storage/maintenance/isolated-library-import.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -80,7 +82,7 @@ it("retains confirmed write evidence for dashboard history without admitting it 
   expect(() => history.withAuthorityTransaction(() => undefined)).toThrow("isolated-history-read-only");
 });
 
-it("refreshes imported runs beside copy-created runs and starts the dashboard with no imported work or outbound requests", async () => {
+it("refreshes imported runs beside copy-created runs and starts the dashboard on a schema-39 archive with no imported work or outbound requests", async () => {
   const source = await openCurrentWorld(), copy = await openCurrentWorld();
   source.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), clock,
@@ -109,6 +111,12 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard wi
   source.database.authority.runs.enqueue(runRecordOf({ seed: 598, enqueuedAt: clock.now().toISOString() }));
   await expect(refresh()).rejects.toThrow("isolated-history-local-id-collision: runs");
   copy.closeDatabase();
+  // A schema-39 build wrote this archive: no dependency parent column. The dashboard upgrades it in place at boot.
+  const archivePath = join(copy.stateRoot, "files", "imported-history.sqlite");
+  const archive = new DatabaseSync(archivePath);
+  try {
+    archive.exec("ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id; UPDATE history_header SET schema_version=39");
+  } finally { archive.close(); }
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(copy.workspace, name));
   const runtime = composeProfileRuntime({ admission: copy.machine, clock, hostFacts: { primaryDisplay: null } });
   cleanups.push(() => runtime.close());
@@ -136,4 +144,9 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard wi
   expect((await client.runDetail(local.envelope.runId)).runId).toBe(local.envelope.runId);
   expect(outbound).toEqual([]);
   expect(spawn).not.toHaveBeenCalled();
+  const upgraded = new DatabaseSync(archivePath, { readOnly: true });
+  try {
+    expect(upgraded.prepare("SELECT schema_version FROM history_header").get()?.schema_version).toBe(CURRENT_AUTHORITY_SCHEMA_VERSION);
+    expect(upgraded.prepare("SELECT count(*) AS count FROM pragma_table_info('delegation_dependencies') WHERE name='parent_run_id'").get()?.count).toBe(1);
+  } finally { upgraded.close(); }
 });
