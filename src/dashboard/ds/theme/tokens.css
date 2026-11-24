@@ -1409,7 +1409,7 @@ body[data-demo-theme="light"] {
 .ds-search-field--sidebar [data-slot="search-field-search-icon"] { width: 16px; height: 16px; margin: 0; }
 .ds-search-field--sidebar [data-slot="search-field-input"] { font-size: 14px; line-height: 20px; }
 /* The sidebar field has no edge to step up, so the input itself draws the ring. */
-.ds-search-field--sidebar [data-slot="search-field-input"]:focus-visible { outline: var(--ds-focus-ring-w) solid var(--ds-focus-ring); outline-offset: 2px; border-radius: 9999px; }
+.ds-search-field.ds-search-field--sidebar [data-slot="search-field-input"]:focus-visible { outline: var(--ds-focus-ring-w) solid var(--ds-focus-ring); outline-offset: 2px; border-radius: 9999px; }
 .ds-search-shortcut { margin-right: var(--ds-space-base); color: var(--ds-fg-muted); }
 
 .ds-body-scope .ds-date-picker--inline {

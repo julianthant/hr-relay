@@ -234,7 +234,8 @@ const BREAKS: readonly (readonly [readonly StateRuleName[], readonly string[]])[
   [["fits-viewport", "named-and-focusable"], ["decision/identity-mismatch", "decision/pick-person", "decision/pick-row", "decision/review-before-write", "decision/write-parked", "decision/write-unknown", "decision/failed-retryable", "decision/member-failed", "decision/correct-value", "decision/workbook-row", "decision/sign-in", "decision/paused", "decision/stalled", "decision/cancelling", "card/parked", "card/failed", "card/review", "card/held", "card/unconfirmed", "card/recorded", "card/resolved", "answered/done", "answered/retry", "answered/rejected", "answered/cancelled", "write/not-attempted", "write/prepared", "write/attempting", "failure/SUBJECT_MISMATCH", "failure/EMPLOYMENT_RECORD_MISMATCH", "failure/PROTECTED_SUBJECT_DISPLAY_REFUSED", "failure/DOCUMENT_READ_TIMEOUT", "failure/other", "capture-problem/unavailable", "entry/decision"]],
   [["fits-viewport", "named-and-focusable", "no-banned-text"], ["decision/failed-after-write", "decision/refused", "write/committed", "write/verified", "write/unknown"]],
   [["fits-viewport", "named-and-focusable"], ["card/loading"]],
-  [["dialogs-share-shape", "named-and-focusable"], ["review/ready", "review/unconfirmed", "review/needs-review", "review/empty"]],
+  [["dialogs-share-shape", "named-and-focusable"], ["review/ready", "review/unconfirmed", "review/needs-review"]],
+  [["dialogs-share-shape"], ["review/empty"]],
   [["dialogs-share-shape", "named-and-focusable", "no-dead-disabled-control"], ["review/approved"]],
 ];
 /** Cut-off text shows at 1280 only with the fonts on the Mac; the Linux runner clips at 1024 alone. */

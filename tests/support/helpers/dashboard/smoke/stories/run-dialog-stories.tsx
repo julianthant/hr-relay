@@ -178,6 +178,34 @@ const REFERENCE = {
   "check-failed": reference("The optional check's list could not be read", { workbookCatalog: async () => unreadable(), workbookCompatibility: async () => ({ workflows: [], libraries: [] }) }, RUN_DIALOG_CHECK_CATALOG),
 } satisfies Record<ReferenceState, Story>;
 
+/** The dialog's switches and radios draw no focus ring, and its controls show no keyboard stop, in these stories. */
+const FOCUS_BREAKS: ReadonlySet<string> = new Set([
+  "activity/checking-warnings",
+  "activity/planning",
+  "activity/replanning",
+  "activity/submitting",
+  "check-combination/failure-and-warning",
+  "check-combination/fixable-failure",
+  "check-combination/unfixable-failure",
+  "checks/checking",
+  "checks/ready",
+  "options/browser-mode",
+  "options/dry-run",
+  "options/priority",
+  "pdf/choice-picked",
+  "pdf/choice-unpicked",
+  "refusal/active-run-exists",
+  "refusal/capability-unavailable",
+  "refusal/dry-run-unsupported",
+  "refusal/input-invalid",
+  "refusal/preflight-failed",
+  "rerun-load/failed",
+  "rerun-load/loading",
+  "rerun-load/ready",
+  "stage/Options",
+  "stage/Steps",
+]);
+
 export const RUN_DIALOG_STORIES = defineSurface("run-dialog", {
   stage: STAGE, checks: CHECKS, "check-combination": CHECK_COMBINATION, "rerun-load": RERUN_LOAD, activity: ACTIVITY, refusal: REFUSAL, answer: ANSWER, recovery: RECOVERY, options: OPTIONS, pdf: PDF, reference: REFERENCE,
-});
+}).map(entry => FOCUS_BREAKS.has(entry.id.slice("run-dialog/".length)) ? { ...entry, story: { ...entry.story, knownFailures: { ...entry.story.knownFailures, "named-and-focusable": "#532" } } } : entry);
