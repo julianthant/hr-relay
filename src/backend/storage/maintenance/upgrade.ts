@@ -62,11 +62,11 @@ export async function backupStoppedAuthority(closure: StoppedBackupClosure, admi
     let report: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
     let primary: { error: unknown } | undefined;
     try {report=await new AuthorityBackupService(stopped,source,{directory:join(stateRoot,"backups","authority"), ...(trigger === "graceful-drain" ? { purpose: "clean-shutdown" } : {})},clock)
-      .request({trigger,requiredGeneration:source.getMeta().authorityGeneration});verifyHeld();requireStopped(stopped,input,clock,true);
+      .request({trigger,requiredGeneration:source.getMeta().authorityGeneration});
     }catch(error){primary={error};}
     const failures: unknown[] = [];
     try{source.close();}catch(error){failures.push(error);}
-    if(failures.length===0)try{verifyHeld();}catch(error){failures.push(error);}
+    if(failures.length===0)try{verifyHeld();requireStopped(stopped,input,clock,true);}catch(error){failures.push(error);}
     if(failures.length!==0){
       const errors=primary===undefined?failures:[primary.error,...failures];
       if(errors.some(error=>hasUnprovedSourceClosure(error)))throw retainAuthoritySourceClosure(errors,{backupSource:source,admission,restore});
