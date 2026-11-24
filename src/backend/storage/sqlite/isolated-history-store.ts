@@ -50,7 +50,7 @@ const historyTables = {
 const tables = Object.entries(historyTables);
 const headers = z.strictObject({ format: z.literal(archiveFormat), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   installation_id: z.uuid(), profile_id: z.uuid() });
-const Column = z.string().regex(/^[a-z_]+$/u);
+const Column = z.string().regex(/^[a-z_][a-z0-9_]*$/u);
 const validatedVersion = new WeakMap<DatabaseSync, number>();
 
 /** An index hint applies to a native table. The planner selects each side's index independently on the history union. */
