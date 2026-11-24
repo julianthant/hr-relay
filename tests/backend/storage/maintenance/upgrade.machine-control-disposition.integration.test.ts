@@ -238,7 +238,7 @@ it("converts stopped schema2 only with authenticated empty suspect membership an
     assert.deepEqual(current.operations, []);
     for (const name of ["credentials", "erasures", "duo", "completedRestores"]) assert.equal(Object.hasOwn(current, name), false);
     assert.deepEqual(maintenance.readProfileRegistry().profiles.map(row => row.profileId).sort(), prior.duo.map(row => row.profileId).sort());
-    assert.deepEqual(JSON.parse(readFileSync(f.markerPath, "utf8")), { schemaVersion: 9 });
+    assert.deepEqual(JSON.parse(readFileSync(f.markerPath, "utf8")), { schemaVersion: 10 });
     assertCanonicalCredentialConversion(f, result.receiptId, maintenance);
     for (const source of original) assert.deepEqual(readFileSync(source.path), source.bytes);
   } catch (error) { primary = { error }; }

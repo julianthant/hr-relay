@@ -33,7 +33,7 @@ export function DecisionCard({ title, context, tone, confirmLabel = "Confirm", c
     {onCancel && <Button type="button" variant="secondary" onClick={onCancel}>Cancel run</Button>}
   </div>;
   const submit = (event: FormEvent) => { event.preventDefault(); if (!preview && !answered && !confirmDisabled) onConfirm?.(); };
-  if (inline) return <form aria-label={title} onSubmit={submit} className="flex flex-col gap-3">
+  if (inline) return <form aria-label={title} tabIndex={-1} onSubmit={submit} className="flex flex-col gap-3 rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-ui-info">
     {children}
     <p className="m-0 flex items-center gap-2.5 text-body">
       <CircleHelp aria-hidden className="size-3.5 shrink-0 text-ui-muted" />
@@ -42,7 +42,7 @@ export function DecisionCard({ title, context, tone, confirmLabel = "Confirm", c
     {actions}
   </form>;
   return <Card className="gap-3 p-4">
-    <form aria-label={title} onSubmit={submit} className="flex flex-col gap-3">
+    <form aria-label={title} tabIndex={-1} onSubmit={submit} className="flex flex-col gap-3 rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-ui-info">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2"><h4 className={cn("m-0 text-heading", tone === "danger" && "text-ui-danger")}>{title}</h4>{badge && <Badge tone="warning">{badge}</Badge>}</div>
         {context && <p className="m-0 text-body text-ui-secondary">{context}</p>}

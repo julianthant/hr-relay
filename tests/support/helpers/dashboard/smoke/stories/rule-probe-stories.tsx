@@ -1,7 +1,7 @@
 /** Planted violations that prove each state rule bites, on the dashboard's real primitives. Never part of the catalogue. */
 import { useEffect, useState } from "react";
 import {
-  ActionBar, ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, Switch, useToasts,
+  ActionBar, ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, Switch, Tab, TabList, TabPanel, Tabs, useToasts,
 } from "../../../../../../src/dashboard/ds/ui.js";
 import type { StateRuleName } from "../state-rule-limits.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
@@ -105,6 +105,20 @@ export const RULE_PROBES = {
         /^(?![\s\S]*"(?:List|Board|Zoom out)")/u,
       ],
     },
+  },
+  "tab-list-hands-over-its-stop": {
+    story: {
+      title: "A tab list whose active tab takes the stop, and two that cannot",
+      render: () => <StoryFrame>
+        <Tabs value="one" onValueChange={() => undefined}>
+          <TabList label="Steps"><Tab value="one">One</Tab><Tab value="two">Two</Tab></TabList>
+          <TabPanel value="one">First</TabPanel>
+        </Tabs>
+        <div role="tablist" aria-label="Frozen" tabIndex={0}><button type="button" role="tab" aria-selected="true" tabIndex={-1}>Frozen tab</button></div>
+        <div role="tablist" aria-label="Nameless" tabIndex={0}><button type="button" role="tab" aria-selected="true"><svg aria-hidden width="12" height="12" /></button></div>
+      </StoryFrame>,
+    },
+    finds: { "named-and-focusable": [/"Frozen tab" cannot be reached with the keyboard/u, /has no name/u, /^(?![\s\S]*"(?:Steps|One|Two)" cannot)/u] },
   },
   "switch-ring-on-its-control": {
     story: {

@@ -48,12 +48,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "statements": [
       {
         "kind": "try",
-        "sha256": "d829b3bec1a13f0d2c76ce2c9cce158832bca04ed078efb78ffef6b95148fd15",
+        "sha256": "55b1cd67b096a2180af59efbb2f2b54955f255998b96df19a0cd9c0acc4dde53",
         "occurrences": 1
       },
       {
         "kind": "promise",
-        "sha256": "21939e260f26d984c93603c198248d2a5888919a6957d47ac5d305c3f4bcaa58",
+        "sha256": "6fd70e8524795dd44d893c0924dcc4ed3f45f4270b02f981be7c9f3f308d129c",
         "occurrences": 1
       }
     ]

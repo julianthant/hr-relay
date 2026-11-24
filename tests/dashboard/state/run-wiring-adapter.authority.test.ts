@@ -8,7 +8,9 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
-import { createDashboardClient,type DashboardClient } from "../../../src/dashboard/client/index.js";
+import { createDashboardClient, createRowStore, type DashboardClient } from "../../../src/dashboard/client/index.js";
+import type { RunPanel } from "../../../src/models/dashboard/subscription.js";
+import { serveRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 import { failureDecision } from "../../../src/backend/runs/queries/run-detail/receipts-failures.js";
 import { hireReviewDecision, parkedWriteDecision } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { gateDecisionFor } from "../../../src/models/trust/gate-decisions.js";
@@ -24,7 +26,7 @@ import { RunWorkbookReferenceChoiceWireSchema, FailureDetailWireSchema, ParkedWr
 import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../src/models/dashboard/start-plan.js";
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
 import { DashboardCommandRequestSchema, CommandResultSchema, ParkedWriteCheckTargetSchema, type DashboardCommandRequest } from "../../../src/rules/commands/commands.js";
-import { ActorIdSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
+import { ActorIdSchema, ErrorCodeSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
@@ -174,7 +176,7 @@ it.each(["same-child", "changed-revision", "root-run"] as const)("reconciles a l
   assert.ok(h.state?.onChildRetry);
   await act(async () => h.state?.onChildRetry?.());
   assert.equal(sent.length, 1); assert.equal(h.state?.command?.state, "uncertain");
-  await h.render(sourceState === "changed-revision" ? selectionAt(4) : selected, 1);
+  await h.serve(); await h.render(sourceState === "changed-revision" ? selectionAt(4) : selected, 1);
   assert.equal(h.state?.snapshot?.detail.childRetry, undefined);
   assert.equal(h.state?.onChildRetry, undefined); assert.ok(h.state?.replay);
   await act(async () => h.state?.replay?.());
@@ -251,11 +253,12 @@ let root: Root | undefined;
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); vi.unstubAllGlobals(); });
 
-type Harness = { day?: DashboardCommandBinding["authority"]["dayState"]["day"]; state?: ReturnType<typeof useRunWiring>; outcomes: CommandOutcome[]; refreshed: number; render: (selected: LogSelection, key?: number) => Promise<void> };
-async function harness(client: DashboardClient, confirm?: RunWiringConfirm, renderLogs = false): Promise<Harness> {
-  const h: Harness = { outcomes: [], refreshed: 0, render: async () => undefined };
+type Harness = { day?: DashboardCommandBinding["authority"]["dayState"]["day"]; state?: ReturnType<typeof useRunWiring>; outcomes: CommandOutcome[]; refreshed: number; rows: ReturnType<typeof createRowStore>; serve: () => Promise<void>; render: (selected: LogSelection, key?: number) => Promise<void> };
+async function harness(client: DashboardClient, confirm?: RunWiringConfirm, renderLogs = false, serveOnRender = true): Promise<Harness> {
+  const rows = createRowStore();
+  const h: Harness = { outcomes: [], refreshed: 0, rows, serve: () => serveRunPanel(rows, client, RUN), render: async () => undefined };
   const scope = Object.freeze({ actorId: ActorIdSchema.parse("local-operator"), client, authority: {}, dayRequest: {} });
-  const dayState = { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh: () => { h.refreshed++; } };
+  const dayState = { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, rows, refresh: () => { h.refreshed++; } };
   const binding = { scope, executor: new CommandExecutor(() => scope), feedback: (outcome: CommandOutcome) => { h.outcomes.push(outcome); },
     authority: { epoch: scope.authority, catalog: [], now: () => AT, today: "2026-08-03", day: "2026-08-03", dayState, selection: { route: { start: false }, workflowId: "separations" } } } as unknown as DashboardCommandBinding;
   function Probe({ selected }: { selected: LogSelection }) {
@@ -265,7 +268,8 @@ async function harness(client: DashboardClient, confirm?: RunWiringConfirm, rend
       children: createElement(LogSample, { selection: selected }) }) }) : null;
   }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  h.render = async (selected, key = 0) => { await act(async () => { root?.render(createElement(Probe, { selected, key })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
+  let served = !serveOnRender;
+  h.render = async (selected, key = 0) => { if (!served) { served = true; await h.serve(); } await act(async () => { root?.render(createElement(Probe, { selected, key })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   return h;
 }
 function gateClient(gate: ReturnType<typeof servedGate>, selected: LogSelection, sent: DashboardCommandRequest[]): DashboardClient {
@@ -455,41 +459,210 @@ describe("served Logs decision authority", () => {
     assert.deepEqual(pick.options.filter(option => option.id === "reject"), []);
   });
 
-  it("waits for the selected row to catch up when run detail is a newer revision", async () => {
+  it("shows a streamed panel ahead of the row without refreshing the day, and a newer streamed panel replaces it", async () => {
     let served = 3;
     const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(served), served), runSection: async () => logs() } as unknown as DashboardClient;
     await assert.rejects(() => readRunLogs(client, selectionAt(2), new AbortController().signal), (error: Error) => error.name === "RunLogSelectionBehindError");
     const h = await harness(client);
     await h.render(selectionAt(3));
     assert.equal(h.state?.state, "loaded");
+    assert.equal(h.state?.snapshot?.detail.rowRevision, 3);
     served = 4;
-    await h.render(selectionAt(3));
-    assert.equal(h.state?.state, "loading");
-    assert.ok(h.state?.snapshot, "the last loaded logs stay visible while the row catches up");
+    await act(async () => h.serve());
+    assert.equal(h.state?.state, "loaded");
+    assert.equal(h.state?.snapshot?.detail.rowRevision, 4);
     assert.equal(h.state?.error, undefined);
-    assert.equal(h.refreshed, 1);
+    assert.equal(h.refreshed, 0);
     await h.render(selectionAt(4));
     assert.equal(h.state?.state, "loaded");
     assert.equal(h.state?.snapshot?.detail.rowRevision, 4);
   });
 
-  it("refuses the join when the row is still behind after one day refresh", async () => {
+  it("shows a panel ahead of the row as is and never refreshes the day for it", async () => {
     const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(4), 4), runSection: async () => logs() } as unknown as DashboardClient;
     const h = await harness(client);
     await h.render(selectionAt(3));
-    assert.equal(h.state?.state, "loading");
-    assert.equal(h.refreshed, 1);
+    assert.equal(h.state?.state, "loaded");
+    assert.equal(h.state?.snapshot?.detail.rowRevision, 4);
     await h.render(selectionAt(3));
-    assert.equal(h.state?.state, "failed");
-    assert.equal(h.state?.error, "These logs don't match this run.");
-    assert.equal(h.refreshed, 1);
+    assert.equal(h.state?.state, "loaded");
+    assert.equal(h.refreshed, 0);
   });
 
-  it("still refuses run detail older than the selected row", async () => {
-    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(3), 3), runSection: async () => logs() } as unknown as DashboardClient;
+  it("keeps loading while the streamed panel is older than the selected row, until a newer panel arrives", async () => {
+    let served = 3;
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(served), served), runSection: async () => logs() } as unknown as DashboardClient;
     await assert.rejects(() => readRunLogs(client, selectionAt(4), new AbortController().signal), /RUN_DETAIL_IDENTITY_MISMATCH/);
     const h = await harness(client);
     await h.render(selectionAt(4));
+    assert.equal(h.state?.state, "loading");
+    assert.equal(h.state?.error, undefined);
+    assert.equal(h.refreshed, 0);
+    served = 4;
+    await act(async () => h.serve());
+    assert.equal(h.state?.state, "loaded");
+    assert.equal(h.state?.snapshot?.detail.rowRevision, 4);
+  });
+
+  it("fails a panel delivered below its day's row even when it is there before the row first renders", async () => {
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(3), 3), runSection: async () => logs() } as unknown as DashboardClient;
+    const h = await harness(client, undefined, false, false);
+    await serveRunPanel(h.rows, client, RUN, undefined, () => 4);
+    await h.render(selectionAt(4));
+    assert.equal(h.state?.state, "failed");
+    assert.equal(h.refreshed, 0);
+  });
+
+  it("fails a panel delivered below its day's row while the rendered row still matches the panel", async () => {
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(3), 3), runSection: async () => logs() } as unknown as DashboardClient;
+    const h = await harness(client, undefined, false, false);
+    await serveRunPanel(h.rows, client, RUN, undefined, () => 4);
+    await h.render(selectionAt(3));
+    assert.equal(h.state?.state, "failed");
+    assert.equal(h.state?.retryable, false);
+    assert.equal(h.state?.onDecision, undefined);
+    assert.equal(h.refreshed, 0);
+  });
+
+  describe("a streamed panel is held to the per-request section checks", () => {
+    const FOREIGN = "00000000-0000-4000-8000-0000000000f1";
+    const capturesOf = (runId: string) => RunDetailSectionResponseSchema.parse({ section: "captures", payload: { runId, artifacts: [{
+      artifact: { mediaKind: "image", mediaType: "image/png", artifactId: FOREIGN, sha256: "a".repeat(64), byteLength: 1, sensitivity: "restricted", redaction: "restricted-access", width: 1280, height: 720 },
+      origins: [{ bundleId: NOTE, originKind: "operator-request", capturedAt: AT, browserCapture: { nodeId: "first", attempt: 1, sessionId: NOTE } }] }] } });
+    const withCaptures = (revision: number) => detailAt(selectionAt(3), revision, { captures: { state: "available", artifactCount: 1 }, availableSections: ["logs", "captures"] });
+    const page = () => { const section = logs(); assert(section.section === "logs"); return section.payload; };
+    const none = { artifactUrl: (id: string) => `/artifacts/${id}` } as unknown as DashboardClient;
+    async function shown(panel: RunPanel, rowRevision = 3) {
+      const h = await harness(none, undefined, false, false);
+      await serveRunPanel(h.rows, none, RUN, panel);
+      await h.render(selectionAt(rowRevision));
+      return h;
+    }
+
+    it("loads a panel that carries exactly its declared sections, each owned by the run", async () => {
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [capturesOf(RUN)] });
+      assert.equal(h.state?.state, "loaded");
+    });
+
+    it("fails a panel that omits a declared section", async () => {
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [] });
+      assert.equal(h.state?.state, "failed"); assert.equal(h.state?.snapshot, undefined);
+    });
+
+    it("fails a panel that carries a section its detail does not declare, or one twice", async () => {
+      const undeclared = await shown({ state: "available", detail: detailAt(selectionAt(3), 3), logs: page(), sections: [capturesOf(RUN)] });
+      assert.equal(undeclared.state?.state, "failed");
+      await act(async () => root?.unmount());
+      const twice = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [capturesOf(RUN), capturesOf(RUN)] });
+      assert.equal(twice.state?.state, "failed");
+    });
+
+    it("fails a panel whose captures section belongs to another run, though its count matches", async () => {
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [capturesOf(FOREIGN)] });
+      assert.equal(h.state?.state, "failed"); assert.equal(h.state?.onDecision, undefined);
+    });
+
+    it("keeps a panel that failed a check failed after the queue row moves ahead of it", async () => {
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [capturesOf(FOREIGN)] });
+      await h.render(selectionAt(4));
+      assert.equal(h.state?.state, "failed"); assert.equal(h.state?.retryable, false);
+      assert.equal(h.refreshed, 0);
+    });
+
+    it("fails a panel whose log page has no live rows instead of throwing", async () => {
+      const { rows: _rows, ...archived } = page();
+      const h = await shown({ state: "available", detail: detailAt(selectionAt(3), 3), logs: NotePageSchema.parse(archived), sections: [] });
+      assert.equal(h.state?.state, "failed"); assert.equal(h.state?.retryable, false);
+    });
+
+    it("fails a panel whose screenshot names another capture session inside the mounted Logs, and recovers on the next valid panel", async () => {
+      const SESSION = "20000000-0000-4000-8000-000000000001", OTHER_SESSION = "20000000-0000-4000-8000-000000000002";
+      const captured = (sessionId: string) => { const base = page(); const rows = (base.rows ?? []).map(row => row.kind === "note"
+        ? { ...row, note: { ...row.note, screenshot: { bundleId: NOTE, artifactId: FOREIGN, sessionId } } } : row);
+        return NotePageSchema.parse({ ...base, rows, notes: rows.flatMap(row => row.kind === "note" ? [row.note] : []) }); };
+      const captures = RunDetailSectionResponseSchema.parse({ section: "captures", payload: { runId: RUN, artifacts: [{
+        artifact: { mediaKind: "image", mediaType: "image/png", artifactId: FOREIGN, sha256: "a".repeat(64), byteLength: 1, sensitivity: "restricted", redaction: "restricted-access", width: 1280, height: 720 },
+        origins: [{ bundleId: NOTE, originKind: "operator-request", capturedAt: AT, browserCapture: { nodeId: "first", attempt: 1, sessionId: SESSION } }] }] } });
+      const imaging = { artifactUrl: (id: string) => `/artifacts/${id}`, fetchAuthenticatedResource: () => new Promise<never>(() => undefined) } as unknown as DashboardClient;
+      const h = await harness(imaging, undefined, true, false);
+      await serveRunPanel(h.rows, none, RUN, { state: "available", detail: withCaptures(3), logs: captured(OTHER_SESSION), sections: [captures] });
+      await h.render(selectionAt(3));
+      assert.equal(h.state?.state, "failed"); assert.equal(h.state?.retryable, false);
+      assert.ok(document.body.textContent?.includes("These logs don't match this run."), document.body.textContent ?? "");
+      assert.equal(document.querySelector("img, [aria-label='Browser capture']") !== null || document.body.textContent?.includes("Capture") === true, false, "nothing of the refused panel is drawn");
+      await act(async () => serveRunPanel(h.rows, none, RUN, { state: "available", detail: withCaptures(3), logs: captured(SESSION), sections: [captures] }));
+      assert.equal(h.state?.state, "loaded");
+      assert.ok(document.body.textContent?.includes("Capture"), `the same mounted Logs shows the next valid panel: ${document.body.textContent ?? ""}`);
+      assert.equal(document.body.textContent?.includes("These logs don't match this run."), false);
+    });
+
+    it("shows a validated older panel as loading once the row moves ahead", async () => {
+      const h = await shown({ state: "available", detail: withCaptures(3), logs: page(), sections: [capturesOf(RUN)] });
+      await h.render(selectionAt(4));
+      assert.equal(h.state?.state, "loading"); assert.ok(h.state?.snapshot);
+    });
+  });
+
+  it("offers no answer while the panel is ahead of the queue row, and offers it once they agree", async () => {
+    const gate = servedGate(fixtures.ONE_CLICK);
+    const selected = selectionAt(3);
+    const h = await harness(gateClient(gate, selected, []));
+    await h.render(selected);
+    assert.ok(h.state?.onDecision, "level with the row, the decision is offered");
+    const ahead = { ...selected, row: { ...selected.row, rowRevision: selected.row.rowRevision.valueOf() - 1 } } as LogSelection;
+    await h.render(ahead);
+    assert.equal(h.state?.state, "loaded");
+    assert.equal(h.state?.onDecision, undefined, "the panel is ahead of this row, whose revision every answer is checked against");
+  });
+
+  it("fails a panel delivered below the selected row instead of waiting for it, while a held one stays loading", async () => {
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(3), 3), runSection: async () => logs() } as unknown as DashboardClient;
+    const h = await harness(client, undefined, false, false);
+    await h.render(selectionAt(4));
+    assert.equal(h.state?.state, "loading");
+    await act(async () => serveRunPanel(h.rows, client, RUN, undefined, () => 4));
+    assert.equal(h.state?.state, "failed");
+    assert.equal(h.state?.retryable, false);
+    assert.equal(h.refreshed, 0);
+  });
+
+  it("stays loading with no panel in the store and reads nothing from the client", async () => {
+    const reads: string[] = [];
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => { reads.push("detail"); return detailAt(selectionAt(3), 3); },
+      runSection: async () => { reads.push("section"); return logs(); } } as unknown as DashboardClient;
+    const h = await harness(client, undefined, false, false);
+    await h.render(selectionAt(3));
+    assert.equal(h.state?.state, "loading");
+    assert.equal(h.state?.snapshot, undefined);
+    assert.deepEqual(reads, []);
+    assert.equal(h.refreshed, 0);
+  });
+
+  it("shows a stream-delivered refusal as failed", async () => {
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(3), 3), runSection: async () => logs() } as unknown as DashboardClient;
+    const h = await harness(client, undefined, false, false);
+    await act(async () => serveRunPanel(h.rows, client, RUN, { state: "refused", error: { state: "error", code: ErrorCodeSchema.parse("RUN_NOT_FOUND"), message: "gone", retryable: false } }));
+    await h.render(selectionAt(3));
+    assert.equal(h.state?.state, "failed");
+    assert.equal(h.state?.snapshot, undefined);
+    assert.equal(h.refreshed, 0);
+  });
+
+  it("recovers a retryable refused panel when the server next serves an available one", async () => {
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(3), 3), runSection: async () => logs() } as unknown as DashboardClient;
+    const h = await harness(client, undefined, false, false);
+    await act(async () => serveRunPanel(h.rows, client, RUN, { state: "refused", error: { state: "error", code: ErrorCodeSchema.parse("DASHBOARD_READ_FAILED"), message: "later", retryable: true } }));
+    await h.render(selectionAt(3));
+    assert.equal(h.state?.state, "failed");
+    await act(async () => h.serve());
+    assert.equal(h.state?.state, "loaded", "the server's next available panel recovers it");
+  });
+
+  it("refuses a streamed panel whose identity is not the selected run's", async () => {
+    const other = selectionAt(3);
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => RunDetailWireSchema.parse({ ...detailAt(other, 3), header: { ...detailAt(other, 3).header, attempt: 2 } }), runSection: async () => logs() } as unknown as DashboardClient;
+    const h = await harness(client);
+    await h.render(selectionAt(3));
     assert.equal(h.state?.state, "failed");
     assert.equal(h.state?.error, "These logs don't match this run.");
     assert.equal(h.refreshed, 0);
@@ -616,7 +789,7 @@ describe("served parked-write Logs decisions", () => {
     const target = { ...write.check.target, lifetimeId: "bbbbbbbb-0002-4000-8000-000200000000" };
     fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, check: { state: "available", target },
       actions: write.actions.map(action => action.kind === "command" && action.command === "check-parked-write" ? { ...action, checkTarget: target } : action) }));
-    await h.render(selectionAt(3)); await act(async () => confirmations[0]());
+    await h.serve(); await h.render(selectionAt(3)); await act(async () => confirmations[0]());
     assert.equal(sent.length, 0); assert.equal(h.outcomes.at(-1)?.kind, "refused");
   });
 
@@ -629,7 +802,7 @@ describe("served parked-write Logs decisions", () => {
     const target = { ...write.check.target, expectedVersion: 3, lifetimeId: "bbbbbbbb-0002-4000-8000-000200000000" };
     fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, check: { state: "available", target },
       actions: write.actions.map(action => action.kind === "command" && action.command === "check-parked-write" ? { ...action, checkTarget: target } : action) }));
-    await h.render(selectionAt(3)); assert.ok(h.state?.onUcpathDecision);
+    await h.serve(); await h.render(selectionAt(3)); assert.ok(h.state?.onUcpathDecision);
     await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again" }));
     assert.equal(confirmations.length, 2); await act(async () => confirmations[1]());
     assert.equal(sent.length, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
@@ -648,14 +821,14 @@ describe("served parked-write Logs decisions", () => {
       return CommandResultSchema.parse({ state: "already-applied", commandId: request.commandId,
         affectedTargets: [{ family: "run", runId: RUN }, { family: "worker-browser", workerId: request.target.workerId }] });
     } });
-    const h = await harness(fixture.client, (_pending, send) => confirmations.push(send)); await h.render(selected);
+    const h = await harness(fixture.client, (_pending, send) => confirmations.push(send)); await h.serve(); await h.render(selected);
     await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again" })); await act(async () => confirmations[0]());
     assert.equal(h.state?.command?.state, "uncertain");
     fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, generation: changed ? 2 : 1,
       check: { state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE" },
       actions: write.actions.filter(action => action.kind !== "command" || action.command !== "check-parked-write")
         .map(action => action.kind === "command" ? { ...action, writeTarget: { ...action.writeTarget, intentGeneration: changed ? 2 : 1 } } : action) }));
-    await h.render(selected, 1); assert.equal(h.state?.command?.state, "uncertain");
+    await h.serve(); await h.render(selected, 1); assert.equal(h.state?.command?.state, "uncertain");
     replay = true; await act(async () => h.state?.replay?.());
     assert.equal(sent.length, changed ? 1 : 2);
     if (changed) assert.equal(h.outcomes.at(-1)?.kind, "refused");
@@ -671,7 +844,7 @@ describe("served parked-write Logs decisions", () => {
     fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, generation: 2,
       check: { state: "available", target: checkTarget }, actions: write.actions.map(action => action.kind === "command"
       ? { ...action, writeTarget: { ...action.writeTarget, intentGeneration: 2 }, ...(action.checkTarget === undefined ? {} : { checkTarget }) } : action) }));
-    await h.render(selectionAt(3)); await act(async () => confirmations[0]());
+    await h.serve(); await h.render(selectionAt(3)); await act(async () => confirmations[0]());
     assert.equal(sent.length, 0); assert.equal(h.outcomes.at(-1)?.kind, "refused");
   });
 
@@ -721,7 +894,7 @@ describe("served parked-write Logs decisions", () => {
         writeTarget: { ...action.writeTarget, ...(change === "generation" ? { intentGeneration: 2 } : {}),
           ...(change === "intent" ? { writeIntentId: NOTE } : {}), ...(change === "attempt" ? { writeAttemptId: NOTE } : {}) } }) };
     fixture.setWrite(ParkedWriteDetailWireSchema.parse(next), change === "version" ? 4 : 3);
-    await h.render(selectionAt(change === "version" ? 4 : 3));
+    await h.serve(); await h.render(selectionAt(change === "version" ? 4 : 3));
     await act(async () => confirmations[0]());
     assert.equal(sent.length, 0); assert.equal(h.outcomes.at(-1)?.kind, "refused");
   });
@@ -751,7 +924,7 @@ describe("served parked-write Logs decisions", () => {
       fixture.setWrite(parkedAt(4), 4);
       return CommandResultSchema.parse({ state: "already-applied", commandId: request.commandId, affectedTargets: [{ family: "run", runId: RUN }] });
     } });
-    const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
+    const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.serve(); await h.render(selected);
     const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, savedOf(write), SAVED));
     await act(async () => confirms[0]());
     assert.equal(h.state?.command?.state, "uncertain"); assert.equal(h.state?.onDecision, undefined);
@@ -769,7 +942,7 @@ describe("served parked-write Logs decisions", () => {
     await act(async () => confirms[0]());
     fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, generation: 2, actions: write.actions.map(action => action.kind === "command"
       ? { ...action, writeTarget: { ...action.writeTarget, intentGeneration: 2 } } : action) }));
-    await h.render(selectionAt(3));
+    await h.serve(); await h.render(selectionAt(3));
     await act(async () => h.state?.replay?.());
     assert.equal(sent.length, 1); assert.equal(h.state?.command?.state, "uncertain"); assert.equal(h.outcomes.at(-1)?.kind, "refused");
   });
@@ -780,7 +953,7 @@ describe("served parked-write Logs decisions", () => {
     const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
     const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, savedOf(write), SAVED));
     await act(async () => confirms[0]()); assert.equal(h.state?.command?.state, "settled");
-    fixture.setWrite(parkedAt(4), 4); await h.render(selectionAt(4));
+    fixture.setWrite(parkedAt(4), 4); await h.serve(); await h.render(selectionAt(4));
     assert.ok(h.state?.onDecision); assert.equal(h.state?.command, undefined);
     await act(async () => h.state?.onDecision?.(write.writeIntentId, savedOf(parkedAt(4)), SAVED));
     await act(async () => confirms[1]()); assert.equal(sent.length, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
@@ -908,6 +1081,27 @@ describe("served not-found failure actions", () => {
     assert.deepEqual(sent, []); assert.equal(h.outcomes.at(-1)?.kind, "refused");
   });
 
+  for (const actionIndex of [0, 1]) it(`sends nothing from a confirmation of failure action ${actionIndex} once the panel is ahead of the queue row with the failure unchanged`, async () => {
+    const selected = selectionAt(3), sent: DashboardCommandRequest[] = [], planned: unknown[] = [], callbacks: (() => void)[] = [];
+    const fixture = failureClient(selected, sent, planned, async () => { throw new Error("unused"); });
+    const h = await harness(fixture.client, (_pending, send) => callbacks.push(send)); await h.render(selected);
+    const action = failureOption(fixture.failed, actionIndex === 0 ? "check-again" : "retry-with-value");
+    await act(async () => { h.state?.onDecision?.(FAILURE, action, { text: "10800001" }); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(callbacks.length, 1);
+    // The stream delivers the run's next panel, same failure, while the queue row still holds revision 3.
+    const recovery = fixture.failed.recovery; assert.ok(recovery); assert.ok(recovery.request.rerunSource);
+    const ahead = failureClient(selectionAt(4), [], [], async () => { throw new Error("unused"); }, FailureDetailWireSchema.parse({ ...fixture.failed,
+      recovery: { ...recovery, expectedVersion: 4, retry: { ...recovery.retry, expectedVersion: 4 },
+        request: { ...recovery.request, rerunSource: { ...recovery.request.rerunSource, expectedVersion: 4 } } } }));
+    assert.equal(ahead.failed.failureId, fixture.failed.failureId);
+    await act(async () => serveRunPanel(h.rows, ahead.client, RUN));
+    assert.equal(h.state?.state, "loaded"); assert.equal(h.state?.snapshot?.detail.rowRevision, 4);
+    assert.equal(h.state?.onDecision, undefined);
+    await act(async () => { callbacks[0](); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.deepEqual(sent, []); assert.equal(h.outcomes.at(-1)?.kind, "refused");
+    assert.equal(h.state?.command, undefined);
+  });
+
   it("retains an uncertain correction across remount and replays the identical start command", async () => {
     const selected = selectionAt(3), sent: DashboardCommandRequest[] = [], planned: unknown[] = [], callbacks: (() => void)[] = [];
     const fixture = failureClient(selected, sent, planned, async () => { throw new Error("reply lost"); });
@@ -969,5 +1163,44 @@ describe("failure resolution from the decision card", () => {
     const second = await harness(refreshed.client); await second.render(selected);
     await act(async () => second.state?.onDecision?.(FAILURE, stale, {}));
     assert.equal(sent.length, 1);
+  });
+});
+
+describe("a panel that arrives before its day admits", () => {
+  it("offers no gate answer until the day is admitted, and holds a decision made through a handler kept from before", async () => {
+    const gate = servedGate(fixtures.ONE_CLICK);
+    const selected = selectionAt(3), sent: DashboardCommandRequest[] = [], confirmations: (() => void)[] = [];
+    const h = await harness(gateClient(gate, selected, sent), (_pending, send) => confirmations.push(send));
+    await h.render(selected);
+    const kept = h.state?.onDecision; assert.ok(kept, "with the day admitted the decision is offered");
+    // The stream published the panel; the day it came with is not admitted yet, so Logs shows the kept, display-only row.
+    h.day = { state: "loading" }; await h.render(selected);
+    assert.equal(h.state?.state, "loaded", "the matching panel is shown");
+    assert.equal(h.state?.onDecision, undefined); assert.equal(h.state?.onChildRetry, undefined);
+    assert.equal(h.state?.onBatchMemberRetry, undefined); assert.equal(h.state?.onUcpathDecision, undefined);
+    const approve = gate.decision?.options[0]; assert.ok(approve);
+    await act(async () => kept(gate.gateRef, approve, {}));
+    assert.equal(confirmations.length, 0, "a kept handler opens no confirmation"); assert.equal(sent.length, 0);
+    h.day = { state: "loaded", value: FIXTURE_DAY_WIRE }; await h.render(selected);
+    assert.ok(h.state?.onDecision, "the admitted day offers the decision");
+    await act(async () => h.state?.onDecision?.(gate.gateRef, approve, {}));
+    assert.equal(confirmations.length, 1);
+    // A confirmation opened under the admitted day sends nothing once the day is loading again.
+    h.day = { state: "loading" }; await h.render(selected);
+    await act(async () => { confirmations[0](); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.deepEqual(sent, []); assert.equal(h.outcomes.at(-1)?.kind, "refused");
+  });
+
+  it("offers no parked-write answer or UCPath check until the day is admitted", async () => {
+    const selected = selectionAt(3), sent: DashboardCommandRequest[] = [], confirmations: (() => void)[] = [];
+    const write = parkedAt();
+    const h = await harness(parkedClient(selected, sent, { write }).client, (_pending, send) => confirmations.push(send));
+    h.day = { state: "loading" }; await h.render(selected);
+    assert.equal(h.state?.state, "loaded");
+    assert.equal(h.state?.onDecision, undefined); assert.equal(h.state?.onUcpathDecision, undefined);
+    h.day = { state: "loaded", value: FIXTURE_DAY_WIRE }; await h.render(selected);
+    assert.ok(h.state?.onDecision);
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options.find(({ id }) => id === "not-saved")!, {}));
+    assert.equal(confirmations.length, 1); assert.equal(sent.length, 0);
   });
 });

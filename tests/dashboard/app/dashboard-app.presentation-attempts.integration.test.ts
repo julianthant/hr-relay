@@ -61,7 +61,7 @@ it("shows the selected day's runs by start time and keeps that day when an attem
   const client = { ...transport,
     bootstrap: async () => FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, descriptorHash: current.descriptorHash }),
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
-      input.onDay(w.projection.buildDashboardDayWire(input.day)); input.onState({ state: "live" }); return { close() {} };
+      input.onDay(w.projection.buildDashboardDayWire(input.day)); input.onState({ state: "live" }); return { select() {}, close() {} };
     },
   };
   window.history.replaceState(null, "", `/?day=${selectedDay}`);

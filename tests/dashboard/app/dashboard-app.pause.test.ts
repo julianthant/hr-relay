@@ -27,7 +27,7 @@ async function mount(pause: "running" | "pause-pending" | "paused" = "running", 
   const sent: Array<CommandRequest | BulkRunCommandRequest> = [];
   const client = { ...transport, applicationLifecycle: async () => lifecycle,
     subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) {
-      input.onDay(day); input.onState({ state: "live" }); return { close() {} };
+      input.onDay(day); input.onState({ state: "live" }); return { select() {}, close() {} };
     },
     async executeBulkCommand(raw: unknown) { sent.push(BulkRunCommandRequestSchema.parse(raw)); return new Promise<never>(() => undefined); },
     async executeCommand(raw: unknown) { sent.push(CommandRequestSchema.parse(raw)); return reply.promise; },

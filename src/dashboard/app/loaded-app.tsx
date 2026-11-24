@@ -38,7 +38,7 @@ import { Button,FailureNotice,Notice,DatePicker,EmptyState,Panel,PanelBody,dsIco
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { createServedClock, ServedClockContext, useClockView } from "../state/served-clock.js";
-import { useDashboardDay } from "../state/use-dashboard-day.js";
+import { keptDayFrame, useDashboardDay } from "../state/use-dashboard-day.js";
 import {
 commandResultDetail,
 commandResultFeedEntry,
@@ -209,11 +209,18 @@ export function LoadedApp({
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
   const dayRequested = (hasServedWorkflows || workflowComposition.sessionsHarness === undefined) && dateSelection.state === "valid" ? day : undefined;
-  const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id);
+  // A run whose Logs the harness preview draws reads no panel; every other selected run rides the day's first connection, so a
+  // cold link opens one stream. The preview covers every row with `logsChildRows`, else top-level rows only: there the row is
+  // looked up in the day on screen a moment ago, or the kept frame, and an unknown one waits for the day to name it.
+  const knownRows = useRef<readonly QueueSurfaceWire[] | undefined>(undefined);
+  const logPreview = workflowComposition.harness?.LogPreview === undefined ? "none" : workflowComposition.harness.logsChildRows === true ? "all" : "top-level";
+  const priorRows = knownRows.current ?? (dayRequested === undefined ? undefined : keptDayFrame(client, authorityEpoch, boot.actor.id, dayRequested)?.queueSurfaces);
+  const panelRow = route.run === undefined || logPreview !== "top-level" ? undefined : priorRows?.find(row => row.runId === route.run);
+  const panelRun = logPreview === "none" || panelRow !== undefined && panelRow.parent !== null ? route.run : undefined;
+  const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id, panelRun);
   const dayResource = dayState.day;
   snoozes.current = dayResource.state === "loaded" ? dayResource.value.notifications
     .flatMap(row => row.kind === "notification" && row.state === "snoozed" && row.snoozedUntil !== undefined ? [new Date(row.snoozedUntil).toISOString()] : []) : [];
-  const [logsAttempt, setLogsAttempt] = useState(0);
   const streamDown = dayState.connection.state === "stopped" || dayState.connection.state === "reconnecting";
   const dayFailureText = useMemo(() => {
     if (dayResource.state !== "failed") return undefined;
@@ -225,6 +232,7 @@ export function LoadedApp({
   // The queue, rail counts and labels may show a kept copy of this day while it reloads; every decision reads `dayWire`.
   const keptDay = dayResource.state === "loading" && dayResource.kept?.value.day === day ? dayResource.kept.value : undefined;
   const shownDay = dayWire ?? keptDay;
+  knownRows.current = shownDay?.queueSurfaces;
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>(() => workflowComposition.harness?.commandResults ?? []);
 
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId, canSelectWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
@@ -990,11 +998,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date">{keptDay !== undefined && <KeptDayMark />}<DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
-            <PanelBoundary resetKey={`${route.run ?? ""}:${logsAttempt}`} sentence="Couldn't show this run.">
+            <PanelBoundary resetKey={route.run ?? ""} sentence="Couldn't show this run.">
             {route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
               LogPreview !== undefined && (logRow.parent === null || workflowComposition.harness?.logsChildRows === true)
               ? <LogPreview selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} onAction={logAction} />
-              : <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}:${logsAttempt}`} onRetryLogs={() => setLogsAttempt(attempt => attempt + 1)} confirm={confirmLogDecision} onAction={logAction}
+              : <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} onAction={logAction}
                 reviewOpen={route.section === "review"} reviewFocus={route.view?.queueMember?.kind === "record" ? route.view.queueMember.record : undefined}
                 onOpenLinked={openRelatedRun} onReview={() => setRoute(current => ({ ...current, section: "review" }))} onLogs={() => setRoute(current => ({ ...current, section: "logs" }))}
                 initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />

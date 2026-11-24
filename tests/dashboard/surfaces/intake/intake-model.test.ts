@@ -11,6 +11,7 @@ INTAKE_REVIEW_COPY,
 intakeListPage,
 intakeListPageForSelection,
 layoutFingerprint,
+abbreviated,
 layoutMetaItems,
 manifestFacts,
 manifestIdentifierFacts,
@@ -217,7 +218,7 @@ describe("the layout every decision on the screen is fenced against", () => {
   it("echoes the header row 1-based and the fingerprint's first eight", () => {
     assert.deepEqual(layoutMetaItems(FIXTURE_INTAKE_MAPPING), [
       `header row ${String((FIXTURE_INTAKE_MAPPING.headerRowIndex ?? 0) + 1)}`,
-      `fingerprint ${(FIXTURE_INTAKE_MAPPING.headerFingerprint ?? "").slice(0, 8)}`,
+      `layout ${(FIXTURE_INTAKE_MAPPING.headerFingerprint ?? "").slice(0, 8)}`,
     ]);
   });
 
@@ -341,17 +342,17 @@ describe("the manifest block, from the wire and nowhere else", () => {
       "plan id",
       "source",
       "artifact",
-      "mapping fingerprint",
+      "mapping version",
       "mapping snapshot",
-      "intake projection",
+      "mappable fields",
       "workflow contract",
-      "canonical input schema",
+      "input schema",
       "created",
       "totals",
     ]);
     const source = manifestFacts(enqueued).find((fact) => fact.key === "source");
     assert.equal(source?.value, `${sourceLabel(enqueued)} · sha ${enqueued.artifact.sha256.slice(0, 12)}`);
-    assert.equal(manifestFacts(enqueued).find((fact) => fact.key === "artifact")?.value, enqueued.artifact.id);
+    assert.equal(manifestFacts(enqueued).find((fact) => fact.key === "artifact")?.value, abbreviated(enqueued.artifact.id));
   });
 
   it("keeps each full opaque identifier available behind the dense manifest rows", () => {
@@ -359,11 +360,11 @@ describe("the manifest block, from the wire and nowhere else", () => {
       { key: "plan id", value: MANIFEST_ID },
       { key: "source sha256", value: enqueued.artifact.sha256 },
       { key: "artifact id", value: enqueued.artifact.id },
-      { key: "mapping fingerprint", value: enqueued.manifest?.mappingFingerprint },
+      { key: "mapping version", value: enqueued.manifest?.mappingFingerprint },
       { key: "mapping snapshot", value: enqueued.manifest?.mappingSnapshotHash },
-      { key: "intake projection", value: enqueued.manifest?.intakeProjectionFingerprint },
+      { key: "mappable fields", value: enqueued.manifest?.intakeProjectionFingerprint },
       { key: "workflow contract", value: enqueued.manifest?.workflowContractFingerprint },
-      { key: "canonical input schema", value: enqueued.manifest?.canonicalInputSchemaHash },
+      { key: "input schema", value: enqueued.manifest?.canonicalInputSchemaHash },
     ]);
   });
 
@@ -439,21 +440,21 @@ describe("a terminal manifest is rendered from its terminal projection", () => {
       "plan id",
       "source",
       "artifact",
-      "mapping fingerprint",
+      "mapping version",
       "mapping snapshot",
-      "intake projection",
+      "mappable fields",
       "workflow contract",
-      "canonical input schema",
+      "input schema",
       "created",
       "totals",
     ]);
-    assert.equal(stage.facts[0]?.value, MANIFEST_ID);
+    assert.equal(stage.facts[0]?.value, abbreviated(MANIFEST_ID));
     assert.equal(stage.facts.at(-1)?.value, "5 rows · 3 valid · 1 rejected · 1 excluded · 1 corrected");
     assert.deepEqual(stage.rows.map((row) => [row.sourceRow, row.disposition, row.itemId, row.inputHash, row.parsedInput]), [
       [1, "valid", "11111111-1111-4111-8111-111111111111", FIXTURE_INTAKE_VALIDATED.artifact.sha256, "emplId=10456712"],
       [2, "valid", "22222222-2222-4222-8222-222222222222", FIXTURE_INTAKE_VALIDATED.artifact.sha256, "emplId=10998801"],
       [3, "valid", "33333333-3333-4333-8333-333333333333", FIXTURE_INTAKE_VALIDATED.artifact.sha256, "emplId=10123456"],
-      [4, "rejected", undefined, undefined, "rejects: 44444444-4444-4444-8444-444444444444"],
+      [4, "rejected", undefined, undefined, "rejects: 44444444…"],
       [5, "excluded", undefined, undefined, "—"],
     ]);
   });

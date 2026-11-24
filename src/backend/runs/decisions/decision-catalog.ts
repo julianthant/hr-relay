@@ -98,7 +98,7 @@ export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclarat
     { id: "recover", label: "Recover", hint: "From the last completed step.", send: { via: "row-action", command: "recover-run" } },
     cancelRun,
   ] },
-  refused: { title: "Command refused", recommended: [], projected: false, options: [] },
+  refused: { title: "Request refused", recommended: [], projected: false, options: [] },
   cancelling: { title: "Cancelling", recommended: [], options: [] },
 });
 

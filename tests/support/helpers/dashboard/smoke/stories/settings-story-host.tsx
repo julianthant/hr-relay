@@ -17,6 +17,7 @@ import bootstrapJson from "../../../../fixtures/dashboard/settings-story-bootstr
 import { SettingsPage } from "../../../../../../src/dashboard/surfaces/settings/settings.js";
 import type { SettingsStoryServer } from "../../../../fixtures/dashboard/settings-story-fixtures.js";
 import { StoryFrame } from "./story-frame.js";
+import { createRowStore } from "../../../../../../src/dashboard/client/index.js";
 
 const noop = () => undefined;
 const ACTOR = "local-operator";
@@ -30,7 +31,7 @@ function StoryCommandBinding({ children }: { children: ReactNode }) {
     const epoch = Object.freeze({ client, bootstrap: BOOTSTRAP });
     const request = Object.freeze({ client, revision: 0 });
     const authority: DashboardAuthority = Object.freeze({ epoch, catalog: [], now: () => BOOTSTRAP.serverClock.now, today: "2026-08-03", day: "2026-08-03",
-      dayState: { request, day: LOADING, connection: { state: "connecting" as const }, subscribePublications: () => noop, refresh: noop },
+      dayState: { rows: createRowStore(), request, day: LOADING, connection: { state: "connecting" as const }, subscribePublications: () => noop, refresh: noop },
       selection: { route: { start: false }, workflowId: "" } });
     return Object.freeze({ authority, executor, scope: Object.freeze({ actorId: ActorIdSchema.parse(ACTOR), client, authority: epoch, dayRequest: request }), feedback: noop });
   }, [client, executor]);

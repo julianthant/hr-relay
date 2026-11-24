@@ -38,7 +38,7 @@ it("Back to a kept day with its run open shows both at once, marked Updating, th
   const streams: { day: string; serve: (frame: DashboardDayWire) => void }[] = [];
   const client: DashboardClient = { ...transport, subscribeDay: input => {
     streams.push({ day: input.day, serve: frame => { input.onDay(frame); input.onState({ state: "live" }); } });
-    return { close: () => undefined };
+    return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
@@ -91,7 +91,7 @@ it("Back to a kept day gives the held run's Logs no Pause, Stop or Cancel, and s
   const streams: { day: string; serve: (frame: DashboardDayWire) => void }[] = [];
   const client: DashboardClient = { ...transport, subscribeDay: input => {
     streams.push({ day: input.day, serve: frame => { input.onDay(frame); input.onState({ state: "live" }); } });
-    return { close: () => undefined };
+    return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
@@ -129,7 +129,7 @@ it("a stream reset with a run open shows neither the pre-reset row nor its logs 
   const streams: { serve: (frame: DashboardDayWire) => void; reset: () => void }[] = [];
   const client: DashboardClient = { ...transport, subscribeDay: input => {
     streams.push({ serve: frame => { input.onDay(frame); input.onState({ state: "live" }); }, reset: () => input.onState({ state: "connecting" }) });
-    return { close: () => undefined };
+    return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });

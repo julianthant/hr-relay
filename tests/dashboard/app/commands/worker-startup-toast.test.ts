@@ -104,7 +104,7 @@ describe("stopped worker toast", () => {
       workerCards: FIXTURE_DAY_WIRE.workerCards.filter(card => card.workflowId !== "person-lookup"),
       workerAuthority: { ...FIXTURE_DAY_WIRE.workerAuthority, state: authority, members: FIXTURE_DAY_WIRE.workerAuthority.members.filter(member => member.workflow !== "person-lookup"),
         ...(authority === "present" ? {} : { reason: "Worker membership is unavailable." }) } });
-    assert.deepEqual(stoppedWorkerToasts(none(), label), [{ tone: "warning", title: "Person Lookup has no worker. Add one in Sessions." }]);
+    assert.deepEqual(stoppedWorkerToasts(none(), label), [{ tone: "warning", title: "Person Lookup has no worker. Open Sessions." }]);
     // A preview plan asks for no worker, and unread membership proves nothing.
     assert.deepEqual(stoppedWorkerToasts(none(queued.filter(row => row.surfaceKind === "preview")), label), []);
     assert.deepEqual(stoppedWorkerToasts(none(queued, "unavailable"), label), []);

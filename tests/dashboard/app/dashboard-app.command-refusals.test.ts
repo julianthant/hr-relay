@@ -19,7 +19,7 @@ async function mount(reply: (request: CommandRequest) => CommandResult) {
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   const sent: CommandRequest[] = [];
   const client = { ...transport,
-    subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) { input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: "live" }); return { close() {} }; },
+    subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) { input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: "live" }); return { select() {}, close() {} }; },
     async executeCommand(raw: unknown) { const request = CommandRequestSchema.parse(raw); sent.push(request); return reply(request); },
   };
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
