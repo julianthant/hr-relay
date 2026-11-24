@@ -14,9 +14,10 @@ import { acquireExclusiveRuntimeAdmission,RuntimeAdmission } from "../../storage
 import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { FixedLayoutRefusedError } from "../../storage/maintenance/fixed-layout.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
+import type { DashboardComposeInput } from "../composition/dashboard/runtime-contracts.js";
 import { registerDashboardStopSignal } from "../composition/runtime-composition.js";
 import { AutomaticPersonRepairRefusedError,FINISH_SHUTDOWN_BACKUP,hasPendingShutdownBackup,readPendingShutdownBackup,RegisteredPersonUpgradeRefusedError,removePendingShutdownBackup,RuntimeCustodyUncertainError,writePendingShutdownBackup } from "../composition/storage-compose.js";
-import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
+import { applicationDataWorkspace,rebuildRuntimeIsolation,runtimeProfile } from "../config/runtime-isolation.js";
 import { probePrimaryDisplay } from "../host/primary-display.js";
 import { WORKER_GRACEFUL_STOP_TIMEOUT_MS, WorkerPoolError } from "../../runtime/workers/worker-pool.js";
 import { installProcessCrashHandlers } from "./process-crash.js";
@@ -26,6 +27,7 @@ export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 export interface RuntimeLifetime {
   readonly lock: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock;
   readonly parentSignal: AbortSignal;
+  readonly copySignin?: DashboardComposeInput["copySignin"];
 }
 
 export interface SecureEnvironmentBootstrapDependencies {
@@ -37,6 +39,7 @@ export interface SecureEnvironmentBootstrapDependencies {
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
   readonly acquireAdmission?: (mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock) => RuntimeAdmission;
   readonly validateDashboardBundle?: (workspace: string) => void;
+  readonly copySignin?: RuntimeLifetime["copySignin"];
   /** The worker branch and an abnormal root shutdown end here; tests replace it. */
   readonly exit?: (code: number) => never;
 }
@@ -118,6 +121,8 @@ export async function runSecureEnvironmentBootstrap(
 ): Promise<void> {
   const [selector, ...entrypointArgs] = args;
   secureEnvironmentEntrypoint(selector);
+  if (dependencies.copySignin !== undefined && (runtimeProfile === "production" || dependencies.copySignin.profile !== runtimeProfile
+    || selector !== "cli" || entrypointArgs.length !== 1 || entrypointArgs[0] !== "dashboard")) throw new Error("copy-signin-profile-refused");
   if (selector === "cli" && entrypointArgs.length === 2 && entrypointArgs[0] === "dashboard" && entrypointArgs[1] === "--prod") {
     const workspace = fileURLToPath(new URL("../../../..", import.meta.url));
     (dependencies.validateDashboardBundle ?? ((root: string) => {
@@ -152,7 +157,7 @@ export async function runSecureEnvironmentBootstrap(
   // Latch a dashboard stop from admission through release, so a signal drains boot owners instead of killing them.
   const latchStop = (): void => { controller.abort(new Error("dashboard-stop-requested")); };
   if (dashboard) { process.on("SIGINT", latchStop); process.on("SIGTERM", latchStop); registerDashboardStopSignal(controller.signal); }
-  try { await runAdmittedEnvironmentBootstrap(args, dependencies, { lock, parentSignal: controller.signal }); }
+  try { await runAdmittedEnvironmentBootstrap(args, dependencies, { lock, parentSignal: controller.signal, copySignin: dependencies.copySignin }); }
   catch (error) {
     if (workerExitUnobserved(error)) {
       // A worker outlived shutdown: close only the root's listener copy and exit, which closes the IPC channels.

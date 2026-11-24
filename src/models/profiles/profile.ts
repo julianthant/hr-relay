@@ -173,6 +173,8 @@ export const DuoDiagnosticExceptionTypeSchema = z.string().regex(/^[A-Za-z][A-Za
 export const DuoPortalDiagnosticCodeSchema = z.enum([
   "UCSD_SSO_SCOPE", "UCSD_SSO_FIELDS", "UCSD_SSO_REDIRECT_TIMEOUT", "UCSD_SSO_FORM_TIMEOUT", "ONBOARDING_DUO_FOCUS_FAILED",
   "UCSD_DUO_NAVIGATION_TIMEOUT", "UCSD_SSO_SUBMIT_TIMEOUT",
+  "copy-signin-duo-scope", "copy-signin-duo-gate-unavailable", "copy-signin-duo-phone-already-requested", "copy-signin-duo-push-unanswered",
+  "copy-signin-duo-device-list-unavailable", "copy-signin-duo-method-unavailable", "copy-signin-duo-receipt-unavailable",
 ]);
 export const DuoDiagnosticCodeSchema = z.enum([
   ...DuoPortalDiagnosticCodeSchema.options,
@@ -206,6 +208,20 @@ export const DuoDiagnosticCodeSchema = z.enum([
 export const DuoDiagnosticOperationSchema = z.enum(["browser-setup", "attempt-setup", "browser-request", "broker-request", "portal-open", "browser-focus", "browser-return",
   "close-attempt", "close-launch", "close-worker", "close-pages", "close-context", "close-callbacks", "close-pump", "close-native-proof"]);
 
+/** Known Duo screens, most specific first, and the fixed frame allowlist names a copy sign-in capture records. */
+export const DUO_SCREENS = ["duo-error", "trust-prompt", "push-sent", "device-list", "push-options", "other-options", "duo-gate", "sso-page", "unknown"] as const;
+export const DuoScreenSchema = z.enum(DUO_SCREENS);
+export const DuoFrameOriginSchema = z.enum(["duo", "ucsd-duo", "ucsd-sso", "not-allowlisted"]);
+export const COPY_DUO_FRAME_LIMIT = 32;
+export const CopyDuoScreenSchema = z.strictObject({
+  stage: z.enum(["gate", "push-options", "after-push"]),
+  screen: z.enum([...DUO_SCREENS, "capture-timeout"]),
+  frames: z.array(DuoFrameOriginSchema).max(COPY_DUO_FRAME_LIMIT),
+  framesTruncated: z.literal(true).optional(),
+});
+export type CopyDuoScreen = z.infer<typeof CopyDuoScreenSchema>;
+export const CopyDuoScreensSchema = z.array(CopyDuoScreenSchema).max(3);
+
 export const ProfileOnboardingDuoEventSchema = z.strictObject({
   stage: z.enum(["intercepted", "forwarded", "backend-received", "replied", "refused", "timed-out", "aborted", "platform-native", "platform-virtual", "slow-operation"]),
   requestId: z.uuid().optional(),
@@ -214,6 +230,7 @@ export const ProfileOnboardingDuoEventSchema = z.strictObject({
   exceptionType: DuoDiagnosticExceptionTypeSchema.optional(),
   operation: DuoDiagnosticOperationSchema.optional(),
   durationMs: z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  screens: CopyDuoScreensSchema.optional(),
 });
 export type ProfileOnboardingDuoEvent = z.infer<typeof ProfileOnboardingDuoEventSchema>;
 

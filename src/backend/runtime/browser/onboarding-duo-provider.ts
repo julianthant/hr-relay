@@ -1,14 +1,16 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createDuoBrowserFocus, type DuoBrowserFocus, type NativeFocusTarget } from "./native-browser-focus.js";
 import { createNativeBrowserProbe, DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess, type PersistentContextLauncher } from "./native-browser.js";
-import type { ProfileOnboardingBrowser } from "../../../models/profiles/public-profile.js";
+import { PROFILE_ONBOARDING_STATE, type ProfileOnboardingBrowser } from "../../../models/profiles/public-profile.js";
 import { privatePathRejects } from "../../storage/private-path.js";
 import { DuoAssertionRequestSchema } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
-import { waitForUcsdDuoSignIn } from "../../systems/browser-shared/ucsd-sso.js";
-import type { BrowserContext, Page, Worker } from "playwright";
+import { submitPinnedUcsdSsoCredentials, waitForUcsdDuoSignIn } from "../../systems/browser-shared/ucsd-sso.js";
+import type { BrowserContext, Locator, Page, Worker } from "playwright";
+import type { RuntimeProfile } from "../../../models/config/define-runtime-isolation.js";
+import { copySigninFixtureWorkspace } from "../../app/config/runtime-isolation.js";
 import { z } from "zod";
 import { BrowserDocumentIdSchema, PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../models/config/duo-credential-store.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -16,7 +18,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { type BrowserRoots, type BrowserRootLaunch, type BrowserRootLaunchInput, type SignupBrowserRootInput } from "../../storage/browser-roots.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
-import { DuoDiagnosticExceptionTypeSchema, DuoPortalDiagnosticCodeSchema, ProfileOnboardingDuoEventSchema, type ProfileOnboardingDuoEvent, type ProfileOnboardingDuoFailure } from "../../../models/profiles/profile.js";
+import { COPY_DUO_FRAME_LIMIT, DUO_SCREENS, DuoFrameOriginSchema, DuoScreenSchema, type CopyDuoScreen, DuoDiagnosticExceptionTypeSchema, DuoPortalDiagnosticCodeSchema, ProfileOnboardingDuoEventSchema, type ProfileOnboardingDuoEvent, type ProfileOnboardingDuoFailure } from "../../../models/profiles/profile.js";
 
 export class ProfileOnboardingDuoProviderError extends Error {
   constructor(readonly kind: "unavailable" | "refused" | "unknown",
@@ -81,8 +83,70 @@ export interface OnboardingDuoProviderOptions {
   readonly launcher?: PersistentContextLauncher;
   readonly platform?: NodeJS.Platform;
   readonly focus?: DuoBrowserFocus;
+  readonly copySignin?: Readonly<{
+    profile: Exclude<RuntimeProfile, "production">;
+    credentials(): Readonly<{ userId: string; password: string }>;
+    phone(): void;
+    screens?(screens: readonly CopyDuoScreen[]): void;
+    captureDeadlineMs?: number;
+  }>;
 }
 
+
+const DUO_CAPTURE_DEADLINE_MS = 2000;
+type DuoScreenCapture = Omit<CopyDuoScreen, "stage">;
+
+/** A copy sign-in gate failure; it carries the Duo screens seen so far to its log entry. */
+export class CopySigninDuoGateError extends Error {
+  constructor(code: string, readonly screens: readonly CopyDuoScreen[], options: ErrorOptions) { super(code, options); }
+}
+
+function allowlistedOrigin(href: string): z.infer<typeof DuoFrameOriginSchema> {
+  const url = URL.parse(href);
+  if (url === null || url.protocol !== "https:" || url.port !== "") return "not-allowlisted";
+  if (url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com")) return "duo";
+  if (url.hostname === "duo.ucsd.edu") return "ucsd-duo";
+  return url.hostname === "a5.ucsd.edu" ? "ucsd-sso" : "not-allowlisted";
+}
+
+async function readDuoScreen(page: Page): Promise<DuoScreenCapture> {
+  const all = page.frames();
+  const frames = all.slice(0, COPY_DUO_FRAME_LIMIT).map(frame => ({ frame, origin: allowlistedOrigin(frame.url()) }));
+  const found = new Set<string>();
+  await Promise.all(frames.map(async ({ frame, origin }) => {
+    if (origin !== "duo" && origin !== "ucsd-duo") return;
+    try {
+      // Page text is matched in the frame and only the screen name crosses back.
+      const match = DuoScreenSchema.safeParse(await frame.evaluate(() => {
+        // An object method: tsx wraps a named inner function in a __name helper the page realm lacks.
+        const seen = { any(selector: string, pattern: RegExp): boolean {
+          return [...document.querySelectorAll(selector)].some(element => element.checkVisibility({ visibilityProperty: true })
+            && pattern.test((element.textContent ?? "").replace(/\s+/gu, " ").trim()));
+        } };
+        const controls = "button, a[href], [role=button], [role=link]", text = "h1, h2, h3, h4, h5, h6, [role=heading], [role=status], [aria-live], p";
+        if (seen.any("[role=alert]", /./u)) return "duo-error";
+        if (seen.any(text, /Is this your device\?/iu)) return "trust-prompt";
+        if (seen.any(text, /Pushed a login request|Check for a Duo Push/iu)) return "push-sent";
+        if (seen.any(controls, /^Add a device\b/iu)) return "device-list";
+        if (seen.any(controls, /^(?:Verified )?Duo Push\b/iu)) return "push-options";
+        if (seen.any(controls, /^Other options$/iu)) return "other-options";
+        return null;
+      }));
+      if (match.success) found.add(match.data);
+    } catch { /* a detached or crashed frame matches no screen */ }
+  }));
+  const top = allowlistedOrigin(page.url());
+  const screen = DUO_SCREENS.find(name => found.has(name))
+    ?? (top === "ucsd-sso" ? "sso-page" : top === "not-allowlisted" ? "unknown" : "duo-gate");
+  return { screen, frames: frames.map(({ origin }) => origin), ...(all.length > COPY_DUO_FRAME_LIMIT ? { framesTruncated: true as const } : {}) };
+}
+
+/** Bounded so a slow page never holds back a click or the gate's own error. */
+export async function duoScreenSnapshot(page: Page, deadlineMs = DUO_CAPTURE_DEADLINE_MS): Promise<DuoScreenCapture> {
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<DuoScreenCapture>(resolve => { timer = setTimeout(() => resolve({ screen: "capture-timeout", frames: [] }), deadlineMs); });
+  try { return await Promise.race([readDuoScreen(page), timedOut]); } finally { clearTimeout(timer); }
+}
 
 async function workerCall(worker: Worker, method: "install" | "next" | "reply" | "stop" | "assertContext" | "browserInstall" | "browserFocus" | "browserPage" | "browserSelect" | "browserBounds" | "browserNext" | "browserReply" | "browserStop", args: readonly unknown[] = []): Promise<unknown> {
   try { return await worker.evaluate(async input => {
@@ -99,6 +163,39 @@ async function workerCall(worker: Worker, method: "install" | "next" | "reply" |
   }
 }
 
+const FIXTURE_SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
+const FIXTURE_SSO_FORM = `<!doctype html><form action="${FIXTURE_SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="urn:mace:ucsd.edu:sso:username"><label for="ssopassword">Password</label><input id="ssopassword" name="urn:mace:ucsd.edu:sso:password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
+
+/**
+ * A bound copy sign-in fixture runs the real owned browser headless against a synthetic UCSD SSO form with no network.
+ * It records only digests of the submitted fields, then refuses the submission so Duo is never reached.
+ */
+export function copySigninFixtureBrowser(): Pick<OnboardingDuoProviderOptions, "launcher" | "focus"> | undefined {
+  const workspace = copySigninFixtureWorkspace();
+  if (workspace === undefined) return undefined;
+  const digest = (value: string | null) => value === null ? null : createHash("sha256").update(value).digest("hex");
+  return {
+    focus: { async captureRelay() { return undefined; }, async show() {}, async returnToRelay() {} },
+    launcher: { async launch(input) {
+      if (input.nativeOnly === true) return DEFAULT_BROWSER_LAUNCHER.launch(input);
+      const context = await DEFAULT_BROWSER_LAUNCHER.launch({ ...input, headless: true });
+      await context.route("**/*", async route => {
+        const request = route.request(), url = request.url();
+        if (url.startsWith("chrome-extension://")) await route.continue();
+        else if (url === "https://duo.ucsd.edu/") await route.fulfill({ contentType: "text/html", body: `<script>location.replace(${JSON.stringify(FIXTURE_SSO)})</script>` });
+        else if (url === FIXTURE_SSO && request.method() === "GET") await route.fulfill({ contentType: "text/html", body: FIXTURE_SSO_FORM });
+        else if (url === FIXTURE_SSO && request.method() === "POST") {
+          const fields = new URLSearchParams(request.postData() ?? "");
+          writeFileSync(join(workspace, ".tracker", "fixture-sso-submission.json"), JSON.stringify({
+            username: digest(fields.get("urn:mace:ucsd.edu:sso:username")), password: digest(fields.get("urn:mace:ucsd.edu:sso:password")) }), { mode: 0o600 });
+          await route.abort();
+        } else await route.abort();
+      });
+      return context;
+    } },
+  };
+}
+
 export function createProfileOnboardingDuoProvider(options: OnboardingDuoProviderOptions): ProfileOnboardingDuoProvider {
   const workersClosedBeforeContext = new WeakSet<Worker>();
   function closingPollFailure(error: unknown, context: BrowserContext | undefined, worker: Worker | undefined): boolean {
@@ -112,7 +209,8 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     const portalCode = DuoPortalDiagnosticCodeSchema.safeParse(error instanceof Error ? error.message : undefined);
     return { stage: "refused", detail: error instanceof ProfileOnboardingDuoProviderError ? error.reason : "backend", code: portalCode.success ? portalCode.data : error instanceof Error && error.message === "ONBOARDING_DUO_WORKER_UNAVAILABLE" ? "ONBOARDING_DUO_WORKER_UNAVAILABLE" : "ONBOARDING_DUO_PROVIDER_FAILED",
       ...(exceptionType.success ? { exceptionType: exceptionType.data } : {}),
-      ...(operation === undefined ? {} : { operation }), ...(durationMs === undefined ? {} : { durationMs }) };
+      ...(operation === undefined ? {} : { operation }), ...(durationMs === undefined ? {} : { durationMs }),
+      ...(error instanceof CopySigninDuoGateError && error.screens.length > 0 ? { screens: [...error.screens] } : {}) };
   }
   function slowOperation(owner: DraftDuoBrowserOwner, operation: NonNullable<ProfileOnboardingDuoEvent["operation"]>, started: number, original?: unknown): void {
     const durationMs = Math.max(0, options.clock.monotonicMs() - started);
@@ -136,11 +234,13 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
   type OwnedBrowser = {
     owner: DraftDuoBrowserOwner; profileDirectory: string; launch: BrowserRootLaunch; rootInput: BrowserRootLaunchInput; context?: BrowserContext; worker?: Worker;
     launching?: Promise<BrowserContext>; startup?: Promise<void>; pump?: Promise<void>; setup?: Page; setupOpening?: Promise<Page>; portal?: Page; portalOpening?: Promise<void>;
+    enrollingCopy?: true;
     revoked: boolean; contextClosed: boolean; launchStarted: boolean; closureFailure?: unknown; pumpFailure?: unknown; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
     targets: Map<Page, { tabId: number; windowId: number }>; relayTarget?: NativeFocusTarget;
     process?: OwnedBrowserProcess; draining?: Promise<void>; profileRemovalProved?: true;
   };
   let browser: OwnedBrowser | undefined;
+  let copyPhonePrompted = false;
   let windowState: ProfileOnboardingBrowser = { state: "closed", generation: 0 };
   let reopening: Promise<void> | undefined;
   let reopeningGeneration: number | undefined;
@@ -380,12 +480,14 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     })();
     return session.close;
   }
+  // Copy sign-in policy applies only to the sign-up browser; Duo re-enrollment keeps ordinary Open Duo behaviour.
+  const copySetup = (session: OwnedBrowser) => options.copySignin !== undefined && session.owner.readState().state === PROFILE_ONBOARDING_STATE;
   async function ownedPage(session: OwnedBrowser, url: string, install = false): Promise<Page> {
     const { context, worker } = session;
     if (!context || !worker) throw new ProfileOnboardingDuoProviderError("unavailable", "worker");
     const token = randomUUID(), marker = `${install ? "about:blank" : url}#relay-target=${token}`;
     const opened = context.waitForEvent("page", { predicate: page => page.waitForURL(marker, { waitUntil: "commit", timeout: options.closeProofMs }).then(() => true, () => false), timeout: options.closeProofMs });
-    const [page, raw] = await Promise.all([opened, workerCall(worker, install ? "browserInstall" : "browserPage", [install ? token : marker])]);
+    const [page, raw] = await Promise.all([opened, workerCall(worker, install ? "browserInstall" : "browserPage", install ? [token, copySetup(session)] : [marker])]);
     const target = z.strictObject({ tabId: z.number().int().nonnegative(), windowId: z.number().int().nonnegative(), url: z.literal(marker) }).parse(raw);
     browserCurrent(session);
     if (page.url() !== target.url) throw new ProfileOnboardingDuoProviderError("refused", "scope");
@@ -405,7 +507,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
   }
   async function selectSetup(resource: ProviderSession): Promise<void> {
     const session = browser;
-    if (!session || session.revoked || !session.setup || session.setup.isClosed()) return;
+    if (!session || session.revoked || session.enrollingCopy || !session.setup || session.setup.isClosed()) return;
     if (session.context !== resource.context || session.worker !== resource.worker || session.profileDirectory !== resource.profileDirectory || !sameOwner(session.owner, resource.attempt)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     if (!session.worker || session.setup.url() !== new URL("options.html", session.worker.url()).href) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     await selectPage(session, session.setup);
@@ -486,7 +588,96 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     cause.name = "TimeoutError";
     throw new Error("UCSD_SSO_SUBMIT_TIMEOUT", { cause });
   }
+
+  async function enrollCopy(session: OwnedBrowser, page: Page, landing: "sso-form" | "duo",
+    copy: NonNullable<OnboardingDuoProviderOptions["copySignin"]>, snapshots: CopyDuoScreen[]): Promise<void> {
+    if (landing === "sso-form") {
+      try {
+        await submitPinnedUcsdSsoCredentials(page, async () => copy.credentials(), () => browserCurrent(session),
+          options.closeProofMs, "/tritON/profile/SAML2/Redirect/SSO");
+      } catch { throw new Error("UCSD_SSO_FIELDS"); }
+    }
+    const duo = (url: URL) => url.hostname !== "duo.ucsd.edu" && duoSignInHost(url.href);
+    const timeout = 120_000;
+    await page.waitForURL(duo, { timeout });
+    const ownedDuoOrigin = () => {
+      browserCurrent(session);
+      const url = URL.parse(page.url());
+      if (page.isClosed() || session.portal !== page || url === null || !duo(url)) throw new Error("copy-signin-duo-scope");
+      return url.origin;
+    };
+    let origin = ownedDuoOrigin();
+    const current = () => {
+      if (ownedDuoOrigin() !== origin) throw new Error("copy-signin-duo-scope");
+    };
+    const control = (name: RegExp) => page.getByRole("button", { name }).or(page.getByRole("link", { name })).filter({ visible: true });
+    const click = async (locator: Locator, approval?: "phone") => {
+      current();
+      await selectPage(session, page);
+      current();
+      const target = await locator.elementHandle({ timeout });
+      try {
+        current();
+        if (approval === "phone") {
+          if (copyPhonePrompted) throw new Error("copy-signin-duo-phone-already-requested");
+          copyPhonePrompted = true;
+        }
+        await target.click({ timeout });
+        if (approval === "phone") copy.phone();
+      } finally { await target.dispose(); }
+      if (approval === "phone") ownedDuoOrigin();
+      else current();
+    };
+    // Held in memory: the gate error's log entry carries them and openPortal hands them to the launcher.
+    const snapshot = async (stage: CopyDuoScreen["stage"]) => {
+      try { if (!page.isClosed()) snapshots.push({ stage, ...await duoScreenSnapshot(page, copy.captureDeadlineMs) }); } catch { /* evidence never masks the gate's own outcome */ }
+    };
+    const timedOut = (code: string) => (cause: unknown) => {
+      if (cause instanceof Error && cause.name === "TimeoutError") throw new CopySigninDuoGateError(code, [...snapshots], { cause });
+      throw cause;
+    };
+    const add = control(/^Add a device\b/iu);
+    const other = control(/^Other options$/iu);
+    await add.or(other).first().waitFor({ timeout }).catch(async (cause: unknown) => { await snapshot("gate"); timedOut("copy-signin-duo-gate-unavailable")(cause); });
+    if (!await add.isVisible()) {
+      await snapshot("gate");
+      await click(other);
+      await snapshot("push-options");
+      await click(control(/^(?:Verified )?Duo Push\b/iu), "phone");
+      await add.waitFor({ timeout }).catch(async (cause: unknown) => { await snapshot("after-push"); timedOut("copy-signin-duo-push-unanswered")(cause); });
+      origin = ownedDuoOrigin();
+      if (!await add.isVisible()) throw new Error("copy-signin-duo-device-list-unavailable");
+    }
+
+    current();
+    const state = session.owner.readState().methods.key.state;
+    if (state === "complete") return;
+    if (state !== "idle") throw new Error("copy-signin-duo-method-unavailable");
+    await session.owner.start("key");
+    await click(add);
+    const added = page.getByRole("heading", { name: /^Added security key\b/iu });
+    const next = control(/^(?:Continue|Done)$/iu);
+    await click(control(/^Security key\b/iu));
+    await added.or(next).first().waitFor({ timeout });
+    if (!await added.isVisible()) await click(next);
+    const deadline = options.clock.monotonicMs() + timeout;
+    for (;;) {
+      current();
+      const result = session.owner.readState().methods.key.state;
+      if (result === "complete") break;
+      if (result !== "pending" || options.clock.monotonicMs() >= deadline) throw new Error("copy-signin-duo-receipt-unavailable");
+      await new Promise<void>(resolve => setTimeout(resolve, 100));
+    }
+    if (!await add.isVisible()) await click(next);
+  }
+
+  // The launcher prints which Duo screens showed, since the onboarding browser profile is removed at close.
   async function openPortal(session: OwnedBrowser): Promise<void> {
+    const snapshots: CopyDuoScreen[] = [];
+    try { await openPortalNow(session, snapshots); }
+    finally { if (snapshots.length > 0) options.copySignin?.screens?.(snapshots); }
+  }
+  async function openPortalNow(session: OwnedBrowser, snapshots: CopyDuoScreen[]): Promise<void> {
     browserCurrent(session);
     const context = session.context;
     if (!context) throw new ProfileOnboardingDuoProviderError("unavailable", "provider");
@@ -504,7 +695,11 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         browserCurrent(session);
         const landing = await waitForUcsdDuoSignIn(page, () => browserCurrent(session), options.closeProofMs);
         browserCurrent(session);
-        if (landing === "sso-form") await waitForManualUcsdSignIn(page, session);
+        if (options.copySignin !== undefined && copySetup(session)) {
+          session.enrollingCopy = true;
+          try { await enrollCopy(session, page, landing, options.copySignin, snapshots); }
+          finally { delete session.enrollingCopy; }
+        } else if (landing === "sso-form") await waitForManualUcsdSignIn(page, session);
         browserCurrent(session);
       } catch (error) {
         try { reportDuoEvent(session.owner, failureEvent(error, "portal-open", Math.max(0, options.clock.monotonicMs() - started))); }
@@ -515,7 +710,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     const opening = session.portalOpening;
     try { await opening; }
     catch (error) {
-      if (session.portalOpening === opening) delete session.portalOpening;
+      if (!copySetup(session) && session.portalOpening === opening) delete session.portalOpening;
       if (session.portal && trustedPortalUrl(session.portal.url())) await focusPage(session, session.portal);
       throw error;
     }

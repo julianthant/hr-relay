@@ -3,17 +3,60 @@ import { onboardingProfileDirectory } from "../../../../src/backend/storage/brow
 import { z } from "zod";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync, realpathSync, unlinkSync, symlinkSync, linkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, existsSync, writeFileSync, realpathSync, unlinkSync, symlinkSync, linkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, vi } from "vitest";
 import type { BrowserContext, Page, Worker } from "playwright";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import { CopySigninDuoGateError, createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
-import { ProfileOnboardingStateSchema } from "../../../../src/models/profiles/public-profile.js";
+import { DuoReenrolStateSchema, ProfileOnboardingStateSchema } from "../../../../src/models/profiles/public-profile.js";
+import { COPY_DUO_FRAME_LIMIT, CopyDuoScreensSchema, type CopyDuoScreen } from "../../../../src/models/profiles/profile.js";
 
-function world(platform: NodeJS.Platform = "darwin", { duoPage = false }: { duoPage?: boolean } = {}) {
+interface CopyPortalFixture {
+  screens?(screens: readonly CopyDuoScreen[]): void;
+  capture?(): Promise<unknown>;
+  frameCount?: number;
+  buttons(): readonly string[];
+  click(name: string): void | Promise<void>;
+  wait(): Promise<void>;
+  phone(): void;
+}
+
+interface CopyPortalLocator {
+  readonly names: readonly RegExp[];
+  or(other: CopyPortalLocator): CopyPortalLocator;
+  filter(): CopyPortalLocator;
+  first(): CopyPortalLocator;
+  isVisible(): Promise<boolean>;
+  waitFor(): Promise<void>;
+  elementHandle(): Promise<{ click(): Promise<void>; dispose(): Promise<void> }>;
+}
+
+function copyPortalLocator(portal: CopyPortalFixture | undefined, names: readonly RegExp[]): CopyPortalLocator {
+  const matching = () => portal?.buttons().filter(label => names.some(name => name.test(label))) ?? [];
+  return {
+    names,
+    or(other) { return copyPortalLocator(portal, [...names, ...other.names]); },
+    filter() { return this; },
+    first() { return this; },
+    async isVisible() { return matching().length !== 0; },
+    async waitFor() {
+      if (matching().length === 0) await portal?.wait();
+      assert.ok(matching().length > 0, "expected a visible Duo button");
+    },
+    async elementHandle() {
+      const matches = matching();
+      assert.equal(matches.length, 1, "expected one visible Duo button");
+      return { async click() { await portal?.click(matches[0]); }, async dispose() {} };
+    },
+  };
+}
+
+const gateScreens = (error: unknown) => error instanceof ProfileOnboardingDuoProviderError && error.cause instanceof CopySigninDuoGateError ? error.cause.screens : undefined;
+
+function world(platform: NodeJS.Platform = "darwin", { duoPage = false, copyPortal }: { duoPage?: boolean; copyPortal?: CopyPortalFixture } = {}) {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "relay-onboarding-provider-")));
   const browserRoot = join(directory, "browsers");
   const extensionDirectory = join(directory, "extension");
@@ -55,6 +98,7 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false }: { duoP
   const listeners: (() => void)[] = [];
   const calls: string[] = [];
   const workerCalls: string[] = [];
+  const installArgs: unknown[][] = [];
   const selectedPages: string[] = [];
   let documentCurrent = true;
   let driftAfter: string | undefined;
@@ -71,7 +115,7 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false }: { duoP
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
       workerCalls.push(input.method);
       if (input.method === "install") { clock.advanceMonotonic(installDurationMs); if (installFailure) throw installFailure; startupEntered?.(); await startupHold; if (failInstall) throw new Error("synthetic arm initialization failed"); return; }
-      if (input.method === "browserInstall") { clock.advanceMonotonic(browserSetupDurationMs); if (browserSetupFailure) throw browserSetupFailure; const url = `about:blank#relay-target=${String(input.args[0])}`; const page = makePage(url); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return { tabId: pages.length, windowId: 1, url }; }
+      if (input.method === "browserInstall") { installArgs.push(input.args); clock.advanceMonotonic(browserSetupDurationMs); if (browserSetupFailure) throw browserSetupFailure; const url = `about:blank#relay-target=${String(input.args[0])}`; const page = makePage(url); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return { tabId: pages.length, windowId: 1, url }; }
       if (input.method === "browserPage") { const page = makePage(String(input.args[0])); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return { tabId: pages.length, windowId: 1, url: String(input.args[0]) }; }
       if (input.method === "browserSelect") { if (selectionFailure) throw selectionFailure; const page = pages[Number(input.args[0]) - 1]; assert.ok(page); assert.equal(input.args[1], 1); selectedPages.push(page.url()); focusCount++; return; }
       if (input.method === "browserFocus") { windowFocusCount++; return; }
@@ -98,12 +142,13 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false }: { duoP
   function makePage(initialUrl = "about:blank") {
     let pageClosed = false;
     let url = initialUrl;
-    const frame = { url: () => url, evaluate: async () => true };
+    const frame = { url: () => url, evaluate: async () => copyPortal?.capture === undefined ? true : copyPortal.capture() };
     let signInFormVerified = false;
-    return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => { if (signInFormVerified) manualSignInObserved = true; return url; },
+    return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : Array.from({ length: copyPortal?.frameCount ?? 1 }, () => frame), evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => { if (signInFormVerified) manualSignInObserved = true; return url; },
       goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://") && !destination.startsWith("about:blank")) { portalPages++; if (portalLanding === undefined) throw portalFailure; url = portalLanding; portalUrl = url; setPortalUrl = (next: string) => { url = next; portalUrl = next; }; } else url = destination; },
       waitForURL: async (matches: string | ((candidate: URL) => boolean)) => { assert.ok(typeof matches === "string" ? url === matches : matches(new URL(url))); },
       waitForLoadState: async () => undefined, on: () => undefined,
+      getByRole: (role: string, { name }: { name: RegExp }) => copyPortalLocator(copyPortal, role === "button" ? [name] : []),
       waitForFunction: async () => ({ dispose: async () => { signInFormVerified = true; } }),
       locator: () => ({ count: async () => 1, elementHandle: async () => ({
         isVisible: async () => true, isEditable: async () => true, isEnabled: async () => true,
@@ -121,6 +166,9 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false }: { duoP
     : { platform: "darwin" as const, processId: 72 };
   const browserRoots = mockBrowserRootPort().browserRoots;
   const realProvider = createProfileOnboardingDuoProvider({ browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50, platform,
+    ...(copyPortal === undefined ? {} : { copySignin: { profile: "development" as const,
+      credentials() { throw new Error("direct Duo landing must not read SSO credentials"); }, phone: () => copyPortal.phone(),
+      screens: (screens: readonly CopyDuoScreen[]) => copyPortal.screens?.(screens), captureDeadlineMs: 50 } }),
     focus: { async captureRelay() { capturedRelay++; if (captureFailure) throw captureFailure; return relayTarget; }, async show(owned) { assert.equal(owned, context); osFocusCount++; if (focusFailure) throw focusFailure; },
       async returnToRelay(target) { assert.equal(target, relayTarget); returnedRelay++; if (returnFailure) throw returnFailure; } },
     launcher: { launch: async input => {
@@ -179,8 +227,8 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false }: { duoP
     return result;
   }
   return { seedRoot(other = owner) { return browserRoots.beginSignupLaunch({ profileId: other.profileId, profileRoot: browserRoot, credentialFingerprint: null,
-      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), contextClosed: () => closed, observed: () => observed, revoke: () => { current = false; },
-    events, selectedPages,
+      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, installArgs, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), contextClosed: () => closed, observed: () => observed, revoke: () => { current = false; },
+    events, selectedPages, directory,
     sendBrowser(kind: string) {
       const id = randomUUID(), request = { id, kind };
       const response = new Promise(resolve => replies.set(id, resolve));
@@ -194,6 +242,7 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false }: { duoP
     refuseSubmit(error: Error) { portalSubmitFailure = error; },
     landPortal(url: string) { portalLanding = url; },
     reachDuo(next: string) { setPortalUrl(next); },
+    async closePortal() { const page = pages.find(page => page.url() === portalUrl); assert.ok(page); await page.close(); },
     typed: () => typedCount,
     portalUrl: () => portalUrl,
     manualSignInObserved: () => manualSignInObserved,
@@ -570,6 +619,168 @@ describe("draft Duo provider", () => {
     } finally { await w.cleanup(); }
   });
 
+  it.each([
+    { destination: "https://test.duosecurity.com/", accepted: true },
+    { destination: "https://test-devices.duosecurity.com/", accepted: true },
+    { destination: "https://duosecurity.com.example.invalid/", accepted: false },
+  ])("prompts once and checks the device list after approval redirects to $destination", async ({ destination, accepted }) => {
+    const actions: string[] = [];
+    const pushed = Promise.withResolvers<void>(), approved = Promise.withResolvers<void>();
+    const waiting = Promise.withResolvers<void>(), devices = Promise.withResolvers<void>();
+    let buttons = ["Other options"];
+    const w = world("darwin", { copyPortal: {
+      buttons: () => buttons,
+      async click(label) {
+        actions.push(label);
+        buttons = label === "Other options" ? ["Security key", "Duo Push Send to phone"] : [];
+        if (label === "Duo Push Send to phone") {
+          pushed.resolve();
+          void approved.promise.then(() => {
+            w.reachDuo(destination);
+            if (!accepted) buttons = ["Add a device"];
+          });
+        }
+      },
+      phone() { actions.push("phone prompt"); },
+      async wait() { waiting.resolve(); await devices.promise; },
+    } });
+    w.landPortal("https://test.duosecurity.com/");
+    const complete = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    w.owner.readState = () => ProfileOnboardingStateSchema.parse({
+      browser: { state: "open", generation: 1 }, state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
+      step: "ready", methods: { key: complete },
+    });
+    try {
+      const opening = w.provider.openPortal(w.owner);
+      const premature = opening.then(() => { throw new Error("Duo portal completed before verification"); });
+      await Promise.race([waiting.promise, premature]);
+      const expectedActions = ["Other options", "Duo Push Send to phone", "phone prompt"];
+      assert.deepEqual(actions, expectedActions);
+      approved.resolve();
+      if (!accepted) {
+        devices.resolve();
+        await assert.rejects(opening, { cause: new Error("copy-signin-duo-scope") });
+        assert.deepEqual(actions, expectedActions);
+        return;
+      }
+      buttons = ["Add a device"];
+      devices.resolve();
+      await opening;
+      await w.provider.openPortal(w.owner);
+      assert.deepEqual(actions, expectedActions);
+      assert.equal(w.portalPages(), 1);
+      await w.closePortal();
+      buttons = ["Other options"];
+      await assert.rejects(w.provider.openPortal(w.owner), { cause: new Error("copy-signin-duo-phone-already-requested") });
+      assert.deepEqual(actions, [...expectedActions, "Other options"]);
+    } finally { approved.resolve(); devices.resolve(); await w.cleanup(); }
+  });
+
+  it("carries the Duo screens on the gate error and its log entry, hands them to the launcher, and writes no diagnostic file", async () => {
+    const actions: string[] = [], handed: (readonly CopyDuoScreen[])[] = [];
+    let buttons = ["Other options"], refusal: unknown;
+    const w = world("darwin", { copyPortal: {
+      buttons: () => buttons,
+      click(label) { actions.push(label); buttons = label === "Other options" ? ["Duo Push Send to phone"] : []; },
+      phone() { actions.push("phone prompt"); },
+      screens(screens) { handed.push(screens); },
+      async wait() { throw Object.assign(new Error("synthetic Add a device wait"), { name: "TimeoutError" }); },
+    } });
+    w.landPortal("https://test.duosecurity.com/");
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open", generation: 1 }, state: "onboarding",
+      operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", methods: { key: idle } });
+    w.owner.readState = () => state;
+    try {
+      await w.provider.openPortal(w.owner).catch((error: unknown) => { refusal = error; });
+      const screens = (["gate", "push-options", "after-push"] as const).map(stage => ({ stage, screen: "duo-gate", frames: ["duo"] }));
+      assert.ok(refusal instanceof ProfileOnboardingDuoProviderError && refusal.cause instanceof Error && refusal.cause.message === "copy-signin-duo-push-unanswered");
+      assert.deepEqual(gateScreens(refusal), screens);
+      assert.deepEqual(actions, ["Other options", "Duo Push Send to phone", "phone prompt"]);
+      const logged = w.events.find(event => event.operation === "portal-open");
+      assert.equal(logged?.code, "copy-signin-duo-push-unanswered");
+      assert.deepEqual(logged?.screens, screens);
+      assert.deepEqual(handed, [screens]);
+      assert.deepEqual(readdirSync(w.directory, { recursive: true }).filter(name => String(name).includes("copy-signin-duo")), []);
+    } finally { await w.cleanup(); }
+  });
+
+  it("truncates a 40-frame capture to the frame limit with a flag and keeps the gate error and the launcher's list", async () => {
+    const handed: (readonly CopyDuoScreen[])[] = [];
+    let buttons = ["Other options"], refusal: unknown;
+    const w = world("darwin", { copyPortal: {
+      buttons: () => buttons,
+      click(label) { buttons = label === "Other options" ? ["Duo Push Send to phone"] : []; },
+      phone() {},
+      frameCount: 40,
+      screens(screens) { handed.push(screens); },
+      async wait() { throw Object.assign(new Error("synthetic Add a device wait"), { name: "TimeoutError" }); },
+    } });
+    w.landPortal("https://test.duosecurity.com/");
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open", generation: 1 }, state: "onboarding",
+      operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", methods: { key: idle } });
+    w.owner.readState = () => state;
+    try {
+      await w.provider.openPortal(w.owner).catch((error: unknown) => { refusal = error; });
+      const screens = (["gate", "push-options", "after-push"] as const).map(stage => ({ stage, screen: "duo-gate",
+        frames: Array.from({ length: COPY_DUO_FRAME_LIMIT }, () => "duo"), framesTruncated: true }));
+      assert.ok(refusal instanceof ProfileOnboardingDuoProviderError && refusal.cause instanceof Error && refusal.cause.message === "copy-signin-duo-push-unanswered");
+      assert.deepEqual(gateScreens(refusal), screens);
+      const logged = w.events.find(event => event.operation === "portal-open");
+      assert.equal(logged?.code, "copy-signin-duo-push-unanswered");
+      assert.deepEqual(logged?.screens, screens);
+      assert.deepEqual(handed, [screens]);
+      assert.ok(CopyDuoScreensSchema.safeParse(handed[0]).success);
+    } finally { await w.cleanup(); }
+  });
+
+  it("records capture-timeout without delaying the clicks or the gate's own error", async () => {
+    const actions: string[] = [];
+    let buttons = ["Other options"], refusal: unknown;
+    const w = world("darwin", { copyPortal: {
+      buttons: () => buttons,
+      click(label) { actions.push(label); buttons = label === "Other options" ? ["Duo Push Send to phone"] : []; },
+      phone() { actions.push("phone prompt"); },
+      capture: () => new Promise<never>(() => undefined),
+      async wait() { throw Object.assign(new Error("synthetic Add a device wait"), { name: "TimeoutError" }); },
+    } });
+    w.landPortal("https://test.duosecurity.com/");
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open", generation: 1 }, state: "onboarding",
+      operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", methods: { key: idle } });
+    w.owner.readState = () => state;
+    try {
+      const started = performance.now();
+      await w.provider.openPortal(w.owner).catch((error: unknown) => { refusal = error; });
+      assert.ok(performance.now() - started < 1500, "three bounded 50 ms captures");
+      assert.deepEqual(actions, ["Other options", "Duo Push Send to phone", "phone prompt"]);
+      assert.deepEqual(gateScreens(refusal), (["gate", "push-options", "after-push"] as const).map(stage => ({ stage, screen: "capture-timeout", frames: [] })));
+    } finally { await w.cleanup(); }
+  });
+
+  it("records only the SSO screen and allowlist name once the push redirects back to the UCSD sign-in form", async () => {
+    let buttons = ["Other options"], refusal: unknown;
+    const w = world("darwin", { copyPortal: {
+      buttons: () => buttons,
+      click(label) { buttons = label === "Other options" ? ["Duo Push Send to phone"] : []; },
+      phone() {},
+      async wait() {
+        w.reachDuo("https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO?execution=e1s1#fragment");
+        throw Object.assign(new Error("synthetic Add a device wait"), { name: "TimeoutError" });
+      },
+    } });
+    w.landPortal("https://test.duosecurity.com/");
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open", generation: 1 }, state: "onboarding",
+      operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", methods: { key: idle } });
+    w.owner.readState = () => state;
+    try {
+      await w.provider.openPortal(w.owner).catch((error: unknown) => { refusal = error; });
+      assert.deepEqual(gateScreens(refusal)?.at(-1), { stage: "after-push", screen: "sso-page", frames: ["ucsd-sso"] });
+    } finally { await w.cleanup(); }
+  });
+
   it("leaves the UCSD sign-in form empty and continues when the page reaches Duo", async () => {
     const w = world();
     const form = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
@@ -635,6 +846,24 @@ describe("draft Duo provider", () => {
       assert.equal(w.launches(), 2);
       assert.equal(w.portalPages(), 0);
       assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
+  it.each([
+    { state: "duo-reenrol", copySetup: false, portalPages: 2 },
+    { state: "onboarding", copySetup: true, portalPages: 1 },
+  ] as const)("with copy options, a $state browser installs copy setup $copySetup and opens the portal $portalPages times after a failure", async ({ state, copySetup, portalPages }) => {
+    const w = world("darwin", { copyPortal: { buttons: () => [], click() {}, phone() {}, async wait() {} } });
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const parsed = (state === "onboarding" ? ProfileOnboardingStateSchema : DuoReenrolStateSchema).parse({ browser: { state: "open", generation: 1 },
+      state, operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", methods: { key: idle } });
+    w.owner.readState = () => parsed;
+    try {
+      await w.provider.showBrowser(w.owner);
+      assert.deepEqual(w.installArgs.map(args => args[1]), [copySetup]);
+      await assert.rejects(w.provider.openPortal(w.owner));
+      await assert.rejects(w.provider.openPortal(w.owner));
+      assert.equal(w.portalPages(), portalPages);
     } finally { await w.cleanup(); }
   });
 

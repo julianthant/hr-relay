@@ -1,5 +1,6 @@
 import { type ApplicationUpdateHost } from "../../../runs/lifecycle/application-lifecycle.js";
 import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
+import type { OnboardingDuoProviderOptions } from "../../../runtime/browser/onboarding-duo-provider.js";
 import { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runners.js";
 import type { probeOwnedViteServer } from "../../host/local-vite-probe.js";
@@ -40,6 +41,7 @@ export interface DashboardComposeInput {
   /** Omit to take the quit-time backup inside this process before stop resolves. */
   readonly shutdownBackup?: ShutdownBackup;
   readonly onboardingDuo?: ProfileOnboardingDuoProvider;
+  readonly copySignin?: OnboardingDuoProviderOptions["copySignin"];
   readonly admission?: RuntimeAdmission;
   readonly profile?: Readonly<{ runtime: ReturnType<typeof composeProfileRuntime>; token: string }>;
   readonly isolation: RuntimeIsolation;
