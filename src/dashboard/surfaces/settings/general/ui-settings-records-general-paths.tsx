@@ -123,7 +123,7 @@ export function DeleteAccountControl({ presentation }: { presentation: DeleteAcc
   const deleting = presentation.state === "deleting";
   const failed = presentation.state === "refused" || presentation.state === "uncertain";
   const note = failed ? presentation.message : deleting ? "Deleting your account…" : presentation.state === "unavailable" ? "Not available right now." : undefined;
-  return <FormGroup label="Account">
+  return <BodySection title="Delete Account"><FormGroup label="Account">
     <ResultRow label="Delete account" description={note === undefined ? undefined : <span role={failed ? "alert" : deleting ? "status" : undefined}>{note}</span>}
       value={<Button ref={trigger} variant="danger" disabled={presentation.state !== "ready"} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete"}</Button>} />
     <Dialog open={confirming && presentation.state === "ready"} onOpenChange={setConfirming}>
@@ -131,5 +131,5 @@ export function DeleteAccountControl({ presentation }: { presentation: DeleteAcc
         <DialogFooter><Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>Cancel</Button><Button variant="danger" onClick={() => { if (presentation.state === "ready") { setConfirming(false); presentation.onConfirm(); } }}>Delete account</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-  </FormGroup>;
+  </FormGroup></BodySection>;
 }
