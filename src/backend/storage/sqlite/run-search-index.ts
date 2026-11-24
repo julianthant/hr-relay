@@ -95,6 +95,8 @@ function safeSubject(database: DatabaseSync, run: PredecessorRunRecord, declarat
 }
 
 const OCR_SUBJECT_STRENGTH = deepFreeze({ exact: 0, prefix: 1, contains: 2 });
+const OCR_UNFINISHED_OUTCOMES = deepFreeze(["cancelled", "discarded", "superseded"]);
+const OCR_UNFINISHED_SQL = OCR_UNFINISHED_OUTCOMES.map(outcome => `'${outcome}'`).join(",");
 
 function ocrSubjectDigest(term: string): string {
   return hash("sha256", Buffer.from(`relay:run-search-ocr-subject:v1\0${term}`, "utf16le"), "base64url");
@@ -113,9 +115,11 @@ function ocrSubjectTermsFor(database: DatabaseSync, runId: string, subject: z.in
       SELECT max(revision) FROM ocr_review_revisions WHERE run_id=ocr.id
     )
     WHERE ocr.workflow='ocr' AND (ocr.parent_id=? OR (ocr.id=? AND ocr.parent_id IS NULL))
+      AND COALESCE(ocr.outcome,'') NOT IN (${OCR_UNFINISHED_SQL})
+      AND NOT EXISTS (SELECT 1 FROM runs WHERE id=? AND outcome IN (${OCR_UNFINISHED_SQL}))
     ORDER BY ocr.id`);
   const subjects = new Set<string>();
-  for (const row of reviews.iterate(runId, runId)) {
+  for (const row of reviews.iterate(runId, runId, runId)) {
     const { records_json } = OcrSearchRecordsSchema.parse(row);
     for (const record of OcrReviewRevisionSchema.shape.records.parse(JSON.parse(records_json))) {
       const employeeId = ocrEmployeeIdAnswer(record.fields);
@@ -358,15 +362,17 @@ export function createRunSearchIndex(database: DatabaseSync) {
     const record = RunSearchIndexRecordSchema.parse({ runId: id, sourceVersion: run.version, buildGeneration: generation, metadata });
     const subject = metadata.subject.state === "available" ? metadata.subject.value.toLowerCase() : null;
     const actor = metadata.actor.state === "available" ? metadata.actor.value : null;
+    const state = run.lifecycle.state === "terminal" ? run.lifecycle.outcome : run.lifecycle.state;
     database.prepare(`INSERT INTO run_search(run_id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,subject,actor_id,descriptor_version,failure_code,has_receipt,has_diagnostic,systems_json,source_version,declaration_json,actor_source_json,metadata_json,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET workflow=excluded.workflow,trace=excluded.trace,local_day=excluded.local_day,shape=excluded.shape,dry_run=excluded.dry_run,enqueued_ms=excluded.enqueued_ms,descriptor_version=excluded.descriptor_version,systems_json=excluded.systems_json,declaration_json=excluded.declaration_json,state=excluded.state,subject=excluded.subject,actor_id=excluded.actor_id,failure_code=excluded.failure_code,has_receipt=excluded.has_receipt,has_diagnostic=excluded.has_diagnostic,source_version=excluded.source_version,actor_source_json=excluded.actor_source_json,metadata_json=excluded.metadata_json,updated_at=excluded.updated_at`).run(
       id,run.envelope.workflow,run.envelope.traceId.toLowerCase(),searchPartitionDay(new Date(run.envelope.enqueuedAt)),
-      run.lifecycle.state === "terminal" ? run.lifecycle.outcome : run.lifecycle.state,run.envelope.shape,Number(run.envelope.dryRun),Date.parse(run.envelope.enqueuedAt),
+      state,run.envelope.shape,Number(run.envelope.dryRun),Date.parse(run.envelope.enqueuedAt),
       subject,actor,metadata.version,metadata.failureCode,Number(metadata.evidence.receipt),Number(metadata.evidence.diagnostic),
       canonicalJsonStringify(Object.keys(run.envelope.resolvedInstance).sort()),run.version,declaration === null ? null : canonicalJsonStringify(declaration),
       sources.length === 0 ? null : canonicalJsonStringify(sources),canonicalJsonStringify(record),frozen?.created_at ?? now,now);
     if (hasOcrSubjects && (rebuilding || prior === undefined
       || ocrSubjectWithheld(previous?.metadata.subject) !== ocrSubjectWithheld(metadata.subject)
+      || OCR_UNFINISHED_OUTCOMES.includes(state) !== OCR_UNFINISHED_OUTCOMES.includes(frozen?.state ?? "")
       || database.prepare("SELECT 1 FROM search_ocr_dirty WHERE run_id=?").get(id) !== undefined)) {
       const terms = ocrSubjectTermsFor(database, id, metadata.subject);
       if (terms !== (frozen?.ocr_subject_terms ?? null)) {
@@ -410,11 +416,13 @@ export function createRunSearchIndex(database: DatabaseSync) {
         const dirtyTables = ["search_dirty", "search_ocr_dirty"];
         const review = dirtyTables.map(table => `INSERT OR IGNORE INTO ${table}
           SELECT COALESCE(parent_id,id) FROM runs WHERE id=NEW.run_id AND workflow='ocr';`).join(" ");
-        const deleted = dirtyTables.map(table => `INSERT OR IGNORE INTO ${table} VALUES(OLD.parent_id);`).join(" ");
+        const host = dirtyTables.map(table => `INSERT OR IGNORE INTO ${table} VALUES(OLD.parent_id);`).join(" ");
         database.exec(`CREATE TEMP TRIGGER IF NOT EXISTS search_ocr_review_insert AFTER INSERT ON main.ocr_review_revisions
           BEGIN ${review} END;
+          CREATE TEMP TRIGGER IF NOT EXISTS search_ocr_child_outcome AFTER UPDATE OF outcome ON main.runs
+          WHEN OLD.workflow='ocr' AND OLD.parent_id IS NOT NULL AND OLD.outcome IS NOT NEW.outcome BEGIN ${host} END;
           CREATE TEMP TRIGGER IF NOT EXISTS search_ocr_child_delete AFTER DELETE ON main.runs
-          WHEN OLD.workflow='ocr' AND OLD.parent_id IS NOT NULL BEGIN ${deleted} END;`);
+          WHEN OLD.workflow='ocr' AND OLD.parent_id IS NOT NULL BEGIN ${host} END;`);
       }
     },
     register(input: unknown, now: string) {

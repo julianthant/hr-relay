@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { upgradeReadyProfileStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { upgradeProfileAtStartup } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { parseBackupManifestFile } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
@@ -15,17 +15,18 @@ import { createBoundProfileFixture } from "../../../support/helpers/admission-fi
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { scaledMs } from "../../../support/time-scale.js";
 
-it("upgrades a stopped schema-40 profile and indexes the latest hosted OCR review", async () => {
+it("upgrades a stopped schema-40 profile and indexes the latest OCR review", async () => {
   const profile = await createBoundProfileFixture();
   const profileId = profile.admission.profileBinding.profileId;
   const world = createOcrReviewWorld(async () => profile);
   try {
     const before = "Example, Avery", after = "Example, Taylor", eid = "10800000";
-    const f = await world.fixture({ coordinator: true, onbaseFiling: "skip", record: true, lookupNames: [before], employeeIds: [eid] });
+    const f = await world.fixture({ record: true, lookupNames: [before], employeeIds: [eid] });
     const correction = f.command("correct-ocr-record", 1);
     assert.equal(f.canonical.kernel.execute(CommandRequestSchema.parse({ ...correction,
       payload: { ...correction.payload, fields: correctOcrField(f.reading.extraction, "employee.name", after), assertedEid: eid },
     })).state, "applied");
+    assert.deepEqual(f.database.authority.runs.listNonTerminal(), []);
     const generation = f.database.getMeta().authorityGeneration;
     f.harness.authority.closeDatabase();
     profile.admission.release();
@@ -42,8 +43,7 @@ it("upgrades a stopped schema-40 profile and indexes the latest hosted OCR revie
       assert.equal(originalReviews.length, 2);
     } finally { start.close(); }
 
-    const result = await upgradeReadyProfileStorage(profileBrowserClosure, profile.machine, profileId,
-      { plan: false, hostFacts: { primaryDisplay: null } }, f.clock);
+    const result = await upgradeProfileAtStartup(profileBrowserClosure, profile.machine, profileId, { primaryDisplay: null }, f.clock);
     assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 40, toSchemaVersion: 41, credentials: "unchanged" });
     const directory = join(profile.stateRoot, "backups", "authority");
     const [backup] = readdirSync(directory).filter(name => name.endsWith(".manifest.json"));
@@ -58,7 +58,7 @@ it("upgrades a stopped schema-40 profile and indexes the latest hosted OCR revie
     const index = createRunSearchIndex(upgraded);
     const find = (q: string) => index.search({ q, scope: "subject", facets: {}, limit: 20 }, generation).rows.map(row => row.record.envelope.runId);
     assert.deepEqual(find(before), []);
-    assert.deepEqual(find(after), [f.parentRun.envelope.runId]);
-    assert.deepEqual(find(eid), [f.parentRun.envelope.runId]);
+    assert.deepEqual(find(after), [f.run.envelope.runId]);
+    assert.deepEqual(find(eid), [f.run.envelope.runId]);
   } finally { await world.cleanup(); }
 }, scaledMs(60_000));

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it, vi } from "vitest";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/operator.js";
@@ -165,4 +166,13 @@ it("ranks hosted OCR identity matches on the host across dates and reads the lat
   })).state, "applied");
   assert.equal(search.search({ q: name, scope: "subject" }).totalMatches, 0);
   assert.deepEqual(search.search({ q: correctedName.toUpperCase(), scope: "subject" }).results.map(row => row.runId), [hostId]);
+
+  const host = database.authority.runs.get(hostId);
+  assert.ok(host);
+  assert.equal(f.canonical.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "cancel",
+    source: "queue-row", requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(),
+    target: { runId: hostId, expectedVersion: host.version },
+  })).state, "applied");
+  assert.equal(search.search({ q: correctedName, scope: "subject" }).totalMatches, 0);
+  assert.equal(search.search({ q: eid, scope: "subject" }).totalMatches, 0);
 }, scaledMs(30_000));
