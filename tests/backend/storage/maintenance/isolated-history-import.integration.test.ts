@@ -319,9 +319,10 @@ it.each([false, true])("records a refused command with an open run (imported arc
 
   const conflict = await post("/api/v1/debug/errors", { ...report, surface: "settings" });
   expect(conflict.status).toBe(500);
-  expect(debugRecords()).toContainEqual(expect.objectContaining({ payload: { kind: "debug", event: expect.objectContaining({
+  const cause = debugRecords().find(row => row.payload.kind === "debug" && row.payload.event.reason === "debug-report-identity-conflict");
+  expect(cause).toMatchObject({ payload: { kind: "debug", event: {
     category: "http", status: 500, method: "POST", route: "/api/v1/debug/errors", reason: "debug-report-identity-conflict",
-  }) } }));
+  } } });
 });
 
 it("refreshes imported runs beside copy-created runs and starts the dashboard on a schema-39 archive with no imported work or outbound requests", async () => {
