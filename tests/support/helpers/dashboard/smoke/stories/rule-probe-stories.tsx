@@ -39,6 +39,29 @@ function ToastOverSessions() {
   </>;
 }
 
+/** The Sessions bar collapsed, with a centred toast that clears it but sits 3rem under its floor. */
+function ToastUnderFloor() {
+  const { toast } = useToasts();
+  useEffect(() => {
+    const timer = window.setTimeout(() => { toast({ tone: "success", sticky: true, title: "Workers added" }); }, 0);
+    return () => { window.clearTimeout(timer); };
+  }, [toast]);
+  return <>
+    <style>{'[data-slot="toast-viewport"] { bottom: calc(var(--ds-toast-inset-bottom) - 3rem) !important; }'}</style>
+    <SessionsView data={{ state: "ready", workers: [] }} open={false} onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+  </>;
+}
+
+/** The Sessions panel open under a button that raises one more toast per press. */
+function RaiseToasts() {
+  const { toast } = useToasts();
+  const [raised, setRaised] = useState(0);
+  return <>
+    <Button onClick={() => { toast({ tone: "success", sticky: true, title: `Result ${String(raised + 1)}` }); setRaised(raised + 1); }}>Raise toast</Button>
+    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+  </>;
+}
+
 /** Starts a request after first paint; it answers 404 and then the text changes. */
 function LateFailure() {
   const [answered, setAnswered] = useState(false);
@@ -169,6 +192,21 @@ export const RULE_PROBES = {
     story: { title: "A toast off centre and over the Sessions panel", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastOverSessions /></StoryFrame> },
     finds: { "toast-placement": [/is \d+px off the horizontal centre/u, /overlaps the Sessions panel/u] },
   },
+  "toast-under-floor": {
+    story: { title: "A centred toast clear of the Sessions bar, under its floor", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastUnderFloor /></StoryFrame> },
+    finds: { "toast-placement": [/the toast viewport sits 56px .* its floor is 104px/u, /the front toast sits 56px .* its floor is 104px/u, /^(?![\s\S]*(?:horizontal centre|overlaps))/u] },
+  },
+  "picker-beside-a-request": {
+    story: {
+      title: "A picker switched off beside a control that waits on its own request",
+      render: () => <StoryFrame>
+        <ul><li aria-busy>Starting</li></ul>
+        <Button aria-haspopup="dialog" disabled aria-busy>Add workers</Button>
+        <Button aria-haspopup="menu" disabled>Workflow</Button>
+      </StoryFrame>,
+    },
+    finds: { "no-dead-disabled-control": [/the picker "Workflow" is shown switched off/u, /^(?![\s\S]*"Add workers")/u] },
+  },
   "toast-over-toolbar": {
     story: { title: "A toast over the queue toolbar", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastOverToolbar /></StoryFrame> },
     finds: { "toast-text-only": [/covers the toolbar "Queue actions"/u] },
@@ -208,4 +246,5 @@ export const RULE_PROBES = {
 
 export const RULE_PROBE_ENTRIES = defineSurface("probe", {
   rule: Object.fromEntries(Object.entries(RULE_PROBES).map(([name, probe]) => [name, probe.story])),
+  motion: { toast: { title: "Toasts raised by a button over the open Sessions panel, with motion on", render: () => <StoryFrame animated><RaiseToasts /></StoryFrame> } },
 });

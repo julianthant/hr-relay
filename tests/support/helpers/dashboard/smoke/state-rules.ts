@@ -144,11 +144,27 @@ export function toastTextOnly({ page }: StateRuleContext): Promise<readonly stri
   });
 }
 
-/** A toast sits bottom centre and clears the Sessions panel, at whatever height the panel is. */
+/** A toast sits bottom centre on its floor: the configured inset, or 8px above the Sessions panel when that is higher. */
 export function toastPlacement({ page }: StateRuleContext): Promise<readonly string[]> {
   return page.evaluate(() => {
     const found: string[] = [];
     const panel = document.querySelector('[aria-label="Session Panel"]')?.getBoundingClientRect();
+    const shown = [...document.querySelectorAll('[data-ds-toast-state]')].filter(toast => { const box = toast.getBoundingClientRect(); return box.width > 1 && box.height > 1; });
+    if (shown.length === 0) return found;
+    const viewport = document.querySelector('[data-slot="toast-viewport"]');
+    const front = shown.find(toast => getComputedStyle(toast).getPropertyValue("--toast-index").trim() === "0");
+    if (viewport === null || front === undefined) return ["a toast is shown without a viewport or a front toast"];
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;visibility:hidden;width:0;height:var(--ds-toast-inset-bottom)";
+    viewport.parentElement?.append(probe);
+    const inset = probe.getBoundingClientRect().height;
+    probe.remove();
+    if (inset === 0) return ["--ds-toast-inset-bottom sets no floor for the toasts"];
+    const floor = Math.max(inset, panel === undefined ? 0 : window.innerHeight - panel.top + 8);
+    for (const [part, element] of [["toast viewport", viewport], ["front toast", front]] as const) {
+      const offset = window.innerHeight - element.getBoundingClientRect().bottom;
+      if (Math.abs(offset - floor) > 1.5) found.push(`the ${part} sits ${String(Math.round(offset))}px above the window's bottom edge; its floor is ${String(Math.round(floor))}px`);
+    }
     for (const toast of document.querySelectorAll<HTMLElement>('[data-ds-toast-state]')) {
       const box = toast.getBoundingClientRect();
       if (box.width <= 1 || box.height <= 1) continue;
@@ -310,11 +326,10 @@ export function noDeadDisabledControl({ page }: StateRuleContext): Promise<reado
     const found: string[] = [];
     const disabled = (element: Element) => element.matches(':disabled, [aria-disabled="true"]');
     const name = (element: Element) => (element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 40);
-    // A control held off while its own request is in flight (the page marks that with aria-busy) is a lock, not a dead control.
-    const inFlight = document.querySelector('[aria-busy="true"]') !== null;
     for (const control of document.querySelectorAll<HTMLElement>('body :is(select, [role="combobox"], [aria-haspopup])')) {
       if (!disabled(control) || control.getBoundingClientRect().width <= 1) continue;
-      if (inFlight && control.matches('[aria-haspopup]')) continue;
+      // A control held off while its own request is in flight says so on itself: that is a lock, not a dead control.
+      if (control.matches('[aria-haspopup][aria-busy="true"]')) continue;
       if (control instanceof HTMLSelectElement && [...control.options].filter(option => !option.disabled).length > 1) continue;
       found.push(`the picker "${name(control)}" is shown switched off with nothing to choose`);
     }

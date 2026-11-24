@@ -396,16 +396,16 @@ not use them as its default producer.
 
 `SessionPanel` mounts `SessionsView` with the served day and `createSessionPreviewPort`; a harness may replace both through `sessionsHarness`.
 Catalog IDs resolve worker labels. Unknown worker workflows throw. Loading, unavailable, ready
-with no workers, and ready workers are distinct states. The expandable strip contains horizontally
-scrolling worker cards and an Add workers dialog.
+with no workers, and ready workers are distinct states. The open panel holds wrapping worker cards,
+one per worker, and scrolls past half the window; Add workers is a dialog from the bar.
 
-Cards show workflow/state, browser systems and availability, current action or idle message,
-timeline, and footer controls. Running offers Pause, paused offers Resume, failed offers Retry,
+Cards show workflow/state, subject, browser systems and availability, and footer controls. Running offers Pause, paused offers Resume, failed offers Retry,
 non-idle offers Stop, and idle offers Remove worker. Pending operations lock duplicate
 commands; Relay reads an unsettled result back itself and no card shows a check control. Removing a card returns focus to the strip toggle.
 
-Add workers progress and confirmed success appear only as toast notifications. A refusal is a short toast. Pending progress
-toasts stay until settlement or panel unmount.
+A pending Add is one "Starting" row above the cards and a pending Remove reads "Removing" on its card's status word, both
+until settlement; one hidden status line in the panel announces them, and neither is a toast. The result of an Add, confirmed
+or refused, and a failed Remove are one short toast each; an Add confirmed only by reading back shows as the new worker alone.
 
 Add workers selects workflow and count with increment/decrement controls. The count is bounded
 from 1 to 20 in this preview. The dialog and strip are presentation, not evidence of backend pool

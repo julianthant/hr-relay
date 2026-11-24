@@ -70,6 +70,11 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   const validCount = Number.isSafeInteger(Number(count)) && Number(count) >= 1;
   const addLocked = operations.add?.state === "pending";
   const pendingAdd = operations.add?.state === "pending" && operations.add.request.action === "add" ? operations.add.request : undefined;
+  const pendingAddLabel = pendingAdd && (workflows.find(item => item.id === pendingAdd.workflow)?.label ?? pendingAdd.workflow);
+  const announcement = [
+    pendingAdd && `Starting ${pendingAdd.count > 1 ? `${String(pendingAdd.count)} workers` : "a worker"} for ${pendingAddLabel ?? ""}.`,
+    ...workers.filter(worker => operations[worker.id]?.state === "pending" && operations[worker.id]?.request.action === "remove").map(worker => `Removing ${worker.label}, ${worker.workflow}.`),
+  ].filter(Boolean).join(" ");
   const selectedWorkflow = workflows.find(item => item.id === workflow) ?? workflows[0];
   const selectedWorkflowId = selectedWorkflow?.id ?? "";
   const validWorkflow = selectedWorkflow !== undefined;
@@ -83,7 +88,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
     trigger.focus({ preventScroll: true });
   }, [addOpen, addLocked, data.state, validWorkflow]);
   const addControl = <Dialog open={addOpen && firstScreenRevealed} onOpenChange={setAddOpen}>
-          {actionable && workflows.length > 0 && <Tooltip side="top" content="Add workers"><DialogTrigger asChild><IconButton ref={addTriggerRef} variant="ghost" size="sm" label="Add workers" title="" disabled={addLocked} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger></Tooltip>}
+          {actionable && workflows.length > 0 && <Tooltip side="top" content="Add workers"><DialogTrigger asChild><IconButton ref={addTriggerRef} variant="ghost" size="sm" label="Add workers" title="" disabled={addLocked} aria-busy={addLocked || undefined} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger></Tooltip>}
           <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope overflow-visible bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
             <DialogBody><div className="grid gap-3">
               <Field label="Workflow"><Select value={selectedWorkflowId} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>
@@ -106,11 +111,12 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
         <Tooltip side="top" content="Log out"><IconButton className="hub-logout" variant="ghost" size="sm" label="Log out" title="" onClick={account.onLogout} icon={<LogOut aria-hidden className="size-4" />} /></Tooltip>
       </>}<AssistantLauncher /></span>
     </div>
+    <p role="status" className="sr-only">{announcement}</p>
     {open && <div id={contentId} role="region" aria-label="Sessions" className="session-body">
       <div className="session-body-cards">
       {data.state === "ready" ? data.workers.length || pendingAdd ? <>
         {pendingAdd && <ul aria-label="Workers being added" className="m-0 mb-2 flex list-none flex-col gap-1 p-0"><li aria-busy className="list-none rounded-md bg-[var(--ds-worker-card-bg)] px-3"><div className="flex min-h-8 items-center justify-between gap-3">
-          <span className="min-w-0 truncate text-control">{workflows.find(item => item.id === pendingAdd.workflow)?.label ?? pendingAdd.workflow}{pendingAdd.count > 1 && <span className="text-ui-muted"> × {pendingAdd.count}</span>}</span>
+          <span className="min-w-0 truncate text-control">{pendingAddLabel}{pendingAdd.count > 1 && <span className="text-ui-muted"> × {pendingAdd.count}</span>}</span>
           <span className="inline-flex shrink-0 items-center gap-1.5 text-caption text-ui-muted"><Loader2 aria-hidden className="size-3 animate-spin motion-reduce:animate-none" />Starting</span></div></li></ul>}
         {cards.length > 0 && <div data-session-strip className="flex flex-wrap items-stretch gap-3 pb-1">{cards.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} disabled={!actionable} onControl={onWorkerControl} />)}</div>}
       </> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}

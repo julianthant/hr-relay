@@ -1,5 +1,6 @@
 import { DashboardDayWireSchema, WorkerCardWireSchema } from "../../src/models/dashboard/projection.js";
 import { DashboardStreamEnvelopeSchema } from "../../src/models/dashboard/subscription.js";
+import { ERROR_CATALOG } from "../../src/models/failures/error-catalog.js";
 import { workerPoolMember, WorkerSlotRecordSchema } from "../../src/models/run/worker-slot.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../src/rules/commands/commands.js";
 import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
@@ -85,6 +86,8 @@ test("worker add and remove settle after delayed or refused replies and clear on
   const toasts = page.locator('[data-slot="toast-title"]');
   const adding = page.locator("li[aria-busy]");
   const failedAdd = toasts.filter({ hasText: "Couldn't add workers" });
+  const failedRemove = toasts.filter({ hasText: ERROR_CATALOG.COMMAND_REFUSED.text });
+  const progress = page.getByRole("region", { name: "Session Panel" }).getByRole("status");
   const success = toasts.filter({ hasText: "Workers added" });
 
   async function startAdd() {
@@ -95,6 +98,7 @@ test("worker add and remove settle after delayed or refused replies and clear on
     await expect(dialog.getByRole("spinbutton", { name: "Workers" })).toHaveValue("1");
     await dialog.getByRole("button", { name: "Add workers", exact: true }).click();
     await expect(adding).toBeVisible();
+    await expect(progress).toHaveText("Starting a worker for Separations.");
     await expect(add).toBeDisabled();
     await expect(worker).toBeHidden();
   }
@@ -120,15 +124,19 @@ test("worker add and remove settle after delayed or refused replies and clear on
     await expect(remove).toBeDisabled();
     await expect(worker).toContainText("Removing");
     await expect(worker.getByRole("status")).toHaveCount(0);
+    await expect(progress).toHaveText("Removing Worker 99, Separations.");
     reply.resolve(false);
-    await expect(toasts).toHaveCount(1);
+    await expect(failedRemove).toBeVisible();
+    await expect(failedRemove).toHaveCount(1);
     await expect(worker).toContainText("Idle");
+    await expect(progress).toBeEmpty();
     await expect(remove).toBeEnabled();
 
     reply = Promise.withResolvers<boolean>();
     await remove.click();
     await expect(worker).toContainText("Removing");
     await expect(worker.getByRole("status")).toHaveCount(0);
+    await expect(progress).toHaveText("Removing Worker 99, Separations.");
     reply.resolve(true);
     await expect(worker).toBeHidden();
     await publishWorkers();

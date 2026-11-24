@@ -34,6 +34,8 @@ it.each(["normal", "refused", "uncertain"] as const)("shows add progress in the 
   await act(async () => render());
   const panel = host.querySelector('section[aria-label="Session Panel"]'); assert(panel);
   const trigger = panel.querySelector('button[aria-label="Add workers"]'); assert(trigger instanceof HTMLButtonElement);
+  const progress = panel.querySelector('p[role="status"]'); assert(progress);
+  assert.equal(progress.textContent, "", "the status line is in the page before there is anything to announce");
   await act(async () => { trigger.focus(); trigger.click(); });
   const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === "Add workers");
   assert(confirm instanceof HTMLButtonElement);
@@ -43,10 +45,14 @@ it.each(["normal", "refused", "uncertain"] as const)("shows add progress in the 
   assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 0, "progress is never a toast");
   assert.equal(panel.querySelectorAll('ul[aria-label="Workers being added"] li[aria-busy]').length, 1, "the panel shows one pending row");
   assert.doesNotMatch(panel.textContent ?? "", /No workers yet/);
+  assert.match(progress.textContent ?? "", /^Starting a worker for .+\.$/u, "the pending add is announced");
   assert.equal(trigger.disabled, true);
+  assert.equal(trigger.getAttribute("aria-busy"), "true");
   await act(async () => vi.advanceTimersByTimeAsync(600));
   assert.doesNotMatch(panel.textContent ?? "", /Adding workers|Workers added/);
   if (outcome === "uncertain") await act(async () => vi.advanceTimersByTimeAsync(1500));
+  assert.equal(progress.textContent, "", "a settled add leaves nothing to announce");
+  assert.equal(trigger.hasAttribute("aria-busy"), false);
   assert.doesNotMatch(panel.textContent ?? "", /Check outcome|uncertain|Response unavailable/, "an unknown outcome is read back, never shown");
   if (outcome === "refused") {
     assert.equal(panel.querySelector('[role="alert"]')?.textContent, undefined, "a refusal is a toast, not an inline panel");

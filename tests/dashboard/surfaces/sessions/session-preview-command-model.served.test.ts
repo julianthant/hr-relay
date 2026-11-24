@@ -336,10 +336,13 @@ it("a Remove refused after a remount is one toast, never a note on the row, and 
     await act(async () => root.unmount()); root = createRoot(host);
     await act(async () => render());
     assert.match(document.body.textContent ?? "", /Removing/);
+    const progress = document.querySelector('[aria-label="Session Panel"] p[role="status"]'); assert(progress);
+    assert.match(progress.textContent ?? "", /^Removing .+, .+\.$/u, "the pending Remove is announced");
     await act(async () => { release(Response.json({ state: "rejected", code: "invalid-state", message: "WORKER_BUSY", commandId: original!.commandId }, { status: 422 })); await Promise.resolve(); });
     await settled(() => assert.equal(toasts().filter(toast => toast.includes(ERROR_CATALOG.WORKER_BUSY.text)).length, 1));
     assert.doesNotMatch(document.querySelector(WORKER_ENTRY)?.textContent ?? "", /Removing|Remove requested/u);
     assert.ok(!(document.querySelector(WORKER_ENTRY)?.textContent ?? "").includes(ERROR_CATALOG.WORKER_BUSY.text), "no note on the row");
+    assert.equal(progress.textContent, "");
     assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
     assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }

@@ -6,7 +6,8 @@ import { PersonPreferencesContext } from "../../../../../../src/dashboard/lib/pe
 import { createPersonPreferences } from "../../../../../../src/dashboard/state/person-preferences-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../../../../src/models/config/person-preferences.js";
 
-const PREFERENCES = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: "dark", animations: false });
+const STILL = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: "dark", animations: false });
+const ANIMATED = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: "dark", animations: true });
 
 function ThemeRoot({ children }: { children: ReactNode }) {
   useHubMotion();
@@ -21,6 +22,7 @@ function ThemeRoot({ children }: { children: ReactNode }) {
   </div>;
 }
 
-export function StoryFrame({ children }: { children: ReactNode }) {
-  return <PersonPreferencesContext.Provider value={PREFERENCES}><ThemeRoot>{children}</ThemeRoot></PersonPreferencesContext.Provider>;
+/** `animated` is for a check of motion itself; every other story holds still. */
+export function StoryFrame({ children, animated = false }: { children: ReactNode; animated?: boolean }) {
+  return <PersonPreferencesContext.Provider value={animated ? ANIMATED : STILL}><ThemeRoot>{children}</ThemeRoot></PersonPreferencesContext.Provider>;
 }
