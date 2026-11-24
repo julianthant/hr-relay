@@ -145,6 +145,14 @@ describe("profile registry version 4 to 5 upgrade (security key only)", () => {
     assertUpgraded(machine);
   });
 
+  it("refuses Relay email in a version 4 registry row", async () => {
+    const machine = await versionFourMachine();
+    writeStore(machine.paths, { ...machine.prior, profiles: machine.prior.profiles.map(row =>
+      ({ ...row, relayEmail: "alex@ucsd.edu" })) }, []);
+    assert.throws(() => startup(machine), /Unrecognized key:.*relayEmail/u);
+    assert.equal(existsSync(machine.paths.intent), false);
+  });
+
   for (const [file, moment] of [["operation", "before"], ["operation", "after"], ["registry", "before"], ["control", "before"], ["marker", "before"], ["marker", "after"]] as const) {
     it(`finishes the same upgrade at the next startup after a stop ${moment} the ${file} file is replaced`, async () => {
       let operation: ReturnType<typeof reenrol> | undefined;
