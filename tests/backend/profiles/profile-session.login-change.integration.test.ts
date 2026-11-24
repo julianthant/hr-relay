@@ -9,7 +9,8 @@ import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery } from "../../../src/backend/storage/source-closure.js";
 import { ProfileVerifierDocumentSchema } from "../../../src/models/profiles/profile.js";
-import { createProfileSessionWorld } from "../../support/helpers/backend/profile-session-world.js";
+import { createProfileSessionWorld, signUpWithLegacyOperation } from "../../support/helpers/backend/profile-session-world.js";
+import { finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { findProfileFixtureAdmission, findProfileFixtureInWorkspace } from "../../support/helpers/synthetic-database-admission.js";
 
 const worlds: Awaited<ReturnType<typeof createProfileSessionWorld>>[] = [];
@@ -67,6 +68,8 @@ function refusalCode(result: { state: string; code?: string }) { return result.s
 // Stop after publication but before the first successful upgrade, leaving the old registry row intact.
 async function unupgraded(machine: Awaited<ReturnType<typeof world>>, fields = alexFields) {
   const session = machine.open();
+  const draft = signUpWithLegacyOperation(session, fields);
+  assert.equal(draft.state, "onboarding");
   const rename = fs.renameSync;
   vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
     if (String(to).endsWith("/profile-publication.json") && fs.readFileSync(from, "utf8").includes('"relayEmail"')) {
@@ -75,7 +78,7 @@ async function unupgraded(machine: Awaited<ReturnType<typeof world>>, fields = a
     rename(from, to);
   });
   syncBuiltinESMExports();
-  try { await assert.rejects(machine.signUp(session, fields), /fixture withholds registry upgrade/u); }
+  try { await assert.rejects(finishProfileOnboarding(session, draft), /fixture withholds registry upgrade/u); }
   finally { restoreFiles(); }
   const registry = createProfileRegistry(machine.machine);
   const [row] = registry.read().profiles;

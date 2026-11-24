@@ -250,7 +250,8 @@ it("uses a real verifier and selected session credential, rejects foreign browse
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const post = (path: string, body: unknown, credential?: string) => fetch(`${base}${path}`, { method: "POST",
       headers: { origin: base, "content-type": "application/json", ...(credential === undefined ? {} : { "x-relay-session": credential }) }, body: JSON.stringify(body) });
-    const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+    const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password",
+      ucpathUsername: "fixture@ucsd.edu", ucpathPassword: "disposable-fixture-password" });
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding");
     if (draft.state !== "onboarding") throw new Error("fixture actual signup draft required");
     assert.equal(draft.methods.key.state, "idle");
@@ -401,7 +402,8 @@ it("aborts an unpublished pre-enrollment draft through erasure before accepting 
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const post = (path: string, body: unknown, credential?: string) => fetch(`${base}${path}`, { method: "POST",
       headers: { origin: base, "content-type": "application/json", ...(credential === undefined ? {} : { "x-relay-session": credential }) }, body: JSON.stringify(body) });
-    const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+    const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password",
+      ucpathUsername: "fixture@ucsd.edu", ucpathPassword: "disposable-fixture-password" });
     const draft = PublicProfileStateSchema.parse(await signup.json());
     if (draft.state !== "onboarding") throw new Error("fixture unpublished draft required");
     const credential = signup.headers.get("x-relay-session"); assert.ok(credential);
@@ -415,7 +417,8 @@ it("aborts an unpublished pre-enrollment draft through erasure before accepting 
     assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId)), false);
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { "x-relay-session": credential } })).status, 401);
     const replacement = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-up", {
-      firstName: "Changed", lastName: "Details", email: "changed@ucsd.edu", password: "new-disposable-fixture-password" })).json());
+      firstName: "Changed", lastName: "Details", email: "changed@ucsd.edu", password: "new-disposable-fixture-password",
+      ucpathUsername: "changed@ucsd.edu", ucpathPassword: "new-disposable-fixture-password" })).json());
     assert.equal(replacement.state, "onboarding");
     if (replacement.state !== "onboarding") throw new Error("fixture replacement draft required");
     assert.notEqual(replacement.profileId, draft.profileId); assert.notEqual(replacement.operationId, draft.operationId);

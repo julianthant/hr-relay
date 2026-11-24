@@ -10,7 +10,8 @@ import { PublicProfileStateSchema } from "../../../../src/models/profiles/public
 export async function readyPublicSignUp(base: string, methods: "confirmed" | "detected" = "confirmed") {
   const post = (path: string, body: unknown, credential?: string) => fetch(`${base}${path}`, { method: "POST",
     headers: { origin: base, "content-type": "application/json", ...(credential === undefined ? {} : { "x-relay-session": credential }) }, body: JSON.stringify(body) });
-  const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+  const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password",
+    ucpathUsername: "fixture@ucsd.edu", ucpathPassword: "disposable-fixture-password" });
   const draft = PublicProfileStateSchema.parse(await signup.json());
   assert.equal(draft.state, "onboarding");
   if (draft.state !== "onboarding") throw new Error("fixture actual signup draft required");

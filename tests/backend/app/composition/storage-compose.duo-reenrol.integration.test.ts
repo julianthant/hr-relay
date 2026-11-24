@@ -17,7 +17,7 @@ import { DuoReenrolOperationSchema } from "../../../../src/models/profiles/profi
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { finishProfileOnboarding, readAuthenticatedCredentialFixture, registerBoundProfile, rewriteAuthenticatedCredentialFixture, syntheticOnboardingDuo, unregisterBoundProfile } from "../../../support/helpers/admission-fixture.js";
+import { finishProfileOnboarding, readAuthenticatedCredentialFixture, registerBoundProfile, rewriteAuthenticatedCredentialFixture, syntheticOnboardingDuo, unregisterBoundProfile, withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 
 const AT = "2026-10-21T12:00:00.000Z";
@@ -36,7 +36,7 @@ async function stagedRuntime() {
   const close = async () => { if (closed) return; closed = true; try { await runtime.close("shutdown"); } finally { machine.release(); } };
   cleanups.push(async () => { try { await close(); } finally { rmSync(workspace, { recursive: true, force: true }); } });
   const fields = { firstName: "Synthetic", lastName: "Operator", email: "fence@ucsd.edu", password: "synthetic-fence-password", createdAt: AT };
-  const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(fields));
+  const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(withFixtureUcpath(fields)));
   if (active.state !== "active") throw new Error("synthetic sign-up refused");
   const context = runtime.selectedContext(active.token);
   const duo = () => {
@@ -204,7 +204,7 @@ async function leftoverDraft(stage: "pending" | "proved", quit: "clean" | "crash
   mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(), admission: machine, clock, hostFacts: { primaryDisplay: null } });
   const fields = { firstName: "Synthetic", lastName: "Operator", email: "boot@ucsd.edu", password: "synthetic-boot-password", createdAt: AT };
-  const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(fields));
+  const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(withFixtureUcpath(fields)));
   if (active.state !== "active") throw new Error("synthetic sign-up refused");
   const duo = (admission: typeof machine) => {
     const owner = admission.admitProfile(active.profileId);

@@ -7,6 +7,7 @@ import { PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../../src/models/config
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
+import { withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
@@ -86,7 +87,7 @@ for (const pendingClose of [false, true]) it(pendingClose
       owner = draft;
       await provider.showBrowser(draft);
     } } });
-  const draft = profile.session.signUp({ firstName: "Synthetic", lastName: "Operator", email: "synthetic-user@ucsd.edu", password: "synthetic-password", createdAt: systemClock.now().toISOString() });
+  const draft = profile.session.signUp(withFixtureUcpath({ firstName: "Synthetic", lastName: "Operator", email: "synthetic-user@ucsd.edu", password: "synthetic-password", createdAt: systemClock.now().toISOString() }));
   assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("fixture draft required");
   const read = () => profile.session.readOnboarding(draft.token, draft.operationId);
   const finishManualSignIn = async (action: Promise<unknown>): Promise<void> => {
@@ -273,8 +274,8 @@ for (const scenario of ["software", "abort", "timeout"] as const) it(`real enrol
     } },
   });
   const profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock, onboardingDuo: provider });
-  const draft = profile.session.signUp({ firstName: "Synthetic", lastName: "Enrollment", email: "synthetic-enrollment@ucsd.edu",
-    password: "synthetic-enrollment-password", createdAt: systemClock.now().toISOString() });
+  const draft = profile.session.signUp(withFixtureUcpath({ firstName: "Synthetic", lastName: "Enrollment", email: "synthetic-enrollment@ucsd.edu",
+    password: "synthetic-enrollment-password", createdAt: systemClock.now().toISOString() }));
   assert.equal(draft.state, "onboarding");
   if (draft.state !== "onboarding") throw new Error("synthetic draft missing");
   let failure: unknown, finished = false;
@@ -434,8 +435,9 @@ it("copy enrollment clicks the owned Duo tab after arming and records the Fast D
   const profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock, onboardingDuo: provider });
   let opening: ReturnType<typeof profile.session.openOnboardingPortal> | undefined;
   try {
-    const draft = profile.session.signUp({ firstName: "Synthetic", lastName: "Copy", email: "synthetic-copy@example.edu",
-      password: "synthetic-copy-password", createdAt: systemClock.now().toISOString() });
+    const fields = { firstName: "Synthetic", lastName: "Copy", email: "synthetic-copy@example.edu", password: "synthetic-copy-password",
+      ucpathUsername: "synthetic-copy@ucsd.edu", ucpathPassword: "synthetic-copy-ucpath-password", createdAt: systemClock.now().toISOString() };
+    const draft = profile.session.signUp(fields);
     if (draft.state !== "onboarding") throw new Error("fixture draft required");
     opening = profile.session.openOnboardingPortal(draft.token, draft.operationId);
     void opening.catch(() => undefined);
