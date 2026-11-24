@@ -129,7 +129,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
         : sheets.length === 0 ? <EmptyState title="No spreadsheets yet" action={<V2Button onClick={() => setImporting(true)}>Import</V2Button>} />
         : <div className="ds-table-list"><TableToolbar search={<SearchInput variant="field" aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />}
             controls={groups.workflows.length > 0 || groups.tags.length > 0 ? <TagFilter groups={groups} value={filter} onChange={setFilter} /> : undefined} />
-          {tables.length ? tables.map(table => <SheetTable key={table.title} title={table.title} heading={tables.length > 1 ? table.title : undefined} sheets={table.items} narrow={narrow} actions={rows} limit={table.title === 'Spreadsheets' ? CREATED_ROWS : undefined} />)
+          {tables.length ? tables.map(table => <SheetTable key={table.title} title={table.title} heading={table.title === 'Spreadsheets' ? 'Created' : table.title} sheets={table.items} narrow={narrow} actions={rows} limit={table.title === 'Spreadsheets' ? CREATED_ROWS : undefined} />)
             : <Grey className="ds-text-ui">No spreadsheets match.</Grey>}
         </div>}</div>
     </>}

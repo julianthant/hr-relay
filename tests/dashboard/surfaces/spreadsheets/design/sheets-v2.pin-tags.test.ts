@@ -54,6 +54,7 @@ it('shows pinned spreadsheets in a Pinned group first, with their tags', async (
   await render();
   const lists = [...host.querySelectorAll('ul[aria-label]')].map(list => list.getAttribute('aria-label'));
   assert.deepEqual(lists, ['Pinned', 'Spreadsheets']);
+  assert.deepEqual([...host.querySelectorAll('h2')].map(heading => heading.textContent), ['Pinned', 'Created']);
   assert.ok(host.querySelector('ul[aria-label="Pinned"] li[aria-label="Roster.xlsx"]'));
   assert.ok(host.querySelector('ul[aria-label="Spreadsheets"] li[aria-label="Keys.xlsx"]'));
   assert.match(host.querySelector('li[aria-label="Roster.xlsx"]')?.textContent ?? '', /Fall/u);
