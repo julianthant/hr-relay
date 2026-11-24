@@ -176,10 +176,8 @@ it("replays a count-neutral background task step across a dashboard reconnect", 
     expect(afterCommand.pending).toBe(1);
     const running = await afterCommand.next();
     afterCommand.close();
-    expect(running).toMatchObject({ type: "snapshot", payload: { queueSurfaces: expect.arrayContaining([
-      expect.objectContaining({ runId: next.envelope.runId, status: "running" }),
-    ]) } });
     if (running?.type !== "snapshot") throw new Error("worker authority did not publish running status");
+    expect(running.payload.queueSurfaces.find(row => row.runId === next.envelope.runId)?.status).toBe("running");
 
     const address = { ts: now, workflow, runId: next.envelope.runId, attempt: next.envelope.attempt, traceId: next.envelope.traceId };
     writer.emit({ ...address, t: "run.claimed", workerId, spanPath: address.traceId });
