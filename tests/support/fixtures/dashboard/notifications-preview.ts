@@ -81,7 +81,7 @@ export function sampleInbox(state: NotificationsState, base: NotificationsState,
     async readAll() { if (base.state === "ready") setReads(current => ({ ...current, ...Object.fromEntries(base.items.map(item => [item.id, true])) })); },
     // shortcut: the sample inbox keeps no cleared rows, so a clear is refused; give it a cleared set when a preview needs clearing.
     async clear() { return false; },
-    async clearAll() { return false; },
+    async clearAll() {},
     open(item, navigate, opened, refused) {
       const markRead = () => setReads(current => ({ ...current, [item.id]: true }));
       if (item.destination.kind === "none") markRead();

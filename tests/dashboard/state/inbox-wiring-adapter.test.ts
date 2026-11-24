@@ -567,8 +567,8 @@ it("does not clear a standing notice and Clear all leaves it listed", async () =
   h.setRows([waiting, done]); await h.render();
   assert.equal(h.value.state.state === "ready" && h.value.state.items.find(item => item.id === waiting.notificationId)?.standing, true);
   await act(async () => { assert.equal(await h.value.clear(waiting.notificationId), false); });
-  assert.deepEqual(h.commands, [], "a standing notice sends no clear");
-  await act(async () => { assert.equal(await h.value.clearAll("all"), true); });
+  assert.equal(h.commands.length, 0, "a standing notice sends no clear");
+  await act(async () => { await h.value.clearAll("all"); });
   assert.deepEqual(h.commands.map(command => command.type), ["notification-clear-all"]);
   assert.deepEqual(shownIds(h.value), [waiting.notificationId]);
 });

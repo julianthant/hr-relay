@@ -138,13 +138,13 @@ it("moves focus to the next row after a clear, then to the header once the list 
   const view = await draw({ state: "ready", items, pinned: [] });
   await act(async () => view.row(0).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]')?.click());
   await view.rerender({ state: "ready", items: items.slice(1), pinned: [] });
-  assert.equal(document.activeElement, view.row(0).querySelector(".notice-main"), "focus lands on the row that took its place");
+  assert.ok(document.activeElement === view.row(0).querySelector(".notice-main"), "focus lands on the row that took its place");
   assert.equal(view.row(0).dataset.id, "b");
   await act(async () => view.row(1).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]')?.click());
   await view.rerender({ state: "ready", items: [items[1]], pinned: [] });
-  assert.equal(document.activeElement, view.row(0).querySelector(".notice-main"), "the last row falls back to the one before it");
+  assert.ok(document.activeElement === view.row(0).querySelector(".notice-main"), "the last row falls back to the one before it");
   await act(async () => view.row(0).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]')?.click());
   await view.rerender({ state: "ready", items: [], pinned: [] });
-  assert.equal(document.activeElement, document.querySelector("header.notice-popover-head"));
+  assert.ok(document.activeElement === document.querySelector("header.notice-popover-head"), "focus moves to the header");
   assert(document.body.textContent?.includes("No notifications"), "the empty state is the panel's own");
 });

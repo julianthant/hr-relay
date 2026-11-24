@@ -159,7 +159,7 @@ export interface InboxWiring {
   /** Clears the item and every row it stands for; the item leaves at once and comes back if Relay refuses. */
   clear(id: string): Promise<boolean>;
   /** Clears every clearable item the tab lists; standing and history items stay. */
-  clearAll(show: "all" | "unread"): Promise<boolean>;
+  clearAll(show: "all" | "unread"): Promise<void>;
   /** Delivers each distinct publication once, as the item it adds; snapshots never deliver. */
   onPublication(listener: (arrival: InboxArrival) => void): () => void;
   open(item: NotificationItem, navigate: (target: NotificationDestination, opened: () => void, refused: (message: string) => void) => void, opened: () => void, refused: (message: string) => void): void;
@@ -355,23 +355,22 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       return current.current.request === request;
     },
     clearAll: async show => {
-      if (!enabled || current.current.request !== request || !current.current.usable || client.notificationCollection === undefined) return false;
-      if (heldAttempt() !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
+      if (!enabled || current.current.request !== request || !current.current.usable || client.notificationCollection === undefined) return;
+      if (heldAttempt() !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return; }
       const listed = (rowsRef.current ?? []).filter(row => clearable(row) && (show === "all" || (row.kind !== "backfill-gap" && row.readState === "unread")));
       const entries = listed.flatMap(durableRows).filter(([id, revision]) => (clearedRef.current?.get(id) ?? -1) < revision);
       const owner = current.current.binding;
       hide(entries);
       let target: NotificationCollectionTarget;
       try { target = await client.notificationCollection(show === "all" ? "clear" : "clear-unread"); }
-      catch { if (current.current.request === request) { unhide(entries); setCommandNotice({ request, text: inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE") }); } return false; }
-      if (current.current.request !== request) return false;
-      if (!current.current.usable || heldAttempt() !== undefined || target.actorId !== request.scope.actorId) { unhide(entries); return false; }
+      catch { if (current.current.request === request) { unhide(entries); setCommandNotice({ request, text: inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE") }); } return; }
+      if (current.current.request !== request) return;
+      if (!current.current.usable || heldAttempt() !== undefined || target.actorId !== request.scope.actorId) { unhide(entries); return; }
       const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.now(), requestedBy: request.scope.actorId,
         source: "dashboard", family: "notification", type: show === "all" ? "notification-clear-all" : "notification-clear-unread-all", target });
       const outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
         publish: outcome => { if (current.current.request === request && outcome.kind !== "confirmed") owner.feedback(outcome); } });
-      if (outcome.kind !== "confirmed") { if (current.current.request === request) unhide(entries); return false; }
-      return current.current.request === request;
+      if (outcome.kind !== "confirmed" && current.current.request === request) unhide(entries);
     },
     onPublication: listener => { arrivalListeners.current.add(listener); return () => { arrivalListeners.current.delete(listener); }; },
     readAll: async () => {

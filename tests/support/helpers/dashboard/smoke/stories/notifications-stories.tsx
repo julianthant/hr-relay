@@ -7,7 +7,7 @@ import { WorkflowRail } from "../../../../../../src/dashboard/surfaces/shell/wor
 import { useNotificationAlert } from "../../../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
 import { itemClearable, type NotificationItem, type NotificationKind, type NotificationsState } from "../../../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import {
-  NOTICE_BY_KIND, NOTICE_BY_TONE, POPOVER_FEW, POPOVER_GONE, POPOVER_LONG_NOTICES, POPOVER_MANY, notificationsReady,
+  NOTICE_BY_KIND, NOTICE_BY_TONE, POPOVER_DONE, POPOVER_FAILED, POPOVER_FEW, POPOVER_GONE, POPOVER_LONG_NOTICES, POPOVER_MANY, notificationsReady,
 } from "../../../../fixtures/dashboard/sessions-notifications-story-fixtures.js";
 import { SHELL_STORY_COUNTS_IDLE, SHELL_STORY_WORKFLOWS } from "../../../../fixtures/dashboard/shell-story-fixtures.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
