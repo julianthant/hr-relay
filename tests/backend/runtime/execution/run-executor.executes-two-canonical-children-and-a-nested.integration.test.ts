@@ -6,7 +6,7 @@ import { createTaskProvenanceCollector } from "../../../../src/backend/runs/prov
 import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";

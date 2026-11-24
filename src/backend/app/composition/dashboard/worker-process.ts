@@ -12,7 +12,7 @@ import { BrowserSessionIdSchema } from "../../../../rules/identity/ids.js";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
 import type { IdFactory } from "../../../../rules/identity/identifiers.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
-import type { WorkerMemberState, WorkerPoolRuntimeSeam } from "../../../runs/commands/command-kernel.js";
+import type { WorkerMemberState, WorkerPoolRuntimeSeam } from "../../../runs/commands/worker-pool-commands.js";
 import { currentBuildId, PARENT_BUILD_ID_ENV } from "../../../runtime/build-id.js";
 import { createNativeBrowserProbe } from "../../../runtime/browser/native-browser.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";

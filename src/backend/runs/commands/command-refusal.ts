@@ -17,3 +17,13 @@ export class CommandRefusal extends Error {
 export function rejectCommandRequest(request: CommandRequest, code: z.infer<typeof CommandRejectionCodeSchema>, message: string): never {
   throw new CommandRefusal({state:"rejected",commandId:request.commandId,code,message});
 }
+
+export function reject(request: CommandRequest, code: string, message: string): never {
+  throw new CommandRefusal({ state: "rejected", commandId: request.commandId, code, message });
+}
+
+// Invalid served proof is a typed rejection that rolls back the transaction, not a transport failure.
+
+export function conflict(request: CommandRequest, currentVersion: number, message: string): never {
+  throw new CommandRefusal({ state: "conflict", commandId: request.commandId, currentVersion, message });
+}

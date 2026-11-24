@@ -192,7 +192,7 @@ optional value absent. `SETTINGS_SCHEMA_HASH` derives from the editable schema;
 and patch fingerprint mismatch before ordinary application. Under the kernel's SQLite transaction,
 it checks the expected revision, merges the patch, resolves the complete candidate, validates
 changed browser and Duo paths, and checks the 1,048,576-byte ordinary document bound. It inserts the
-new snapshot and activates it. `command-kernel.ts` journals the command and audit and advances saved
+new snapshot and activates it. `settings-command.ts` journals the command and audit and advances saved
 settings before the same transaction commits. Failure rolls back ordinary activation and journal
 changes. An ordinary success returns `restartRequired: false`.
 

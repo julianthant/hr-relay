@@ -12,7 +12,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { createCommandKernel, type CommandKernel, type CommandKernelDependencies, type SettingsApplicationExecutor, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel, type CommandKernel, type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
+import type { SettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-command.js";
+import type { WorkerPoolRuntimeAdoption } from "../../../../src/backend/runs/commands/worker-pool-commands.js";
+import type { WriteResolutionExecutor } from "../../../../src/backend/runs/commands/write-resolution-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
