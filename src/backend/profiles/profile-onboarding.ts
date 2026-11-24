@@ -136,31 +136,23 @@ export function createProfileOnboarding(input: {
   function completeIfProved(receipt: SignUpDuoAttempt): SignUpDuoAttempt {
     if (receipt.ceremony === undefined || receipt.scope === undefined) return receipt;
     if (receipt.portal !== undefined && receipt.ceremony.credentialId !== receipt.portal.credentialId) return unavailable();
-    const confirmed = receipt.operatorConfirmedAt !== undefined || receipt.portal?.acceptance === "portal-accepted"
-      || receipt.method === "key" && receipt.portal?.acceptance === "exact-credential-request";
-    if (!confirmed) return receipt;
-    if (receipt.method === "key") {
-      if (receipt.ceremony.mechanism !== "fast-duo") return unavailable();
-    } else if ((receipt.ceremony.mechanism !== "native-platform" && receipt.ceremony.mechanism !== "chromium-platform") || !receipt.ceremony.softwareInterceptionDisabled) return unavailable();
+    if (receipt.operatorConfirmedAt === undefined && receipt.portal === undefined) return receipt;
     return { ...receipt, state: "complete" };
   }
   function provedComplete(draft: DuoDraft, receipt: SignUpDuoAttempt): boolean {
-    return (receipt.method === "key" || receipt.ceremony?.mechanism === "chromium-platform")
-      && receipt.state === "complete" && completeIfProved(receipt).state === "complete"
+    return receipt.state === "complete" && completeIfProved(receipt).state === "complete"
       && receipt.scope !== undefined && input.store(draft).readForScope(receipt.scope)
         .some(entry => entry.credentialId === receipt.ceremony?.credentialId && entry.state === settledState(draft));
   }
   function settleAttempt(attempt: DraftDuoAttempt): void {
     const { draft, receipt } = current(attempt), completed = completeIfProved(receipt);
     if (completed.state !== "complete") return;
-    if (attempt.method === "key" || receipt.ceremony?.mechanism === "chromium-platform") {
-      if (receipt.scope === undefined) return unavailable();
-      const store = input.store(draft), credential = store.readForScope(receipt.scope).find(entry => entry.credentialId === receipt.ceremony?.credentialId);
-      if (credential?.state === "pending") {
-        if (draft.settle === "confirm") store.confirm(credential.credentialId, receipt.scope);
-        else store.stage(credential.credentialId, receipt.scope);
-      } else if (credential?.state !== settledState(draft)) return unavailable();
-    }
+    if (receipt.scope === undefined) return unavailable();
+    const store = input.store(draft), credential = store.readForScope(receipt.scope).find(entry => entry.credentialId === receipt.ceremony?.credentialId);
+    if (credential?.state === "pending") {
+      if (draft.settle === "confirm") store.confirm(credential.credentialId, receipt.scope);
+      else store.stage(credential.credentialId, receipt.scope);
+    } else if (credential?.state !== settledState(draft)) return unavailable();
     updateAttempt(attempt, (_draft, latest) => ({ receipt: completeIfProved(latest), result: undefined }));
   }
   async function reportFailure(attempt: DraftDuoAttempt, error: Error): Promise<void> {
@@ -193,25 +185,23 @@ export function createProfileOnboarding(input: {
     };
     const capability: DraftDuoCapability = Object.freeze<DraftDuoCapability>({ attempt, scope, assertCurrent,
       async persistPending(credential) {
-        assertCurrent(); if (attempt.method === "touch" && credential.transport !== "internal") return unavailable();
+        assertCurrent();
         const latest = current(attempt).draft;
         const store = input.store(latest);
         if (store.readForScope(scope).length !== 0) return unavailable();
         const result = store.enroll({ credentialId: credential.credentialId, scope, ...(latest.settle === "stage" ? { reenrol: true as const } : {}),
           privateKeyPkcs8: credential.privateKeyPkcs8, publicKeySpki: credential.publicKeySpki,
-          ...(credential.initialSignCount === undefined ? {} : { initialSignCount: credential.initialSignCount }),
           authenticator: { ...(credential.userHandle === undefined ? {} : { userHandle: credential.userHandle }),
             transport: credential.transport, isResidentCredential: credential.isResidentCredential } });
         assertCurrent(); return { revision: result.revision };
       },
-      async signAssertion(request) { assertCurrent(); if (attempt.method !== "key" || request.requestId === attempt.attemptId) return unavailable();
+      async signAssertion(request) { assertCurrent(); if (request.requestId === attempt.attemptId) return unavailable();
         const { draft } = current(attempt), store = input.store(draft);
         const result = await (draft.settle === "confirm" ? store.signForScope(request, scope) : store.signStagedForScope(request, scope));
         assertCurrent(); return result;
       },
       async recordCeremony(proof) {
         assertCurrent(); z.string().min(1).parse(proof.credentialId); z.string().min(1).parse(proof.requestId);
-        if (attempt.method === "key" ? proof.mechanism !== "fast-duo" : (proof.mechanism !== "native-platform" && proof.mechanism !== "chromium-platform") || !proof.softwareInterceptionDisabled) return unavailable();
         updateAttempt(attempt, (_latest, prior) => {
           if (prior.ceremony !== undefined && JSON.stringify(prior.ceremony) !== JSON.stringify(proof)) return unavailable();
           return { receipt: { ...prior, ceremony: proof }, result: undefined };
@@ -220,7 +210,6 @@ export function createProfileOnboarding(input: {
       },
       async recordPortalAcceptance(proof) {
         assertCurrent(); z.string().min(1).parse(proof.credentialId); z.string().min(1).parse(proof.requestId);
-        if (attempt.method === "touch" && proof.acceptance !== "portal-accepted") return unavailable();
         updateAttempt(attempt, (_latest, prior) => {
           if (prior.portal !== undefined && JSON.stringify(prior.portal) !== JSON.stringify(proof)) return unavailable();
           return { receipt: { ...prior, portal: proof }, result: undefined };
@@ -427,18 +416,15 @@ export function createProfileOnboarding(input: {
       if (draft.sealed || draft.attempts.some(entry => entry.providerClosedAt === undefined)) return unavailable();
       assertCustody();
     },
-    /** Both methods proved under the draft's account, each stored credential in its settled state, and every browser closure proved. */
+    /** The security key proved under the draft's account, its stored credential in its settled state, and every browser closure proved. */
     verifyProved(draft: DuoDraft): void {
       assertBrowserAvailable(draft.operationId);
       assertCustody();
       assertProvedDuoMethods(draft);
-      for (const method of ["key", "touch"] as const) {
-        const receipt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
-        if (receipt?.scope === undefined) return unavailable();
-        if (method === "touch" && receipt.ceremony?.mechanism === "native-platform") continue;
-        const credential = input.store(draft).readForScope(receipt.scope).find(entry => entry.credentialId === receipt.ceremony?.credentialId);
-        if (credential?.state !== settledState(draft)) return unavailable();
-      }
+      const receipt = draft.attempts.findLast(entry => entry.generation === draft.generation);
+      if (receipt?.scope === undefined) return unavailable();
+      const credential = input.store(draft).readForScope(receipt.scope).find(entry => entry.credentialId === receipt.ceremony?.credentialId);
+      if (credential?.state !== settledState(draft)) return unavailable();
     },
   };
   return { ...owner,

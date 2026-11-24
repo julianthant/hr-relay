@@ -53,13 +53,13 @@ it("keeps onboarding commands in the canonical transport with validated scoped b
     return Response.json({ state: "signed-out" });
   } });
   await client.startProfileOnboardingDuo({ operationId, method: "key" });
-  await client.confirmProfileOnboardingDuo({ operationId, method: "touch", attemptId, operatorConfirmed: true });
+  await client.confirmProfileOnboardingDuo({ operationId, method: "key", attemptId, operatorConfirmed: true });
   await client.cancelProfileOnboardingDuo({ operationId, method: "key", attemptId });
   await client.completeProfileOnboarding({ operationId });
   await client.cancelProfileOnboarding({ operationId });
   assert.deepEqual(calls, [
     { path: "/api/v1/profile/onboarding/duo/start", body: { operationId, method: "key" } },
-    { path: "/api/v1/profile/onboarding/duo/confirm", body: { operationId, method: "touch", attemptId, operatorConfirmed: true } },
+    { path: "/api/v1/profile/onboarding/duo/confirm", body: { operationId, method: "key", attemptId, operatorConfirmed: true } },
     { path: "/api/v1/profile/onboarding/duo/cancel", body: { operationId, method: "key", attemptId } },
     { path: "/api/v1/profile/onboarding/complete", body: { operationId } },
     { path: "/api/v1/profile/onboarding/cancel", body: { operationId } },
@@ -73,15 +73,13 @@ it("accepts an explicitly confirmed software ceremony without inventing portal a
   const method = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: false };
   const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
     profileId: "00000000-0000-4000-8000-000000000002", step: "ready",
-    methods: { key: { ...method, portalAccepted: false }, touch: method } };
+    methods: { key: { ...method, portalAccepted: false } } };
   let value = draft;
   const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async () => Response.json(value) });
   const state = await client.readProfileSession();
   assert.equal(state.state, "onboarding");
   if (state.state === "onboarding") { assert.equal(state.methods.key.portalAccepted, false); assert.equal(state.methods.key.state, "complete"); }
-  value = { ...draft, methods: { ...draft.methods, touch: { ...method, portalAccepted: false } } };
-  assert.equal((await client.readProfileSession()).state, "onboarding");
-  value = { ...draft, methods: { ...draft.methods, touch: { ...method, portalAccepted: false, operatorConfirmed: false } } };
+  value = { ...draft, methods: { key: { ...method, portalAccepted: false, operatorConfirmed: false } } };
   await assert.rejects(client.readProfileSession());
 });
 
@@ -138,7 +136,7 @@ it("posts Duo re-enrolment commands to their routes and parses only a served re-
   const operationId = "00000000-0000-4000-8000-000000000001", attemptId = "00000000-0000-4000-8000-000000000002";
   const profileId = "00000000-0000-4000-8000-000000000003";
   const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-  const served = DuoReenrolStateSchema.parse({ state: "duo-reenrol", operationId, profileId, step: "duo", methods: { key: idle, touch: idle },
+  const served = DuoReenrolStateSchema.parse({ state: "duo-reenrol", operationId, profileId, step: "duo", methods: { key: idle },
     browser: { state: "checking", generation: 0 } });
   const calls: { path: string; body: unknown }[] = [];
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
@@ -151,7 +149,7 @@ it("posts Duo re-enrolment commands to their routes and parses only a served re-
   assert.deepEqual(await client.reopenProfileDuoReenrolBrowser({ operationId, generation: 2 }), served);
   assert.deepEqual(await client.openProfileDuoReenrolPortal({ operationId }), served);
   assert.deepEqual(await client.startProfileDuoReenrol({ operationId, method: "key" }), served);
-  assert.deepEqual(await client.confirmProfileDuoReenrol({ operationId, method: "touch", attemptId, operatorConfirmed: true }), served);
+  assert.deepEqual(await client.confirmProfileDuoReenrol({ operationId, method: "key", attemptId, operatorConfirmed: true }), served);
   assert.deepEqual(await client.cancelProfileDuoReenrolAttempt({ operationId, method: "key", attemptId }), served);
   assert.deepEqual(calls, [
     { path: "/api/v1/profile/duo/reenrol/begin", body: {} },
@@ -160,7 +158,7 @@ it("posts Duo re-enrolment commands to their routes and parses only a served re-
     { path: "/api/v1/profile/duo/reenrol/reopen", body: { operationId, generation: 2 } },
     { path: "/api/v1/profile/duo/reenrol/portal", body: { operationId } },
     { path: "/api/v1/profile/duo/reenrol/start", body: { operationId, method: "key" } },
-    { path: "/api/v1/profile/duo/reenrol/confirm", body: { operationId, method: "touch", attemptId, operatorConfirmed: true } },
+    { path: "/api/v1/profile/duo/reenrol/confirm", body: { operationId, method: "key", attemptId, operatorConfirmed: true } },
     { path: "/api/v1/profile/duo/reenrol/cancel-attempt", body: { operationId, method: "key", attemptId } },
   ]);
   for (const malformed of [
@@ -208,7 +206,7 @@ it("binds a served re-enrolment to the requested operation and the selected prof
   const profileId = "00000000-0000-4000-8000-000000000003", otherProfile = "00000000-0000-4000-8000-000000000004";
   const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const served = (operation: string, profile: string) => DuoReenrolStateSchema.parse({ state: "duo-reenrol", operationId: operation, profileId: profile, step: "duo",
-    methods: { key: idle, touch: idle }, browser: { state: "checking", generation: 0 } });
+    methods: { key: idle }, browser: { state: "checking", generation: 0 } });
   const responses: unknown[] = [];
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async url => Response.json(responses.shift(), { headers: url.endsWith("/sign-in") ? activationHeaders : {} }) });
   const mismatch = async (call: () => Promise<unknown>) => {

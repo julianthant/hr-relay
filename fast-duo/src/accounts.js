@@ -25,7 +25,7 @@ export function selectCredential(state, request) {
   const identified = matches[0]?.[0] || null;
   if (identified && !identified.enabled) return { reason: 'This account is paused.' };
   const enabled = new Set(state.accounts.filter(a => a.enabled).map(a => a.id));
-  let candidates = state.credentials.filter(c => c.rpId === request.rpId && enabled.has(c.accountId));
+  let candidates = state.credentials.filter(c => c.rpId === request.rpId && c.transport === 'usb' && enabled.has(c.accountId));
   if (identified) candidates = candidates.filter(c => c.accountId === identified.id);
   const allowed = request.allowCredentials || [];
   if (allowed.length) {
@@ -37,6 +37,5 @@ export function selectCredential(state, request) {
   }
   if (!candidates.length) return { reason: 'No linked key matches this Duo request.' };
   if (new Set(candidates.map(c => c.accountId)).size !== 1) return { reason: 'The matching keys belong to different accounts.' };
-  const credential = candidates.find(c => c.transport === (allowed.length ? 'internal' : 'usb')) || candidates[0];
-  return { credential };
+  return { credential: candidates[0] };
 }

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const DuoCredentialSchema = z.strictObject({
   rpId: z.literal("duosecurity.com"), credentialId: z.string().min(1), privateKey: z.string().min(1),
-  signCount: z.number().int().nonnegative().max(4294967295), transport: z.enum(["internal", "usb"]),
+  signCount: z.number().int().nonnegative().max(4294967295), transport: z.literal("usb"),
   userHandle: z.string().nullable().optional(), isResidentCredential: z.boolean().optional(),
   deviceName: z.string().optional(), enrolledAt: z.string().optional(),
 });
