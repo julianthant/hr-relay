@@ -41,10 +41,11 @@ including all suites for Markdown-only changes. The `development` result verifie
 selected shards, exactly skipped omitted work and all mandatory checks.
 
 On each development pull request, the independent `PR metadata` job checks the head name, title
-and workflow allowlist. A Task body must also end with `Closes #<issue>`. Metadata runs on open,
+and workflow allowlist. A Task body must also include `Closes #<issue>` on its own line. Metadata runs on open,
 edit, synchronization, reopen, ready for review and label changes. Only the metadata job uses a
 runner on Task PR events. Their `development` result comes from the push at the PR head SHA.
-Non-Task PRs get the `development` result from the same PR run's fast checks.
+Non-Task PRs get the `development` result from fast checks on open, synchronization, reopen and
+ready for review. Edits and label changes rerun metadata alone.
 
 The scheduled or dispatched Full workflow runs `decide` only on `development`. It reads GitHub
 through `scripts/ci/full-run.ts` and starts the full checks only when the development head has no
@@ -90,7 +91,9 @@ outcomes and requires exactly skipped results for legitimate omissions. The fast
 the shared plan and job results in their `development` gate. The fast kind skips the shared
 `unit` job and suite summaries. Other kinds retain both.
 
-Each pull request has its own workflow/PR concurrency key; a newer push cancels its older run.
+Development PRs use separate per-PR concurrency groups for metadata and fast checks. Staging
+and Production use per-workflow, per-PR concurrency keys. New Task pushes supersede older pushes
+on the same branch.
 Development has no shared runner lane, so four ten-job runs fit the forty runner slots side by
 side. Staging admits its complete reusable call through the `ci-runners` FIFO; Production uses
 `release-runners`. Each queues with `queue: max` and `cancel-in-progress: false`, holding proofs,

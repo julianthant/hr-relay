@@ -133,6 +133,7 @@ affected integration shards (at most eight). Browser-facing Task pushes also sel
 The `development` result verifies the plan and fails for failed or cancelled dependencies.
 `PR metadata` checks names and the workflow allowlist on all development PRs and the closing
 line on Task PRs. Task PRs use the `development` result from the push at the head SHA.
+Edits and label changes rerun only metadata, independently of any in-progress fast checks.
 `full.yml` (`Full`) runs the schedule and dispatch decisions for development and calls
 `checks.yml` with kind `full` when the decision starts a run.
 `staging.yml` (`Staging`) runs only on pull requests from `development` into `staging` and admits
@@ -442,7 +443,7 @@ reaching CI and spending a full run. Allowed branches are `main`, `staging`, `de
 `feat(ci): add names check` is rejected. An origin branch that already matches
 `task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
 `.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. Staging runs that command in its first
-job. On development PRs, the independent `PR metadata` job runs it and requires a final
+job. On development PRs, the independent `PR metadata` job runs it and requires a standalone
 `Closes #<issue>` line for Task heads. Title and body edits at the same head rerun the check.
 `--all` lists off-pattern local branches and linked worktrees without deleting them.
 
