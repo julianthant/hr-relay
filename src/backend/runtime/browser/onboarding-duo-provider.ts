@@ -87,10 +87,41 @@ export interface OnboardingDuoProviderOptions {
     profile: Exclude<RuntimeProfile, "production">;
     credentials(): Readonly<{ userId: string; password: string }>;
     phone(): void;
-    screen?(stage: "gate" | "push-options" | "after-push", png: Buffer): void;
+    snapshot?(stage: "gate" | "push-options" | "after-push", text: string): void;
   }>;
 }
 
+
+const DuoTextSchema = z.strictObject({ headings: z.array(z.string()), controls: z.array(z.string()), text: z.array(z.string()) });
+
+/** Host+path, visible headings, button/link labels and status text of the page and each frame; never form values, editable content, query strings or storage. */
+export async function duoTextSnapshot(page: Page): Promise<string> {
+  const lines: string[] = [];
+  for (const frame of page.frames()) {
+    const url = URL.parse(frame.url());
+    lines.push(`frame ${url === null ? "unparsed" : `${url.host}${url.pathname}`}`);
+    const read = DuoTextSchema.safeParse(await frame.evaluate(() => {
+      const skip = "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
+      // An object method: tsx wraps a named inner function in a __name helper the page realm lacks.
+      const reader = {
+        text(element: Element): string {
+          const parts: string[] = [], walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) if (node.parentElement?.closest(skip) === null) parts.push(node.textContent ?? "");
+          return parts.join(" ").replace(/\s+/gu, " ").trim().slice(0, 200);
+        },
+        all(selector: string): string[] {
+          const found = [...document.querySelectorAll(selector)].filter(element => element.closest(skip) === null && element.checkVisibility({ visibilityProperty: true }));
+          return [...new Set(found.map(element => reader.text(element)).filter(Boolean))].slice(0, 40);
+        },
+      };
+      return { headings: reader.all("h1, h2, h3, h4, h5, h6, [role=heading]"), controls: reader.all("button, a[href], [role=button], [role=link]"),
+        text: reader.all("[role=alert], [role=status], [aria-live]:not([aria-live=off]), p") };
+    }).catch(() => undefined));
+    if (!read.success) { lines.push("  unreadable"); continue; }
+    for (const [kind, values] of Object.entries(read.data)) for (const value of values) lines.push(`  ${kind}: ${value}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
 
 async function workerCall(worker: Worker, method: "install" | "next" | "reply" | "stop" | "assertContext" | "browserInstall" | "browserFocus" | "browserPage" | "browserSelect" | "browserBounds" | "browserNext" | "browserReply" | "browserStop", args: readonly unknown[] = []): Promise<unknown> {
   try { return await worker.evaluate(async input => {
@@ -571,16 +602,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (approval === "phone") ownedDuoOrigin();
       else current();
     };
-    // The copy's private logs keep what Duo showed, since the onboarding browser profile is removed at close.
-    // Only a Duo document that stays put across the capture is kept, with every input masked; a redirect to SSO keeps nothing.
-    const screen = async (stage: "gate" | "push-options" | "after-push") => {
-      try {
-        const before = URL.parse(page.url());
-        if (page.isClosed() || session.portal !== page || before === null || !duo(before)) return;
-        const png = await page.screenshot({ timeout: 5000, mask: [page.locator("input, textarea, select, [contenteditable]")] });
-        if (page.isClosed() || page.url() !== before.href) return;
-        copy.screen?.(stage, png);
-      } catch { /* evidence never masks the gate's own outcome */ }
+    // The copy's private logs keep what Duo showed as text, since the onboarding browser profile is removed at close.
+    const snapshot = async (stage: "gate" | "push-options" | "after-push") => {
+      try { if (!page.isClosed()) copy.snapshot?.(stage, await duoTextSnapshot(page)); } catch { /* evidence never masks the gate's own outcome */ }
     };
     const timedOut = (code: string) => (cause: unknown) => {
       if (cause instanceof Error && cause.name === "TimeoutError") throw new Error(code, { cause });
@@ -588,13 +612,13 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     };
     const add = control(/^Add a device\b/iu);
     const other = control(/^Other options$/iu);
-    await add.or(other).first().waitFor({ timeout }).catch(async (cause: unknown) => { await screen("gate"); timedOut("copy-signin-duo-gate-unavailable")(cause); });
+    await add.or(other).first().waitFor({ timeout }).catch(async (cause: unknown) => { await snapshot("gate"); timedOut("copy-signin-duo-gate-unavailable")(cause); });
     if (!await add.isVisible()) {
-      await screen("gate");
+      await snapshot("gate");
       await click(other);
-      await screen("push-options");
+      await snapshot("push-options");
       await click(control(/^(?:Verified )?Duo Push\b/iu), "phone");
-      await add.waitFor({ timeout }).catch(async (cause: unknown) => { await screen("after-push"); timedOut("copy-signin-duo-push-unanswered")(cause); });
+      await add.waitFor({ timeout }).catch(async (cause: unknown) => { await snapshot("after-push"); timedOut("copy-signin-duo-push-unanswered")(cause); });
       origin = ownedDuoOrigin();
       if (!await add.isVisible()) throw new Error("copy-signin-duo-device-list-unavailable");
     }

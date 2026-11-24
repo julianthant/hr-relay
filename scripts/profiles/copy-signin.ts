@@ -122,16 +122,16 @@ export async function driveCopySignin(profile: CopyProfile, dashboard: ProfileDa
 }
 
 // The copy's logs directory as first observed; a later swap of any ancestor refuses the write.
-const screenDirectories = new Map<string, ReturnType<typeof statDirectory>>();
+const snapshotDirectories = new Map<string, ReturnType<typeof statDirectory>>();
 
-/** Keeps one Duo gate screenshot in the copy's private logs: a fresh 0600 stage, then an atomic rename over any prior file or link. */
-export function writeCopySigninScreen(workspace: string, stage: "gate" | "push-options" | "after-push", png: Buffer): void {
+/** Keeps one Duo gate text snapshot in the copy's private logs: a fresh 0600 stage, then an atomic rename over any prior file or link. */
+export function writeCopySigninSnapshot(workspace: string, stage: "gate" | "push-options" | "after-push", text: string): void {
   const logs = join(workspace, ".tracker", "data", "logs");
-  if (!noSymlinkAncestry(logs, screenDirectories)) throw new CopySigninError("copy-signin-logs-unavailable");
+  if (!noSymlinkAncestry(logs, snapshotDirectories)) throw new CopySigninError("copy-signin-logs-unavailable");
   statDirectory(logs, "copy sign-in logs", CREDENTIAL_DIRECTORY_MODE);
-  const staged = join(logs, `.copy-signin-duo-${stage}-${randomUUID()}.png`);
-  writePrivateStage(staged, png);
-  replacePrivateFile(staged, join(logs, `copy-signin-duo-${stage}.png`));
+  const staged = join(logs, `.copy-signin-duo-${stage}-${randomUUID()}.txt`);
+  writePrivateStage(staged, Buffer.from(text));
+  replacePrivateFile(staged, join(logs, `copy-signin-duo-${stage}.txt`));
 }
 
 function operatorCredentials(): SignInCredentials {
@@ -156,7 +156,7 @@ async function runCopyBackend(profile: CopyProfile, fixtureWorkspace: string | u
         writeSync(process.stdout.fd, "approve the Duo request on your phone\n");
         process.send?.({ type: "relay-copy-signin-phone" });
       },
-      screen(stage, png) { writeCopySigninScreen(applicationDataWorkspace(undefined, profile), stage, png); },
+      snapshot(stage, text) { writeCopySigninSnapshot(applicationDataWorkspace(undefined, profile), stage, text); },
     },
   });
 }

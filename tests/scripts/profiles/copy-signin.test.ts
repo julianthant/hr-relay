@@ -2,7 +2,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { assertCopySigninFixture, assertCopySigninTarget, driveCopySignin, useCopySigninFixture, readCopySigninCredentials, writeCopySigninScreen } from "../../../scripts/profiles/copy-signin.js";
+import { assertCopySigninFixture, assertCopySigninTarget, driveCopySignin, useCopySigninFixture, readCopySigninCredentials, writeCopySigninSnapshot } from "../../../scripts/profiles/copy-signin.js";
 import { runDevDashboard } from "../../../scripts/dev/dashboard.js";
 import { copySigninFixtureBrowser } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import { osCredentialSecretStore, selectedCredentialSecretStore } from "../../../src/backend/storage/configuration/credential-key-custody.js";
@@ -34,20 +34,20 @@ function copyLogs(): { workspace: string; logs: string; outside: string } {
 }
 const modeOf = (path: string) => statSync(path).mode & 0o7777;
 
-it("replaces a permissive prior screenshot with a fresh 0600 file and leaves no stage", () => {
-  const { workspace, logs } = copyLogs(), path = join(logs, "copy-signin-duo-gate.png");
+it("replaces a permissive prior snapshot with a fresh 0600 file and leaves no stage", () => {
+  const { workspace, logs } = copyLogs(), path = join(logs, "copy-signin-duo-gate.txt");
   writeFileSync(path, "prior", { mode: 0o644 });
-  writeCopySigninScreen(workspace, "gate", Buffer.from("png"));
-  expect(readFileSync(path, "utf8")).toBe("png");
+  writeCopySigninSnapshot(workspace, "gate", "snapshot");
+  expect(readFileSync(path, "utf8")).toBe("snapshot");
   expect(modeOf(path)).toBe(0o600);
-  expect(readdirSync(logs)).toEqual(["copy-signin-duo-gate.png"]);
+  expect(readdirSync(logs)).toEqual(["copy-signin-duo-gate.txt"]);
 });
 
-it("replaces a planted link at the screenshot path without writing through it", () => {
-  const { workspace, logs, outside } = copyLogs(), target = join(outside, "target.png"), path = join(logs, "copy-signin-duo-after-push.png");
+it("replaces a planted link at the snapshot path without writing through it", () => {
+  const { workspace, logs, outside } = copyLogs(), target = join(outside, "target.txt"), path = join(logs, "copy-signin-duo-after-push.txt");
   writeFileSync(target, "outside", { mode: 0o644 });
   symlinkSync(target, path);
-  writeCopySigninScreen(workspace, "after-push", Buffer.from("png"));
+  writeCopySigninSnapshot(workspace, "after-push", "snapshot");
   expect(lstatSync(path).isSymbolicLink()).toBe(false);
   expect(modeOf(path)).toBe(0o600);
   expect(readFileSync(target, "utf8")).toBe("outside");
@@ -56,11 +56,11 @@ it("replaces a planted link at the screenshot path without writing through it", 
 it("refuses a logs directory that is a link or not private", () => {
   const { workspace, logs, outside } = copyLogs();
   rmSync(logs, { recursive: true }); symlinkSync(outside, logs);
-  expect(() => writeCopySigninScreen(workspace, "gate", Buffer.from("png"))).toThrow(/symbolic link/u);
+  expect(() => writeCopySigninSnapshot(workspace, "gate", "snapshot")).toThrow(/symbolic link/u);
   expect(readdirSync(outside)).toEqual([]);
   rmSync(logs); mkdirSync(logs, { mode: 0o755 }); chmodSync(logs, 0o755);
-  expect(() => writeCopySigninScreen(workspace, "gate", Buffer.from("png"))).toThrow(/0700/u);
-  expect(existsSync(join(logs, "copy-signin-duo-gate.png"))).toBe(false);
+  expect(() => writeCopySigninSnapshot(workspace, "gate", "snapshot")).toThrow(/0700/u);
+  expect(existsSync(join(logs, "copy-signin-duo-gate.txt"))).toBe(false);
 });
 
 it("reads the four values from the private env file without changing quoted values", () => {
