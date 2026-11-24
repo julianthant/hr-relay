@@ -44,9 +44,16 @@ export const CanonicalCredentialPublicationSourceSchema = z.strictObject({ head:
 export type CanonicalCredentialPublicationSource = z.infer<typeof CanonicalCredentialPublicationSourceSchema>;
 const Binding = z.strictObject({ installationId: z.uuid(), profileId: z.uuid() });
 const NativeKey = Binding.extend({ schemaVersion: z.literal(2), keyId: z.uuid(), keyDigest: Digest });
-/** The Duo record as written before security-key-only; only dropPlatformDuoCredentials reads it. */
+/** The Duo record as written before security-key-only; only readStoredDuoRecord reads it. */
 const StoppedPlatformDuoRecordSchema = z.strictObject({ credentials: z.array(z.looseObject({ credentialId: z.string().min(1),
   authenticator: z.looseObject({ transport: z.enum(["internal", "usb"]) }).optional() })).max(1000) });
+/** Validates a stored Duo record that may still hold platform rows: the current shape apart from transport "internal", membership included. */
+function readStoredDuoRecord(value: unknown): Readonly<{ record: z.infer<typeof DuoCredentialRecordSchema>; platformIds: readonly string[] }> {
+  const prior = StoppedPlatformDuoRecordSchema.parse(value);
+  const record = DuoCredentialRecordSchema.parse({ credentials: prior.credentials.map(row => row.authenticator?.transport === "internal"
+    ? { ...row, authenticator: { ...row.authenticator, transport: "usb" } } : row) });
+  return { record, platformIds: prior.credentials.filter(row => row.authenticator?.transport === "internal").map(row => row.credentialId) };
+}
 const Counter = z.strictObject({ credentialId: z.string().min(1), publicKeySpki: z.string().min(1),
   count: z.number().int().min(0).max(0xffff_ffff),
   requests: z.array(z.strictObject({ requestId: z.string().min(1), count: z.number().int().min(1).max(0xffff_ffff) })).max(100_000) });
@@ -1032,7 +1039,7 @@ export function eraseCanonicalDraftCredentials(machine: RuntimeAdmission, profil
         if (source === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
         const record = open(parsed, key, kind, source.bytes);
         if (kind === "duo" && record !== undefined) {
-          duo = DuoCredentialRecordSchema.parse(record.value);
+          duo = readStoredDuoRecord(record.value).record;
           for (const credential of duo.credentials) validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
         }
         return { kind, digest: digest(source.bytes), ...fileIdentityObservation(source.identity, { preserveSafeNumbers: true }) };
@@ -1440,14 +1447,10 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
       try { locked(() => {
         const frame = read("duo");
         if (frame === undefined) return;
-        const prior = StoppedPlatformDuoRecordSchema.parse(frame.value);
-        // The prior record is the current shape apart from transport "internal": validate it whole, membership included.
-        DuoCredentialRecordSchema.parse({ credentials: prior.credentials.map(row => row.authenticator?.transport === "internal"
-          ? { ...row, authenticator: { ...row.authenticator, transport: "usb" } } : row) });
-        const ids = prior.credentials.filter(row => row.authenticator?.transport === "internal").map(row => row.credentialId);
+        const { record, platformIds: ids } = readStoredDuoRecord(frame.value);
         if (ids.length === 0) return;
         const { head, key } = readHead();
-        const next = DuoCredentialRecordSchema.parse({ credentials: prior.credentials.filter(row => !ids.includes(row.credentialId)) });
+        const next = DuoCredentialRecordSchema.parse({ credentials: record.credentials.filter(row => !ids.includes(row.credentialId)) });
         if (!publishable({ ...head, retired: [...head.retired, ...ids] }, next)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
         // Re-enrolment-named stages: boot and the next run clear an unrenamed one, and a rerun converges from either publication.
         retireHead(head, key, ids, reenrolStagePath(canonical, PLATFORM_DUO_MIGRATION_OWNER, "head"));

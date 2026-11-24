@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import nativeFs, { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, onTestFinished, vi } from "vitest";
+import { z } from "zod";
+import { createDuoCredentialStore } from "../../../src/backend/storage/configuration/duo-credential-store.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { composeProfileRuntime, initializeRegisteredPersonStores } from "../../../src/backend/app/composition/storage-compose.js";
 import { CanonicalCredentialHeadSchema } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
-import { syntheticOnboardingDuo } from "../../support/helpers/admission-fixture.js";
+import { readAuthenticatedCredentialFixture, registerBoundProfile, rewriteAuthenticatedCredentialFixture, syntheticOnboardingDuo, unregisterBoundProfile } from "../../support/helpers/admission-fixture.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
 
@@ -102,3 +105,27 @@ for (const remains of ["duo-record", "native-key", "stage-file"] as const) it(`c
     assert.deepEqual(readFileSync(f.headPath), erased);
   } finally { await restart.close(); }
 });
+
+it("cancels a sign-up draft whose stored Duo record still holds a platform row", async () => {
+  const f = await fixture();
+  const accountId = z.object({ onboarding: z.object({ accountId: z.uuid() }) }).parse(JSON.parse(readFileSync(f.operationPath, "utf8"))).onboarding.accountId;
+  const admission = f.machine.admitProfile(f.draft.profileId);
+  registerBoundProfile(admission, f.machine);
+  try {
+    const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" }), armedAt = systemClock.nowMs();
+    createDuoCredentialStore(admission).enroll({ credentialId: randomBytes(32).toString("base64url"),
+      scope: { armId: randomUUID(), contextId: "e".repeat(32), tabId: 1, accountId, origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com",
+        armedAt: new Date(armedAt).toISOString(), expiresAt: new Date(armedAt + 600_000).toISOString() },
+      privateKeyPkcs8: pair.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+      publicKeySpki: pair.publicKey.export({ format: "der", type: "spki" }).toString("base64"),
+      authenticator: { transport: "usb", isResidentCredential: true } });
+    const Rows = z.looseObject({ credentials: z.array(z.looseObject({ authenticator: z.looseObject({}).optional() })) });
+    rewriteAuthenticatedCredentialFixture(f.machine.stateRoot, f.draft.profileId, value => ({ credentials: Rows.parse(value).credentials
+      .map(row => ({ ...row, authenticator: { ...row.authenticator, transport: "internal" } })) }), "duo");
+    assert.match(JSON.stringify(readAuthenticatedCredentialFixture(f.machine.stateRoot, f.draft.profileId, "duo")), /"internal"/u);
+  } finally { unregisterBoundProfile(admission); admission.release(); }
+  assert.deepEqual(await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId), { state: "signed-out" });
+  for (const path of [f.headPath, f.profileRoot, f.operationPath, f.duoPath]) assert.equal(existsSync(path), false, path);
+  assert.equal(f.nativeKey.getPassword(), null);
+});
+

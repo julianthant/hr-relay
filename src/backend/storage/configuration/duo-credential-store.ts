@@ -128,7 +128,7 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
       return access(() => owner.stageDuoCredential(credentialId, scope, clock.now().toISOString()));
     },
     async signStagedForScope(request: DuoAssertionRequest, scope: DuoEnrollmentScope) { assertScope(scope); return signAssertion(request, scope, "staged"); },
-    discardDraft(accountId: string) { settle(() => owner.discardDuoDraft(accountId)); },
+    discardDraft(accountId: string) { access(() => owner.discardDuoDraft(accountId)); },
     prepareReenrolCommit(accountId: string) { return access(() => owner.prepareDuoReenrolCommit(accountId)); },
     inspectReenrolCommit(intent: DuoReenrolCommitIntent) { return settle(() => owner.inspectDuoReenrolCommit(intent)); },
     commitReenrol(intent: DuoReenrolCommitIntent) { return settle(() => owner.commitDuoReenrol(intent)); },
