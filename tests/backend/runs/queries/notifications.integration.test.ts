@@ -28,7 +28,7 @@ describe("notification destinations", () => {
     const row = notificationRecordOf({ seed: 3, title: "Records ready", lastSeenAt: hidden.createdAt });
     const query = createNotificationTargetQuery({ get: () => row, read: () => ({ state: "present", disposition: "live", run: hidden }), failure: () => undefined, command: () => undefined, bulk: () => undefined,
       host: run => run === hidden ? host : undefined });
-    expect(query(row.notificationId, row.actorId)).toEqual({ kind: "run", runId: host.envelope.runId, day: "2026-07-04" });
+    expect(query(row.notificationId, row.actorId)).toEqual({ kind: "run", runId: host.envelope.runId, day: "2026-07-04", linkedRunId: hidden.envelope.runId });
   });
   it("preserves exact failure identity and Storage", () => {
     const failure = failureRecordOf({ seed: 2, code: "TEST_FAILURE" });

@@ -120,8 +120,11 @@ it("defines all eight source policies with exact target kinds and honest gap/mis
   assert(notificationTargetMatches(row(), { kind: "storage" }));
   assert.equal(notificationTargetMatches(row(), { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: "2026-08-03" }), false);
   const host = RunIdSchema.parse("00000000-0000-4000-8000-000000000999");
-  assert(notificationTargetMatches(row("gate-opened"), { kind: "run", runId: host, day: "2026-08-03" }), "a delegated run opens its host run");
-  assert(notificationTargetMatches(row("run-failed"), { kind: "run", runId: host, day: "2026-08-03" }));
+  const linkedRunId = RunIdSchema.parse(runId);
+  assert(notificationTargetMatches(row("gate-opened"), { kind: "run", runId: host, day: "2026-08-03", linkedRunId }), "a delegated run opens its host run");
+  assert(notificationTargetMatches(row("run-failed"), { kind: "run", runId: host, day: "2026-08-03", linkedRunId }));
+  assert.equal(notificationTargetMatches(row("gate-opened"), { kind: "run", runId: host, day: "2026-08-03" }), false, "a host run that names no linked run is another run");
+  assert.equal(notificationTargetMatches(row("gate-opened"), { kind: "run", runId: linkedRunId, day: "2026-08-03", linkedRunId: host }), false);
   assert.equal(notificationTargetMatches(row("gate-opened"), { kind: "failure", runId: host, failureId: FailureIdSchema.parse(failureId), day: "2026-08-03" }), false);
 });
 it("shows retained failed-run workflow and reason without unavailable text or an inferred source policy", () => {

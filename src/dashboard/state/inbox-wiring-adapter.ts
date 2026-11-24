@@ -48,8 +48,9 @@ export function notificationTargetMatches(row: NotificationWire, target: Notific
   if (row.kind !== "notification") return false;
   const link = row.link;
   if (target.kind === "storage") return link?.kind === "storage";
-  // The server sends a delegated run to its host run, so a run target may name another run than the link.
-  if (target.kind === "run") return link?.kind === "run" || link?.kind === "failure";
+  // The server sends a delegated run to its host run and names the linked run beside it.
+  if (target.kind === "run") return target.linkedRunId === undefined ? link?.kind === "run" && link.runId === target.runId
+    : (link?.kind === "run" || link?.kind === "failure") && link.runId === target.linkedRunId;
   if (target.kind === "failure") return link?.kind === "failure" && link.runId === target.runId && link.failureId === target.failureId;
   return false;
 }
