@@ -182,6 +182,7 @@ it("loads every imported dashboard day with delegated runs and failed Lookup sta
   sourceClock.advanceWall(86_400_000);
   const lookup = canonicalChildExecution(source.harness.deps, database, source.path, source.resolve);
   const failed = lookup.start(personLookupDescriptor, { emplId: "10800000" }, { dryRun: false });
+  source.harness.manager.bindRunConfigFingerprint(failed.envelope.configFingerprint);
   expect((await lookup.step(failed, new AbortController().signal)).outcome.state).toBe("failed");
   const plans = [...source.canonical.plans, ...lookup.plans].map(plan => plan.startPlanId);
   expect(plans).toHaveLength(2);

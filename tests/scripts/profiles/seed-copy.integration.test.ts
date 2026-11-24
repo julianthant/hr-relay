@@ -15,10 +15,12 @@ import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { runtimeProfiles } from "../../../src/models/config/define-runtime-isolation.js";
 import { NotificationTriggerSchema } from "../../../src/models/notifications/notifications.js";
+import type { ProfileDatabaseBinding } from "../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOTIFICATION } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { runRecordOf } from "../../support/helpers/backend/dashboard-harness.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
+import { credentialKeychainTestEnvironment, FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
 import { boundProfileCredentials } from "../../support/helpers/synthetic-database-admission.js";
 import { createBackupFixtures } from "../../support/helpers/storage/backup-fixtures.js";
 
@@ -51,8 +53,13 @@ function isolatedHome() {
   mkdirSync(data, { recursive: true, mode: 0o700 });
   return {
     data,
-    run: (profile: string) => {
-      const env = { ...process.env, HOME: home, USERPROFILE: home, LOCALAPPDATA: home };
+    run: (profile: string, binding?: ProfileDatabaseBinding) => {
+      const env = credentialKeychainTestEnvironment({ ...process.env, HOME: home, USERPROFILE: home, LOCALAPPDATA: home });
+      if (binding !== undefined) {
+        const account = `${binding.installationId}:${binding.profileId}`;
+        env.RELAY_TEST_KEYCHAIN = JSON.stringify(FakeKeyringEntry.snapshot()
+          .map(([name, key]) => [name === `Relay:${account}` ? `Relay:${profile}:${account}` : name, key]));
+      }
       return spawnSync(process.execPath, ["--import", "tsx", "--import", pathToFileURL(preload).href, entry, profile], {
         env, encoding: "utf8", timeout: 20_000,
       });
@@ -156,7 +163,7 @@ it("replaces its synthetic history and retains imported rows outside operational
     } finally { machine.release(); await lock.close(); }
   };
 
-  const first = run("development");
+  const first = run("development", binding);
   expect(first.error).toBeUndefined();
   expect(first.status, first.stderr).toBe(0);
   expect(readFileSync(copy.path)).toEqual(localBefore);
@@ -182,7 +189,7 @@ it("replaces its synthetic history and retains imported rows outside operational
   expect(new Set(seeded.notices.map(row => row.trigger))).toEqual(new Set(NotificationTriggerSchema.options));
   expect(seeded.notices.some(row => row.count > 1)).toBe(true);
 
-  const second = run("development");
+  const second = run("development", binding);
   expect(second.error).toBeUndefined();
   expect(second.status, second.stderr).toBe(0);
   assert.deepEqual(await readHistory(), seeded);

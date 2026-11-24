@@ -270,6 +270,7 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
     catch (error) {
       const reason = error instanceof SeedCopyError ? error.message
         : error instanceof z.ZodError ? `seed-copy-invalid-data: ${error.issues.map(issue => issue.code).join(", ")}`
+        : error instanceof Error && "code" in error && typeof error.code === "string" && /^[A-Z][A-Z0-9_]{1,80}$/u.test(error.code) ? error.code
         : error instanceof Error && /^[a-z-]{5,80}(?:: [a-z_]+)?$/u.test(error.message) ? error.message : "seed-copy-failed";
       process.stderr.write(`${reason}\n`);
       process.exitCode = 1;
