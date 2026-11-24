@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it, vi } from "vitest";
 import { mountSettingsHarness, settingsAction, syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
-import { SETTINGS_ROW_WAIT_MS } from "../../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
+import { SETTINGS_ROW_WAIT_MS } from "../../../../../src/dashboard/client/subscriptions/row-store.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { vi.useRealTimers(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });

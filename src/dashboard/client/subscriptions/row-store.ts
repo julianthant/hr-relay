@@ -94,3 +94,27 @@ export function createRowStore(): RowStoreWriter {
     },
   };
 }
+
+/** How long a settings save's readback waits for the stream's settings row at its revision. */
+export const SETTINGS_ROW_WAIT_MS = 10_000;
+
+/** The first held settings document at or above `revision`. Rejects at once on an unavailable row, on a store that holds no
+ * settings row (none carried yet, or reset), or once `stopped` holds, and after SETTINGS_ROW_WAIT_MS without one.
+ * `recheck` collects the check while it waits, so a caller can run it when something other than the store changes. */
+export function settingsRowAt(rows: RowStore | undefined, revision: number,
+  stopped: () => boolean = () => false, recheck?: Set<() => void>): Promise<EditableSettingsWire> {
+  return new Promise((resolve, reject) => {
+    const finish = (settle: () => void): void => { clearTimeout(timer); unsubscribe?.(); recheck?.delete(check); settle(); };
+    const check = (): void => {
+      const held = rows?.settings();
+      if (held?.unavailable === true) finish(() => reject(new Error("settings-row-unavailable")));
+      else if (held?.document !== undefined && held.document.revision >= revision) { const document = held.document; finish(() => resolve(document)); }
+      else if (held === undefined) finish(() => reject(new Error("settings-row-not-held")));
+      else if (stopped()) finish(() => reject(new Error("settings-row-stream-stopped")));
+    };
+    const timer = setTimeout(() => finish(() => reject(new Error("settings-row-wait-expired"))), SETTINGS_ROW_WAIT_MS);
+    recheck?.add(check);
+    const unsubscribe = rows?.subscribe(check);
+    check();
+  });
+}

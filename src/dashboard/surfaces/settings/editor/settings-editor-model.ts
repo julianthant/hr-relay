@@ -7,6 +7,7 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import type { CommandExecutionOptions } from "../../../app/commands/command-executor.js";
 import { readWithDeadline } from "../../../client/read-deadline.js";
+import { settingsRowAt } from "../../../client/subscriptions/row-store.js";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { SettingsReadSuperseded,useSettingsRead } from "../../../state/settings-read-model.js";
 import { useProtectedSettings } from "../providers/settings-protected-model.js";
@@ -23,8 +24,6 @@ export type { SettingsSaveState } from "./settings-attempt-model.js";
 
 /** Ordinary Settings never lock or show a save row: the control keeps the new value while the save runs. */
 const IDLE_SAVE: SettingsSaveState = Object.freeze({ state: "idle" });
-/** How long a save's readback waits for the stream's settings row at its revision before it ends unresolved. */
-export const SETTINGS_ROW_WAIT_MS = 10_000;
 const noRows = (): (() => void) => () => undefined;
 
 /** One ordinary atomic draft, independent protected draft, no browser-persisted values or attempts. */
@@ -128,23 +127,6 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     if (shown === undefined ? editor.state !== "failed" : document.revision <= shown.revision) return;
     acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined);
   }, [streamed, request, resource, editor.state, setEditor]);
-  /** The first held settings row at or above `revision`. Unresolved at once on an unavailable row, a stopped stream or a stream
-   * that holds no settings row (none carried yet, or reset), and after SETTINGS_ROW_WAIT_MS without one. */
-  const settingsRowAt = (revision: number): Promise<EditableSettingsWire> => new Promise((resolve, reject) => {
-    const rows = stream.current.rows;
-    const finish = (settle: () => void): void => { clearTimeout(timer); unsubscribe?.(); rowWaiters.current.delete(check); settle(); };
-    const check = (): void => {
-      const held = rows?.settings();
-      if (held?.unavailable === true) finish(() => reject(new Error("settings-row-unavailable")));
-      else if (held?.document !== undefined && held.document.revision >= revision) { const document = held.document; finish(() => resolve(document)); }
-      else if (held === undefined) finish(() => reject(new Error("settings-row-not-held")));
-      else if (stream.current.rows !== rows || stream.current.stopped) finish(() => reject(new Error("settings-row-stream-stopped")));
-    };
-    const timer = setTimeout(() => finish(() => reject(new Error("settings-row-wait-expired"))), SETTINGS_ROW_WAIT_MS);
-    rowWaiters.current.add(check);
-    const unsubscribe = rows?.subscribe(check);
-    check();
-  });
   const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
@@ -205,7 +187,10 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
         readback: async (_request, reply) => {
           const result = checkedSettingsResult(command, reply);
           if ((result.state !== "applied" && result.state !== "already-applied") || result.settingsRevision === undefined) throw new Error("settings-result-unconfirmed");
-          readDocument = await settingsRowAt(result.settingsRevision);
+          const rows = stream.current.rows;
+          // A row that cannot answer leaves the readback to a read of Settings.
+          readDocument = await settingsRowAt(rows, result.settingsRevision, () => stream.current.rows !== rows || stream.current.stopped, rowWaiters.current)
+            .catch(() => refresh(false));
           const readback = ordinaryReadbackState(command, result, readDocument);
           return { state: readback === "confirmed" ? "matched" : readback === "superseded" ? "conflict" : "mismatch", evidence: readDocument };
         },

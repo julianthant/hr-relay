@@ -387,11 +387,12 @@ const settingsTest = test.extend<{ seeded: SeededServer }>({
   },
 });
 
-/** Requests one settings switch press makes, sorted. Measured on the base (design section 2): 2 for a display preference
- * (the command and a re-read of Settings) and 4 when readiness needs preflight. The readback now joins the reply to the stream's row. */
+/** Requests one settings switch press makes, sorted. Measured on the implementation base (CI run 45395467633, these tests on the
+ * previous readback): 2 for each, the command and a re-read of Settings. The readback now joins the reply to the stream's row.
+ * Readiness is not shown on the Settings page, so a setting it depends on reads no preflight here. */
 const SETTING_SAVES: Record<string, readonly string[]> = {
   Animations: ["POST /api/v1/commands"],
-  "Prevent sleep while running": ["GET /api/v1/preflight", "POST /api/v1/commands"],
+  "Prevent sleep while running": ["POST /api/v1/commands"],
 };
 const settingsRows = (received: readonly Received[]): number => received.filter(({ envelope }) =>
   (envelope.type === "change" || envelope.type === "snapshot") && envelope.rows.some(row => row.model === "settings")).length;

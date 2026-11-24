@@ -11,10 +11,13 @@ import type { PersonPreferencesPort, PersonPreferencesState } from "../lib/perso
 import { ordinaryReadbackState, checkedSettingsResult, settingsSaveFailure } from "../surfaces/settings/editor/settings-attempt-model.js";
 import { ordinaryReadbackConfirms } from "../surfaces/settings/editor/settings-draft-model.js";
 import { readBack } from "../app/commands/command-readback.js";
+import { settingsRowAt } from "../client/subscriptions/row-store.js";
 import { clearSettingsReads, settingsReadResource } from "./settings-read-model.js";
 import { dropKeptResults } from "./async-resource.js";
 
-type PreferencesBinding = Pick<DashboardCommandBinding, "scope" | "executor"> & { authority: Pick<DashboardCommandBinding["authority"], "epoch" | "now"> };
+/** `dayState` carries the stream's settings row a save's readback joins its reply to; without it the readback reads Settings. */
+type PreferencesBinding = Pick<DashboardCommandBinding, "scope" | "executor">
+  & { authority: Pick<DashboardCommandBinding["authority"], "epoch" | "now"> & Partial<Pick<DashboardCommandBinding["authority"], "dayState">> };
 
 export function preferencesFromSettings(document: EditableSettingsWire) {
   const patch = Object.fromEntries(document.sections.flatMap(section => section.leaves)
@@ -54,7 +57,10 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       const outcome = await binding.executor.execute(command, { scope: binding.scope,
         readback: async (_request, reply) => {
           const result = checkedSettingsResult(command, reply);
-          readback = EditableSettingsWireSchema.parse(await active.client.editableSettings());
+          const read = async () => EditableSettingsWireSchema.parse(await active.client.editableSettings());
+          // A row that cannot answer leaves the readback to a read of Settings.
+          const revision = result.state === "applied" || result.state === "already-applied" ? result.settingsRevision : undefined;
+          readback = revision === undefined ? await read() : await settingsRowAt(binding.authority.dayState?.rows, revision).catch(read);
           const verification = ordinaryReadbackState(command, result, readback);
           return { state: verification === "confirmed" ? "matched" : verification === "superseded" ? "conflict" : "mismatch", evidence: readback };
         } });
