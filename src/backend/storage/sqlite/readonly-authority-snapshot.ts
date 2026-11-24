@@ -116,7 +116,7 @@ export interface AuthorityImageOwner {
 }
 
 /** pointInTime: an owner image; later changes to the live files do not make it stale. */
-type SnapshotMarkers = Readonly<{ files: string; authority: string }>;
+type SnapshotMarkers = Readonly<{ files: string; authority: string; copiedBytes: bigint }>;
 type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void; pointInTime?: true; markers?: SnapshotMarkers }>;
 type ReadonlyAuthorityImage = Readonly<{ path: string; marker: string }>;
 const readerImages = new WeakMap<DatabaseSync, ReadonlyAuthorityImage>();
@@ -131,15 +131,17 @@ const activeObservation = new AsyncLocalStorage<ActiveObservation>();
 type ReusableSnapshot = {
   readonly marker: string;
   readonly snapshot: ReadonlySnapshot;
+  readonly bytes: bigint;
   readers: number;
   retired: boolean;
 };
-const reusableSnapshots = new AsyncLocalStorage<{ active: boolean; copies: Map<string, ReusableSnapshot> }>();
+const reusableSnapshots = new AsyncLocalStorage<{ active: boolean; bytes: bigint; copies: Map<string, ReusableSnapshot> }>();
+const maxReusableSnapshotBytes = 256n * 1024n * 1024n;
 
 /** Share guarded copies of unchanged SQLite files during stopped upgrade inspection. */
 export async function withReusableReadonlyAuthoritySnapshots<T>(body: () => Promise<T>): Promise<T> {
   const copies = new Map<string, ReusableSnapshot>();
-  const scope = { active: true, copies };
+  const scope = { active: true, bytes: 0n, copies };
   let primary: { error: unknown } | undefined;
   let result: { value: T } | undefined;
   try { result = { value: await reusableSnapshots.run(scope, body) }; }
@@ -228,11 +230,22 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySna
     }
     if (cached !== undefined) {
       copies.delete(sourcePath);
+      reuse.bytes -= cached.bytes;
       retireSnapshot(cached);
     }
     const snapshot = copyReadonlyAuthoritySnapshot(sourcePath);
-    const copy = { marker: snapshot.markers.files, snapshot, readers: 0, retired: false };
+    const bytes = snapshot.markers.copiedBytes;
+    if (bytes > maxReusableSnapshotBytes) return snapshot;
+    const copy = { marker: snapshot.markers.files, snapshot, bytes, readers: 0, retired: false };
     copies.set(sourcePath, copy);
+    reuse.bytes += bytes;
+    // Retained backups can outnumber the SQLite copies we can keep in temp storage.
+    for (const [path, prior] of copies) {
+      if (reuse.bytes <= maxReusableSnapshotBytes) break;
+      copies.delete(path);
+      reuse.bytes -= prior.bytes;
+      retireSnapshot(prior);
+    }
     return borrowSnapshot(copy);
   }
   const proof = outermostOperationProof();
@@ -352,6 +365,8 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string, owner?: AuthorityImag
       files: sources.map(source => source.stats === undefined ? "absent" : identity(source.stats)).join("|"),
       // SQLite reconstructs the shared-memory index in the private copy from the main file and WAL.
       authority: sources.map(source => source.stats === undefined ? "absent" : identity(source.stats, source.suffix !== "-shm")).join("|"),
+      copiedBytes: sources.reduce((total, source) => source.suffix === "" || source.suffix === "-wal"
+        ? total + (source.stats?.size ?? 0n) : total, 0n),
     });
     return Object.freeze({ ...snapshot, markers });
   } catch (error) {
