@@ -15,7 +15,8 @@ import { boundProfileCredentials, createBoundProfileFixture, type BoundProfileSt
 import { activeSettingsRuntimeIdentity } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { composeSettings } from "../../../../src/backend/app/composition/dashboard/settings.js";
 import { buildSettingsEditor } from "../../../../src/backend/runs/queries/settings-editor.js";
-import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { createDashboardClient, createRowStore } from "../../../../src/dashboard/client/index.js";
+import { StreamRowSchema } from "../../../../src/models/dashboard/subscription.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { EditableSettingsSection } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor.js";
@@ -45,12 +46,20 @@ export async function syntheticSettingsAuthority(profileFixture: () => Promise<B
 }
 export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof syntheticSettingsAuthority>>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
   const commands: unknown[] = [];
+  // The stream's rows: an applied ordinary save delivers the document read after it, before its reply.
+  const rows = createRowStore();
   const notices: SettingsSaveNotice[] = [];
   const problems: SettingsSaveProblem[] = [];
   const ports = {
     response: (): Response | undefined => undefined,
     read: (): unknown => readDocument?.() ?? authority.read(),
     execute: (request: unknown): unknown => authority.execute(request),
+    /** The settings row the hub sends after an ordinary commit: the document as read now, unavailable when the read throws. */
+    deliver: (): void => {
+      let value: unknown;
+      try { value = { state: "available", value: ports.read() }; } catch { value = { state: "unavailable", error: { state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true } }; }
+      rows.apply([StreamRowSchema.parse({ model: "settings", key: "editable", value })]);
+    },
   };
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
     if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(ports.read()), { status: 200 });
@@ -60,7 +69,12 @@ export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof 
     if (url.endsWith("/commands") && typeof init?.body === "string") {
       const request: unknown = JSON.parse(init.body); commands.push(request);
       const refusal = ports.response(); if (refusal !== undefined) return refusal;
-      return new Response(JSON.stringify(await ports.execute(request)), { status: 200 });
+      const result = await ports.execute(request);
+      if (typeof request === "object" && request !== null && "type" in request && request.type === "apply-settings"
+        && typeof result === "object" && result !== null && "state" in result && result.state === "applied") {
+        ports.deliver();
+      }
+      return new Response(JSON.stringify(result), { status: 200 });
     }
     throw new Error("unexpected-settings-test-request");
   } });
@@ -71,9 +85,9 @@ export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof 
     return ["credentials", "protected-store", "provider-env", "runtime-isolation"].includes(sectionId)
       ? createElement(SettingsAuthoritySection, { profileName: "Synthetic Operator", editor, sectionId }) : createElement(EditableSettingsSection, { editor, sectionId });
   }
-  const render = async (sectionId: string, show = true, requestKey = 0): Promise<void> => { await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, children: show ? createElement(Harness, { sectionId }) : null }) })); }); };
+  const render = async (sectionId: string, show = true, requestKey = 0): Promise<void> => { await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, rows, children: show ? createElement(Harness, { sectionId }) : null }) })); }); };
   await render(section);
-  return { host, commands, notices, problems, ports, client, render, controller: () => { if (editor === undefined) throw new Error("settings-not-mounted"); return editor; },
+  return { host, commands, notices, problems, ports, client, rows, render, controller: () => { if (editor === undefined) throw new Error("settings-not-mounted"); return editor; },
     close: () => { act(() => root.unmount()); host.remove(); } };
 }
 export async function settingsAction(action: () => void): Promise<void> { await act(async () => { action(); }); }
