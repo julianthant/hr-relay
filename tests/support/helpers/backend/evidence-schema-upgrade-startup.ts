@@ -38,7 +38,8 @@ export function conversions(path: string) {
 /** Upgrade the retained predecessor Kuali evidence through startup, optionally after an interrupted committed conversion, and prove every frozen row survives a second startup. */
 export async function upgradeRetainedPredecessorEvidence(interrupted: boolean,
   credentialStore: () => Promise<typeof import("../../../../src/backend/storage/configuration/credential-store.js")>): Promise<void> {
-  const f = await predecessorSeparationsRerun();
+  const __p0 = performance.now(); const prof = (label: string) => process.stderr.write(`[prof] ${interrupted ? "int" : "up"} ${label} ${Math.round(performance.now() - __p0)}ms\n`);
+  const f = await predecessorSeparationsRerun(); prof("fixture");
   assert.ok(f.writes.some(intent => intent.status === "committed"));
   const { RuntimeLifetimeLock } = await import("../../../../src/backend/storage/admission/lifetime-lock.js");
   const { acquireEntrypointAdmission } = await import("../../../../src/backend/storage/admission/bootstrap-admission.js");
@@ -54,7 +55,8 @@ export async function upgradeRetainedPredecessorEvidence(interrupted: boolean,
   const lifetime = await RuntimeLifetimeLock.acquire(0);
   let restoreFault: (() => void) | undefined;
   try {
-    const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK);
+    prof("imports");
+    const startup = async () => { await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK); prof("startup"); };
     if (process.platform === "win32") {
       await startup(); await assertConversionRefused(f.workspace, lifetime);
       assert.deepEqual(frozenRows(f.path), before); assert.deepEqual(readFileSync(protectedPath), oldCredentials);
@@ -123,5 +125,5 @@ export async function upgradeRetainedPredecessorEvidence(interrupted: boolean,
         }
       } finally { database.close(); admission.release(); }
     } finally { await runtime.close(); machine.release(); }
-  } finally { restoreFault?.(); await lifetime.close(); await f.cleanup(); }
+  } finally { restoreFault?.(); await lifetime.close(); await f.cleanup(); prof("end"); }
 }
