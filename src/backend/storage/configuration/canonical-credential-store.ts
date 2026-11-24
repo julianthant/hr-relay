@@ -309,6 +309,8 @@ function publishCreate(paths: ReturnType<typeof canonicalPaths>, operation: z.in
 }
 
 type ReenrolTarget = "head" | "duo";
+/** Stage owner of the security-key-only migration; no account uses it. */
+const PLATFORM_DUO_MIGRATION_OWNER = "00000000-0000-4000-8000-0000000000d0";
 function reenrolStagePath(paths: ReturnType<typeof canonicalPaths>, owner: string, target: ReenrolTarget): string {
   return join(target === "head" ? paths.directory : dirname(paths.records.duo), `.${paths.binding.profileId}.${z.uuid().parse(owner)}.reenrol-${target}.canonical.tmp`);
 }
@@ -1420,12 +1422,18 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
         const frame = read("duo");
         if (frame === undefined) return;
         const prior = StoppedPlatformDuoRecordSchema.parse(frame.value);
+        // The prior record is the current shape apart from transport "internal": validate it whole, membership included.
+        DuoCredentialRecordSchema.parse({ credentials: prior.credentials.map(row => row.authenticator?.transport === "internal"
+          ? { ...row, authenticator: { ...row.authenticator, transport: "usb" } } : row) });
         const ids = prior.credentials.filter(row => row.authenticator?.transport === "internal").map(row => row.credentialId);
         if (ids.length === 0) return;
         const { head, key } = readHead();
-        retireHead(head, key, ids);
-        publishDuo(frame.revision, DuoCredentialRecordSchema.parse({ credentials: prior.credentials.filter(row => !ids.includes(row.credentialId)) }));
-      }); } catch (error) { translate(error); }
+        const next = DuoCredentialRecordSchema.parse({ credentials: prior.credentials.filter(row => !ids.includes(row.credentialId)) });
+        if (!publishable({ ...head, retired: [...head.retired, ...ids] }, next)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+        // Re-enrolment-named stages: boot and the next run clear an unrenamed one, and a rerun converges from either publication.
+        retireHead(head, key, ids, reenrolStagePath(canonical, PLATFORM_DUO_MIGRATION_OWNER, "head"));
+        publishDuo(frame.revision, next, reenrolStagePath(canonical, PLATFORM_DUO_MIGRATION_OWNER, "duo"));
+      }, true); } catch (error) { translate(error); }
     },
     /** Enrols a re-enrolment row pending; its stages are re-enrolment stages, so discard and boot can clear them. */
     enrollReenrolDuoCredential(input: DuoStoredCredential): Readonly<{ revision: number }> {
