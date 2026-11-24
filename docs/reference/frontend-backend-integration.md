@@ -470,7 +470,8 @@ lockout, profile, generation and original logout operation or completion receipt
 to signed-out after closure. Account deletion requires its explicit confirmation, profile and epoch.
 Successful sign-out clears the tab's continuation credential and the origin's resume proof.
 
-The Relay login is the work email and password saved as the profile's UCPath sign-in.
+Relay password sign-in checks the Relay email and password against the profile's verifier. The
+profile's UCPath login is saved separately in protected Settings.
 `POST /api/v1/profile/account/password` `{currentPassword, newPassword}` and
 `POST /api/v1/profile/account/username` `{currentPassword, newUsername}` change it for the current
 session authenticated by `x-relay-session`. They return `{state: "changed"}`, `{state: "unknown", code}` or
@@ -479,22 +480,14 @@ username must be a plain `@ucsd.edu` address the sign-in form accepts, must chan
 and must not be taken; a new username or password longer than the form's 160 characters, or a
 password with a line break the form's single-line input would remove, is refused. Refusals leave the saved login unchanged.
 
-The change saves both UCPath entries in one marked write, then swaps that profile's verifier row as
-its commit point, and only once the entries are proved durable. If it stops between them, it
-answers `PROFILE_LOGIN_CHANGE_UNSETTLED` and the session stays signed in: its next change writes the
-proved old login back first, and after a restart resume is refused until a sign-in with the old
-login writes it back. Recovery reads the credential store's own history (`lastEntryWriters`) and
-writes back only while a marked login write was the last to set both entries, so it survives
-unrelated protected saves and never overwrites a later Settings set, clear or erase. Neither path
-needs a logout, so parked writes stay held. A swap that landed is never undone: if only its flush
-or directory close failed, the result is `{state: "changed", durability: "unconfirmed"}`, the
-failure is logged and an unclosed descriptor stays held by its owner. If the verifier cannot be read
-back after a failed swap, the result is `PROFILE_LOGIN_CHANGE_UNKNOWN`, nothing is undone and
-neither login is promised. A change that settled keeps its result when only the profile lock's
-release fails; that failure is logged and any unclosed descriptor stays held. A changed or unknown
-result whose fault cannot be written still answers its outcome, marked `diagnostics: "unrecorded"`. An old-login restore
-that cannot prove its write durable fails the sign-in or change that ran it, which may then be
-retried. The epoch, Duo material and other profiles are unchanged.
+The verifier swap commits the Relay login change. A username change then updates the Relay email
+in the profile registry. The session stays signed in with the same epoch, and its parked writes
+stay held. If a swap lands but its flush or directory close fails, the result is
+`{state: "changed", durability: "unconfirmed"}`. If readback cannot establish whether the swap
+landed, the result is `{state: "unknown", code: "PROFILE_LOGIN_CHANGE_UNKNOWN"}`. Failures in the
+registry update or profile lock release preserve the settled result. The backend logs these
+failures and retains custody of any descriptor whose closure it cannot prove. If recording the
+failure also fails, the response retains its outcome and includes `diagnostics: "unrecorded"`.
 
 `POST /api/v1/profile/account/details`
 `{name?: {firstName, lastName}, initials?, timekeeperName?, timekeeperInitials?}` changes the current
