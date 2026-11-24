@@ -121,8 +121,6 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
     after={afterStep?.(step.id)}>
     {step.entries.map((entry, index) => <div key={entry.id}
       ref={node => { const key = JSON.stringify([step.id, entry.id]); if (node) entryTargets.current.set(key, node); else entryTargets.current.delete(key); }}
-      role={entry.kind === "decision" || (step.header === false && index === 0) ? "group" : undefined}
-      aria-label={entry.kind === "decision" ? entry.decision.title : step.header === false && index === 0 ? step.title : undefined}
       tabIndex={(entry.kind === "decision" && !entry.decision.answered) || (step.header === false && index === 0) ? -1 : undefined}
       className={cn("rounded-lg", entry.kind === "decision" && entry.decision.answered ? "outline-none" : "focus:outline-2 focus:outline-offset-2 focus:outline-ui-info")}><Entry entry={entry} onDecision={onDecision} onCancelRun={onCancelRun} timeInStep={index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} presentation={entry.screenshots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit") ? "submit" : undefined} />}</div>)}
   </StepFrame>;
