@@ -120,8 +120,8 @@ describe("served log decisions", () => {
   it("draws a decision with no served options as evidence only", async () => {
     await mount("configuration", () => {});
     assert.match(document.body.textContent ?? "", /UCPath did not open. No screenshot was captured/u);
-    assert.equal(document.querySelector("button"), null);
-    assert.equal(document.querySelector("figure"), null);
+    assert.equal(document.querySelector("button") === null, true);
+    assert.equal(document.querySelector("figure") === null, true);
   });
   it("shows no Confirm when a served failure has no choice, and locks the date without an answer handler", async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);

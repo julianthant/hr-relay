@@ -118,7 +118,7 @@ describe("served Person Lookup Run and Rerun", () => {
     assert.match(dialog.text(), /This input is protected and cannot be copied/u);
     await dialog.press("Continue");
     assert.equal(dialog.stage(), "Steps");
-    assert.equal(document.querySelector("textarea"), null);
+    assert.equal(document.querySelector("textarea") === null, true);
   });
   it("blocks a cleared rerun input before planning and accepts fresh canonical replacement input", async () => {
     const input = { mode: "search", emplId: "10000001", crmCheck: true, keepNonHdh: false, includeCrmDates: false };

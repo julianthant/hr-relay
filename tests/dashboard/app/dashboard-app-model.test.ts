@@ -46,7 +46,7 @@ describe("closing a route-backed takeover restores its toolbar door", () => {
     document.body.append(main);
 
     restoreDashboardTakeoverFocus(document, RUN_START_DOOR_ID, main.id);
-    assert.equal(document.activeElement, main);
+    assert.equal(document.activeElement === main, true);
   });
 
   it("fails loud when neither the requested door nor the main fallback exists", () => {
