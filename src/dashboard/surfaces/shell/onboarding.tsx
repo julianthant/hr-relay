@@ -72,7 +72,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
     if (previous === step) return;
     previousStep.current = step;
     submitted.current++; setBusy(false);
-    if (previous === "login" || previous === "signup") setForms(current => ({ ...current, [previous]: { ...current[previous], password: "", ...(previous === "signup" && { ucpathPassword: "" }) } }));
+    if (previous === "login" || previous === "signup") setForms(current => ({ ...current, [previous]: { ...current[previous], password: "", ...(previous === "signup" ? { ucpathPassword: "" } : {}) } }));
     setErrors({}); setLoginError(""); setDismissed(signInProblem);
   }, [step, signInProblem]);
   const requestCancellation = (next: "login" | "signup", trigger: Element | null = document.activeElement) => {
@@ -171,11 +171,11 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
             const result: PublicProfileState = await port.submit(signup ? "signup" : "login", details);
             if (request !== submitted.current) return;
             if (result.state === PROFILE_ONBOARDING_STATE) {
-              setForms(current => ({ ...current, [formStep]: { ...current[formStep], password: "", ...(signup && { ucpathPassword: "" }) } }));
+              setForms(current => ({ ...current, [formStep]: { ...current[formStep], password: "", ...(signup ? { ucpathPassword: "" } : {}) } }));
               onStep(result.step); return;
             }
             if (result.state === "signed-out") {
-              setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "", ...(signup && { ucpathPassword: "" }) } } : current);
+              setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "", ...(signup ? { ucpathPassword: "" } : {}) } } : current);
               onStep("login"); return;
             }
             if (result.state === "cancelling" || result.state === "refused" && result.code === "PROFILE_LOGOUT_BLOCKED") return;
@@ -184,7 +184,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
               if (!signup) { setForms(current => ({ ...current, login: { ...current.login, password: "" } })); focusPassword.current = true; }
               return;
             }
-            setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "", ...(signup && { ucpathPassword: "" }) } } : current);
+            setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "", ...(signup ? { ucpathPassword: "" } : {}) } } : current);
             if (result.duoState === "ready") onDashboard(); else onStep("duo");
           } catch (error) {
             if (request === submitted.current) setLoginError(operatorFailureSentence(error instanceof DashboardClientError && error.kind === "network" ? "PROFILE_CONNECTION_FAILED" : "PROFILE_AUTHORITY_UNAVAILABLE"));

@@ -71,7 +71,7 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
     },
     async resume() { return accept(await client.resumeProfile(), true); },
     async submit(step, details) {
-      const result = step === "signup" ? await client.signUpProfile(details) : await client.signInProfile({ email: details.email, password: details.password });
+      const result = step === "signup" ? await client.signUpProfile({ ...details, ucpathUsername: details.ucpathUsername ?? "", ucpathPassword: details.ucpathPassword ?? "" }) : await client.signInProfile({ email: details.email, password: details.password });
       if (step === "signup" && result.state !== PROFILE_ONBOARDING_STATE && result.state !== "refused" && result.state !== "error") throw new Error("ONBOARDING_DRAFT_REQUIRED");
       return accept(result, step === "login");
     },

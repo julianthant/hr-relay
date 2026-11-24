@@ -48,7 +48,7 @@ it("signs up through the real form with both pairs, stores the UCPath pair and s
     const started = await client.startProfileOnboardingDuo({ operationId: draft.operationId, method: "key" }); assert.ok(started.state === "onboarding");
     const confirmed = await client.confirmProfileOnboardingDuo({ operationId: draft.operationId, method: "key", attemptId: started.methods.key.attemptId ?? "", operatorConfirmed: true });
     assert.ok(confirmed.state === "onboarding" && confirmed.step === "ready");
-    const active = await client.completeProfileOnboarding({ operationId: draft.operationId }); assert.ok(active.state === "active");
+    const active = await client.completeProfileOnboarding({ operationId: draft.operationId }); assert.ok(active.state === "active", JSON.stringify(active));
     const stored = authenticateDocument(readAuthenticatedCredentialFixture(fixture.machine.stateRoot, active.profileId)) as { record: { entries: Record<string, { value: string } | undefined> } };
     assert.equal(stored.record.entries.ucpathUserId?.value, ucpath.username);
     assert.equal(stored.record.entries.ucpathPassword?.value, ucpath.password);

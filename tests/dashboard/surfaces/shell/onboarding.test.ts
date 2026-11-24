@@ -79,7 +79,7 @@ it("uses server authentication for Duo access and keeps a refused served login o
     assert.match(host.textContent ?? "", /Could not show the setup browser/);
     assert.doesNotMatch(host.textContent ?? "", /Start with your details/);
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "login", authenticated: false })));
-    for (const [name, value] of [["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"], ["ucpathUsername", "ucpath-sso"], ["ucpathPassword", "ucpath-fixture-password"]]) {
+    for (const [name, value] of [["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"]]) {
       await act(async () => { const field = host.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
         field.dispatchEvent(new Event("input", { bubbles: true })); });
