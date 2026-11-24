@@ -212,10 +212,12 @@ export const DuoDiagnosticOperationSchema = z.enum(["browser-setup", "attempt-se
 export const DUO_SCREENS = ["duo-error", "trust-prompt", "push-sent", "device-list", "push-options", "other-options", "duo-gate", "sso-page", "unknown"] as const;
 export const DuoScreenSchema = z.enum(DUO_SCREENS);
 export const DuoFrameOriginSchema = z.enum(["duo", "ucsd-duo", "ucsd-sso", "not-allowlisted"]);
+export const COPY_DUO_FRAME_LIMIT = 32;
 export const CopyDuoScreenSchema = z.strictObject({
   stage: z.enum(["gate", "push-options", "after-push"]),
   screen: z.enum([...DUO_SCREENS, "capture-timeout"]),
-  frames: z.array(DuoFrameOriginSchema).max(32),
+  frames: z.array(DuoFrameOriginSchema).max(COPY_DUO_FRAME_LIMIT),
+  framesTruncated: z.literal(true).optional(),
 });
 export type CopyDuoScreen = z.infer<typeof CopyDuoScreenSchema>;
 export const CopyDuoScreensSchema = z.array(CopyDuoScreenSchema).max(3);

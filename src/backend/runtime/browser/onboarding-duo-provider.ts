@@ -18,7 +18,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { type BrowserRoots, type BrowserRootLaunch, type BrowserRootLaunchInput, type SignupBrowserRootInput } from "../../storage/browser-roots.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
-import { DUO_SCREENS, DuoFrameOriginSchema, DuoScreenSchema, type CopyDuoScreen, DuoDiagnosticExceptionTypeSchema, DuoPortalDiagnosticCodeSchema, ProfileOnboardingDuoEventSchema, type ProfileOnboardingDuoEvent, type ProfileOnboardingDuoFailure } from "../../../models/profiles/profile.js";
+import { COPY_DUO_FRAME_LIMIT, DUO_SCREENS, DuoFrameOriginSchema, DuoScreenSchema, type CopyDuoScreen, DuoDiagnosticExceptionTypeSchema, DuoPortalDiagnosticCodeSchema, ProfileOnboardingDuoEventSchema, type ProfileOnboardingDuoEvent, type ProfileOnboardingDuoFailure } from "../../../models/profiles/profile.js";
 
 export class ProfileOnboardingDuoProviderError extends Error {
   constructor(readonly kind: "unavailable" | "refused" | "unknown",
@@ -110,7 +110,8 @@ function allowlistedOrigin(href: string): z.infer<typeof DuoFrameOriginSchema> {
 }
 
 async function readDuoScreen(page: Page): Promise<DuoScreenCapture> {
-  const frames = page.frames().map(frame => ({ frame, origin: allowlistedOrigin(frame.url()) }));
+  const all = page.frames();
+  const frames = all.slice(0, COPY_DUO_FRAME_LIMIT).map(frame => ({ frame, origin: allowlistedOrigin(frame.url()) }));
   const found = new Set<string>();
   await Promise.all(frames.map(async ({ frame, origin }) => {
     if (origin !== "duo" && origin !== "ucsd-duo") return;
@@ -137,7 +138,7 @@ async function readDuoScreen(page: Page): Promise<DuoScreenCapture> {
   const top = allowlistedOrigin(page.url());
   const screen = DUO_SCREENS.find(name => found.has(name))
     ?? (top === "ucsd-sso" ? "sso-page" : top === "not-allowlisted" ? "unknown" : "duo-gate");
-  return { screen, frames: frames.map(({ origin }) => origin) };
+  return { screen, frames: frames.map(({ origin }) => origin), ...(all.length > COPY_DUO_FRAME_LIMIT ? { framesTruncated: true as const } : {}) };
 }
 
 /** Bounded so a slow page never holds back a click or the gate's own error. */

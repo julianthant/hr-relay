@@ -122,7 +122,8 @@ export async function driveCopySignin(profile: CopyProfile, dashboard: ProfileDa
 
 /** One line per Duo capture point: its stage, the known screen name and each frame's allowlist name. */
 export function formatCopyDuoScreens(screens: readonly CopyDuoScreen[]): string {
-  return screens.map(({ stage, screen, frames }) => `duo ${stage}: ${screen} (frames: ${frames.join(", ") || "none"})\n`).join("");
+  return screens.map(({ stage, screen, frames, framesTruncated }) =>
+    `duo ${stage}: ${screen} (frames: ${frames.join(", ") || "none"}${framesTruncated ? ", truncated" : ""})\n`).join("");
 }
 
 function operatorCredentials(): SignInCredentials {

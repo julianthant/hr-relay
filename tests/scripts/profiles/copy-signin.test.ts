@@ -29,7 +29,9 @@ afterEach(() => { rmSync(directory, { recursive: true, force: true }); });
 
 it("prints one line per Duo capture with only the screen and frame allowlist names", () => {
   expect(formatCopyDuoScreens([{ stage: "gate", screen: "other-options", frames: ["duo", "not-allowlisted"] },
-    { stage: "after-push", screen: "capture-timeout", frames: [] }])).toBe("duo gate: other-options (frames: duo, not-allowlisted)\nduo after-push: capture-timeout (frames: none)\n");
+    { stage: "push-options", screen: "push-options", frames: ["duo"], framesTruncated: true },
+    { stage: "after-push", screen: "capture-timeout", frames: [] }])).toBe("duo gate: other-options (frames: duo, not-allowlisted)\n"
+    + "duo push-options: push-options (frames: duo, truncated)\nduo after-push: capture-timeout (frames: none)\n");
 });
 
 it("reads the four values from the private env file without changing quoted values", () => {

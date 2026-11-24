@@ -12,11 +12,12 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CopySigninDuoGateError, createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
 import { DuoReenrolStateSchema, ProfileOnboardingStateSchema } from "../../../../src/models/profiles/public-profile.js";
-import type { CopyDuoScreen } from "../../../../src/models/profiles/profile.js";
+import { COPY_DUO_FRAME_LIMIT, CopyDuoScreensSchema, type CopyDuoScreen } from "../../../../src/models/profiles/profile.js";
 
 interface CopyPortalFixture {
   screens?(screens: readonly CopyDuoScreen[]): void;
   capture?(): Promise<unknown>;
+  frameCount?: number;
   buttons(): readonly string[];
   click(name: string): void | Promise<void>;
   wait(): Promise<void>;
@@ -143,7 +144,7 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false, copyPort
     let url = initialUrl;
     const frame = { url: () => url, evaluate: async () => copyPortal?.capture === undefined ? true : copyPortal.capture() };
     let signInFormVerified = false;
-    return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => { if (signInFormVerified) manualSignInObserved = true; return url; },
+    return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : Array.from({ length: copyPortal?.frameCount ?? 1 }, () => frame), evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => { if (signInFormVerified) manualSignInObserved = true; return url; },
       goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://") && !destination.startsWith("about:blank")) { portalPages++; if (portalLanding === undefined) throw portalFailure; url = portalLanding; portalUrl = url; setPortalUrl = (next: string) => { url = next; portalUrl = next; }; } else url = destination; },
       waitForURL: async (matches: string | ((candidate: URL) => boolean)) => { assert.ok(typeof matches === "string" ? url === matches : matches(new URL(url))); },
       waitForLoadState: async () => undefined, on: () => undefined,
@@ -701,6 +702,36 @@ describe("draft Duo provider", () => {
       assert.deepEqual(logged?.screens, screens);
       assert.deepEqual(handed, [screens]);
       assert.deepEqual(readdirSync(w.directory, { recursive: true }).filter(name => String(name).includes("copy-signin-duo")), []);
+    } finally { await w.cleanup(); }
+  });
+
+  it("truncates a 40-frame capture to the frame limit with a flag and keeps the gate error and the launcher's list", async () => {
+    const handed: (readonly CopyDuoScreen[])[] = [];
+    let buttons = ["Other options"], refusal: unknown;
+    const w = world("darwin", { copyPortal: {
+      buttons: () => buttons,
+      click(label) { buttons = label === "Other options" ? ["Duo Push Send to phone"] : []; },
+      phone() {},
+      frameCount: 40,
+      screens(screens) { handed.push(screens); },
+      async wait() { throw Object.assign(new Error("synthetic Add a device wait"), { name: "TimeoutError" }); },
+    } });
+    w.landPortal("https://test.duosecurity.com/");
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open", generation: 1 }, state: "onboarding",
+      operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", methods: { key: idle } });
+    w.owner.readState = () => state;
+    try {
+      await w.provider.openPortal(w.owner).catch((error: unknown) => { refusal = error; });
+      const screens = (["gate", "push-options", "after-push"] as const).map(stage => ({ stage, screen: "duo-gate",
+        frames: Array.from({ length: COPY_DUO_FRAME_LIMIT }, () => "duo"), framesTruncated: true }));
+      assert.ok(refusal instanceof ProfileOnboardingDuoProviderError && refusal.cause instanceof Error && refusal.cause.message === "copy-signin-duo-push-unanswered");
+      assert.deepEqual(gateScreens(refusal), screens);
+      const logged = w.events.find(event => event.operation === "portal-open");
+      assert.equal(logged?.code, "copy-signin-duo-push-unanswered");
+      assert.deepEqual(logged?.screens, screens);
+      assert.deepEqual(handed, [screens]);
+      assert.ok(CopyDuoScreensSchema.safeParse(handed[0]).success);
     } finally { await w.cleanup(); }
   });
 
