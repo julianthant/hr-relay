@@ -15,11 +15,15 @@ const COMPARISONS = new Set([
 const ASSERT_MODULES = new Set(["node:assert", "node:assert/strict", "assert", "assert/strict"]);
 const NODE_PROBE = resolve(REPO_ROOT, "tests/architecture/tooling/dom-node-probe.ts");
 const PROOF = resolve(REPO_ROOT, "tests/architecture/tooling/dom-node-proof.ts");
+const PLAIN = resolve(REPO_ROOT, "tests/dashboard/app/startup/dom-node-plain.ts");
+const HELPER_CALLER = resolve(REPO_ROOT, "tests/dashboard/app/startup/dom-node-helper-caller.ts");
+const IMPORTS_ASSERT = /["']node:assert(\/strict)?["']|["']assert(\/strict)?["']/u;
 
 const PROOF_SOURCE = [
   'import assert from "node:assert/strict";',
   'import * as nodeAssert from "node:assert";',
   'import { deepEqual } from "node:assert/strict";',
+  'import { default as aliased } from "node:assert/strict";',
   'const trigger = () => document.querySelector<HTMLButtonElement>(\'button[aria-label="Search"]\')!;',
   "export function original() { assert.equal(document.activeElement, trigger()); }",
   "export function namespace(rows: readonly HTMLElement[]) { nodeAssert.deepStrictEqual(rows, []); }",
@@ -27,16 +31,26 @@ const PROOF_SOURCE = [
   "export function identity() { assert.equal(document.activeElement === trigger(), true); }",
   "export function property() { assert.equal(document.activeElement?.getAttribute(\"aria-label\"), \"Search\"); }",
   "export function truthy() { assert.ok(document.activeElement); }",
+  "export function defaultAlias() { aliased.equal(document.activeElement, trigger()); }",
+  "export function defaultAliasIdentity() { aliased.equal(document.activeElement === trigger(), true); }",
 ].join("\n");
 
-function scanRoots(): string[] {
-  return gitVisibleFiles(["tests"])
+const HELPER_CALLER_SOURCE = [
+  'import assert from "node:assert/strict";',
+  'import { never, start } from "./startup-harness.js";',
+  'export async function helperValue() { assert.equal((await start({ "/": never })).host.querySelector("form"), null); }',
+].join("\n");
+
+// Every assert importer is a candidate: a DOM value can arrive from a helper without any DOM word in the file.
+function selectRoots(paths: readonly string[], read: (path: string) => string): string[] {
+  return paths
     .filter((path) => /\.tsx?$/u.test(path) && !path.startsWith("tests/architecture/"))
-    .filter((path) => {
-      const text = readFileSync(resolve(REPO_ROOT, path), "utf8");
-      return /["']node:assert(\/strict)?["']|["']assert(\/strict)?["']/u.test(text) && /\bdocument\b|\bElement\b|\bNode\b/u.test(text);
-    })
-    .map((path) => resolve(REPO_ROOT, path));
+    .map((path) => resolve(REPO_ROOT, path))
+    .filter((path) => IMPORTS_ASSERT.test(read(path)));
+}
+
+function scanRoots(): string[] {
+  return selectRoots(gitVisibleFiles(["tests"]), (path) => readFileSync(path, "utf8"));
 }
 
 function compilerOptions(): ts.CompilerOptions {
@@ -52,6 +66,7 @@ function assertModuleBinding(checker: ts.TypeChecker, identifier: ts.Identifier)
   if (importDeclaration === undefined || !ts.isStringLiteral(importDeclaration.moduleSpecifier)
     || !ASSERT_MODULES.has(importDeclaration.moduleSpecifier.text)) return undefined;
   if (ts.isImportClause(declaration) || ts.isNamespaceImport(declaration)) return "module";
+  if (ts.isImportSpecifier(declaration) && (declaration.propertyName ?? declaration.name).text === "default") return "module";
   if (ts.isImportSpecifier(declaration)) return COMPARISONS.has((declaration.propertyName ?? declaration.name).text) ? "function" : undefined;
   return undefined;
 }
@@ -62,6 +77,8 @@ function holdsNode(checker: ts.TypeChecker, type: ts.Type, node: ts.Type, seen =
   if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) return false;
   if (type.isUnion()) return type.types.some((member) => holdsNode(checker, member, node, seen));
   if (type.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined)) return false;
+  // An empty intersection is assignable to everything, Node included.
+  if (checker.isTypeAssignableTo(type, checker.getNeverType())) return false;
   if (checker.isTypeAssignableTo(type, node)) return true;
   if (checker.isArrayType(type) || checker.isTupleType(type)) {
     return checker.getTypeArguments(type as ts.TypeReference).some((element) => holdsNode(checker, element, node, seen));
@@ -71,13 +88,14 @@ function holdsNode(checker: ts.TypeChecker, type: ts.Type, node: ts.Type, seen =
 
 export function findDomNodeAssertions(roots: readonly string[], virtual: ReadonlyMap<string, string> = new Map()): string[] {
   const sources = new Map([...virtual, [NODE_PROBE, "export type DomNode = Node;"]]);
-  const program = createGuardProgram([...roots, ...virtual.keys(), NODE_PROBE], compilerOptions(), sources);
+  const files = [...new Set([...roots, ...virtual.keys()])];
+  const program = createGuardProgram([...files, NODE_PROBE], compilerOptions(), sources);
   const checker = program.getTypeChecker();
   const probe = program.getSourceFile(NODE_PROBE)?.statements.find(ts.isTypeAliasDeclaration);
   assert.ok(probe, "the DOM Node probe must compile");
   const node = checker.getTypeAtLocation(probe);
   const violations: string[] = [];
-  for (const root of [...roots, ...virtual.keys()]) {
+  for (const root of files) {
     const source = program.getSourceFile(root);
     assert.ok(source, `${repoRelative(root)} must be in the guard program`);
     const visit = (child: ts.Node): void => {
@@ -101,15 +119,23 @@ export function findDomNodeAssertions(roots: readonly string[], virtual: Readonl
 describe("DOM node assertions", () => {
   it("compares jsdom nodes by identity, never through node:assert equality", () => {
     const roots = scanRoots();
-    assert.ok(roots.length > 0, "the scan must resolve DOM test files");
+    assert.ok(roots.includes(resolve(REPO_ROOT, "tests/dashboard/app/startup/startup-gate.test.ts")), "helper-fed DOM tests are scanned");
     assert.deepEqual(findDomNodeAssertions(roots), []);
   }, 120_000);
 
-  it("catches the original search palette focus assertion and its namespace and named forms", () => {
+  it("catches the original search palette focus assertion and its namespace, named and default-alias forms", () => {
     assert.deepEqual(findDomNodeAssertions([], new Map([[PROOF, PROOF_SOURCE]])), [
-      "tests/architecture/tooling/dom-node-proof.ts:5:30",
-      "tests/architecture/tooling/dom-node-proof.ts:6:59",
-      "tests/architecture/tooling/dom-node-proof.ts:7:44",
+      "tests/architecture/tooling/dom-node-proof.ts:6:30",
+      "tests/architecture/tooling/dom-node-proof.ts:7:59",
+      "tests/architecture/tooling/dom-node-proof.ts:8:44",
+      "tests/architecture/tooling/dom-node-proof.ts:12:34",
     ]);
+  }, 120_000);
+
+  it("selects a file whose DOM value comes only from a helper and flags its comparison", () => {
+    const virtual = new Map([[HELPER_CALLER, HELPER_CALLER_SOURCE], [PLAIN, "export const plain = 1;"]]);
+    const roots = selectRoots([HELPER_CALLER, PLAIN].map(repoRelative), (path) => virtual.get(path) ?? "");
+    assert.deepEqual(roots.map(repoRelative), ["tests/dashboard/app/startup/dom-node-helper-caller.ts"]);
+    assert.deepEqual(findDomNodeAssertions(roots, virtual), ["tests/dashboard/app/startup/dom-node-helper-caller.ts:3:39"]);
   }, 120_000);
 });
