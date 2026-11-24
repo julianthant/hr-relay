@@ -187,9 +187,10 @@ scriptedTest("an answered gate: the row arrives on the stream and nothing reopen
   await page.waitForTimeout(ROW_WAIT_AND_MARGIN_MS);
   await quiet(page, seen);
   expect(await row.textContent(), "the settled row stays settled").toBe(settled);
-  expect(seen.filter(entry => entry === "POST /api/v1/commands"), "one command").toHaveLength(1);
-  expect(seen.filter(entry => entry.startsWith("GET /events/v1")).length, "stream opens after the press").toBe(ANSWERED_GATE.stream);
-  expect(seen.filter(entry => entry.startsWith("GET /api/v1/dashboard?day=")).length, "day reads after the press").toBe(ANSWERED_GATE.day);
+  expect.soft(seen, "all requests after the press").toEqual([]);
+  expect.soft(seen.filter(entry => entry === "POST /api/v1/commands"), "one command").toHaveLength(1);
+  expect.soft(seen.filter(entry => entry.startsWith("GET /events/v1")).length, "stream opens after the press").toBe(ANSWERED_GATE.stream);
+  expect.soft(seen.filter(entry => entry.startsWith("GET /api/v1/dashboard?day=")).length, "day reads after the press").toBe(ANSWERED_GATE.day);
 });
 
 /** One envelope a run-topic stream received, with its arrival time. */
