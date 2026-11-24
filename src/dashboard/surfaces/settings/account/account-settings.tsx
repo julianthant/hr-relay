@@ -38,14 +38,14 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
   // A saved result overrides the served values only until the served account itself changes.
   const values = saved?.base === base ? saved.values : page.values;
   const { toast } = useToasts();
-  // The session's account is read at sign-in, so a username changed earlier shows again only once re-read here.
-  const [served, setServed] = useState<string | undefined>();
-  const readAccount = page.readAccount;
+  // The session's account is read at sign-in, so a username changed earlier shows again only once re-read here; a read account with no username shows none.
+  const [read, setRead] = useState<AccountValues | undefined>();
+  const readAccount = useRef(page.readAccount);
   useEffect(() => {
     let live = true;
-    void readAccount?.().then(account => { if (live && account?.username !== undefined) setServed(account.username); }, () => undefined);
+    void readAccount.current?.().then(account => { if (live) setRead(account); }, () => undefined);
     return () => { live = false; };
-  }, [readAccount]);
+  }, []);
   /** Resolves to the refusal sentence to show in the open dialog, or undefined once the dialog may close. */
   const save = async (request: ProfileDetailsChangeRequest, title: string): Promise<string | undefined> => {
     let result: ProfileDetailsChangeResult;
@@ -69,7 +69,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     <PageHeading title="Account" />
     <Group label="Relay account" description="How you sign in to Relay.">
       {details("Name", values.name, next => { const [firstName = "", ...rest] = next.split(/\s+/u); return { name: { firstName, lastName: rest.join(" ") } }; })}
-      <RelayLoginRows login={{ ...login, username: served ?? username }} />
+      <RelayLoginRows login={{ ...login, username: read === undefined ? username : read.username }} />
       {details("Initials", values.initials, initials => ({ initials }))}
       <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-6" /></span>} />
     </Group>

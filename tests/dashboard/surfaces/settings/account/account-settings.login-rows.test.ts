@@ -234,4 +234,16 @@ describe("Settings > Account Relay login rows", () => {
     assert.match(rowText(), /Username.*new\.name@ucsd\.edu/u);
     assert.doesNotMatch(rowText(), /old\.name@ucsd\.edu/u);
   });
+
+  it("shows the served username on the Account page when it opens, and none when the served account has none", async () => {
+    const values = { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: "2026-09-13T12:00:00.000Z", username: "old.name@ucsd.edu" };
+    const page = { values, details: async () => ({ state: "refused", code: "PROFILE_INITIALS_REFUSED" }) as never, readAccount: async () => ({ name: values.name, initials: values.initials, timekeeper: values.timekeeper, timekeeperInitials: values.timekeeperInitials, lastSignedInAt: values.lastSignedInAt }), login: { changePassword: async () => changed, changeUsername: async () => changed } };
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root?.render(createElement(ToastProvider, { children: createElement(AccountSettings, { page, username: values.username, ucpath: null, deleteAccount: null }) })));
+    await settle();
+    assert.match(rowText(), /UsernameShown after your next sign-in/u);
+    assert.doesNotMatch(rowText(), /old\.name@ucsd\.edu/u);
+  });
 });
