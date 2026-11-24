@@ -33,15 +33,15 @@ const TOAST = {
 } satisfies Record<NotificationItem["tone"], Story>;
 
 /** The bell's popover over the dashboard: the rail, the bell in its header, and an idle queue and Logs behind it. */
-function PopoverScene({ state, show: initial = "all", open = true, notice }: { state: NotificationsState; show?: NotificationsShow; open?: boolean; notice?: string }) {
+function PopoverScene({ state, show: initial = "all", open = true, notice, collapsed = false }: { state: NotificationsState; show?: NotificationsShow; open?: boolean; notice?: string; collapsed?: boolean }) {
   const [show, setShow] = useState(initial);
   const emptyPanel = (title: string, description?: string) => <Panel className="min-h-0 flex-1"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState title={title} description={description} /></PanelBody></Panel>;
   return <StoryFrame>
-    <aside aria-label="Workspace" className="workspace-rail ui-theme-scope"><header className="workspace-rail-header"><h2>Relay</h2><div className="workspace-rail-actions">
+    <aside aria-label="Workspace" className="workspace-rail ui-theme-scope" data-collapsed={collapsed || undefined}><header className="workspace-rail-header"><h2>Relay</h2><div className="workspace-rail-actions">
       <IconButton variant="ghost" size="sm" label="Collapse sidebar" title="" icon={<PanelLeft aria-hidden className="size-4" />} />
       <NotificationsPopover state={state} open={open} onOpenChange={noop} {...(notice === undefined ? {} : { notice })} show={show} onShow={setShow} onReadAll={noop} onOpen={noop} onControl={noop} canAct={() => true} />
       <IconButton variant="ghost" size="sm" label="Search" title="" icon={<Search aria-hidden className="size-4" />} />
-    </div></header><div className="workspace-rail-body"><WorkflowRail workflows={SHELL_STORY_WORKFLOWS} counts={SHELL_STORY_COUNTS_IDLE} active="person-lookup" onSelect={noop} collapsed={false} /></div></aside>
+    </div></header><div className="workspace-rail-body"><WorkflowRail workflows={SHELL_STORY_WORKFLOWS} counts={SHELL_STORY_COUNTS_IDLE} active="person-lookup" onSelect={noop} collapsed={collapsed} /></div></aside>
     <main className="flex min-h-0 flex-1 flex-col"><div className="dashboard-panel-columns"><div className="dashboard-queue-column"><h1 className="sr-only">Person Lookup queue</h1>{emptyPanel("No runs on this day")}</div>
       <div className="dashboard-log-column">{emptyPanel("No run open", "Select a run from the queue to open its logs.")}</div></div></main>
   </StoryFrame>;
@@ -84,4 +84,21 @@ const BELL = {
   loading: bell("The bell while notifications load", "loading"), unavailable: bell("The bell when notifications cannot be read", "unavailable"),
 } satisfies Record<BellState, Story>;
 
-export const NOTIFICATIONS_STORIES = defineSurface("notifications", { popover: POPOVER_STATE, tone: TONE, kind: KIND, combination: COMBINATION, bell: BELL, toast: TOAST });
+/** The count must sit clear of the search button beside it (below it when the sidebar is minimized). */
+const countClearOfSearch: NonNullable<Story["play"]> = async page => {
+  const count = await page.locator(".notice-bell-count").boundingBox();
+  const search = await page.getByRole("button", { name: "Search", exact: true }).boundingBox();
+  if (count === null || search === null) throw new Error("the bell's count or the search button is not drawn");
+  if (count.x < search.x + search.width && search.x < count.x + count.width && count.y < search.y + search.height && search.y < count.y + count.height) {
+    throw new Error("the bell's count covers the search button");
+  }
+};
+const counted = (unread: number, collapsed: boolean): Story => ({
+  title: `The bell with ${String(unread)} unread, sidebar ${collapsed ? "minimized" : "open"}`, ready: `button[aria-label="Notifications, ${String(unread)} unread"]`, play: countClearOfSearch,
+  render: () => <PopoverScene state={notificationsReady(...Array.from({ length: unread }, (_, index) => ({ ...NOTICE_BY_TONE.info, id: `unread-${String(index)}`, read: false })))} open={false} collapsed={collapsed} />,
+});
+type BellCount = 1 | 14 | 66 | 140;
+const BELL_COUNT = { 1: counted(1, false), 14: counted(14, false), 66: counted(66, false), 140: counted(140, false) } satisfies Record<BellCount, Story>;
+const BELL_COUNT_COLLAPSED = { 1: counted(1, true), 14: counted(14, true), 66: counted(66, true), 140: counted(140, true) } satisfies Record<BellCount, Story>;
+
+export const NOTIFICATIONS_STORIES = defineSurface("notifications", { popover: POPOVER_STATE, tone: TONE, kind: KIND, combination: COMBINATION, bell: BELL, "bell-count": BELL_COUNT, "bell-count-collapsed": BELL_COUNT_COLLAPSED, toast: TOAST });
