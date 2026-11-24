@@ -48,7 +48,7 @@ jobs:
           NAMES_HEAD: ${{ github.head_ref }}
           NAMES_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: npm run names:check -- --branch "$NAMES_HEAD" --base "$NAMES_BASE" --title "$NAMES_TITLE" --closing-line
+        run: printf '%s' "$PR_BODY" | npm run names:check -- --branch "$NAMES_HEAD" --base "$NAMES_BASE" --title "$NAMES_TITLE" --closing-line
       - name: Fetch the pull request base
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}

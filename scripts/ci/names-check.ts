@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -197,7 +198,7 @@ function main(): void {
     const problem = titleProblem(request.title ?? "");
     if (problem) reject(problem);
   }
-  if (request.closingLine && !/(?:^|\n)Closes #[1-9][0-9]*\s*$/u.test(process.env.PR_BODY ?? "")) {
+  if (request.closingLine && !/(?:^|\n)Closes #[1-9][0-9]*\s*$/u.test(readFileSync(0, "utf8"))) {
     reject(report("PR_BODY", 'pull request body must end with "Closes #<issue>"'));
   }
   if (request.worktree !== undefined) {
