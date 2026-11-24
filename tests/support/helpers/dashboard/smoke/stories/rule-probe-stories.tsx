@@ -1,7 +1,7 @@
 /** Planted violations that prove each state rule bites, on the dashboard's real primitives. Never part of the catalogue. */
 import { useEffect, useState } from "react";
 import {
-  ActionBar, ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, useToasts,
+  ActionBar, ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, Switch, useToasts,
 } from "../../../../../../src/dashboard/ds/ui.js";
 import type { StateRuleName } from "../state-rule-limits.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
@@ -105,6 +105,16 @@ export const RULE_PROBES = {
         /^(?![\s\S]*"(?:List|Board|Zoom out)")/u,
       ],
     },
+  },
+  "switch-ring-on-its-control": {
+    story: {
+      title: "A switch that rings its control, and an invisible input that rings nothing",
+      render: () => <StoryFrame>
+        <Switch label="Dry run" checked={false} onCheckedChange={() => undefined} />
+        <label><input type="checkbox" style={{ opacity: 0 }} /><span>Plain</span></label>
+      </StoryFrame>,
+    },
+    finds: { "named-and-focusable": [/"Plain" shows no focus ring/u, /^(?![\s\S]*"Dry run")/u] },
   },
   "nested-clip": {
     story: {

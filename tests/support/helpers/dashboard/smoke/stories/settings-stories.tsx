@@ -185,50 +185,50 @@ const BREAK_SETS = {
   /** The Downloads row shows a file path. */
   PATH: breaks("no-banned-text"),
   /** The notice sits over the page's headings. */
-  TOAST: breaks("toast-text-only"),
+  TOAST: breaks(),
   /** The Account edit dialog draws no body padding. */
-  DIALOG_PADDING: breaks("dialogs-share-shape"),
+  DIALOG_PADDING: breaks(),
   /** DIALOG_PADDING, and Save is not the accent while the dialog shows a refusal. */
-  DIALOG_PADDING_ACCENT: breaks("dialogs-share-shape", "primary-button-accent"),
-  /** The page's switches and open notice leave controls with no keyboard stop or focus ring. */
+  DIALOG_PADDING_ACCENT: breaks("primary-button-accent"),
+  /** The search field and an open notice leave controls with no keyboard stop. */
   FOCUS: breaks("named-and-focusable"),
   /** FOCUS, and the Downloads row shows a file path. */
   FOCUS_AND_PATH: breaks("named-and-focusable", "no-banned-text"),
   /** FOCUS, and the Account edit dialog draws no body padding. */
-  FOCUS_DIALOG_PADDING: breaks("dialogs-share-shape", "named-and-focusable"),
+  FOCUS_DIALOG_PADDING: breaks("named-and-focusable"),
   /** FOCUS_DIALOG_PADDING, and Save is not the accent while the dialog shows a refusal. */
-  FOCUS_DIALOG_PADDING_ACCENT: breaks("dialogs-share-shape", "named-and-focusable", "primary-button-accent"),
+  FOCUS_DIALOG_PADDING_ACCENT: breaks("named-and-focusable", "primary-button-accent"),
   /** FOCUS, and the toast sits over the page's headings. */
-  FOCUS_TOAST: breaks("named-and-focusable", "toast-text-only"),
+  FOCUS_TOAST: breaks("named-and-focusable"),
   /** PATH, and the notice or toast sits over the page's headings. */
-  PATH_TOAST: breaks("no-banned-text", "toast-text-only"),
+  PATH_TOAST: breaks("no-banned-text"),
   /** FOCUS_AND_PATH, and the notice or toast sits over the page's headings. */
-  FOCUS_PATH_TOAST: breaks("named-and-focusable", "no-banned-text", "toast-text-only"),
+  FOCUS_PATH_TOAST: breaks("named-and-focusable", "no-banned-text"),
 } as const;
 
 /** By `<state type>/<member>`. */
 const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleName, string>>>>> = {
-  "chatgpt/connected": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/expired": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/loading": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/sign-in-expired": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/signed-out": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/signing-in": BREAK_SETS.FOCUS_AND_PATH,
-  "chatgpt/unavailable": BREAK_SETS.FOCUS_AND_PATH,
+  "chatgpt/connected": BREAK_SETS.PATH,
+  "chatgpt/expired": BREAK_SETS.PATH,
+  "chatgpt/loading": BREAK_SETS.PATH,
+  "chatgpt/sign-in-expired": BREAK_SETS.PATH,
+  "chatgpt/signed-out": BREAK_SETS.PATH,
+  "chatgpt/signing-in": BREAK_SETS.PATH,
+  "chatgpt/unavailable": BREAK_SETS.PATH,
   "dialog/discard-changes": BREAK_SETS.PATH,
   "dialog/disconnect-chatgpt": BREAK_SETS.PATH,
-  "load/loaded": BREAK_SETS.FOCUS_AND_PATH,
-  "plan/disabled": BREAK_SETS.FOCUS_AND_PATH,
-  "plan/enabled": BREAK_SETS.FOCUS_AND_PATH,
-  "plan/limit-reached": BREAK_SETS.FOCUS_AND_PATH,
-  "resolution/open": BREAK_SETS.FOCUS_AND_PATH,
-  "resolution/unknown": BREAK_SETS.FOCUS_AND_PATH,
-  "runtime/current": BREAK_SETS.FOCUS_AND_PATH,
-  "save/idle": BREAK_SETS.FOCUS_AND_PATH,
+  "load/loaded": BREAK_SETS.PATH,
+  "plan/disabled": BREAK_SETS.PATH,
+  "plan/enabled": BREAK_SETS.PATH,
+  "plan/limit-reached": BREAK_SETS.PATH,
+  "resolution/open": BREAK_SETS.PATH,
+  "resolution/unknown": BREAK_SETS.PATH,
+  "runtime/current": BREAK_SETS.PATH,
+  "save/idle": BREAK_SETS.PATH,
   "save/saving": BREAK_SETS.FOCUS_AND_PATH,
   "search/none": BREAK_SETS.FOCUS_AND_PATH,
   "search/results": BREAK_SETS.FOCUS_AND_PATH,
-  "section/general": BREAK_SETS.FOCUS_AND_PATH,
+  "section/general": BREAK_SETS.PATH,
   "credentials/unknown": BREAK_SETS.TOAST,
   "dialog/change-password": BREAK_SETS.DIALOG_PADDING,
   "dialog/edit-name": BREAK_SETS.DIALOG_PADDING,
@@ -236,7 +236,6 @@ const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleNam
   "dialog/change-password-refused": BREAK_SETS.DIALOG_PADDING_ACCENT,
   "dialog/edit-name-refused": BREAK_SETS.DIALOG_PADDING_ACCENT,
   "dialog/edit-username-refused": BREAK_SETS.DIALOG_PADDING_ACCENT,
-  "load/loading": BREAK_SETS.FOCUS,
   "notice/opened-for-check": BREAK_SETS.FOCUS,
   "search/reading": BREAK_SETS.FOCUS,
   "search/unavailable": BREAK_SETS.FOCUS,
@@ -245,7 +244,7 @@ const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleNam
   "action/password-changed": BREAK_SETS.FOCUS_TOAST,
   "action/password-not-confirmed": BREAK_SETS.FOCUS_TOAST,
   "notice/restart-required": BREAK_SETS.FOCUS_PATH_TOAST,
-  "notice/setting-unavailable": BREAK_SETS.FOCUS_PATH_TOAST,
+  "notice/setting-unavailable": BREAK_SETS.PATH_TOAST,
   "runtime/restart-required": BREAK_SETS.FOCUS_PATH_TOAST,
   "save-combo/replayed": BREAK_SETS.FOCUS_PATH_TOAST,
   "save-combo/restart-required": BREAK_SETS.FOCUS_PATH_TOAST,

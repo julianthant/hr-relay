@@ -325,7 +325,10 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
   // A control drawn as a 1px box (a hidden radio or checkbox) shows its focus on the label that stands in for it.
   const stoodInFor = (element: Element): readonly Element[] => {
     const box = element.getBoundingClientRect();
-    if (!(element instanceof HTMLInputElement) || box.width > 1 && box.height > 1) return [element];
+    // A switch's input is laid over its whole row at opacity 0 so the row takes the click; the ring a keyboard user sees
+    // is drawn on the visible control beside it (WCAG 2.4.7 asks that a ring be visible, not that it sit on the input).
+    const overlay = element instanceof HTMLInputElement && getComputedStyle(element).opacity === "0";
+    if (!(element instanceof HTMLInputElement) || box.width > 1 && box.height > 1 && !overlay) return [element];
     return [...element.labels ?? []].flatMap(label => [label, ...label.querySelectorAll("*")]).filter(part => part !== element);
   };
   const look = (element: Element): string => JSON.stringify(stoodInFor(element).map(part => {

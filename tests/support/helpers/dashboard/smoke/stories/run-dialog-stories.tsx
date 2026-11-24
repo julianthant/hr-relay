@@ -67,10 +67,8 @@ const rerunClient = (served: Partial<DashboardClient> = {}) => () => runDialogCl
 const planning = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ submitStartPlan: async () => runDialogPlan(), executeCommand: async () => RUN_DIALOG_APPLIED, ...served });
 const start = (page: Page) => press(page, "Start run");
 
-/** Every dialog is built from the same large banded shell, which draws its body padding off the design system's. */
-const SHELL_BREAK = { "dialogs-share-shape": "#532" } as const;
 const stage = (title: string, client: () => DashboardClient, at: RunStartStage, extra: Partial<Story> & SceneOptions = {}) =>
-  scene(title, client, at, { knownFailures: SHELL_BREAK, ...extra });
+  scene(title, client, at, extra);
 
 const STAGE = {
   Input: stage("Input, nothing typed", () => runDialogClient(), "Input"),
@@ -120,7 +118,7 @@ const REFUSAL = {
 
 const ANSWER = {
   conflict: stage("The start answered with a version conflict", planning({ executeCommand: async () => RUN_DIALOG_CONFLICT }), "Checks", { then: start,
-    knownFailures: { ...SHELL_BREAK, "no-banned-text": "#532" } }),
+    knownFailures: { "no-banned-text": "#532" } }),
 } satisfies Record<string, Story>;
 
 const RETAINED_KEY = `hrauto:run-launch:v1:${RUN_DIALOG_ACTOR}`;
@@ -131,8 +129,8 @@ const retainedCommand = () => JSON.stringify({ version: 1, command: { commandId:
 const saved = (value: string | null) => () => { if (value === null) window.sessionStorage.removeItem(RETAINED_KEY); else window.sessionStorage.setItem(RETAINED_KEY, value); };
 const RECOVERY = {
   none: stage("Nothing saved from an earlier start", () => runDialogClient(), "Input", { before: saved(null) }),
-  unreadable: stage("A saved start that cannot be read", () => runDialogClient(), "Input", { before: saved("not json"), knownFailures: { ...SHELL_BREAK, "no-banned-text": "#532" } }),
-  retained: stage("A start sent earlier and not confirmed", planning({ executeCommand: never }), "Input", { before: saved(retainedCommand()), knownFailures: { ...SHELL_BREAK, "no-banned-text": "#532" } }),
+  unreadable: stage("A saved start that cannot be read", () => runDialogClient(), "Input", { before: saved("not json"), knownFailures: { "no-banned-text": "#532" } }),
+  retained: stage("A start sent earlier and not confirmed", planning({ executeCommand: never }), "Input", { before: saved(retainedCommand()), knownFailures: { "no-banned-text": "#532" } }),
 } satisfies Record<LaunchRecovery["state"], Story>;
 
 /** The Options stage's controls, each pressed once away from its default. */
@@ -178,7 +176,7 @@ const REFERENCE = {
   "check-failed": reference("The optional check's list could not be read", { workbookCatalog: async () => unreadable(), workbookCompatibility: async () => ({ workflows: [], libraries: [] }) }, RUN_DIALOG_CHECK_CATALOG),
 } satisfies Record<ReferenceState, Story>;
 
-/** The dialog's switches and radios draw no focus ring, and its controls show no keyboard stop, in these stories. */
+/** The dialog's controls show no keyboard stop in these stories. */
 const FOCUS_BREAKS: ReadonlySet<string> = new Set([
   "activity/checking-warnings",
   "activity/planning",
@@ -189,21 +187,12 @@ const FOCUS_BREAKS: ReadonlySet<string> = new Set([
   "check-combination/unfixable-failure",
   "checks/checking",
   "checks/ready",
-  "options/browser-mode",
-  "options/dry-run",
-  "options/priority",
-  "pdf/choice-picked",
   "pdf/choice-unpicked",
   "refusal/active-run-exists",
   "refusal/capability-unavailable",
   "refusal/dry-run-unsupported",
   "refusal/input-invalid",
   "refusal/preflight-failed",
-  "rerun-load/failed",
-  "rerun-load/loading",
-  "rerun-load/ready",
-  "stage/Options",
-  "stage/Steps",
 ]);
 
 export const RUN_DIALOG_STORIES = defineSurface("run-dialog", {
