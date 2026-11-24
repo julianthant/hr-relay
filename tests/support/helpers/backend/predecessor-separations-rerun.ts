@@ -18,8 +18,13 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
   vi.doMock("../../../../src/models/validation/schema-bound-value.js", async importOriginal => {
     const current = await importOriginal<typeof import("../../../../src/models/validation/schema-bound-value.js")>();
     const { FingerprintSchema } = await import("../../../../src/rules/identity/ids.js");
-    return { ...current, deriveSchemaHash: (schema: Parameters<typeof current.deriveSchemaHash>[0], io: "input" | "output") =>
-      FingerprintSchema.parse(predecessorEvidenceSchemaHash(schema, io)) };
+    // Registration hashes the same schemas many times; each predecessor hash renders a JSON Schema.
+    const hashes = new WeakMap<object, Map<string, ReturnType<typeof FingerprintSchema.parse>>>();
+    return { ...current, deriveSchemaHash: (schema: Parameters<typeof current.deriveSchemaHash>[0], io: "input" | "output") => {
+      const byIo = hashes.get(schema) ?? new Map<string, ReturnType<typeof FingerprintSchema.parse>>(); hashes.set(schema, byIo);
+      const hash = byIo.get(io) ?? FingerprintSchema.parse(predecessorEvidenceSchemaHash(schema, io)); byIo.set(io, hash);
+      return hash;
+    } };
   });
   // The receipt is derived by the build that stored the run: the profile-name-domain build, whose Separations input had no stored initials.
   const restoreBuild = simulatePreviousSeparationsInputGeneration();
