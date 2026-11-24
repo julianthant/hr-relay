@@ -118,14 +118,17 @@ test("worker add and remove settle after delayed or refused replies and clear on
     reply = Promise.withResolvers<boolean>();
     await remove.click();
     await expect(remove).toBeDisabled();
-    await expect(worker.getByRole("status")).toHaveText("Remove requested…");
+    await expect(worker).toContainText("Removing");
+    await expect(worker.getByRole("status")).toHaveCount(0);
     reply.resolve(false);
-    await expect(worker.getByRole("alert")).toBeVisible();
+    await expect(toasts.filter({ hasText: "Couldn't remove" })).toHaveCount(1);
+    await expect(worker).toContainText("Idle");
     await expect(remove).toBeEnabled();
 
     reply = Promise.withResolvers<boolean>();
     await remove.click();
-    await expect(worker.getByRole("status")).toHaveText("Remove requested…");
+    await expect(worker).toContainText("Removing");
+    await expect(worker.getByRole("status")).toHaveCount(0);
     reply.resolve(true);
     await expect(worker).toBeHidden();
     await publishWorkers();

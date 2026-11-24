@@ -294,7 +294,7 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
       return;
     }
     // A refusal the send itself returned keeps its note; one found on read-back is a toast.
-    if (proven?.state === 'refused' && answered) { retain({ request, state: 'refused', message: proven.message, code: proven.code }); return; }
+    if (proven?.state === 'refused' && answered && request.action !== 'remove') { retain({ request, state: 'refused', message: proven.message, code: proven.code }); return; }
     drop(request);
     onRefused.current?.(proven === undefined || request.action === 'retry' ? FAILED[request.action] : proven.message);
   }, [port, acceptReadback, retain, drop]);

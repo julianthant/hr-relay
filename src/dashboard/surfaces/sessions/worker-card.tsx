@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pause, Play, RotateCw, Square, Trash2 } from "lucide-react";
+import { Loader2, Pause, Play, RotateCw, Square, Trash2 } from "lucide-react";
 import { Button, Tooltip, TooltipProvider } from "../../ds/ui.js";
 import { IconActionButton } from "../shared/actions/icon-action-button.js";
 import { cn } from "../../lib/utils.js";
@@ -44,13 +44,14 @@ function Browsers({ worker, wide }: { worker: SessionWorker; wide: boolean }) {
 
 export function IdleWorkerRow({ worker, countdown, operation, disabled = false, onControl }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; disabled?: boolean; onControl: (id: string, control: SessionControl) => void }) {
   const locked = disabled || operation?.state === "pending";
+  const removing = operation?.state === "pending" && operation.request.action === "remove";
   return <li aria-label={`${worker.label} · ${worker.workflow}`} className="list-none rounded-md bg-[var(--ds-worker-card-bg)] px-3">
     <div className="flex min-h-8 items-center justify-between gap-3">
       <span className="min-w-0 truncate text-control" title={worker.workflow}>{worker.workflow}</span>
-      <span className="flex shrink-0 items-center gap-2"><span className={cn("inline-flex items-center gap-1.5 text-caption", sessionStateColor(worker.state))}>{countdown ? <IdleRefreshRing countdown={countdown} /> : null}{SESSION_STATE_LABELS[worker.state]}</span>
+      <span className="flex shrink-0 items-center gap-2"><span className={cn("inline-flex items-center gap-1.5 text-caption", sessionStateColor(worker.state))}>{removing ? <Loader2 aria-hidden className="size-3 animate-spin" /> : countdown ? <IdleRefreshRing countdown={countdown} /> : null}{removing ? "Removing" : SESSION_STATE_LABELS[worker.state]}</span>
         <IconActionButton tone="muted" label="Remove worker" disabled={locked} icon={<Trash2 aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, "remove")} /></span>
     </div>
-    <WorkerOperationNote operation={operation} />
+    {!removing && <WorkerOperationNote operation={operation} />}
   </li>;
 }
 
