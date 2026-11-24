@@ -607,11 +607,13 @@ function streamedRunState(client: object, authority: RunLogAuthority, row: RowId
   if (panel === undefined) return keptRunLogsState(client, authority, row) ?? { state: "loading" };
   if (panel.state === "refused") return refusedPanelState(panel.error);
   try {
+    // A panel the stream delivered below its own day's row is invalid whatever row is rendered: the row on screen may
+    // still be the older one the panel matches.
+    if (behind) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
     const snapshot = streamedRunSnapshot(row, panel);
     if (snapshot.detail.rowRevision >= row.rowRevision) return { state: "loaded", snapshot };
-    // A panel the row moved ahead of is catching up; one the stream delivered below its own day's row is invalid.
-    if (!behind) return { state: "loading", snapshot };
-    throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
+    // A panel the row moved ahead of is catching up.
+    return { state: "loading", snapshot };
   } catch (cause) {
     if (!behind && panel.detail.runId === row.runId && panel.detail.rowRevision < row.rowRevision) return { state: "loading" };
     if (!(cause instanceof RunLogIdentityError)) throw cause;
@@ -822,9 +824,12 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     commandRef.current = { owner: commandOwner, envelope, state: "pending" };
     void send(envelope);
   }, [commandOwner, send]);
+  // A panel ahead of the queue row is shown, but every answer is checked against the row's revision: none is offered, and a
+  // confirmation opened while they agreed sends nothing once they differ.
+  const answerable = value.state === "loaded" && value.snapshot?.detail.rowRevision.valueOf() === row.rowRevision.valueOf();
   const dispatchIfDecisionCurrent = useRef<(envelope: DashboardCommandRequest) => void>(() => undefined);
   dispatchIfDecisionCurrent.current = (envelope: DashboardCommandRequest) => {
-    if (mounted.current && currentCommandOwner.current === commandOwner && value.state === "loaded" && matchesDecision(envelope)
+    if (mounted.current && currentCommandOwner.current === commandOwner && answerable && matchesDecision(envelope)
       && (!(envelope.family === "run" && envelope.type === "retry") || bindingRef.current?.authority.dayState.day.state === "loaded")
       && !(commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) {
       dispatch(envelope);
@@ -1044,8 +1049,6 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     && (command.state !== "refused" || newest === undefined || newest.request.commandId === command.envelope.commandId) ? command : retainedCommand;
   const replayEnvelope = currentCommand?.state === "uncertain" ? currentCommand.envelope : undefined;
   const replay = useCallback(() => { if (replayEnvelope !== undefined) void send(replayEnvelope, true); }, [replayEnvelope, send]);
-  // A panel ahead of the queue row is shown, but every answer is checked against the row's revision, so none is offered.
-  const answerable = value.state === "loaded" && value.snapshot?.detail.rowRevision.valueOf() === row.rowRevision.valueOf();
   return { ...value, onDecision: answerable && binding !== undefined && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onDecision : undefined,
     onChildRetry: answerable && binding?.authority.dayState.day.state === "loaded" && detail?.childRetry !== undefined
       && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onChildRetry : undefined,

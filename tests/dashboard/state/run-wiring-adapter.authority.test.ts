@@ -512,6 +512,17 @@ describe("served Logs decision authority", () => {
     assert.equal(h.refreshed, 0);
   });
 
+  it("fails a panel delivered below its day's row while the rendered row still matches the panel", async () => {
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(3), 3), runSection: async () => logs() } as unknown as DashboardClient;
+    const h = await harness(client, undefined, false, false);
+    await serveRunPanel(h.rows, client, RUN, undefined, () => 4);
+    await h.render(selectionAt(3));
+    assert.equal(h.state?.state, "failed");
+    assert.equal(h.state?.retryable, false);
+    assert.equal(h.state?.onDecision, undefined);
+    assert.equal(h.refreshed, 0);
+  });
+
   it("offers no answer while the panel is ahead of the queue row, and offers it once they agree", async () => {
     const gate = servedGate(fixtures.ONE_CLICK);
     const selected = selectionAt(3);
@@ -988,6 +999,27 @@ describe("served not-found failure actions", () => {
     await h.render(selectionAt(4));
     await act(async () => callbacks[0]());
     assert.deepEqual(sent, []); assert.equal(h.outcomes.at(-1)?.kind, "refused");
+  });
+
+  for (const actionIndex of [0, 1]) it(`sends nothing from a confirmation of failure action ${actionIndex} once the panel is ahead of the queue row with the failure unchanged`, async () => {
+    const selected = selectionAt(3), sent: DashboardCommandRequest[] = [], planned: unknown[] = [], callbacks: (() => void)[] = [];
+    const fixture = failureClient(selected, sent, planned, async () => { throw new Error("unused"); });
+    const h = await harness(fixture.client, (_pending, send) => callbacks.push(send)); await h.render(selected);
+    const action = failureOption(fixture.failed, actionIndex === 0 ? "check-again" : "retry-with-value");
+    await act(async () => { h.state?.onDecision?.(FAILURE, action, { text: "10800001" }); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(callbacks.length, 1);
+    // The stream delivers the run's next panel, same failure, while the queue row still holds revision 3.
+    const recovery = fixture.failed.recovery; assert.ok(recovery); assert.ok(recovery.request.rerunSource);
+    const ahead = failureClient(selectionAt(4), [], [], async () => { throw new Error("unused"); }, FailureDetailWireSchema.parse({ ...fixture.failed,
+      recovery: { ...recovery, expectedVersion: 4, retry: { ...recovery.retry, expectedVersion: 4 },
+        request: { ...recovery.request, rerunSource: { ...recovery.request.rerunSource, expectedVersion: 4 } } } }));
+    assert.equal(ahead.failed.failureId, fixture.failed.failureId);
+    await act(async () => serveRunPanel(h.rows, ahead.client, RUN));
+    assert.equal(h.state?.state, "loaded"); assert.equal(h.state?.snapshot?.detail.rowRevision, 4);
+    assert.equal(h.state?.onDecision, undefined);
+    await act(async () => { callbacks[0](); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.deepEqual(sent, []); assert.equal(h.outcomes.at(-1)?.kind, "refused");
+    assert.equal(h.state?.command, undefined);
   });
 
   it("retains an uncertain correction across remount and replays the identical start command", async () => {
