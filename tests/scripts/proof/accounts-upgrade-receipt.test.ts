@@ -16,10 +16,12 @@ function fixture(options: {
   allowRecovery?: boolean;
   changeOtherVerifier?: boolean;
   leakFromSave?: boolean;
+  originalPassword?: string;
 } = {}) {
+  const originalPassword = options.originalPassword ?? oldPassword;
   let upgraded = false;
-  let relayPassword = oldPassword;
-  let ucpathPassword = options.interrupted === true ? "interrupted-password-sentinel" : oldPassword;
+  let relayPassword = originalPassword;
+  let ucpathPassword = options.interrupted === true ? "interrupted-password-sentinel" : originalPassword;
   let protectedRevision = 1;
   let verifierGeneration = 1;
   let recovered = false;
@@ -139,5 +141,13 @@ describe("accounts upgrade proof receipt", () => {
     assert.deepEqual(receipt.codes, ["UCPATH_SAVE_UNCONFIRMED"]);
     assert.equal(copy.calls.filter(call => call === "save UCPath").length, 1);
     assert.doesNotMatch(JSON.stringify(receipt), /receipt-(?:email|original|test)|response echoed/u);
+  });
+
+  it("checks that the existing Relay password can be restored before attempting a temporary change", async () => {
+    const copy = fixture({ originalPassword: "p".repeat(161) });
+    const receipt = await runAccountsUpgradeProof(build, copy.dependencies);
+    assert.equal(receipt.outcome, "failed");
+    assert.deepEqual(receipt.codes, ["COPY_RESTORE_UNCONFIRMED"]);
+    assert.deepEqual(copy.calls, ["start", "resume", "stop"]);
   });
 });

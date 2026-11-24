@@ -11,13 +11,14 @@ import { parseArgs } from "node:util";
 import { z } from "zod";
 import { applicationDataWorkspace, copySigninFixtureWorkspace, rebuildRuntimeIsolation, runtimeProfile } from "../../src/backend/app/config/runtime-isolation.js";
 import { probeOwnedViteServer } from "../../src/backend/app/host/local-vite-probe.js";
+import { BrowserRootsSchema } from "../../src/backend/storage/browser-root-contract.js";
 import { noSymlinkAncestry, readPrivateFile, statDirectory, type DirectoryIdentity } from "../../src/backend/storage/configuration/credential-safe-file.js";
-import { createDashboardClient, DashboardClientError, type DashboardClient } from "../../src/dashboard/client/index.js";
+import { createDashboardClient, type DashboardClient } from "../../src/dashboard/client/index.js";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
 import { ErrorCatalogCodeSchema } from "../../src/models/failures/error-catalog.js";
 import { ProfileRegistryDocumentSchema, ProfileRegistryRowSchema, ProfileVerifierDocumentSchema } from "../../src/models/profiles/profile.js";
-import type { PublicProfileState } from "../../src/models/profiles/public-profile.js";
-import { type CommandResult, ProtectedSettingsCommandRequestSchema } from "../../src/rules/commands/commands.js";
+import { ProfilePasswordChangeRequestSchema, type PublicProfileState } from "../../src/models/profiles/public-profile.js";
+import { CommandRejectionCodeSchema, ProtectedSettingsCommandRequestSchema } from "../../src/rules/commands/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/rules/identity/ids.js";
 import { systemClock } from "../../src/rules/time/clock.js";
 import { runDevDashboard } from "../dev/dashboard.js";
@@ -63,7 +64,8 @@ export interface UpgradeProofDependencies {
   testPassword(): string;
 }
 
-type ProofCode = z.infer<typeof ErrorCatalogCodeSchema> | Extract<CommandResult, { state: "rejected" }>["code"]
+const RefusalCodeSchema = z.union([ErrorCatalogCodeSchema, CommandRejectionCodeSchema]);
+type ProofCode = z.infer<typeof RefusalCodeSchema>
   | "COPY_ADMISSION_UNCONFIRMED" | "COPY_AUTHORITY_CHANGED" | "COPY_DASHBOARD_UNAVAILABLE" | "COPY_NOT_PRISTINE"
   | "COPY_RESTORE_UNCONFIRMED" | "COPY_SESSION_NOT_ISSUED" | "COPY_TARGET_REFUSED" | "COPY_VERIFIER_MISMATCH"
   | "INTERRUPTED_LOGIN_REPAIR_UNCONFIRMED" | "RELAY_CHANGE_UNCONFIRMED" | "UCPATH_SAVE_UNCONFIRMED";
@@ -130,6 +132,8 @@ export async function runAccountsUpgradeProof(build: Build, deps: UpgradeProofDe
 
       const testPassword = deps.testPassword();
       requireProof(testPassword !== originalPassword, "COPY_TARGET_REFUSED");
+      requireProof(ProfilePasswordChangeRequestSchema.safeParse({ currentPassword: testPassword, newPassword: originalPassword }).success,
+        "COPY_RESTORE_UNCONFIRMED");
       const otherVerifiers = verifierMaterial(admitted, true);
       failureCode = "RELAY_CHANGE_UNCONFIRMED";
       await session.changeRelayPassword(originalPassword, testPassword);
@@ -209,8 +213,8 @@ export async function runAccountsUpgradeProof(build: Build, deps: UpgradeProofDe
     receipt.outcome = "passed";
   } catch (error) {
     receipt.outcome = "failed";
-    const code = error instanceof ProofRefusal ? error.code : error instanceof DashboardClientError
-      ? ErrorCatalogCodeSchema.safeParse(error.code).data ?? failureCode : failureCode;
+    const code = error instanceof ProofRefusal ? error.code : error instanceof Error && "code" in error
+      ? RefusalCodeSchema.safeParse(error.code).data ?? failureCode : failureCode;
     if (!receipt.codes.includes(code)) receipt.codes.push(code);
   }
   return receipt;
@@ -261,6 +265,8 @@ async function inspectStoppedCopy(workspace: string, snapshot: UpgradeProofDepen
       const row = registry.profiles.find(candidate => candidate.profileId === (profileId ?? registry.activeProfileId));
       requireProof(row !== undefined && row.profileId === registry.activeProfileId, "COPY_SESSION_NOT_ISSUED");
       requireProof(row.lifecycle === "ready" && row.registration.onboardingCompletion !== undefined && row.duoState === "ready", "PROFILE_TRANSITION_BLOCKED");
+      const browserRoots = BrowserRootsSchema.parse(JSON.parse(privateBytes(join(machine.stateRoot, "machine", "browser-roots.json"), "lock", 1_048_576).toString("utf8")));
+      requireProof(browserRoots.installationId === registry.installationId && browserRoots.roots.every(root => root.state === "closed"), "COPY_TARGET_REFUSED");
       const observed = snapshot(row.profileId);
       const admission = machine.admitProfile(row.profileId);
       try {
@@ -409,9 +415,17 @@ function checkedBuild(candidate: string): Build {
   return build;
 }
 
+const usage = "RELAY_RUNTIME_PROFILE=development npx tsx scripts/proof/accounts-upgrade-receipt.ts --candidate <reviewed-464-sha>";
+
 async function main(): Promise<void> {
-  // Run from a clean checkout containing the reviewed #464 candidate and Copy Sign-In, after preparing the isolated development copy.
-  const { values } = parseArgs({ options: { candidate: { type: "string" } } });
+  const { values } = parseArgs({ options: { candidate: { type: "string" }, help: { type: "boolean" } } });
+  if (values.help === true) {
+    process.stdout.write(`${usage}\n\nPrepare the isolated development profile on the pre-upgrade build using copy-signin.ts development.\n`
+      + "Close its dashboard window without signing out. Run the proof on the Mac from a clean checkout containing this rig, Copy Sign-In, and the reviewed #464 commit.\n"
+      + "Keep the operator present. If the proof confirms an interrupted login change, the operator can approve repair with the old Relay login in the copy sign-in env file.\n"
+      + "The proof uses the development ports and data root. It writes and posts a redacted receipt on #464.\n");
+    return;
+  }
   const candidate = CommitSchema.parse(values.candidate);
   const build = checkedBuild(candidate);
   requireProof(process.platform === "darwin" && runtimeProfile === "development" && copySigninFixtureWorkspace() === undefined, "COPY_TARGET_REFUSED");
@@ -441,7 +455,7 @@ const entry = process.argv[1];
 if (entry !== undefined && pathToFileURL(entry).href === import.meta.url) {
   try { await main(); }
   catch (error) {
-    process.stderr.write(`${error instanceof ProofRefusal ? error.code : "COPY_TARGET_REFUSED"}\nUsage: RELAY_RUNTIME_PROFILE=development npx tsx scripts/proof/accounts-upgrade-receipt.ts --candidate <reviewed-464-sha>\n`);
+    process.stderr.write(`${error instanceof ProofRefusal ? error.code : "COPY_TARGET_REFUSED"}\n${usage}\n`);
     process.exitCode = 1;
   }
 }
