@@ -204,7 +204,7 @@ function button(name: string): HTMLButtonElement {
 }
 function workflowButton(name: string): HTMLButtonElement {
   const found = [...document.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflows"] button')]
-    .find(node => node.textContent?.trim().startsWith(name));
+    .find(node => node.getAttribute("aria-label")?.startsWith(name));
   assert_m1.ok(found, `workflow ${name}`);
   return found;
 }
