@@ -72,7 +72,7 @@ it("shows history without a toggle or bell count even when it matches a native n
   const view = await draw(inboxProjection([archived, local], now).state);
   assert(view.host.querySelector('button[aria-label="Notifications, 1 unread"]'));
   assert.deepEqual(view.groups(), [["Needs you", 1], ["Today", 1]]);
-  assert.equal(view.row(1).querySelector(".notice-action"), null);
+  assert.ok(view.row(1).querySelector(".notice-action") === null);
   await act(async () => view.row(1).querySelector<HTMLButtonElement>("button.notice-main")?.click());
   await act(async () => view.row(0).querySelector<HTMLButtonElement>('button[aria-label="Mark as read"]')?.click());
   assert.deepEqual(view.calls, [`open:${archivedId}`, `read:${localId}`]);
