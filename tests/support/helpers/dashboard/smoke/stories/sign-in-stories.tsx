@@ -38,8 +38,10 @@ async function play(page: Page, scene: SignInScene): Promise<void> {
   if (scene.submit === true) await page.getByRole("button", { name: scene.step === "signup" ? "Create profile" : "Log in" }).click();
   if (scene.confirm === true) await page.getByRole("button", { name: "Add this device" }).click();
   // The keyboard walk starts at the top of the page, as it does for a person who has just arrived.
+  // A story that ends on an open dialog keeps its focus trap; any other waits for the dialog to finish closing.
+  if (scene.confirm === true || scene.press?.length === 1 && scene.press[0] === "Cancel sign-up") return;
+  await page.locator('[role="dialog"]').waitFor({ state: "hidden" });
   await page.evaluate(() => {
-    if (document.querySelector('[role="dialog"]') !== null) return;
     const { body } = document;
     body.tabIndex = -1; body.focus({ preventScroll: true }); body.removeAttribute("tabindex");
   });
