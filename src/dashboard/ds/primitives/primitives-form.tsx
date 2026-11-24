@@ -21,7 +21,6 @@ import { Check, Eye, EyeOff, Lock, Minus, Pencil, Trash2, TriangleAlert, Upload,
 import { cn } from "../../lib/utils.js";
 import { Select as BaseSelect, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem } from "./base-select.js";
 import { Button, IconButton } from "./primitives-core.js";
-import { Tooltip, TooltipProvider } from "./primitives-overlay.js";
 import { dsBorder, dsFocus, dsFocusWithin, dsIcon, dsMotion, dsRadius, dsText } from "../theme/tokens.js";
 
 /** Form primitives.
@@ -217,14 +216,7 @@ export function PathControl({ value, label, onChange, disabled = false, busy = f
   const field = useFieldControl();
   const basename = value.replace(/[\\/]+$/u, "").split(/[\\/]/u).pop() || value;
   return <div className="ds-path-control">
-    <TooltipProvider delayDuration={250}>
-      <Tooltip content={<span className="break-all whitespace-normal">{value}</span>}>
-        <span className={cn("ds-path-value", dsFocus)} tabIndex={0} aria-label={value}>
-          <span className="sr-only">{value}</span>
-          <span aria-hidden="true" className="ds-path-basename">{basename}</span>
-        </span>
-      </Tooltip>
-    </TooltipProvider>
+    <span className="ds-path-value"><span className="ds-path-basename">{basename}</span></span>
     <Button id={field.id} aria-describedby={field["aria-describedby"]} aria-invalid={field["aria-invalid"]}
       aria-label={`Change ${label}`} size="md" variant="secondary" onClick={onChange}
       disabled={disabled || field.disabled} loading={busy}>Change</Button>

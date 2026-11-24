@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { CommandResultSchema, SettingsCommandRequestSchema } from "../../src/rules/commands/commands.js";
 import { syntheticSettingsAuthority } from "../support/helpers/dashboard/settings-harness.js";
 import { expect, test as base } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
@@ -87,7 +87,7 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
 
   await whileReplyIsHeld(async () => {
     await downloads.click();
-    await expect(path).toHaveAttribute("aria-label", pickedPath);
+    await expect(path).toHaveText(basename(pickedPath));
   });
   await expect(saved("Downloads")).toBeVisible();
 
@@ -111,7 +111,7 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
   await expect(switchControl).not.toBeChecked();
   await expect(browser).toContainText("Small");
   await expect(theme).toBeChecked();
-  await expect(path).toHaveAttribute("aria-label", pickedPath);
+  await expect(path).toHaveText(basename(pickedPath));
   await expect(date.locator('[data-type="month"]')).toHaveText("06");
   await expect(day).toHaveText("15");
   await expect(year).toHaveText("2027");
@@ -143,7 +143,7 @@ test("Downloads can save after a theme change without reopening Settings", async
     && SettingsCommandRequestSchema.parse(response.request().postDataJSON()).payload.patch["paths.downloadsDir"] !== undefined);
   await whileReplyIsHeld(async () => {
     await page.getByRole("button", { name: "Change Downloads" }).click();
-    await expect(page.locator('[data-settings-path="paths.downloadsDir"] .ds-path-value')).toHaveAttribute("aria-label", pickedPath);
+    await expect(page.locator('[data-settings-path="paths.downloadsDir"] .ds-path-value')).toHaveText(basename(pickedPath));
   });
   const result = CommandResultSchema.parse(await (await pathSave).json());
   expect(result).toMatchObject({ state: "applied" });
