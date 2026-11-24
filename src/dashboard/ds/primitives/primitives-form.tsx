@@ -210,13 +210,17 @@ export const Input = forwardRef<HTMLInputElement, DsInputProps>(
   },
 );
 
+/** A long path keeps its start and its end and drops the middle: `/Users/julian…uments/Codex`. */
+export function middleTruncatePath(path: string, max = 30): string {
+  return path.length <= max ? path : `${path.slice(0, 13)}…${path.slice(-(max - 16))}`;
+}
+
 export function PathControl({ value, label, onChange, disabled = false, busy = false }: {
   value: string; label: string; onChange: () => void; disabled?: boolean; busy?: boolean;
 }) {
   const field = useFieldControl();
-  const basename = value.replace(/[\\/]+$/u, "").split(/[\\/]/u).pop() || value;
   return <div className="ds-path-control">
-    <span className="ds-path-value"><span className="ds-path-basename">{basename}</span></span>
+    <span className="ds-path-value"><span className="ds-path-text">{middleTruncatePath(value)}</span></span>
     <Button id={field.id} aria-describedby={field["aria-describedby"]} aria-invalid={field["aria-invalid"]}
       aria-label={`Change ${label}`} size="md" variant="secondary" onClick={onChange}
       disabled={disabled || field.disabled} loading={busy}>Change</Button>
