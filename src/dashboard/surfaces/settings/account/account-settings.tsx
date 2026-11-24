@@ -6,6 +6,7 @@ import { operatorFailureSentence, type ErrorCatalogCode } from "../../../../mode
 import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileDetailsChangeRequestSchema, type ProfileDetailsChangeResultSchema, type ProfileLoginChangeResultSchema } from "../../../../models/profiles/public-profile.js";
 import { formatDayTime } from "../../../lib/date-format.js";
 import { readBack } from "../../../app/commands/command-readback.js";
+import { DuoSecurityKeys, type DuoKeysPort } from "./duo-security-keys.js";
 
 export interface AccountValues {
   readonly name: string;
@@ -14,7 +15,7 @@ export interface AccountValues {
   readonly timekeeperInitials: string;
   readonly lastSignedInAt: string;
 }
-export interface AccountPage { readonly values: AccountValues; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; /** The served account now, read back after a details change whose reply was lost. */ readonly readAccount?: () => Promise<AccountValues | undefined>; readonly login: Omit<RelayLogin, "username"> }
+export interface AccountPage { readonly values: AccountValues; readonly duoKeys?: DuoKeysPort; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; /** The served account now, read back after a details change whose reply was lost. */ readonly readAccount?: () => Promise<AccountValues | undefined>; readonly login: Omit<RelayLogin, "username"> }
 
 /** Whether the served account shows every value the change asked for. */
 function showsChange(request: ProfileDetailsChangeRequest, account: AccountValues | undefined): account is AccountValues {
@@ -30,7 +31,7 @@ function Group({ label, description, children }: { label: string; description?: 
 
 /** Account page: read-only profile facts, the changeable Relay username and password, the editable UCPath sign-in, Duo status, and Delete account. */
 export function AccountSettings({ page, username, ucpath, deleteAccount }: { page: AccountPage; username: string | undefined; ucpath: ReactNode; deleteAccount: ReactNode }) {
-  const { onDuoSetup, login } = page;
+  const { duoKeys, onDuoSetup, login } = page;
   const [saved, setSaved] = useState<{ readonly base: string; readonly values: AccountValues } | undefined>();
   const base = JSON.stringify(page.values);
   // A saved result overrides the served values only until the served account itself changes.
@@ -69,7 +70,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
       {details("Timekeeper initials", values.timekeeperInitials, timekeeperInitials => ({ timekeeperInitials }), "profile.initials")}
     </Group>
     <Group label="Security">
-      <ResultRow label="Duo" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">Ready</span>{onDuoSetup && <Button variant="secondary" onClick={() => { void onDuoSetup().then(failure => { if (failure !== undefined) toast({ tone: "danger", title: "Duo setup not opened", description: failure }); }); }}>Set up again</Button>}</span>} />
+      <DuoSecurityKeys port={duoKeys} onSetup={onDuoSetup} />
     </Group>
     {deleteAccount}
   </section>;
