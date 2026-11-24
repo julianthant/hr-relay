@@ -174,6 +174,9 @@ function measureDialogs(): DialogShape[] {
         const name = title !== null && part.contains(title) ? "header" : part.matches("footer, [data-slot$=\"footer\"]") ? "footer" : "body";
         shape[`${name} padding`] ??= getComputedStyle(part).padding;
       }
+      // A form or layout wrapper around the parts is not the body: read the design system's own body.
+      const body = dialog.querySelector('[data-slot="dialog-body"]');
+      if (body !== null) shape["body padding"] = getComputedStyle(body).padding;
       const size = dialog.getAttribute("data-size");
       const variant = size === null ? null : `${size}${dialog.hasAttribute("data-band") ? "-band" : ""}`;
       return { kind: [dialog.getAttribute("role"), variant ?? dialog.getAttribute("data-slot") ?? ""].join(":"), variant, shape };

@@ -243,7 +243,7 @@ const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleNam
   "action/name-not-saved": BREAK_SETS.FOCUS_TOAST,
   "action/password-changed": BREAK_SETS.FOCUS_TOAST,
   "action/password-not-confirmed": BREAK_SETS.FOCUS_TOAST,
-  "notice/restart-required": BREAK_SETS.FOCUS_PATH_TOAST,
+  "notice/restart-required": BREAK_SETS.PATH_TOAST,
   "notice/setting-unavailable": BREAK_SETS.PATH_TOAST,
   "runtime/restart-required": BREAK_SETS.FOCUS_PATH_TOAST,
   "save-combo/replayed": BREAK_SETS.FOCUS_PATH_TOAST,

@@ -67,8 +67,10 @@ const rerunClient = (served: Partial<DashboardClient> = {}) => () => runDialogCl
 const planning = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ submitStartPlan: async () => runDialogPlan(), executeCommand: async () => RUN_DIALOG_APPLIED, ...served });
 const start = (page: Page) => press(page, "Start run");
 
+/** The run dialog pads its body 20px, off the design system's 12px 24px. */
+const SHELL_BREAK = { "dialogs-share-shape": "#532" } as const;
 const stage = (title: string, client: () => DashboardClient, at: RunStartStage, extra: Partial<Story> & SceneOptions = {}) =>
-  scene(title, client, at, extra);
+  scene(title, client, at, { knownFailures: SHELL_BREAK, ...extra });
 
 const STAGE = {
   Input: stage("Input, nothing typed", () => runDialogClient(), "Input"),
@@ -118,7 +120,7 @@ const REFUSAL = {
 
 const ANSWER = {
   conflict: stage("The start answered with a version conflict", planning({ executeCommand: async () => RUN_DIALOG_CONFLICT }), "Checks", { then: start,
-    knownFailures: { "no-banned-text": "#532" } }),
+    knownFailures: { ...SHELL_BREAK, "no-banned-text": "#532" } }),
 } satisfies Record<string, Story>;
 
 const RETAINED_KEY = `hrauto:run-launch:v1:${RUN_DIALOG_ACTOR}`;

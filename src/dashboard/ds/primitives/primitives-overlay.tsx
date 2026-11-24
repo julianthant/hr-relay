@@ -248,7 +248,7 @@ function DialogSurface({
 
 export function DialogBody({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-dialog-pad)] py-[var(--ds-space-cozy)]", className)}>
+    <div data-slot="dialog-body" className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-dialog-pad)] py-[var(--ds-space-cozy)]", className)}>
       {children}
     </div>
   );
