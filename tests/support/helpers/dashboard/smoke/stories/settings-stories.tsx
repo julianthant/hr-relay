@@ -174,19 +174,25 @@ const ACTION = {
 } satisfies Record<AccountAction, Story>;
 
 type DuoKeysStory = "loading" | "unavailable" | "one-key" | "several-keys" | "rename" | "confirm-removal" | "last-key-removed";
+const showSecurity = (page: Page): Promise<void> => page.getByRole("group", { name: "Security", exact: true }).scrollIntoViewIfNeeded();
 const duoKeys = (title: string, keys: NonNullable<AccountStub["duoKeys"]>, ready: string, play?: Scene["play"]): Story =>
-  onAccount(title, play, ready, { host: { account: { duoKeys: keys } } });
+  onAccount(title, play === undefined ? showSecurity : then(showSecurity, play), ready, { host: { account: { duoKeys: keys } } });
 const WORK_KEY = [DUO_WORK_KEY];
 const loadingDuoKeys = '[aria-label="Loading Duo security keys"]';
+const finishDuoRemoval = async (page: Page): Promise<void> => {
+  await click("Remove")(page);
+  await page.getByRole("button", { name: "Set up", exact: true }).and(page.locator(":focus")).waitFor();
+  await page.getByRole("heading", { name: "Settings", exact: true }).click();
+};
 const DUO_KEYS = {
-  loading: scene("Duo security keys loading", { section: "account", host: { account: { duoKeys: "loading" } }, story: { ready: loadingDuoKeys, slowFetch: { region: loadingDuoKeys } } }),
+  loading: scene("Duo security keys loading", { section: "account", host: { account: { duoKeys: "loading" } }, play: showSecurity, story: { ready: loadingDuoKeys, slowFetch: { region: loadingDuoKeys } } }),
   unavailable: duoKeys("Duo security keys unavailable", "unavailable", 'text="Duo keys unavailable"'),
   "one-key": duoKeys("One Duo security key", WORK_KEY, 'text="Work security key"'),
   "several-keys": duoKeys("Several Duo security keys", [...WORK_KEY, { id: "b".repeat(64), shortId: "bC34de56", addedAt: "2026-09-02T12:00:00.000Z" }], 'text="Key bC34de56"'),
   rename: { ...duoKeys("Rename a Duo security key", WORK_KEY, 'text="Rename security key"', then(click("Rename Work security key"), type("Name", "Office security key"))),
     knownFailures: { "dialogs-share-shape": "#749" } },
   "confirm-removal": duoKeys("Confirm removal of a Duo security key", WORK_KEY, 'text="Remove security key?"', click("Remove Work security key")),
-  "last-key-removed": duoKeys("The last Duo security key was removed", WORK_KEY, 'text="Not set up"', then(click("Remove Work security key"), click("Remove"))),
+  "last-key-removed": duoKeys("The last Duo security key was removed", WORK_KEY, 'text="Not set up"', then(click("Remove Work security key"), finishDuoRemoval)),
 } satisfies Record<DuoKeysStory, Story>;
 
 const NOTICE = {

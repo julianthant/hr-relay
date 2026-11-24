@@ -15,7 +15,7 @@ import { addRunningNote, finishRunningStep, parkRunningRunAtGate, seed, seededDo
 
 import { type ScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
 import { scriptedDescriptorOf } from "../served-fixtures/scripted-workflows.js";
-import { FIXTURE_ACTIVE_PROFILE_STATE } from "./fixture-profile-setup.js";
+import { FIXTURE_ACTIVE_PROFILE_STATE, FIXTURE_DUO_KEYS } from "./fixture-profile-setup.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 import { join } from "node:path";
@@ -252,6 +252,11 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
         if (url.pathname === "/api/v1/profile/state") {
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify(FIXTURE_ACTIVE_PROFILE_STATE));
+          return;
+        }
+        if (req.method === "GET" && url.pathname === "/api/v1/profile/account/duo-keys") {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify(FIXTURE_DUO_KEYS));
           return;
         }
         if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/events/")) {
