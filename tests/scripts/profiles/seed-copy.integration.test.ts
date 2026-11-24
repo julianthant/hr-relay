@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterEach, expect, it } from "vitest";
-import { READABLE_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { afterEach, expect, it, vi } from "vitest";
+import { composeDashboardRuntime } from "../../../src/backend/app/composition/dashboard/compose.js";
+import { composeProfileRuntime } from "../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, READABLE_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { queryActivitySummaries } from "../../../src/backend/runs/queries/activity-summaries.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { acquireRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
@@ -13,11 +16,16 @@ import { createNoteTimelineWriter } from "../../../src/backend/storage/events/no
 import { importIsolatedProfileData } from "../../../src/backend/storage/maintenance/isolated-library-import.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { runtimeProfiles } from "../../../src/models/config/define-runtime-isolation.js";
+import { searchPartitionDay } from "../../../src/models/dashboard/search-calendar.js";
 import { NotificationTriggerSchema } from "../../../src/models/notifications/notifications.js";
 import type { ProfileDatabaseBinding } from "../../../src/models/profiles/profile.js";
+import { canonicalInputSamples } from "../../../src/models/workflow/canonical-input.js";
+import { WorkStudyCanonicalInput } from "../../../src/models/workflows/work-study/input.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOTIFICATION } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { healthyRuntimePreflightRunners } from "../../support/fixtures/preflight-seams.js";
 import { runRecordOf } from "../../support/helpers/backend/dashboard-harness.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { credentialKeychainTestEnvironment, FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
@@ -28,7 +36,31 @@ const entry = fileURLToPath(new URL("../../../scripts/profiles/seed-copy.ts", im
 const cleanups: (() => void | Promise<void>)[] = [];
 const clock = manualClock(new Date("2026-11-24T20:00:00.000Z"));
 const { openCurrentWorld, takeBackup } = createBackupFixtures(cleanups, clock);
-afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+afterEach(async () => { try { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); } finally { vi.unstubAllGlobals(); } });
+
+async function openSeededDashboard(workspace: string) {
+  const lock = await acquireRuntimeLifetimeLock(0);
+  cleanups.push(() => lock.close());
+  const machine = acquireEntrypointAdmission(workspace, "exclusive", lock);
+  cleanups.push(() => machine.release());
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(workspace, name));
+  const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
+  cleanups.push(() => runtime.close());
+  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+  assert.ok(active.state === "active");
+  const realFetch = globalThis.fetch, outbound: string[] = [];
+  vi.stubGlobal("fetch", ((url, options) => {
+    const host = new URL(url instanceof Request ? url.url : url).hostname;
+    if (host !== "127.0.0.1") { outbound.push(host); throw new Error("unexpected-external-request"); }
+    return realFetch(url, options);
+  }) satisfies typeof fetch);
+  const spawn = vi.fn(() => { throw new Error("unexpected-worker-start"); });
+  const dashboard = await composeDashboardRuntime({ lifetimeLock: lock, admission: machine, profile: { runtime, token: active.token },
+    repoRoot: workspace, clock, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
+    preflightRunnerFactory: healthyRuntimePreflightRunners, workerProcess: { spawn } });
+  cleanups.push(() => dashboard.stop());
+  return { client: createDashboardClient({ baseUrl: `http://127.0.0.1:${String(dashboard.port)}` }), outbound, spawn };
+}
 
 function isolatedHome() {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "relay-seed-copy-")));
@@ -168,8 +200,32 @@ it("replaces its synthetic history and retains imported rows outside operational
   expect(first.status, first.stderr).toBe(0);
   expect(readFileSync(copy.path)).toEqual(localBefore);
   const seeded = await readHistory();
+  const second = run("development", binding);
+  expect(second.error).toBeUndefined();
+  expect(second.status, second.stderr).toBe(0);
+  assert.deepEqual(await readHistory(), seeded);
+  expect(readFileSync(copy.path)).toEqual(localBefore);
+
+  const { client, outbound, spawn } = await openSeededDashboard(workspace);
+  const visible = new Set<string>();
+  const days = new Set([imported, ...seeded.generated].map(row => searchPartitionDay(new Date(row.envelope.enqueuedAt))));
+  expect(days.size).toBe(90);
+  for (const day of days) for (const row of (await client.dashboardDay(day)).queueSurfaces) visible.add(row.runId);
+  for (const { envelope } of seeded.generated) {
+    expect(visible).toContain(envelope.runId);
+    expect((await client.runDetail(envelope.runId)).runId).toBe(envelope.runId);
+  }
+  const notificationIds = (await client.notificationSnapshot()).map(row => row.notificationId);
+  expect(notificationIds).toEqual(expect.arrayContaining([importedNotice, ...seeded.notices].map(row => row.notificationId)));
+  expect(outbound).toEqual([]);
+  expect(spawn).not.toHaveBeenCalled();
+
+  const workflowIds = WORKFLOW_MODULES.map(({ descriptor }) => descriptor.id);
+  const skippedChildOnlyWorkflows = CHILD_ONLY_WORKFLOW_MODULES.map(({ descriptor }) => descriptor.id);
+  expect(JSON.parse(first.stdout)).toMatchObject({ skippedChildOnlyWorkflows });
+  expect(new Set(seeded.generated.map(row => row.envelope.workflow))).toEqual(new Set(workflowIds));
   for (const { workflows, days } of seeded.analytics) {
-    expect(workflows).toHaveLength(READABLE_WORKFLOW_MODULES.length);
+    expect(workflows).toHaveLength(workflowIds.length);
     expect(days.every(day => day.runs > 0)).toBe(true);
     for (const workflow of workflows) {
       expect(Object.values(workflow.outcomes).every(count => count > 0)).toBe(true);
@@ -179,8 +235,15 @@ it("replaces its synthetic history and retains imported rows outside operational
   }
   expect(seeded.analytics.map(report => report.days.length)).toEqual([7, 30, 90]);
   expect(seeded.generated.every(row => row.displayName?.startsWith("Synthetic ") === true && row.envelope.dryRun)).toBe(true);
-  for (const { descriptor } of READABLE_WORKFLOW_MODULES) {
+  const workStudyEid = WorkStudyCanonicalInput.parse(canonicalInputSamples(WorkStudyCanonicalInput)[0]).emplId;
+  for (const { descriptor } of WORKFLOW_MODULES) {
     const runs = seeded.generated.filter(row => row.envelope.workflow === descriptor.id);
+    for (const { input } of runs) {
+      expect(descriptor.canonicalInput.parse(descriptor.input.parse(input.raw))).toEqual(input.parsed.value);
+      const values = JSON.stringify([input.raw, input.parsed.value]);
+      expect(values).not.toMatch(/\b(?:\d{9}|\d{3}-\d{2}-\d{4})\b/u);
+      expect(values.match(/\b10\d{6}\b/gu) ?? []).toEqual(descriptor.id === "work-study" ? [workStudyEid, workStudyEid] : []);
+    }
     const outcomes = runs.flatMap(({ lifecycle }) => lifecycle.state === "terminal" ? [lifecycle.outcome] : []);
     for (const outcome of ["done", "failed", "cancelled", "interrupted"]) expect(outcomes, descriptor.id).toContain(outcome);
     expect(runs.some(({ lifecycle }) => lifecycle.state === "parked-gate"), descriptor.id).toBe(true);
@@ -188,10 +251,4 @@ it("replaces its synthetic history and retains imported rows outside operational
   }
   expect(new Set(seeded.notices.map(row => row.trigger))).toEqual(new Set(NotificationTriggerSchema.options));
   expect(seeded.notices.some(row => row.count > 1)).toBe(true);
-
-  const second = run("development", binding);
-  expect(second.error).toBeUndefined();
-  expect(second.status, second.stderr).toBe(0);
-  assert.deepEqual(await readHistory(), seeded);
-  expect(readFileSync(copy.path)).toEqual(localBefore);
 });

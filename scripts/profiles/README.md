@@ -40,10 +40,10 @@ Sign in to the copy, quit the dashboard without signing out, then run
 `npx tsx scripts/profiles/seed-copy.ts development`. Use `staging` to seed the staging copy.
 The command holds the copy's lifetime lock while it runs.
 
-The seed fills missing workflow and state examples in the most recent week and fills thin
-dates across the last 90 days. The generated history uses synthetic labels and IDs and stays
-outside the worker and gate stores. The command prints counts by workflow, state, and
-notification kind.
+The seed fills missing top-level workflow and state examples in the most recent week and fills
+thin dates across the last 90 days. The generated history uses synthetic labels and IDs and stays
+outside the worker and gate stores. The command prints counts by workflow, state, and notification
+kind and lists the skipped child-only workflows.
 
 Run the same command again to replace the synthetic history. A profile refresh replaces the
 imported archive, so run the seed again after importing a newer backup.

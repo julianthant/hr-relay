@@ -17,6 +17,12 @@ import { SpanEventWireSchema } from "../../src/models/events/types.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../../src/models/notifications/notifications.js";
 import { RunRecordSchema, type RunLifecycle, type RunRecord } from "../../src/models/run/record.js";
 import { FailureRecordSchema } from "../../src/models/trust/failure.js";
+import { deriveSchemaHash } from "../../src/models/validation/schema-bound-value.js";
+import { canonicalInputSamples } from "../../src/models/workflow/canonical-input.js";
+import { I9_CHECK_START_EXAMPLE } from "../../src/models/workflows/i9-check/start.js";
+import { OCR_INPUT_EXAMPLE } from "../../src/models/workflows/ocr/input.js";
+import { ONBOARDING_INPUT_EXAMPLE } from "../../src/models/workflows/onboarding/input.js";
+import { WorkStudyCanonicalInput } from "../../src/models/workflows/work-study/input.js";
 import { deriveStableUuid, deriveTraceId } from "../../src/rules/identity/identifiers.js";
 import { LOCAL_OPERATOR_ACTOR_ID, NodeIdSchema } from "../../src/rules/identity/ids.js";
 import { capturedInstantClock, systemClock } from "../../src/rules/time/clock.js";
@@ -94,6 +100,30 @@ function planSeedRuns(now: Date, existing: readonly RunRecord[], descriptors: re
 const seedNamespace = "relay-copy-seed";
 const seedDigest = sha256Hex(seedNamespace);
 
+const seedInputs = new Map<string, unknown>([
+  ["person-lookup", { name: "Example, Person" }],
+  ["separations", { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST" }],
+  ["onboarding", ONBOARDING_INPUT_EXAMPLE],
+  ["work-study", canonicalInputSamples(WorkStudyCanonicalInput)[0]],
+  ["i9-check-start", I9_CHECK_START_EXAMPLE],
+  ["crm-doc-download", { people: "fixture@example.test" }],
+  ["emergency-contact", {
+    document: OCR_INPUT_EXAMPLE.document, readingId: OCR_INPUT_EXAMPLE.readingId, reading: OCR_INPUT_EXAMPLE.reading,
+    roster: null, onbaseFiling: "skip",
+  }],
+]);
+
+function seedInput(workflow: AnyWorkflowDescriptor): RunRecord["input"] {
+  const raw = seedInputs.get(workflow.id);
+  if (raw === undefined) throw new SeedCopyError(`seed-copy-input-missing: ${workflow.id}`);
+  return RunRecordSchema.shape.input.parse({
+    raw,
+    parsed: { schemaHash: deriveSchemaHash(workflow.canonicalInput, "output"), protectedBindings: [],
+      value: workflow.canonicalInput.parse(workflow.input.parse(raw)) },
+    ingressSchemaHash: deriveSchemaHash(workflow.input, "input"),
+  });
+}
+
 function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) {
   const { workflow, day, state } = slot;
   const key = `${profileId}/${workflow.id}/${day}/${state}`;
@@ -130,7 +160,7 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
     envelope: { runId, workflow: workflow.id, itemId: id("item"), traceId, descriptorVersion: workflow.version,
       contractFingerprint: workflow.contractFingerprint, buildId, configFingerprint: seedDigest,
       configSnapshotId: id("config"), resolvedInstance: {}, shape: "single", priority: "interactive", dryRun: true, attempt: 1, enqueuedAt },
-    input: { raw: {}, parsed: { schemaHash: seedDigest, protectedBindings: [], value: {} }, ingressSchemaHash: seedDigest },
+    input: seedInput(workflow),
     lifecycle, claimGeneration: state === "paused" || state === "cancelled" ? 0 : 1, displayName: title,
     ...(state === "paused" ? { pause: { state: "paused", commandId: id("pause"), requestedAt: settledAt, pausedAt: settledAt } } : {}),
     ...(state === "succeeded" ? { completion: { ...completionFields, kind: "done", resultDigest: seedDigest } } : {}),
@@ -236,7 +266,7 @@ async function withStoppedCopy<T>(profile: CopyProfile, work: (admission: Runtim
 
 async function seedCopy(profile: CopyProfile) {
   return withStoppedCopy(profile, async admission => {
-    const [{ seedIsolatedHistory }, { COPY_HISTORY_SEED_BUILD }, { READABLE_WORKFLOW_MODULES }] = await Promise.all([
+    const [{ seedIsolatedHistory }, { COPY_HISTORY_SEED_BUILD }, { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES }] = await Promise.all([
       import("../../src/backend/storage/maintenance/isolated-history-import.js"),
       import("../../src/backend/storage/sqlite/isolated-history-store.js"),
       import("../../src/backend/app/registries/workflow-registry.js"),
@@ -246,14 +276,15 @@ async function seedCopy(profile: CopyProfile) {
     const byState = Object.fromEntries(seedStates.map(state => [state, 0]));
     const byNotificationKind = Object.fromEntries(NotificationTriggerSchema.options.map(kind => [kind, 0]));
     const report = await seedIsolatedHistory(admission, profile, { fromDay, build(existing) {
-      const runs = planSeedRuns(now, existing, READABLE_WORKFLOW_MODULES.map(({ descriptor }) => descriptor))
+      const runs = planSeedRuns(now, existing, WORKFLOW_MODULES.map(({ descriptor }) => descriptor))
         .map(slot => seedRun(slot, profileId, now, COPY_HISTORY_SEED_BUILD));
       const notifications = seedNotifications(runs, profileId, now);
       for (const { state } of runs) byState[state] += 1;
       for (const { trigger } of notifications) byNotificationKind[trigger] += 1;
       return { runs, notifications };
     } });
-    return { ...report, byState, byNotificationKind };
+    const skippedChildOnlyWorkflows = CHILD_ONLY_WORKFLOW_MODULES.map(({ descriptor }) => descriptor.id);
+    return { ...report, byState, byNotificationKind, skippedChildOnlyWorkflows };
   });
 }
 
