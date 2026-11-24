@@ -45,14 +45,18 @@ test("toasts enter and leave upward and stay above their resting place with moti
     return recorded;
   });
   const toasts = page.locator('[data-slot="toast"]');
+  // A toast dismissed while it still enters reports its entry as an exit.
+  const settled = () => expect.poll(() => toasts.evaluateAll(shown => shown.filter(toast => toast.hasAttribute("data-starting-style") || toast.getAnimations().length > 0).length), { message: "the toasts never came to rest" }).toBe(0);
   for (let count = 1; count <= 3; count += 1) {
     await page.getByRole("button", { name: "Raise toast" }).click();
     await expect(toasts).toHaveCount(count);
+    await settled();
   }
   for (const title of ["Result 3", "Result 2", "Result 1"]) {
     const toast = toasts.filter({ hasText: title });
     await toast.press("Enter");
     await expect(toast).toHaveCount(0);
+    await settled();
   }
   const seen = await moves.jsonValue();
   for (const phase of ["enter", "exit"]) {
