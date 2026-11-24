@@ -32,6 +32,26 @@ async function assertConversionRefused(workspace: string, lifetime: RuntimeLifet
         && (process.platform !== "win32" || custodyUnavailable(error.cause)));
   } finally { await runtime.close("shutdown"); machine.release(); }
 }
+async function cpuProfiled<T>(label: string, run: () => Promise<T>): Promise<T> {
+  const { Session } = await import("node:inspector/promises");
+  const session = new Session(); session.connect();
+  await session.post("Profiler.enable"); await session.post("Profiler.setSamplingInterval", { interval: 500 }); await session.post("Profiler.start");
+  try { return await run(); } finally {
+    const { profile } = await session.post("Profiler.stop"); session.disconnect();
+    const byId = new Map(profile.nodes.map(node => [node.id, node])), self = new Map<number, number>();
+    const deltas = profile.timeDeltas ?? [];
+    (profile.samples ?? []).forEach((id, index) => self.set(id, (self.get(id) ?? 0) + (deltas[index] ?? 0)));
+    const parent = new Map<number, number>(); for (const node of profile.nodes) for (const child of node.children ?? []) parent.set(child, node.id);
+    const key = (id: number) => { const f = byId.get(id)?.callFrame; return f ? `${f.functionName || "(anon)"} ${f.url.replace(/^.*hr-relay[^/]*\//u, "")}:${f.lineNumber + 1}` : "?"; };
+    const selfBy = new Map<string, number>(), totalBy = new Map<string, number>();
+    for (const [id, us] of self) {
+      selfBy.set(key(id), (selfBy.get(key(id)) ?? 0) + us);
+      const seen = new Set<string>(); for (let at: number | undefined = id; at !== undefined; at = parent.get(at)) { const k = key(at); if (!seen.has(k)) { seen.add(k); totalBy.set(k, (totalBy.get(k) ?? 0) + us); } }
+    }
+    const top = (m: Map<string, number>, n: number) => [...m].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, us]) => `  ${Math.round(us / 1000)}ms ${k}`).join("\n");
+    process.stderr.write(`[cpu] ${label} SELF\n${top(selfBy, 30)}\n[cpu] ${label} TOTAL\n${top(totalBy, 70)}\n`);
+  }
+}
 function frozenRows(path: string) {
   const database = new DatabaseSync(path, { readOnly: true });
   try { return Object.fromEntries(tables.map(table => [table, database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])); }
@@ -79,7 +99,7 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
       assert.equal(conversions(f.path).length, 1);
       assert.deepEqual(readFileSync(protectedPath), oldCredentials); assert.deepEqual(frozenRows(f.path), before);
     }
-    await startup();
+    if (interrupted) await startup(); else await cpuProfiled("first-startup", startup);
     assert.equal(conversions(f.path).length, 1); assert.deepEqual(frozenRows(f.path), before);
     const credentials = readFileSync(protectedPath), journal = conversions(f.path), backups = readdirSync(join(f.stateRoot, "backups", "authority")).sort();
     assert.notDeepEqual(credentials, oldCredentials);
