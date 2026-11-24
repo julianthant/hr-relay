@@ -92,12 +92,15 @@ test("Escape clears a populated search, then closes it", async ({ dashboard, pag
   await expect(dialog).toBeHidden();
 });
 
-test("the bell swaps the sidebar to notifications and back", async ({ dashboard, page }) => {
+test("the bell opens notifications in a popover and the sidebar keeps its workflows", async ({ dashboard, page }) => {
   await dashboard.open();
-  const bell = page.getByRole("button", { name: /^Notifications, \d+ unread$/ });
-  await bell.click();
-  await expect(page.getByRole("heading", { level: 2, name: "Notifications" })).toBeVisible();
-  await bell.click();
+  await page.getByRole("button", { name: /^Notifications, \d+ unread$/ }).click();
+  const popover = page.getByRole("dialog", { name: "Notifications" });
+  await expect(popover).toBeVisible();
+  // The popover is modal, so the sidebar leaves the accessibility tree while it is open; it must still be drawn.
+  await expect(page.locator(".workflow-rail")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(popover).toBeHidden();
   await expect(dashboard.workflows).toBeVisible();
 });
 

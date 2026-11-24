@@ -37,6 +37,14 @@ const headers = z.strictObject({ format: z.literal(1), schema_version: z.literal
 const Column = z.string().regex(/^[a-z_]+$/u);
 const validatedVersion = new WeakMap<DatabaseSync, number>();
 
+/** The archive answers the statements written for the native tables, so it carries their indexes: without one a lookup scans every archived row. */
+function missingNativeIndexes(native: DatabaseSync, archive: DatabaseSync): string[] {
+  const present = new Set(archive.prepare("SELECT name FROM sqlite_master WHERE type='index'").all().map(row => z.object({ name: z.string() }).parse(row).name));
+  return native.prepare(`SELECT name,sql FROM main.sqlite_master WHERE type='index' AND sql IS NOT NULL
+    AND tbl_name IN (SELECT value FROM json_each(?)) ORDER BY name`).all(JSON.stringify(Object.keys(historyTables)))
+    .map(row => z.object({ name: z.string(), sql: z.string() }).parse(row)).filter(index => !present.has(index.name)).map(index => index.sql);
+}
+
 /** An index hint applies to a native table. The planner selects each side's index independently on the history union. */
 export function runIndex(database: DatabaseSync, name: "runs_day_idx" | "runs_workflow_day_idx" | "runs_parent_idx" | "runs_nonterminal_idx"): string {
   return validatedVersion.has(database) ? "" : `INDEXED BY ${name}`;
@@ -73,6 +81,7 @@ export function writeHistoryArchive(source: DatabaseSync, path: string, binding:
     }
     archive.exec("UPDATE run_search SET state='discarded' WHERE run_id IN (SELECT id FROM runs WHERE outcome='discarded') AND state NOT IN ('done','failed','cancelled','discarded','interrupted','superseded')");
     backfillRunSearchOcrSubjects(archive);
+    for (const index of missingNativeIndexes(source, archive)) archive.exec(index);
     archive.exec("COMMIT");
     return counts;
   } finally { archive.close(); }
@@ -114,7 +123,7 @@ export function checkStagedHistory(localPath: string, archivePath: string, bindi
 function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.nlink !== 1 || privatePathRejects(path, stat, "private")) throw new Error("isolated-history-unsafe");
-  upgradeHistoryArchive(path, binding);
+  upgradeHistoryArchive(database, path, binding);
   const url = pathToFileURL(path);
   url.search = "mode=ro&immutable=1";
   database.prepare("ATTACH DATABASE ? AS history").run(url.href);
@@ -133,12 +142,15 @@ const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync) => void>
 };
 const ArchiveVersion = z.object({ schema_version: z.number().int(), installation_id: z.string(), profile_id: z.string() });
 
-/** Brings an archive an older build wrote up to the current schema in place, in one transaction. */
-function upgradeHistoryArchive(path: string, binding: ProfileDatabaseBinding): void {
+/** Brings an archive an older build wrote up to the current schema and the native store's indexes in place, in one transaction. */
+function upgradeHistoryArchive(native: DatabaseSync, path: string, binding: ProfileDatabaseBinding): void {
   const probe = new DatabaseSync(path, { readOnly: true });
-  let header: z.infer<typeof ArchiveVersion>;
-  try { header = ArchiveVersion.parse(probe.prepare("SELECT schema_version,installation_id,profile_id FROM history_header").get()); } finally { probe.close(); }
-  if (header.schema_version >= CURRENT_AUTHORITY_SCHEMA_VERSION) return;
+  let header: z.infer<typeof ArchiveVersion>, indexed: boolean;
+  try {
+    header = ArchiveVersion.parse(probe.prepare("SELECT schema_version,installation_id,profile_id FROM history_header").get());
+    indexed = missingNativeIndexes(native, probe).length === 0;
+  } finally { probe.close(); }
+  if (header.schema_version >= CURRENT_AUTHORITY_SCHEMA_VERSION && indexed) return;
   if (header.installation_id !== binding.installationId || header.profile_id !== binding.profileId) throw new Error("isolated-history-binding-mismatch");
   let version: number;
   const archive = new DatabaseSync(path);
@@ -152,6 +164,7 @@ function upgradeHistoryArchive(path: string, binding: ProfileDatabaseBinding): v
         step(archive);
       }
       archive.prepare("UPDATE history_header SET schema_version=?").run(version);
+      for (const index of missingNativeIndexes(native, archive)) archive.exec(index);
       archive.exec("COMMIT");
     } catch (error) { archive.exec("ROLLBACK"); throw error; }
   } finally { archive.close(); }
