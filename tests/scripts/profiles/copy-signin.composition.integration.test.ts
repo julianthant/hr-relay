@@ -68,6 +68,6 @@ it.skipIf(process.platform === "win32")("keeps the OS keychain and the real Duo 
   expect(duo.createProfileOnboardingDuoProvider).not.toHaveBeenCalled();
 
   expect(await compose(applicationDataWorkspace(undefined, "development"))).toBe(realDuo.message);
-  expect(vi.mocked(duo.copySigninFixtureDuoProvider).mock.results).toEqual([{ type: "return", value: undefined }]);
+  expect(vi.mocked(duo.copySigninFixtureBrowser).mock.results).toEqual([{ type: "return", value: undefined }]);
   expect(vi.mocked(duo.createProfileOnboardingDuoProvider).mock.calls[0]?.[0].copySignin).toBe(copySignin);
 });
