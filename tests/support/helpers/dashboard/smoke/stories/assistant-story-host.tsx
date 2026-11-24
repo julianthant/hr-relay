@@ -2,6 +2,7 @@
 import { useLayoutEffect, useMemo, type ReactNode } from "react";
 import { useAssistantController } from "../../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
 import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
+import { publishAssistantModelChoice } from "../../../../../../src/dashboard/surfaces/shell/assistant-approval-model.js";
 import { assistantOpen } from "../../../../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
 import { HubShell } from "../../../../../../src/dashboard/surfaces/shell/hub-shell.js";
 import type { HubChat } from "../../../../../../src/dashboard/surfaces/shell/hub-shell-model.js";
@@ -26,11 +27,19 @@ export interface AssistantHostProps {
   readonly loading?: boolean;
   readonly historyNotice?: string;
   readonly modelPreference?: AssistantModelPreferenceView["preference"];
+  /** Publishes served model choices, as the shell does, so the composer's model menu can open. */
+  readonly modelChoices?: boolean;
 }
 
 function Panel({ props }: { props: AssistantHostProps }) {
   const client = useMemo(() => assistantStoryClient(props.client), [props.client]);
   const served = useAssistantController(client, client, undefined, false, "story-chat");
+  const preference = props.modelPreference;
+  useLayoutEffect(() => {
+    if (!props.modelChoices || preference === undefined) return;
+    publishAssistantModelChoice({ preference, models: [{ slug: preference.slug }, { slug: "gpt-6.1-terra" }], choose: () => Promise.resolve() });
+    return () => publishAssistantModelChoice(undefined);
+  }, [props.modelChoices, preference]);
   return <AssistantPanel served={served} conversationPort={CONVERSATION} loading={props.loading ?? false} {...(props.historyNotice === undefined ? {} : { historyNotice: props.historyNotice })}
     {...(props.modelPreference === undefined ? {} : { modelPreference: props.modelPreference })} title="New chat" onOpenSettings={noop} onClose={noop} onAttachFile={attached} />;
 }

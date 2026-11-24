@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { PersonPreferencesContext } from '../../../../src/dashboard/lib/person-preferences.js';
 import { createPersonPreferences } from '../../../../src/dashboard/state/person-preferences-model.js';
 import { ComposerInput } from '../../../../src/dashboard/surfaces/shell/composer-input.js';
 import { NEUTRAL_PERSON_PREFERENCES } from '../../../../src/models/config/person-preferences.js';
+import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from '../../../../src/dashboard/app/commands/command-executor.js';
+import { createAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
+import { publishAssistantModelChoice } from '../../../../src/dashboard/surfaces/shell/assistant-approval-model.js';
+import { AssistantModelPreferenceViewSchema, type AssistantRespondEnvelope } from '../../../../src/models/dashboard/assistant.js';
+import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type CommandResult } from '../../../../src/rules/commands/commands.js';
+import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 
@@ -50,7 +56,7 @@ describe('assistant composer send shortcut', () => {
 });
 
 let mounted: Root | undefined;
-afterEach(async () => { await act(async () => mounted?.unmount()); document.body.replaceChildren(); });
+afterEach(async () => { await act(async () => { mounted?.unmount(); publishAssistantModelChoice(undefined); }); document.body.replaceChildren(); });
 
 const servedPreference = { slug: 'gpt-6.1-sol', effort: 'medium' } as const;
 async function mount(props: { preview: boolean; connected?: boolean }) {
@@ -75,7 +81,7 @@ describe('served composer menus', () => {
     expect([...menu!.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent)).toEqual(['Ask before every actionConfirm each proposed change.']);
     expect(menu!.textContent).not.toContain('Full access');
   });
-  it('shows the served model and effort as plain text, not a control', async () => {
+  it('shows the served model and effort as plain text while no model choices are served', async () => {
     const host = await mount({ preview: false });
     const text = host.querySelector<HTMLElement>('#hub-model-text')!;
     expect(text.textContent).toBe('GPT-6.1 Sol · Medium');
@@ -104,6 +110,81 @@ describe('served composer menus', () => {
     expect(button(host, 'Ask before every action')!.disabled).toBe(true);
     expect(host.querySelector('#hub-model-text')!.textContent).toBe('Model unavailable');
     expect(button(host, 'Add files')!.disabled).toBe(false);
+  });
+});
+
+/** A server holding one preference: the composer is mounted from what it serves and saves through the real controller and executor. */
+function preferenceServer() {
+  let view = AssistantModelPreferenceViewSchema.parse({ profileId: crypto.randomUUID(), epoch: 1, revision: 0, preference: servedPreference });
+  const feedback: CommandOutcome[] = [];
+  const held = { gate: undefined as Promise<void> | undefined, refuse: false };
+  const client = {
+    async assistantRespond(): Promise<AssistantRespondEnvelope> { throw new Error('a pick sends no chat turn'); },
+    async assistantModelPreference() { return view; },
+    async executeCommand(input: unknown): Promise<CommandResult> {
+      const command = AssistantModelPreferenceCommandRequestSchema.parse(input);
+      await held.gate;
+      if (held.refuse) return CommandResultSchema.parse({ state: 'refused', commandId: command.commandId, code: 'policy-refused', message: 'Refused' });
+      view = AssistantModelPreferenceViewSchema.parse({ ...view, revision: command.target.expectedRevision + 1, preference: command.payload });
+      return CommandResultSchema.parse({ state: 'applied', commandId: command.commandId,
+        affectedTargets: [{ family: 'assistant-model-preference', profileId: command.target.profileId, revision: view.revision }] });
+    },
+    async executeBulkCommand(): Promise<never> { throw new Error('unexpected-bulk'); },
+  };
+  /** One page load: read the preference, then show the composer on it. */
+  async function load() {
+    await act(async () => mounted?.unmount());
+    document.body.replaceChildren();
+    const host = document.createElement('div'); document.body.append(host); mounted = createRoot(host);
+    const scope: CommandExecutionScope = { actorId: LOCAL_OPERATOR_ACTOR_ID, client, authority: {}, dayRequest: {} };
+    const commands = { executor: new CommandExecutor(() => scope), scope, feedback: (value: CommandOutcome) => { feedback.push(value); } };
+    const render = (preference: typeof view.preference) => mounted!.render(createElement(ComposerInput, { preview: false, onSend: async () => true, modelPreference: preference }));
+    const controller = createAssistantController(client, { authority: 'selected', commands, preferenceChanged: next => render(next.preference) });
+    await act(async () => {
+      publishAssistantModelChoice({ preference: view.preference, models: [{ slug: 'gpt-6.1-sol' }, { slug: 'gpt-6.1-terra' }], choose: next => controller.choose(next) });
+      render(view.preference);
+    });
+    return host;
+  }
+  return { load, feedback, held, get preference() { return view.preference; } };
+}
+const trigger = (host: HTMLElement) => host.querySelector<HTMLButtonElement>('#hub-model-trigger')!;
+async function choose(host: HTMLElement, label: string) {
+  if (trigger(host).getAttribute('aria-expanded') !== 'true') await open(trigger(host));
+  const item = [...document.querySelectorAll<HTMLElement>('[data-menu="model"] [role="menuitemradio"]')].find(row => row.textContent === label)!;
+  await act(async () => { item.click(); });
+}
+
+describe('composer model menu', () => {
+  it('lists the served models and efforts, saves both picks and shows them after a reload', async () => {
+    const server = preferenceServer();
+    let host = await server.load();
+    expect(trigger(host).getAttribute('aria-label')).toBe('Model: GPT-6.1 Sol, Medium effort');
+    const menu = await open(trigger(host));
+    expect([...menu!.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent)).toEqual(['GPT-6.1 Sol', 'GPT-6.1 Terra', 'Light', 'Medium', 'High', 'xHigh', 'Max']);
+
+    await choose(host, 'GPT-6.1 Terra');
+    await vi.waitFor(() => expect(server.feedback).toHaveLength(1));
+    await choose(host, 'High');
+    await vi.waitFor(() => expect(server.feedback).toHaveLength(2));
+    expect(server.preference).toEqual({ slug: 'gpt-6.1-terra', effort: 'high' });
+
+    host = await server.load();
+    expect(trigger(host).textContent).toBe('GPT-6.1 TerraHigh');
+  });
+
+  it('shows a pick at once and goes back when the save is refused', async () => {
+    const server = preferenceServer(), gate = Promise.withResolvers<void>();
+    server.held.gate = gate.promise; server.held.refuse = true;
+    const host = await server.load();
+
+    await choose(host, 'Max');
+    expect(trigger(host).textContent).toBe('GPT-6.1 SolMax');
+
+    await act(async () => { gate.resolve(); });
+    await vi.waitFor(() => expect(trigger(host).textContent).toBe('GPT-6.1 SolMedium'));
+    expect(server.feedback.map(outcome => outcome.kind)).toEqual(['refused']);
+    expect(server.preference).toEqual(servedPreference);
   });
 });
 

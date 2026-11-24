@@ -10,6 +10,8 @@
 #hub-panel-assistant .hub-toolbar [data-size=icon-sm] svg,#hub-panel-assistant #hub-send svg{width:16px;height:16px}
 #hub-panel-assistant .hub-toolbar .hub-model-text{flex:0 1 auto;min-width:0;margin-left:auto;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:28px;color:var(--ui-muted)}
 #hub-panel-assistant .hub-toolbar #hub-approval-trigger{flex:none}
+#hub-panel-assistant .hub-toolbar #hub-model-trigger{margin-left:auto}
+#hub-panel-assistant .hub-toolbar .hub-effort{color:var(--ui-secondary)}
 #hub-panel-assistant #hub-send{flex:none;width:28px;min-width:28px;height:28px;padding:0;border-radius:50%;background:var(--ui-primary);color:var(--ui-panel);border:0}
 #hub-panel-assistant .hub-toolbar .hub-full-access{color:var(--ui-warning)!important}
 #hub-panel-assistant #hub-send:enabled:not([aria-disabled]):hover{opacity:.85}
@@ -25,6 +27,7 @@ html[data-demo-theme=dark] .hub-assistant-menu{box-shadow:0 10px 32px rgb(0 0 0 
 .hub-assistant-menu[data-menu=model]{width:224px}
 .hub-assistant-menu[data-menu=effort]{width:144px}
 .hub-assistant-menu[data-menu=attach]{width:272px}
+.hub-assistant-menu .hub-menu-separator{height:1px;margin:4px -4px;background:var(--ui-stroke)}
 .hub-assistant-menu .hub-menu-title{padding:6px 8px 4px;color:var(--ui-muted);font-size:12px;line-height:16px;font-weight:400}
 .hub-assistant-menu .hub-menu-option{position:relative;display:flex;width:100%;min-height:32px!important;align-items:center;gap:8px;text-align:left;padding:6px 8px!important;border-radius:8px!important;border:0;background:transparent;color:var(--ui-primary);font-size:14px!important;line-height:20px;cursor:default;user-select:none;outline-color:currentColor;transition:none}
 .hub-assistant-menu .hub-menu-option:is(:hover,:focus){background:color-mix(in srgb,var(--ds-fg) 8%,transparent)!important;color:var(--ui-primary)!important}
