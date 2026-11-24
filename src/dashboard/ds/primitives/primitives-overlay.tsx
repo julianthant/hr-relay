@@ -225,7 +225,7 @@ function DialogSurface({
           className,
         )}
       >
-        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-dialog-pad)] pb-[var(--ds-dialog-header-pb,var(--ds-space-cozy))] pt-[var(--ds-dialog-pad)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)] group-data-[size=lg]/dialog:h-[73px] group-data-[size=lg]/dialog:items-center group-data-[size=lg]/dialog:bg-[var(--ds-surface-2)]">
+        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-dialog-pad)] pb-[var(--ds-dialog-header-pb)] pt-[var(--ds-dialog-pad)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)] group-data-[size=lg]/dialog:h-[73px] group-data-[size=lg]/dialog:items-center group-data-[size=lg]/dialog:bg-[var(--ds-surface-2)]">
           <div className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
             <DialogPrimitive.Title className="text-[length:var(--ds-dialog-title-size)] font-semibold leading-[var(--ds-dialog-title-lh)] text-[color:var(--ds-fg)]">
               {title}
@@ -248,7 +248,7 @@ function DialogSurface({
 
 export function DialogBody({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div data-slot="dialog-body" className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-dialog-pad)] pt-[var(--ds-dialog-body-pt,var(--ds-space-cozy))] pb-[var(--ds-dialog-body-pb,var(--ds-space-cozy))]", className)}>
+    <div data-slot="dialog-body" className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-dialog-pad)] pt-[var(--ds-dialog-body-pt)] pb-[var(--ds-dialog-body-pb)]", className)}>
       {children}
     </div>
   );
@@ -270,7 +270,7 @@ export function DialogFooter({
       data-slot="dialog-footer"
       className={cn(
         // Compact: the buttons sit in the dialog's own padding. Only the Run and Rerun dialog (`band`) has the recessed plane.
-        "flex shrink-0 items-center gap-[var(--ds-dialog-footer-gap,var(--ds-space-base))] px-[var(--ds-dialog-pad)] pb-[var(--ds-dialog-pad)] pt-[var(--ds-dialog-footer-pt,var(--ds-space-cozy))]",
+        "flex shrink-0 items-center gap-[var(--ds-dialog-footer-gap)] px-[var(--ds-dialog-pad)] pb-[var(--ds-dialog-pad)] pt-[var(--ds-dialog-footer-pt)]",
         "group-data-[size=lg]/dialog:h-[57px] group-data-[size=lg]/dialog:pb-0 group-data-[band]/dialog:border-t group-data-[band]/dialog:border-[color:var(--ds-border-subtle)] group-data-[band]/dialog:bg-[var(--ds-recess-bg)] group-data-[band]/dialog:pt-[var(--ds-space-cozy)] group-data-[band]/dialog:[border-end-start-radius:inherit] group-data-[band]/dialog:[border-end-end-radius:inherit]",
         meta ? "justify-between" : "justify-end",
         className,
@@ -286,7 +286,7 @@ export function DialogFooter({
           {meta}
         </span>
       )}
-      <span className="flex shrink-0 items-center gap-[var(--ds-dialog-footer-gap,var(--ds-space-base))]">{children}</span>
+      <span className="flex shrink-0 items-center gap-[var(--ds-dialog-footer-gap)]">{children}</span>
     </footer>
   );
 }

@@ -457,6 +457,11 @@
   --ds-dialog-title-size: 20px;
   --ds-dialog-title-lh: 28px;
   --ds-dialog-pad: var(--ds-space-section); /* 24px: header, body and footer inset */
+  --ds-dialog-header-pb: var(--ds-space-cozy); /* header, body and footer gaps; the small dialog narrows them */
+  --ds-dialog-body-pt: var(--ds-space-cozy);
+  --ds-dialog-body-pb: var(--ds-space-cozy);
+  --ds-dialog-footer-pt: var(--ds-space-cozy);
+  --ds-dialog-footer-gap: var(--ds-space-base);
   --ds-radius-pill: 9999px;
 
   /* ELEVATION — three steps, and only floating things get them.
@@ -1033,7 +1038,10 @@ body[data-demo-theme="light"] {
   --ds-settings-card-gap: 40px;
 }
 /* The selected pill of a two- or three-way switch: a soft step above whatever surface it sits on. */
-.ds-segment { --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 5%, transparent); --ds-segment-fg: color-mix(in srgb, var(--ds-fg) 50%, transparent); }
+.ds-segment {
+  --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 5%, transparent);
+  --ds-segment-fg: color-mix(in srgb, var(--ds-fg) 50%, transparent);
+}
 [data-demo-theme="light"] .ds-segment { --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 7%, transparent); }
 /* Collapse the line box to the em. Compose AFTER a `ds-text-*` size class on a
    single-line label that shares a flex/grid row with an icon or a taller */
