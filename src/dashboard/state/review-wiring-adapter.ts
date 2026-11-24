@@ -12,7 +12,6 @@ import { OcrApprovalReferenceSchema } from "../../models/workflows/ocr/result.js
 import { deriveSchemaHash } from "../../models/validation/schema-bound-value.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { correctedOcrRecord } from "../surfaces/run-detail/review/review-model.js";
-import { createRowWait } from "./run-wiring-adapter.js";
 import { checkedCommandResult } from "../client/commands/shared-commands.js";
 
 type ReviewState = Readonly<{ state: "loading" | "loaded" | "failed"; page?: ReviewPage; error?: string }>;
@@ -103,7 +102,6 @@ interface ReviewMemory {
   confirmed?: { revision: number; approved: boolean };
   discardedRecords?: readonly string[];
   binding?: DashboardCommandBinding;
-  rowWait?: ReturnType<typeof createRowWait>;
   version: number;
   listeners: Set<() => void>;
 }
@@ -141,10 +139,6 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
   const snapshot = useCallback(() => memory.version, [memory]);
   useSyncExternalStore(subscribe, snapshot, snapshot);
   useEffect(() => { memory.binding = binding; }, [memory, binding]);
-  const heldRevision = useRef(selection.row.rowRevision);
-  heldRevision.current = selection.row.rowRevision;
-  useEffect(() => { memory.rowWait?.observe(selection.row.rowRevision); }, [memory, selection.row.rowRevision]);
-  useEffect(() => () => memory.rowWait?.stop(), [memory, binding?.scope]);
   const { attempt, draft } = memory;
   const page = resource.page, review = page?.ocr;
   const fresh = resource.state === "loaded" && binding?.scope.client === client && binding.authority.dayState.day.state === "loaded"
@@ -158,7 +152,6 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
     const start = memory.binding;
     if (start === undefined || start.scope.client !== client || memory.attempt?.state === "pending") return;
     memory.attempt = { request, captured, state: "pending", text: "Pending" };
-    const actedOn = heldRevision.current;
     publishReview(memory);
     const options = { scope: start.scope, readback: (input: DashboardCommandRequest) => verifyOcrReviewEffect(client, input) };
     let outcome = check ? await start.executor.check(request.commandId, { ...options, observe: async input => {
@@ -191,10 +184,7 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
     publishReview(memory);
     if (memory.listeners.size > 0) {
       memory.binding?.feedback(outcome);
-      // The run row the command acted on is the one this editor held when it was sent; the OCR revision is another counter.
-      if (confirmed) (memory.rowWait ??= createRowWait()).wait(actedOn, heldRevision.current, () => {
-        if (memory.binding?.scope === start.scope) start.authority.dayState.refresh();
-      });
+      if (confirmed) memory.binding?.authority.dayState.refresh();
     }
   }, [client, memory]);
   const save = useCallback(() => {
