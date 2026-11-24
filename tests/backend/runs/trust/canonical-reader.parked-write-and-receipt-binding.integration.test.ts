@@ -11,7 +11,7 @@ import { afterAll, afterEach, describe, it } from "vitest";
 import { WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { closePersonLookupReceiptDatabase, openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
 
-import { buildRunEvidenceReceipt, type ReceiptBuildInput } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt, type ReceiptBuildInput } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { failureStatus } from "../../../../src/backend/transports/http/routes/failure-status.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -399,7 +399,7 @@ function runUnderMovedClosure(patch: Readonly<{
 }
 
 function receiptFrom(overrides: Partial<ReceiptBuildInput> = {}): RunEvidenceReceipt {
-  return buildRunEvidenceReceipt({ descriptor, ...kualiReceiptEvidence(), ...overrides });
+  return deriveRunEvidenceReceipt({ descriptor, ...kualiReceiptEvidence(), ...overrides }).receipt;
 }
 
 function refusalFor(overrides: Partial<ReceiptBuildInput>): string {
@@ -520,14 +520,14 @@ afterEach(async () => {
     const authority = database.authority;
     const result = authority.runResults.get(runId);
     assert.ok(result);
-    const currentReceipt = buildRunEvidenceReceipt({
+    const currentReceipt = deriveRunEvidenceReceipt({
       descriptor: personLookupDescriptor,
       run: seeded.run,
       result,
       checkpoints: seeded.checkpoints,
       writes: [],
       gateResults: authority.gateResults.listByRun(runId),
-    });
+    }).receipt;
     const rawPermanentKey = "ucpath:termination|10812345|2026-08-29";
     const divergent = storedVariant(currentReceipt, (draft) => {
       const decisions = draft.decisions as Record<string, unknown>[];

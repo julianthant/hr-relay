@@ -4,7 +4,6 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach } from "vitest";
 import { describe } from "vitest";
 import { it } from "vitest";
-import { runSessionActorId } from "../../../src/models/run/session.js";
 import { RunSessionRecordSchema } from "../../../src/models/run/session.js";
 import { workflowQueueCapabilities } from "../../../src/backend/app/registries/workflow-registry.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -75,7 +74,7 @@ afterEach(_afterEachFixture0);
     );
     const stored = database.authority.runSessions.get(RUN_SESSION_ID);
     assert.ok(stored !== undefined);
-    assert.equal(runSessionActorId(stored), "local-operator");
+    assert.equal(stored.origin.actorId, "local-operator");
     assert.deepEqual(database.authority.runSessions.listByWorkflow(WORKFLOW_ID).map((s) => s.sessionId), [RUN_SESSION_ID]);
     database.close();
 

@@ -3,12 +3,8 @@ import { WorkerBrowserObservationSchema } from "../../../../src/models/run/worke
 import type { BrowserSessionCloseReason } from "../../../../src/workflow-kit/session.js";
 import {
   transitionWorkerSession,
-  workerSessionBrowserKey,
   workerSessionHealth,
   workerSessionStateKey,
-  WORKER_SESSION_BROWSER_KEYS,
-  WORKER_SESSION_EVENT_TYPES,
-  WORKER_SESSION_TRANSITIONS,
   type WorkerSessionBrowser,
   type WorkerSessionBrowserKey,
   type WorkerSessionEvent,
@@ -34,6 +30,7 @@ const browsers: Record<WorkerSessionBrowserKey, WorkerSessionBrowser> = {
   "closing/session": { state: "closing", owner: "session", reason: "fresh-boundary" },
   "closure-unproved": { state: "closure-unproved" },
 };
+const browserKeys = Object.keys(browsers) as WorkerSessionBrowserKey[];
 const failed = (browser: WorkerSessionBrowser): WorkerSessionState => ({ state: "failed", browser });
 
 const events: Record<WorkerSessionEventType, WorkerSessionEvent> = {
@@ -52,6 +49,7 @@ const events: Record<WorkerSessionEventType, WorkerSessionEvent> = {
   "close-proved": { type: "close-proved" },
   "close-failed": { type: "close-failed" },
 };
+const eventTypes = Object.keys(events) as WorkerSessionEventType[];
 const stop = { type: "close", reason: "worker-stop" } as const;
 
 /**
@@ -148,21 +146,16 @@ const everyVariant = (type: WorkerSessionEventType): readonly WorkerSessionEvent
   type === "close" ? CLOSE_REASONS.map((reason) => ({ type, reason })) : [events[type]];
 
 describe("worker browser session transition table", () => {
-  it("has one row per browser state and one column per event", () => {
+  it("reports every browser state key and its failed counterpart", () => {
     expect(everyCloseReason).toBe(true);
-    expect(Object.keys(WORKER_SESSION_TRANSITIONS).sort()).toEqual([...WORKER_SESSION_BROWSER_KEYS].sort());
-    expect(Object.keys(expected).sort()).toEqual([...WORKER_SESSION_BROWSER_KEYS].sort());
-    expect(Object.keys(events).sort()).toEqual([...WORKER_SESSION_EVENT_TYPES].sort());
-    for (const key of WORKER_SESSION_BROWSER_KEYS) {
-      expect(Object.keys(WORKER_SESSION_TRANSITIONS[key]).sort()).toEqual([...WORKER_SESSION_EVENT_TYPES].sort());
-      expect(workerSessionBrowserKey(browsers[key])).toBe(key);
+    for (const key of browserKeys) {
       expect(workerSessionStateKey(browsers[key])).toBe(key);
       expect(workerSessionStateKey(failed(browsers[key]))).toBe(`failed/${key}`);
     }
   });
 
-  for (const key of WORKER_SESSION_BROWSER_KEYS) {
-    for (const type of WORKER_SESSION_EVENT_TYPES) {
+  for (const key of browserKeys) {
+    for (const type of eventTypes) {
       it(`${key} on ${type}`, () => {
         expect(transitionWorkerSession(browsers[key], events[type])).toEqual(expected[key][type]);
       });
@@ -198,7 +191,7 @@ describe("worker browser session transition table", () => {
       const key = workerSessionStateKey(state);
       if (reached.has(key)) continue;
       reached.add(key);
-      for (const type of WORKER_SESSION_EVENT_TYPES) {
+      for (const type of eventTypes) {
         if (type === "close-proved") continue;
         for (const event of everyVariant(type)) {
           const verdict = transitionWorkerSession(state, event);
@@ -215,8 +208,8 @@ describe("worker browser session transition table", () => {
   });
 
   it("never clears failed: every event from a failed state stays failed or is refused", () => {
-    for (const key of WORKER_SESSION_BROWSER_KEYS) {
-      for (const type of WORKER_SESSION_EVENT_TYPES) {
+    for (const key of browserKeys) {
+      for (const type of eventTypes) {
         for (const event of everyVariant(type)) {
           const verdict = transitionWorkerSession(failed(browsers[key]), event);
           if ("state" in verdict) expect(verdict.state.state).toBe("failed");
@@ -317,7 +310,7 @@ describe("worker browser session transition table", () => {
       "closing/session": "unknown",
       "closure-unproved": "failed",
     };
-    for (const key of WORKER_SESSION_BROWSER_KEYS) {
+    for (const key of browserKeys) {
       expect(workerSessionHealth(browsers[key])).toBe(health[key]);
       // A failed system's closure is unproved, so even its signed-in browser never reports authenticated.
       expect(workerSessionHealth(failed(browsers[key]))).toBe(health[key] === "authenticated" ? "failed" : health[key]);
@@ -325,11 +318,9 @@ describe("worker browser session transition table", () => {
     expect([...new Set(Object.values(health))].sort()).toEqual([...WorkerBrowserObservationSchema.shape.health.options].sort());
   });
 
-  it("keeps the registry and every verdict frozen", () => {
-    for (const registry of [WORKER_SESSION_BROWSER_KEYS, WORKER_SESSION_EVENT_TYPES, WORKER_SESSION_TRANSITIONS]) expect(Object.isFrozen(registry)).toBe(true);
-    for (const key of WORKER_SESSION_BROWSER_KEYS) {
-      expect(Object.isFrozen(WORKER_SESSION_TRANSITIONS[key])).toBe(true);
-      for (const type of WORKER_SESSION_EVENT_TYPES) {
+  it("keeps every verdict frozen", () => {
+    for (const key of browserKeys) {
+      for (const type of eventTypes) {
         for (const state of [browsers[key], failed(browsers[key])]) {
           const verdict = transitionWorkerSession(state, events[type]);
           expect(Object.isFrozen(verdict)).toBe(true);

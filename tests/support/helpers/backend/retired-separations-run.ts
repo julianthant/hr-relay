@@ -51,7 +51,7 @@ export async function retiredSeparationsRun() {
     const { testRunLifecycle } = await import("../../fixtures/run-lifecycle-fixtures.js");
     const { requireLifecycleApplied } = await import("../../../../src/backend/runs/lifecycle/run-record-service.js");
     const { buildNodeFailureRecord } = await import("../../../../src/backend/runtime/execution/run-failure.js");
-    const { buildFailureTerminalAuthorization } = await import("../../../../src/backend/runs/lifecycle/terminal-authorization.js");
+    const { buildTerminalAuthorization } = await import("../../../../src/backend/runs/lifecycle/terminal-authorization.js");
     const { NodeIdSchema } = await import("../../../../src/rules/identity/ids.js");
     const { preInitialsSeparationsRun, preInitialsExecutionInput, preInitialsSignedComment } = await import("../../fixtures/storage/pre-initials-separations.js");
     const queued = preInitialsSeparationsRun(RunRecordSchema.parse(compositionQueuedRun()), "pre-initials");
@@ -80,7 +80,8 @@ export async function retiredSeparationsRun() {
     const current = h.database.authority.runs.get(run.envelope.runId); assert.ok(current);
     const failure = buildNodeFailureRecord({ writes: [], run: current, failureId: randomUUID(), nodeId: NodeIdSchema.parse(FINALIZE_NODE), taskId: context.node.commit.uses.id,
       error: new Error("synthetic post-completion diagnostic failure"), occurredAt: h.clock.now().toISOString() });
-    const authorization = buildFailureTerminalAuthorization({ run: current, authorizedAt: h.clock.now().toISOString(), consequence: { kind: "failed", failure } });
+    const authorization = buildTerminalAuthorization({ run: current, authorizedAt: h.clock.now().toISOString(), consequence: { kind: "failed", failure } });
+    assert.equal(authorization.kind, "failed");
     const terminal = requireLifecycleApplied(testRunLifecycle(h.database, h.clock).terminalize({ commandId: randomUUID(), kind: "failure", terminal: { authorization, failure } }, descriptor));
     const checkpoints = h.database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId), writes = h.database.authority.writeIntents.listByRun(run.envelope.runId);
     const result = h.database.authority.runResults.get(run.envelope.runId); assert.ok(result);

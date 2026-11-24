@@ -16,7 +16,6 @@ function world() {
     document: { documentElement: {}, querySelectorAll: () => headings },
     location: { href: `${origin}/frame/device-management/portal`, origin },
     DuoUsername: { findUsernames: () => ["alex"] },
-    RelayNative: { create: async () => ({ credentialId: "touch-credential", attachment: "platform" }) },
     MutationObserver: class {
       constructor(callback: () => void) { mutation = callback; }
       observe() {}
@@ -25,7 +24,7 @@ function world() {
     postMessage(message: { type: string; success?: boolean }) { replies.push(message); },
     chrome: { runtime: { id: "owned", onMessage: { addListener() {} }, sendMessage: async (message: { type: string; request?: { requestId: string; method?: string } }) => {
       if (message.type === "DUO_AUTOPILOT_ENROLL") {
-        return { success: true, result: message.request?.requestId === "touch-request" ? { native: true } : { ok: true } };
+        return { success: true, result: { ok: true } };
       }
       if (message.type === "RELAY_PORTAL_ACCEPTED" && message.request) accepted.push(message.request.requestId);
       return { success: true };
@@ -53,17 +52,11 @@ function world() {
   };
 }
 
-it("reports Duo's success heading for each method added on the same portal page", async () => {
+it("reports Duo's success heading for the added security key", async () => {
   const w = world();
   await w.enroll("key-request");
   await w.show("Added security key");
   assert.deepEqual(w.accepted, ["key-request"]);
-  await w.show(undefined);
-
-  await w.enroll("touch-request");
-  await w.show("Added Touch ID");
-  await w.show("Added Touch ID");
-  assert.deepEqual(w.accepted, ["key-request", "touch-request"]);
   assert.equal(w.replies.some(reply => reply.type === "RELAY_DUO_UNCERTAIN"), false);
 });
 

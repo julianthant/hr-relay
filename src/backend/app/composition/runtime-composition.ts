@@ -141,7 +141,7 @@ export function registerTestDataComposer(composer: TestDataComposer): void {
 const COMPLETED_THROUGH = "2j";
 const ACTIVE_ITEM = "3-workflow-migration";
 
-export function runtimeHelp(isolation: RuntimeIsolation): string {
+function runtimeHelp(isolation: RuntimeIsolation): string {
   return [
     `Relay foundation (complete through ${COMPLETED_THROUGH}; active ${ACTIVE_ITEM})`,
     "Commands:",

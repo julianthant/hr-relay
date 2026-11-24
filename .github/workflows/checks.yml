@@ -462,6 +462,13 @@ jobs:
           dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - run: npm run test:smoke
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: smoke-profile
+          retention-days: 7
+          path: tests/smoke/.output/results.json
+          if-no-files-found: error
 
   unit:
     name: unit

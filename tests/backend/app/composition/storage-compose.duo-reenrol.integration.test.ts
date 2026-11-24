@@ -45,12 +45,10 @@ async function stagedRuntime() {
   };
   const before = duo();
   const opened = runtime.session.beginDuoReenrol(active.token);
-  for (const method of ["key", "touch"] as const) {
-    const started = await runtime.session.startDuoReenrol(active.token, opened.operationId, method);
-    const attemptId: string | undefined = started.methods[method].attemptId;
-    assert.ok(attemptId);
-    if (method === "key") runtime.session.confirmDuoReenrol(active.token, opened.operationId, method, attemptId);
-  }
+  const started = await runtime.session.startDuoReenrol(active.token, opened.operationId, "key");
+  const attemptId: string | undefined = started.methods.key.attemptId;
+  assert.ok(attemptId);
+  runtime.session.confirmDuoReenrol(active.token, opened.operationId, "key", attemptId);
   assert.equal(runtime.session.readDuoReenrol(active.token, opened.operationId).step, "ready");
   const lifecycle = new RunRecordService({ database: context.database, clock, ids: { uuid: randomUUID }, publishQueued: () => undefined });
   /** A run start the way the dashboard writes one: inside a transaction that checks the session before and after. */
@@ -214,12 +212,10 @@ async function leftoverDraft(stage: "pending" | "proved", quit: "clean" | "crash
   };
   const before = duo(machine);
   const opened = runtime.session.beginDuoReenrol(active.token);
-  for (const method of stage === "pending" ? ["key"] as const : ["key", "touch"] as const) {
-    const started = await runtime.session.startDuoReenrol(active.token, opened.operationId, method);
-    const attemptId: string | undefined = started.methods[method].attemptId;
-    assert.ok(attemptId);
-    if (stage === "proved" && method === "key") runtime.session.confirmDuoReenrol(active.token, opened.operationId, method, attemptId);
-  }
+  const started = await runtime.session.startDuoReenrol(active.token, opened.operationId, "key");
+  const attemptId: string | undefined = started.methods.key.attemptId;
+  assert.ok(attemptId);
+  if (stage === "proved") runtime.session.confirmDuoReenrol(active.token, opened.operationId, "key", attemptId);
   if (quit === "clean") await runtime.close("shutdown");
   const stateRoot = machine.stateRoot;
   machine.release();
@@ -276,7 +272,7 @@ it("boot aborts a deselected person's leftover re-enrolment without holding them
     assert.deepEqual(f.duo(booted.machine), f.before);
     assert.throws(() => booted.runtime.session.readDuoReenrol(signedIn.token, f.operationId), { code: "PROFILE_SESSION_STALE" });
     const fresh = booted.runtime.session.beginDuoReenrol(signedIn.token);
-    assert.deepEqual([fresh.operationId !== f.operationId, fresh.methods.key.state, fresh.methods.touch.state], [true, "idle", "idle"]);
+    assert.deepEqual([fresh.operationId !== f.operationId, fresh.methods.key.state], [true, "idle"]);
   }
 });
 

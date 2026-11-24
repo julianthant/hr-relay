@@ -1,3 +1,4 @@
+import { formatDuration } from "../../lib/date-format.js";
 import type { ActivityVolume } from "../../../models/dashboard/activity-volume.js";
 import type { ActivityDateRange } from "./activity-model.js";
 import type { AnalyticsData } from "./analytics-model.js";
@@ -47,12 +48,7 @@ export type ActivityViewState =
   | { readonly state: "loading" }
   | { readonly state: "unavailable"; readonly reason: string };
 
-export function activityDuration(seconds: number | null): string {
-  if (seconds === null) return "Unavailable";
-  const rounded = Math.round(seconds);
-  if (rounded >= 3600) return `${Math.floor(rounded / 3600)}h ${Math.floor(rounded % 3600 / 60)}m`;
-  return rounded < 60 ? `${rounded}s` : `${Math.floor(rounded / 60)}m ${rounded % 60}s`;
-}
+export const activityDuration = (seconds: number | null): string => seconds === null ? "Unavailable" : formatDuration(seconds);
 
 export function activityCompletionRate(completed: number, terminal: number): string {
   return terminal === 0 ? "No finished runs" : `${Math.round(completed / terminal * 100)}%`;

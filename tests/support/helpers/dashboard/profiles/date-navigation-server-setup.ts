@@ -1,5 +1,5 @@
 import { sqliteRunReader } from "../../canonical-run-reader.js";
-import { queryActivitySummaries } from "../../../../../src/backend/runs/queries/run-summaries.js";
+import { queryActivitySummaries } from "../../../../../src/backend/runs/queries/activity-summaries.js";
 import { composeQueueSummaries } from "../../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../../src/models/dashboard/subscription.js";

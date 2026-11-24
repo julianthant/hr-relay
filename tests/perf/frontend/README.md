@@ -2,6 +2,7 @@
 
 This isolated Vite entry mounts the real QueuePanel or LogFeed with synthetic records. It never
 starts an HR workflow, reads credentials, or connects to the dashboard BFF.
+The harness stylesheet imports the app stylesheet and registers the dashboard sources with Tailwind.
 
 Build and serve:
 
@@ -22,6 +23,10 @@ repetitions. Report medians and the sample maximum; these small samples do not e
 p95, device-independent SLO or service throughput. Action timing includes Playwright dispatch and
 scrolling. Heap samples follow Chromium garbage collection; repeated post-unmount samples test cleanup.
 
-This is a measurement tool, not a frozen visual reference or a passing performance budget. Queue and
-logs retain all loaded DOM records. Backend wiring must preserve bounded paging and independent total
-counts; offscreen layout deferral does not replace pagination or reduce retained record memory.
+Queue renders all list lines up to 100, counting both rows and band headers. Above 100, it mounts
+only lines in and near the viewport. Standalone Logs mounts all matching steps up to 200 and
+windows them above 200. Embedded Logs mounts all matching steps at any count. Headers, controls,
+and content outside the windowed lists stay mounted.
+
+This fixture measures rendering. The full loaded data stays in memory for operations such as
+selection, log search, and copy. Backend wiring still needs bounded paging and independent total counts.

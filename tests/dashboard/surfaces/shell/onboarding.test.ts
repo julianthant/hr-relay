@@ -97,7 +97,7 @@ it("Ready only dispatches Finish and does not navigate on refusal or uncertain c
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const method = { state: "complete" as const, ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: false };
   const onboarding = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
-    profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
+    profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method } };
   let completed = 0, navigated = 0, uncertain = false;
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: validateOnboarding,
@@ -122,7 +122,7 @@ it("Finish navigates only after the matching active completion settles", async (
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const method = { state: "complete" as const, ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: false };
   const onboarding = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
-    profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
+    profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method } };
   const reply = Promise.withResolvers<import("../../../../src/models/profiles/public-profile.js").PublicProfileState>();
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: validateOnboarding,
@@ -142,7 +142,7 @@ it("a late Finish result cannot navigate a replacement draft", async () => {
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const method = { state: "complete" as const, ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: false };
   const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
-    profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
+    profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method } };
   const reply = Promise.withResolvers<import("../../../../src/models/profiles/public-profile.js").PublicProfileState>();
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding: draft, validate: validateOnboarding,
@@ -163,7 +163,7 @@ it("returning to Details requires confirmed draft cancellation", async () => {
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const method = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const onboarding = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
-    profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: method, touch: method } };
+    profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: method } };
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   let allow = false, cancelled = 0;
   const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: validateOnboarding,
@@ -192,7 +192,7 @@ it("the served consent dialog closes when its displayed attempt is replaced", as
   const attemptId = "00000000-0000-4000-8000-000000000003";
   const idle = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
-    profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: { ...idle, state: "pending" as const, attemptId }, touch: idle } };
+    profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: { ...idle, state: "pending" as const, attemptId } } };
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   let confirmed = 0;
   const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding: draft, validate: validateOnboarding,
@@ -214,7 +214,7 @@ it("unknown enrollment copy directs checking Duo before starting that method ove
   const host = document.createElement("div"), root = createRoot(host);
   const method = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const onboarding = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const,
-    methods: { key: { ...method, state: "unknown" as const, attemptId: "00000000-0000-4000-8000-000000000003" }, touch: method } };
+    methods: { key: { ...method, state: "unknown" as const, attemptId: "00000000-0000-4000-8000-000000000003" } } };
   const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
   const port: ServedOnboardingPort = { reopenBrowser: unavailable, resume: async () => { throw new Error("not called"); }, onboarding, unavailable: true, validate: validateOnboarding,
     showBrowser: unavailable, openPortal: unavailable, complete: unavailable, cancel: unavailable, cancelDuo: unavailable, start: unavailable, confirmDuo: unavailable, submit: unavailable };
@@ -224,7 +224,7 @@ it("unknown enrollment copy directs checking Duo before starting that method ove
     assert.match(host.textContent ?? "", /Security keyNot confirmed/);
     assert.doesNotMatch(host.textContent ?? "", /outcome unknown|Needs review|may already have been added/);
     assert.match(host.textContent ?? "", /remove any device you do not recognize, then start over/);
-    assert.doesNotMatch(host.textContent ?? "", /Security key is next|Start with a security key|then add a security key|Security key and Touch ID not added/);
+    assert.doesNotMatch(host.textContent ?? "", /Security key is next|Start with a security key|then add a security key|Security key not added/);
     for (const state of ["pending", "unavailable"] as const) {
       const currentPort = { ...port, unavailable: false, onboarding: { ...onboarding, methods: { ...onboarding.methods, key: { ...onboarding.methods.key, state } } } };
       await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: currentPort })));
@@ -244,7 +244,7 @@ it("both served setup pages keep method outcomes visible without offering anothe
     for (const page of ["fast", "duo"] as const) for (const [state, label] of [["idle", "Not started"], ["pending", "Waiting for Duo"], ["complete", "Added"], ["unknown", "Not confirmed"], ["unavailable", "Unavailable"]] as const) {
       const port: ServedOnboardingPort = { reopenBrowser: unavailable, resume: async () => { throw new Error("not called"); }, validate: validateOnboarding,
         onboarding: { browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo",
-          methods: { key: { ...method, state, attemptId: "00000000-0000-4000-8000-000000000003" }, touch: method } },
+          methods: { key: { ...method, state, attemptId: "00000000-0000-4000-8000-000000000003" } } },
         showBrowser: unavailable, openPortal: unavailable, complete: unavailable, cancel: unavailable, cancelDuo: unavailable,
         start: async () => { calls.push("start"); return unavailable(); }, confirmDuo: unavailable, submit: unavailable };
       await act(async () => root.render(createElement(OnboardingSetup, { page, port })));
@@ -264,27 +264,25 @@ it("both served setup pages keep method outcomes visible without offering anothe
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
-it("selects method cards and blocks selection while a method is pending or busy", async () => {
+it("selects the security key card and blocks selection while it is pending or busy", async () => {
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const idle = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-  const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: idle, touch: idle } };
+  const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: idle } };
   const unused = async (): Promise<never> => { throw new Error("unexpected command"); };
   let settle!: (value: typeof draft) => void;
   const port: ServedOnboardingPort = { reopenBrowser: unused, resume: async () => { throw new Error("not called"); }, onboarding: draft, validate: validateOnboarding, submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, showBrowser: unused, openPortal: () => new Promise(resolve => { settle = resolve; }) };
   const cards = () => [...host.querySelectorAll<HTMLButtonElement>(".method-head")];
   try {
     await act(async () => root.render(createElement(OnboardingSetup, { page: "fast", port })));
-    assert.equal(cards().length, 2);
+    assert.equal(cards().length, 1);
     assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
-    await act(async () => cards()[1].click());
-    assert.equal(cards()[1].getAttribute("aria-pressed"), "true");
     await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Open Duo")!.click());
     assert.ok(cards().every(card => card.disabled));
     await act(async () => settle(draft));
     assert.ok(cards().every(card => !card.disabled));
-    await act(async () => root.render(createElement(OnboardingSetup, { page: "fast", port: { ...port, onboarding: { ...draft, methods: { key: idle, touch: { ...idle, state: "pending", attemptId: "00000000-0000-4000-8000-000000000003" } } } } })));
+    await act(async () => root.render(createElement(OnboardingSetup, { page: "fast", port: { ...port, onboarding: { ...draft, methods: { key: { ...idle, state: "pending", attemptId: "00000000-0000-4000-8000-000000000003" } } } } })));
     assert.ok(cards().every(card => card.disabled));
-    assert.equal(cards()[1].querySelector(".method-status")?.textContent, "Waiting for Duo");
+    assert.equal(cards()[0].querySelector(".method-status")?.textContent, "Waiting for Duo");
     assert.ok([...host.querySelectorAll("button")].find(button => button.textContent === "Stop"));
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
@@ -318,7 +316,7 @@ it("cancels sign-up from its footer only after confirmation and never repeats an
   const method = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const onboarding = { browser: { state: "closed" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
     profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const,
-    methods: { key: method, touch: { ...method, platformAuthenticator: "chromium-platform" as const } } };
+    methods: { key: method } };
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
   let cancellations = 0, reopens = 0;
@@ -328,7 +326,7 @@ it("cancels sign-up from its footer only after confirmation and never repeats an
   const button = (scope: ParentNode, text: string) => { const button = [...scope.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === text); assert.ok(button); return button; };
   try {
     await act(async () => root.render(createElement(Onboarding, { port, step: "duo", onStep() { assert.fail("unconfirmed cancellation cannot navigate"); }, onDashboard() { assert.fail("cannot finish"); } })));
-    assert.match(host.querySelector(".heading p")?.textContent ?? "", /Add your security key and Touch ID/);
+    assert.match(host.querySelector(".heading p")?.textContent ?? "", /Add your security key/);
     const cancel = button(host.querySelector("footer")!, "Cancel sign-up");
     await act(async () => cancel.click());
     assert.equal(cancellations, 0);
@@ -358,7 +356,7 @@ it("cancels sign-up from its footer only after confirmation and never repeats an
 it("opening the setup browser spins the button and leaves the instruction in place", async () => {
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const idle = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-  const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: idle, touch: idle } };
+  const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: idle } };
   const unused = async (): Promise<never> => { throw new Error("unexpected command"); };
   let settle!: (value: typeof draft) => void;
   const port: ServedOnboardingPort = { reopenBrowser: () => new Promise(resolve => { settle = resolve; }), resume: async () => { throw new Error("not called"); }, onboarding: draft, validate: validateOnboarding, submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, openPortal: unused,
@@ -550,9 +548,9 @@ it("classifies served session states into failures that still apply and the answ
 });
 
 const idleMethod = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-const duoDraft = (key: typeof idleMethod | (Omit<typeof idleMethod, "state"> & { state: "pending" | "complete"; attemptId?: string }), touch: typeof key = idleMethod, browser: { state: "open" | "opening" | "reopening"; generation: number } = { state: "open", generation: 1 }) => ({
+const duoDraft = (key: typeof idleMethod | (Omit<typeof idleMethod, "state"> & { state: "pending" | "complete"; attemptId?: string }), browser: { state: "open" | "opening" | "reopening"; generation: number } = { state: "open", generation: 1 }) => ({
   browser, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002",
-  step: key.state === "complete" && touch.state === "complete" ? "ready" as const : "duo" as const, methods: { key, touch } });
+  step: key.state === "complete" ? "ready" as const : "duo" as const, methods: { key } });
 const unusedCommand = async (): Promise<never> => { throw new Error("unexpected command"); };
 const duoPort = (onboarding: ReturnType<typeof duoDraft>, overrides: Partial<ServedOnboardingPort> = {}): ServedOnboardingPort => ({ onboarding, validate: validateOnboarding, submit: unusedCommand, complete: unusedCommand, cancel: unusedCommand,
   cancelDuo: unusedCommand, start: unusedCommand, confirmDuo: unusedCommand, openPortal: unusedCommand, showBrowser: unusedCommand, reopenBrowser: unusedCommand, resume: unusedCommand, ...overrides });
@@ -581,7 +579,7 @@ it("opening the setup window says so and adds Still opening after ten seconds", 
   vi.useFakeTimers();
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   try {
-    await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: duoPort(duoDraft(idleMethod, idleMethod, { state: "opening", generation: 1 })) })));
+    await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: duoPort(duoDraft(idleMethod, { state: "opening", generation: 1 })) })));
     assert.equal(host.querySelector(".window-state strong")?.textContent, "Opening setup window…");
     await act(async () => { vi.advanceTimersByTime(10_000); });
     assert.equal(host.querySelector(".window-state strong")?.textContent, "Still opening setup window…");
@@ -591,7 +589,7 @@ it("opening the setup window says so and adds Still opening after ten seconds", 
 it("Finish setup on the served Duo screen shows its own pending state, and a pending cancellation does not read as finishing", async () => {
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const complete = { ...idleMethod, state: "complete" as const, attemptId: "00000000-0000-4000-8000-000000000003", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true };
-  const draft = duoDraft(complete, complete);
+  const draft = duoDraft(complete);
   let completes = 0, cancels = 0;
   const primary = () => host.querySelector<HTMLButtonElement>(".actions button:last-child");
   try {

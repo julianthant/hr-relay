@@ -25,8 +25,8 @@ const failingUcpath = () => sessionFactoryHarness({
   ucpath: () => ({ ...healthyUcpathDriver(), searchPersonOrg: (): Promise<never> => Promise.reject(new Error(RAW_DIAGNOSTIC)) }),
   crm: () => healthyCrmDriver(),
 });
-const runDebugRecords = (database: { authority: { timelineEvents: { page(query: object): readonly { scope: { kind: string }; workflow?: string; payload: { kind: string } }[] } } }) =>
-  database.authority.timelineEvents.page({}).filter((record) => record.payload.kind === "debug" && record.scope.kind === "run");
+const runDebugRecords = (database: { authority: { timelineEvents: { debugPage(query: object): readonly { scope: { kind: string }; workflow?: string; payload: { kind: string } }[] } } }) =>
+  database.authority.timelineEvents.debugPage({}).filter((record) => record.payload.kind === "debug" && record.scope.kind === "run");
 
 describe("failure, retry, and resume", () => {
   it("keeps arbitrary task failure detail unstamped in authority and out of the admitted task span", async () => {

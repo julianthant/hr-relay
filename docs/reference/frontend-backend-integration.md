@@ -509,7 +509,7 @@ preserves the draft. Whole-draft cancellation returns signed-out only after cano
 erasure proof. Neither Details, Duo completion nor entering Ready publishes a saved account.
 
 The Ready Finish callback invokes `completeProfileOnboarding({operationId})`. Backend receipts for
-both software FastDuo and native Mac Touch ID, proved provider closure and explicit Finish precede
+the security key, proved provider closure and explicit Finish precede
 registry/verifier/active-session publication. The active `x-relay-session` credential returned by
 Finish authorizes bootstrap, Queue, Run and HR data requests. Failed or unknown publication remains
 a defined HOLD; public error codes never expose private causes or credential values.
@@ -590,7 +590,7 @@ request values and private file paths are omitted. HTTP responses retain the cat
 A request whose client disconnected records `request-disconnected` and its cause rows without an
 HTTP status, so a cancelled transfer is never logged as a delivered 500.
 
-`logs/debug-events.ts` is the debug timeline writer. Severity is derived from the persisted phase, reason and HTTP status for terminal output and diagnostics reads; no level is stored. Events retain redacted text, per-category size caps and the existing timeline retention. Development backend and worker launches mirror inserted events to stderr with time, level, category, phase, code, area, reason and structural IDs. HTTP events also retain method, registered route template and status in that mirror. Client routes, messages, stacks and request values stay out of the mirror. Production builds do not mirror.
+`logs/debug-events.ts` is the debug event writer. Debug events live in their own `debug_events` table with their own cursor, outside the timeline and the change log, so a debug write wakes no timeline or run reader. Severity is derived from the persisted phase, reason and HTTP status for terminal output and diagnostics reads; no level is stored. Events retain redacted text and per-category size caps, and expire after 7 days (`DEBUG_EVENT_RETENTION_DAYS`) unless pinned or scoped to a run that is not terminal. Development backend and worker launches mirror inserted events to stderr with time, level, category, phase, code, area, reason and structural IDs. HTTP events also retain method, registered route template and status in that mirror. Client routes, messages, stacks and request values stay out of the mirror. Production builds do not mirror.
 
 The shared HTTP response observer records returned refusals, failures and uncertain outcomes, including HTTP 200 envelopes, and failures mapped by the thrown-error handler. It records the registered route template and approved codes, never body values. Asynchronous ChatGPT authorization, worker process/transfer faults and provider failures use the same writer at their terminal owner. A logging failure remains a named unavailable response or retained runtime failure. Asynchronous authorization retains its original completion separately from a diagnostic fault; completion readback shows the catalogued `LOGGING_UNAVAILABLE` error without an unobserved rejection or authorization retry.
 

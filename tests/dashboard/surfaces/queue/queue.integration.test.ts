@@ -4,7 +4,7 @@ import { act,createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,it,vi } from "vitest";
-import { queryQueueSummaries } from "../../../../src/backend/runs/queries/run-summaries.js";
+import { queryQueueSummaries } from "../../../../src/backend/runs/queries/queue-summaries.js";
 import {
 groupQueueAttempts,
 partition,

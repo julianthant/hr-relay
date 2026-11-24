@@ -1,12 +1,13 @@
-/** Browser smoke checks for the built dashboard on the seeded backend, then the state gallery's check loop. */
+/** Browser smoke checks for the built dashboard on the seeded backend and the state gallery's check loop. */
 import "./tests/support/helpers/credential-keychain-process-preload.mjs";
+import { availableParallelism } from "node:os";
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "tests/smoke",
   outputDir: "tests/smoke/.output",
   fullyParallel: false,
-  workers: 1,
+  workers: Math.min(3, availableParallelism()),
   retries: 0,
   timeout: 120_000,
   expect: { timeout: 10_000 },
@@ -16,10 +17,10 @@ export default defineConfig({
     timezoneId: "America/Los_Angeles",
     viewport: { width: 1280, height: 720 },
   },
-  // One worker runs projects in this order: the smoke files, then the state gallery.
   projects: [
-    { name: "smoke", testMatch: "**/*.smoke.ts" },
-    { name: "gallery", testMatch: "**/*.gallery.ts" },
+    // Keep cross-story references and frame collection on one worker while smoke files run alongside it.
+    { name: "gallery", testMatch: "**/*.gallery.ts", workers: 1 },
+    { name: "smoke", testMatch: "**/*.smoke.ts", workers: 2 },
   ],
-  reporter: [["list"]],
+  reporter: [["list"], ["json", { outputFile: "tests/smoke/.output/results.json" }]],
 });

@@ -30,7 +30,7 @@ function jsonText<T extends z.ZodType>(schema: T) {
 /** One stored change entry, strictly parsed: a NULL key is a column that held no text, which emits nothing. */
 export const ChangeEntrySchema = z.strictObject({
   seq: z.number().int().positive(),
-  table_name: z.union([AuthorityTableNameSchema.exclude(["database_states"]), z.literal(RUN_REFERENCES_TABLE)]),
+  table_name: z.union([AuthorityTableNameSchema.exclude(["database_states", "debug_events"]), z.literal(RUN_REFERENCES_TABLE)]),
   row_key: jsonText(z.array(z.union([z.string(), z.number()])).min(1)),
   op: z.enum(["insert", "update", "delete"]),
   keys_json: jsonText(z.array(DependencyKeySchema.nullable())),
@@ -60,7 +60,7 @@ export function currentRowKey(table: AuthorityTableName): readonly string[] {
     case "workbook_operations": return ["sequence"];
     case "workbook_payloads": return ["digest"];
     case "auth_leases": return ["credential_key"];
-    case "timeline_events": return ["cursor"];
+    case "timeline_events": case "debug_events": return ["cursor"];
     default: return ["id"];
   }
 }
@@ -84,11 +84,17 @@ const all = (...parts: readonly ((image: Image) => string[])[]) => (image: Image
 const none = (): string[] => [];
 
 /**
- * The keys each table's images emit, as SQL over `OLD` or `NEW`. Runs named inside JSON are not listed here: they reach
- * the log through `run_references`, whose own entries carry them. `database_states` has no entry: readers compare the
- * singleton with the image they last validated.
+ * Tables that carry capture triggers. `database_states` has none: readers compare the singleton with the image they last
+ * validated. `debug_events` has none: a debug write is no change to any reader, and its rows are validated when read.
  */
-const TABLE_KEYS = deepFreeze<Record<Exclude<AuthorityTableName, "database_states">, (image: Image) => string[]>>({
+export type CapturedTable = Exclude<AuthorityTableName, "database_states" | "debug_events">;
+const isCapturedTable = (table: AuthorityTableName): table is CapturedTable => table !== "database_states" && table !== "debug_events";
+
+/**
+ * The keys each table's images emit, as SQL over `OLD` or `NEW`. Runs named inside JSON are not listed here: they reach
+ * the log through `run_references`, whose own entries carry them.
+ */
+const TABLE_KEYS = deepFreeze<Record<CapturedTable, (image: Image) => string[]>>({
   assistant_model_preference: constant("family:assistant-preference"),
   database_upgrades: none,
   settings_snapshots: constant("family:settings"),
@@ -178,7 +184,7 @@ export function sourceRowWhere(table: RunReferenceSource): string {
 }
 
 /** The capture triggers one authority table carries; a table created after migration 31 adds its own with its migration. */
-export function changeLogTriggers(table: Exclude<AuthorityTableName, "database_states">): string[] {
+export function changeLogTriggers(table: CapturedTable): string[] {
   const keys = (image: Image) => [...TABLE_KEYS[table](image), ...(isRunReferenceSource(table) ? [sourceKey(table, image)] : [])];
   const entry = (op: "insert" | "update" | "delete", image: Image, keySql: readonly string[]) =>
     `INSERT INTO ${CHANGE_LOG_TABLE}(table_name,row_key,op,keys_json) VALUES('${table}',${rowKey(table, image)},'${op}',json_array(${keySql.join(",")}))`;
@@ -241,7 +247,7 @@ export const CHANGE_LOG_MIGRATION = deepFreeze({ version: CHANGE_LOG_SCHEMA_VERS
   "CREATE INDEX workbook_library_snapshots_workbook_idx ON workbook_library_snapshots(workbook_id,id)",
   "CREATE INDEX commands_request_family_idx ON commands(json_extract(request_json,'$.family'))",
   "CREATE INDEX run_search_build_idx ON run_search(json_extract(metadata_json,'$.buildGeneration'),run_id)",
-  ...AuthorityTableNameSchema.options.flatMap(table => table === "database_states" || TABLES_AFTER_CHANGE_LOG.has(table) ? [] : changeLogTriggers(table)),
+  ...AuthorityTableNameSchema.options.flatMap(table => !isCapturedTable(table) || TABLES_AFTER_CHANGE_LOG.has(table) ? [] : changeLogTriggers(table)),
   ...runReferenceCaptureTriggers(),
   ...SOURCES.flatMap(runReferenceTriggers),
 ] });

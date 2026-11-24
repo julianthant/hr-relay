@@ -1,11 +1,7 @@
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import {
-buildFailureTerminalAuthorization,
-buildSuccessTerminalAuthorization,
-buildTerminalAuthorization,
-} from "../../../../src/backend/runs/lifecycle/terminal-authorization.js";
+import { buildTerminalAuthorization } from "../../../../src/backend/runs/lifecycle/terminal-authorization.js";
 import { buildEntryValidationFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { RunResultRecordSchema } from "../../../../src/models/run/result.js";
@@ -52,7 +48,7 @@ describe("terminal authorization factory", () => {
       version: 7,
       completion: undefined,
     });
-    const authorization = buildSuccessTerminalAuthorization({
+    const authorization = buildTerminalAuthorization({
       run: running,
       authorizedAt: result.createdAt,
       consequence: { kind: "done", result },
@@ -73,7 +69,7 @@ describe("terminal authorization factory", () => {
 
   it("binds the failed arm to the exact run, claim, and pre-terminal version", () => {
     const failure = failureFor(RUNNING_RUN);
-    const authorization = buildFailureTerminalAuthorization({
+    const authorization = buildTerminalAuthorization({
       run: RUNNING_RUN,
       authorizedAt: LATER,
       consequence: { kind: "failed", failure },
@@ -135,7 +131,7 @@ describe("terminal authorization factory", () => {
     // A structurally valid result for ANOTHER config snapshot must not be
     // authorizable against this run.
     assert.throws(
-      () => buildSuccessTerminalAuthorization({
+      () => buildTerminalAuthorization({
         run: RUNNING_RUN,
         authorizedAt: LATER,
         consequence: {

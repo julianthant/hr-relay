@@ -843,15 +843,13 @@ Folders groups the document, download, and report pickers. Backup and Restore co
 backup picker are absent. The `fixed-backup` fixture demonstrates fixed paths, folder read failures,
 clipboard failures, and ordinary folder controls without file effects.
 
-### Two-method Duo sign-up presentation
+### Duo sign-up presentation
 
-Sign-up presents Touch ID and Security key as distinct required verified enrollments at
-`duo.ucsd.edu`. Hardware-unavailable presentation identifies Chromium’s virtual platform
-authenticator for Touch ID; it never substitutes for Security key. Finish stays unavailable until
-both enrollments are verified. Finishing and cancellation stay pending until their owners settle.
+Sign-up presents the Security key as the one required verified enrollment at
+`duo.ucsd.edu`. Finish stays unavailable until it is verified. Finishing and cancellation stay pending until their owners settle.
 The Duo footer shows live setup-window status immediately above its actions. Show window
-focuses the existing owned normal Chromium window. Closed or failed status offers Reopen, including after both
-methods are confirmed. Reopen stops only the browser Relay started, proves exit and native
+focuses the existing owned normal Chromium window. Closed or failed status offers Reopen, including after the
+key is confirmed. Reopen stops only the browser Relay started, proves exit and native
 profile release, then opens one fresh normal window without retrying enrollment or changing Unknown
 readiness. Stop or file-proof failure stays specific and leaves Reopen offered. No whole-sign-up
 hold or Relay-restart instruction is used. The compact normal Chromium window keeps native
@@ -860,6 +858,6 @@ its method cards keep icon, title, one-line subtitle and status chip, without pr
 Unknown enrollment is labelled Unknown, not failed or completed. Method chips stay on one line.
 The Duo footer confirms Cancel sign-up before calling the existing cancellation owner; returning to
 Details uses the same confirmation. Lost cancellation responses prevent another attempt for that
-draft. The virtual-platform subtitle names the built-in passkey while preserving the Touch ID chip.
+draft.
 Live enrollment, closure and account publication need
 their runtime acceptance checks.

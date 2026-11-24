@@ -65,7 +65,7 @@ describe("cross-date search authority read", () => {
       const pinned=database.authority.timelineEvents.get(event.eventId);assert.ok(pinned);
       const debug=TimelineAppendSchema.parse({schemaVersion:1,eventId:randomUUID(),scope:{kind:"transport",connectionId:"synthetic-completed-request"},occurredAt:e.enqueuedAt,recordedAt:e.enqueuedAt,retentionDate:"2026-08-01",source:{kind:"native"},payload:{kind:"debug",event:{category:"http",phase:"settled",correlationId:"synthetic-completed-request",method:"GET",route:"/api/v1/health",status:200,build:"test",pid:4242}}});
       database.authority.timelineEvents.append(debug);
-      assert.equal(database.authority.timelineEvents.pruneBefore("2026-10-01"),1);
+      assert.equal(database.authority.timelineEvents.pruneDebugBefore("2026-10-01"),1);
       assert.equal(database.authority.timelineEvents.get(debug.eventId),undefined);
       assert.deepEqual(database.authority.timelineEvents.get(event.eventId),pinned);
       assert.deepEqual(database.authority.runs.search({q:e.runId,scope:"run",facets:{},limit:1}),before);
@@ -206,7 +206,7 @@ afterEach(_afterEachFixture0);
       assert.deepEqual(rows(f.path), before);
       const db = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "native-timeline-replay" }, clock);
       try {
-        assert.deepEqual(db.authority.timelineEvents.page({}), retained);
+        assert.deepEqual(db.authority.timelineEvents.debugPage({}), retained);
         const generation = db.getMeta().authorityGeneration;
         for (const [i, input] of inputs.entries()) {
           assert.deepEqual(db.authority.timelineEvents.append(input), { state: "existing", record: retained[i] });

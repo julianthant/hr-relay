@@ -11,7 +11,7 @@ class FastDuoExtensionError extends Error {
 const WORKFLOW_EXTENSION_FILES = ["workflow-manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "src/workflow-background.js",
   "src/workflow-inpage.js", "src/workflow-content.js", "src/username.js", "src/duo-origin.js"] as const;
 
-const RELAY_EXTENSION_FILES = ["relay-manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "src/relay-background.js", "src/relay-content.js", "src/relay-inpage.js", "src/relay-native.js",
+const RELAY_EXTENSION_FILES = ["relay-manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "src/relay-background.js", "src/relay-content.js", "src/relay-inpage.js",
   "src/service.js", "src/crypto.js", "src/accounts.js", "src/duo-origin.js", "src/username.js",
   "src/options.html", "src/options.js", "src/relay-options.js", "src/styles.css", "src/icons/autopilot.svg", "src/icons/shield-check.svg"] as const;
 
