@@ -1,9 +1,8 @@
-// @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { act, createElement } from "react";
-import { createRoot } from "react-dom/client";
+import { JSDOM } from "jsdom";
 import { it } from "vitest";
+import { populateGlobal } from "vitest/environments";
 import { composeDashboardApplication } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
@@ -16,11 +15,16 @@ import { healthyRuntimePreflightRunners } from "../../../support/fixtures/prefli
 import { readAuthenticatedCredentialFixture, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { publicProfileShellFixture } from "../../../support/helpers/backend/public-profile-shell.js";
 
-Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 it("signs up through the real form with both pairs, stores the UCPath pair and signs in with the Relay pair only", async () => {
   const fixture = await publicProfileShellFixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  // The backend runs in the node environment; the form gets a DOM only for this test, set up before React loads.
+  const dom = new JSDOM("<!doctype html><body></body>", { url: "http://localhost/" });
+  const { keys, originals } = populateGlobal(globalThis, dom.window, { bindFunctions: true });
+  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+  const { act, createElement } = await import("react");
+  const { createRoot } = await import("react-dom/client");
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   try {
@@ -58,6 +62,7 @@ it("signs up through the real form with both pairs, stores the UCPath pair and s
     assert.equal((await fresh.signInProfile(relay)).state, "active");
   } finally {
     await act(async () => root.unmount()); host.remove();
+    for (const key of keys) { const original = originals.get(key); if (original === undefined) Reflect.deleteProperty(globalThis, key); else Reflect.set(globalThis, key, original); }
     await runtime?.stop(); fixture.machine.release(); rmSync(fixture.root, { recursive: true, force: true });
   }
 });

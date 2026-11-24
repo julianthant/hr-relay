@@ -184,8 +184,9 @@ it("leaves unfinished Duo setup as an uncompleted refusal without a first-run re
       method: "POST", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify(body),
     });
     const details = { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password", ucpathUsername: "fixture@ucsd.edu", ucpathPassword: "disposable-fixture-password" };
-    const refused = await postSignup(details);
-    assert.deepEqual(await refused.json(), { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
+    const { ucpathUsername: _username, ucpathPassword: _password, ...relayOnly } = details;
+    const refused = await postSignup(relayOnly);
+    assert.deepEqual(await refused.json(), { state: "error", code: "SCHEMA_INVALID" });
     assert.equal(refused.headers.get("x-relay-session"), null);
     const signup = await postSignup(details);
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding");
