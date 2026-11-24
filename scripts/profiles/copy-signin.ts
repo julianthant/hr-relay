@@ -124,7 +124,7 @@ export async function driveCopySignin(profile: CopyProfile, dashboard: ProfileDa
 // The copy's logs directory as first observed; a later swap of any ancestor refuses the write.
 const snapshotDirectories = new Map<string, ReturnType<typeof statDirectory>>();
 
-/** Keeps one Duo gate text snapshot in the copy's private logs: a fresh 0600 stage, then an atomic rename over any prior file or link. */
+/** Keeps one Duo gate screen snapshot in the copy's private logs: a fresh 0600 stage, then an atomic rename over any prior file or link. */
 export function writeCopySigninSnapshot(workspace: string, stage: "gate" | "push-options" | "after-push", text: string): void {
   const logs = join(workspace, ".tracker", "data", "logs");
   if (!noSymlinkAncestry(logs, snapshotDirectories)) throw new CopySigninError("copy-signin-logs-unavailable");

@@ -88,41 +88,60 @@ export interface OnboardingDuoProviderOptions {
     credentials(): Readonly<{ userId: string; password: string }>;
     phone(): void;
     snapshot?(stage: "gate" | "push-options" | "after-push", text: string): void;
+    captureDeadlineMs?: number;
   }>;
 }
 
 
-const DuoTextSchema = z.strictObject({ headings: z.array(z.string()), controls: z.array(z.string()), text: z.array(z.string()) });
+/** Known Duo screens, most specific first; a capture records only this name and each frame's allowlist name. */
+export const DUO_SCREENS = ["duo-error", "trust-prompt", "push-sent", "device-list", "push-options", "other-options", "duo-gate", "sso-page", "unknown"] as const;
+const DuoScreenSchema = z.enum(DUO_SCREENS);
+const DUO_CAPTURE_DEADLINE_MS = 2000;
 
-/** Host+path, visible headings, button/link labels and status text of the page and each frame; never form values, editable content, query strings or storage. */
-export async function duoTextSnapshot(page: Page): Promise<string> {
-  const lines: string[] = [];
-  for (const frame of page.frames()) {
-    const url = URL.parse(frame.url());
-    lines.push(`frame ${url === null ? "unparsed" : `${url.host}${url.pathname}`}`);
-    let result: unknown;
-    try { result = await frame.evaluate(() => {
-      const skip = "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
-      // An object method: tsx wraps a named inner function in a __name helper the page realm lacks.
-      const reader = {
-        text(element: Element): string {
-          const parts: string[] = [], walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-          for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) if (node.parentElement?.closest(skip) === null) parts.push(node.textContent ?? "");
-          return parts.join(" ").replace(/\s+/gu, " ").trim().slice(0, 200);
-        },
-        all(selector: string): string[] {
-          const found = [...document.querySelectorAll(selector)].filter(element => element.closest(skip) === null && element.checkVisibility({ visibilityProperty: true }));
-          return [...new Set(found.map(element => reader.text(element)).filter(Boolean))].slice(0, 40);
-        },
-      };
-      return { headings: reader.all("h1, h2, h3, h4, h5, h6, [role=heading]"), controls: reader.all("button, a[href], [role=button], [role=link]"),
-        text: reader.all("[role=alert], [role=status], [aria-live]:not([aria-live=off]), p") };
-    }); } catch { /* a detached or crashed frame is recorded as unreadable */ }
-    const read = DuoTextSchema.safeParse(result);
-    if (!read.success) { lines.push("  unreadable"); continue; }
-    for (const [kind, values] of Object.entries(read.data)) for (const value of values) lines.push(`  ${kind}: ${value}`);
-  }
-  return `${lines.join("\n")}\n`;
+function allowlistedOrigin(href: string): "duo" | "ucsd-duo" | "ucsd-sso" | "not-allowlisted" {
+  const url = URL.parse(href);
+  if (url === null || url.protocol !== "https:" || url.port !== "") return "not-allowlisted";
+  if (url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com")) return "duo";
+  if (url.hostname === "duo.ucsd.edu") return "ucsd-duo";
+  return url.hostname === "a5.ucsd.edu" ? "ucsd-sso" : "not-allowlisted";
+}
+
+async function readDuoScreen(page: Page): Promise<string> {
+  const frames = page.frames().map(frame => ({ frame, origin: allowlistedOrigin(frame.url()) }));
+  const found = new Set<string>();
+  await Promise.all(frames.map(async ({ frame, origin }) => {
+    if (origin !== "duo" && origin !== "ucsd-duo") return;
+    try {
+      // Page text is matched in the frame and only the screen name crosses back.
+      const match = DuoScreenSchema.safeParse(await frame.evaluate(() => {
+        // An object method: tsx wraps a named inner function in a __name helper the page realm lacks.
+        const seen = { any(selector: string, pattern: RegExp): boolean {
+          return [...document.querySelectorAll(selector)].some(element => element.checkVisibility({ visibilityProperty: true })
+            && pattern.test((element.textContent ?? "").replace(/\s+/gu, " ").trim()));
+        } };
+        const controls = "button, a[href], [role=button], [role=link]", text = "h1, h2, h3, h4, h5, h6, [role=heading], [role=status], [aria-live], p";
+        if (seen.any("[role=alert]", /./u)) return "duo-error";
+        if (seen.any(text, /Is this your device\?/iu)) return "trust-prompt";
+        if (seen.any(text, /Pushed a login request|Check for a Duo Push/iu)) return "push-sent";
+        if (seen.any(controls, /^Add a device\b/iu)) return "device-list";
+        if (seen.any(controls, /^(?:Verified )?Duo Push\b/iu)) return "push-options";
+        if (seen.any(controls, /^Other options$/iu)) return "other-options";
+        return null;
+      }));
+      if (match.success) found.add(match.data);
+    } catch { /* a detached or crashed frame matches no screen */ }
+  }));
+  const top = allowlistedOrigin(page.url());
+  const screen = DUO_SCREENS.find(name => found.has(name))
+    ?? (top === "ucsd-sso" ? "sso-page" : top === "not-allowlisted" ? "unknown" : "duo-gate");
+  return [`screen ${screen}`, ...frames.map(({ origin }) => `frame ${origin}`), ""].join("\n");
+}
+
+/** Bounded so a slow page never holds back a click or the gate's own error. */
+export async function duoScreenSnapshot(page: Page, deadlineMs = DUO_CAPTURE_DEADLINE_MS): Promise<string> {
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<string>(resolve => { timer = setTimeout(() => resolve("capture-timeout\n"), deadlineMs); });
+  try { return await Promise.race([readDuoScreen(page), timedOut]); } finally { clearTimeout(timer); }
 }
 
 async function workerCall(worker: Worker, method: "install" | "next" | "reply" | "stop" | "assertContext" | "browserInstall" | "browserFocus" | "browserPage" | "browserSelect" | "browserBounds" | "browserNext" | "browserReply" | "browserStop", args: readonly unknown[] = []): Promise<unknown> {
@@ -604,9 +623,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (approval === "phone") ownedDuoOrigin();
       else current();
     };
-    // The copy's private logs keep what Duo showed as text, since the onboarding browser profile is removed at close.
+    // The copy's private logs keep which Duo screen showed, since the onboarding browser profile is removed at close.
     const snapshot = async (stage: "gate" | "push-options" | "after-push") => {
-      try { if (!page.isClosed()) copy.snapshot?.(stage, await duoTextSnapshot(page)); } catch { /* evidence never masks the gate's own outcome */ }
+      try { if (!page.isClosed()) copy.snapshot?.(stage, await duoScreenSnapshot(page, copy.captureDeadlineMs)); } catch { /* evidence never masks the gate's own outcome */ }
     };
     const timedOut = (code: string) => (cause: unknown) => {
       if (cause instanceof Error && cause.name === "TimeoutError") throw new Error(code, { cause });
