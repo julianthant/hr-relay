@@ -23,6 +23,7 @@ interface Opened { readonly path: string; readonly lastEventId: string | undefin
 
 function harness(run?: string) {
   const opened: Opened[] = [];
+  const states: string[] = [];
   const order: string[] = [];
   const rows = createRowStore();
   const transport = { openStream(path: string, options: Readonly<{ lastEventId?: string; onMessage: (message: SseMessage) => void }>): StreamHandle {
@@ -30,8 +31,8 @@ function harness(run?: string) {
     return { close: () => undefined, done: new Promise<void>(() => undefined) };
   } } as unknown as DashboardTransport;
   const subscription = subscribeDashboardDay({ transport, day: DAY, rows, ...(run === undefined ? {} : { run }),
-    onDay: () => { order.push(`day:${rows.runPanel(RUN_A) === undefined ? "no-panel" : "panel"}`); }, onState: () => undefined });
-  return { opened, order, rows, subscription };
+    onDay: () => { order.push(`day:${rows.runPanel(RUN_A) === undefined ? "no-panel" : "panel"}`); }, onState: state => { states.push(state.state); } });
+  return { opened, order, rows, states, subscription };
 }
 
 describe("subscription run panel rows", () => {
@@ -71,6 +72,15 @@ describe("subscription run panel rows", () => {
     assert.equal(h.rows.runPanel(RUN_A)?.state, "refused");
     h.opened[0]?.push({ ...hello("pc:5"), projectionGeneration: 8 });
     assert.equal(h.rows.runPanel(RUN_A), undefined);
+  });
+
+  it("reports a reset to the mounted day when a hello announces a new generation", () => {
+    const h = harness(RUN_A);
+    h.opened[0]?.push(hello("pc:5"));
+    h.opened[0]?.push(snapshot("pc:5", [refusal(RUN_A, "first")]));
+    h.states.length = 0;
+    h.opened[0]?.push({ ...hello("pc:5"), projectionGeneration: 8 });
+    assert.deepEqual(h.states, ["connecting"], "the hello carries no health yet, so the reset is all that is reported");
   });
 
   it("opens with the day alone when no run is selected, and ignores an id that is not a run id", () => {

@@ -209,6 +209,11 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     return Number(match[1]);
   }
 
+  /** The revision of each queue row in the day a delivered panel is checked against. */
+  function revisionIn(held: DashboardDayWire): (runId: string) => number | undefined {
+    return runId => held.queueSurfaces.find(row => row.runId === runId)?.rowRevision;
+  }
+
   function applyHello(envelope: EnvelopeOf<"hello">): void {
     if (phase.phase !== "open" && phase.phase !== "greeted") return;
     const current = phase;
@@ -223,12 +228,14 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       authority: { generation: envelope.projectionGeneration, descriptorHash: envelope.descriptorHash },
       ...(held === undefined ? {} : { held }),
     };
-    enter({
-      phase: "greeted",
-      identity: current.identity,
-      stream: current.stream,
-      health: current.phase === "greeted" ? current.health : "pending",
-    });
+    const health = current.phase === "greeted" ? current.health : "pending";
+    enter({ phase: "greeted", identity: current.identity, stream: current.stream, health });
+    // The held day and its kept copies came from the old generation: report a reset so the mounted day drops them,
+    // then the health the stream still has.
+    if (differs && phase.phase === "greeted") {
+      deps.onState({ state: "connecting" });
+      if (health !== "pending") deps.onState({ state: health });
+    }
   }
 
   function applyHealth(envelope: EnvelopeOf<"health">): void {
@@ -291,7 +298,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       held: { snapshot: envelope.payload, cursorNumber: cursor, cursorId: envelope.cursor },
     };
     // Rows land before the day, so a view never holds a day row newer than the panel that came with it.
-    deps.rows?.apply(envelope.rows);
+    deps.rows?.apply(envelope.rows, revisionIn(envelope.payload));
     deps.onDay(envelope.payload, envelope.cursor);
   }
 
@@ -328,7 +335,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       ...(authority === undefined ? {} : { authority }),
       held: { snapshot: next, cursorNumber: cursor, cursorId: envelope.cursor },
     };
-    deps.rows?.apply(envelope.rows);
+    deps.rows?.apply(envelope.rows, revisionIn(next));
     if (envelope.day !== undefined) deps.onDay(next, envelope.cursor);
   }
 

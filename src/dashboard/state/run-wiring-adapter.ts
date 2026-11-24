@@ -603,17 +603,17 @@ function refusedPanelState(error: Extract<RunPanel, { state: "refused" }>["error
 
 /** What the run panel shows for the row: nothing yet, a refusal as the route would have answered it, a panel
  * that has not caught up with the row, or the validated composite. */
-function streamedRunState(client: object, authority: RunLogAuthority, row: RowIdentity, panel: RunPanel | undefined, held: RunPanel | undefined): RunWiringState {
+function streamedRunState(client: object, authority: RunLogAuthority, row: RowIdentity, panel: RunPanel | undefined, behind: boolean): RunWiringState {
   if (panel === undefined) return keptRunLogsState(client, authority, row) ?? { state: "loading" };
   if (panel.state === "refused") return refusedPanelState(panel.error);
   try {
     const snapshot = streamedRunSnapshot(row, panel);
     if (snapshot.detail.rowRevision >= row.rowRevision) return { state: "loaded", snapshot };
-    // Only a panel held while the row moved ahead is catching up; one delivered below the row is invalid.
-    if (panel === held) return { state: "loading", snapshot };
+    // A panel the row moved ahead of is catching up; one the stream delivered below its own day's row is invalid.
+    if (!behind) return { state: "loading", snapshot };
     throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
   } catch (cause) {
-    if (panel === held && panel.detail.runId === row.runId && panel.detail.rowRevision < row.rowRevision) return { state: "loading" };
+    if (!behind && panel.detail.runId === row.runId && panel.detail.rowRevision < row.rowRevision) return { state: "loading" };
     if (!(cause instanceof RunLogIdentityError)) throw cause;
     return { state: "failed", retryable: false, diagnostic: cause, error: identityRefusalReason(cause) };
   }
@@ -661,11 +661,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const authority = useMemo<RunLogAuthority>(() => ({ epoch: binding?.authority.epoch, actorId: binding?.scope.actorId }), [binding?.authority.epoch, binding?.scope.actorId]);
   // A day frame re-serves the row as a new object; only its identity and revision change what the panel shows.
   const { runId, attempt, traceId, workflowId, rowRevision } = row;
-  // The panel held when the row last moved: it may trail the row while the stream catches up. Any panel delivered later may not.
-  const heldAtRow = useRef<{ runId: string; rowRevision: number; panel: RunPanel | undefined } | undefined>(undefined);
-  if (heldAtRow.current?.runId !== runId || heldAtRow.current.rowRevision !== rowRevision) heldAtRow.current = { runId, rowRevision, panel };
-  const held = heldAtRow.current.panel;
-  const value = useMemo(() => streamedRunState(client, authority, { runId, attempt, traceId, workflowId, rowRevision }, panel, held), [client, authority, runId, attempt, traceId, workflowId, rowRevision, panel, held]);
+  const behind = panel !== undefined && rows?.deliveredBehindRow(panel) === true;
+  const value = useMemo(() => streamedRunState(client, authority, { runId, attempt, traceId, workflowId, rowRevision }, panel, behind), [client, authority, runId, attempt, traceId, workflowId, rowRevision, panel, behind]);
   useEffect(() => { if (value.snapshot !== undefined && value.state === "loaded") keepRunLogs(client, authority, value.snapshot); }, [client, authority, value]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),
@@ -1047,12 +1044,14 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     && (command.state !== "refused" || newest === undefined || newest.request.commandId === command.envelope.commandId) ? command : retainedCommand;
   const replayEnvelope = currentCommand?.state === "uncertain" ? currentCommand.envelope : undefined;
   const replay = useCallback(() => { if (replayEnvelope !== undefined) void send(replayEnvelope, true); }, [replayEnvelope, send]);
-  return { ...value, onDecision: value.state === "loaded" && binding !== undefined && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onDecision : undefined,
-    onChildRetry: value.state === "loaded" && binding?.authority.dayState.day.state === "loaded" && detail?.childRetry !== undefined
+  // A panel ahead of the queue row is shown, but every answer is checked against the row's revision, so none is offered.
+  const answerable = value.state === "loaded" && value.snapshot?.detail.rowRevision.valueOf() === row.rowRevision.valueOf();
+  return { ...value, onDecision: answerable && binding !== undefined && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onDecision : undefined,
+    onChildRetry: answerable && binding?.authority.dayState.day.state === "loaded" && detail?.childRetry !== undefined
       && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onChildRetry : undefined,
-    onBatchMemberRetry: value.state === "loaded" && binding?.authority.dayState.day.state === "loaded" && batchRetry !== undefined
+    onBatchMemberRetry: answerable && binding?.authority.dayState.day.state === "loaded" && batchRetry !== undefined
       && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onBatchMemberRetry : undefined,
-    onUcpathDecision: value.state === "loaded" && binding !== undefined && parked?.section === "parked-write"
+    onUcpathDecision: answerable && binding !== undefined && parked?.section === "parked-write"
       && parked.payload.actions.some(action => action.kind === "command" && action.command === "check-parked-write")
       && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onUcpathDecision : undefined,
     command: currentCommand, replay: replayEnvelope === undefined || replayEnvelope.family === "run" && replayEnvelope.type === "retry" && binding?.authority.dayState.day.state !== "loaded" ? undefined : replay };

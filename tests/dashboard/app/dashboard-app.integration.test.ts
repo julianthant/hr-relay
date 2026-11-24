@@ -537,7 +537,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { key: "mock-composition", client,
       children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
     await settle();
-    assert_m1.equal(reads, failedReads + 1, "only the remounted stream's own panel read; mock Logs read nothing");
+    assert_m1.equal(reads, failedReads, "mock Logs ask for no panel");
     assert_m1.match(document.body.textContent ?? "", /Is this the right person\?/);
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Logs unavailable|cross-source chronology unavailable/);
     const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows), FIXTURE_BOOTSTRAP_m1.workbookCompatibility)[0];

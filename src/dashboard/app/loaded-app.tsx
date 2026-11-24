@@ -38,7 +38,7 @@ import { Button,FailureNotice,Notice,DatePicker,EmptyState,Panel,PanelBody,dsIco
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { createServedClock, ServedClockContext, useClockView } from "../state/served-clock.js";
-import { useDashboardDay } from "../state/use-dashboard-day.js";
+import { keptDayFrame, useDashboardDay } from "../state/use-dashboard-day.js";
 import {
 commandResultDetail,
 commandResultFeedEntry,
@@ -209,7 +209,14 @@ export function LoadedApp({
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
   const dayRequested = (hasServedWorkflows || workflowComposition.sessionsHarness === undefined) && dateSelection.state === "valid" ? day : undefined;
-  const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id, route.run);
+  // A run whose Logs the harness preview draws reads no panel. The run is looked up in the day on screen a moment ago, or the kept
+  // frame. A run whose row is not known yet asks for no panel; the stream takes it once the day names the run.
+  const knownRows = useRef<readonly QueueSurfaceWire[] | undefined>(undefined);
+  const priorRows = knownRows.current ?? (dayRequested === undefined ? undefined : keptDayFrame(client, authorityEpoch, boot.actor.id, dayRequested)?.queueSurfaces);
+  const panelRow = route.run === undefined ? undefined : priorRows?.find(row => row.runId === route.run);
+  const previewed = panelRow !== undefined && workflowComposition.harness?.LogPreview !== undefined && (panelRow.parent === null || workflowComposition.harness.logsChildRows === true);
+  const panelRun = panelRow === undefined || previewed ? undefined : route.run;
+  const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id, panelRun);
   const dayResource = dayState.day;
   snoozes.current = dayResource.state === "loaded" ? dayResource.value.notifications
     .flatMap(row => row.kind === "notification" && row.state === "snoozed" && row.snoozedUntil !== undefined ? [new Date(row.snoozedUntil).toISOString()] : []) : [];
@@ -224,6 +231,7 @@ export function LoadedApp({
   // The queue, rail counts and labels may show a kept copy of this day while it reloads; every decision reads `dayWire`.
   const keptDay = dayResource.state === "loading" && dayResource.kept?.value.day === day ? dayResource.kept.value : undefined;
   const shownDay = dayWire ?? keptDay;
+  knownRows.current = shownDay?.queueSurfaces;
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>(() => workflowComposition.harness?.commandResults ?? []);
 
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId, canSelectWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")

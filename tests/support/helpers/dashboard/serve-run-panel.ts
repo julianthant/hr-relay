@@ -25,9 +25,9 @@ export async function readRunPanel(client: PanelReads, runId: string): Promise<E
 }
 
 /** Streams the run's panel into the store, as the server's `change` row would. */
-export async function serveRunPanel(rows: RowStoreWriter, client: PanelReads, runId: string, panel?: RunPanel): Promise<void> {
+export async function serveRunPanel(rows: RowStoreWriter, client: PanelReads, runId: string, panel?: RunPanel, rowRevision?: (runId: string) => number | undefined): Promise<void> {
   rows.open(runId);
-  rows.apply([{ model: "run-panel", key: runId as never, value: panel ?? await readRunPanel(client, runId) }]);
+  rows.apply([{ model: "run-panel", key: runId as never, value: panel ?? await readRunPanel(client, runId) }], rowRevision);
 }
 
 type DaySubscription = ReturnType<DashboardClient["subscribeDay"]>;

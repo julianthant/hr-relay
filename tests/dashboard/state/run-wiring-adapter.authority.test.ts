@@ -503,12 +503,33 @@ describe("served Logs decision authority", () => {
     assert.equal(h.state?.snapshot?.detail.rowRevision, 4);
   });
 
+  it("fails a panel delivered below its day's row even when it is there before the row first renders", async () => {
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(3), 3), runSection: async () => logs() } as unknown as DashboardClient;
+    const h = await harness(client, undefined, false, false);
+    await serveRunPanel(h.rows, client, RUN, undefined, () => 4);
+    await h.render(selectionAt(4));
+    assert.equal(h.state?.state, "failed");
+    assert.equal(h.refreshed, 0);
+  });
+
+  it("offers no answer while the panel is ahead of the queue row, and offers it once they agree", async () => {
+    const gate = servedGate(fixtures.ONE_CLICK);
+    const selected = selectionAt(3);
+    const h = await harness(gateClient(gate, selected, []));
+    await h.render(selected);
+    assert.ok(h.state?.onDecision, "level with the row, the decision is offered");
+    const ahead = { ...selected, row: { ...selected.row, rowRevision: selected.row.rowRevision.valueOf() - 1 } } as LogSelection;
+    await h.render(ahead);
+    assert.equal(h.state?.state, "loaded");
+    assert.equal(h.state?.onDecision, undefined, "the panel is ahead of this row, whose revision every answer is checked against");
+  });
+
   it("fails a panel delivered below the selected row instead of waiting for it, while a held one stays loading", async () => {
     const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selectionAt(3), 3), runSection: async () => logs() } as unknown as DashboardClient;
     const h = await harness(client, undefined, false, false);
     await h.render(selectionAt(4));
     assert.equal(h.state?.state, "loading");
-    await act(async () => h.serve());
+    await act(async () => serveRunPanel(h.rows, client, RUN, undefined, () => 4));
     assert.equal(h.state?.state, "failed");
     assert.equal(h.state?.retryable, false);
     assert.equal(h.refreshed, 0);

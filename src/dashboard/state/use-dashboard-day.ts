@@ -24,6 +24,11 @@ export interface DashboardDayState {
 export const KEPT_DAYS_LIMIT = 8;
 const keptDays = createKeptResults<DashboardDayWire>(KEPT_DAYS_LIMIT);
 
+/** The last frame this page kept for the day under this authority, if any. */
+export function keptDayFrame(client: object, authorityEpoch: object | undefined, actorId: string | undefined, day: string): DashboardDayWire | undefined {
+  return keptDays.get(client, [authorityEpoch, actorId], day)?.value;
+}
+
 /** `run` is the run whose panel rides the stream; changing it reopens the stream once and keeps the day. */
 export function useDashboardDay(day: string | undefined, nowIso?: string, authorityEpoch?: object, actorId?: string, run?: string): DashboardDayState {
   const client = useDashboardClient();
