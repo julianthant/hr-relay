@@ -5,6 +5,7 @@ import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import { middleTruncatePath } from "../../../src/dashboard/ds/primitives/primitives-form.js";
 import { SettingsPathPicker } from "../../../src/dashboard/surfaces/settings/general/settings-path-picker.js";
 import { type NativePathPickerResponse } from "../../../src/models/dashboard/native-path-picker.js";
 
@@ -23,13 +24,14 @@ async function mount(pickSettingsPath: DashboardClient["pickSettingsPath"], onSe
 }
 
 describe("native Paths picker control", () => {
-  it("shows the folder or file name only, selects one file, and leaves cancellation untouched", async () => {
+  it("shows the path, middle-truncated when long, selects one file, and leaves cancellation untouched", async () => {
     const selected: string[] = [];
     const requests: unknown[] = [];
     let response: NativePathPickerResponse = { state: "selected", field: "paths.i9CheckTrackerPath", path: "/tmp/private/new.json" };
     const surface = await mount(request => { requests.push(request); return Promise.resolve(response); }, path => selected.push(path));
     const value = surface.querySelector(".ds-path-value");
-    assert.equal(value?.textContent, "duo.json");
+    assert.equal(value?.textContent, "/tmp/private/duo.json");
+    assert.equal(middleTruncatePath("/Users/julian/Documents/Codex/chats-outside"), "/Users/julian…/chats-outside");
     assert.equal(value?.getAttribute("aria-label"), null);
     assert.equal(value?.getAttribute("title"), null);
     const button = surface.querySelector('button[aria-label="Change Duo credential file"]');

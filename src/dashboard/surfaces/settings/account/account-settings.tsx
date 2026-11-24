@@ -104,7 +104,7 @@ export function PencilRow({ label, description, shown, pencilLabel, title, dialo
       <IconButton ref={pencil} type="button" label={pencilLabel} variant="ghost" size="sm" icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} />
     </span>} />
     {open && <Dialog open onOpenChange={next => { if (!next) close(); }}>
-      <DialogContent size="sm" title={title} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
+      <DialogContent size="sm" className="settings-edit-dialog" title={title} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
         {dialog(close)}
       </DialogContent>
     </Dialog>}
@@ -216,8 +216,8 @@ function UsernameDialog({ close, onSave }: { close: () => void; onSave: Save }) 
   };
   return <form autoComplete="off" onSubmit={submit} className="flex min-h-0 flex-col">
     <DialogBody className="flex flex-col gap-3">
-      <Field label="Current password" orientation="horizontal" error={saved.onCurrent}><SecretField label="Current password" name="currentPassword" autoFocus required maxLength={1024} autoComplete="current-password" value={current} onChange={event => { setCurrent(event.target.value); saved.clear(); }} /></Field>
-      <Field label="New username" orientation="horizontal" error={problem ?? saved.onNew}><Input type="text" name="newUsername" required maxLength={RELAY_SIGN_IN_FIELD_MAX} spellCheck={false} autoComplete="username" value={next} onChange={event => { setNext(event.target.value); setProblem(undefined); saved.clear(); }} /></Field>
+      <Field label="Current password" error={saved.onCurrent}><SecretField label="Current password" name="currentPassword" autoFocus required maxLength={1024} autoComplete="current-password" value={current} onChange={event => { setCurrent(event.target.value); saved.clear(); }} /></Field>
+      <Field label="New username" error={problem ?? saved.onNew}><Input type="text" name="newUsername" required maxLength={RELAY_SIGN_IN_FIELD_MAX} spellCheck={false} autoComplete="username" value={next} onChange={event => { setNext(event.target.value); setProblem(undefined); saved.clear(); }} /></Field>
     </DialogBody>
     <DialogFooter>
       <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
@@ -239,9 +239,9 @@ function PasswordDialog({ close, onSave }: { close: () => void; onSave: Save }) 
   };
   return <form autoComplete="off" onSubmit={submit} className="flex min-h-0 flex-col">
     <DialogBody className="flex flex-col gap-3">
-      <Field label="Current password" orientation="horizontal" error={saved.onCurrent}><SecretField label="Current password" name="currentPassword" autoFocus maxLength={1024} autoComplete="current-password" value={current} onChange={event => { setCurrent(event.target.value); saved.clear(); }} /></Field>
-      <Field label="New password" orientation="horizontal" error={saved.onNew}><SecretField label="New password" name="newPassword" maxLength={RELAY_SIGN_IN_FIELD_MAX} autoComplete="new-password" value={next} onChange={event => { setNext(event.target.value); saved.clear(); }} /></Field>
-      <Field label="Confirm new password" orientation="horizontal" error={mismatch ? "The passwords don’t match." : undefined}><SecretField label="Confirm new password" name="confirmPassword" maxLength={RELAY_SIGN_IN_FIELD_MAX} autoComplete="new-password" value={again} onChange={event => setAgain(event.target.value)} /></Field>
+      <Field label="Current password" error={saved.onCurrent}><SecretField label="Current password" name="currentPassword" autoFocus maxLength={1024} autoComplete="current-password" value={current} onChange={event => { setCurrent(event.target.value); saved.clear(); }} /></Field>
+      <Field label="New password" error={saved.onNew}><SecretField label="New password" name="newPassword" maxLength={RELAY_SIGN_IN_FIELD_MAX} autoComplete="new-password" value={next} onChange={event => { setNext(event.target.value); saved.clear(); }} /></Field>
+      <Field label="Confirm new password" error={mismatch ? "The passwords don’t match." : undefined}><SecretField label="Confirm new password" name="confirmPassword" maxLength={RELAY_SIGN_IN_FIELD_MAX} autoComplete="new-password" value={again} onChange={event => setAgain(event.target.value)} /></Field>
     </DialogBody>
     <DialogFooter>
       <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
