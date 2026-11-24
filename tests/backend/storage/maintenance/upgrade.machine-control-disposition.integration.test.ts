@@ -202,7 +202,7 @@ it("converts only stopped machine-control format while keeping an incomplete his
   assert.equal(readFileSync(join(backup, `${upgraded.receiptId}.marker.before.json`)).equals(markerBytes), true);
   assert.equal(readdirSync(backup).filter(name => name.endsWith(".receipt.json")).length, 1);
   assert.equal(z.looseObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.controlPath, "utf8"))).schemaVersion, 7);
-  assert.equal(z.strictObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.markerPath, "utf8"))).schemaVersion, 9);
+  assert.equal(z.strictObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.markerPath, "utf8"))).schemaVersion, 10);
   assertCanonicalCredentialConversion(f, upgraded.receiptId, maintenance);
   maintenance.release();
   maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
