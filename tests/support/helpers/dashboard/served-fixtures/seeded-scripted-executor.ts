@@ -156,9 +156,9 @@ export function createScriptedExecutor(deps: Readonly<{
   /** Called where a step first touches a system: parks the step until the script answers. */
   const hold = async (): Promise<void> => {
     const current = active();
+    await nextTurn();
     if (current.failing) throw new Error("the script failed this step");
     if (current.releaseAll) return;
-    await nextTurn();
     const verdict = await new Promise<Verdict>((resolve) => {
       current.release = resolve;
       current.arrive({ at: "step", nodeId: heldNode(current.execId) });
