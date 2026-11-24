@@ -10,7 +10,7 @@ import { CATALOGUE } from "../support/helpers/dashboard/smoke/stories/catalogue.
 const dialogShapes: StateRuleContext["dialogShapes"] = new Map();
 
 function galleryTags(id: string, surface: string): string[] {
-  return usesIndependentDialogReferences(id) ? [`@${surface}`, "@gallery-independent"] : [`@${surface}`];
+  return usesIndependentDialogReferences(id) ? [`@${surface}`, `@gallery-group:${id.split("/").slice(0, 2).join("/")}`] : [`@${surface}`];
 }
 
 test.afterAll(() => {

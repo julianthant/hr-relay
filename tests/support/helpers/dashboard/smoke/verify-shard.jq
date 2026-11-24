@@ -1,12 +1,6 @@
 # Match actual executions to this runner's share of an unfiltered Playwright listing.
 def specs: .suites[] | recurse(.suites[]?) | .specs[];
-def slot:
-  if .tests[0].projectName == "smoke" then 0
-  elif .tests[0].projectName != "gallery" then error("unknown project in " + .title)
-  elif (.tags | index("gallery-independent")) != null then 1
-  else 2 end;
-
-($listed[0] | [specs | select(slot == $slot) | .id] | sort) as $expected
+$expectedIds[0] as $expected
 | [specs | .id as $id | .tests[] | .expectedStatus as $status | .results[]
    | if .status == $status and (.status == "passed" or .status == "failed") then $id else error($id + " " + .status) end] as $executed
 | if ($expected | length) == 0 then error("empty smoke shard")
