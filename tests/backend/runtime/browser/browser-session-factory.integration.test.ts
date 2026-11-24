@@ -786,7 +786,7 @@ describe("worker browser session factory", () => {
 describe("required profile custody admission", () => {
   it("names missing extension provisioning and proves its launched context closed", async () => {
     await withTempRuntime(async ({ config }) => {
-      writeFileSync(config.paths.duoCredential, JSON.stringify({ rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" }));
+      writeFileSync(config.paths.duoCredential, JSON.stringify({ rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "usb" }));
       const harness = fakeLauncher();
       const factory = factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings());
       await assert.rejects(factory.open(OPEN_INPUT), error => error instanceof DuoProvisioningError && error.code === "duo-extension-provisioning-unavailable");
@@ -795,7 +795,7 @@ describe("required profile custody admission", () => {
   });
   it("provisions Fast Duo for the retained operator before exposing a login page", async () => {
     await withTempRuntime(async ({ config }) => {
-      const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" };
+      const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "usb" };
       writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
       const broker = fixtureWorkflowWorker();
       const serviceWorker = broker.worker;
@@ -806,7 +806,7 @@ describe("required profile custody admission", () => {
   });
   it("provisions Fast Duo from runtime-compiled source in an isolated worker scope", async () => {
     await withTempRuntime(async ({ config }) => {
-      const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" };
+      const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "usb" };
       writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
       const runtime = await tsImport("../../../../src/backend/runtime/browser/browser-session-factory.ts", import.meta.url) as
         typeof import("../../../../src/backend/runtime/browser/browser-session-factory.js");

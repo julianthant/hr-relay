@@ -55,5 +55,15 @@ it("loads the staged workflow extension in full Chromium and answers a synthetic
     assert.deepEqual(auth.subarray(0, 32), createHash("sha256").update("duosecurity.com").digest());
     assert.equal(z.object({ origin: z.string() }).parse(JSON.parse(client.toString("utf8"))).origin, "https://test.duosecurity.com");
     assert.ok(verify("sha256", Buffer.concat([auth, createHash("sha256").update(client).digest()]), keys.publicKey, Buffer.from(assertion.signature, "base64")));
+    const signed = count;
+    const refused = await page.evaluate(async () => {
+      try {
+        await navigator.credentials.get({ publicKey: { rpId: "duosecurity.com", challenge: new TextEncoder().encode("synthetic-challenge"),
+          allowCredentials: [{ type: "public-key", id: new TextEncoder().encode("unknown-platform-id") }] } });
+        return "signed";
+      } catch (error) { return error instanceof DOMException ? error.name : "unknown"; }
+    });
+    assert.equal(refused, "NotAllowedError");
+    assert.equal(count, signed);
   } finally { try { await owner?.stop(); } finally { await context.close(); } }
 });

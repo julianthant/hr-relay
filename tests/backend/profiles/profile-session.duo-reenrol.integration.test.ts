@@ -21,14 +21,12 @@ type Session = ReturnType<World["open"]>;
 /** A fence that admits every commit, for the session's own proofs; the profile runtime's real fence has its own tests. */
 const idleFence = { withIdleProfile: <T>(_profileId: string, body: () => T): T => body() };
 
-/** Proves both methods in the re-enrolment window: the key by operator confirmation, Touch ID by portal acceptance. */
-async function proveBothMethods(session: Session, token: string, operationId: string) {
-  for (const method of ["key", "touch"] as const) {
-    const started = await session.startDuoReenrol(token, operationId, method);
-    const attemptId = started.methods[method].attemptId;
-    assert.ok(attemptId);
-    if (method === "key") session.confirmDuoReenrol(token, operationId, method, attemptId);
-  }
+/** Proves the security key in the re-enrolment window by operator confirmation. */
+async function proveSecurityKey(session: Session, token: string, operationId: string) {
+  const started = await session.startDuoReenrol(token, operationId, "key");
+  const attemptId = started.methods.key.attemptId;
+  assert.ok(attemptId);
+  session.confirmDuoReenrol(token, operationId, "key", attemptId);
   return session.readDuoReenrol(token, operationId);
 }
 
@@ -49,23 +47,23 @@ describe("Duo re-enrolment for an active profile", () => {
     const before = workflowDuo(machine, alex.profileId);
 
     const opened = session.beginDuoReenrol(alex.token);
-    assert.deepEqual([opened.state, opened.profileId, opened.step, opened.methods.key.state, opened.methods.touch.state],
-      ["duo-reenrol", alex.profileId, "duo", "idle", "idle"]);
+    assert.deepEqual([opened.state, opened.profileId, opened.step, opened.methods.key.state],
+      ["duo-reenrol", alex.profileId, "duo", "idle"]);
     assert.deepEqual(session.readDuoReenrol(alex.token, opened.operationId), opened);
     assert.equal(session.prepareCurrentStorage(alex.token).state, "available");
     assert.equal(session.changeDetails(alex.token, { initials: "AXR" }).state, "changed");
     assert.deepEqual(workflowDuo(machine, alex.profileId), before);
   });
 
-  it("stages both proved methods out of use, then commit replaces the ready set and keeps the session signed in", async () => {
+  it("stages the proved security key out of use, then commit replaces the ready set and keeps the session signed in", async () => {
     const machine = await world();
     const session = machine.open({ idleFence });
     const alex = await machine.signUp(session, alexFields);
     const before = workflowDuo(machine, alex.profileId);
     const opened = session.beginDuoReenrol(alex.token);
 
-    const ready = await proveBothMethods(session, alex.token, opened.operationId);
-    assert.deepEqual([ready.step, ready.methods.key.state, ready.methods.touch.state], ["ready", "complete", "complete"]);
+    const ready = await proveSecurityKey(session, alex.token, opened.operationId);
+    assert.deepEqual([ready.step, ready.methods.key.state], ["ready", "complete"]);
     const staged = workflowDuo(machine, alex.profileId);
     assert.deepEqual([staged.identity, staged.ready], [before.identity, before.ready]);
     assert.equal(staged.rows.filter(row => row.state === "staged").length, 1);
@@ -122,7 +120,7 @@ describe("abandoning a Duo re-enrolment leaves the profile as it was", () => {
 
     await assert.rejects(session.cancelDuoReenrol(alex.token, opened.operationId), { code: "BROWSER_CLOSURE_UNPROVED" });
     assert.equal(session.readDuoReenrol(alex.token, opened.operationId).operationId, opened.operationId);
-    await assert.rejects(session.startDuoReenrol(alex.token, opened.operationId, "touch"), { code: "BROWSER_CLOSURE_UNPROVED" });
+    await assert.rejects(session.startDuoReenrol(alex.token, opened.operationId, "key"), { code: "BROWSER_CLOSURE_UNPROVED" });
     assert.deepEqual([workflowDuo(machine, alex.profileId).identity, workflowDuo(machine, alex.profileId).ready], [before.identity, before.ready]);
     assert.deepEqual([session.logOut(alex.token, { at: "2026-09-06T12:30:00.000Z" }).state, session.prepareCurrentStorage(alex.token).state], ["refused", "available"]);
     // The unproved closure is retained custody: shutdown refuses rather than drop the draft's browser.
@@ -135,7 +133,7 @@ describe("abandoning a Duo re-enrolment leaves the profile as it was", () => {
     const alex = await machine.signUp(session, alexFields);
     const before = workflowDuo(machine, alex.profileId);
     const opened = session.beginDuoReenrol(alex.token);
-    assert.equal((await proveBothMethods(session, alex.token, opened.operationId)).step, "ready");
+    assert.equal((await proveSecurityKey(session, alex.token, opened.operationId)).step, "ready");
 
     await session.cancelDuoReenrol(alex.token, opened.operationId);
     assert.deepEqual(workflowDuo(machine, alex.profileId), before);
@@ -206,7 +204,7 @@ describe("abandoning a Duo re-enrolment leaves the profile as it was", () => {
     const before = workflowDuo(machine, alex.profileId);
     const opened = session.beginDuoReenrol(alex.token);
     if (stage === "pending") await session.startDuoReenrol(alex.token, opened.operationId, "key");
-    else assert.equal((await proveBothMethods(session, alex.token, opened.operationId)).step, "ready");
+    else assert.equal((await proveSecurityKey(session, alex.token, opened.operationId)).step, "ready");
 
     const restarted = machine.open();
     await restarted.recoverOnboarding();
@@ -246,7 +244,7 @@ describe("a re-enrolment draft whose profile is not resumed at boot", () => {
     assert.deepEqual(workflowDuo(machine, alex.profileId), before);
     assert.throws(() => restarted.readDuoReenrol(signedIn.token, operationId), { code: "PROFILE_SESSION_STALE" });
     const fresh = restarted.beginDuoReenrol(signedIn.token);
-    assert.deepEqual([fresh.operationId !== operationId, fresh.methods.key.state, fresh.methods.touch.state], [true, "idle", "idle"]);
+    assert.deepEqual([fresh.operationId !== operationId, fresh.methods.key.state], [true, "idle"]);
     // The ended process's owner still holds its attempt lease in memory and cannot drain a draft sign-in already removed.
     await assert.rejects(machine.close(), { code: "PROFILE_SESSION_STALE" });
   });
@@ -276,7 +274,7 @@ async function readyToCommit(machine: World, fence: Fence) {
   const alex = await machine.signUp(session, alexFields);
   const before = workflowDuo(machine, alex.profileId);
   const opened = session.beginDuoReenrol(alex.token);
-  const ready = await proveBothMethods(session, alex.token, opened.operationId);
+  const ready = await proveSecurityKey(session, alex.token, opened.operationId);
   assert.equal(ready.step, "ready");
   const staged = workflowDuo(machine, alex.profileId).rows.filter(row => row.state === "staged").map(row => row.credentialId);
   const operationFile = join(machine.machineRoot, "machine", "operations", `${opened.operationId}.json`);
@@ -353,7 +351,7 @@ describe("committing a Duo re-enrolment", () => {
     const first = await session.startDuoReenrol(alex.token, opened.operationId, "key");
     const firstAttempt = first.methods.key.attemptId; assert.ok(firstAttempt);
     await session.cancelDuoReenrolAttempt(alex.token, opened.operationId, "key", firstAttempt);
-    assert.equal((await proveBothMethods(session, alex.token, opened.operationId)).step, "ready");
+    assert.equal((await proveSecurityKey(session, alex.token, opened.operationId)).step, "ready");
 
     await assert.rejects(session.commitDuoReenrol(alex.token, opened.operationId), { code: "PROFILE_DUO_REENROL_REFUSED" });
     assert.deepEqual(workflowDuo(machine, alex.profileId).ready, before.ready);
@@ -455,7 +453,6 @@ describe("committing a Duo re-enrolment", () => {
       const store = createDuoCredentialStore(owner, systemClock);
       assert.deepEqual(store.credentials().map(row => row.credentialId), w.before.ready);
       assert.equal(store.identity(), w.before.identity);
-      assert.equal(store.platformCredentials().some(row => w.staged.includes(row.credentialId)), false);
       for (const credentialId of w.staged) {
         await assert.rejects(store.sign({ credentialId, requestId: randomUUID(), rpId: "duosecurity.com", origin: "https://fixture.duosecurity.com", challenge: "AAAAAAAA" }), /duo-ready-credential-required/u);
       }

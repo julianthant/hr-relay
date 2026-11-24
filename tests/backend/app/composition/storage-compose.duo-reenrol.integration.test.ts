@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import fs, { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, it, vi } from "vitest";
+import { z } from "zod";
 import { composeProfileRuntime, initializeRegisteredPersonStores, type ProfileCommandActivity } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { requireLifecycleApplied, RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -16,7 +17,7 @@ import { DuoReenrolOperationSchema } from "../../../../src/models/profiles/profi
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { finishProfileOnboarding, readAuthenticatedCredentialFixture, registerBoundProfile, rewriteAuthenticatedCredentialFixture, syntheticOnboardingDuo, unregisterBoundProfile } from "../../../support/helpers/admission-fixture.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 
 const AT = "2026-10-21T12:00:00.000Z";
@@ -45,12 +46,10 @@ async function stagedRuntime() {
   };
   const before = duo();
   const opened = runtime.session.beginDuoReenrol(active.token);
-  for (const method of ["key", "touch"] as const) {
-    const started = await runtime.session.startDuoReenrol(active.token, opened.operationId, method);
-    const attemptId: string | undefined = started.methods[method].attemptId;
-    assert.ok(attemptId);
-    if (method === "key") runtime.session.confirmDuoReenrol(active.token, opened.operationId, method, attemptId);
-  }
+  const started = await runtime.session.startDuoReenrol(active.token, opened.operationId, "key");
+  const attemptId: string | undefined = started.methods.key.attemptId;
+  assert.ok(attemptId);
+  runtime.session.confirmDuoReenrol(active.token, opened.operationId, "key", attemptId);
   assert.equal(runtime.session.readDuoReenrol(active.token, opened.operationId).step, "ready");
   const lifecycle = new RunRecordService({ database: context.database, clock, ids: { uuid: randomUUID }, publishQueued: () => undefined });
   /** A run start the way the dashboard writes one: inside a transaction that checks the session before and after. */
@@ -214,12 +213,10 @@ async function leftoverDraft(stage: "pending" | "proved", quit: "clean" | "crash
   };
   const before = duo(machine);
   const opened = runtime.session.beginDuoReenrol(active.token);
-  for (const method of stage === "pending" ? ["key"] as const : ["key", "touch"] as const) {
-    const started = await runtime.session.startDuoReenrol(active.token, opened.operationId, method);
-    const attemptId: string | undefined = started.methods[method].attemptId;
-    assert.ok(attemptId);
-    if (stage === "proved" && method === "key") runtime.session.confirmDuoReenrol(active.token, opened.operationId, method, attemptId);
-  }
+  const started = await runtime.session.startDuoReenrol(active.token, opened.operationId, "key");
+  const attemptId: string | undefined = started.methods.key.attemptId;
+  assert.ok(attemptId);
+  if (stage === "proved") runtime.session.confirmDuoReenrol(active.token, opened.operationId, "key", attemptId);
   if (quit === "clean") await runtime.close("shutdown");
   const stateRoot = machine.stateRoot;
   machine.release();
@@ -276,7 +273,7 @@ it("boot aborts a deselected person's leftover re-enrolment without holding them
     assert.deepEqual(f.duo(booted.machine), f.before);
     assert.throws(() => booted.runtime.session.readDuoReenrol(signedIn.token, f.operationId), { code: "PROFILE_SESSION_STALE" });
     const fresh = booted.runtime.session.beginDuoReenrol(signedIn.token);
-    assert.deepEqual([fresh.operationId !== f.operationId, fresh.methods.key.state, fresh.methods.touch.state], [true, "idle", "idle"]);
+    assert.deepEqual([fresh.operationId !== f.operationId, fresh.methods.key.state], [true, "idle"]);
   }
 });
 
@@ -293,6 +290,42 @@ it("a sign-in whose leftover discard fails stays signed out with the draft abort
   assert.throws(() => booted.runtime.session.signIn({ email: f.fields.email, password: f.fields.password, at: AT }), { code: "DUO_CREDENTIAL_UNCERTAIN" });
   vi.restoreAllMocks(); syncBuiltinESMExports();
   assert.equal(booted.machine.readProfileRegistry().activeProfileId, null);
+  assert.ok(f.operation()?.abort !== undefined);
+
+  assert.equal(booted.runtime.session.signIn({ email: f.fields.email, password: f.fields.password, at: AT }).state, "active");
+  assert.equal(f.operation(), undefined);
+  assert.deepEqual(f.duo(booted.machine), f.before);
+});
+
+it("a sign-in resumes a leftover discard stopped after its head publish on a record that still holds a ready platform row", async () => {
+  const f = await leftoverDraft("proved", "clean");
+  const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime), owner = machine.admitProfile(f.active.profileId);
+  registerBoundProfile(owner, machine);
+  const platformId = randomBytes(32).toString("base64url");
+  try {
+    const Rows = z.looseObject({ credentials: z.array(z.looseObject({ state: z.string(), authenticator: z.looseObject({}).optional() })) });
+    const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    rewriteAuthenticatedCredentialFixture(machine.stateRoot, f.active.profileId, value => {
+      const rows = Rows.parse(value).credentials, ready = rows.find(row => row.state === "ready"); assert.ok(ready);
+      return { credentials: [...rows, { ...ready, credentialId: platformId,
+        privateKeyPkcs8: pair.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+        publicKeySpki: pair.publicKey.export({ format: "der", type: "spki" }).toString("base64"),
+        authenticator: { ...ready.authenticator, transport: "internal" } }] };
+    }, "duo");
+    assert.match(JSON.stringify(readAuthenticatedCredentialFixture(machine.stateRoot, f.active.profileId, "duo")), /"internal"/u);
+  } finally { unregisterBoundProfile(owner); owner.release(); machine.release(); }
+  deselect(f);
+  const booted = await boot(f);
+  const rename = fs.renameSync;
+  vi.spyOn(fs, "renameSync").mockImplementation((source, destination) => {
+    if (String(destination) === f.recordFile) throw new Error("synthetic stop after the head publish");
+    return rename(source, destination);
+  });
+  syncBuiltinESMExports();
+  assert.throws(() => booted.runtime.session.signIn({ email: f.fields.email, password: f.fields.password, at: AT }), { code: "DUO_CREDENTIAL_UNCERTAIN" });
+  vi.restoreAllMocks(); syncBuiltinESMExports();
+  const head = z.looseObject({ retired: z.array(z.string()) }).parse(JSON.parse(fs.readFileSync(join(dirname(dirname(f.recordFile)), "credential-keys", `${f.active.profileId}.json`), "utf8")));
+  assert.ok(head.retired.includes(platformId));
   assert.ok(f.operation()?.abort !== undefined);
 
   assert.equal(booted.runtime.session.signIn({ email: f.fields.email, password: f.fields.password, at: AT }).state, "active");

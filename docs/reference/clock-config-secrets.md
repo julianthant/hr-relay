@@ -388,7 +388,7 @@ closure still stops startup and retains its owners.
 Ordinary readers accept only the current schema. Stopped conversion and flat-source inspection own
 the previous grammar; retained value-free receipts keep the catalog used by their original write.
 
-Registry document 4 binds immutable installation ID and safe revision, and each row stores its timekeeper initials apart from its timekeeper name. Control 7 binds logical registry digest/revision/epoch and operation membership; marker 9 selects the current tuple and external browser-root registry. Startup under stopped exclusive custody upgrades document 3 at marker 8 forward once, seeding each row's timekeeper initials from the letters of its timekeeper name; its control intent `registry-initials-upgrade.json` lets a stop at any step finish the same upgrade, and the conversion refuses while a publication, restore journal, control upgrade or account deletion is pending. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
+Registry document 5 binds immutable installation ID and safe revision, and each row stores its timekeeper initials apart from its timekeeper name. Control 7 binds logical registry digest/revision/epoch and operation membership; marker 10 selects the current tuple and external browser-root registry. Startup under stopped exclusive custody upgrades document 3 at marker 8 forward once, seeding each row's timekeeper initials from the letters of its timekeeper name; its control intent `registry-initials-upgrade.json` lets a stop at any step finish the same upgrade, and the conversion refuses while a publication, restore journal, control upgrade or account deletion is pending. Document 4 at marker 9 then upgrades to document 5 at marker 10 the same way (intent `security-key-only-upgrade.json`): stored sign-up and re-enrol operations drop their Touch ID attempts and ceremony mechanism fields, each completion drops its Touch ID receipt, and an open operation still holding a live Touch ID attempt refuses with `security-key-upgrade-touch-attempt-in-flight`. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
 
 Browser-root registry schema 2 stores short numeric handles with complete owner bindings. Stopped startup
 runs `maintenance/browser-root-upgrade.ts` before ordinary admission. Its schema-1 forward conversion
@@ -933,18 +933,16 @@ enrollment, persisted credential, counter reservation or readiness proof.
 
 `profile-onboarding.ts` issues exact operation/generation/method attempts. Software FastDuo readiness
 requires native pending-key acknowledgement and ceremony plus either exact scoped operator CONFIRM
-or an observed exact-credential request; an unobserved portal acceptance remains false. Touch ID separately requires a platform ceremony with software interception disabled, actual Duo
-portal acceptance and operator confirmation. The owned extension prepares platform discovery before answering Duo availability queries. Touch ID uses Chromium's emulated internal authenticator on both macOS and Windows, without a hardware availability probe or installed Chrome dependency. The registration handoff disables native signatures before exporting the observed counter and private key. Login rehydrates ready internal material with native signatures disabled; the current backend ceremony lease remains required for signing. Virtual platform
-keys enter the same encrypted Duo custody and must be ready before Finish. The retained receipt and
-public method state identify `native-platform` or `chromium-platform`. Public method states display these receipts; they do not
-authorize publication. Each SIGN uses a distinct durable reservation nonce.
+or an observed exact-credential request; an unobserved portal acceptance remains false. The security key is the only Duo method:
+the extension answers Duo's platform availability check with false, refuses platform enrollment, and workflow logins sign only
+with the stored usb key. Public method states display these receipts; they do not authorize publication. Each SIGN uses a
+distinct durable reservation nonce.
 
-Platform setup uses the broker-verified top-level Duo page. Same-origin child frames are not
-additional enrollment targets; ambiguous top-level pages refuse. Credential IDs remain canonical
+Setup uses the broker-verified top-level Duo page. Same-origin child frames are not
+additional enrollment targets. Credential IDs remain canonical
 base64url in Duo custody and convert to standard base64 only at the Chromium protocol boundary.
-A completed Chromium platform receipt with a matching ready encrypted key survives the scoped
-retention hook, just like the software key. Actual provider failures still retain their error and
-block Finish through the existing custody checks.
+Actual provider failures still retain their error and block Finish through the existing custody checks.
+The first open of a credential store retires any stored transport `internal` row and its head counter.
 
 Setting Duo up again for an active profile is a separate `duo-reenrol` operation beside the active session. The same draft owner
 runs its attempts under a fresh account, but a proved credential is staged, not confirmed, so workflows keep signing with the

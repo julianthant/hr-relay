@@ -14,7 +14,7 @@ const operationId = "11111111-1111-4111-8111-111111111111", digest = "a".repeat(
 const stateRoot = "/relay/.tracker/data", root = `${stateRoot}/profiles/${profileId}`;
 const locator = { schemaVersion: 3, installationId, generation: 0, stateRoot, artifactRoot: `${stateRoot}/artifacts` };
 const continuity = { schemaVersion: 7, installationId, digest, revision: 0, generation: 0, operations: [] };
-const document = { schemaVersion: 4, installationId, revision: 0, profiles: [], sessionGeneration: 0, activeProfileId: null };
+const document = { schemaVersion: 5, installationId, revision: 0, profiles: [], sessionGeneration: 0, activeProfileId: null };
 const restoring = AuthorityRestoreJournalSchema.parse({ schemaVersion: 3, phase: "restoring", installationId, source: locator, restoreAdmissionId: operationId,
   restore: { operationId, profile: { binding: { installationId, profileId }, continuity,
     credentials: { binding: { installationId, profileId }, generation: 1, keyId: operationId, digest, counters: [], retired: [] } },
