@@ -80,7 +80,7 @@ export function MappingGrid({ fields, dataset, mapping, onMap, worksheets, colum
   };
   return <section aria-label="Preview" onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'c' && box) { event.preventDefault(); void copy(); } }}>
     <div className="ds-toolbar-row mb-2 flex items-center gap-2">
-      <SearchInput aria-label="Search this sheet" placeholder="Search this sheet" value={query} onChange={event => { setSelection(undefined); setQuery(event.target.value); }} onClear={() => setQuery('')} className="min-w-0 flex-1" />
+      <SearchInput aria-label="Search this sheet" placeholder="Search this sheet" value={query} onChange={event => { setSelection(undefined); setQuery(event.target.value); }} onClear={() => setQuery('')} className="sv2-search min-w-0 flex-1" />
       {box && <V2Button onClick={() => void copy()}>Copy</V2Button>}
       {worksheets && worksheets.names.length > 1 && <WorksheetPicker control={worksheets} />}
       <Popover open={columns} onOpenChange={next => { if (!(picking && !next)) setColumns(next); }}>

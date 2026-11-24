@@ -7,14 +7,21 @@ import { ClickLine } from "../shared/steps/click-line.js";
 import { NoteLine } from "../shared/steps/note-line.js";
 import { PageCard } from "../shared/steps/page-card.js";
 import { PickTableView } from "../shared/steps/pick-table-view.js";
-import { StepFrame } from "../shared/steps/step-frame.js";
 import { ExplorerSource } from "./explorer-source.js";
 import type { ExplorerPickerEntry } from "./explorer-picker-model.js";
 import { fieldSource, resolveExplorer, rowValue, systemName, visible, type SpecBlock, type SpecCard, type SpecDecision, type SpecRow, type SpecValues } from "./explorer-spec.js";
 
 type ExplorerWorkflowOption = Pick<ExplorerPickerEntry, "id" | "title"> & Partial<Pick<ExplorerPickerEntry, "depth">>;
 
-const STEP = "border-b last:border-b-0 [--spacing-log-time:1.75rem]";
+/** One step in the numbered list: the circle hangs in the gutter beside it and a line joins the circles. */
+function ExplorerStep({ number, title, system, titleId, children }: { number: number; title: string; system?: string; titleId: string; children: ReactNode }) {
+  return <li aria-labelledby={titleId} className="relative border-b border-ui-stroke pb-6 pt-6 first:pt-0 last:border-b-0">
+    <time className={`absolute -left-10 flex size-7 items-center justify-center rounded-full border border-ui-stroke bg-ui-panel text-caption tabular-nums text-ui-secondary ${number === 1 ? "top-0" : "top-6"}`}>{number}</time>
+    <header className="mb-3 flex min-h-7 min-w-0 flex-wrap items-center gap-x-3 gap-y-1"><h3 id={titleId} tabIndex={-1} className="m-0 rounded-sm text-heading focus:outline-2 focus:outline-offset-4 focus:outline-ui-info">{title}</h3>
+      {system && <span className="flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-body text-ui-muted"><Monitor aria-hidden className="size-3.5" />{system}</span>}</header>
+    <div className="flex min-w-0 flex-col gap-3">{children}</div>
+  </li>;
+}
 
 // A step toggle is an option the served definition names `skip-<step>`; the page words it as the step's inclusion.
 const isStepToggle = (id: string) => id.startsWith("skip-");
@@ -98,13 +105,13 @@ export function ExplorerSpecView({ spec, onWorkflow }: { spec: ExplorerReviewSpe
       </div>)}</div>
     </section>}
     <div className="mb-6 border-b border-ui-stroke pb-4"><NoteLine message={spec.unlistedFailure} /></div>
-    <div>
-      {offset === 1 && <StepFrame numbered leading={1} title="Open browser sessions" titleId={stepId(1)} className={STEP}>
+    <ol aria-label="Workflow steps" className="relative m-0 list-none pl-10 before:absolute before:bottom-5 before:left-3.5 before:top-3 before:w-px before:bg-ui-stroke">
+      {offset === 1 && <ExplorerStep number={1} title="Open browser sessions" titleId={stepId(1)}>
         <div className="flex flex-wrap gap-2">{sessions.map(system => <span key={system} className="flex h-9 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-3 text-body"><Monitor aria-hidden className="size-4 text-ui-muted" />{systemName(system)}</span>)}</div>
-      </StepFrame>}
+      </ExplorerStep>}
       {steps.map((step, index) => {
         const number = index + 1 + offset;
-        return <StepFrame numbered key={step.id} leading={number} title={step.title} system={step.system === undefined ? undefined : systemName(step.system)} titleId={stepId(number)} className={STEP}>
+        return <ExplorerStep key={step.id} number={number} title={step.title} system={step.system === undefined ? undefined : systemName(step.system)} titleId={stepId(number)}>
           {visible(step.description, values).slice(0, 1).map(line => <p key={line.text} className="m-0 text-body text-ui-secondary">{line.text}</p>)}
           {visible(step.checks, values).map(line => <NoteLine key={line.text} message={line.text} icon={<CheckCheck aria-hidden className="size-3.5 self-start translate-y-0.5 text-ui-positive" />} />)}
           {visible(step.blocks, values).map((block, position) => {
@@ -114,10 +121,10 @@ export function ExplorerSpecView({ spec, onWorkflow }: { spec: ExplorerReviewSpe
             if (block.kind === "decision") return <Decision key={block.id} decision={block} values={values} onChoose={outcome => decide(block.id, outcome)} />;
             return <Card key={block.id} card={block} values={values} onSource={openSource(step.id, block.title)} />;
           })}
-        </StepFrame>;
+        </ExplorerStep>;
       })}
-    </div>
-    {stop && <div className="border-t border-ui-stroke pt-3"><NoteLine message={stop.then} tone="danger" /></div>}
+    </ol>
+    {stop && <div className="ml-10 border-t border-ui-stroke pt-3"><NoteLine message={stop.then} tone="danger" /></div>}
     {source && sourceStep && <ExplorerSource key={source.row.id} label={source.row.label} destination={`${sourceStep.system === undefined ? "Local" : systemName(sourceStep.system)} · ${source.card}`}
       source={fieldSource(spec, source.row, numberOf)} onClose={closeSource}
       onJump={number => { setSource(undefined); const target = document.getElementById(stepId(number)); target?.scrollIntoView({ block: "start", behavior: "instant" }); target?.focus({ preventScroll: true }); }} />}
