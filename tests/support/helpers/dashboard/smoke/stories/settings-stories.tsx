@@ -18,7 +18,7 @@ type CredentialStore = EditableSettingsWire["protectedSettings"]["state"];
 type PlanUsage = Extract<ChatGptAccountSnapshot, { state: "connected" }>["planUsage"];
 type SearchState = "results" | "none" | "reading" | "unavailable";
 type DialogName = "edit-name" | "edit-name-refused" | "edit-username" | "edit-username-refused" | "change-password" | "change-password-refused"
-  | "edit-credential" | "remove-credential" | "disconnect-chatgpt" | "delete-account" | "discard-changes" | "edit-shortcut" | "edit-shortcut-refused";
+  | "edit-credential" | "disconnect-chatgpt" | "delete-account" | "discard-changes" | "edit-shortcut" | "edit-shortcut-refused";
 /** What a press on the Account page comes back as, once the dialog or button has closed. */
 type AccountAction = "password-changed" | "password-not-confirmed" | "name-not-saved" | "duo-not-opened";
 type Notice = "restart-required" | "opened-for-check" | "setting-unavailable";
@@ -160,7 +160,6 @@ const DIALOG = {
   "change-password": onAccount("Changing the Relay password", click("Change Relay password"), '[role="dialog"]'),
   "change-password-refused": onAccount("A password change with the wrong password", then(click("Change Relay password"), type("Current password", "wrong"), type("New password", "a-new-password"), type("Confirm new password", "a-new-password"), click("Save"), still), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedLogin } }),
   "edit-credential": onAccount("Editing the UCPath username", click("Edit UCPath username"), '[role="dialog"]'),
-  "remove-credential": onAccount("Asked to remove the UCPath username", then(click("Edit UCPath username"), click("Remove UCPath username")), 'text="Remove UCPath username?"'),
   "disconnect-chatgpt": scene("Asked to disconnect ChatGPT", { host: { chatGpt: { state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", planUsage: "enabled" } }, play: click("Disconnect"), story: { ready: 'text="Disconnect ChatGPT?"' } }),
   "delete-account": onAccount("Asked to delete the account", click("Delete"), 'text=/Delete .* account\\?/', { host: { deleteAccount: { state: "ready", personName: "Jordan Lee", onConfirm: () => undefined } } }),
   "discard-changes": scene("Asked to discard unsaved changes", { server: { save: "never" }, play: then(chooseWindow, click("Close settings")), story: { ready: 'text="Discard changes?"' } }),
@@ -203,28 +202,8 @@ const NOTICE = {
   "setting-unavailable": scene("A search target that is not on the page", { host: { searchTarget: "nothing.here" }, play: loaded, story: { ready: 'text=/Setting unavailable/' } }),
 } satisfies Record<Notice, Story>;
 
-/** Measured at both widths with the app's Sessions-bar inset on the frame: the bottom-centre toast still covers the "Runs" toolbar (the save, restart and notice stories) or the "Workflow configuration" title and group (the credentials and account-action stories). The overlap is real, so these stay recorded. */
-const TOAST_STORIES: ReadonlySet<string> = new Set([
-  "settings/action/name-not-saved",
-  "settings/action/password-changed",
-  "settings/action/password-not-confirmed",
-  "settings/credentials/unknown",
-  "settings/notice/restart-required",
-  "settings/notice/setting-unavailable",
-  "settings/runtime/restart-required",
-  "settings/save-combo/replayed",
-  "settings/save-combo/restart-required",
-  "settings/save/applied",
-  "settings/save/conflict",
-  "settings/save/refused",
-  "settings/save/unconfirmed",
-]);
-
-const SETTINGS_TABLES = defineSurface("settings", {
+export const SETTINGS_STORIES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
   save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
 });
 
-export const SETTINGS_STORIES = SETTINGS_TABLES.map(entry => TOAST_STORIES.has(entry.id)
-  ? { ...entry, story: { ...entry.story, knownFailures: { "toast-text-only": "#532" } } }
-  : entry);

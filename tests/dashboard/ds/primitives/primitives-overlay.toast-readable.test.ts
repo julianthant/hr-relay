@@ -29,9 +29,11 @@ it("shows the whole sentence, dismisses a plain failure after reading time, and 
 
     await press("Fail");
     const title = document.querySelector('[data-slot="toast-title"]');
-    assert.equal(title?.textContent, `Write parked: ${SENTENCE}`, "a description joins the title in one line");
-    assert.equal(document.querySelector('[data-slot="toast-description"]') === null, true);
+    const description = document.querySelector('[data-slot="toast-description"]');
+    assert.equal(title?.textContent, "Write parked");
+    assert.equal(description?.textContent, SENTENCE, "the description is its own line under the title");
     assert.equal(title?.classList.contains("truncate"), false);
+    assert.equal(description?.classList.contains("truncate"), false);
 
     await press("Fail"); await press("Fail");
     assert.equal(cards().length, 1);
