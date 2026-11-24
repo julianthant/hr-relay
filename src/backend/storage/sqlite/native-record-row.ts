@@ -1,5 +1,5 @@
 import { createNativeRecordReadMemo } from "./run-record-row.js";
-import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, LIST_INDEX_SCHEMA_VERSION } from "./migrations.js";
 import { PredecessorRunRecordSchema } from "../../../models/run/record.js";
 import { runSettlementContext } from "./run-settlement-row.js";
 import { confirmationPublicationFromRow } from "../../../models/events/confirmed-operation.js";
@@ -117,7 +117,8 @@ function decodeNativeOrdinaryRecord(table: NativeOrdinaryTable, row: z.infer<typ
   } else if (table === "run_checkpoints") {
     extras.id = checkpointRecordKey(RunCheckpointRecordSchema.parse(record));
     extras.output_digest = deriveCheckpointOutputDigest(object.output);
-  } else if (table === "gate_results") extras.id = `${String(object.runId)}:${String(object.gateId)}`;
+  } else if (schemaVersion >= LIST_INDEX_SCHEMA_VERSION && table === "delegation_dependencies") extras.parent_run_id = z.string().parse(object.parentRunId);
+  else if (table === "gate_results") extras.id = `${String(object.runId)}:${String(object.gateId)}`;
   else if (table === "diagnostic_files") {
     const attachment = ValueObjectSchema.parse(object.attachment);
     extras.id = `${String(object.bundleId)}:${String(attachment.artifactId)}`;

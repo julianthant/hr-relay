@@ -58,9 +58,9 @@ function schema33(): DatabaseSync {
 }
 
 describe("failure note removal migration 34", () => {
-  it("is schema version 34, under the debug events' current 39, and changes no table", () => {
+  it("is schema version 34, under the list indexes' current 40, and changes no table", () => {
     assert.equal(FAILURE_NOTE_REMOVAL_SCHEMA_VERSION, 34);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 39);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 40);
     assert.deepEqual(migrationTableNames(34), migrationTableNames(33));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
