@@ -180,8 +180,15 @@ it("leaves unfinished Duo setup as an uncompleted refusal without a first-run re
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners, onInitialPreflight });
     const base = `http://127.0.0.1:${runtime.port}`;
-    const signup = await fetch(`${base}/api/v1/profile/sign-up`, { method: "POST", headers: { origin: base, "content-type": "application/json" },
-      body: JSON.stringify({ firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
+    const postSignup = (body: unknown) => fetch(`${base}/api/v1/profile/sign-up`, {
+      method: "POST", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    const details = { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password", ucpathUsername: "fixture@ucsd.edu", ucpathPassword: "disposable-fixture-password" };
+    const { ucpathUsername: _username, ucpathPassword: _password, ...relayOnly } = details;
+    const refused = await postSignup(relayOnly);
+    assert.deepEqual(await refused.json(), { state: "error", code: "SCHEMA_INVALID" });
+    assert.equal(refused.headers.get("x-relay-session"), null);
+    const signup = await postSignup(details);
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding");
     if (draft.state !== "onboarding") throw new Error("unfinished draft required");
     const credential = signup.headers.get("x-relay-session") ?? undefined; assert.ok(credential);

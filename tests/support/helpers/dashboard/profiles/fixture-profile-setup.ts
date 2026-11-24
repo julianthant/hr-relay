@@ -1,4 +1,4 @@
-import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
+import { ProfileDuoKeysReadSchema, PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import type { CommandResult } from "../../../../../src/rules/commands/commands.js";
 import type { FrontendBootstrapWire } from "../../../../../src/models/dashboard/bootstrap.js";
 import type { DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
@@ -8,11 +8,15 @@ import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-
 import type * as FixtureQueueTypes from "../../../fixtures/dashboard/fixture-queue.js";
 
 
+const PROFILE_SCOPE = { profileId: "00000000-0000-4000-8000-000000000001", epoch: 1 };
+
 /** The signed-in, Duo-ready session every fixture BFF serves at `/api/v1/profile/state`. */
 export const FIXTURE_ACTIVE_PROFILE_STATE = PublicProfileStateSchema.parse({
-  state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready",
+  state: "active", ...PROFILE_SCOPE, duoState: "ready",
   account: { name: "Smoke Test", initials: "ST", timekeeper: "Smoke Test", timekeeperInitials: "ST", lastSignedInAt: "2026-11-10T08:30:00-08:00" },
 });
+export const FIXTURE_DUO_KEYS = ProfileDuoKeysReadSchema.parse({ ...PROFILE_SCOPE, snapshot: { revision: 1,
+  keys: [{ id: "a".repeat(64), shortId: "aB12cd34", name: "Smoke security key", addedAt: "2026-11-10T16:30:00.000Z" }] } });
 
 export interface FixtureDashboardProfile {
   /** Every bootstrap fact the browser reads before it selects a route. */

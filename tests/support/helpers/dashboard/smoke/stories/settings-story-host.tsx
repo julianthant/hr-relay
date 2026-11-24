@@ -9,6 +9,7 @@ import { DeleteAccountControl } from "../../../../../../src/dashboard/surfaces/s
 import type { DeleteAccountPresentation } from "../../../../../../src/dashboard/surfaces/settings/general/delete-account-model.js";
 import { IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
 import type { AccountPage, AccountValues, ProfileDetailsChangeResult, ProfileLoginChangeResult } from "../../../../../../src/dashboard/surfaces/settings/account/account-settings.js";
+import type { DuoKeysSnapshot } from "../../../../../../src/models/profiles/public-profile.js";
 import { FrontendBootstrapWireSchema } from "../../../../../../src/models/dashboard/bootstrap.js";
 import { ActorIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import type { DashboardAuthority } from "../../../../../../src/dashboard/app/dashboard-app-model.js";
@@ -17,24 +18,24 @@ import bootstrapJson from "../../../../fixtures/dashboard/settings-story-bootstr
 import { SettingsPage } from "../../../../../../src/dashboard/surfaces/settings/settings.js";
 import type { SettingsStoryServer } from "../../../../fixtures/dashboard/settings-story-fixtures.js";
 import { StoryFrame } from "./story-frame.js";
-import { createRowStore } from "../../../../../../src/dashboard/client/index.js";
+import type { RowStoreWriter } from "../../../../../../src/dashboard/client/index.js";
 
 const noop = () => undefined;
 const ACTOR = "local-operator";
 const BOOTSTRAP = FrontendBootstrapWireSchema.parse(bootstrapJson);
 
 /** The command binding `DashboardApp` gives the tree, on the same client; the day it holds never loads. */
-function StoryCommandBinding({ children }: { children: ReactNode }) {
+function StoryCommandBinding({ children, rows }: { children: ReactNode; rows: RowStoreWriter }) {
   const client = useDashboardClient();
   const executor = useDashboardCommandExecutor();
   const binding = useMemo(() => {
     const epoch = Object.freeze({ client, bootstrap: BOOTSTRAP });
     const request = Object.freeze({ client, revision: 0 });
     const authority: DashboardAuthority = Object.freeze({ epoch, catalog: [], now: () => BOOTSTRAP.serverClock.now, today: "2026-08-03", day: "2026-08-03",
-      dayState: { rows: createRowStore(), request, day: LOADING, connection: { state: "connecting" as const }, subscribePublications: () => noop, refresh: noop },
+      dayState: { rows, request, day: LOADING, connection: { state: "connecting" as const }, subscribePublications: () => noop, refresh: noop },
       selection: { route: { start: false }, workflowId: "" } });
     return Object.freeze({ authority, executor, scope: Object.freeze({ actorId: ActorIdSchema.parse(ACTOR), client, authority: epoch, dayRequest: request }), feedback: noop });
-  }, [client, executor]);
+  }, [client, executor, rows]);
   return <DashboardCommandBindingProvider binding={binding}>{children}</DashboardCommandBindingProvider>;
 }
 
@@ -49,7 +50,9 @@ export function chatGptPort(snapshot: ChatGptAccountSnapshot): ChatGptAccountPor
   return { mode: "preview", getSnapshot: () => snapshot, subscribe: () => noop, signIn: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), signOut: () => Promise.resolve(undefined) };
 }
 
-const ACCOUNT = { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: IsoInstantSchema.parse("2026-09-13T12:00:00.000Z") } satisfies AccountValues;
+const ACCOUNT = { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: IsoInstantSchema.parse("2026-09-13T12:00:00.000Z"), username: "jordan.lee@ucsd.edu" } satisfies AccountValues;
+export const DUO_WORK_KEY = { id: "a".repeat(64), shortId: "aB12cd34", name: "Work security key", addedAt: "2026-09-03T12:00:00.000Z",
+  lastUsedAt: "2026-09-13T12:00:00.000Z" } satisfies DuoKeysSnapshot["keys"][number];
 
 export interface AccountStub {
   /** What a name, initials or timekeeper edit comes back as. */
@@ -57,14 +60,26 @@ export interface AccountStub {
   readonly login?: ProfileLoginChangeResult;
   /** The Duo setup window could not be opened: the sentence Settings shows. */
   readonly duo?: string;
+  readonly duoKeys?: DuoKeysSnapshot["keys"] | "loading" | "unavailable";
 }
 
 export function accountPageStub(stub: AccountStub = {}): AccountPage {
   const login = stub.login ?? { state: "changed" };
+  const keys = stub.duoKeys ?? [DUO_WORK_KEY];
+  let snapshot: DuoKeysSnapshot = { revision: 1, keys: typeof keys === "string" ? [] : keys };
   return {
     values: ACCOUNT,
     details: () => Promise.resolve(stub.details ?? { state: "changed", account: ACCOUNT }),
     onDuoSetup: () => Promise.resolve(stub.duo),
+    duoKeys: {
+      read: () => keys === "loading" ? new Promise(() => undefined) : keys === "unavailable" ? Promise.reject(new Error("Duo keys unavailable")) : Promise.resolve(snapshot),
+      change: change => {
+        const keys = change.kind === "remove" ? snapshot.keys.filter(key => key.id !== change.keyId)
+          : snapshot.keys.map(key => key.id === change.keyId ? { ...key, name: change.name } : key);
+        snapshot = { revision: snapshot.revision + 1, keys };
+        return Promise.resolve({ state: "changed", snapshot });
+      },
+    },
     login: { changePassword: () => Promise.resolve(login), changeUsername: () => Promise.resolve(login), readUsername: () => Promise.resolve("jordan.lee@ucsd.edu") },
   };
 }
@@ -86,7 +101,7 @@ export function SettingsHost({ server, section, searchTarget, backToRun, account
   const settings = <ToastProviderBridge>{callbacks => <SettingsPage section={section} {...(searchTarget === undefined ? {} : { searchTarget })} {...(backToRun === undefined ? {} : { backToRun })}
     appearance={<AppearanceSettings theme="dark" onToggleTheme={noop} />} accountPage={page} deleteAccount={<DeleteAccountControl presentation={deleteAccount ?? { state: "unavailable" }} />}
     actorId={ACTOR} profileName="Jordan Lee" descriptorFingerprint={"d".repeat(64)} onSection={noop} onClose={noop} {...callbacks} />}</ToastProviderBridge>;
-  return <StoryFrame><DashboardClientProvider client={server.client}><StoryCommandBinding>
+  return <StoryFrame><DashboardClientProvider client={server.client}><StoryCommandBinding rows={server.rows}>
     {port === undefined ? settings : <ChatGptAccountContext.Provider value={port}>{settings}</ChatGptAccountContext.Provider>}
   </StoryCommandBinding></DashboardClientProvider></StoryFrame>;
 }

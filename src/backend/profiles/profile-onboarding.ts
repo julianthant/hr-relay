@@ -210,9 +210,17 @@ export function createProfileOnboarding(input: {
       },
       async recordPortalAcceptance(proof) {
         assertCurrent(); z.string().min(1).parse(proof.credentialId); z.string().min(1).parse(proof.requestId);
+        const { name, ...receipt } = proof;
+        if (name !== undefined) {
+          const { draft, receipt: prior } = current(attempt);
+          if (receipt.acceptance !== "portal-accepted" || prior.ceremony?.credentialId !== receipt.credentialId
+            || prior.ceremony.requestId !== receipt.requestId) return unavailable();
+          input.store(draft).recordEnrollmentName(receipt.credentialId, scope, name);
+          if (prior.portal?.acceptance === "exact-credential-request") return;
+        }
         updateAttempt(attempt, (_latest, prior) => {
-          if (prior.portal !== undefined && JSON.stringify(prior.portal) !== JSON.stringify(proof)) return unavailable();
-          return { receipt: { ...prior, portal: proof }, result: undefined };
+          if (prior.portal !== undefined && JSON.stringify(prior.portal) !== JSON.stringify(receipt)) return unavailable();
+          return { receipt: { ...prior, portal: receipt }, result: undefined };
         });
         settleAttempt(attempt);
       },

@@ -17,7 +17,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
   step: OnboardingStep; onStep: (step: OnboardingStep) => void; onDashboard: () => void; port: ServedOnboardingPort; authenticated?: boolean; problem?: string; signInProblem?: string;
   resumable?: boolean;
 }) {
-  const [forms, setForms] = useState<Record<"login" | "signup", OnboardingDetails>>({ login: { firstName: "", lastName: "", email: "", password: "" }, signup: { firstName: "", lastName: "", email: "", password: "" } });
+  const [forms, setForms] = useState<Record<"login" | "signup", OnboardingDetails>>({ login: { firstName: "", lastName: "", email: "", password: "" }, signup: { firstName: "", lastName: "", email: "", password: "", ucpathUsername: "", ucpathPassword: "" } });
   const formStep = step === "login" ? "login" : "signup";
   const details = forms[formStep];
   const previousStep = useRef(step);
@@ -72,7 +72,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
     if (previous === step) return;
     previousStep.current = step;
     submitted.current++; setBusy(false);
-    if (previous === "login" || previous === "signup") setForms(current => ({ ...current, [previous]: { ...current[previous], password: "" } }));
+    if (previous === "login" || previous === "signup") setForms(current => ({ ...current, [previous]: { ...current[previous], password: "", ...(previous === "signup" ? { ucpathPassword: "" } : {}) } }));
     setErrors({}); setLoginError(""); setDismissed(signInProblem);
   }, [step, signInProblem]);
   const requestCancellation = (next: "login" | "signup", trigger: Element | null = document.activeElement) => {
@@ -111,7 +111,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
   };
   const field = (name: keyof OnboardingDetails, label: string, type: string, autoComplete: string) => {
     const shared = {
-      name, autoComplete, maxLength: 160, required: true, disabled: submitting, value: details[name], size: "lg" as const,
+      name, autoComplete, maxLength: 160, required: true, disabled: submitting, value: details[name] ?? "", size: "lg" as const,
       onChange: (event: ChangeEvent<HTMLInputElement>) => {
         const next = { ...details, [name]: event.target.value }; setForms(current => ({ ...current, [formStep]: next })); clearError();
         if (errors[name]) setErrors(current => ({ ...current, [name]: port.validate(signup ? "signup" : "login", next)[name] }));
@@ -119,7 +119,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
       onBlur: () => { if (details[name]) setErrors(current => ({ ...current, [name]: port.validate(signup ? "signup" : "login", details)[name] })); },
     };
     return <Field label={label} error={errors[name]} description={signup && name === "password" ? "Use at least 8 characters" : undefined}>
-      {name === "password" ? <SecretField {...shared} label={label} />
+      {name === "password" || name === "ucpathPassword" ? <SecretField {...shared} label={label} />
         : <Input {...shared} type={type} spellCheck={type === "email" ? false : undefined} inputMode={type === "email" ? "email" : undefined} />}
     </Field>;
   };
@@ -171,11 +171,11 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
             const result: PublicProfileState = await port.submit(signup ? "signup" : "login", details);
             if (request !== submitted.current) return;
             if (result.state === PROFILE_ONBOARDING_STATE) {
-              setForms(current => ({ ...current, [formStep]: { ...current[formStep], password: "" } }));
+              setForms(current => ({ ...current, [formStep]: { ...current[formStep], password: "", ...(signup ? { ucpathPassword: "" } : {}) } }));
               onStep(result.step); return;
             }
             if (result.state === "signed-out") {
-              setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "" } } : current);
+              setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "", ...(signup ? { ucpathPassword: "" } : {}) } } : current);
               onStep("login"); return;
             }
             if (result.state === "cancelling" || result.state === "refused" && result.code === "PROFILE_LOGOUT_BLOCKED") return;
@@ -184,7 +184,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
               if (!signup) { setForms(current => ({ ...current, login: { ...current.login, password: "" } })); focusPassword.current = true; }
               return;
             }
-            setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "" } } : current);
+            setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "", ...(signup ? { ucpathPassword: "" } : {}) } } : current);
             if (result.duoState === "ready") onDashboard(); else onStep("duo");
           } catch (error) {
             if (request === submitted.current) setLoginError(operatorFailureSentence(error instanceof DashboardClientError && error.kind === "network" ? "PROFILE_CONNECTION_FAILED" : "PROFILE_AUTHORITY_UNAVAILABLE"));
@@ -192,6 +192,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
         }}>
           {signup && <div className="name-row">{field("firstName", "First name", "text", "given-name")}{field("lastName", "Last name", "text", "family-name")}</div>}
           {field("email", "Work email", "email", "username")}{field("password", "Password", "password", signup ? "new-password" : "current-password")}
+          {signup && <fieldset className="ucpath-fields"><legend>UCPath login</legend>{field("ucpathUsername", "UCPath username", "text", "off")}{field("ucpathPassword", "UCPath password", "password", "off")}</fieldset>}
           <p className="form-error" role="alert">{error}</p><Button variant="primary" size="lg" className="self-start" type="submit" aria-busy={submitting || undefined} disabled={submitting || port.unavailable}>{submitting && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{submitting ? signup ? "Creating profile…" : "Logging in…" : signup ? "Create profile" : "Log in"}</Button>
         </form><div className="switch-row"><span>{signup ? "Already have a profile?" : "New to Relay?"}</span><a tabIndex={0} className="text-link" aria-disabled={submitting || undefined} href={`?onboarding=${signup ? "login" : "signup"}`} onClick={async event => { event.preventDefault(); await navigate(signup ? "login" : "signup"); }}>{signup ? "Log in" : "Sign up"}</a></div></> : step === "duo" ? <>
           <ul className="method-list" aria-label="Duo methods"><li><span className="method-name"><KeyRound className="icon" aria-hidden />Security key</span><DuoMethodPill state={keyState ?? (methods.key ? "complete" : "idle")} /></li></ul>

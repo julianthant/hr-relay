@@ -11,8 +11,14 @@ import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../../.
 import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
 import { FixtureCommandBinding } from "../../../../support/helpers/dashboard/command-binding.js";
 import { dropKeptResults } from "../../../../../src/dashboard/state/async-resource.js";
-import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { createDashboardClient, createRowStore, type RowStoreWriter } from "../../../../../src/dashboard/client/index.js";
+import { StreamRowSchema } from "../../../../../src/models/dashboard/subscription.js";
 import { syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
+
+/** What the server's hub sends after an ordinary settings commit: the editable document as the settings row. */
+function deliverSettingsRow(rows: RowStoreWriter, document: EditableSettingsWire): void {
+  rows.apply([StreamRowSchema.parse({ model: "settings", key: "editable", value: { state: "available", value: document } })]);
+}
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -29,6 +35,7 @@ async function setup() {
   const writes: unknown[] = [];
   const client = { editableSettings: () => read(),
     executeCommand: (request: unknown) => { writes.push(request); throw new Error("unexpected write"); } } as unknown as DashboardClient;
+  const rows = createRowStore();
   let controller: ReturnType<typeof useEditableSettings> | undefined;
   function Harness({ actorId, descriptorFingerprint }: { actorId: string; descriptorFingerprint: string }) {
     controller = useEditableSettings({ actorId, descriptorFingerprint });
@@ -38,11 +45,11 @@ async function setup() {
   cleanups.push(() => { act(() => root.unmount()); host.remove(); });
   const render = async (currentClient = client, actorId = "local-operator", descriptorFingerprint = "d".repeat(64), requestKey = 0) => {
     await act(async () => root.render(createElement(DashboardClientProvider, { client: currentClient,
-      children: createElement(FixtureCommandBinding, { actorId, requestKey,
+      children: createElement(FixtureCommandBinding, { actorId, requestKey, rows,
         children: createElement(Harness, { actorId, descriptorFingerprint }) }) })));
   };
   await render();
-  return { authority, initial, newer, client, writes, render,
+  return { authority, initial, newer, client, writes, render, deliver: () => deliverSettingsRow(rows, authority.read()),
     controller: () => { assert.ok(controller); return controller; },
     setRead(value: typeof read) { read = value; } };
 }
@@ -202,7 +209,7 @@ for (const outcome of ["success", "failure"] as const) it(`settles editable and 
 
 it("does not let an older refresh poison a newer authoritative command readback", async () => {
   const h = await setup();
-  await h.render({ ...h.client, executeCommand: (request: unknown) => Promise.resolve(h.authority.execute(request)) });
+  await h.render({ ...h.client, executeCommand: (request: unknown) => { const result = h.authority.execute(request); h.deliver(); return Promise.resolve(result); } });
   const old = Promise.withResolvers<EditableSettingsWire>(); let reads = 0;
   h.setRead(() => ++reads === 1 ? old.promise : Promise.resolve(h.authority.read()));
   await act(async () => h.controller().update("actor.label", "New authoritative value"));
@@ -319,6 +326,7 @@ it.each([
 ])("reads back an unknown save reply after $navigation and frees the command lock", async ({ closed, requestKey }) => {
   const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
   const commands: unknown[] = [];
+  const rows = createRowStore();
   let reads = 0;
   let reply: (request: unknown) => Promise<unknown> = request => Promise.resolve(authority.execute(request));
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
@@ -328,7 +336,9 @@ it.each([
     }
     if (url.endsWith("/commands") && typeof init?.body === "string") {
       const request: unknown = JSON.parse(init.body); commands.push(request);
-      return new Response(JSON.stringify(await reply(request)), { status: 200 });
+      const result = await reply(request);
+      deliverSettingsRow(rows, authority.read());
+      return new Response(JSON.stringify(result), { status: 200 });
     }
     throw new Error("unexpected-settings-test-request");
   } });
@@ -340,7 +350,7 @@ it.each([
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   cleanups.push(() => { act(() => root.unmount()); host.remove(); });
   const render = (view?: string, requestKey = 0) => act(async () => root.render(createElement(DashboardClientProvider, { client,
-    children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, feedback, children: view === undefined ? null : createElement(Harness, { view }) }) })));
+    children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, feedback, rows, children: view === undefined ? null : createElement(Harness, { view }) }) })));
   const label = () => controller?.leaves.find(leaf => leaf.path === "actor.label")?.settingsValue;
   await render("general");
   await vi.waitFor(() => assert.equal(controller?.locked, false));

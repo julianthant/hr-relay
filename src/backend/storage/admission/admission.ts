@@ -686,7 +686,10 @@ export class RuntimeAdmission {
       || captured.head.retired.includes(credential.credentialId) || captured.head.counters.some(counter => counter.credentialId === credential.credentialId && counter.publicKeySpki !== credential.publicKeySpki)) throw new Error("profile-registration-duo-required");
     validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
     machine.assertCanonicalCredentialCreation(this, operation, publication);
-    return { revision: frame.revision, credentials: captured.source, email, password };
+    const login = operation.relay === undefined
+      ? { kind: "legacy" as const, email, password }
+      : { kind: "relay" as const, ...operation.relay };
+    return { revision: frame.revision, credentials: captured.source, login };
   }
   assertStoppedStartupRegistrationInspection(input: SignUpOperation) {
     this.assertExclusive(); this.assertOfflineMaintenance(this.maintenanceOperation());
