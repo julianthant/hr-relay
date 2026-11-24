@@ -268,6 +268,8 @@ export function primaryButtonAccent({ page }: StateRuleContext): Promise<readonl
     };
     const accent = token("--ds-accent");
     const canvasSurface = token("--ds-surface-page");
+    const off = token("--ds-button-off-bg");
+    const same = (first: readonly number[], second: readonly number[]) => first.every((channel, index) => Math.abs(channel - (second[index] ?? 0)) <= 2);
     const found: string[] = [];
     for (const button of document.querySelectorAll<HTMLElement>('body :is(button, [role="button"], a[data-slot="button"])')) {
       const box = button.getBoundingClientRect();
@@ -278,6 +280,8 @@ export function primaryButtonAccent({ page }: StateRuleContext): Promise<readonl
       const declared = button.className.includes("bg-[var(--ds-accent)]") || button.className.includes("text-[color:var(--ds-accent-fg)]");
       const loud = fill[3] >= 250 && contrast(fill, canvasSurface) >= 3;
       if (!declared && !loud) continue;
+      // A dialog's confirm with nothing to save is the flat off grey, not a second accent.
+      if (button.matches(":disabled") && same(fill, off)) continue;
       if (fill[3] < 250 || fill.some((channel, index) => Math.abs(channel - (accent[index] ?? 0)) > 2)) {
         const paint = fill[3] < 250 ? "has no solid fill" : `is filled rgb(${fill.slice(0, 3).join(", ")})`;
         found.push(`the button "${(button.getAttribute("aria-label") ?? button.innerText).trim().slice(0, 40)}" ${paint}, `
