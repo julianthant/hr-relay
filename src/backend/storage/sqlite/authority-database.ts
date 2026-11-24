@@ -2249,14 +2249,22 @@ function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_
 }
 
 type NativeInspection = ReturnType<typeof verifyNativeAuthority>;
+type VerifiedUpgradeImage =
+  | { kind: "snapshot"; marker: string; digest: string | undefined; inspection: NativeInspection }
+  | { kind: "committed"; digest: string; inspection: NativeInspection };
 const upgradeInspections = new AsyncLocalStorage<{
   active: boolean;
-  images: Map<string, { marker: string; inspection: NativeInspection }>;
+  images: Map<string, VerifiedUpgradeImage>;
+  backupCopies: Map<string, NativeInspection>;
 }>();
 
 export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false,
   missingRunSearch = false, workbookPayloads = true) {
   return withoutNativeRecordReadMemo(() => inspectNativeAuthorityImage(database, expectedSchemaVersion, requireOperationalPragmas, missingRunSearch, workbookPayloads));
+}
+
+export function inspectNativeBackupCopy(database: DatabaseSync, expectedSchemaVersion: number): NativeInspection {
+  return withoutNativeRecordReadMemo(() => inspectNativeAuthorityImage(database, expectedSchemaVersion, false, false, true, true));
 }
 
 function checkSqliteIntegrity(database: DatabaseSync): void {
@@ -2275,7 +2283,7 @@ function checkInspectionPragmas(database: DatabaseSync, requireOperationalPragma
 }
 
 function inspectNativeAuthorityImage(database: DatabaseSync, expectedSchemaVersion: number, requireOperationalPragmas: boolean,
-  missingRunSearch: boolean, workbookPayloads: boolean) {
+  missingRunSearch: boolean, workbookPayloads: boolean, backupCopy = false) {
   const scope = upgradeInspections.getStore();
   const image = scope?.active && !requireOperationalPragmas && !missingRunSearch && workbookPayloads
     ? readonlyAuthorityImage(database) : undefined;
@@ -2283,12 +2291,47 @@ function inspectNativeAuthorityImage(database: DatabaseSync, expectedSchemaVersi
     return verifyNativeAuthority(database, expectedSchemaVersion, requireOperationalPragmas, missingRunSearch, workbookPayloads);
   }
   const previous = scope.images.get(image.path);
-  if (previous?.marker === image.marker && previous.inspection.schemaVersion === expectedSchemaVersion) {
+  if (previous?.kind === "snapshot" && previous.marker === image.marker && previous.inspection.schemaVersion === expectedSchemaVersion) {
+    checkInspectionPragmas(database, false);
     return structuredClone(previous.inspection);
   }
-  const inspection = verifyNativeAuthority(database, expectedSchemaVersion, false, false, true);
-  scope.images.set(image.path, { marker: image.marker, inspection: structuredClone(inspection) });
+  const digest = backupCopy || basename(image.path) === "state.db" ? upgradeImageDigest(database) : undefined;
+  const backupInspection = backupCopy && digest !== undefined ? scope.backupCopies.get(digest) : undefined;
+  const verified = previous?.kind === "committed" && previous.digest === digest
+    ? previous.inspection : backupInspection;
+  let inspection: NativeInspection;
+  if (verified?.schemaVersion === expectedSchemaVersion) {
+    checkInspectionPragmas(database, false);
+    inspection = structuredClone(verified);
+  } else {
+    inspection = verifyNativeAuthority(database, expectedSchemaVersion, false, false, true);
+    if (backupCopy && digest !== undefined) scope.backupCopies.set(digest, structuredClone(inspection));
+  }
+  scope.images.set(image.path, { kind: "snapshot", marker: image.marker, digest, inspection: structuredClone(inspection) });
   return inspection;
+}
+
+function upgradeImageDigest(database: DatabaseSync): string | undefined {
+  if (!database.isTransaction) return undefined;
+  const image = startupImageDigest(database);
+  return image.state === "observed" ? image.digest : undefined;
+}
+
+function inspectStoppedTransaction(database: DatabaseSync, path: string, version: number, requireOperationalPragmas = false): NativeInspection {
+  const scope = upgradeInspections.getStore(), previous = scope?.active ? scope.images.get(path) : undefined;
+  if (previous?.digest !== undefined && previous.inspection.schemaVersion === version && previous.digest === upgradeImageDigest(database)) {
+    checkInspectionPragmas(database, requireOperationalPragmas);
+    return structuredClone(previous.inspection);
+  }
+  return inspectNativeAuthority(database, version, requireOperationalPragmas);
+}
+
+function commitVerifiedUpgrade(database: DatabaseSync, path: string, inspection: NativeInspection): void {
+  const scope = upgradeInspections.getStore();
+  const digest = scope?.active ? upgradeImageDigest(database) : undefined;
+  const verified = digest === undefined ? undefined : { digest, inspection: structuredClone(inspection) };
+  database.exec("COMMIT");
+  if (scope?.active && verified !== undefined) scope.images.set(path, { kind: "committed", ...verified });
 }
 
 function verifyNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false,
@@ -2498,10 +2541,9 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   try {
     admission.assertProfileMigration(path, version);
     if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("authority-application-mismatch");
-    inspectNativeAuthority(database, version);
+    const fingerprint = inspectStoppedTransaction(database, path, version).authorityContentFingerprint;
     const meta = readMetaRow(database);
     if (meta.schema_version !== version) throw new Error("authority-schema-metadata-mismatch");
-    const fingerprint = authorityContentFingerprint(database);
     admission.assertProfileMigration(path, version, fingerprint);
     if (expectedFingerprint !== undefined && fingerprint !== expectedFingerprint) throw new Error("source-changed: re-plan upgrade");
     if (backup === undefined || expectedFingerprint === undefined) throw new Error("upgrade-verified-backup-required");
@@ -2529,7 +2571,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
       .run(record.recordKey, record.upgradeId, record.phase, backup.manifest.sha256, canonicalJsonStringify(record), record.recordedAt);
     optimizeAuthorityPlanner(database);
     const inspection = inspectNormalAuthority(database);
-    database.exec("COMMIT");
+    commitVerifiedUpgrade(database, path, inspection);
     return { ...inspection, schemaVersion: version, authorityContentFingerprint: fingerprint };
   } catch (error) {
     try { database.exec("ROLLBACK"); }
@@ -2942,9 +2984,9 @@ export function parseDiagnosticPageCount(value: unknown, limit: number): number 
 export class AuthorityDatabase implements Disposable {
   static async withUpgradeInspections<T>(work: () => Promise<T>): Promise<T> {
     if (upgradeInspections.getStore()?.active) return work();
-    const scope = { active: true, images: new Map<string, { marker: string; inspection: NativeInspection }>() };
+    const scope = { active: true, images: new Map<string, VerifiedUpgradeImage>(), backupCopies: new Map<string, NativeInspection>() };
     try { return await upgradeInspections.run(scope, work); }
-    finally { scope.active = false; scope.images.clear(); }
+    finally { scope.active = false; scope.images.clear(); scope.backupCopies.clear(); }
   }
 
   readonly #admission: RuntimeAdmission;
@@ -3245,14 +3287,15 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static readStoppedBrowserInventory(admission: RuntimeAdmission, processLockRoot: string, clock: Clock) {
-    const owner=requireRuntimeAdmission(admission),path=join(owner.stateRoot,"state.db");
-    owner.assertStoppedAuthorityBackup(path,processLockRoot);
-    const expected=AuthorityDatabase.inspectStoppedUpgrade(owner,path,processLockRoot,clock);
-    return withAuthorityDatabaseReadOnly(owner,path,database=>{
-      const inspection=inspectNativeAuthority(database,expected.schemaVersion);
-      if(inspection.authorityGeneration!==expected.authorityGeneration||inspection.authorityContentFingerprint!==expected.authorityContentFingerprint)throw new Error("stopped-browser-source-changed");
-      if(inspection.installationId!==undefined&&(inspection.installationId!==owner.profileBinding.installationId||inspection.profileId!==owner.profileBinding.profileId))throw new Error("profile-maintenance-binding-mismatch");
-      return Object.freeze(browserProfileInventory(database, inspection.schemaVersion));
+    return withOperationProof(() => {
+      const owner = requireRuntimeAdmission(admission), path = join(owner.stateRoot, "state.db");
+      requireStoppedUpgradeSource(owner, path, processLockRoot, clock, true);
+      return withAuthorityDatabaseReadOnly(owner, path, database => {
+        const inspection = inspectNativeAuthority(database, readIntPragma(database, "user_version"));
+        if (inspection.installationId !== undefined && (inspection.installationId !== owner.profileBinding.installationId
+          || inspection.profileId !== owner.profileBinding.profileId)) throw new Error("profile-maintenance-binding-mismatch");
+        return Object.freeze(browserProfileInventory(database, inspection.schemaVersion));
+      });
     });
   }
 
@@ -3572,6 +3615,10 @@ export class AuthorityDatabase implements Disposable {
       const digest = image?.state === "observed" ? image.digest : undefined;
       const cached = matchesStartupCheckpoint(prior, source, digest) ? prior.inspection : undefined;
       const inspection = cached === undefined ? inspectNativeAuthority(database, version) : AuthorityCopyInspectionSchema.parse(cached);
+      const scope = upgradeInspections.getStore(), guarded = readonlyAuthorityImage(database);
+      if (cached !== undefined && scope?.active && guarded !== undefined && digest !== undefined) {
+        scope.images.set(guarded.path, { kind: "snapshot", marker: guarded.marker, digest, inspection: structuredClone(inspection) });
+      }
       if (source !== undefined && digest !== undefined) checkpoint = { file: source, digest, inspection: AuthorityCopyInspectionSchema.parse(inspection) };
       machine.assertOfflineMaintenance(machine.maintenanceOperation());
       if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
@@ -3703,12 +3750,14 @@ export class AuthorityDatabase implements Disposable {
       database.exec("BEGIN EXCLUSIVE");
       try {
         admission.assertStoppedProtectedSettingsUpgrade();
-        if (inspectNativeAuthority(database).authorityContentFingerprint !== expectedFingerprint) throw new Error("evidence-schema-conversion-source-changed");
+        if (inspectStoppedTransaction(database, path, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint !== expectedFingerprint)
+          throw new Error("evidence-schema-conversion-source-changed");
         assertAuthorityUpgradeAppend(database, { type: "convert-evidence", id: conversion.id }, record.phase);
         database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
           .run(record.recordKey, record.upgradeId, record.phase, backup.manifest.sha256, canonicalJsonStringify(record), record.recordedAt);
-        inspectNativeAuthority(database); admission.assertStoppedProtectedSettingsUpgrade();
-        database.exec("COMMIT");
+        const inspection = inspectNativeAuthority(database);
+        admission.assertStoppedProtectedSettingsUpgrade();
+        commitVerifiedUpgrade(database, path, inspection);
       } catch (error) {
         try { database.exec("ROLLBACK"); }
         catch (rollback) { throw retainAuthoritySourceClosure([error, rollback], { database, admission }); }
@@ -5776,7 +5825,7 @@ export class AuthorityDatabase implements Disposable {
       && (prior.pending === undefined || checkStartupChanges(db, prior.pending) === "proved")) {
       checkInspectionPragmas(db, true);
       inspection = prior.inspection;
-    } else inspection = inspectOpenDatabase(db, true);
+    } else inspection = AuthorityCopyInspectionSchema.parse(inspectStoppedTransaction(db, this.#path, CURRENT_AUTHORITY_SCHEMA_VERSION, true));
     if (file !== undefined && digest !== undefined) {
       this.#changeReader = changeLogBaseline(db);
       // The live reader advances past own writes; attestation needs the position that was actually inspected.
