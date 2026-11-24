@@ -5,7 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 
 TRACE_LANES = 2
-INDEPENDENT_LANES = 3
+GALLERY_LANES = 3
 # Per-file test seconds from the smoke profile in run 45292546150.
 TRACE_SECONDS = {
     "dashboard-analytics": 18, "dashboard-live-updates": 143, "dashboard-run-dialog": 64,
@@ -41,8 +41,8 @@ def pack(groups, names, weight):
     return bins
 
 
-def assignments(report, traces, independent):
-    files, groups, shared = defaultdict(list), defaultdict(list), []
+def assignments(report, traces, gallery):
+    files, groups = defaultdict(list), defaultdict(list)
     ids = set()
     for suite in report["suites"]:
         for project, spec, selector in cases(suite, []):
@@ -56,20 +56,20 @@ def assignments(report, traces, independent):
                 tags = [tag for tag in spec["tags"] if tag.startswith("gallery-group:")]
                 if tags:
                     group, = tags
-                    groups[group].append(case)
                 else:
-                    shared.append(case)
+                    group = "shared"
+                groups[group].append(case)
             else:
                 raise ValueError(f"unknown project {project}")
     # Estimate new trace files at five seconds per case and gallery groups by case count.
     return {**pack(files, traces, lambda f: TRACE_SECONDS.get(f.removesuffix(".smoke.ts"), 5 * len(files[f]))),
-            **pack(groups, independent, lambda g: len(groups[g])), "shared": shared}
+            **pack(groups, gallery, lambda g: len(groups[g]))}
 
 
 if __name__ == "__main__":
     traces = lanes("traces", TRACE_LANES)
-    independent = lanes("gallery", INDEPENDENT_LANES)
-    matrix = [*traces, *independent, "shared"]
+    gallery = lanes("gallery", GALLERY_LANES)
+    matrix = [*traces, *gallery]
     if sys.argv[1:] == ["matrix"]:
         print(json.dumps({"lane": matrix}, separators=(",", ":")))
     else:
@@ -77,7 +77,7 @@ if __name__ == "__main__":
         if int(slots) != len(matrix):
             raise ValueError(f"expected {len(matrix)} lanes, got {slots}")
         root = Path(directory)
-        assigned = assignments(json.loads((root / "smoke-list.json").read_text()), traces, independent)[lane]
+        assigned = assignments(json.loads((root / "smoke-list.json").read_text()), traces, gallery)[lane]
         if not assigned:
             raise ValueError(f"empty smoke lane {lane}")
         (root / "smoke-expected.json").write_text(json.dumps(sorted(case for case, _ in assigned)))
