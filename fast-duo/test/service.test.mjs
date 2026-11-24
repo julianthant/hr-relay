@@ -162,3 +162,14 @@ test('guided enrollment accepts a linked alias, but rejects unlinked usernames',
   assert.equal((await w.service.run('ENROLL', { ...enrollment, username: 'other-login' }, sender)).ok, true);
   assert.ok(w.state().credentials.every(c => c.accountId === 'b'));
 });
+
+test('enrollment is security-key only: platform arm and platform attachment are refused', async () => {
+  const w = await setup();
+  await assert.rejects(w.service.run('ARM', { ...arm, transport: 'internal' }), /supported key type/);
+  await w.service.run('ARM', arm);
+  const refused = await w.service.run('ENROLL', { ...enrollment, authenticatorAttachment: 'platform' }, sender);
+  assert.equal(refused.ok, false);
+  assert.equal(w.privateKeys.size, 0);
+  const result = await w.service.run('ENROLL', { ...enrollment, authenticatorAttachment: undefined }, sender);
+  assert.equal(result.transport, 'usb');
+});

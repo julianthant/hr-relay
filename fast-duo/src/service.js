@@ -37,9 +37,9 @@ export function createService(storage, now, relay) {
         const account = accountFor(state, data.accountId);
         if (!account.enabled) throw new Error('This account is paused.');
         if (!Number.isInteger(data.tabId) || !isDuoOrigin(data.tabUrl)) throw new Error('Choose an open Duo tab.');
-        if (!['internal', 'usb'].includes(data.transport)) throw new Error('Choose a supported key type.');
+        if (data.transport !== 'usb') throw new Error('Choose a supported key type.');
         state.enrollment = { accountId: account.id, tabId: data.tabId, origin: new URL(data.tabUrl).origin,
-          transport: data.transport, expiresAt: now() + 10 * 60 * 1000 };
+          expiresAt: now() + 10 * 60 * 1000 };
       } else if (type === 'SIGN' || type === 'ENROLL') {
         if (!isDuoOrigin(sender.url) || data.origin !== new URL(sender.url).origin || data.rpId !== 'duosecurity.com') return { ok: false, reason: 'Invalid Duo origin.' };
         if (typeof data.challenge !== 'string' || !data.challenge || base64ToBytes(data.challenge).length > 4096) return { ok: false, reason: 'Invalid challenge.' };
@@ -68,7 +68,8 @@ export function createService(storage, now, relay) {
           return { ok: false, reason };
         }
         if (!data.userHandle || !Array.isArray(data.pubKeyCredParams) || !data.pubKeyCredParams.some(p => p.alg === -7)) return { ok: false, reason: 'Unsupported enrollment request.' };
-        const transport = data.authenticatorAttachment === 'platform' ? 'internal' : data.authenticatorAttachment === 'cross-platform' ? 'usb' : arm.transport;
+        if (data.authenticatorAttachment === 'platform') return { ok: false, reason: 'Relay signs in with a security key only.' };
+        const transport = 'usb';
         const reg = await createRegistration({ rpId: data.rpId, challenge: base64ToBytes(data.challenge), origin: data.origin, signCount: 0 });
         const credentialId = bytesToBase64(reg.credentialId);
         await relay.persistPending({ credentialId, privateKeyPkcs8: bytesToBase64(reg.privateKeyPkcs8),
