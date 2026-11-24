@@ -843,7 +843,7 @@ export function RunStartDialog({
                     {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel disabled={sending} label="Dry run" checked={dryRun} onCheckedChange={next => update(current => launchDraft.changeDryRun(current, next === true))} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     {launchFields.map(field => field.kind === "boolean"
                       ? <RunListRow key={field.field} title={field.label} {...(field.description === undefined ? {} : { description: field.description })}><Switch hideLabel disabled={sending} label={field.label} checked={pdfRunSwitchValue(field, pdfInput.picks)} onCheckedChange={next => pdfInput.pick(field.field, next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>
-                      : <RunListRow key={field.field} title={field.label}><div className="w-[var(--ds-w-body-control)]"><SegmentedChoice hideLabel disabled={sending} label={field.label} value={pdfRunSelectValue(field, pdfInput.picks)} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
+                      : <RunListRow key={field.field} title={field.label}><div className="w-[var(--ds-w-body-control)]"><SegmentedChoice hideLabel label={field.label} value={pdfRunSelectValue(field, pdfInput.picks)} onChange={value => { if (!sending) pdfInput.pick(field.field, value); }} options={field.options} /></div></RunListRow>)}
                   </>} />
               )}
 

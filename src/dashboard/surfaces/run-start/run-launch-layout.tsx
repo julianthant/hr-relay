@@ -10,6 +10,6 @@ export function RunOptionsLayout({ flags, locked = false, priority, onPriorityCh
   return <RunList title="Options">
     {flags}
     <RunListRow title="Priority" description="Runs before bulk batches."><Switch hideLabel disabled={locked} label="Priority" checked={priority === "interactive"} onCheckedChange={value => onPriorityChange(value ? "interactive" : "bulk")} className="!min-h-0 !w-auto !py-0" /></RunListRow>
-    <RunListRow title="Browser" description="Hidden runs in the background."><div className="w-[var(--ds-w-body-control)]"><SegmentedChoice hideLabel disabled={locked} label="Browser mode" value={browserMode} onChange={onBrowserModeChange} options={[{ value: "headed", label: "Visible" }, { value: "headless", label: "Hidden" }]} /></div></RunListRow>
+    <RunListRow title="Browser" description="Hidden runs in the background."><div className="w-[var(--ds-w-body-control)]"><SegmentedChoice hideLabel label="Browser mode" value={browserMode} onChange={value => { if (!locked) onBrowserModeChange(value); }} options={[{ value: "headed", label: "Visible" }, { value: "headless", label: "Hidden" }]} /></div></RunListRow>
   </RunList>;
 }
