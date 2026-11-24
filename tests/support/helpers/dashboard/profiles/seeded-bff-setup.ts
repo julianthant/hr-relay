@@ -244,9 +244,18 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
         lifecycle: services.lifecycle, loggingRepository: database.authority.timelineEvents,
         debugEvents: createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: "test" }) });
     }
+    let reportedProjectionFailure = false;
+    const reportProjectionFailure = () => {
+      const health = projection.health();
+      if (health.state === "degraded" && !reportedProjectionFailure) {
+        reportedProjectionFailure = true;
+        process.stderr.write(`[DEBUG-485] ${health.lastError ?? "projection degraded"}\n`);
+      }
+    };
 
     const server: Server = createServer((req, res) => {
       void (async (): Promise<void> => {
+        reportProjectionFailure();
         const url = new URL(req.url ?? "/", "http://127.0.0.1");
         // The real session needs a profile registry, keychain and Duo; the seeded app is served a fixed signed-in state.
         if (url.pathname === "/api/v1/profile/state") {
@@ -302,6 +311,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       close: (): Promise<void> => {
         if (closePromise !== undefined) return closePromise;
         closePromise = (async () => {
+        reportProjectionFailure();
         try {
           server.closeAllConnections();
           await new Promise<void>((resolvePromise, rejectPromise) => {
