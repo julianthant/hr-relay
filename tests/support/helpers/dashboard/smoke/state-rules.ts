@@ -418,6 +418,7 @@ export async function namedAndFocusable({ page, recordTabStop }: StateRuleContex
     const byIndex = new Map(controls.map(control => [control.index, control]));
     const members = controls.filter(control => control.composite).length;
     let wrapped = false;
+    let lastTabIndex: number | undefined;
     for (let presses = 0; presses < controls.length * 2 + 20 && rings.size < controls.length; presses += 1) {
       await page.keyboard.press("Tab");
       const { stop } = await page.evaluate(focusProbe, { step: "stop" });
@@ -430,8 +431,12 @@ export async function namedAndFocusable({ page, recordTabStop }: StateRuleContex
         continue;
       }
       if (stop.index === null) continue;
+      const tabIndex = Number(stop.index);
+      // A later control after body means focus was dropped mid-page.
+      if (wrapped && tabStops.size === 0 && lastTabIndex !== undefined && tabIndex > lastTabIndex) break;
       if (tabStops.has(stop.index)) break;
       tabStops.add(stop.index);
+      lastTabIndex = tabIndex;
       if (rings.has(stop.index)) continue;
       rings.set(stop.index, stop.ring);
       if (control?.composite !== true) continue;
