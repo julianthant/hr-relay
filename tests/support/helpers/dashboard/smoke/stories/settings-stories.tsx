@@ -204,14 +204,7 @@ const NOTICE = {
 /** Rules today's Settings breaks, each recorded against the dashboard-audit-fixes feature (#532), whose tickets fix them; never loosened. */
 const AUDIT_FIXES = "#532";
 const breaks = (...rules: readonly StateRuleName[]): Readonly<Partial<Record<StateRuleName, string>>> => Object.fromEntries(rules.map(rule => [rule, AUDIT_FIXES]));
-const BREAK_SETS = {
-  /** Save is not the accent while the Account edit dialog shows a refusal. */
-  ACCENT: breaks("primary-button-accent"),
-  /** The Tab walk reaches no control while a toast is on screen. */
-  FOCUS: breaks("named-and-focusable"),
-  /** FOCUS, and Save is not the accent while the dialog shows a refusal. */
-  FOCUS_ACCENT: breaks("named-and-focusable", "primary-button-accent"),
-} as const;
+const REFUSED_EDIT_BREAKS = breaks("primary-button-accent");
 
 /** Measured at both widths with the app's Sessions-bar inset on the frame: the bottom-centre toast still covers the "Runs" toolbar (the save, restart and notice stories) or the "Workflow configuration" title and group (the credentials and account-action stories). The overlap is real, so these stay recorded. */
 const TOAST_STORIES: ReadonlySet<string> = new Set([
@@ -232,21 +225,9 @@ const TOAST_STORIES: ReadonlySet<string> = new Set([
 
 /** By `<state type>/<member>`. */
 const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleName, string>>>>> = {
-  "save/saving": BREAK_SETS.FOCUS,
-  "dialog/change-password-refused": BREAK_SETS.ACCENT,
-  "dialog/edit-name-refused": BREAK_SETS.ACCENT,
-  "dialog/edit-username-refused": BREAK_SETS.ACCENT,
-  "notice/opened-for-check": BREAK_SETS.FOCUS,
-  "action/duo-not-opened": BREAK_SETS.FOCUS,
-  "action/name-not-saved": BREAK_SETS.FOCUS,
-  "action/password-changed": BREAK_SETS.FOCUS,
-  "action/password-not-confirmed": BREAK_SETS.FOCUS,
-  "save-combo/replayed": BREAK_SETS.FOCUS,
-  "save-combo/restart-required": BREAK_SETS.FOCUS,
-  "save/applied": BREAK_SETS.FOCUS,
-  "save/conflict": BREAK_SETS.FOCUS,
-  "save/refused": BREAK_SETS.FOCUS,
-  "save/unconfirmed": BREAK_SETS.FOCUS,
+  "dialog/change-password-refused": REFUSED_EDIT_BREAKS,
+  "dialog/edit-name-refused": REFUSED_EDIT_BREAKS,
+  "dialog/edit-username-refused": REFUSED_EDIT_BREAKS,
 };
 const SETTINGS_TABLES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
