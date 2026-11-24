@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
@@ -16,6 +17,7 @@ const credentials = {
 // HOME moves to the fixture, so Playwright keeps the installed browsers explicitly.
 const browsers = chromium.executablePath().split(`${sep}chromium-`)[0];
 const sentinels = Object.values(credentials);
+const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
 function leaks(text: string, root: string, skip: string): string[] {
   const found = sentinels.filter(value => text.includes(value)).map(() => "output");
@@ -54,12 +56,14 @@ it.skipIf(process.platform === "win32")("keeps sign-in secrets out of the real l
     mkdirSync(workspace, { recursive: true, mode: 0o700 });
     writeFileSync(envFile, Object.entries(credentials).map(([name, value]) => `${name}="${value}"`).join("\n"), { mode: 0o600 });
     const { code, output } = await launch(root, workspace);
-    // The owned backend took the sign-up, kept its key in the fixture store and refused Duo setup before any browser launch.
-    expect(output).toContain('"reason":"copy-signin-fixture-duo-refused"');
+    // The owned backend took the sign-up, kept its key in the fixture store and the real owned browser submitted the UCPath sentinels to the synthetic UCSD SSO form.
     expect(output).toContain("copy-signin-duo-unconfirmed");
+    expect(output).toContain(`"code":"UCSD_SSO_FIELDS"`);
     expect(code).toBe(1);
     expect(readdirSync(join(workspace, ".tracker", "fixture-keychain")).length).toBeGreaterThan(0);
-    expect(existsSync(join(workspace, ".tracker", "data", "browsers", "onboarding"))).toBe(false);
+    expect(JSON.parse(readFileSync(join(workspace, ".tracker", "fixture-sso-submission.json"), "utf8"))).toEqual({
+      username: sha256(credentials.UCPATH_USERNAME), password: sha256(credentials.UCPATH_PASSWORD) });
+    expect(existsSync(join(workspace, ".tracker", "data", "browsers", "onboarding"))).toBe(true);
     expect(leaks(output, root, envFile)).toEqual([]);
     // The scan reports a secret the launcher prints or writes anywhere under the fixture.
     writeFileSync(join(workspace, "leak.txt"), credentials.UCPATH_PASSWORD);
