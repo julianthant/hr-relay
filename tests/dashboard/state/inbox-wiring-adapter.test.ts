@@ -99,7 +99,9 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
   await render();
   return { client, binding, requests, commands, listeners, render, status, get refreshes() { return refreshes; }, get value() { assert(value); return value; },
     /** The rows the server serves, and the day the stream next delivers. */
-    setRows: (next: readonly NotificationWire[]) => { rows = next; dayServed = next; }, lose: () => { lose = true; }, refuseTarget: () => { refuseTarget = true; },
+    setRows: (next: readonly NotificationWire[]) => { rows = next; dayServed = next; },
+    /** A day snapshot the stream delivers without changing what the server serves, such as one frozen before a command. */
+    serveDay: (next: readonly NotificationWire[]) => { dayServed = next; }, lose: () => { lose = true; }, refuseTarget: () => { refuseTarget = true; },
     holdCommands: () => { let release = () => {}; postWait = new Promise<void>(resolve => { release = resolve; }); return release; } };
 }
 it("defines all eight source policies with exact target kinds and honest gap/missing-source notice", () => {
@@ -328,6 +330,40 @@ it("keeps a storage group as one row with its count when a member is published",
   assert(h.value.state.state === "ready");
   assert.deepEqual(h.value.state.items.map(item => [item.id, item.count]), [[c, 4]], "a member's fold replaces the group, never adds a row beside it");
   assert.deepEqual(h.requests, []);
+});
+
+it("takes a replacement snapshot whose storage group holds more members than a held publication's group", async () => {
+  const a = "00000000-0000-4000-8000-0000000000d1", b = "00000000-0000-4000-8000-0000000000d2", c = "00000000-0000-4000-8000-0000000000d3";
+  const storage = { context: { state: "storage", concern: "backup" } };
+  const group = (members: readonly (readonly [string, number])[], count: number) => row("storage-degraded", { ...storage, notificationId: members[0][0], revision: members[0][1], count,
+    group: { concern: "backup", members: members.map(([notificationId, revision]) => ({ notificationId, revision })) } });
+  const h = await harness();
+  h.setRows([row("storage-degraded", { ...storage, notificationId: a, revision: 1 })]);
+  await h.render();
+  await act(async () => { h.listeners[0](publication(row("storage-degraded", { ...storage, notificationId: b, revision: 1 }), 1, group([[b, 1], [a, 1]], 2))); await tick(); });
+  assert(h.value.state.state === "ready");
+  assert.deepEqual(h.value.state.items.map(item => [item.id, item.count]), [[b, 2]]);
+
+  // After a gap or reset the stream sends a new snapshot, frozen after the publication, whose group has grown.
+  h.setRows([group([[c, 1], [b, 1], [a, 1]], 3)]);
+  await h.render();
+  assert(h.value.state.state === "ready");
+  assert.deepEqual(h.value.state.items.map(item => [item.id, item.count]), [[c, 3]], "the snapshot's group stands; the held publication never shrinks it");
+  assert.deepEqual(h.requests, []);
+});
+
+it("keeps a confirmed readback over a later day snapshot frozen before the command, and yields once the day catches up", async () => {
+  const h = await harness();
+  const before = h.value.state.state === "ready" ? h.value.state.items : [];
+  await act(async () => { assert(await h.value.control(id, "read")); });
+  assert.equal(firstItem(h.value).read, true);
+  h.serveDay([row()]);
+  await h.render();
+  assert.equal(firstItem(h.value).read, true, "a snapshot behind the readback does not undo the confirmed read");
+  h.serveDay([row("storage-degraded", { revision: 3, readState: "unread", state: "unread" })]);
+  await h.render();
+  assert.equal(firstItem(h.value).read, false, "a snapshot ahead of the readback replaces it");
+  assert.equal(before.length, 1);
 });
 
 for (const replacement of ["actor", "client", "authority"] as const) it(`does not reconcile an old command into a replacement ${replacement}`, async () => {
