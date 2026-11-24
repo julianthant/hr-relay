@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
-import { mkdirSync, realpathSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, realpathSync, statSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -9,7 +10,8 @@ import type { BrowserContext } from "playwright";
 import { z } from "zod";
 import { applicationDataWorkspace, rebuildRuntimeIsolation, runtimeProfile, useCopySigninFixtureWorkspace } from "../../src/backend/app/config/runtime-isolation.js";
 import { probeOwnedViteServer } from "../../src/backend/app/host/local-vite-probe.js";
-import { noSymlinkAncestry, readPrivateFile, statDirectory } from "../../src/backend/storage/configuration/credential-safe-file.js";
+import { CREDENTIAL_DIRECTORY_MODE, noSymlinkAncestry, readPrivateFile, statDirectory } from "../../src/backend/storage/configuration/credential-safe-file.js";
+import { replacePrivateFile, writePrivateStage } from "../../src/backend/storage/private-path.js";
 import { createDashboardClient, type DashboardClient } from "../../src/dashboard/client/index.js";
 import { RuntimeProfileSchema, runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
 import { systemClock } from "../../src/rules/time/clock.js";
@@ -119,6 +121,19 @@ export async function driveCopySignin(profile: CopyProfile, dashboard: ProfileDa
   }
 }
 
+// The copy's logs directory as first observed; a later swap of any ancestor refuses the write.
+const screenDirectories = new Map<string, ReturnType<typeof statDirectory>>();
+
+/** Keeps one Duo gate screenshot in the copy's private logs: a fresh 0600 stage, then an atomic rename over any prior file or link. */
+export function writeCopySigninScreen(workspace: string, stage: "gate" | "push-options" | "after-push", png: Buffer): void {
+  const logs = join(workspace, ".tracker", "data", "logs");
+  if (!noSymlinkAncestry(logs, screenDirectories)) throw new CopySigninError("copy-signin-logs-unavailable");
+  statDirectory(logs, "copy sign-in logs", CREDENTIAL_DIRECTORY_MODE);
+  const staged = join(logs, `.copy-signin-duo-${stage}-${randomUUID()}.png`);
+  writePrivateStage(staged, png);
+  replacePrivateFile(staged, join(logs, `copy-signin-duo-${stage}.png`));
+}
+
 function operatorCredentials(): SignInCredentials {
   return readCopySigninCredentials(join(homedir(), ".config", "relay", "operator-signin.env"));
 }
@@ -141,9 +156,7 @@ async function runCopyBackend(profile: CopyProfile, fixtureWorkspace: string | u
         writeSync(process.stdout.fd, "approve the Duo request on your phone\n");
         process.send?.({ type: "relay-copy-signin-phone" });
       },
-      screen(stage, png) {
-        writeFileSync(join(applicationDataWorkspace(undefined, profile), ".tracker", "data", "logs", `copy-signin-duo-${stage}.png`), png, { mode: 0o600 });
-      },
+      screen(stage, png) { writeCopySigninScreen(applicationDataWorkspace(undefined, profile), stage, png); },
     },
   });
 }
