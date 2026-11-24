@@ -3,7 +3,6 @@ import ts from "typescript-eslint";
 import globals from "globals";
 import unusedImports from "eslint-plugin-unused-imports";
 import reactHooks from "eslint-plugin-react-hooks";
-const lintProject = process.env.RELAY_ESLINT_PROJECT;
 
 // The `_`-prefix convention (a var/arg prefixed with `_` is intentionally
 // unused — e.g. `const { privateKey: _omit, ...rest } = obj`).
@@ -37,7 +36,7 @@ const typeAwareTuning = {
   "preserve-caught-error": "error",
 };
 
-export default ts.config(
+export const createEslintConfig = (lintProject = false) => ts.config(
   { ignores: ["dist", "node_modules", "coverage", ".work"] },
   js.configs.recommended,
   ...ts.configs.recommended,
@@ -46,7 +45,7 @@ export default ts.config(
   {
     languageOptions: {
       parserOptions: {
-        project: lintProject ?? false,
+        project: lintProject,
         projectService: !lintProject,
         tsconfigRootDir: import.meta.dirname,
       },
@@ -112,3 +111,5 @@ export default ts.config(
     ...ts.configs.disableTypeChecked,
   },
 );
+
+export default createEslintConfig();

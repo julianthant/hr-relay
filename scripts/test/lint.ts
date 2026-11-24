@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const typedExtensions = new Set([".ts", ".tsx", ".mts", ".cts"]);
 const lintExtensions = new Set([...typedExtensions, ".js", ".mjs", ".cjs"]);
@@ -32,8 +33,10 @@ function typedRoots(directory: string): string[] {
 
 function lint(root: string): number {
   const cacheDirectory = join(root, "node_modules", ".cache", "eslint");
+  const baseConfigUrl = pathToFileURL(join(root, "eslint.config.js")).href;
   mkdirSync(cacheDirectory, { recursive: true });
   const scratch = mkdtempSync(join(cacheDirectory, ".lint-"));
+  const pendingFile = join(scratch, "pending");
   let exitCode = 0;
   try {
     for (const { name, targets } of lintBatches(root)) {
@@ -43,16 +46,21 @@ function lint(root: string): number {
         return typedExtensions.has(extname(path)) ? [path] : [];
       });
       const project = join(cacheDirectory, `${name}.tsconfig.json`);
-      const pendingProject = join(scratch, "tsconfig.json");
-      writeFileSync(pendingProject, JSON.stringify({ extends: join(root, "tsconfig.json"), files, include: [] }));
-      // A stable path keeps the lint cache reusable. Publish the project atomically for concurrent runs.
-      renameSync(pendingProject, project);
+      const config = join(cacheDirectory, `${name}.config.mjs`);
+      // Stable paths keep the lint cache reusable. Atomic replacement keeps concurrent readers safe.
+      writeFileSync(pendingFile, JSON.stringify({ extends: join(root, "tsconfig.json"), files, include: [] }));
+      renameSync(pendingFile, project);
+      writeFileSync(pendingFile, `import { createEslintConfig } from ${JSON.stringify(baseConfigUrl)};
+export default createEslintConfig(${JSON.stringify(project)});
+`);
+      renameSync(pendingFile, config);
 
       const result = spawnSync(process.execPath, [
         "--max-old-space-size=6144", "node_modules/eslint/bin/eslint.js",
+        "--config", config,
         "--cache", "--cache-strategy", "content", "--cache-location", join(cacheDirectory, name),
         "--max-warnings", "0", "--", ...targets,
-      ], { cwd: root, env: { ...process.env, RELAY_ESLINT_PROJECT: project }, stdio: "inherit" });
+      ], { cwd: root, stdio: "inherit" });
       if (result.status !== 0) {
         const detail = result.error?.message ?? result.signal ?? `exit ${result.status}`;
         process.stderr.write(`Lint batch ${name} failed (${detail})\n`);
