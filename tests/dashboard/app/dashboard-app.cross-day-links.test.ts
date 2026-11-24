@@ -107,7 +107,7 @@ it.each(['ready','read-failed'] as const)('leaves a new dirty Settings draft unt
   await vi.waitFor(() => assert.ok(f.reads.includes(`day:${f.childDay}`)));
   const settings = f.host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]');assert.ok(settings);
   await act(async () => settings.click());
-  await vi.waitFor(() => assert.ok(f.host.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')));
+  await vi.waitFor(() => assert.ok(f.host.querySelector('[data-settings-path="annualDates.FY2027.jobEndDate"] input[type="date"]')));
   const date = () => f.host.querySelector<HTMLInputElement>('[data-settings-path="annualDates.FY2027.jobEndDate"] input[type="date"]');assert.ok(date());
   const edited = date()!.value === '2027-06-29' ? '2027-06-28' : '2027-06-29';
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(date()!, edited); date()!.dispatchEvent(new Event('input', { bubbles: true })); });

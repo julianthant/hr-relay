@@ -220,7 +220,7 @@
 .settings-compact-control > :first-child { flex: 1; min-width: 0; }
 .ds-path-control { display: flex; width: 100%; min-width: 0; align-items: center; gap: var(--ds-space-snug); }
 .ds-path-value { display: flex; flex: 1; min-width: 0; overflow: hidden; color: var(--ds-fg-muted); font-family: var(--ds-font-mono); font-size: var(--ds-text-body-description); white-space: nowrap; }
-.ds-path-basename { max-width: 78%; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-path-text { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds-path-control > button { flex: none; height: var(--ds-h-body-control); border-radius: var(--ds-radius-body-control); padding-inline: var(--ds-space-base); font-size: var(--ds-text-body-row); }
 .settings-path-picker { flex: 1; min-width: 0; }
 .settings-path-picker-error { margin: var(--ds-space-tight) 0 0; color: var(--ds-danger); font-size: var(--ds-text-body-description); }

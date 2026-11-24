@@ -145,6 +145,21 @@ function timelineRetentionClass(record: z.infer<typeof TimelineAppendSchema>) {
   return "ordinary";
 }
 
+function timelineBaseColumns(record: z.infer<typeof TimelineAppendSchema>) {
+  const operation = record.payload.kind === "operation-confirmed" ? record.payload.facts : undefined;
+  return { id: record.eventId, workflow: record.workflow ?? null,
+    run_id: record.scope.kind === "run" ? record.scope.runId : null,
+    worker_id: record.scope.kind === "worker" ? record.scope.workerId : null,
+    kind: record.payload.kind === "span" ? record.payload.event.t : record.payload.kind,
+    occurred_at: record.occurredAt, recorded_at: record.recordedAt, retention_date: record.retentionDate,
+    retention_class: timelineRetentionClass(record), operation_id: operation?.writeIntentId ?? null,
+    operation_generation: operation?.intentGeneration ?? null, confirmed_at: operation?.confirmedAt ?? null, system: operation?.system ?? null };
+}
+
+export function timelineEventColumns(record: TimelineEventRecord) {
+  return { ...timelineBaseColumns(record), cursor: record.cursor, payload_json: canonicalJsonStringify(record) };
+}
+
 function unpinnedDebugBytes(database: DatabaseSync, prepare: (sql: string) => StatementSync): number {
   database.exec(`CREATE TEMP TABLE IF NOT EXISTS debug_event_bytes(
     id INTEGER PRIMARY KEY CHECK(id=1), bytes INTEGER NOT NULL, data_version INTEGER NOT NULL);
@@ -236,13 +251,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
           INSERT INTO timeline_events(id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,
             retention_class,operation_id,operation_generation,confirmed_at,system,payload_json)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,json_set(?,'$.cursor',${sequenceCursor("timeline_events")}+1)) RETURNING *
-        `).get(record.eventId,record.workflow ?? null,
-          record.scope.kind === "run" ? record.scope.runId : null,record.scope.kind === "worker" ? record.scope.workerId : null,
-          record.payload.kind === "span" ? record.payload.event.t : record.payload.kind,record.occurredAt,record.recordedAt,record.retentionDate,
-          timelineRetentionClass(record),record.payload.kind === "operation-confirmed" ? record.payload.facts.writeIntentId : null,
-          record.payload.kind === "operation-confirmed" ? record.payload.facts.intentGeneration : null,
-          record.payload.kind === "operation-confirmed" ? record.payload.facts.confirmedAt : null,
-          record.payload.kind === "operation-confirmed" ? record.payload.facts.system : null,content);
+        `).get(...Object.values(timelineBaseColumns(record)), content);
         return { result: { state: "inserted" as const, record: timelineEventFromRow(raw) }, changes: 1 };
       });
       // Keep the transaction's refreshed byte count when the event itself cannot fit.

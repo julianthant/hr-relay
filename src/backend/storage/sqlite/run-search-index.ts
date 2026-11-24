@@ -71,6 +71,31 @@ export function runSearchIndexFromRow(input: unknown, run: PredecessorRunRecord,
   }
   return record;
 }
+
+function runSearchColumns(run: PredecessorRunRecord, metadata: z.infer<typeof SearchMetadataSchema>,
+  generation: number, declaration: z.infer<typeof RunSearchDeclarationSchema> | null, sources: z.infer<typeof ActorSourcesSchema>,
+  createdAt: string, updatedAt: string) {
+  const record = RunSearchIndexRecordSchema.parse({ runId: run.envelope.runId, sourceVersion: run.version, buildGeneration: generation, metadata });
+  return { run_id: run.envelope.runId, workflow: run.envelope.workflow, trace: run.envelope.traceId.toLowerCase(),
+    local_day: searchPartitionDay(new Date(run.envelope.enqueuedAt)), state: run.lifecycle.state === "terminal" ? run.lifecycle.outcome : run.lifecycle.state,
+    shape: run.envelope.shape, dry_run: Number(run.envelope.dryRun), enqueued_ms: Date.parse(run.envelope.enqueuedAt),
+    subject: metadata.subject.state === "available" ? metadata.subject.value.toLowerCase() : null,
+    actor_id: metadata.actor.state === "available" ? metadata.actor.value : null, descriptor_version: metadata.version,
+    failure_code: metadata.failureCode, has_receipt: Number(metadata.evidence.receipt), has_diagnostic: Number(metadata.evidence.diagnostic),
+    systems_json: canonicalJsonStringify(Object.keys(run.envelope.resolvedInstance).sort()), source_version: run.version,
+    declaration_json: declaration === null ? null : canonicalJsonStringify(declaration),
+    actor_source_json: sources.length === 0 ? null : canonicalJsonStringify(sources),
+    metadata_json: canonicalJsonStringify(record), created_at: createdAt, updated_at: updatedAt };
+}
+
+export function copySeedSearchColumns(run: PredecessorRunRecord, queued: z.infer<typeof TimelineEventRecordSchema>, failureCode: string | null) {
+  const sources = ActorSourcesSchema.parse([{ kind: "queued", event: queued }]);
+  const [actor] = sourceActors(sources, run);
+  const metadata = SearchMetadataSchema.parse({ subject: { state: "unavailable", reason: "declaration-unavailable" },
+    actor: { state: "available", value: actor }, version: run.envelope.descriptorVersion, failureCode,
+    evidence: { receipt: false, failure: failureCode !== null, diagnostic: false } });
+  return { ...runSearchColumns(run, metadata, 0, null, sources, run.createdAt, run.updatedAt), ocr_subject_terms: null };
+}
 const LIMIT = 10000;
 function parse<T>(schema: z.ZodType<T>, row: unknown): T { return schema.parse(JSON.parse(JsonRowSchema.parse(row).payload_json)); }
 function declarationKey(run: PredecessorRunRecord): string {
@@ -359,20 +384,13 @@ export function createRunSearchIndex(database: DatabaseSync) {
     validateActorSources(run,sources,retained);
     const metadata = metadataFor(run, declaration, sources);
     const generation = z.object({authority_generation:z.number().int().nonnegative()}).parse(database.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()).authority_generation;
-    const record = RunSearchIndexRecordSchema.parse({ runId: id, sourceVersion: run.version, buildGeneration: generation, metadata });
-    const subject = metadata.subject.state === "available" ? metadata.subject.value.toLowerCase() : null;
-    const actor = metadata.actor.state === "available" ? metadata.actor.value : null;
-    const state = run.lifecycle.state === "terminal" ? run.lifecycle.outcome : run.lifecycle.state;
+    const columns = runSearchColumns(run, metadata, generation, declaration, sources, frozen?.created_at ?? now, now);
     database.prepare(`INSERT INTO run_search(run_id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,subject,actor_id,descriptor_version,failure_code,has_receipt,has_diagnostic,systems_json,source_version,declaration_json,actor_source_json,metadata_json,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET workflow=excluded.workflow,trace=excluded.trace,local_day=excluded.local_day,shape=excluded.shape,dry_run=excluded.dry_run,enqueued_ms=excluded.enqueued_ms,descriptor_version=excluded.descriptor_version,systems_json=excluded.systems_json,declaration_json=excluded.declaration_json,state=excluded.state,subject=excluded.subject,actor_id=excluded.actor_id,failure_code=excluded.failure_code,has_receipt=excluded.has_receipt,has_diagnostic=excluded.has_diagnostic,source_version=excluded.source_version,actor_source_json=excluded.actor_source_json,metadata_json=excluded.metadata_json,updated_at=excluded.updated_at`).run(
-      id,run.envelope.workflow,run.envelope.traceId.toLowerCase(),searchPartitionDay(new Date(run.envelope.enqueuedAt)),
-      state,run.envelope.shape,Number(run.envelope.dryRun),Date.parse(run.envelope.enqueuedAt),
-      subject,actor,metadata.version,metadata.failureCode,Number(metadata.evidence.receipt),Number(metadata.evidence.diagnostic),
-      canonicalJsonStringify(Object.keys(run.envelope.resolvedInstance).sort()),run.version,declaration === null ? null : canonicalJsonStringify(declaration),
-      sources.length === 0 ? null : canonicalJsonStringify(sources),canonicalJsonStringify(record),frozen?.created_at ?? now,now);
+      ...Object.values(columns));
     if (hasOcrSubjects && (rebuilding || prior === undefined
       || ocrSubjectWithheld(previous?.metadata.subject) !== ocrSubjectWithheld(metadata.subject)
-      || OCR_UNFINISHED_OUTCOMES.includes(state) !== OCR_UNFINISHED_OUTCOMES.includes(frozen?.state ?? "")
+      || OCR_UNFINISHED_OUTCOMES.includes(columns.state) !== OCR_UNFINISHED_OUTCOMES.includes(frozen?.state ?? "")
       || database.prepare("SELECT 1 FROM search_ocr_dirty WHERE run_id=?").get(id) !== undefined)) {
       const terms = ocrSubjectTermsFor(database, id, metadata.subject);
       if (terms !== (frozen?.ocr_subject_terms ?? null)) {

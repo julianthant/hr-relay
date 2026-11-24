@@ -47,14 +47,13 @@ const click = (name: string | RegExp, exact = true) => async (page: Page): Promi
   await page.getByRole("button", { name, exact }).first().click();
 };
 const then = (...steps: readonly ((page: Page) => Promise<void>)[]) => async (page: Page): Promise<void> => { for (const step of steps) await step(page); };
-/** Waits for the editable settings to arrive: the General page's Browser window choice is on screen. */
-const WINDOW = '[role="combobox"][aria-label="Browser window"]';
+/** Waits for the editable settings to arrive: the General page's failures switch is on screen. */
+const WINDOW = '[data-settings-path="preferences.notifications.failures"] [role="switch"]';
 const loaded = async (page: Page): Promise<void> => { await page.locator(WINDOW).waitFor(); };
-/** The immediate-save choice every save story presses: the browser window starts hidden, so a size is a change. */
+/** The immediate-save edit every save story makes: the failures switch starts on, so one press is a change. */
 const chooseWindow = async (page: Page): Promise<void> => {
   await loaded(page);
   await page.locator(WINDOW).click();
-  await page.getByRole("option", { name: "Small", exact: true }).click();
 };
 const type = (label: string, value: string) => async (page: Page): Promise<void> => { await page.getByLabel(label, { exact: true }).fill(value); };
 
@@ -96,7 +95,7 @@ const saveStory = (title: string, server: SettingsStoryServerOptions, ready: str
 const SAVE = {
   idle: scene("A setting with nothing changed", { play: loaded }),
   saving: scene("A save sent, no answer yet", { server: { save: "never" }, play: chooseWindow, story: { ready: WINDOW } }),
-  applied: saveStory("A save that lands", { save: "applied" }, 'text=/Saved settings/'),
+  applied: saveStory("A save that lands", { save: "applied" }, 'text=/Saved /'),
   refused: saveStory("A save the server refused", { save: "rejected" }, 'text=/Settings weren.t saved/'),
   conflict: saveStory("A save over settings that changed elsewhere", { save: "conflict" }, 'text=/Settings weren.t saved/'),
   unconfirmed: saveStory("A save whose answer was lost", { save: "lost" }, 'text=/Settings weren.t saved/'),
@@ -105,7 +104,7 @@ const SAVE = {
 /** Saves that land with something to say. */
 type SaveCombo = "replayed" | "restart-required";
 const SAVE_COMBO = {
-  replayed: saveStory("A save that was already saved", { save: "replayed" }, 'text=/Already saved settings/'),
+  replayed: saveStory("A save that was already saved", { save: "replayed" }, 'text=/Already saved /'),
   "restart-required": saveStory("A save that needs a restart", { save: "restart" }, 'text=/Restart to use them/'),
 } satisfies Record<SaveCombo, Story>;
 
@@ -194,8 +193,7 @@ const DUO_KEYS = {
   unavailable: duoKeys("Duo security keys unavailable", "unavailable", 'text="Duo keys unavailable"'),
   "one-key": duoKeys("One Duo security key", WORK_KEY, 'text="Work security key"'),
   "several-keys": duoKeys("Several Duo security keys", [...WORK_KEY, { id: "b".repeat(64), shortId: "bC34de56", addedAt: "2026-09-02T12:00:00.000Z" }], 'text="Key bC34de56"'),
-  rename: { ...duoKeys("Rename a Duo security key", WORK_KEY, 'text="Rename security key"', then(click("Rename Work security key"), type("Name", "Office security key"))),
-    knownFailures: { "dialogs-share-shape": "#749" } },
+  rename: duoKeys("Rename a Duo security key", WORK_KEY, 'text="Rename security key"', then(click("Rename Work security key"), type("Name", "Office security key"))),
   "confirm-removal": duoKeys("Confirm removal of a Duo security key", WORK_KEY, 'text="Remove security key?"', click("Remove Work security key")),
   "last-key-removed": duoKeys("The last Duo security key was removed", WORK_KEY, 'text="Not set up"', then(click("Remove Work security key"), finishDuoRemoval)),
 } satisfies Record<DuoKeysStory, Story>;
