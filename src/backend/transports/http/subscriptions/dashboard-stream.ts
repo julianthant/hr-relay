@@ -196,7 +196,9 @@ export class DashboardStreamHub {
   readonly #keyTails = new Map<RunId, Promise<void>>();
   readonly #retries = new Map<RunId, () => void>();
   readonly #notificationStatus: DashboardStreamHubDeps["notificationStatus"];
-  /** Cancels the pending re-read of a status that was last sent unavailable. */
+  /** Connections whose last status row was unavailable; each is owed the next good one. */
+  readonly #statusOwed = new Set<Subscriber>();
+  /** Cancels the pending re-read, armed while any connection is owed a good status. */
   #statusRetry: (() => void) | undefined;
   #disposeStatus?: () => void;
   #retained: RetainedEntry[] = [];
@@ -246,10 +248,11 @@ export class DashboardStreamHub {
     for (const subscriber of this.#subscribers) this.#push(subscriber, { kind: "ready", envelope: publicationFor(unstamped, subscriber.day) });
   }
 
-  /** The status row as the route would answer it now; a read that throws is sent unavailable and read again in 5 s. */
-  #statusRows(): readonly StreamRow[] {
+  /** The status row as the route would answer it now, for these connections; a read that throws is sent unavailable.
+   * A good read is also sent, as a rows-only change, to every other open connection still owed one. */
+  #statusRows(recipients: readonly Subscriber[]): readonly StreamRow[] {
     const source = this.#notificationStatus;
-    if (source === undefined) return [];
+    if (source === undefined || recipients.length === 0) return [];
     let row: NotificationStatusRow;
     try {
       const parsed = StreamRowSchema.parse({ model: "notification-status", key: LOCAL_OPERATOR_ACTOR_ID, value: { state: "available", value: source.read() } });
@@ -258,30 +261,48 @@ export class DashboardStreamHub {
     } catch {
       row = { model: "notification-status", key: LOCAL_OPERATOR_ACTOR_ID, value: { state: "unavailable", error: readFailed() } };
     }
-    this.#statusRetry?.();
-    this.#statusRetry = undefined;
     if (row.value.state === "unavailable") {
-      let live = true;
-      const cancel = this.#schedule(ROW_RETRY_MS, () => {
-        if (!live) return;
-        live = false;
-        this.#statusRetry = undefined;
-        this.#publishStatus();
-      });
-      this.#statusRetry = () => { live = false; cancel(); };
+      for (const recipient of recipients) this.#statusOwed.add(recipient);
+    } else {
+      for (const recipient of recipients) this.#statusOwed.delete(recipient);
+      const behind = [...this.#statusOwed].filter(subscriber => subscriber.phase.state === "open" && this.#subscribers.has(subscriber));
+      this.#statusOwed.clear();
+      if (behind.length > 0) {
+        const change = this.#unstamped({ cursor: this.#projection.takeCursor(), position: this.#projection.position() });
+        for (const subscriber of behind) this.#push(subscriber, { kind: "change", change, rows: [row], reads: [] });
+      }
     }
+    this.#armStatusRetry();
     return [row];
+  }
+
+  /** Keeps one re-read pending while any connection is owed a good status, and none otherwise. */
+  #armStatusRetry(): void {
+    if (this.#statusOwed.size === 0) {
+      this.#statusRetry?.();
+      this.#statusRetry = undefined;
+      return;
+    }
+    if (this.#statusRetry !== undefined) return;
+    let live = true;
+    const cancel = this.#schedule(ROW_RETRY_MS, () => {
+      if (!live) return;
+      live = false;
+      this.#statusRetry = undefined;
+      this.#publishStatus();
+    });
+    this.#statusRetry = () => { live = false; cancel(); };
   }
 
   /** A rows-only change carrying the status row, at its own cursor, to every open connection. Never retained. */
   #publishStatus(): void {
     const owed = [...this.#subscribers].filter(subscriber => subscriber.phase.state === "open");
+    for (const subscriber of this.#statusOwed) if (!owed.includes(subscriber)) this.#statusOwed.delete(subscriber);
     if (owed.length === 0) {
-      this.#statusRetry?.();
-      this.#statusRetry = undefined;
+      this.#armStatusRetry();
       return;
     }
-    const rows = this.#statusRows();
+    const rows = this.#statusRows(owed);
     const change = this.#unstamped({ cursor: this.#projection.takeCursor(), position: this.#projection.position() });
     for (const subscriber of owed) this.#push(subscriber, { kind: "change", change, rows, reads: [] });
   }
@@ -290,8 +311,8 @@ export class DashboardStreamHub {
     this.#disposeProjection();
     this.#disposePublications?.();
     this.#disposeStatus?.();
-    this.#statusRetry?.();
-    this.#statusRetry = undefined;
+    this.#statusOwed.clear();
+    this.#armStatusRetry();
     this.#sourcesDisposed = true;
     for (const subscriber of this.#subscribers) this.#closeSubscriber(subscriber);
     this.#subscribers.clear();
@@ -401,7 +422,7 @@ export class DashboardStreamHub {
         byDay.set(day, snapshot);
       }
       const reads = this.#readsFor([...this.#subscribers]);
-      const rows = this.#subscribers.size === 0 ? [] : this.#statusRows();
+      const rows = this.#statusRows([...this.#subscribers]);
       for (const subscriber of this.#subscribers) {
         const snapshot = byDay.get(subscriber.day);
         if (snapshot === undefined) throw new Error(`dashboard stream froze no snapshot for ${subscriber.day}`);
@@ -705,7 +726,7 @@ export class DashboardStreamHub {
       if (resume === undefined) {
         // The connection's own cursor; the day is frozen at it.
         this.#projection.takeCursor();
-        handoff.push({ kind: "snapshot", snapshot: this.#snapshot(day), rows: this.#statusRows(), reads: reads() });
+        handoff.push({ kind: "snapshot", snapshot: this.#snapshot(day), rows: this.#statusRows([subscriber]), reads: reads() });
         handoff.push(this.#health("live"));
       } else {
         // The client presented a cursor, so it holds a baseline: it is live before the replay, which may carry publications.
@@ -716,7 +737,7 @@ export class DashboardStreamHub {
           if (entry.kind === "publication") handoff.push({ kind: "ready", envelope: publicationFor(entry.publication, day) });
         }
         handoff.push({ kind: "change", change: this.#unstamped({ cursor: this.#projection.takeCursor(), position: this.#projection.position() }),
-          rows: this.#statusRows(), reads: reads() });
+          rows: this.#statusRows([subscriber]), reads: reads() });
       }
     }
     // What is ready now goes out at once; the rest waits in the outbox for its rows.
@@ -740,6 +761,7 @@ export class DashboardStreamHub {
       close: (): void => {
         this.#closeSubscriber(subscriber);
         this.#subscribers.delete(subscriber);
+        if (this.#statusOwed.delete(subscriber)) this.#armStatusRetry();
       },
     });
   }

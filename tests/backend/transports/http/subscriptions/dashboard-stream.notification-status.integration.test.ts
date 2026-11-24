@@ -113,3 +113,38 @@ it("stops retrying once no connection is owed the status and drops its listener 
   hub.close();
   assert.equal(listeners.size, 0);
 });
+
+it("delivers a recovery to a connection owed it when another connection's handoff reads the good status first", async () => {
+  const { hub, failReads, fire } = await setup();
+  failReads(true);
+  const first = await hub.connect({ day: DAY });
+  assert.equal(statusOf(first.initial.find(envelope => envelope.type === "snapshot"))?.state, "unavailable");
+  failReads(false);
+
+  const second = await hub.connect({ day: DAY });
+  assert.deepEqual(statusOf(second.initial.find(envelope => envelope.type === "snapshot")), { state: "available", value: READY });
+
+  const recovered = await first.next();
+  assert(recovered?.type === "change");
+  assert.deepEqual(statusOf(recovered), { state: "available", value: READY }, "the owed connection hears the recovery the new connection read");
+  assert.equal(second.pending, 0, "a connection that read the good status is not sent it again");
+  assert.equal(fire().length, 0, "no retry is left once every connection holds a good status");
+  first.close(); second.close();
+});
+
+it("keeps retrying for a connection still owed a good status while another reads one", async () => {
+  const { hub, failReads, fire } = await setup();
+  failReads(true);
+  const first = await hub.connect({ day: DAY });
+  const second = await hub.connect({ day: DAY });
+  assert.equal(statusOf(second.initial.find(envelope => envelope.type === "snapshot"))?.state, "unavailable");
+  second.close();
+  assert.equal(fire().length, 1, "the retry survives a closed connection while another is still owed");
+  const still = await first.next();
+  assert.equal(statusOf(still)?.state, "unavailable");
+  failReads(false);
+  fire();
+  assert.deepEqual(statusOf(await first.next()), { state: "available", value: READY });
+  assert.equal(fire().length, 0);
+  first.close();
+});
