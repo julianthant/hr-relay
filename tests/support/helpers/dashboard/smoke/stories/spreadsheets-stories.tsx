@@ -116,7 +116,6 @@ const IMPORT = {
 const AUDIT_FIXES = "#532";
 const KNOWN_BREAKS = {
    "catalog/loaded": ["named-and-focusable"],
-   "catalog/no-match": ["named-and-focusable"],
    "detail/back": ["named-and-focusable"],
    "detail/mapping-saved": ["named-and-focusable", "primary-button-accent"],
    "detail/mapping-failed": ["named-and-focusable", "primary-button-accent"],
@@ -131,7 +130,6 @@ const KNOWN_BREAKS = {
    "outcome/renamed": ["named-and-focusable"],
    "outcome/rolled-back": ["named-and-focusable"],
    "outcome/sync-failed": ["named-and-focusable"],
-   "outcome/synced": ["named-and-focusable"],
    "outcome/tagged": ["named-and-focusable"],
      "row/download": ["named-and-focusable"],
     "row/pin": ["named-and-focusable"],

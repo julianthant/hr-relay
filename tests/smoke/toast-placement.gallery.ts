@@ -66,3 +66,21 @@ test("toasts enter and leave upward and stay above their resting place with moti
   }
   expect(seen.filter(move => !(move.below <= 1) || move.overPanel), "no toast passes below its resting place or over the Sessions panel").toEqual([]);
 });
+
+test("dragging the front toast downward never moves it onto the Sessions panel", async ({ mount, page, diagnostics }) => {
+  await page.setViewportSize({ width: 1280, height: 340 });
+  const dragged = "sessions/toast/stack-described";
+  const entry = CATALOGUE.find(item => item.id === dragged);
+  if (entry === undefined) throw new Error(`the catalogue has no story ${dragged}`);
+  await mount(dragged);
+  await page.waitForTimeout(600);
+  const front = page.locator('[data-slot="toast"]').first();
+  const box = await front.boundingBox();
+  if (box === null) throw new Error("the front toast is not drawn");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let step = 1; step <= 10; step += 1) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + step * 20);
+  await page.waitForTimeout(350);
+  expect(await STATE_RULES["toast-placement"].check({ page, storyId: dragged, story: entry.story, diagnostics, dialogShapes: new Map() })).toEqual([]);
+  await page.mouse.up();
+});

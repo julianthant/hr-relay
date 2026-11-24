@@ -10,6 +10,7 @@ import { StoryFrame } from "./story-frame.js";
 
 export interface RuleProbe {
   readonly story: Story;
+  readonly atBothDesktopWidths?: true;
   /** What each rule must report on this story. */
   readonly finds: Readonly<Partial<Record<StateRuleName, readonly RegExp[]>>>;
   /** Rules that must report nothing on this story. */
@@ -110,6 +111,27 @@ export const RULE_PROBES = {
       </StoryFrame>,
     },
     finds: { "named-and-focusable": [/has no name/u, /"Skipped" cannot be reached with the keyboard/u, /^(?![\s\S]*"Reached")/u] },
+  },
+  "tab-drops-focus": {
+    story: {
+      title: "Tab drops focus before the last two controls",
+      render: () => <StoryFrame>
+        <Button>Before drop</Button>
+        <Button onKeyDown={event => {
+          if (event.key !== "Tab") return;
+          event.preventDefault();
+          event.currentTarget.blur();
+        }}>Drops focus</Button>
+        <Button>After drop</Button>
+        <Button>Last control</Button>
+      </StoryFrame>,
+    },
+    atBothDesktopWidths: true,
+    finds: { "named-and-focusable": [
+      /"After drop" cannot be reached with the keyboard/u,
+      /"Last control" cannot be reached with the keyboard/u,
+      /^(?![\s\S]*"(?:Before drop|Drops focus)")/u,
+    ] },
   },
   "hidden-radios-and-toolbar": {
     story: {
