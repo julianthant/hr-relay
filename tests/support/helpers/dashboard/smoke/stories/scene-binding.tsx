@@ -5,6 +5,7 @@ import { DashboardCommandBindingProvider, useDashboardClient, useDashboardComman
 import { serverLocalDay } from "../../../../../../src/dashboard/surfaces/shell/date-navigation-model.js";
 import { ActorIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { RUN_DIALOG_ACTOR, RUN_DIALOG_BOOTSTRAP } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
+import { createRowStore } from "../../../../../../src/dashboard/client/index.js";
 
 const noop = () => undefined;
 
@@ -18,7 +19,7 @@ export function SceneBinding({ children }: { children: ReactNode }) {
     const day = serverLocalDay(bootstrap.serverClock);
     const request = Object.freeze({ client, day, epoch, revision: 0 });
     const authority: DashboardAuthority = Object.freeze({ epoch, catalog: [], now: () => bootstrap.serverClock.now, today: day, day,
-      dayState: { subscribePublications: () => { throw new Error("the story serves no publications"); }, request, day: LOADING, connection: { state: "connecting" as const },
+      dayState: { rows: createRowStore(), subscribePublications: () => { throw new Error("the story serves no publications"); }, request, day: LOADING, connection: { state: "connecting" as const },
         refresh: () => { throw new Error("the story serves no day refresh"); } },
       selection: { route: { start: false }, workflowId: "" } });
     return Object.freeze({ authority, executor, scope: Object.freeze({ actorId: ActorIdSchema.parse(RUN_DIALOG_ACTOR), client, authority: epoch, dayRequest: request }), feedback: noop });

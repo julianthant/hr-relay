@@ -11,7 +11,7 @@ import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_AT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
-import { finishRunningStep, parkRunningRunAtGate, seed, seededDoneNotificationEvent, startQueuedRun, type SeedWorld } from "../served-fixtures/seeded-lifecycle.js";
+import { addRunningNote, finishRunningStep, parkRunningRunAtGate, seed, seededDoneNotificationEvent, startQueuedRun, type SeedWorld } from "../served-fixtures/seeded-lifecycle.js";
 
 import { type ScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
 import { scriptedDescriptorOf } from "../served-fixtures/scripted-workflows.js";
@@ -60,6 +60,8 @@ export interface SeededDrive {
   finishRunningStep(): string;
   /** The running Person Lookup run takes the parked-gate lifecycle at its task node `cross-verify`; answers its run id. */
   parkRunningRunAtGate(): string;
+  /** The running run gets a note and nothing else: no span event, so no queue row moves; answers its run id. */
+  addRunningNote(message: string): string;
   /** A notification is published through the inbox and reaches every open stream. Product app only. */
   publishNotification(): Promise<void>;
 }
@@ -230,6 +232,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       startQueuedRunAheadOfItsRow: () => startQueuedRun(world),
       finishRunningStep: () => settle(finishRunningStep(world)),
       parkRunningRunAtGate: () => settle(parkRunningRunAtGate(world)),
+      addRunningNote: (message: string) => settle(addRunningNote(world, message)),
       publishNotification: async () => {
         if (notificationInbox === undefined) throw new Error("the seeded server publishes notifications only as the product app");
         await notificationInbox.publish(seededDoneNotificationEvent());
