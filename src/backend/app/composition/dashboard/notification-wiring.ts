@@ -1,6 +1,7 @@
 import { notificationListProjection, notificationProjection, type ServedNotificationRecord } from "../../../runs/projections/notification-list.js";
 import { FingerprintSchema } from "../../../../rules/identity/ids.js";
 import type { NotificationCollectionOperation } from "../../../../models/notifications/notifications.js";
+import { notificationStandingSources } from "../../../../rules/notifications/notification-triggers.js";
 import type { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
 import type { createDashboardApp } from "../../../transports/http/routes/api.js";
 import type { prepareDashboardRuntime } from "./runtime-resources.js";
@@ -36,6 +37,7 @@ function projectionDependencies({ database, lifecycle, descriptors, runDetailDep
       checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
     },
     source: id => database.authority.notificationPublications.latest(id),
+    standing: notificationStandingSources(database.authority),
   };
 }
 
@@ -92,8 +94,13 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
       const result = respond(candidate, () => notificationListProjection(records, now, {
         source: id => deps.source(id),
         get display() { usedDisplay = true; return deps.display; },
+        standing: {
+          runState: id => { usedDisplay = true; return deps.standing.runState(id); },
+          storageConcern: id => deps.standing.storageConcern(id),
+          concernActive: concern => { usedDisplay = true; return deps.standing.concernActive(concern); },
+        },
       }));
-      // Display context can read run, command and retained timeline evidence outside the inbox table.
+      // Display context and standing read run, command, health and retained timeline evidence outside the inbox table.
       retained = usedDisplay ? undefined : candidate;
       return result;
     }),

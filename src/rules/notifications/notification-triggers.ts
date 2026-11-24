@@ -16,7 +16,7 @@ import {
   WriteIntentIdSchema,
 } from "../identity/ids.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
-import { NotificationRecordSchema, NotificationTriggerSchema } from "../../models/notifications/notifications.js";
+import { NotificationRecordSchema, NotificationTriggerSchema, type NotificationStandingSources } from "../../models/notifications/notifications.js";
 import { sha256Hex } from "../validation/sha256.js";
 
 /** The enumerated concerns — storage degradation, stalled lease/outbox, failed backup — and a concern that is not on this list is not a notification. */
@@ -272,4 +272,21 @@ export function notificationDeliverability(recordInput: unknown, nowInput: unkno
     return NotificationDeliverabilitySchema.parse({ state: "suppressed-snoozed", until: record.snooze.until });
   }
   return NotificationDeliverabilitySchema.parse({ state: "deliverable" });
+}
+
+/** Standing reads from authority: the linked run's lifecycle, the storage concern of the row's latest publication and that concern's health. */
+export function notificationStandingSources(repositories: {
+  runs: { get(runId: string): { lifecycle: { state: string } } | undefined };
+  notificationPublications: { latest(notificationId: string): { event: unknown } | undefined };
+  notificationHealth: { get(concern: string): { active: boolean } | undefined };
+}): NotificationStandingSources {
+  return {
+    runState: runId => repositories.runs.get(runId)?.lifecycle.state,
+    storageConcern: notificationId => {
+      const source = repositories.notificationPublications.latest(notificationId);
+      const event = source === undefined ? undefined : NotificationTriggerEventSchema.parse(source.event);
+      return event?.kind === "storage-degraded" ? event.concern : undefined;
+    },
+    concernActive: concern => repositories.notificationHealth.get(concern)?.active,
+  };
 }

@@ -41,6 +41,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       listNotifications: input.listNotifications ?? database.authority.notifications.listByActor,
       command: (commandId) => database.authority.commands.get(commandId),
       latestNotificationSource: (notificationId) => database.authority.notificationPublications.latest(notificationId),
+      notificationConcernActive: concern => database.authority.notificationHealth.get(concern)?.active,
       listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),

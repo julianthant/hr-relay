@@ -40,7 +40,7 @@ import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../models/intake/session.js";
-import { NotificationFoldRequestSchema,NotificationRecordOutcomeSchema,NotificationRecordSchema,NotificationStateRequestSchema,notificationCollectionTarget,requireMutableNotification,type NotificationCollectionOperation,type NotificationCollectionTarget,type NotificationRecord,type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
+import { NotificationFoldRequestSchema,NotificationRecordOutcomeSchema,NotificationRecordSchema,NotificationStateRequestSchema,notificationCollectionTarget,notificationStanding,requireMutableNotification,type NotificationCollectionOperation,type NotificationCollectionTarget,type NotificationRecord,type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
 import { StoredOcrExtractionSchema, type StoredOcrExtraction } from "../../../models/ocr/stored-extraction.js";
 import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
 import { AssistantActionRecordSchema,AssistantChatRecordSchema } from "../../../models/profiles/assistant-authorization.js";
@@ -96,6 +96,7 @@ import { createImportedArtifactRepositories,importedArtifactFromRow } from "./im
 import { initialFailureColumns,initialNotificationColumns,isNativeOrdinaryTable,isNativeRecordIntegrityFailure,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
 import { deletionArtifactValues,executeNativeRunDeletion,prepareNativeRunDeletion } from "./native-run-deletion.js";
 import { createNotificationMetadataRepositories,validateNotificationMetadata } from "./notification-publications.js";
+import { notificationStandingSources } from "../../../rules/notifications/notification-triggers.js";
 import { createReadonlyAuthoritySnapshot,readonlyAuthorityImage,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { deletePreBuildRuns } from "./pre-build-run-deletion.js";
@@ -6462,11 +6463,12 @@ export class AuthorityDatabase implements Disposable {
           if (Date.parse(request.seenAt) < Date.parse(existing.lastSeenAt)) {
             throw new Error(`notification ${existing.notificationId} cannot fold an observation older than its last seen instant`);
           }
+          const { clearedAt: _cleared, ...uncleared } = existing;
           const folded = NotificationRecordSchema.parse({
-            ...existing,
+            ...uncleared,
             title: request.title,
             summary: request.summary,
-            // A repeat is news again: the operator has not seen this occurrence.
+            // A repeat is news again: the operator has not seen this occurrence, even one they cleared.
             status: "unread",
             snooze: existing.snooze,
             count: existing.count + 1,
@@ -6494,6 +6496,7 @@ export class AuthorityDatabase implements Disposable {
             ...existing,
             status: request.status,
             snooze: request.snooze,
+            ...(request.clearedAt === undefined ? {} : { clearedAt: request.clearedAt }),
             version: existing.version + 1,
             updatedAt: request.updatedAt,
           });
@@ -6501,7 +6504,10 @@ export class AuthorityDatabase implements Disposable {
           return { result: updated, changes: 1 };
         });
       },
-      collection: (actorId: string, operation: NotificationCollectionOperation) => notificationCollectionTarget(this.authority.notifications.listByActor(actorId), actorId, operation),
+      collection: (actorId: string, operation: NotificationCollectionOperation) => {
+        const sources = notificationStandingSources(this.authority);
+        return notificationCollectionTarget(this.authority.notifications.listByActor(actorId), actorId, operation, row => notificationStanding(row, sources));
+      },
       get: (notificationId: string) => this.#readRecord("notifications", notificationId, NotificationRecordSchema),
       findByDedupe,
       listByActor: (actorId: string, status?: unknown) => {

@@ -36,7 +36,7 @@ const PHASE1_ACTIVE = {
   ],
   gate: ["resolve-gate"],
 
-  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
+  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all", "notification-clear", "notification-clear-all", "notification-clear-unread-all"],
 
   intake: [
     "inspect-intake",

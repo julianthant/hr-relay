@@ -9,6 +9,7 @@ import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { notificationListProjection, type ServedNotificationRecord } from "./notification-list.js";
+import { NotificationTriggerEventSchema } from "../../../rules/notifications/notification-triggers.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
@@ -180,6 +181,8 @@ export interface RunQueueProjectionDeps {
     /** Durable inbox rows served by day. */
     listNotifications(actorId: string): readonly ServedNotificationRecord[];
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
+    /** Whether a storage concern is still active; absent or unknown keeps its notices standing. */
+    notificationConcernActive?(concern: string): boolean | undefined;
     command?(commandId: string): CommandRequest | undefined;
     listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
     listCheckpoints: RunTimelineEvidenceSource["authority"]["listCheckpoints"];
@@ -1798,6 +1801,15 @@ export class RunQueueProjection {
         },
       },
       source: id => this.#deps.authority.latestNotificationSource?.(id),
+      standing: {
+        runState: id => { const read = readSharedRun(id); return read.state === "present" ? read.run.lifecycle.state : undefined; },
+        storageConcern: id => {
+          const event = this.#deps.authority.latestNotificationSource?.(id)?.event;
+          const parsed = event === undefined ? undefined : NotificationTriggerEventSchema.parse(event);
+          return parsed?.kind === "storage-degraded" ? parsed.concern : undefined;
+        },
+        concernActive: concern => this.#deps.authority.notificationConcernActive?.(concern),
+      },
     });
     const noticesById = new Map(projected.map(notice => [notice.notificationId, notice]));
     const noticeRows = patch === undefined || reusedNotices.size === 0 ? projected : patch.previous.wire.notifications.map(notice => {

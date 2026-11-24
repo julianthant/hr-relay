@@ -59,6 +59,9 @@ export function createAssistantActivityQuery(options: Readonly<{
             "notification-snooze-all": [`Snoozed ${noun}`, `Snooze ${noun}`],
             "notification-unsnooze": [`Unsnoozed ${noun}`, `Unsnooze ${noun}`],
             "notification-unsnooze-all": [`Unsnoozed ${noun}`, `Unsnooze ${noun}`],
+            "notification-clear": [`Cleared ${noun}`, `Clear ${noun}`],
+            "notification-clear-all": [`Cleared ${noun}`, `Clear ${noun}`],
+            "notification-clear-unread-all": [`Cleared ${noun}`, `Clear ${noun}`],
           } as const;
           const [applied, requested] = labels[activity.operation];
           const label = activity.outcome === "applied" || activity.outcome === "already-applied" ? applied : `Refused: ${requested}`;

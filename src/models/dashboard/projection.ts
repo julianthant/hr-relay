@@ -563,6 +563,7 @@ export function notificationWireOf(
   context?: NotificationDisplayContext,
   sourceEvent?: z.infer<typeof NotificationSourceEventWireSchema>,
   readOnlyHistory?: true,
+  standing?: true,
 ): z.infer<typeof NotificationWireSchema> {
   const history = readOnlyHistory === true ? { readOnlyHistory } : {};
   if (record.trigger === "backfill-gap") {
@@ -636,6 +637,7 @@ export function notificationWireOf(
     context: context ?? { state: "unavailable" },
     sourceEvent: sourceEvent ?? { state: "unavailable" },
     ...(link === undefined ? {} : { link: link.kind === "storage" ? { kind: "storage" } : link }),
+    ...(standing === true && readOnlyHistory !== true ? { standing } : {}),
   });
 }
 
@@ -701,6 +703,8 @@ const StandardNotificationWireSchema = z.strictObject({
   context: NotificationDisplayContextSchema,
   sourceEvent: NotificationSourceEventWireSchema.optional(),
   link: NotificationLinkWireSchema.optional(),
+  /** Still waiting on the operator, so it cannot be cleared until handled. */
+  standing: z.literal(true).optional(),
 });
 
 /** A stored command notice: Priority while unread and not snoozed; recovery is an error, a refused command or incomplete batch a warning. */

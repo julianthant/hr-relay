@@ -1635,6 +1635,7 @@ function rebuildStagedProjections(
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
           command: (commandId) => staged.authority.commands.get(commandId),
           latestNotificationSource: (notificationId) => staged.authority.notificationPublications.latest(notificationId),
+          notificationConcernActive: concern => staged.authority.notificationHealth.get(concern)?.active,
           listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => staged.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
           listCheckpoints: (workflowId, itemId) => staged.authority.runCheckpoints.listByItem(workflowId, itemId),
           listGateResults: runId => staged.authority.gateResults.listByRun(runId),
