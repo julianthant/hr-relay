@@ -4,7 +4,7 @@
 > independent operator command.
 
 The general method is the global `diagnose` skill: red gate → minimise → hypothesise → instrument →
-fix → regression test → cleanup. Use `sup_sol` at high reasoning for a subtle seam only when the user
+fix → regression test → cleanup. Use `gpt-6.2-sol` at high reasoning for a subtle seam only when the user
 explicitly authorizes delegation. This skill adds the repo-specific evidence sources,
 failure classes, and forbidden first moves. Read the owning reference and nearest module `AGENTS.md`
 before forming a theory.
@@ -65,8 +65,8 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 - CI runs typecheck and lint (`--max-warnings 0`, no debt manifest), static and privacy checks, and selected unit, integration and architecture suites; ready pull requests also run perf and smoke, and release checks add selected native proofs. No workflow runs coverage.
 
 ## 8 · Visual evidence
-Dashboard visual evidence comes from `/verify` browser runs; [the mock scene runner](../../../../src/dashboard/MOCKS.md)
-renders `/ui-mock` frames only. Old visual receipts are historical; a green accessibility tree does not establish
+Dashboard visual evidence comes from `/verify` browser runs; [the gallery guide](../../../../src/dashboard/MOCKS.md)
+draws each dashboard state, and those frames are not acceptance. Old visual receipts are historical; a green accessibility tree does not establish
 current visual acceptance (D187).
 
 ## 9 · Dry-run audit ("dry run means nothing gets submitted")
