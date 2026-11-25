@@ -10,13 +10,13 @@ import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
-const { setup, text, button, press, reachChecks, checkbox, field, fill, mount, cleanup, unmount } = createMountedRerunWorld(profileFixtures.create);
+const { setup, text, button, press, reachChecks, fill, mount, cleanup, unmount } = createMountedRerunWorld(profileFixtures.create);
 afterEach(cleanup);
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
   it("lost response survives unmount and exact replay without a second run", async () => {
-    const h = await setup(); const source = await h.completeSource(); await mount(h, source); assert.equal(field("Employee ID").value, "10812345"); await press("Continue"); await act(async () => checkbox("Dry run").click());
-    h.loseResponse(); await press("Start dry run"); assert.match(text(), /Not confirmed yet/u); const roots = h.queueRoots;
+    const h = await setup(); const source = await h.completeSource(); await mount(h, source); await press("Continue");
+    h.loseResponse(); await press("Start live run"); assert.match(text(), /Not confirmed yet/u); const roots = h.queueRoots;
     await unmount(); document.body.replaceChildren();
     await mount(h, source); assert.match(text(), /needs readback/u); await press("Replay exact submission");
     assert.equal(document.querySelector('[role="dialog"]') === null, true, 'exact replay must close the launch dialog'); assert.match(text(), /Run submission confirmed/u); assert.deepEqual(h.queueRoots, roots);
@@ -26,7 +26,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const client = { ...h.client, executeCommand: async (input: unknown) => { const result = await h.client.executeCommand(input); await pending; return result; } };
     await mount(h, source, client); await press("Continue");
-    await act(async () => checkbox("Dry run").click()); await press("Start dry run");
+    await press("Start live run");
     assert.equal(h.queueRoots.length, 2); assert.doesNotMatch(text(), /needs readback/u);
     await act(async () => release());
     assert.equal(document.querySelector('[role="dialog"]') === null, true); assert.doesNotMatch(text(), /needs readback/u);
@@ -36,8 +36,8 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const h = await setup(); const source = await h.completeSource(); let release: () => void = () => { throw new Error("release not initialized"); };
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const client = { ...h.client, executeCommand: async (input: unknown) => { const result = await h.client.executeCommand(input); await pending; return result; } };
-    await mount(h, source, client); assert.equal(field("Employee ID").value, "10812345"); await press("Continue"); await act(async () => checkbox("Dry run").click());
-    await reachChecks("Start dry run"); await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
+    await mount(h, source, client); await press("Continue");
+    await reachChecks("Start live run"); await act(async () => { button("Start live run again").click(); button("Start live run again").click(); });
     assert.equal(h.finalCommands.length, 1); assert.equal(h.queueRoots.length, 2);
     await press("Cancel"); await press("Rerun source"); await act(async () => release());
     assert.ok(!text().includes("Start applied")); assert.match(text(), /needs readback/u);
@@ -46,8 +46,8 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   });
   it("the started toast is text only", async () => {
     const h = await setup(); const source = await h.completeSource(); await mount(h, source); await press("Continue");
-    await act(async () => checkbox("Dry run").click()); await press("Start dry run");
-    assert.equal(document.querySelector('[role="dialog"]') === null, true); assert.match(text(), /Rerun created/u);
+    await press("Start live run");
+    assert.equal(document.querySelector('[role="dialog"]') === null, true); assert.match(text(), /Rerun queued/u);
     assert.equal([...document.querySelectorAll("button")].some(node => node.textContent === "Open run"), false);
   });
   it("reopening a start after closing with typed input says the draft was kept; an untouched start says nothing", async () => {
@@ -71,10 +71,10 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
         session: row.session.state === "present" ? { state: "present" as const, itemScope: "session" as const, sessionId: row.session.sessionId } : row.session })) };
     } };
     await mount(h, source, client); await press("Continue");
-    await act(async () => checkbox("Dry run").click()); await press("Start dry run");
+    await press("Start live run");
     assert.equal(document.querySelector('[role="dialog"]') !== null, true);
     assert.equal(window.sessionStorage.length, 1); assert.equal(h.queueRoots.length, 2);
-    assert.equal(text().includes("Rerun created"), false); assert.match(text(), /readback/u);
+    assert.equal(text().includes("Rerun queued"), false); assert.match(text(), /readback/u);
     await press("Cancel"); assert.equal(window.sessionStorage.length, 1);
   });
   for (const replacement of ["client", "actor", "day ABA"] as const) {
@@ -86,14 +86,14 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       } };
       const replaceBinding = await mount(h, source, client);
       await press("Continue");
-      await act(async () => checkbox("Dry run").click());
-      await reachChecks("Start dry run"); await act(async () => button("Start dry run").click()); assert.equal(h.finalCommands.length, 1);
+    
+      await reachChecks("Start live run"); await act(async () => button("Start live run again").click()); assert.equal(h.finalCommands.length, 1);
       if (replacement === "day ABA") await replaceBinding(client, { requestKey: 1, nowIso: "2026-08-01T17:00:00.000Z" });
       await replaceBinding(replacement === "client" ? { ...client } : client,
         { actorId: replacement === "actor" ? "other-operator" : "local-operator", requestKey: replacement === "day ABA" ? 2 : 0 });
       const finish = release; assert.ok(finish); await act(async () => finish());
       assert.equal(document.querySelector('[role="dialog"]') !== null, true);
-      assert.equal(text().includes("Rerun created"), false); assert.equal(window.sessionStorage.length, 1);
+      assert.equal(text().includes("Rerun queued"), false); assert.equal(window.sessionStorage.length, 1);
       assert.equal(h.finalCommands.length, 1);
       if (replacement !== "actor") assert.equal(button("Replay exact submission").disabled, false);
     });
@@ -103,8 +103,8 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const pending = new Promise<void>(resolve => { release = resolve; });
     const client = { ...h.client, executeCommand: async (input: unknown) => { const reply = await h.client.executeCommand(input); await pending; return reply; } };
     await mount(h, source, client); await press("Continue");
-    await act(async () => checkbox("Dry run").click());
-    await reachChecks("Start dry run"); await act(async () => button("Start dry run").click());
+    
+    await reachChecks("Start live run"); await act(async () => button("Start live run again").click());
     assert.equal(button("Back").disabled, true);
     const finish = release; assert.ok(finish); await act(async () => finish());
     await vi.waitFor(() => assert.equal(document.querySelector('[role="dialog"]') === null, true));
@@ -114,18 +114,18 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const h = await setup(); const source = await h.completeSource(); const replaceBinding = await mount(h, source);
     await replaceBinding(h.client, { bound: false }); await press("Rerun source");
     await press("Continue");
-    await act(async () => checkbox("Dry run").click()); await press("Start dry run");
+    await press("Start live run");
     assert.equal(h.finalCommands.length, 0); assert.equal(window.sessionStorage.length, 0);
     assert.equal(document.querySelector('[role="dialog"]') !== null, true); assert.equal(text().includes(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text), true, "missing binding shows fixed authority feedback");
   });
 
-  it("a failed readiness check keeps Rerun's Start off on Checks", async () => {
+  it("a failed readiness check keeps Rerun's Start off", async () => {
     const h = await setup(); const source = await h.completeSource();
     const failing = { state: "present", report: { configFingerprint: "a".repeat(64), descriptorFingerprint: "a".repeat(64), checkedAt: "2026-08-26T21:00:00.000Z", requestedCapabilities: ["dashboard.serve"],
       results: [{ status: "fail", check: "secrets.ucpath-sso", summary: "The UCPath password is missing.", blocks: ["dashboard.serve"], remediation: "Add it." }] } };
     const client = { ...h.client, readPreflight: async () => failing } as unknown as typeof h.client;
-    await mount(h, source, client); await press("Continue"); await act(async () => checkbox("Dry run").click());
+    await mount(h, source, client); await press("Continue");
     for (let wait = 0; wait < 20 && !text().includes("Add password"); wait += 1) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
-    assert.ok(text().includes("The UCPath password is missing.")); assert.equal(button("Start dry run").disabled, true); assert.equal(h.finalCommands.length, 0);
+    assert.ok(text().includes("The UCPath password is missing.")); assert.equal(button("Start live run").disabled, true); assert.equal(h.finalCommands.length, 0);
   });
 });

@@ -20,6 +20,8 @@ afterEach(async () => { vi.restoreAllMocks(); await cleanup(); });
 
 for (const rerun of [false, true]) {
   const warned = 0;
+  /** A rerun keeps its live source's mode; a run chooses a dry run. The first press of a rerun consents to its warning. */
+  const start = rerun ? "Start live run" : "Start dry run", firstStart = rerun ? `${start} again` : start;
   /** Reaches the last stage with a dry run chosen; the plan the first Start requests expires before it is submitted. */
   async function review(h: Awaited<ReturnType<typeof setup>>, client: DashboardClient = h.client, expireAfterPlan = true) {
     let planned = false;
@@ -33,13 +35,13 @@ for (const rerun of [false, true]) {
     const replaceBinding = await mount(h, rerun ? await h.completeSource() : undefined, expiring);
     if (rerun) { await press("Continue"); }
     else { const box = document.querySelector("textarea"); assert.ok(box); await fill(box, "10812345"); await press("Continue"); }
-    await act(async () => checkbox("Dry run").click());
-    if (rerun) await reachChecks("Start dry run");
+    if (rerun) await reachChecks(start);
+    else await act(async () => checkbox("Dry run").click());
     return replaceBinding;
   }
   it(`${rerun ? "Rerun" : "Run"} re-previews an expired plan and requires another Start`, async () => {
     const h = await setup(); await review(h);
-    await press("Start dry run");
+    await press(start);
     assert.ok(text().includes("The plan expired and was rebuilt. Review it again."));
     assert.equal(document.querySelector('[role="dialog"]') !== null, true);
     assert.equal(text().includes("Run not started"), false);
@@ -47,7 +49,7 @@ for (const rerun of [false, true]) {
     assert.deepEqual(h.submissions[1 + warned], h.submissions[warned]);
     assert.equal(h.finalCommands.length, 1);
     assert.equal(window.sessionStorage.length, 0);
-    await press("Start dry run");
+    await press(start);
     assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.equal(h.finalCommands.length, 2);
     assert.equal(h.queueRoots.length, rerun ? 2 : 1);
@@ -66,7 +68,7 @@ for (const rerun of [false, true]) {
       }) }));
     await review(h, { ...h.client, submitStartPlan: async request => { const plan = await h.client.submitStartPlan(request); if (++asked > warned) blocked = true; return plan; } }, false);
     const timer = vi.spyOn(globalThis, "setTimeout");
-    await press("Start dry run");
+    await press(start);
     assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.equal(text().split("Run not started").length - 1, 1);
     assert.ok(text().includes(ERROR_CATALOG.RUN_START_READINESS_BLOCKED.text));
@@ -85,7 +87,7 @@ for (const rerun of [false, true]) {
       if (++previews > 1 + warned) throw new Error("PRIVATE_REPREVIEW_MARKER");
       return h.client.submitStartPlan(request);
     } });
-    await press("Start dry run");
+    await press(start);
     assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.equal(text().split("Run not started").length - 1, 1);
     assert.ok(text().includes(ERROR_CATALOG.RUN_START_READINESS_UNAVAILABLE.text));
@@ -99,13 +101,13 @@ for (const rerun of [false, true]) {
       if (++previews > 1 + warned) await gate.promise;
       return h.client.submitStartPlan(request);
     } });
-    await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
+    await act(async () => { button(firstStart).click(); button(firstStart).click(); });
     assert.equal(previews, 2 + warned); assert.equal(h.finalCommands.length, 1);
     assert.equal(button("Back").disabled, true, "the draft cannot move under the re-preview");
     await act(async () => gate.resolve());
     assert.equal(text().includes("Run not started"), false);
     assert.equal(h.finalCommands.length, 1);
-    await press("Start dry run"); assert.equal(h.finalCommands.length, 2);
+    await press(start); assert.equal(h.finalCommands.length, 2);
   });
   for (const replacement of ["scope", "close"] as const) it(`${rerun ? "Rerun" : "Run"} ignores an expiry response after ${replacement} replacement`, async () => {
     const h = await setup(); const gate = Promise.withResolvers<void>(); let previews = 0;
@@ -114,7 +116,7 @@ for (const rerun of [false, true]) {
       return h.client.submitStartPlan(request);
     } };
     const replaceBinding = await review(h, client);
-    await act(async () => button("Start dry run").click());
+    await act(async () => button(firstStart).click());
     if (replacement === "scope") await replaceBinding(client, { requestKey: 1 });
     else await press("Cancel");
     await act(async () => gate.resolve());
@@ -126,7 +128,7 @@ for (const rerun of [false, true]) {
   it(`${rerun ? "Rerun" : "Run"} recovers an expired command without re-preview or resubmitting new bytes`, async () => {
     const h = await setup(); await review(h);
     h.loseResponse();
-    await press("Start dry run");
+    await press(start);
     assert.equal(document.querySelector('[role="dialog"]') !== null, true);
     assert.equal(window.sessionStorage.length, 1); assert.equal(h.submissions.length, 1 + warned);
     await unmount(); document.body.replaceChildren();

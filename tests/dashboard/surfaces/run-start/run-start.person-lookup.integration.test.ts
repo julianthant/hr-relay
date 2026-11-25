@@ -43,13 +43,12 @@ describe("older typed Rerun backend prefill through mounted current form", () =>
           return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
       }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: { runId: run.envelope.runId, expectedVersion: run.version } });
       if (kind === "padded-name") {
-        assert.equal(dialog.typedInput().value, ""); assert.equal(dialog.disabled("Continue"), true); assert.equal(request, undefined);
-        await dialog.type("Example, Person, 01/15/2000, x");
-      } else assert.equal(dialog.typedInput().value, "10000001");
+        assert.match(dialog.text(), /The original input can't be reused; use Start run\./u);
+        assert.equal(dialog.disabled("Continue"), true); assert.equal(request, undefined);
+        return;
+      }
       await dialog.press("Continue"); await dialog.press("Start run");
-      assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [kind === "padded-name"
-        ? { mode: "match", lastName: "Example", firstName: "Person", dob: "01/15/2000", crmCheck: true, includeCrmDates: false }
-        : { mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true, includeCrmDates: false }]);
+      assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [{ mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true, includeCrmDates: false }]);
     } finally { await backend.dispose(); }
   });
 });

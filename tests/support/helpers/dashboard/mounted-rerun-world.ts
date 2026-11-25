@@ -35,20 +35,23 @@ const warningShown = () => document.querySelector('[aria-label="Repeat transacti
 async function waitEnabled(name: string) {
   for (let wait = 0; wait < 300 && (findButton(name) === undefined || findButton(name)?.disabled === true); wait += 1) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
 }
+/** The Start button as drawn: under a shown repeat warning its name ends in "again". */
+const startName = (name: string) => /^Start/u.test(name) && warningShown() && !name.endsWith(" again") ? `${name} again` : name;
 /** One press of a button, with no consent given to a repeat warning it raises. */
-async function pressOnce(name: string) {
-  if (/^(Start|Create rerun)/u.test(name)) await waitEnabled(name);
+async function pressOnce(asked: string) {
+  const name = startName(asked);
+  if (/^Start/u.test(name)) await waitEnabled(name);
   const node = button(name); assert.equal(node.disabled, false, `${name}: ${text()}`); await act(async () => node.click()); }
-/** Start holds the options, steps and checks. A rerun of a source that already filed is warned when Start is first pressed: this reads the warning, confirms it and leaves `name` ready to press again. */
+/** A rerun of a source that already filed is warned when Start is first pressed: this reads the warning and leaves `name` ready to press again, which is the consent. */
 async function reachChecks(name: string) {
   await pressOnce(name);
   assert.ok(warningShown(), `the repeat warning for ${name}: ${text()}`);
-  await pressOnce("Confirm"); await waitEnabled(name);
+  await waitEnabled(startName(name));
 }
-/** A press of Start gives the repeat consent first; every other press is one click. */
+/** A press of Start consents to the repeat warning it raises; every other press is one click. */
 async function press(name: string) {
   await pressOnce(name);
-  if (/^(Start|Create rerun)/u.test(name) && warningShown()) { await pressOnce("Confirm"); await waitEnabled(name); await pressOnce(name); }
+  if (/^Start/u.test(name) && warningShown()) await pressOnce(name);
 }
 function checkbox(label: string): HTMLButtonElement | HTMLInputElement {
   const nodes = [...document.querySelectorAll<HTMLButtonElement | HTMLInputElement>('[role="checkbox"], [role="switch"]')];
