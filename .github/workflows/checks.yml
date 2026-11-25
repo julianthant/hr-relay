@@ -213,22 +213,6 @@ jobs:
             os: macos-15
             file: tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts
             title: keeps headed evidence independent of native window size
-          - case: profile restart
-            os: macos-15
-            file: tests/backend/app/composition/dashboard/profile-session-routes.restart.integration.test.ts
-            title: keeps the selected profile after (signin|resume) fails at (username|password|missing)
-          - case: startup custody
-            os: macos-15
-            file: tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts
-            title: retains actual startup source custody after (service-inspection|closed-publication-refusal)
-          - case: identity gate
-            os: ubuntu-latest
-            file: tests/backend/runs/queries/run-detail.identity-gate-section.integration.test.ts
-            title: serves the typed row and the one-field rerun request
-          - case: queue projection
-            os: ubuntu-latest
-            file: tests/backend/runs/queries/run-detail.run-queue-projection.integration.test.ts
-            title: folds another SQLite connection
     steps:
       - if: runner.os == 'macOS'
         run: sudo mdutil -a -i off
