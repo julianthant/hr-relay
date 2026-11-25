@@ -23,7 +23,7 @@ const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-
 describe("served Person Lookup Run and Rerun", () => {
   it("sends an older Match run to Start run when its identity was not kept", async () => {
     const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion,
-      workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: "0".repeat(64), outcome: "done", dryRun: false, priority: "interactive" },
+      workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: "0".repeat(64), outcome: "done", dryRun: false, priority: "interactive", browserMode: "headless" },
       sourceInput: { state: "partial", value: { mode: "match", crmCheck: true, includeCrmDates: false }, identityCopied: false },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })),
       values: [], transactions: [] });
@@ -34,7 +34,7 @@ describe("served Person Lookup Run and Rerun", () => {
   });
   it("fills a missing older control from current defaults without changing accepted identity", async () => {
     const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion,
-      workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: "0".repeat(64), outcome: "done", dryRun: false, priority: "interactive" },
+      workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: "0".repeat(64), outcome: "done", dryRun: false, priority: "interactive", browserMode: "headless" },
       sourceInput: { state: "partial", value: { mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true }, identityCopied: true },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })),
       values: [], transactions: [] });
@@ -105,7 +105,7 @@ describe("served Person Lookup Run and Rerun", () => {
   });
   it("keeps protected source input unavailable and never offers output values as its replacement", async () => {
     const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
-      descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "done", dryRun: false, priority: "interactive" },
+      descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "done", dryRun: false, priority: "interactive", browserMode: "headless" },
       sourceInput: { state: "unavailable", reason: "protected" },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "completed", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "completed", reason: "checkpoint" })) })), values: [], transactions: [] });
     const dialog = await h.openDialog(h.stubClient({ rerunValues: async () => ({ state: "available", snapshot }) }),
@@ -121,7 +121,7 @@ describe("served Person Lookup Run and Rerun", () => {
     { mode: "match", lastName: "Example", firstName: "Person", ssn: "123456789", crmCheck: true, includeCrmDates: false },
   ]) it(`sends exact ${input.mode} source values with no field to change them after fingerprint change ${older}`, async () => {
     const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
-      descriptorVersion: descriptor.version, contractFingerprint: older ? "0".repeat(64) : descriptor.contractFingerprint, outcome: "done", dryRun: false, priority: "interactive" },
+      descriptorVersion: descriptor.version, contractFingerprint: older ? "0".repeat(64) : descriptor.contractFingerprint, outcome: "done", dryRun: false, priority: "interactive", browserMode: "headless" },
       sourceInput: { state: "available", value: input },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "completed", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "completed", reason: "checkpoint" })) })), values: [], transactions: [] });
     let request: unknown;

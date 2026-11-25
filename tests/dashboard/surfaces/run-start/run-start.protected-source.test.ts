@@ -16,7 +16,7 @@ it("explains how to start again when retained source input is protected without 
   const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
   const snapshot = RerunValuesSnapshotSchema.parse({
     source: { runId: source.runId, version: source.expectedVersion, workflow: workflow.workflowId,
-      descriptorVersion: workflow.version, contractFingerprint: h.HASH, outcome: "done", dryRun: false, priority: "interactive" },
+      descriptorVersion: workflow.version, contractFingerprint: h.HASH, outcome: "done", dryRun: false, priority: "interactive", browserMode: "headless" },
     sourceInput: { state: "unavailable", reason: "protected" },
     steps: workflow.steps.map(step => ({ key: step.key, state: "completed", nodes: [{ nodeId: step.key, state: "completed", reason: "checkpoint" }] })),
     values: [], transactions: [],

@@ -13,9 +13,9 @@ export function defaultRerunSteps(snapshot: RerunValuesSnapshot, workflow: RunSt
   return workflow.steps.map(step => step.key);
 }
 
-/** A finished run with nothing failed in it reruns in one click; anything else picks its steps first. */
+/** A finished run with nothing failed in it, members included, reruns in one click; anything else picks its steps first. */
 export function rerunsInOneClick(snapshot: RerunValuesSnapshot): boolean {
-  return snapshot.source.outcome === "done"
+  return snapshot.source.outcome === "done" && snapshot.failedMembers === undefined
     && [...snapshot.steps, ...(snapshot.children ?? []).flatMap(child => child.steps)].every(step => step.state !== "failed" && step.nodes.every(node => node.state !== "failed"));
 }
 

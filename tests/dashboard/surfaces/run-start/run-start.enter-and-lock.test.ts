@@ -43,7 +43,7 @@ const WORKFLOW: Readonly<Record<Case, RunStartWorkflow>> = { typed, pdf: servedI
 const snapshot = RerunValuesSnapshotSchema.parse({
   sourceInput: { state: "available", value: { mode: "search", emplId: "10873698", crmCheck: true, keepNonHdh: false, includeCrmDates: true } },
   source: { runId: RUN_DIALOG_RERUN_SOURCE.runId, version: RUN_DIALOG_RERUN_SOURCE.expectedVersion, workflow: typed.workflowId,
-    descriptorVersion: typed.version, contractFingerprint: h.HASH, outcome: "failed", dryRun: false, priority: "interactive" },
+    descriptorVersion: typed.version, contractFingerprint: h.HASH, outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" },
   steps: typed.steps.map(step => ({ key: step.key, state: "completed", nodes: [{ nodeId: step.key, state: "completed", reason: "checkpoint" }] })),
   values: [], transactions: [],
 });

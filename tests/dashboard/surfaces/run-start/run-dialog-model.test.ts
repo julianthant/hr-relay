@@ -40,7 +40,7 @@ function command(startPlanId: string, commandId = "c1000000-0000-4000-8000-00000
     family: "start", type: "start-run", target: { workflowId: WORKFLOW, startPlanId, expectedVersion: 4 }, payload: FINGERPRINTS });
 }
 const SNAPSHOT = RerunValuesSnapshotSchema.parse({ source: { runId: RERUN.runId, version: RERUN.expectedVersion, workflow: WORKFLOW,
-  descriptorVersion: 1, contractFingerprint: HASH, outcome: "done", dryRun: false, priority: "interactive" }, sourceInput: { state: "unavailable", reason: "protected" }, steps: [], values: [], transactions: [] });
+  descriptorVersion: 1, contractFingerprint: HASH, outcome: "done", dryRun: false, priority: "interactive", browserMode: "headless" }, sourceInput: { state: "unavailable", reason: "protected" }, steps: [], values: [], transactions: [] });
 const RERUN_PLAN_SOURCE = { runId: RERUN.runId, expectedVersion: RERUN.expectedVersion, intent: "rerun", selectedStepKeys: ["save"] };
 const REPEAT = { nodeId: "save-row", taskId: "ucpath/save-row", system: "ucpath", businessKeyDigest: HASH, writeIntentId: "d1000000-0000-4000-8000-000000000001", evidenceDigest: HASH };
 const NO_WARNING = RerunWarningWireSchema.parse({ workflowId: WORKFLOW, rerun: { source: RERUN_PLAN_SOURCE, warnings: [], warningDigest: DIGEST } });

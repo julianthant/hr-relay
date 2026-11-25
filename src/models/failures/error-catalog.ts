@@ -513,6 +513,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The original input can't be reused; use Start run.",
     EmptyParametersSchema,
   ),
+  RERUN_BROWSER_MODE_UNKNOWN: catalogEntry(
+    "The original browser mode is unknown; use Start run.",
+    EmptyParametersSchema,
+  ),
   QUEUE_READ_UNAVAILABLE: catalogEntry(
     "The queue could not load. Reload the page.",
     EmptyParametersSchema,

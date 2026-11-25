@@ -18,6 +18,7 @@ import { DelegationInvocationRequestSchema } from "../../storage/sqlite/delegati
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { RunRecord } from "../../../models/run/record.js";
+import type { BrowserPresentationMode } from "../../../models/run/envelope.js";
 import { RerunValueMappingsSchema } from "../../../models/workflow/rerun-values.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
@@ -185,6 +186,19 @@ function leastAdvancedSteps(descriptor: AnyWorkflowDescriptor, runs: readonly Re
   });
 }
 
+function acceptsExactly(schema: z.ZodType, value: JsonValue): boolean {
+  const parsed = schema.safeParse(value);
+  return parsed.success && canonicalJsonStringify(parsed.data) === canonicalJsonStringify(value);
+}
+
+/** The browser mode the run used: recorded, or for a run from before it was, the headless setting of the exact configuration it ran under. Undefined when that configuration is gone. */
+function sourceBrowserMode(repositories: AuthorityDatabase["authority"], { envelope }: RunRecord): BrowserPresentationMode | undefined {
+  if (envelope.browserMode !== undefined) return envelope.browserMode;
+  const settings = repositories.configSnapshots.get(envelope.configSnapshotId);
+  if (settings === undefined || settings.fingerprint !== envelope.configFingerprint) return undefined;
+  return settings.config.browser.headless ? "headless" : "headed";
+}
+
 /** One snapshot, only reads. This response carries no plan or repeat authorization. */
 export function readRerunValues(deps: RerunValuesDependencies, input: unknown): RerunValuesResponse {
   const request = RerunValuesRequestSchema.parse(input);
@@ -343,10 +357,14 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           nodeId: member.nodeId, state: "unfinished", reason: "not-recorded",
         })) } : { key: step.key, state, nodes: members };
       });
+      const members = repositories.runs.listChildren(run.envelope.runId);
+      const retried = new Set(members.map(({ envelope }) => envelope.retryOf));
+      const failedMembers = members.filter(({ envelope, lifecycle: settled }) => !retried.has(envelope.runId)
+        && settled.state === "terminal" && ["failed", "cancelled", "interrupted"].includes(settled.outcome)).map(({ envelope }) => envelope.runId);
       const children = childWorkflows(descriptor).map((workflow) => {
         const child = workflowDelegatedDescriptor(descriptor, workflow);
         const latest = new Map<string, RunRecord>();
-        for (const member of repositories.runs.listChildren(run.envelope.runId)) {
+        for (const member of members) {
           if (member.envelope.workflow !== workflow) continue;
           const known = latest.get(member.envelope.itemId);
           if (known === undefined || member.envelope.attempt > known.envelope.attempt) latest.set(member.envelope.itemId, member);
@@ -404,20 +422,26 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
             sourceInput = { state: "available", value: JsonValueSchema.parse(binding.sourceToIngress(canonical.data)) };
         }
       }
+      // A PDF run's input is resubmitted whole, so it must be exactly what the current workflow accepts.
+      if (sourceInput.state === "available" && descriptor.surfaces.uploadRun?.pdfInput !== undefined
+        && !(acceptsExactly(descriptor.canonicalInput, run.input.parsed.value) && acceptsExactly(descriptor.input, sourceInput.value)))
+        sourceInput = { state: "unavailable", reason: "incompatible" };
       const spreadsheets = (run.input.workbookReferences ?? []).flatMap((bound) => {
         const { request: picked, snapshot } = parseRunWorkbookReference(bound);
         return "versionId" in snapshot && snapshot.versionId !== undefined ? snapshot.worksheets.map(({ sheetId }) => ({ typeId: picked.typeId,
           libraryId: snapshot.libraryId, versionId: snapshot.versionId, sheetId,
           ...("selectedRow" in picked && picked.selectedRow?.sheetId === sheetId ? { selectedRow: picked.selectedRow } : {}) })) : [];
       });
+      const browserMode = sourceBrowserMode(repositories, run);
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
         sourceInput,
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,
           descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, outcome: lifecycle.outcome,
-          dryRun: run.envelope.dryRun, priority: run.envelope.priority, ...(run.envelope.browserMode === undefined ? {} : { browserMode: run.envelope.browserMode }) },
+          dryRun: run.envelope.dryRun, priority: run.envelope.priority, ...(browserMode === undefined ? {} : { browserMode }) },
         ...(spreadsheets.length === 0 ? {} : { spreadsheets }),
         steps, values, transactions,
         ...(children.length === 0 ? {} : { children }),
+        ...(failedMembers.length === 0 ? {} : { failedMembers }),
         ...(typed.length === 0 ? {} : { typed }),
       } });
     });

@@ -39,13 +39,13 @@ export const RerunValuesSnapshotSchema = z.strictObject({
   sourceInput: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("available"), value: JsonValueSchema }),
     z.strictObject({ state: z.literal("partial"), value: z.record(z.string(), JsonValueSchema), identityCopied: z.boolean() }),
-    z.strictObject({ state: z.literal("unavailable"), reason: z.literal("protected") }),
+    z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["protected", "incompatible"]) }),
   ]),
   source: z.strictObject({
     runId: RunIdSchema, version: PositiveIntSchema, workflow: WorkflowIdSchema,
     descriptorVersion: PositiveIntSchema, contractFingerprint: FingerprintSchema,
     outcome: z.enum(["done", "failed", "interrupted"]),
-    /** How the source ran; a rerun keeps it. */
+    /** How the source ran; a rerun keeps it, and is refused without a browser mode. */
     dryRun: z.boolean(), priority: RunPrioritySchema, browserMode: BrowserPresentationModeSchema.optional(),
   }),
   /** The spreadsheets the source run was started with, one entry per picked worksheet. */
@@ -54,6 +54,8 @@ export const RerunValuesSnapshotSchema = z.strictObject({
   steps: z.array(StepCompletionSchema),
   /** Each delegated child workflow a Start row shows: per node, or per phase of a transaction node, the least advanced child run of that workflow. */
   children: z.array(z.strictObject({ workflow: WorkflowIdSchema, steps: z.array(StepCompletionSchema) })).optional(),
+  /** The source's child runs that failed, were cancelled or were interrupted and no retry replaced, whatever the steps show. */
+  failedMembers: z.array(RunIdSchema).min(1).optional(),
   values: z.array(ValueCandidateSchema),
   /** The source run's typed facts per step, for a step it had typed (a child step's under its workflow); offered as typed by hand. */
   typed: StepOmissionsSchema.optional(),

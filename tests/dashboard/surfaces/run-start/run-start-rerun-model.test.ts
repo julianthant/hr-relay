@@ -20,7 +20,7 @@ const workflow: RunStartWorkflow = {
 const snapshot = RerunValuesSnapshotSchema.parse({
   sourceInput: { state: "available", value: { eid: "10812345" } },
   source: { runId: "10000000-0000-4000-8000-000000000001", version: 3, workflow: "rerun-proof",
-    descriptorVersion: 1, contractFingerprint: "a".repeat(64), outcome: "failed", dryRun: false, priority: "interactive" },
+    descriptorVersion: 1, contractFingerprint: "a".repeat(64), outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" },
   steps: [{ key: "read", state: "completed", nodes: [{ nodeId: "read", state: "completed", reason: "checkpoint" }] },
     { key: "finish", state: "failed", nodes: [{ nodeId: "finish", state: "failed", reason: "failure" }] }],
   values: [], transactions: [],
@@ -87,4 +87,5 @@ it("reruns in one click only when the run is done and nothing failed, children i
   assert.equal(rerunsInOneClick(variant({ source: { ...done, outcome: "failed" } })), false);
   assert.equal(rerunsInOneClick(variant({ steps: [{ ...clean.steps[0], nodes: [{ nodeId: "read", state: "failed", reason: "failure" }] }] })), false);
   assert.equal(rerunsInOneClick(variant({ children: [{ workflow: "rerun-proof", steps: [snapshot.steps[1]] }] })), false);
+  assert.equal(rerunsInOneClick(variant({ failedMembers: ["10000000-0000-4000-8000-000000000002"] })), false);
 });

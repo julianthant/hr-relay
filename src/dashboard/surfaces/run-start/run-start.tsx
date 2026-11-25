@@ -375,11 +375,11 @@ export function RunStartDialog({
         const sourceWorkflow = workflowsRef.current.find(entry => entry.workflowId === restored.source.workflow);
         if (sourceWorkflow === undefined) throw new Error("RERUN_WORKFLOW_UNAVAILABLE");
         if (sourceWorkflow.uploadRun?.pdfInput !== undefined) {
-          const pdfs = restored.sourceInput.state === "available" ? restorePdfRun(sourceWorkflow.uploadRun, restored.sourceInput.value) : null;
+          const pdfs = restored.sourceInput.state === "available" ? restorePdfRun(sourceWorkflow.uploadRun, restored.sourceInput.value, actorId) : null;
           if (pdfs === null) throw new Error(RERUN_INPUT_GONE);
           pdfInput.restore(pdfs);
         }
-        const next = launchDraft.restoreRerunDraft(draftRef.current, restored, sourceWorkflow, rerunInputText);
+        const next = launchDraft.restoreRerunDraft(restored, sourceWorkflow, rerunInputText);
         setWorkflowId(sourceWorkflow.workflowId);
         draftRef.current = next;
         setDraft(next);

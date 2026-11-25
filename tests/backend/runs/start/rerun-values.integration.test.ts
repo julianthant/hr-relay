@@ -17,6 +17,8 @@ import { buildRerunPlan, previewRerunWarnings, RerunRefusedError } from "../../.
 import { RunRecordSchema,type RunRecord } from "../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema,type RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
+import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { TransactionOutcomeSchema } from "../../../../src/rules/write-safety/write-safety-primitives.js";
 import { WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
@@ -36,6 +38,7 @@ import { ONBOARDING_INPUT_EXAMPLE, OnboardingCanonicalInput, OnboardingInput } f
 import { workbookInputBinding } from "../../../../src/backend/runs/workbooks.js";
 import { bindRunWorkbookReference } from "../../../../src/models/dashboard/workbooks.js";
 import { EmergencyContactCanonicalInput } from "../../../../src/models/workflows/emergency-contact/input.js";
+import { I9_CHECK_START_EXAMPLE } from "../../../../src/models/workflows/i9-check/start.js";
 import { OCR_INPUT_EXAMPLE } from "../../../../src/models/workflows/ocr/input.js";
 import { OCR_ROSTER_FIELDS, OCR_ROSTER_TYPE_ID } from "../../../../src/models/workflows/ocr/roster.js";
 import { InputRunSurfaceSchema } from "../../../../src/models/workflow/ingress.js";
@@ -209,7 +212,48 @@ describe("source-bound Rerun value read", () => {
     assert.equal(shown.source.dryRun, dryRun); assert.equal(shown.source.priority, "bulk"); assert.equal(shown.source.browserMode, "headed");
     assert.equal(Object.hasOwn(shown, "spreadsheets"), false);
     assert.equal(read({ browserMode: "headless" }).source.browserMode, "headless");
-    assert.equal(Object.hasOwn(read({ browserMode: undefined }).source, "browserMode"), false);
+  });
+
+  it("serves a saved I-9 Check's manual readings as they were asserted, and refuses input the current workflow would not accept", async () => {
+    const h = await harness(); const source = await failed(h);
+    const descriptor = DESCRIPTORS.find(entry => entry.id === "i9-check-start"); assert.ok(descriptor);
+    const sha256 = OCR_INPUT_EXAMPLE.document.sha256;
+    const value = { ...I9_CHECK_START_EXAMPLE, documents: I9_CHECK_START_EXAMPLE.documents.map(document => ({ ...document, reading: { kind: "manual", actorId: "local-operator",
+      assertions: [{ sourcePage: 1, extraction: { formType: "i9", source: { kind: "operator", actorId: "local-operator" }, readAt: "2026-11-01T00:00:00.000Z",
+        sourceSha256: sha256, sourcePage: 1, pageKind: "blank", record: null, pageFingerprint: "f".repeat(64) } }] } })) };
+    const { sessionId: _sessionId, completion: _completion, ...withoutSession } = source;
+    const read = (input: unknown, contractFingerprint: string) => {
+      const run = RunRecordSchema.parse({ ...withoutSession, envelope: { ...source.envelope, workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint },
+        lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() },
+        input: { ...source.input, parsed: { ...source.input.parsed, schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: input } } });
+      const result = readRerunValues({ ...rerunValuesDeps(h), descriptors: { resolve: () => descriptor },
+        reader: { read: () => ({ state: "present", disposition: "live", run }) } }, request(run));
+      assert.ok(result.state === "available", JSON.stringify(result)); return result.snapshot.sourceInput;
+    };
+    assert.deepEqual(read(value, descriptor.contractFingerprint), { state: "available", value });
+    assert.deepEqual(read(value, "c".repeat(64)), { state: "available", value }, "an older run whose input still holds");
+    assert.deepEqual(read((({ asOf, ...rest }) => ({ ...rest, asOfDate: asOf }))(value), "c".repeat(64)), { state: "unavailable", reason: "incompatible" });
+  });
+
+  it.each([true, false])("serves an older run's unrecorded browser mode from the settings it ran under, headless %s", async headless => {
+    const h = await harness(); const source = await failed(h);
+    const { browserMode: _browserMode, ...envelope } = source.envelope;
+    const { sessionId: _sessionId, completion: _completion, ...withoutSession } = source;
+    const retained = h.database.authority.configSnapshots.get(envelope.configSnapshotId); assert.ok(retained);
+    const config = { ...retained.config, browser: { ...retained.config.browser, headless } };
+    const fingerprint = sha256Hex(canonicalJsonStringify(config));
+    const snapshot = ConfigSnapshotRecordSchema.parse({ ...retained, config, fingerprint });
+    const read = (configFingerprint: string, stored: typeof snapshot | undefined) => {
+      const run = RunRecordSchema.parse({ ...withoutSession, envelope: { ...envelope, configFingerprint },
+        lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() } });
+      const authority = { ...h.database.authority, configSnapshots: { ...h.database.authority.configSnapshots, get: () => stored } };
+      const result = readRerunValues({ ...rerunValuesDeps(h), reader: { read: () => ({ state: "present", disposition: "live", run }) },
+        database: { authority, withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database) } }, request(run));
+      assert.ok(result.state === "available", JSON.stringify(result)); return result.snapshot.source;
+    };
+    assert.equal(read(fingerprint, snapshot).browserMode, headless ? "headless" : "headed");
+    assert.equal(Object.hasOwn(read(fingerprint, undefined), "browserMode"), false, "its settings are gone");
+    assert.equal(Object.hasOwn(read("d".repeat(64), snapshot), "browserMode"), false, "the stored settings are not the ones it ran under");
   });
 
   it("serves each picked worksheet of the source's saved spreadsheets, and its picked row only on its own sheet", async () => {

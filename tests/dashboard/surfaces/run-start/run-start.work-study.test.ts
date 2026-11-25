@@ -32,7 +32,7 @@ describe("served Work Study last stage", () => {
   it("restores a rerun's stored ISO effective date as MM/DD/YYYY and shows it before Start", async () => {
     const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
     const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion,
-      workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: "0".repeat(64), outcome: "done", dryRun: false, priority: "interactive" },
+      workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: "0".repeat(64), outcome: "done", dryRun: false, priority: "interactive", browserMode: "headless" },
       sourceInput: { state: "partial", value: { emplId: "10812345", effectiveDate: "2026-08-03" }, identityCopied: true },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })),
       values: [], transactions: [] });

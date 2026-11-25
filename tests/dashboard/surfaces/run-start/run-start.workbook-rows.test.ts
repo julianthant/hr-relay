@@ -153,7 +153,7 @@ it("retains the original issued envelope after an unknown result and later mode 
 it("reruns the original person, mode and saved spreadsheet, with its row and no roster", async () => {
   const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
   const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
-    descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "failed", dryRun: false, priority: "interactive" }, sourceInput: { state: "available", value: { email: "source@example.test", mode: "rehire" } },
+    descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" }, sourceInput: { state: "available", value: { email: "source@example.test", mode: "rehire" } },
     spreadsheets: [{ typeId: workflow.workbookReference?.id, libraryId: entry.libraryId, versionId: "version", sheetId: "first", selectedRow: { sheetId: "first", rowId: "row-2" } }],
     steps: descriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })), values: [], transactions: [] });
   let planned: StartPlanRequest | undefined;

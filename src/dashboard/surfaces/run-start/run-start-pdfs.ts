@@ -3,15 +3,17 @@ import { z } from "zod";
 import { OcrSourceUploadSchema } from "../../../models/ocr/review.js";
 import type { UploadRunSurface } from "../../../models/workflow/ingress.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
-import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
+import { JsonValueSchema, type JsonObject } from "../../../rules/validation/canonical-json.js";
 import type { DashboardClient } from "../../client/index.js";
 import { DashboardClientError } from "../../client/errors.js";
 import type { DashboardCommandBinding } from "../../app/dashboard-app-model.js";
 import type { RunInputPreview } from "./run-start-model.js";
 
 const PdfSourceSchema = OcrSourceUploadSchema.pick({ artifact: true, fileName: true });
-type Pdf = { source: z.infer<typeof PdfSourceSchema>; readingId: string };
-export type PdfRunDraft = { files: readonly Pdf[]; asOf: string; reviewer: string };
+/** `original` is the document as an earlier run of it was started, its reading included. */
+type Pdf = { source: z.infer<typeof PdfSourceSchema>; readingId: string; original?: JsonObject };
+/** `input` is the earlier run's whole input, when the draft was restored from one. */
+export type PdfRunDraft = { files: readonly Pdf[]; asOf: string; reviewer: string; input?: JsonObject };
 /** The operator's choice for each declared launch field of a PDF workflow, keyed by input field; a select with no entry is unpicked, a switch with no entry holds its declared initial value. */
 export type PdfRunPicks = Readonly<Record<string, string | boolean>>;
 class WrongPdfType extends Error { constructor() { super("Choose valid PDF files."); } }
@@ -49,31 +51,40 @@ export function previewPdfRun(surface: UploadRunSurface, draft: PdfRunDraft | nu
   const input = surface.pdfInput;
   if (input === undefined) throw refused();
   if (draft === null || draft.files.length === 0) return { entries: [], submissions: [], problem: null };
-  const picked = Object.fromEntries(pdfRunLaunchFields(surface).flatMap(field => field.kind === "boolean" ? [[field.field, pdfRunSwitchValue(field, picks)]]
+  const picked = Object.fromEntries(pdfRunLaunchFields(surface).flatMap(field => field.kind === "boolean" ? draft.input !== undefined && picks[field.field] === undefined ? [] : [[field.field, pdfRunSwitchValue(field, picks)]]
     : field.options.some(option => option.value === picks[field.field]) ? [[field.field, picks[field.field]]] : []));
   if ("documentField" in input) return { entries: draft.files.map((file, index) => ({ index, sourceText: file.source.fileName })), problem: null,
-    submissions: unpickedPdfRunField(surface, picks) !== null ? [] : draft.files.map(({ source, readingId }) => JsonValueSchema.parse({ ...input.fixed, ...picked, [input.documentField]: source.artifact, [input.fileNameField]: source.fileName, [input.readingIdField]: readingId })) };
+    submissions: unpickedPdfRunField(surface, picks) !== null ? [] : draft.files.map(({ source, readingId }) => JsonValueSchema.parse({ ...(draft.input ?? input.fixed), ...picked, [input.documentField]: source.artifact, [input.fileNameField]: source.fileName, [input.readingIdField]: readingId })) };
   return { entries: [{ index: 0, sourceText: draft.files.map(file => file.source.fileName).join(", ") }], problem: null,
     submissions: unpickedPdfRunField(surface, picks) !== null ? [] : [JsonValueSchema.parse({
-      ...picked, [input.documentsField]: draft.files.map(({ source, readingId }) => ({ document: source.artifact, fileName: source.fileName, readingId, reading: { kind: "subscription" } })),
+      ...draft.input, ...picked, [input.documentsField]: draft.files.map(({ source, readingId, original }) => ({ reading: { kind: "subscription" }, ...original, document: source.artifact, fileName: source.fileName, readingId })),
       [input.asOfField]: draft.asOf, [input.reviewerField]: draft.reviewer,
     })] };
 }
 
-/** The PDFs, date, reviewer and picks of an earlier run's input, each PDF under a new reading; null when they cannot be read back. */
-export function restorePdfRun(surface: UploadRunSurface, value: unknown): { draft: PdfRunDraft; picks: PdfRunPicks } | null {
-  const input = surface.pdfInput, record = z.record(z.string(), z.unknown()).safeParse(value).data;
+const JsonObjectSchema = z.record(z.string(), JsonValueSchema);
+const ManualReadingSchema = z.object({ reading: z.object({ kind: z.literal("manual"), actorId: z.string() }) });
+
+/** An earlier run's input, each PDF under a new reading ID and everything else as it was; null when it cannot be reused, as a reading another operator asserted cannot. */
+export function restorePdfRun(surface: UploadRunSurface, value: unknown, actorId: string): { draft: PdfRunDraft; picks: PdfRunPicks } | null {
+  const input = surface.pdfInput, record = JsonObjectSchema.safeParse(value).data;
   if (input === undefined || record === undefined) return null;
-  const documents = "documentField" in input ? [{ document: record[input.documentField], fileName: record[input.fileNameField] }]
-    : z.array(z.object({ document: z.unknown(), fileName: z.unknown() })).min(1).safeParse(record[input.documentsField]).data;
-  const files = z.array(PdfSourceSchema).safeParse(documents?.map(({ document, fileName }) => ({ artifact: document, fileName }))).data;
+  const documents = "documentField" in input ? [{ ...record, document: record[input.documentField], fileName: record[input.fileNameField] }]
+    : z.array(JsonObjectSchema).min(1).safeParse(record[input.documentsField]).data;
   const about = z.object({ asOf: z.string(), reviewer: z.string() }).safeParse("documentField" in input ? { asOf: "", reviewer: "" } : { asOf: record[input.asOfField], reviewer: record[input.reviewerField] }).data;
-  if (files === undefined || about === undefined) return null;
+  if (documents === undefined || about === undefined) return null;
+  const files: Pdf[] = [];
+  for (const original of documents) {
+    const source = PdfSourceSchema.safeParse({ artifact: original.document, fileName: original.fileName }).data;
+    const asserter = ManualReadingSchema.safeParse(original).data?.reading.actorId;
+    if (source === undefined || asserter !== undefined && asserter !== actorId) return null;
+    files.push({ source, readingId: crypto.randomUUID(), original });
+  }
   const picks = Object.fromEntries(pdfRunLaunchFields(surface).flatMap(({ field }) => {
     const pick = record[field];
     return typeof pick === "string" || typeof pick === "boolean" ? [[field, pick]] : [];
   }));
-  return { draft: { files: files.map(source => ({ source, readingId: crypto.randomUUID() })), ...about }, picks };
+  return { draft: { files, ...about, input: record }, picks };
 }
 
 export function usePdfRunInput(client: DashboardClient, binding: DashboardCommandBinding | undefined) {

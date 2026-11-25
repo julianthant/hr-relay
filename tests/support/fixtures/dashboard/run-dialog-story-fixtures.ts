@@ -119,7 +119,7 @@ const STEPS = ["searching", "cross-verify", "active-status"] as const;
 export function runDialogRerunSnapshot(): RerunValuesResponse {
   return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
     sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED } },
-    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome: "failed", dryRun: false, priority: "interactive" },
+    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" },
     steps: STEPS.map((key, index) => ({ key, state: index < 2 ? "completed" : "failed",
       nodes: [{ nodeId: key, state: index < 2 ? "completed" : "failed", reason: index < 2 ? "checkpoint" : "failure" }] })),
     values: [{ state: "available", sourceStepKey: "searching", nodeId: "searching", fieldPath: "emplId", label: "Employee ID", targetFieldPath: "emplId", value: RUN_DIALOG_TYPED,

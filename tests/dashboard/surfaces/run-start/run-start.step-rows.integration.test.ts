@@ -199,7 +199,7 @@ describe("Rerun draws the same rows", () => {
     sourceStepKey: "crm-dates", value, checkpoint: { attempt: 1, writtenAt: written }, provenance: { path: field, source: "live" as const, observedAt: written, originalObservedAt: written } });
   const snapshot = (extra: Partial<RerunValuesSnapshot> = {}): RerunValuesSnapshot => RerunValuesSnapshotSchema.parse({
     sourceInput: { state: "available", value: { mode: "search", emplId: h.TYPED, crmCheck: true, keepNonHdh: false, includeCrmDates: true } },
-    source: { runId: "5a000000-0000-4000-8000-000000000009", version: 3, workflow: "person-lookup", descriptorVersion: person.version, contractFingerprint: h.HASH, outcome: "done", dryRun: false, priority: "interactive" },
+    source: { runId: "5a000000-0000-4000-8000-000000000009", version: 3, workflow: "person-lookup", descriptorVersion: person.version, contractFingerprint: h.HASH, outcome: "done", dryRun: false, priority: "interactive", browserMode: "headless" },
     steps: [{ key: "searching", state: "completed", nodes: [node("searching")] }, { key: "cross-verify", state: "unfinished", nodes: [node("cross-verify", "step-omitted", "unfinished")] },
       { key: "active-status", state: "completed", nodes: [node("active-status")] }, { key: "crm-dates", state: "completed", nodes: [node("crm-dates")] }],
     values: [candidate("employmentDate", "2020-01-15"), candidate("oathDate", "2020-02-20")], transactions: [], ...extra });
