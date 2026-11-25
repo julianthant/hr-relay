@@ -713,6 +713,7 @@ describe("source-bound Rerun value read", () => {
     const values = readRerunValues(rerunValuesDeps(h), request(source)); assert.ok(values.state === "available", JSON.stringify(values));
     assert.equal(values.snapshot.source.outcome, "cancelled");
     assert.equal(values.snapshot.transactions[0]?.disposition, "committed");
+    assert.equal(values.snapshot.transactions[0]?.filedBySource, true);
     const selectedStepKeys = h.descriptor.timeline.map(step => step.key);
     const preview = previewRerunWarnings(h.database.authority, h.descriptor, { ...request(source), intent: "rerun", selectedStepKeys });
     assert.deepEqual(preview.warnings.map(warning => warning.writeIntentId), receipts.map(intent => intent.writeIntentId));
@@ -780,6 +781,7 @@ describe("source-bound Rerun value read", () => {
     const result = readRerunValues(rerunValuesDeps(h), request(run)); assert.ok(result.state === "available", JSON.stringify(result));
     assert.ok(result.snapshot.transactions.length > 0);
     assert.equal(result.snapshot.transactions[0]?.disposition, disposition);
+    assert.equal(result.snapshot.transactions[0]?.filedBySource, disposition === "committed");
     assert.equal(/acknowledgment|confirmationCommandId|businessKeyDigest/u.test(JSON.stringify(result)), false);
     assert.equal(snapshot(h, run), before);
   });

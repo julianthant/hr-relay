@@ -63,6 +63,8 @@ export const RerunValuesSnapshotSchema = z.strictObject({
     stepKey: z.string().min(1), nodeId: NodeIdSchema, taskId: TaskIdSchema,
     writeIntentId: WriteIntentIdSchema, evidenceDigest: FingerprintSchema,
     disposition: z.enum(["committed", "observed-present"]),
+    /** True only for the source run's own committed receipt; prior observations and other runs' linked proof are false. */
+    filedBySource: z.boolean(),
   })),
 });
 export type RerunValuesSnapshot = z.infer<typeof RerunValuesSnapshotSchema>;

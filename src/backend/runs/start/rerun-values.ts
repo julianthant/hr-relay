@@ -305,7 +305,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         const proof = validateRerunWriteProof(node.commit.uses, intent, schemaReader);
         if (containsProtected(valueFreeProtectedData(proof, bindings), privateValues)) refuse("source-invalid");
         transactions.push({ stepKey: step.key, nodeId: node.id, taskId: intent.taskId, writeIntentId: intent.writeIntentId,
-          evidenceDigest: FingerprintSchema.parse(repeatEvidenceDigest(intent, bindings)), disposition: intent.status });
+          evidenceDigest: FingerprintSchema.parse(repeatEvidenceDigest(intent, bindings)), disposition: intent.status, filedBySource: true });
         const fact = facts.get(node.id);
         if (fact?.state === "unfinished" && fact.reason === "not-recorded") facts.set(node.id, { nodeId: node.id, state: "completed", reason: "settled-transaction" });
       }
@@ -323,7 +323,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           if (containsProtected(valueFreeProtectedData(proof, bindings), privateValues)) refuse("source-invalid");
           if (!transactions.some((entry) => entry.nodeId === node.id && entry.writeIntentId === intent.writeIntentId)) {
             transactions.push({ stepKey: step.key, nodeId: node.id, taskId: intent.taskId, writeIntentId: intent.writeIntentId,
-              evidenceDigest: FingerprintSchema.parse(repeatEvidenceDigest(intent, bindings)), disposition: intent.status });
+              evidenceDigest: FingerprintSchema.parse(repeatEvidenceDigest(intent, bindings)), disposition: intent.status, filedBySource: false });
           }
         }
       }

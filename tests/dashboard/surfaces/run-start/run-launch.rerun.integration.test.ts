@@ -96,6 +96,25 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       assert.match(receipts(), /File transaction.*Not run again/u);
     } finally { await cleanup(); await h.dispose(); }
   });
+  it("leaves a filing the source only found already present out of its receipts", async () => {
+    const h = await launchHarness("reject-active", undefined, { descriptor: launchDescriptor("reject-active", { confirmAfterFiling: true }),
+      protectedSecrets: protectedSecretSource() }, profileFixtures.create);
+    try {
+      const queued = h.start(h.proposal()); h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
+      let reads = 0;
+      h.world.onRead = () => { reads += 1; if (reads !== 3) return;
+        const run = h.fresh(queued); h.lifecycle.transition({ commandId: h.ids.uuid(), runId: run.envelope.runId, expectedVersion: run.version,
+          lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() } });
+        throw new Error("fixture: the cancel stops Confirm filing"); };
+      await h.execute(queued); delete h.world.onRead;
+      const source = h.fresh(queued);
+      assert.ok(source.lifecycle.state === "terminal" && source.lifecycle.outcome === "cancelled", JSON.stringify(source.lifecycle));
+      assert.deepEqual(h.database.authority.writeIntents.listByRun(source.envelope.runId).filter(intent => intent.status === "committed"), []);
+      await mount(h, source);
+      await press("Continue");
+      assert.equal(document.querySelector('[aria-label="Already submitted by this run"]'), null);
+    } finally { await cleanup(); await h.dispose(); }
+  });
   it("submits an earlier source as a new current run with repeat consent and fresh evidence", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
     h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));

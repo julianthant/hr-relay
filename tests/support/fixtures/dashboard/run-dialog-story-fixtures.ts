@@ -149,7 +149,7 @@ export function runDialogWriteRerunSnapshot(): RerunValuesResponse {
     source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome: "cancelled", dryRun: false, priority: "interactive", browserMode: "headless" },
     steps: WRITE_STEPS.map(([key], index) => { const state = index < 2 ? "completed" : "unfinished";
       return { key, state, nodes: [{ nodeId: key, state, reason: key === "submit" ? "settled-transaction" : index < 2 ? "checkpoint" : "incomplete-execution" }] }; }),
-    values: [], transactions: [{ stepKey: "submit", ...WRITE_RECEIPT, disposition: "committed" }],
+    values: [], transactions: [{ stepKey: "submit", ...WRITE_RECEIPT, disposition: "committed", filedBySource: true }],
   } });
 }
 
