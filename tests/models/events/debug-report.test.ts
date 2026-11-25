@@ -18,6 +18,8 @@ describe("metadata-only failure reports", () => {
       assert.equal(debugFailureOutcomes(body, 200, route).length, 0);
       assert.equal(debugFailureOutcome(body, 200, "/api/v1/settings")?.reason, "operation-failed");
     }
+    const expiredWithoutReport = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_EXPIRED", reason: "Readiness expired." };
+    assert.deepEqual(debugFailureOutcome(expiredWithoutReport, 200, route), { code: "PREFLIGHT_EVIDENCE_EXPIRED", reason: "operation-failed" });
     assert.deepEqual(debugFailureOutcome({ state: "unavailable", code: "PREFLIGHT_READ_FAILED", reason: "Preflight report reader is unavailable." }, 200, route),
       { code: "PREFLIGHT_READ_FAILED", reason: "operation-failed" });
     for (const [body, status] of [[expired, 503], [{ ...expired, lastCompleted: {} }, 200],
@@ -31,7 +33,9 @@ describe("metadata-only failure reports", () => {
     assert.equal(debugFailureOutcome({ state: "unknown" })?.reason, "outcome-unknown");
     assert.equal(debugFailureOutcome({ state: "applied" }), undefined);
     assert.equal(debugFailureOutcome({ state: "error", code: "PRIVATE_CODE" })?.code, "DASHBOARD_READ_FAILED");
-    assert.equal(debugFailureOutcome("PRIVATE_BODY", 503)?.reason, "operation-failed");
+    assert.equal(debugFailureOutcome("PRIVATE_BODY", 503)?.reason, "response-contract-invalid");
+    assert.deepEqual(debugFailureOutcome({ detail: "PRIVATE_DETAIL" }, 503, "/api/v1/workbooks"), { code: "DASHBOARD_READ_FAILED", reason: "response-contract-invalid" });
+    assert.deepEqual(debugFailureOutcome({ state: "error", code: "STORAGE_SNAPSHOT_CHANGED", message: "busy", retryable: true }, 503, "/api/v1/workbooks")?.reason, "operation-failed");
   });
   it("keeps request values out of diagnostic routes", () => {
     assert.equal(diagnosticRequestRoute("/api/v1/runs/PRIVATE_NAME/ocr?eid=PRIVATE_EID#token=PRIVATE_TOKEN"), "/api/v1/runs");

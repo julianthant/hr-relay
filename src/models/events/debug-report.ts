@@ -2,6 +2,7 @@ import { z } from "zod";
 import { RunIdSchema } from "../../rules/identity/ids.js";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { PreflightReadinessWireSchema } from "../preflight/preflight-contract.js";
+import { WireErrorSchema } from "../dashboard/primitives.js";
 import { clientCauseRowAccepted } from "../failures/error-origins.js";
 import { BulkRunCommandResponseSchema, CommandRejectionCodeSchema, CommandResultSchema } from "../../rules/commands/commands.js";
 export const DashboardErrorReportSchema = z.strictObject({
@@ -31,16 +32,18 @@ const EXPECTED_READINESS_CODES = new Set(["PREFLIGHT_EVIDENCE_EXPIRED", "PREFLIG
 
 export function debugFailureOutcome(value: unknown, status = 200, route?: string): { code: string; reason: string } | undefined {
   const readiness = status === 200 && route === "/api/v1/preflight" ? PreflightReadinessWireSchema.safeParse(value) : undefined;
-  if (readiness?.success && readiness.data.state === "unavailable" && EXPECTED_READINESS_CODES.has(readiness.data.code ?? "")) return undefined;
+  if (readiness?.success && readiness.data.state === "unavailable" && EXPECTED_READINESS_CODES.has(readiness.data.code ?? "")
+    && (readiness.data.code !== "PREFLIGHT_EVIDENCE_EXPIRED" || readiness.data.lastCompleted !== undefined)) return undefined;
   if (z.object({ state: z.literal("signed-out"), remoteRevocation: z.literal("unconfirmed") }).safeParse(value).success) {
     return { code: "CHATGPT_AUTH_UNAVAILABLE", reason: "remote-revocation-unconfirmed" };
   }
   const parsed = FailureOutcomeSchema.safeParse(value);
   if (!parsed.success && status < 400) return undefined;
   const state = parsed.success ? parsed.data.state : "error";
-  const code = parsed.success && parsed.data.code !== undefined
-    && (Object.hasOwn(ERROR_CATALOG, parsed.data.code) || TRANSPORT_CODES.has(parsed.data.code) || CommandRejectionCodeSchema.safeParse(parsed.data.code).success)
-    ? parsed.data.code : state === "conflict" ? "COMMAND_CONFLICT" : state === "rejected" || state === "refused" ? "COMMAND_REFUSED" : "DASHBOARD_READ_FAILED";
+  const own = parsed.success ? parsed.data.code : undefined;
+  const known = own !== undefined && (Object.hasOwn(ERROR_CATALOG, own) || TRANSPORT_CODES.has(own) || CommandRejectionCodeSchema.safeParse(own).success);
+  const code = known ? own : state === "conflict" ? "COMMAND_CONFLICT" : state === "rejected" || state === "refused" ? "COMMAND_REFUSED" : "DASHBOARD_READ_FAILED";
+  if (!known && code === "DASHBOARD_READ_FAILED" && status >= 400 && !WireErrorSchema.safeParse(value).success) return { code, reason: "response-contract-invalid" };
   const uncertain = state === "unknown" || state === "uncertain";
   return { code, reason: uncertain ? "outcome-unknown" : state === "refused" || state === "rejected" || state === "conflict" ? "operation-refused" : "operation-failed" };
 }
