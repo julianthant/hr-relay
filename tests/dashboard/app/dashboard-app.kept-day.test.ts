@@ -49,7 +49,7 @@ it("Back to a kept day with its run open shows both at once, marked Updating, th
   const queueColumn = () => host.querySelector(".dashboard-queue-column");
   const runRow = () => host.querySelector(`[data-demo-row-id="${run.runId}"]`);
   const runTitle = () => host.querySelector('[aria-label="Selected run logs"] h2')?.textContent;
-  const updating = () => [...host.querySelectorAll('[aria-label="Log date controls"] [role="status"]')].find(node => node.textContent === "Updating");
+  const updating = () => [...host.querySelectorAll('[aria-label="Queue header"] [role="status"]')].find(node => node.textContent === "Updating");
   await vi.waitFor(() => assert.equal(runTitle(), run.title));
 
   await forward(`/?day=${otherDay}`);

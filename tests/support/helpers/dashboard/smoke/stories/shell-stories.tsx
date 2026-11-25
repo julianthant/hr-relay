@@ -4,7 +4,7 @@ import { useEffect, useState, type ComponentProps } from "react";
 import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
 import { EmptyState, FailureNotice, Notice, Panel, PanelBody } from "../../../../../../src/dashboard/ds/ui.js";
 import { QueueSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
-import { PauseAllQuitControls } from "../../../../../../src/dashboard/surfaces/queue/queue-toolbar.js";
+import { QuitDialog } from "../../../../../../src/dashboard/surfaces/queue/queue-toolbar.js";
 import { HubShell } from "../../../../../../src/dashboard/surfaces/shell/hub-shell.js";
 import { StartupLoading } from "../../../../../../src/dashboard/surfaces/shell/startup-loading.js";
 import { WorkflowRail } from "../../../../../../src/dashboard/surfaces/shell/workflow-rail.js";
@@ -97,19 +97,12 @@ const SEARCH_ANSWER = {
   "no-match": searchStory("Search that matches nothing", "results", async page => { await opening(page); await page.getByRole("combobox", { name: "Search Relay" }).fill("zzzz"); }, 'text="No matches"'),
 } satisfies Record<SearchAnswer, Story>;
 
-type PauseAllState = ComponentProps<typeof PauseAllQuitControls>["state"];
-const pauseAll = (title: string, state: PauseAllState): Story => ({ title, render: () => <StoryFrame><div className="flex p-4"><PauseAllQuitControls state={state} activeCount={2} /></div></StoryFrame> });
-const PAUSE_ALL = {
-  ready: pauseAll("Pause all, runs going", "ready"), pausing: pauseAll("Pausing every run", "pausing"),
-  paused: pauseAll("Every run paused", "paused"), unavailable: pauseAll("Pause all that cannot be reached", "unavailable"),
-} satisfies Record<PauseAllState, Story>;
-
 type ShellDialog = "quit" | "logout";
 const DIALOG = {
   quit: { title: "Asked to pause everything and quit", ready: '[role="dialog"]',
-    render: () => <StoryFrame><PauseAllQuitControls state="ready" activeCount={2} quitRequested onQuitDismiss={noop} onPauseAndQuit={noop} /></StoryFrame> },
+    render: () => <StoryFrame><QuitDialog requested canQuit onDismiss={noop} onQuit={noop} /></StoryFrame> },
   logout: { title: "Asked to log out", slowFetch: { region: "#hub-shell-assistant" }, ready: '[role="dialog"]', render: () => <StoryFrame><DashboardClientProvider client={CLIENT}>
     <HubShell settingsOpen={false} logoutOpen onLogoutOpenChange={noop} onLogout={noop} /></DashboardClientProvider></StoryFrame> },
 } satisfies Record<ShellDialog, Story>;
 
-export const SHELL_STORIES = defineSurface("shell", { startup: STARTUP, banner: BANNER, queue: QUEUE_SLOT, rail: RAIL, filter: SEARCH_FILTER, search: SEARCH_ANSWER, "pause-all": PAUSE_ALL, dialog: DIALOG });
+export const SHELL_STORIES = defineSurface("shell", { startup: STARTUP, banner: BANNER, queue: QUEUE_SLOT, rail: RAIL, filter: SEARCH_FILTER, search: SEARCH_ANSWER, dialog: DIALOG });

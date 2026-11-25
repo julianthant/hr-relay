@@ -32,7 +32,6 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start borde
 .launch-dialog > footer > span:first-child,
 .launch-dialog > footer > span:first-child span { @apply font-ui text-[12px] leading-4 text-ui-muted; }
 
-.launch-design .launch-workflow-rail { @apply w-48 bg-ui-table; }
 /* The stage buttons' own 8px inset lands their markers on the content's 20px edge. */
 .launch-design .launch-stagebar {
   @apply flex h-12 shrink-0 items-center gap-1 border-b border-ui-stroke px-3;
@@ -78,22 +77,8 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start borde
 .launch-dialog .ds-choice-picker > button { @apply font-normal; }
 
 
-.launch-dialog aside.launch-workflow-rail { @apply pb-5; }
-.launch-dialog aside.launch-workflow-rail > div:first-child { @apply text-caption font-medium; }
-.launch-dialog aside.launch-workflow-rail > h3 { @apply mt-4; }
-.launch-dialog aside.launch-workflow-rail > h3 + p { @apply mt-4; }
-.launch-dialog aside.launch-workflow-rail > dl { @apply mt-6; }
-.launch-dialog aside.launch-workflow-rail > dl > div:not(:last-child) { @apply mb-3; }
-.launch-dialog aside.launch-workflow-rail dd { @apply mt-0.5; }
-.launch-dialog aside.launch-workflow-rail > p:last-child { @apply pt-3 text-ui-primary; }
 
 
-.launch-dialog .launch-picker { background: var(--ds-surface-1); }
-.launch-dialog .launch-picker-search { @apply shrink-0 p-3; }
-.launch-dialog .launch-picker .workflow-rail { @apply p-2 pt-0; }
-.launch-dialog .launch-picker .workflow-rail-groups { @apply gap-4 pb-2; }
-.launch-dialog .launch-picker .workflow-rail h3 { @apply text-caption font-medium text-ui-muted; }
-.launch-dialog .launch-picker .workflow-rail button { @apply h-8 rounded-lg pl-[30px] font-normal; }
 
 .required-capture-row { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-loose); padding: var(--ds-space-cozy) var(--ds-space-loose); }
 
