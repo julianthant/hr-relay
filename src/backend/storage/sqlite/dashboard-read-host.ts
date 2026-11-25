@@ -48,6 +48,9 @@ export interface LaneReadContext {
   retain(resource: Readonly<{ close(): void; inTransaction(): boolean }>): void;
 }
 
+/** What a read's warm step sees at lane boot: no request, so no process facts and no position to report. */
+export type LaneWarmContext = Pick<LaneReadContext, "start" | "native" | "history" | "nowMs" | "retain">;
+
 export interface LaneReadDefinition<Args, Result> {
   readonly id: string;
   readonly module: string;
@@ -61,6 +64,8 @@ export interface LaneReadDefinition<Args, Result> {
   readonly cacheMs: number | undefined;
   readonly args: z.ZodType<Args>;
   run(context: LaneReadContext, args: Args): Result;
+  /** Runs once in its lane's read snapshot before the lane reports ready; a throw fails the lane's boot. */
+  readonly warm: ((context: LaneWarmContext) => void) | undefined;
 }
 
 const definitions = new Map<string, LaneReadDefinition<unknown, unknown>>();
@@ -70,12 +75,13 @@ const laneReadId = (module: string, name: string) => `${module}#${name}`;
 export function defineLaneRead<Args, Result>(module: string, name: string, spec: Readonly<{
   lane: ReadLaneName; priority: "interactive" | "background"; args: z.ZodType<Args>; tables?: readonly AuthorityTableName[];
   timeline?: boolean; processFacts?: boolean; cacheMs?: number; run(context: LaneReadContext, args: Args): Result;
+  warm?(context: LaneWarmContext): void;
 }>): LaneReadDefinition<Args, Result> {
   const id = laneReadId(module, name);
   if (definitions.has(id)) throw new Error(`read-lane-read-duplicate: ${name}`);
   const definition: LaneReadDefinition<Args, Result> = Object.freeze({ id, module, name, lane: spec.lane, priority: spec.priority,
     tables: Object.freeze([...spec.tables ?? []]), timeline: spec.timeline ?? false, processFacts: spec.processFacts ?? false,
-    cacheMs: spec.cacheMs, args: spec.args, run: spec.run });
+    cacheMs: spec.cacheMs, args: spec.args, run: spec.run, warm: spec.warm });
   definitions.set(id, definition);
   return definition;
 }
@@ -676,6 +682,18 @@ function runReadLane(port: MessagePort, data: unknown) {
     // A malformed request or a failed close leaves the lane in an unknown state; the host restarts it from its exit.
     try { handle(input); } catch { process.exit(LANE_FAILURE_EXIT_CODE); }
   });
+  // A read that keeps lane state builds it before ready, so no request waits on it; a failed warm exits through the host's restart.
+  try {
+    for (const definition of definitions.values()) {
+      const warm = definition.warm;
+      if (warm === undefined || definition.lane !== start.lane) continue;
+      history.withAuthorityReadSnapshot(() => {
+        lane.assertSource();
+        warm({ start, native, history, nowMs: systemClock.nowMs(), retain: resource => { resources.push(resource); } });
+      });
+    }
+  } catch (error) { close(); throw error; }
+  if (leftInTransaction()) process.exit(LANE_TRANSACTION_EXIT_CODE);
   const ready: LaneReply = { kind: "ready" };
   port.postMessage(ready);
 }
