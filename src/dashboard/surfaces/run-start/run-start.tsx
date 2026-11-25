@@ -7,7 +7,7 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../m
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import "./launch-presentation.css";
-import { RunOptionsLayout } from "./run-launch-layout.js";
+import { RunChoice, RunOptionsLayout } from "./run-launch-layout.js";
 import { RunWorkflowPicker } from "./run-start-picker.js";
 import { RunChecksStage } from "./run-checks.js";
 import { FailureNotice } from "../../ds/primitives/failure-notice.js";
@@ -25,7 +25,7 @@ import { runDialogControls, useRunDialogMachine, visibleRunDialog, type Authorit
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Check, Keyboard, ListChecks, Play } from "lucide-react";
 import { cn } from "../../lib/utils.js";
-import { useToasts, BareButton, Badge, Banner, Button, Checkbox, Switch, Dialog, SegmentedChoice, DialogBody, DialogContent, DialogFooter, EmptyState, Field, Input, KeyValueList, MetaLine, Table, THead, TBody, TR, TH, TD, Skeleton, Well, dsFg, dsFocus, dsIcon, dsText } from "../../ds/ui.js";
+import { useToasts, BareButton, Badge, Banner, Button, Checkbox, Switch, Dialog, DialogBody, DialogContent, DialogFooter, EmptyState, Field, Input, KeyValueList, MetaLine, Table, THead, TBody, TR, TH, TD, Skeleton, Well, dsFg, dsFocus, dsIcon, dsText } from "../../ds/ui.js";
 
 import { runStartRefusalToast } from "../../app/commands/command-result.js";
 import { type InputRunSurface, type UploadRunSurface } from "../../../models/workflow/ingress.js";
@@ -604,7 +604,7 @@ export function RunStartDialog({
   }));
 
 
-  const picker = <RunWorkflowPicker catalog={catalog} value={workflowId} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />;
+  const picker = <RunWorkflowPicker catalog={catalog} value={workflowId} locked={sending} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />;
   const selectedLaunch = catalog.find(entry => entry.id === workflowId)?.launch;
   const launchRefusal = selectedLaunch?.state === 'unavailable' ? selectedLaunch.reason : undefined;
 
@@ -625,7 +625,7 @@ export function RunStartDialog({
   const referenceControls = (types: readonly string[], withCheck: boolean) => {
     const check = withCheck && workbookCheck !== undefined ? { sheets: checkSheets, ...checkHandlers } : undefined;
     if (types.length === 0) return check === undefined ? undefined : library.catalogLoading ? referenceLoading("Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.")
-      : <RunSpreadsheets check={check} busy={checkBusy} catalogError={library.catalogError} onRefresh={() => void library.adapter.refreshCatalog()} />;
+      : <RunSpreadsheets check={check} busy={checkBusy} locked={sending} catalogError={library.catalogError} onRefresh={() => void library.adapter.refreshCatalog()} />;
     if (library.catalogLoading) return referenceLoading(`Spreadsheets this run looks people up in. Needs ${requiredLabelOf(selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [])}.`);
     return <>{types.map(typeId => {
       const draft = referenceDrafts[typeId];
@@ -633,7 +633,7 @@ export function RunStartDialog({
       const requiredFields = selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [];
       const sheets = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed).map(entry => ({ libraryId: entry.libraryId, name: entry.name, pinned: entry.state.pinned,
         versions: entry.state.versions.map((version, index) => ({ id: version.id, savedAt: version.savedAt, name: version.name || `v${entry.state.versions.length - index}` })), currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
-      return <RunSpreadsheets key={typeId} check={check !== undefined && checkSheets.length > 0 ? check : undefined} busy={library.catalogRefreshing || library.compatibility === undefined} catalogError={library.catalogError}
+      return <RunSpreadsheets key={typeId} check={check !== undefined && checkSheets.length > 0 ? check : undefined} busy={library.catalogRefreshing || library.compatibility === undefined} locked={sending} catalogError={library.catalogError}
         onRefresh={() => void library.adapter.refreshCatalog()}
         reference={{ requiredLabel: requiredLabelOf(requiredFields), sheets, chosenLibraryId: draft?.libraryId, chosenVersionId: draft?.versionId, chosenSheetId: selectedReferences[typeId]?.sheetId ?? '',
           worksheets: sheetOptions.map(source => ({ sheetId: source.sheetId, sheetName: source.sheetName })), worksheetsState: versionSources.state, worksheetsError: versionSources.error,
@@ -651,7 +651,7 @@ export function RunStartDialog({
   const notice: { sentence: string; action?: { label: string; onClick: () => void; icon?: ReactNode } } | null = planRefusal !== null
     ? { sentence: planRefusal.sentence, ...(planRefusal.goesToQueue ? { action: { label: "Go to queue", icon: <ListChecks aria-hidden className={dsIcon.md} />, onClick: () => closeAndReset(false) } } : {}) }
     : currentStage === "Input" && pdfSurface !== undefined && pdfInput.error !== null
-    ? { sentence: pdfInput.error, ...(pdfInput.retryable ? { action: { label: "Retry", onClick: pdfInput.retry } } : {}) }
+    ? { sentence: pdfInput.error, ...(pdfInput.retryable && !sending ? { action: { label: "Retry", onClick: pdfInput.retry } } : {}) }
     : null;
   const gates: LaunchGates = {
     next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null, optionsBlocked: optionsBlockedReason !== null,
@@ -686,18 +686,19 @@ export function RunStartDialog({
     }),
     ...launchFields.flatMap(field => { if (field.kind === "boolean") return []; const option = field.options.find(candidate => candidate.value === pdfInput.picks[field.field]); return option === undefined ? [] : [{ key: field.label, value: option.label }]; }),
   ];
-  // Enter continues or starts; Shift+Enter keeps its newline. Buttons, links and open pickers keep Enter for themselves.
+  // Enter continues from a text field; it starts a run only when no control has focus. Every other control keeps Enter for itself, and Shift+Enter keeps its newline.
   const enterRef = useRef<(() => void) | null>(null);
   enterRef.current = controls.enter === null ? null : () => press(controls.enter);
+  const launchesRef = useRef(false);
+  launchesRef.current = onLastStage;
   useEffect(() => {
     if (!open || hidden) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Enter" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented || event.isComposing) return;
+      if (event.key !== "Enter" || event.repeat || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented || event.isComposing) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target === null || (target !== document.body && target.closest('[role="dialog"]') === null)) return;
-      // A focused control, a manual-values editor or an open picker keeps Enter for itself, so a switch or a typed value never launches a run.
-      if (target.closest('[aria-labelledby="run-start-steps"]') !== null) return;
-      if (target.closest('a, button, [role="checkbox"], [role="switch"], [role="combobox"], [role="listbox"], [role="menu"], [role="option"]')) return;
+      if (launchesRef.current && target !== document.body && !target.matches(".launch-dialog")) return;
+      if (target.closest('a, button, select, input[type="radio"], input[type="checkbox"], [role="checkbox"], [role="switch"], [role="combobox"], [role="listbox"], [role="menu"], [role="option"]')) return;
       if (enterRef.current === null) return;
       event.preventDefault();
       enterRef.current();
@@ -759,7 +760,7 @@ export function RunStartDialog({
                 <section aria-label={isRerun ? "Values" : "Input"} className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
                   {pdfSurface !== undefined ? <>
                     <WorkflowPdfInput files={pdfInput.draft?.files.map(file => ({ name: file.source.fileName, size: file.source.artifact.bytes })) ?? []}
-                      busy={busy || pdfInput.loading} onChoose={files => { void pdfInput.choose(pdfSurface, files); }} onRemove={pdfInput.remove} onClear={pdfInput.clear} />
+                      busy={busy || sending || pdfInput.loading} onChoose={files => { void pdfInput.choose(pdfSurface, files); }} onRemove={pdfInput.remove} onClear={pdfInput.clear} />
                   </> : inputRun.state === "present" ? (
                     !declaredInput && isRerun && rerunInputText === undefined && snapshot?.values.some(candidate => candidate.state === "available" && candidate.targetStepKey === undefined && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) ? null : <TypedInput
                       surface={inputRun.surface}
@@ -770,18 +771,19 @@ export function RunStartDialog({
                       inputRef={typedInputRef}
                       autoFocus={!isRerun}
                       draft={typedValues}
+                      locked={sending}
                       rowInput={rowCapability === undefined ? undefined : <>
                         {referenceControls([rowCapability.typeId], true)}
                         {library.catalogRefreshing && <p role="status">Refreshing reference data. Row selection is disabled.</p>}
                         {workbookRows.state === "loading" && <div role="status" aria-label="Loading saved rows"><Skeleton className="h-9 w-full" /></div>}
                         {workbookRows.state === "error" && <Banner tone="danger" title="Saved rows unavailable">{workbookRows.error}<Button variant="secondary" onClick={() => void library.adapter.refreshCatalog()}>Refresh reference data</Button></Banner>}
-                        {!rowSelectionFresh && <Banner tone="warning" title="Previous row selection"><p>Selected rows are out of date.</p><Button variant="secondary" onClick={() => update(launchDraft.clearWorkbookRows)}>Clear previous row selection</Button></Banner>}
+                        {!rowSelectionFresh && <Banner tone="warning" title="Previous row selection"><p>Selected rows are out of date.</p><Button variant="secondary" disabled={sending} onClick={() => update(launchDraft.clearWorkbookRows)}>Clear previous row selection</Button></Banner>}
                         {workbookRows.state === "ready" && rowChoices.length === 0 && <EmptyState title="No saved data rows" description="This version has only headers." />}
                         {rowChoices.length > 0 && <Table label="Saved spreadsheet rows"><THead><TR><TH>Select</TH><TH>Source row</TH><TH>Lookup key</TH></TR></THead><TBody>{rowChoices.map(choice => {
                           const selected = selectedWorkbookRows?.choices.some(row => row.sheetId === choice.sheetId && row.rowId === choice.rowId) ?? false;
                           const label = `${choice.sourceLabel}: ${choice.key.state === "available" ? choice.key.value : WORKBOOK_ROW_UNAVAILABLE_TEXT[choice.key.reason]}`;
                           return <TR key={JSON.stringify([choice.sheetId, choice.rowId])} selected={selected}><TD><Checkbox label={<span className="sr-only">{`Select ${label}`}</span>} checked={selected}
-                            disabled={workbookRows.state !== "ready" || !rowSelectionFresh || choice.key.state === "unavailable" || recovery !== null}
+                            disabled={workbookRows.state !== "ready" || !rowSelectionFresh || choice.key.state === "unavailable" || recovery !== null || sending}
                             onCheckedChange={checked => update(current => launchDraft.selectWorkbookRows(current, rowSource,
                               resolveWorkbookRowSelection(workbookRows.choices, checked === true ? [...(current.selectedWorkbookRows?.choices ?? []), choice] : (current.selectedWorkbookRows?.choices ?? []).filter(row => row.sheetId !== choice.sheetId || row.rowId !== choice.rowId))))} /></TD>
                             <TD>{choice.sourceLabel}</TD><TD className="break-all">{choice.key.state === "available" ? choice.key.value : WORKBOOK_ROW_UNAVAILABLE_TEXT[choice.key.reason]}</TD></TR>;
@@ -808,10 +810,10 @@ export function RunStartDialog({
                         if (candidate.targetStepKey !== undefined) return null;
                         const label = candidate.label;
                         return <div key={`${candidate.nodeId}:${candidate.fieldPath}`} className="min-w-0">
-                          {candidate.state === "available" && <Field label={label}><Input className="h-9" value={valueDrafts[index]?.text ?? ""} onChange={event => update(current => launchDraft.changeValueText(current, index, event.target.value))} /></Field>}
+                          {candidate.state === "available" && <Field label={label}><Input className="h-9" disabled={sending} value={valueDrafts[index]?.text ?? ""} onChange={event => update(current => launchDraft.changeValueText(current, index, event.target.value))} /></Field>}
                           {!(candidate.state === "available" && valueDrafts[index]?.copied && inputRun.state === "present" && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) && <div className="mt-[var(--ds-space-tight)] flex flex-wrap items-baseline justify-between gap-[var(--ds-space-base)] text-caption">
                             <span className="min-w-0 break-words text-[color:var(--ds-fg-muted)]">{candidate.state === "available" ? `Saved ${candidateText(candidate.value)}` : RERUN_VALUE_UNAVAILABLE_TEXT[candidate.reason]}</span>
-                            {candidate.state === "available" && <Button size="sm" variant="outline" aria-label={`Copy ${label}`} onClick={() => update(current => ({ ...current, valueDrafts: { ...current.valueDrafts, [index]: { text: candidateText(candidate.value), copied: true } } }))}>Use previous</Button>}
+                            {candidate.state === "available" && <Button size="sm" variant="outline" disabled={sending} aria-label={`Copy ${label}`} onClick={() => update(current => ({ ...current, valueDrafts: { ...current.valueDrafts, [index]: { text: candidateText(candidate.value), copied: true } } }))}>Use previous</Button>}
                           </div>}
                         </div>;
                       })}
@@ -843,7 +845,7 @@ export function RunStartDialog({
                     {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel disabled={sending} label="Dry run" checked={dryRun} onCheckedChange={next => update(current => launchDraft.changeDryRun(current, next === true))} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     {launchFields.map(field => field.kind === "boolean"
                       ? <RunListRow key={field.field} title={field.label} {...(field.description === undefined ? {} : { description: field.description })}><Switch hideLabel disabled={sending} label={field.label} checked={pdfRunSwitchValue(field, pdfInput.picks)} onCheckedChange={next => pdfInput.pick(field.field, next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>
-                      : <RunListRow key={field.field} title={field.label}><div className="w-[var(--ds-w-body-control)]"><SegmentedChoice hideLabel label={field.label} value={pdfRunSelectValue(field, pdfInput.picks)} onChange={value => { if (!sending) pdfInput.pick(field.field, value); }} options={field.options} /></div></RunListRow>)}
+                      : <RunListRow key={field.field} title={field.label}><RunChoice locked={sending} label={field.label} value={pdfRunSelectValue(field, pdfInput.picks)} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></RunListRow>)}
                   </>} />
               )}
 

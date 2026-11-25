@@ -13,8 +13,8 @@ const CATEGORY_ICON: Readonly<Record<string, LucideIcon>> = {
 };
 const categoryIcon = (label: string): LucideIcon => CATEGORY_ICON[label] ?? Briefcase;
 
-export const RunWorkflowPicker = memo(function RunWorkflowPicker({ catalog, value, onChange, query, onQuery }: {
-  catalog: readonly WorkflowCatalogEntry[]; value: string; onChange: (id: string) => void; query: string; onQuery: (query: string) => void;
+export const RunWorkflowPicker = memo(function RunWorkflowPicker({ catalog, value, locked = false, onChange, query, onQuery }: {
+  catalog: readonly WorkflowCatalogEntry[]; value: string; locked?: boolean; onChange: (id: string) => void; query: string; onQuery: (query: string) => void;
 }) {
   const groups = useMemo(() => runPickerGroups(catalog, query), [catalog, query]);
   const unavailable = useMemo(() => new Map(catalog.flatMap(entry => entry.launch.state === "unavailable" ? [[entry.id, entry.launch] as const] : [])), [catalog]);
@@ -39,7 +39,7 @@ export const RunWorkflowPicker = memo(function RunWorkflowPicker({ catalog, valu
           const reason = unavailable.get(node.entry.id);
           return <li key={node.entry.id}>
             <button type="button" aria-current={value === node.entry.id ? "page" : undefined} aria-label={node.entry.label} className={`${dsFocus} disabled:cursor-not-allowed disabled:text-ui-muted`}
-              disabled={reason !== undefined} title={reason?.reason} aria-description={reason?.reason} onClick={() => onChange(node.entry.id)}>
+              disabled={locked || reason !== undefined} title={reason?.reason} aria-description={reason?.reason} onClick={() => onChange(node.entry.id)}>
               <span className="truncate">{node.entry.label}</span>{node.harness && <WorkflowHarnessTag harness={node.harness} />}
               {reason !== undefined && <span className="ml-auto shrink-0 text-caption text-ui-muted">{reason.label}</span>}
             </button>
