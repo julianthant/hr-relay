@@ -81,7 +81,12 @@ type HeaderState = "closed" | "options-open" | "options-changed";
 const header = (title: string, changed: boolean, play?: Story["play"]): Story => ({ title, ready: '[aria-label="Queue header"]', ...(play === undefined ? {} : { play }),
   render: () => <StoryFrame><QueueHeader title="Person Lookup" ask={null} startId="story-start-run" onStartRun={noop} day={changed ? "2026-10-29" : "2026-10-30"} today="2026-10-30" onDay={noop}
     sort={changed ? "oldest" : "attention"} onSort={noop} active={changed ? ["failed"] : ["all"]} counts={[]} onFilter={noop} /></StoryFrame> });
-const openOptions: Story["play"] = page => page.getByRole("button", { name: /^Options/ }).click();
+// Opened by keyboard on the last item: it takes the menu's Tab stop, and arrows from it walk the rest without opening a submenu.
+const openOptions: Story["play"] = async page => {
+  await page.getByRole("button", { name: /^Options/ }).press("Enter");
+  await page.getByRole("menu", { name: "Queue options" }).waitFor();
+  await page.keyboard.press("End");
+};
 const HEADER = {
   closed: header("The queue header with Options closed", false),
   "options-open": header("The Options menu open: Date, Sort by, Status, Attention first", false, openOptions),
