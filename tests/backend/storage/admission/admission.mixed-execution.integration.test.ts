@@ -29,6 +29,8 @@ it("browser launch forwards retained display and mode through a headless custody
   assert.equal(f.save({ "display.screenWidth": { set: 1980 }, "display.screenHeight": { set: 1080 },
     "browser.headless": { set: false }, "timeouts.taskMs": { set: 90_000 }, "timeouts.sessionAcquireMs": { set: 180_000 } }).state, "applied");
   const next = f.create();
+  assert.equal(f.save({ "browser.headless": { set: true } }).state, "applied");
+  const customHeadless = f.create();
   const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
   const held = { workerId: f.database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, personLookupDescriptor.id, 1, f.clock.now().toISOString())).workerId };
   const account=await chatGptFixture(admission);cleanups.push(()=>account.cleanup());
@@ -61,8 +63,9 @@ it("browser launch forwards retained display and mode through a headless custody
   };
   await openAndClose(old);
   await openAndClose(next);
-  assert.deepEqual(launch.mock.calls.map((call) => call[1]?.viewport), [{ width: 2560, height: 1440 }, { width: 1980, height: 1080 }]);
-  assert.deepEqual(launch.mock.calls.map((call) => call[1]?.headless), [true, false]);
+  await openAndClose(customHeadless);
+  assert.deepEqual(launch.mock.calls.map((call) => call[1]?.viewport), [{ width: 2560, height: 1440 }, null, { width: 1980, height: 1080 }]);
+  assert.deepEqual(launch.mock.calls.map((call) => call[1]?.headless), [true, false, true]);
   const slot = f.database.authority.workerSlots.get(held.workerId); assert.ok(slot);
   const retained = f.database.authority.configSnapshots.get(old.envelope.configSnapshotId); assert.ok(retained);
   assert.equal(launch.mock.calls[0]?.[0], join(retained.config.paths.browserProfileRoot, `w${String(slot.ordinal)}`, "ucpath"));
