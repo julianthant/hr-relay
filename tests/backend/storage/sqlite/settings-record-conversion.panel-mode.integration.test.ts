@@ -5,8 +5,7 @@ import { afterEach, it } from "vitest";
 import { z } from "zod";
 import { applyAuthorityMigrationsAfter, inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { readSettingsRecordConversion } from "../../../../src/backend/storage/sqlite/settings-record-conversion.js";
-import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
+import { readAppSettings, readSettingsRecordConversion } from "../../../../src/backend/storage/sqlite/settings-storage.js";
 import { PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH, RETIRED_PANEL_MODE } from "../../../../src/models/config/settings-record-conversion.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { CommandAuditRecordSchema, SettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
@@ -90,7 +89,9 @@ it.each([false, true])("upgrades a private schema-41 store with a settled panel-
     assert.deepEqual(commandFromRow(migrated), prior);
     assert.equal(migrated?.request_digest, sha256Hex(request));
     assert.equal(migrated?.outcome_json, auditQuery.get(command.commandId)?.payload_json);
-    assert.equal(CommandAuditRecordSchema.parse(readJson(migrated?.outcome_json)).result.settingsFingerprint, current.saved.settingsFingerprint);
+    const { result } = CommandAuditRecordSchema.parse(readJson(migrated?.outcome_json));
+    assert.ok(result.state === "applied");
+    assert.equal(result.settingsFingerprint, current.saved.settingsFingerprint);
     assert.throws(() => raw.exec("UPDATE command_audits SET code='changed'"), /retained-evidence-immutable/u);
   } finally { raw.close(); }
 

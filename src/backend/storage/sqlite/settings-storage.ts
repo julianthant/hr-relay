@@ -1,4 +1,4 @@
-import { readSettingsRecordConversion } from "./settings-record-conversion.js";
+import { createSettingsRecordConversion } from "./settings-record-conversion.js";
 import { derivePersonPreferencesFingerprint, resolvePersonPreferences } from "../../../models/config/person-preferences.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -79,6 +79,10 @@ export function writeAppSettings(database: DatabaseSync, input: AppSettings): vo
     .run(record.saved?.revision ?? 1, record.active?.configSnapshotId ?? record.initialization.configSnapshotId,
       record.saved?.commandId ?? record.initialization.commandId, record.saved?.auditId ?? record.initialization.auditId,
       canonicalJsonStringify(record), record.saved?.committedAt ?? record.active?.activatedAt ?? record.initialization.initializedAt);
+}
+
+export function readSettingsRecordConversion(database: DatabaseSync) {
+  return createSettingsRecordConversion(database.prepare("SELECT payload_json FROM settings WHERE id='current'").get()?.payload_json);
 }
 
 /** The forward conversion of every settings record conversion; runs inside its migration while the immutability triggers are dropped. */

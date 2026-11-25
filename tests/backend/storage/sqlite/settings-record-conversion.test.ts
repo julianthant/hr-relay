@@ -3,7 +3,6 @@ import { it } from "vitest";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { SETTINGS_RECORD_CONVERSIONS, SETTINGS_RECORD_CONVERSION_VERSION, convertSettingsRecordRow } from "../../../../src/backend/storage/sqlite/settings-record-conversion.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../../src/models/config/person-preferences.js";
-import { RETIRED_PANEL_MODE } from "../../../../src/models/config/settings-record-conversion.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -11,8 +10,11 @@ import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 it("retires a saved panel mode from a predecessor snapshot and authenticates the remaining preferences", () => {
-  const remaining = { ...NEUTRAL_PERSON_PREFERENCES, theme: "light" };
-  const preferences = { ...remaining, [RETIRED_PANEL_MODE]: "sidebar" };
+  const historicalDefaults = SETTINGS_RECORD_CONVERSIONS[0]?.adds ?? {};
+  const modeKey = Object.keys(historicalDefaults).find(key => historicalDefaults[key] === "floating");
+  assert.ok(modeKey);
+  const remaining = { ...Object.fromEntries(Object.entries(NEUTRAL_PERSON_PREFERENCES).filter(([key]) => key !== modeKey)), theme: "light" };
+  const preferences = { ...remaining, [modeKey]: "sidebar" };
   const before = { ...CONFIG_SNAPSHOT, preferences, preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) };
   const row = convertSettingsRecordRow("settings_snapshots", { payload_json: canonicalJsonStringify(before) });
   assert.ok(typeof row.payload_json === "string");

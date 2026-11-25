@@ -1,4 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { derivePersistedSettingsFingerprint, SettingsFileRecordSchema } from "../../../models/config/settings.js";
 import { PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH,
@@ -199,8 +198,7 @@ export function convertSettingsRecordRow(table: string, input: unknown, retireme
 }
 
 /** Captures the binding before any row changes so the saved row and both settlement copies advance together. */
-export function readSettingsRecordConversion(database: DatabaseSync) {
-  const row = database.prepare("SELECT payload_json FROM settings WHERE id='current'").get();
-  const retirement = row === undefined ? undefined : savedPanelModeRetirement(json(row.payload_json));
+export function createSettingsRecordConversion(payloadJson: unknown) {
+  const retirement = payloadJson === undefined ? undefined : savedPanelModeRetirement(json(payloadJson));
   return (table: string, input: unknown) => convertSettingsRecordRow(table, input, retirement);
 }
