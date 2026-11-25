@@ -76,7 +76,7 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
   const { database, clock, assertCurrent, notificationObserver, notificationTarget } = input;
   const { list, collection } = input.notificationReads ?? composeNotificationReads(database);
   const deps = projectionDependencies(input);
-  const position = database.trackAuthorityTables(["notifications"]);
+  const position = database.trackAuthorityTables(["notifications", "notification_states"]);
   let retained: { actor: string; position: number; from: number; until: number } | undefined;
   const project = (actor: string) => notificationListProjection(list(actor), clock.nowMs(), deps);
   return {
@@ -102,11 +102,11 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
         standing: {
           runState: id => { usedDisplay = true; return deps.standing.runState(id); },
           storageConcern: id => deps.standing.storageConcern(id),
-          concernActive: concern => { usedDisplay = true; return deps.standing.concernActive(concern); },
+          concernActive: concern => deps.standing.concernActive(concern),
           commandSettled: id => { usedDisplay = true; return deps.standing.commandSettled(id); },
         },
       }));
-      // Display context and standing read run, command, health and retained timeline evidence outside the inbox table.
+      // Display context and run or command standing read evidence outside the tracked tables; health is tracked.
       retained = usedDisplay ? undefined : candidate;
       return result;
     }),
