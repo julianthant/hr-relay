@@ -1,5 +1,5 @@
 import { PNG } from "pngjs";
-import type { Frame, Locator, Page } from "playwright";
+import type { ElementHandle, Frame, JSHandle, Locator, Page } from "playwright";
 import type { BrowserCaptureFailure } from "../../../workflow-kit/session.js";
 import { overrideNativeViewport } from "./native-viewport.js";
 
@@ -26,7 +26,90 @@ interface CaptureState {
   measure: () => BandGeometry;
   restore: () => void;
 }
+interface NativeCaptureMasks {
+  intact(): boolean;
+  restore(): void;
+}
 type CaptureWindow = Window & { __relayCapture?: CaptureState; __relayCaptureSecrets?: { observer: MutationObserver; seen: boolean; restore: () => void } };
+
+async function captureWithNativeMasks(page: Page, mask: (frame: Frame) => Locator[], capture: () => Promise<Buffer>): Promise<Buffer> {
+  const applied: JSHandle<NativeCaptureMasks>[] = [];
+  let outcome: { state: "captured"; result: Buffer } | { state: "failed"; cause: unknown };
+  const assertMasked = async () => {
+    for (const handle of applied) {
+      if (!await handle.evaluate(masks => masks.intact())) throw new FullPageCaptureRefusedError("secret-controls-present");
+    }
+  };
+  try {
+    for (const frame of page.frames()) {
+      const elements: ElementHandle<Node>[] = [];
+      try {
+        for (const locator of mask(frame)) elements.push(...await locator.elementHandles());
+        if (elements.length === 0) continue;
+        applied.push(await frame.evaluateHandle(nodes => {
+          const hidden = [["transition-property", "none"], ["opacity", "0"]] as const;
+          const entries = [...new Set(nodes)].map(element => {
+            if (!(element instanceof HTMLElement || element instanceof SVGElement)) throw new Error("capture mask target has no inline style");
+            const { left, top, width, height } = element.getBoundingClientRect();
+            const overlay = document.createElement("div");
+            overlay.style.cssText = `all:initial;position:fixed;pointer-events:none;z-index:2147483647;background:#f0f;left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
+            const before = hidden.map(([name, value]) => ({ name, value,
+              prior: element.style.getPropertyValue(name), priority: element.style.getPropertyPriority(name) }));
+            return { element, overlay, before, hadStyle: element.hasAttribute("style") };
+          });
+          let changed = false;
+          const observer = new MutationObserver(() => { changed = true; });
+          const masks = {
+            intact() {
+              return !changed && observer.takeRecords().length === 0 && entries.every(({ element, overlay }) =>
+                element.isConnected && overlay.isConnected && getComputedStyle(element).opacity === "0");
+            },
+            restore() {
+              observer.disconnect();
+              for (const { element, overlay, before, hadStyle } of entries) {
+                overlay.remove();
+                for (const { name, value, prior, priority } of before.toReversed()) {
+                  if (element.style.getPropertyValue(name) === value && element.style.getPropertyPriority(name) === "important") {
+                    element.style.setProperty(name, prior, priority);
+                  }
+                }
+                if (!hadStyle && element.style.length === 0) element.removeAttribute("style");
+              }
+            },
+          };
+          try {
+            for (const { element, overlay } of entries) {
+              for (const [name, value] of hidden) element.style.setProperty(name, value, "important");
+              document.documentElement.append(overlay);
+              observer.observe(element, { attributes: true, attributeFilter: ["style"] });
+            }
+            return masks;
+          } catch (cause) {
+            masks.restore();
+            throw cause;
+          }
+        }, elements));
+      } finally { await Promise.all(elements.map(element => element.dispose())); }
+    }
+    await assertMasked();
+    const result = await capture();
+    await assertMasked();
+    outcome = { state: "captured", result };
+  } catch (cause) {
+    outcome = { state: "failed", cause };
+  }
+  const cleanup = await Promise.allSettled(applied.map(async handle => {
+    try { await handle.evaluate(masks => masks.restore()); }
+    finally { await handle.dispose(); }
+  }));
+  const errors: unknown[] = [];
+  for (const result of cleanup) {
+    if (result.status === "rejected") errors.push(result.reason);
+  }
+  if (errors.length) throw new FullPageCaptureRestoreError([...(outcome.state === "failed" ? [outcome.cause] : []), ...errors]);
+  if (outcome.state === "failed") throw outcome.cause;
+  return outcome.result;
+}
 
 function bandGeometryChange(before: BandGeometry, after: BandGeometry): string | undefined {
   const changes: string[] = [];
@@ -257,7 +340,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
   assertCurrent: () => void;
   assertSafe: () => Promise<void>;
   sampleLabels?: readonly string[];
-  mask: () => Locator[];
+  mask: (frame: Frame) => Locator[];
   secretControls: string;
   afterCapture: () => Promise<void>;
   onBandRetry?: (detail: string) => void;
@@ -305,7 +388,8 @@ export async function captureFullPage(page: Page, options: Readonly<{
     sampleBannerOwned = true;
     await assertSafe();
     assertCurrent();
-    const banner = PNG.sync.read(await page.locator("#relay-dry-run-sample-banner").screenshot({ type: "png" }));
+    const label = page.locator("#relay-dry-run-sample-banner");
+    const banner = PNG.sync.read(nativeViewport === undefined ? await label.screenshot({ type: "png" }) : await captureNativeBanner(nativeViewport, label));
     await assertSafe();
     const source = PNG.sync.read(Buffer.from(image.bytes));
     const width = Math.max(source.width, banner.width), height = source.height + banner.height;
@@ -317,6 +401,13 @@ export async function captureFullPage(page: Page, options: Readonly<{
     return { bytes: new Uint8Array(PNG.sync.write(labelled)), width, height };
   } catch (error) { failure = { cause: error }; throw error; }
   finally { await restoreCaptureState(); }
+
+  async function captureNativeBanner(viewport: Awaited<ReturnType<typeof overrideNativeViewport>>, label: Locator): Promise<Buffer> {
+    const clip = await label.boundingBox();
+    if (clip === null || clip.width <= 0 || clip.height <= 0) throw new FullPageCaptureFailedError("unpainted-gap");
+    assertCurrent();
+    return viewport.capture(clip);
+  }
 
   async function captureBands(sliceBudget: number, mayRestart: boolean): Promise<CaptureBand[]> {
     const scrollTo = async (left: number, top: number): Promise<void> => {
@@ -366,7 +457,13 @@ export async function captureFullPage(page: Page, options: Readonly<{
           throw new FullPageCaptureFailedError("unpainted-gap");
         }
         assertCurrent();
-        const buffer = await page.screenshot({ type: "png", clip, mask: options.mask() });
+        const viewport = nativeViewport;
+        const buffer = viewport === undefined
+          ? await page.screenshot({ type: "png", clip, mask: page.frames().flatMap(options.mask) })
+          : await captureWithNativeMasks(page, options.mask, () => {
+            assertCurrent();
+            return viewport.capture(clip);
+          });
         await assertSafe();
         const detail = bandGeometryChange(before, await readGeometry());
         if (detail !== undefined) {

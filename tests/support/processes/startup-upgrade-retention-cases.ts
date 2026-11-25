@@ -6,12 +6,17 @@ import { Server } from "node:http";
 import { syncBuiltinESMExports } from "node:module";
 import { dirname,join,sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { RegisteredPersonUpgradeRefusedError,upgradeRegisteredPersonStores } from "../../../src/backend/app/composition/storage-compose.js";
+import { composeStorageCommand,RegisteredPersonUpgradeRefusedError,upgradeRegisteredPersonStores } from "../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { RuntimeAdmission,acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { RuntimeAlreadyRunningError,RuntimeLifetimeLock,isOfflineMaintenanceOperationActive,type OfflineMaintenanceOperation } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { upgradeStorage } from "../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthoritySourceClosureUnprovedError,hasUnprovedSourceClosure } from "../../../src/backend/storage/source-closure.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { systemClock } from "../../../src/rules/time/clock.js";
 import { createHistoricalRegisteredProfileFixture } from "../fixtures/storage/historical-incomplete-profile-fixture.js";
+import { createBoundProfileFixture } from "../helpers/admission-fixture.js";
 
 function chain(error: unknown): Set<unknown> {
   const seen = new Set<unknown>(), pending = [error];
@@ -31,6 +36,93 @@ function tree(root: string): unknown {
   });
 }
 const retained = new Set<object>();
+
+export async function runStoppedUpgradeRetentionCase(input: { entry: "service" | "command"; workspace: string }): Promise<void> {
+  const f = await createBoundProfileFixture({ pending: "storage", workspace: input.workspace });
+  retained.add(f);
+  AuthorityDatabase.initializeProfile(f.admission, systemClock);
+  const processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
+  const before = fs.readFileSync(f.path);
+  const injected = new Error("upgrade-snapshot-remove-refused");
+  const remove = fs.rmSync;
+  let inspecting = false, directory: string | undefined, removals = 0;
+  const captured: { operation?: OfflineMaintenanceOperation } = {};
+  const begin = Object.getOwnPropertyDescriptors(RuntimeLifetimeLock.prototype).beginOfflineMaintenance.value;
+  assert.ok(begin);
+  RuntimeLifetimeLock.prototype.beginOfflineMaintenance = function (this: RuntimeLifetimeLock, workspace) {
+    const issued = begin.call(this, workspace);
+    if (this === f.lifetime) captured.operation = issued;
+    return issued;
+  };
+  const inspect = Object.getOwnPropertyDescriptors(AuthorityDatabase).inspectStoppedUpgrade.value;
+  assert.ok(inspect);
+  AuthorityDatabase.inspectStoppedUpgrade = function (this: typeof AuthorityDatabase, ...args) {
+    inspecting = true;
+    try { return inspect.apply(this, args); }
+    finally { inspecting = false; }
+  };
+  fs.rmSync = (path, options) => {
+    if (inspecting && typeof path === "string" && path.includes(`${sep}relay-readonly-authority-`)
+      && (directory === undefined || directory === path)) {
+      removals++;
+      if (directory === undefined) process.send?.({ ownedSnapshot: path });
+      directory = path;
+      throw injected;
+    }
+    remove(path, options);
+  };
+  syncBuiltinESMExports();
+
+  let failure: unknown;
+  try {
+    if (input.entry === "command") {
+      await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--json"], systemClock, f.workspace, f.admission);
+    } else {
+      const restore = f.admission.acquireOfflineMaintenance();
+      await upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.stateRoot, processLockRoot, plan: false }, systemClock, restore);
+    }
+  } catch (error) { failure = error; }
+  assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
+  const inspected = input.entry === "service" ? failure.cause : failure;
+  assert.ok(inspected instanceof AuthoritySourceClosureUnprovedError);
+  assert.equal(inspected.errors.length, 1);
+  assert.equal(inspected.errors[0], inspected.cause);
+  let sourceFailure: unknown = inspected;
+  const wrappers = new Set<AuthoritySourceClosureUnprovedError>();
+  while (sourceFailure instanceof AuthoritySourceClosureUnprovedError && sourceFailure.cause instanceof AuthoritySourceClosureUnprovedError) {
+    assert.equal(wrappers.has(sourceFailure), false);
+    wrappers.add(sourceFailure);
+    assert.deepEqual(sourceFailure.errors, [sourceFailure.cause]);
+    sourceFailure = sourceFailure.cause;
+  }
+  assert.ok(sourceFailure instanceof AuthoritySourceClosureUnprovedError);
+  assert.deepEqual(sourceFailure.errors, [injected]);
+  assert.equal(sourceFailure.cause, injected);
+  if (input.entry === "service") {
+    assert.equal(failure.errors.length, 1);
+    assert.equal(failure.errors[0], inspected);
+  }
+  assert.ok(directory);
+  assert.equal(removals, 1);
+  assert.equal(fs.existsSync(directory), true);
+  assert.deepEqual(fs.readFileSync(f.path), before);
+  f.admission.assertLive();
+  f.machine.assertLive();
+
+  const restore = captured.operation;
+  assert.ok(restore);
+  const refused = (error: unknown) => hasUnprovedSourceClosure(error) && chain(error).has(injected);
+  if (input.entry === "service") assert.throws(() => f.admission.assertOfflineMaintenance(restore), refused);
+  else assert.throws(() => f.admission.maintenanceOperation(), refused);
+  assert.equal(isOfflineMaintenanceOperationActive(restore), true);
+  assert.throws(() => restore.assertHeld(), refused);
+  assert.throws(() => restore.release(), refused);
+  assert.throws(() => f.machine.release(), refused);
+  await assert.rejects(f.lifetime.close(), refused);
+  f.lifetime.assertHeld();
+  assert.equal(isOfflineMaintenanceOperationActive(restore), true);
+  assert.equal(fs.existsSync(directory), true);
+}
 
 export async function runStartupUpgradeRetentionCase(input: { scenario: string; workspace: string; nonce: string }): Promise<void> {
   const workspace = fs.realpathSync(join(input.workspace, `.${input.scenario}-${input.nonce}`));

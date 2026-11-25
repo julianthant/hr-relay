@@ -1,12 +1,27 @@
-import { afterAll, afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { runRecordColumns } from "../../../../../src/backend/storage/sqlite/run-record-row.js";
 
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import readXlsxFile from "read-excel-file/node";
+import { Hono } from "hono";
+import { z } from "zod";
+import { measureSearchLaneHttp } from "../../../../../scripts/bench/search-lane.js";
+import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
+import { createComposedDashboardReadHost } from "../../../../../src/backend/app/composition/dashboard/runtime-resources.js";
+import { composeShell } from "../../../../../src/backend/app/composition/dashboard/shell.js";
+import { READABLE_WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { createContentAddressedArtifactWriter } from "../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
+import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
+import { registerActivityRoutes } from "../../../../../src/backend/transports/http/routes/activity.js";
+import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
+import { registerShellRoutes } from "../../../../../src/backend/transports/http/routes/shell.js";
+import { CalendarWireSchema } from "../../../../../src/models/dashboard/calendar.js";
+import { ActorIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
 import { CrossDateSearchPageSchema } from "../../../../../src/models/dashboard/search.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
@@ -15,11 +30,133 @@ import { seedSeparationsRunAuthority } from "../../../../support/fixtures/integr
 import { insertMeasuredSearchRun } from "../../../../support/helpers/backend/cross-date-search-harness.js";
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { fillDiagnosticBudget } from "../../../../support/helpers/backend/full-diagnostic-budget.js";
-import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
+import { DAY, DESCRIPTOR_SET_HASH, makeWorld, queuedEventOf } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
+
+function cursorDigest(cursor: string) {
+  const [, encoded] = cursor.split(".");
+  assert.ok(encoded);
+  return z.object({ served: z.object({ digest: z.string().length(64) }) })
+    .parse(JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"))).served.digest;
+}
+
+it("serves search, calendar and both search export routes with the main read connection disabled", async () => {
+  const profile = await profileFixtures.create();
+  const descriptors = { resolve: (id: string) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor };
+  const world = await makeWorld({ profileFixture: async () => profile, descriptors });
+  const { database, clock, projection } = world;
+  try {
+    const lanes = createComposedDashboardReadHost({ admission: profile.admission, database, clock });
+    try {
+      const artifacts = createContentAddressedArtifactWriter({ admission: profile.admission });
+      await artifacts.ready;
+      const unused = () => { throw new Error("unexpected shell dependency"); };
+      const activity = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
+      const input = { database, readLanes: lanes, projection, clock, ids: { uuid: randomUUID }, artifacts, descriptors,
+        activity: activity.activity, appVersion: "test", actorLabel: () => "Test operator",
+        descriptorSetHash: DESCRIPTOR_SET_HASH, preflightReport: unused, workbookCompatibility: unused,
+        backfillGaps: { detected: unused } };
+      const shell = composeShell(input);
+      try {
+        const app: DashboardApp = new Hono();
+        app.use("*", async (c, next) => { c.set("requestActorId", ActorIdSchema.parse("local-operator")); await next(); });
+        app.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
+        registerShellRoutes(app, shell);
+        registerActivityRoutes(app, activity);
+        const events = [
+          queuedEventOf(world, { seed: 981, workflow: "i9-lookup", title: "First queued title" }),
+          queuedEventOf(world, { seed: 982, workflow: "i9-lookup", title: "Second queued title", displayName: "Operator rename" }),
+          queuedEventOf(world, { seed: 983, title: "Third queued title" }),
+        ];
+        const query = { q: "", scope: "all", facets: { day: DAY }, limit: 1 };
+        const expectedTitles = new Map<string, string | undefined>(shell.search.search({ ...query, limit: 3 }).results.map(row => [row.runId, row.displayTitle]));
+        assert.equal(expectedTitles.size, 3);
+        assert.equal(expectedTitles.get(events[0].runId), projection.runFold(events[0].runId)?.queued.title);
+        assert.equal(expectedTitles.get(events[0].runId), "First queued title");
+        assert.equal(expectedTitles.get(events[1].runId), "Operator rename");
+        const url = `/api/v1/search?q=&day=${DAY}&limit=1`;
+        const post = (path: string, body: unknown) => app.request(path, { method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body) });
+        const readPage = async (path: string) => {
+          const response = await app.request(path);
+          const body: unknown = await response.json();
+          assert.equal(response.status, 200, JSON.stringify(body));
+          return CrossDateSearchPageSchema.parse(body);
+        };
+        const noMainRead = () => { throw new Error("main-connection read"); };
+        const snapshot = vi.spyOn(database, "withAuthorityReadSnapshot").mockImplementation(noMainRead);
+        const calendar = vi.spyOn(database, "queryRunCalendar").mockImplementation(noMainRead);
+        const source = vi.spyOn(database, "getSourceDatabaseIdentity").mockImplementation(noMainRead);
+        try {
+          const page = await readPage(url);
+          assert.equal(page.totalMatches, 3);
+          assert.equal(page.results[0]?.displayTitle, expectedTitles.get(page.results[0].runId));
+          assert.equal(page.nextCursor.state, "present");
+          const resumedUrl = `${url}&cursor=${encodeURIComponent(page.nextCursor.value)}`;
+          const resumed = await readPage(resumedUrl);
+          assert.equal(resumed.results[0]?.displayTitle, expectedTitles.get(resumed.results[0].runId));
+          assert.equal(resumed.snapshot.token, page.snapshot.token);
+          assert.equal(resumed.nextCursor.state, "present");
+          const last = await readPage(`${url}&cursor=${encodeURIComponent(resumed.nextCursor.value)}`);
+          assert.equal(last.results[0]?.displayTitle, expectedTitles.get(last.results[0].runId));
+          assert.equal(last.nextCursor.state, "absent");
+
+          const calendarResponse = await app.request(`/api/v1/calendar?month=${DAY.slice(0, 7)}&day=${DAY}`);
+          assert.equal(calendarResponse.status, 200);
+          assert.equal(CalendarWireSchema.parse(await calendarResponse.json()).day, DAY);
+
+          const selection = { kind: "search", query, snapshot: { ...page.snapshot, generatedAt: page.generatedAt } };
+          const metadata = await post("/api/v1/exports/search", { format: "diagnostic", selection });
+          assert.equal(metadata.status, 200);
+          assert.equal((await json(metadata)).totalMatches, 3);
+          const csv = await post("/api/v1/exports/search", { format: "csv", selection });
+          assert.equal(csv.status, 200);
+          assert.match(await csv.text(), /Matches,3/u);
+
+          const workbook = await post("/api/v1/exports/xlsx", { requestVersion: 3, selection });
+          assert.equal(workbook.status, 200);
+          assert.equal((await readXlsxFile(Buffer.from(await workbook.arrayBuffer())))[1]?.data.length, 4);
+          assert.equal(snapshot.mock.calls.length + calendar.mock.calls.length + source.mock.calls.length, 0);
+
+          // Registration advanced the generation without changing any of the search rows.
+          const revalidated = await readPage(resumedUrl);
+          assert.deepEqual(revalidated.results, resumed.results);
+          assert.equal(revalidated.nextCursor.state, "present");
+          assert.equal(cursorDigest(revalidated.nextCursor.value), cursorDigest(resumed.nextCursor.value));
+          const stale = await post("/api/v1/exports/xlsx", { requestVersion: 3, selection });
+          assert.equal(stale.status, 400);
+          assert.match(String((await json(stale)).message), /search snapshot token names authority generation/u);
+          const fresh = await readPage(url);
+          clock.advanceWall(15 * 60_000);
+          const expired = await post("/api/v1/exports/xlsx", { requestVersion: 3,
+            selection: { ...selection, snapshot: { ...fresh.snapshot, generatedAt: fresh.generatedAt } } });
+          assert.equal(expired.status, 400);
+          assert.match(String((await json(expired)).message), /search snapshot expired/u);
+        } finally { source.mockRestore(); calendar.mockRestore(); snapshot.mockRestore(); }
+
+        const report = await app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`);
+        assert.equal(report.status, 200);
+        const selection = ActivityReportSelectionSchema.parse(await report.json());
+        const activityWorkbook = await post("/api/v1/exports/xlsx", { requestVersion: 3,
+          selection: { kind: "activity", from: DAY, to: DAY, snapshotToken: selection.snapshot.token } });
+        assert.equal(activityWorkbook.status, 200);
+        const activityExportId = activityWorkbook.headers.get("x-operator-export-id");
+        assert.ok(activityExportId);
+        assert.equal(database.authority.operatorXlsxExports.get(activityExportId)?.selection.kind, "activity");
+
+        const observed = await measureSearchLaneHttp(input, 1);
+        assert.equal(observed.day, DAY);
+        assert.equal(observed.runsOnDay, 3);
+        assert.equal(observed.search[0]?.mainSqliteCalls, 0);
+        assert.equal(observed.calendar[0]?.mainSqliteCalls, 0);
+        assert.equal(observed.xlsx.selectionMainSqliteCalls, 0);
+        assert.ok(observed.xlsx.effectMainSqliteCalls > 0);
+      } finally { shell.hub.close(); }
+    } finally { await lanes.close(); }
+  } finally { await world.dispose(); }
+});
 
 function restoreSearchRun(h: Awaited<ReturnType<typeof harness>>, run: RunRecord): void {
   const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
