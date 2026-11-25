@@ -4,7 +4,7 @@ import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { createHash, randomUUID } from "node:crypto";
-import { constants, openSync, closeSync, fstatSync, readSync, unlinkSync, fsyncSync, linkSync, readdirSync } from "node:fs";
+import { type BigIntStats, constants, openSync, closeSync, fstatSync, lstatSync, readSync, unlinkSync, fsyncSync, linkSync, readdirSync } from "node:fs";
 import {
   link,
   mkdir,
@@ -111,8 +111,7 @@ type DeletionProofIdentity = Readonly<{ device: bigint; inode: bigint; size: big
 // shortcut: one entry per proved artifact path until it is removed, so it grows with the store; bound it if stores reach hundreds of thousands of files.
 const deletionProofs = new Map<string, Readonly<{ identity: DeletionProofIdentity; stored: ArtifactRef; storedSha256: string; storedBytes: number }>>();
 
-function deletionProofIdentity(handle: number): DeletionProofIdentity {
-  const status = fstatSync(handle, { bigint: true });
+function deletionProofIdentity(status: BigIntStats): DeletionProofIdentity {
   return { device: status.dev, inode: status.ino, size: status.size, modified: status.mtimeNs, changed: status.ctimeNs };
 }
 const sameDeletionProofIdentity = (left: DeletionProofIdentity, right: DeletionProofIdentity) => left.device === right.device
@@ -131,7 +130,9 @@ function proveStoredArtifact(handle: number, size: number, digest: string) {
 function streamWriterFramedArtifact(handle: number, size: number, digest: string) {
   const chunk = Buffer.allocUnsafe(Math.min(Math.max(size, 1), DELETION_PROOF_CHUNK_BYTES));
   const header = Buffer.from(chunk.subarray(0, readSync(handle, chunk, 0, chunk.byteLength, 0)));
-  const window = Math.min(size, chunk.byteLength), tail = chunk.subarray(0, readSync(handle, chunk, 0, window, size - window));
+  const window = Math.min(size, chunk.byteLength);
+  if (readSync(handle, chunk, 0, window, size - window) !== window) return undefined;
+  const tail = chunk.subarray(0, window);
   let end = tail.byteLength;
   while (end > 0 && JSON_WHITESPACE.includes(tail[end - 1] ?? 0)) end--;
   const payloadEnd = size - (tail.byteLength - end) - STORED_PAYLOAD_END.byteLength, payloadStart = header.indexOf(STORED_PAYLOAD_KEY);
@@ -182,15 +183,15 @@ function inspectDeletionFile(admission: RuntimeAdmission, input: ArtifactRef) {
   const path = join(admission.artifactRoot, `${ref.sha256}.artifact`);
   const handle = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    const status = descriptorStatus(handle);
+    const status = fstatSync(handle, { bigint: true });
     if (!status.isFile()) throw new Error("artifact-deletion-file-not-regular");
     // One clear proves each artifact at preflight, execution and removal; an unchanged file identity reuses the first full proof.
-    const identity = deletionProofIdentity(handle), cached = deletionProofs.get(path);
+    const identity = deletionProofIdentity(status), cached = deletionProofs.get(path);
     let proof = cached !== undefined && sameDeletionProofIdentity(cached.identity, identity) ? cached : undefined;
     if (proof === undefined) {
       deletionProofs.delete(path);
-      const proved = proveStoredArtifact(handle, privateFileNumber(status.size), ref.sha256);
-      if (!sameDeletionProofIdentity(identity, deletionProofIdentity(handle))) throw new Error("artifact-deletion-custody-changed");
+      const proved = proveStoredArtifact(handle, privateFileNumber(identity.size), ref.sha256);
+      if (!sameDeletionProofIdentity(identity, deletionProofIdentity(fstatSync(handle, { bigint: true })))) throw new Error("artifact-deletion-custody-changed");
       proof = { identity, ...proved };
       // Coarse filesystem clocks can stamp a same-size rewrite with the old times, so only settled files are reused.
       if (BigInt(systemClock.nowMs()) * 1_000_000n - identity.changed > DELETION_PROOF_SETTLED_NS) deletionProofs.set(path, proof);
@@ -217,7 +218,7 @@ export function removeArtifactDeletionFile(admission: RuntimeAdmission,
   }
   if (observed.storedSha256 !== captured.storedSha256 || observed.storedBytes !== captured.storedBytes) throw new Error("artifact-deletion-captured-bytes-mismatch");
   admission.assertReadable();
-  const current = fileStatus(observed.path);
+  const current = lstatSync(observed.path, { bigint: true });
   if (!current.isFile() || current.isSymbolicLink() || current.dev !== observed.device || current.ino !== observed.inode) throw new Error("artifact-deletion-custody-changed");
   unlinkSync(observed.path);
   deletionProofs.delete(observed.path);
