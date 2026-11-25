@@ -3,8 +3,16 @@
 import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import { PublicProfileStateSchema } from "../../models/profiles/public-profile.js";
 import { debugFailureOutcome, debugFailureOutcomes, diagnosticRequestRoute } from "../../models/events/debug-report.js";
-import { DashboardClientError, httpError,networkError,markDashboardErrorReported } from "./errors.js";
-import { CHATGPT_ACCOUNT_READ_DEADLINE_MS, CHATGPT_COMPLETION_READ_DEADLINE_MS, SETTINGS_READ_DEADLINE_MS, readWithDeadline } from "./read-deadline.js";
+import { DashboardClientError, WIRE_ERROR_BODY, httpError,networkError,markDashboardErrorReported } from "./errors.js";
+import { CHATGPT_ACCOUNT_READ_DEADLINE_MS, CHATGPT_COMPLETION_READ_DEADLINE_MS, SETTINGS_READ_DEADLINE_MS, readDeadlineExpired, readWithDeadline } from "./read-deadline.js";
+
+/** A run-start read (checks or workbooks) that got no answer in time, or a retryable 503, is asked again before its caller sees a failure. */
+const BOUNDED_READ_ATTEMPTS = 3;
+const BOUNDED_READ_RETRY_MS = 250;
+
+/** The closed cause of a request that ended without a response body. */
+const unansweredReason = (error: unknown): string => readDeadlineExpired(error) ? "read-deadline"
+  : error instanceof DashboardClientError && error.kind === "http" ? "response-json-invalid" : "network-failed";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -124,16 +132,26 @@ export function createDashboardTransport(input: Readonly<{
     if (code === undefined || accountCompletion && init?.signal !== undefined) return sendUnbounded(path, init);
     const deadline = accountCompletion ? CHATGPT_COMPLETION_READ_DEADLINE_MS
       : accountStatus ? CHATGPT_ACCOUNT_READ_DEADLINE_MS : SETTINGS_READ_DEADLINE_MS;
-    return readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code, deadline, init?.signal ?? undefined).catch((error: unknown) => {
-        if (init?.signal?.aborted) throw networkError(`${method} ${path}`, init.signal.reason);
-        throw error;
-      });
+    const attempts = route === "/api/v1/preflight" || route?.startsWith("/api/v1/workbooks") === true ? BOUNDED_READ_ATTEMPTS : 1;
+    const pause = () => new Promise(resolve => setTimeout(resolve, BOUNDED_READ_RETRY_MS));
+    return (async () => {
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          const response = await readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code, deadline, init?.signal ?? undefined);
+          if (attempt === attempts || response.status !== 503 || WIRE_ERROR_BODY.safeParse(response.body).data?.retryable !== true) return response;
+        } catch (error) {
+          if (init?.signal?.aborted) throw networkError(`${method} ${path}`, init.signal.reason);
+          if (attempt === attempts || !(error instanceof DashboardClientError && error.kind === "network")) throw error;
+        }
+        await pause();
+      }
+    })();
   };
 
-  const reportFailure = (path: string, body: unknown, status = 200, method = "GET"): void => {
+  const reportFailure = (path: string, body: unknown, status = 200, method = "GET", reason?: string): void => {
     if (path === "/api/v1/debug/errors") return;
     if (EXPECTED_REFUSALS[`${method.toUpperCase()} ${path.split("?")[0] ?? path}`]?.includes(status) === true) return;
-    for (const failure of debugFailureOutcomes(body, status)) input.onFailure?.({ ...failure, route: diagnosticRequestRoute(path) });
+    for (const failure of debugFailureOutcomes(body, status)) input.onFailure?.({ ...failure, ...(reason === undefined ? {} : { reason }), route: diagnosticRequestRoute(path) });
   };
   const send = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
     try {
@@ -141,7 +159,7 @@ export function createDashboardTransport(input: Readonly<{
       reportFailure(path, response.body, response.ok ? response.status : Math.max(400, response.status), init?.method);
       return response;
     } catch (error) {
-      if (!init?.signal?.aborted) { reportFailure(path, { state: "error" }); markDashboardErrorReported(error); }
+      if (!init?.signal?.aborted) { reportFailure(path, { state: "error" }, 200, init?.method, unansweredReason(error)); markDashboardErrorReported(error); }
       throw error;
     }
   };

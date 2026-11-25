@@ -3,7 +3,13 @@ import { DashboardClientError } from "./errors.js";
 
 export const SETTINGS_READ_DEADLINE_MS = 10_000;
 export const CHATGPT_ACCOUNT_READ_DEADLINE_MS = 30_000;
+/** A rerun runs live detectors, each bounded by the server; this only ends a rerun that never answers. */
+export const PREFLIGHT_RERUN_DEADLINE_MS = 60_000;
 export const CHATGPT_COMPLETION_READ_DEADLINE_MS = 310_000;
+
+const expiredReads = new WeakSet<Error>();
+/** True for the error a read gets when its deadline passed before any answer. */
+export const readDeadlineExpired = (error: unknown): boolean => error instanceof Error && expiredReads.has(error);
 
 export function readWithDeadline<Value>(read: (signal: AbortSignal) => Promise<Value>, code: ErrorCatalogCode, milliseconds = SETTINGS_READ_DEADLINE_MS, signal?: AbortSignal): Promise<Value> {
   const controller = new AbortController();
@@ -23,7 +29,9 @@ export function readWithDeadline<Value>(read: (signal: AbortSignal) => Promise<V
     };
     const timer = setTimeout(() => {
       controller.abort();
-      finish(() => reject(new DashboardClientError({ kind: "network", code, message: ERROR_CATALOG[code].text })));
+      const expired = new DashboardClientError({ kind: "network", code, message: ERROR_CATALOG[code].text });
+      expiredReads.add(expired);
+      finish(() => reject(expired));
     }, milliseconds);
     if (signal?.aborted) { cancel(); return; }
     signal?.addEventListener("abort", cancel, { once: true });
