@@ -1,6 +1,6 @@
 import { RunDetailSectionSchema } from "../../../models/dashboard/primitives.js";
 import { PROFILE_ONBOARDING_ROUTE_KEY } from "../../../models/profiles/public-profile.js";
-import { parseViewRoute, ViewRouteSchema, type ViewRoute } from "./view-route-model.js";
+import { parseViewRoute, ViewRouteCoordinatesSchema, type ViewRoute } from "./view-route-model.js";
 import { parseArchiveFolderRoute, parseArchiveBrowse, type ArchiveBrowseState } from "./archive-route-model.js";
 /** The app's visible state lives in the query string. */
 
@@ -79,7 +79,7 @@ export function parseRoute(search: string): AppRouteState {
   else if (Object.keys(view).length) route.view = view;
   const activityPreview = params.get('activityPreview');
   if (activityPreview !== null) {
-    const preview = ViewRouteSchema.shape.activityPreview.safeParse(activityPreview);
+    const preview = ViewRouteCoordinatesSchema.shape.activityPreview.safeParse(activityPreview);
     if (!preview.success) route.viewInvalid = true;
     else route.view = { ...route.view, activityPreview: preview.data };
   }

@@ -8,7 +8,7 @@ import type { AppRouteState } from "./url-state.js";
 const identity = z.string().max(200);
 const stage = z.enum(["Input", "Options", "Steps", "Values", "Warning", "Checks"]);
 const retiredViewKeys = ["bumpScope", "bumpSelection", "bumpReview", "preflightScope", "capabilitiesQuery"];
-export const ViewRouteSchema = z.object({
+export const ViewRouteCoordinatesSchema = z.object({
   queueMember: QueueMemberSelectionSchema.optional(),
   logFailure: z.strictObject({ runId: RunIdSchema, failureId: FailureIdSchema }).optional(),
   workflow: identity.optional(), preview: identity.nullable().optional(), mockRun: identity.optional(), records: identity.optional(),
@@ -30,7 +30,16 @@ export const ViewRouteSchema = z.object({
     sort: z.object({ column: z.enum(['name', 'duration']), direction: z.enum(['ascending', 'descending']) }).strict().optional() }).strict().nullable().optional(),
   activityPreview: z.enum(['normal', 'empty', 'incomplete', 'loading', 'unavailable']).optional(),
 }).strict();
-export type ViewRoute = z.infer<typeof ViewRouteSchema>;
+export type ViewRoute = z.infer<typeof ViewRouteCoordinatesSchema>;
+
+export const ViewRouteSchema = z.preprocess(decoded => {
+  if (typeof decoded !== "object" || decoded === null || Array.isArray(decoded)
+    || !retiredViewKeys.some(key => Object.hasOwn(decoded, key))) return decoded;
+  const coordinates = { ...decoded };
+  for (const key of retiredViewKeys) Reflect.deleteProperty(coordinates, key);
+  return coordinates;
+}, ViewRouteCoordinatesSchema);
+
 /** The patch that removes the Start run dialog's coordinates from the view when the dialog closes. */
 export const LAUNCH_CLEARED: Readonly<Partial<ViewRoute>> = Object.freeze({
   launchRerun: undefined, launchServed: undefined, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined, launchCustomize: undefined,
@@ -42,14 +51,7 @@ export const ViewNavigationContext = createContext<ViewNavigation | undefined>(u
 export function parseViewRoute(value: string | null): ViewRoute | null {
   if (value === null) return {};
   if (value.length > 16000) return null;
-  try {
-    const decoded: unknown = JSON.parse(value);
-    if (typeof decoded === "object" && decoded !== null) {
-      for (const key of retiredViewKeys) Reflect.deleteProperty(decoded, key);
-    }
-    const result = ViewRouteSchema.safeParse(decoded);
-    return result.success ? result.data : null;
-  }
+  try { const result = ViewRouteSchema.safeParse(JSON.parse(value)); return result.success ? result.data : null; }
   catch { return null; }
 }
 
