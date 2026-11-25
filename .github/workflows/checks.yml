@@ -156,8 +156,36 @@ jobs:
         run: npm run lint
       - run: npm ci
         working-directory: fast-duo
-      - run: npm run lint
+      - name: Lint Fast Duo with Oxlint
+        run: npm run lint -- --ignore-pattern eslint.config.js
         working-directory: fast-duo
+      - name: Prove Fast Duo lint parity
+        working-directory: fast-duo
+        run: |
+          node_modules/.bin/eslint . --ignore-pattern oxlint.config.mjs --format json > "$RUNNER_TEMP/fast-duo-eslint.json"
+          node -e 'const path = require("node:path"); for (const { filePath } of require(process.argv[1])) console.log(path.relative(process.cwd(), filePath).replace(/^eslint\.config\.js$/, "oxlint.config.mjs"));' "$RUNNER_TEMP/fast-duo-eslint.json" | sort > "$RUNNER_TEMP/fast-duo-eslint-files"
+          npm run --silent lint -- --ignore-pattern eslint.config.js --debug files > "$RUNNER_TEMP/fast-duo-oxlint-files-raw"
+          sed 's|^\./||' "$RUNNER_TEMP/fast-duo-oxlint-files-raw" | sort > "$RUNNER_TEMP/fast-duo-oxlint-files"
+          diff -u "$RUNNER_TEMP/fast-duo-eslint-files" "$RUNNER_TEMP/fast-duo-oxlint-files"
+          test "$(wc -l < "$RUNNER_TEMP/fast-duo-oxlint-files")" -eq 20
+          cat "$RUNNER_TEMP/fast-duo-oxlint-files"
+
+          reject_lint() {
+            local path="$1" source="$2" diagnostic="$3"
+            cp "$path" "$RUNNER_TEMP/fast-duo-lint-original"
+            printf '\n%s\n' "$source" >> "$path"
+            local status=0
+            npm run --silent lint -- --ignore-pattern eslint.config.js --format default > "$RUNNER_TEMP/fast-duo-lint-probe" 2>&1 || status=$?
+            mv "$RUNNER_TEMP/fast-duo-lint-original" "$path"
+            cat "$RUNNER_TEMP/fast-duo-lint-probe"
+            test "$status" -eq 1
+            grep -iF "$diagnostic" "$RUNNER_TEMP/fast-duo-lint-probe"
+          }
+
+          reject_lint src/options.js 'debugger;' 'eslint(no-debugger)'
+          reject_lint src/options.js $'// oxlint-disable-next-line no-debugger\nvoid 0;' '1 warning and 0 errors'
+          reject_lint src/username.js 'function duplicate(value, value) { return value; } duplicate(1, 2);' 'Duplicate parameter name'
+          reject_lint src/username.js 'console.log(071);' 'Octal literals'
 
   static:
     name: static
