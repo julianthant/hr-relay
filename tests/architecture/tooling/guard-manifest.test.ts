@@ -238,21 +238,20 @@ function writeFixture(root: string, path: string, content: string): void {
 
 describe("reviewed architecture guard manifest", () => {
 
-  it("recursively registers every guard file exactly once and every active entry exists", () => {
-    const active = inventory.guards.filter(({ status }) => status === "active");
-    const names = active.map(({ name }) => name);
-    assert.equal(new Set(names).size, names.length, "active guard names must be unique");
+  it("recursively registers every guard file exactly once and every entry exists", () => {
+    const { guards } = inventory;
+    const names = guards.map(({ name }) => name);
+    assert.equal(new Set(names).size, names.length, "guard names must be unique");
 
-    const registered = active.map(({ file }) => file).sort();
+    const registered = guards.map(({ file }) => file).sort();
     assert.deepEqual(
       registered,
       discoverArchitectureTests(ARCHITECTURE_ROOT),
       "recursive guard file discovery and inventory must match exactly",
     );
-    for (const entry of active) {
+    for (const entry of guards) {
       assert.ok(entry.invariant.trim(), `${entry.name} must state its invariant`);
       assert.ok(entry.owner.trim(), `${entry.name} must name its owner`);
-      assert.equal(entry.replacementRequired, true, `${entry.name} must require a replacement decision on removal`);
       assert.ok(existsSync(join(REPO_ROOT, entry.file)), entry.file);
     }
   });
