@@ -55,6 +55,21 @@ test("the keyboard walk reaches controls before the restored sign-up focus", { t
   ]);
 });
 
+// The toggle boards are also reviewed at 1600; these save frames only, the rules run at the desktop sizes below.
+test.describe("toggle frames at 1600", () => {
+  const viewport = { width: 1600, height: 900 };
+  test.use({ viewport });
+  for (const { id, surface, story } of CATALOGUE.filter(entry => entry.id.startsWith("shell/toggle/"))) {
+    test(`${id} saves its 1600 frame`, { tag: galleryTags(id, surface) }, async ({ mount, page }) => {
+      await mount(id);
+      await story.play?.(page);
+      await expect(page.locator(story.ready ?? "[data-app-root]").first()).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      await saveStateFrame(page, id, viewport.width);
+    });
+  }
+});
+
 for (const viewport of DESKTOP_VIEWPORTS) {
   test.describe(`states at ${String(viewport.width)}x${String(viewport.height)}`, () => {
     test.describe.configure({ mode: "default" });
