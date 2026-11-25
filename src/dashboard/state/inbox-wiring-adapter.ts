@@ -157,6 +157,8 @@ export interface InboxWiring {
   control(id: string, action: NotificationControl | "snooze" | "unsnooze"): Promise<boolean>;
   /** Whether the item's controls may act now: a served row is display-only until its rows and status are current. */
   canAct(id: string): boolean;
+  /** Whether the item may be cleared now: only while its rows and status are current on a live stream. */
+  canClear(id: string): boolean;
   readAll(): Promise<void>;
   /** Clears the item and every row it stands for; the item leaves at once and comes back if Relay refuses. */
   clear(id: string): Promise<boolean>;
@@ -228,7 +230,9 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   const consistent = rows !== undefined && rows.every(row => row.actorId === request.scope.actorId) && new Set(rows.map(row => row.notificationId)).size === rows.length;
   // Controls act only on rows read with a status the stream has delivered as available.
   const usable = enabled && consistent && status !== undefined && !status.unavailable;
-  const current = useRef({ request, binding, usable }); current.current = { request, binding, usable };
+  // A clear also needs the stream live: rows held through a reload or a reconnect may be behind the server's.
+  const clearsNow = usable && day.state === "loaded" && dayState.connection.state === "live";
+  const current = useRef({ request, binding, usable, clearsNow }); current.current = { request, binding, usable, clearsNow };
   const rowsRef = useRef(rows); rowsRef.current = rows;
   const dayRowsRef = useRef(dayRows); dayRowsRef.current = dayRows;
   /** Adds rows over the day. A publication drops those of older snapshots, and a readback drops those the last rendered rows caught up
@@ -275,6 +279,10 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   const durableRows = (row: NotificationWire): readonly (readonly [string, number])[] => row.kind === "backfill-gap" ? []
     : row.kind === "notification" && row.group !== undefined ? row.group.members.map(member => [member.notificationId, member.revision] as const) : [[row.notificationId, row.revision] as const];
   const clearable = (row: NotificationWire) => row.kind !== "backfill-gap" && row.readOnlyHistory !== true && row.standing !== true;
+  /** The items this render shows. A clear names only these rows at these revisions; a row published since is not on screen yet. */
+  const shownGroups = foldRows(shownRows(rows ?? [], clearedIds));
+  /** What clearing these items sends, without rows a clear from this same render already took. */
+  const clearEntries = (groups: readonly (readonly NotificationWire[])[]) => groups.flatMap(group => group.flatMap(durableRows)).filter(([id, revision]) => (clearedRef.current?.get(id) ?? -1) < revision);
   /** One command clears exactly these rows at their listed revisions, or none of them. */
   const sendClear = async (entries: readonly (readonly [string, number])[]): Promise<boolean> => {
     const owner = current.current.binding;
@@ -347,25 +355,23 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   return { state: projection.state, notice: [pending, projection.notice, enabled ? statusNotice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
     control,
     canAct: () => usable,
+    canClear: () => clearsNow,
     clear: async id => {
-      if (!enabled || current.current.request !== request || !current.current.usable) return false;
-      const listed = rowsRef.current ?? [];
-      const row = listed.find(row => row.notificationId === id);
-      if (row === undefined || row.kind === "backfill-gap" || row.actorId !== request.scope.actorId) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
+      if (current.current.request !== request || !current.current.clearsNow) return false;
       // Clearing an item clears every row it stands for: its repeats and a storage group's members.
-      const group = foldRows(shownRows(listed, clearedRef.current)).find(members => members.includes(row)) ?? [row];
+      const group = shownGroups.find(members => members.some(row => row.notificationId === id));
+      if (group === undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
       if (!group.every(clearable)) return false;
-      const members = group.flatMap(durableRows);
-      if (heldAttempt(new Set(members.map(([memberId]) => memberId))) !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
-      return sendClear(members);
+      if (heldAttempt(new Set(group.flatMap(durableRows).map(([memberId]) => memberId))) !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
+      const entries = clearEntries([group]);
+      return entries.length > 0 && sendClear(entries);
     },
     clearAll: async show => {
-      if (!enabled || current.current.request !== request || !current.current.usable) return;
+      if (current.current.request !== request || !current.current.clearsNow) return;
       if (heldAttempt() !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return; }
       // Whole displayed items only: a standing item stays whole, and Unread clears every row of an item with any unread row.
-      const groups = foldRows(shownRows(rowsRef.current ?? [], clearedRef.current)).filter(group => group.every(clearable)
-        && (show === "all" || group.some(row => row.readState === "unread")));
-      const entries = groups.flatMap(group => group.flatMap(durableRows)).filter(([id, revision]) => (clearedRef.current?.get(id) ?? -1) < revision);
+      const entries = clearEntries(shownGroups.filter(group => group.every(clearable)
+        && (show === "all" || group.some(row => row.readState === "unread"))));
       if (entries.length > 0) await sendClear(entries);
     },
     onPublication: listener => { arrivalListeners.current.add(listener); return () => { arrivalListeners.current.delete(listener); }; },

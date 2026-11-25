@@ -7,7 +7,7 @@ import { LoadingRegion } from "../shared/loading/loading.js";
 import { itemClearable, itemContext, itemDay, notificationAge, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
 import "./notifications-popover.css";
 
-type RowHandlers = Readonly<{ onOpen: (item: NotificationItem) => void; onControl: (id: string, control: NotificationControl) => void; onClear: (id: string) => void; canAct: (id: string) => boolean }>;
+type RowHandlers = Readonly<{ onOpen: (item: NotificationItem) => void; onControl: (id: string, control: NotificationControl) => void; onClear: (id: string) => void; canAct: (id: string) => boolean; canClear: (id: string) => boolean }>;
 
 function Age({ item }: { item: NotificationItem }) {
   const at = item.at;
@@ -44,7 +44,7 @@ function NoticeRow({ item, handlers }: { item: NotificationItem; handlers: RowHa
     {item.readOnlyHistory !== true && <span className="notice-action">
       <RowAction label={item.read ? "Mark as unread" : "Mark as read"} icon={item.read ? <Mail aria-hidden className={dsIcon.md} /> : <MailOpen aria-hidden className={dsIcon.md} />}
         onClick={() => handlers.onControl(item.id, item.read ? "unread" : "read")} disabled={!enabled} />
-      {itemClearable(item) && <RowAction label="Clear notification" icon={<X aria-hidden className={dsIcon.md} />} onClick={() => handlers.onClear(item.id)} disabled={!enabled} />}
+      {itemClearable(item) && <RowAction label="Clear notification" icon={<X aria-hidden className={dsIcon.md} />} onClick={() => handlers.onClear(item.id)} disabled={!handlers.canClear(item.id)} />}
     </span>}
   </li>;
 }
@@ -72,23 +72,21 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
   const needsYou = items.filter(item => item.priority && !item.read);
   const rest = items.filter(item => !needsYou.includes(item));
   const days = [...new Set(rest.map(itemDay))];
-  const clearable = items.some(itemClearable);
+  const clearable = items.filter(item => itemClearable(item) && handlers.canClear(item.id));
   // After a clear, focus moves to the next row that can take it, or to the header once none can; after Clear all, to the first such row left.
-  const [moveFocus, setMoveFocus] = useState<{ cleared: readonly string[]; next?: string; first?: true }>();
+  const [moveFocus, setMoveFocus] = useState<{ cleared: readonly string[]; after?: readonly (string | undefined)[] }>();
   const headRef = useRef<HTMLElement>(null), scrollRef = useRef<HTMLDivElement>(null);
-  const focusableRows = () => [...(scrollRef.current?.querySelectorAll<HTMLElement>("li.notice-row") ?? [])].filter(row => row.querySelector("button.notice-main") !== null);
+  const focusableRows = () => [...(scrollRef.current?.querySelectorAll<HTMLElement>("li.notice-row") ?? [])].filter(row => row.querySelector("button.notice-main:not(:disabled)") !== null);
   useEffect(() => {
     if (moveFocus === undefined || items.some(item => moveFocus.cleared.includes(item.id))) return;
     const rows = focusableRows();
-    const next = moveFocus.first === true ? rows[0] : rows.find(row => row.dataset.id === moveFocus.next);
+    const next = moveFocus.after === undefined ? rows[0] : moveFocus.after.map(id => rows.find(row => row.dataset.id === id)).find(row => row !== undefined);
     (next?.querySelector<HTMLElement>("button.notice-main") ?? headRef.current)?.focus();
     setMoveFocus(undefined);
   }, [moveFocus, items]);
   const clearRow = (id: string) => {
     const rows = [...(scrollRef.current?.querySelectorAll<HTMLElement>("li.notice-row") ?? [])], index = rows.findIndex(row => row.dataset.id === id);
-    const focusable = new Set(focusableRows());
-    const next = rows.slice(index + 1).find(row => focusable.has(row)) ?? rows.slice(0, Math.max(index, 0)).reverse().find(row => focusable.has(row));
-    setMoveFocus({ cleared: [id], next: next?.dataset.id });
+    setMoveFocus({ cleared: [id], after: [...rows.slice(index + 1), ...rows.slice(0, Math.max(index, 0)).reverse()].map(row => row.dataset.id) });
     onClear(id);
   };
   const rowHandlers = { ...handlers, onClear: clearRow };
@@ -105,7 +103,7 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
         <SegmentedChoice label="Show" hideLabel value={show} options={SHOW_OPTIONS} onChange={onShow} />
         <span className="notice-popover-actions">
           <HeadAction label="Mark all read" icon={<CheckCheck aria-hidden className={dsIcon.md} />} onClick={onReadAll} disabled={unread === 0} />
-          <HeadAction label="Clear all" icon={<Trash2 aria-hidden className={dsIcon.md} />} onClick={() => { setMoveFocus({ cleared: items.filter(itemClearable).map(item => item.id), first: true }); onClearAll(); }} disabled={!clearable} />
+          <HeadAction label="Clear all" icon={<Trash2 aria-hidden className={dsIcon.md} />} onClick={() => { setMoveFocus({ cleared: clearable.map(item => item.id) }); onClearAll(); }} disabled={clearable.length === 0} />
         </span>
       </header>
       <div ref={scrollRef} className="notice-popover-scroll">

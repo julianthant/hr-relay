@@ -19,16 +19,16 @@ const item = (id: string, extra: Partial<NotificationItem> = {}): NotificationIt
 const ITEMS = [item("failed", { count: 3 }), item("read", { read: true, day: "Yesterday" }), item("gone", { read: true, gone: true, day: "Yesterday" }),
   item("storage", { kind: "storage", title: "Storage needs attention", subject: "", workflow: "", detail: "Relay could not save everything.", tone: "warning", count: 213 })];
 
-async function draw(state: NotificationsState, show: "all" | "unread" = "all") {
+async function draw(state: NotificationsState, show: "all" | "unread" = "all", current: (id: string) => boolean = () => true) {
   const calls: string[] = [];
   const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
   await act(async () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(NotificationsPopover, { state, open: true, onOpenChange() {}, show, onShow() {},
     onReadAll: () => calls.push("read-all"), onClearAll: () => calls.push("clear-all"), onClear: id => calls.push(`clear:${id}`),
-    onOpen: opened => calls.push(`open:${opened.id}`), onControl: (id, control) => calls.push(`${control}:${id}`), canAct: () => true })))));
+    onOpen: opened => calls.push(`open:${opened.id}`), onControl: (id, control) => calls.push(`${control}:${id}`), canAct: current, canClear: current })))));
   const groups = () => [...document.querySelectorAll("section.notice-group")].map(group => [group.getAttribute("aria-label"), [...group.querySelectorAll(".notice-title")].map(title => title.textContent).length]);
   const row = (index: number) => { const found = document.querySelectorAll<HTMLElement>("li.notice-row")[index]; assert(found); return found; };
-  const rerender = (next: NotificationsState) => act(async () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(NotificationsPopover, { state: next, open: true, onOpenChange() {}, show, onShow() {},
-    onReadAll() {}, onClearAll() {}, onClear: id => calls.push(`clear:${id}`), onOpen() {}, onControl() {}, canAct: () => true })))));
+  const rerender = (next: NotificationsState, acts: (id: string) => boolean = current) => act(async () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(NotificationsPopover, { state: next, open: true, onOpenChange() {}, show, onShow() {},
+    onReadAll() {}, onClearAll() {}, onClear: id => calls.push(`clear:${id}`), onOpen() {}, onControl() {}, canAct: acts, canClear: acts })))));
   return { host, calls, groups, row, rerender };
 }
 
@@ -168,4 +168,23 @@ it("moves focus to the first row left after Clear all, or to the header when non
   await view.rerender({ state: "ready", items: [items[1]], pinned: [] });
   assert.ok(document.activeElement === view.row(0).querySelector("button.notice-main"), "the standing row left takes focus");
   assert.equal(view.row(0).dataset.id, "waiting");
+});
+
+it("offers clears only on rows that are current, and restores focus past disabled rows", async () => {
+  const items = [item("local-a"), item("served"), item("local-b")];
+  const local = (id: string) => id.startsWith("local");
+  const clearAll = () => document.querySelector<HTMLButtonElement>('button[aria-label="Clear all"]');
+  const clearOf = (view: Awaited<ReturnType<typeof draw>>, index: number) => view.row(index).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]');
+  const view = await draw({ state: "ready", items, pinned: [] });
+  assert.equal(clearOf(view, 1)?.disabled, false);
+  await view.rerender({ state: "ready", items, pinned: [] }, local);
+  assert.equal(clearOf(view, 1)?.disabled, true, "a row whose inbox is not current cannot be cleared");
+  assert.equal(clearAll()?.disabled, false, "Clear all still acts on the local rows");
+  await act(async () => clearOf(view, 0)?.click());
+  await view.rerender({ state: "ready", items: items.slice(1), pinned: [] }, local);
+  assert.ok(document.activeElement === view.row(1).querySelector("button.notice-main"), "focus skips the disabled row");
+  await act(async () => clearOf(view, 1)?.click());
+  await view.rerender({ state: "ready", items: [items[1]], pinned: [] }, local);
+  assert.ok(document.activeElement === document.querySelector("header.notice-popover-head"), "only a disabled row is left");
+  assert.equal(clearAll()?.disabled, true, "nothing listed can be cleared");
 });

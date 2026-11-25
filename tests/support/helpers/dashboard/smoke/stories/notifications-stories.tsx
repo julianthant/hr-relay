@@ -41,7 +41,7 @@ function PopoverScene({ state: initialState, show: initial = "all", open = true,
   return <StoryFrame>
     <aside aria-label="Workspace" className="workspace-rail ui-theme-scope" data-collapsed={collapsed || undefined}><header className="workspace-rail-header"><h2>Relay</h2><div className="workspace-rail-actions">
       <IconButton variant="ghost" size="sm" label="Collapse sidebar" title="" icon={<PanelLeft aria-hidden className="size-4" />} />
-      <NotificationsPopover state={state} open={open} onOpenChange={noop} {...(notice === undefined ? {} : { notice })} show={show} onShow={setShow} onReadAll={noop} onOpen={noop} onControl={noop} canAct={() => true}
+      <NotificationsPopover state={state} open={open} onOpenChange={noop} {...(notice === undefined ? {} : { notice })} show={show} onShow={setShow} onReadAll={noop} onOpen={noop} onControl={noop} canAct={() => true} canClear={() => true}
         onClear={id => keep(item => item.id !== id)} onClearAll={() => keep(item => !itemClearable(item) || (show === "unread" && item.read))} />
       <IconButton variant="ghost" size="sm" label="Search" title="" icon={<Search aria-hidden className="size-4" />} />
     </div></header><div className="workspace-rail-body"><WorkflowRail workflows={SHELL_STORY_WORKFLOWS} counts={SHELL_STORY_COUNTS_IDLE} active="person-lookup" onSelect={noop} collapsed={collapsed} /></div></aside>

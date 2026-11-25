@@ -488,7 +488,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         refreshCommandRecovery(value => value + 1);
         commandFeedback(outcome);
         if ("targets" in request && plan !== undefined && outcome.reply !== undefined && "state" in outcome.reply && outcome.reply.state === "refused") {
-          setBulkOutcome({ plan, subjects: bulkSubjectsOf(plan), response: { state: "refused", code: outcome.reply.code, message: outcome.kind === "confirmed" ? "Command confirmed." : outcome.feedback.text } });
+          setBulkOutcome({ commandId: request.commandId, plan, subjects: bulkSubjectsOf(plan), response: { state: "refused", code: outcome.reply.code, message: outcome.kind === "confirmed" ? "Command confirmed." : outcome.feedback.text } });
         }
         if ("targets" in request && plan !== undefined && outcome.reply !== undefined && "bulkCommandId" in outcome.reply && "results" in outcome.reply) {
           const reply = outcome.reply;
@@ -500,7 +500,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             return { ...child, detail: verified === undefined ? formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text
               : commandAttemptView(verified).view === "unknown" ? "Not confirmed yet." : verified.feedback.text };
           }) };
-          setBulkOutcome({ plan, subjects: bulkSubjectsOf(plan), response });
+          setBulkOutcome({ commandId: request.commandId, plan, subjects: bulkSubjectsOf(plan), response });
           const bulkWarning = unconfirmedBulkWorkerToast(request, reply, outcome.kind === "confirmed");
           if (bulkWarning !== undefined) toast(bulkWarning);
         }
@@ -783,7 +783,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   // Local command notices are not server rows: their read state lives here, never in the served inbox.
   const localNoticeIds = new Set(commandNotices.map(notice => notice.id));
   const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => localNoticeIds.has(item.id) ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
-  const railInbox = { ...inbox, open: openInbox, canAct: (id: string) => localNoticeIds.has(id) || inbox.canAct(id),
+  const railInbox = { ...inbox, open: openInbox, canAct: (id: string) => localNoticeIds.has(id) || inbox.canAct(id), canClear: (id: string) => localNoticeIds.has(id) || inbox.canClear(id),
     state: withCommandNotices(inbox.state, commandNotices.map(notice => noticeRead.has(notice.id) ? { ...notice, read: true } : notice)),
     control: async (id: string, action: Parameters<InboxWiring["control"]>[1]) => {
       if (!localNoticeIds.has(id)) return inbox.control(id, action);
@@ -827,7 +827,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       const response = BulkRunCommandResponseSchema.safeParse({ state: "vector", bulkCommandId: destination.bulkCommandId, type: destination.type, requestedCount: destination.requestedCount, results: destination.results });
       if (!response.success) { refused(notificationTargetUnavailable()); return; }
       const ids = [...destination.results.map(result => result.runId), ...destination.notAttempted];
-      setOpenedBulk({ plan: { verb: destination.type, label: BULK_VERB_LABEL[destination.type], eligible: [], skipped: destination.notAttempted.map(runId => ({ runId, title: title(runId) })), skippedReason: "Not attempted", unavailable: [] },
+      setOpenedBulk({ commandId: destination.bulkCommandId, plan: { verb: destination.type, label: BULK_VERB_LABEL[destination.type], eligible: [], skipped: destination.notAttempted.map(runId => ({ runId, title: title(runId) })), skippedReason: "Not attempted", unavailable: [] },
         days: new Map(Object.entries(destination.days)),
         subjects: new Map(ids.map(runId => [runId, title(runId)])), response: response.data });
       setBulkReview(true); opened();

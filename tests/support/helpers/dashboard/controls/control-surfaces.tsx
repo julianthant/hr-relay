@@ -18,7 +18,7 @@ export function SettingsSurface({ section, children }: { section: "General" | "P
 }
 
 const EMPTY_INBOX: InboxWiring = { state: { state: "ready", items: [], pinned: [] }, notice: "", control: () => Promise.resolve(false),
-  readAll: () => Promise.resolve(), clear: () => Promise.resolve(false), clearAll: () => Promise.resolve(), open: () => undefined, canAct: () => false, onPublication: () => () => undefined };
+  readAll: () => Promise.resolve(), clear: () => Promise.resolve(false), clearAll: () => Promise.resolve(), open: () => undefined, canAct: () => false, canClear: () => false, onPublication: () => () => undefined };
 export function LogsSurface({ title = "EID 10777012", status, toolbar, queueControls, children, steps, timeline = [], queueLabel = "NEEDS YOU · 1", content }: { title?: string; status: ReactNode; toolbar?: ReactNode; queueControls?: ReactNode; queueLabel?: string; children?: ReactNode; content?: ReactNode; steps: readonly LogStep[]; timeline?: readonly LogTimelineStage[] }) {
   const { theme } = useDemoTheme();
   const active = queueLabel.startsWith("ACTIVE");

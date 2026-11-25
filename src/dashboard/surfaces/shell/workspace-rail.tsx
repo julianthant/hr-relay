@@ -42,7 +42,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, ac
           <IconButton variant="ghost" size="sm" label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title="" aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)} icon={<PanelLeft aria-hidden className="size-4" />} />
         </Tooltip>
         <NotificationsPopover state={notificationRail.state} open={open} onOpenChange={notificationRail.changeOpen} show={show} onShow={setShow} notice={inbox.notice}
-          onReadAll={notificationRail.onReadAll} onClear={notificationRail.onClear} onClearAll={() => notificationRail.onClearAll(show)} onOpen={notificationRail.onOpenItem} onControl={(id, control) => { void notificationRail.onControl(id, control); }} canAct={notificationRail.canAct} />
+          onReadAll={notificationRail.onReadAll} onClear={notificationRail.onClear} onClearAll={() => notificationRail.onClearAll(show)} onOpen={notificationRail.onOpenItem} onControl={(id, control) => { void notificationRail.onControl(id, control); }} canAct={notificationRail.canAct} canClear={notificationRail.canClear} />
         <RailSearch data={searchData} workflows={workflows} startKey={start && shortcutLabel(start).toUpperCase()} onAction={onSearchAction} onWorkflow={onSelect} onResult={onSearch} />
       </div>
     </header>

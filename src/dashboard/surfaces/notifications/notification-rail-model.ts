@@ -24,6 +24,7 @@ export type NotificationRailModel = Readonly<{
   /** Whether the control was accepted. */
   onControl: (id: string, control: NotificationControl) => Promise<boolean>;
   canAct: (id: string) => boolean;
+  canClear: (id: string) => boolean;
   onReadAll: () => void;
   onClear: (id: string) => void;
   onClearAll: (show: "all" | "unread") => void;
@@ -54,6 +55,7 @@ export function useNotificationRailModel({ open = false, setOpen, onAlert, onRef
     changeOpen: setOpen,
     onControl: (id, action) => served.control(id, action),
     canAct: id => served.canAct(id),
+    canClear: id => served.canClear(id),
     onReadAll: () => { void served.readAll(); },
     onClear: id => { void served.clear(id); },
     onClearAll: show => { void served.clearAll(show); },

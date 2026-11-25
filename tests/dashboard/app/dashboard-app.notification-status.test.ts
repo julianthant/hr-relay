@@ -140,10 +140,15 @@ it("turns the controls off when a status update cannot be read, and back on when
   assert.match(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, true);
   assert.equal(m.open().disabled, true, "Open cannot act or take focus while the status is unavailable");
+  const clearAll = () => document.querySelector<HTMLButtonElement>('button[aria-label="Clear all"]');
+  assert.equal(m.control("Clear notification").disabled, true);
+  assert.equal(clearAll()?.disabled, true, "Clear all has nothing it may clear");
   assert.deepEqual(m.commands, []);
 
   await m.change(READY);
 
+  assert.equal(m.control("Clear notification").disabled, false);
+  assert.equal(clearAll()?.disabled, false);
   assert.doesNotMatch(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, false);
   assert.equal(m.open().disabled, false);

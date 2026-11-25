@@ -76,6 +76,7 @@ export function sampleInbox(state: NotificationsState, base: NotificationsState,
   return {
     state, notice: "",
     canAct: () => true,
+    canClear: () => true,
     onPublication: () => () => undefined,
     async control(id, action) { if (action !== "read" && action !== "unread") return false; setReads(current => ({ ...current, [id]: action === "read" })); return true; },
     async readAll() { if (base.state === "ready") setReads(current => ({ ...current, ...Object.fromEntries(base.items.map(item => [item.id, true])) })); },
