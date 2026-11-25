@@ -23,7 +23,6 @@ import { queryAssistantUsage } from "../../../assistant/usage-counts.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
 import { composeQueueSummaries } from "./queue-summaries.js";
 import { composeNotificationReads } from "./notification-wiring.js";
-import { PackageVersionSchema } from "./runtime-contracts.js";
 
 type ProjectionInput = Parameters<typeof createRunQueueProjection>[0];
 type ProjectionAuthority = ProjectionInput["authority"];
@@ -128,7 +127,9 @@ function admitProcessFacts(input: unknown): ProcessFacts {
 
 /* ── the lane's replica ──────────────────────────────────────────────────── */
 
-const LANE_APP_VERSION = PackageVersionSchema.parse(JSON.parse(readFileSync(new URL("../../../../../package.json", import.meta.url), "utf8"))).version;
+/** The package version the replica reports; read in the lane, where this module is loaded from the file system. */
+const laneAppVersion = (): string => z.object({ version: z.string().min(1) })
+  .parse(JSON.parse(readFileSync(new URL("../../../../../package.json", import.meta.url), "utf8"))).version;
 const LANE_DESCRIPTOR_SET_HASH = descriptorSetHash(DESCRIPTORS.map(descriptor => descriptor.contractFingerprint));
 
 interface LaneReplica {
@@ -157,7 +158,7 @@ function laneReplica(context: LaneWarmContext): LaneReplica {
   const summaries = { ...composeQueueSummaries(history), activity: () => { throw new Error("read-lane-activity-unserved"); } };
   const projection = createRunQueueProjection({
     assistantUsage: (from, to, generatedAt) => queryAssistantUsage(history, { from, to, generatedAt }),
-    timeline: history.authority.timelineEvents, stateRoot: context.start.stateRoot, clock, appVersion: LANE_APP_VERSION,
+    timeline: history.authority.timelineEvents, stateRoot: context.start.stateRoot, clock, appVersion: laneAppVersion(),
     descriptorSetHash: LANE_DESCRIPTOR_SET_HASH, ledger: createTransactionHistory(history.authority), queueCapabilities: workflowQueueCapabilities,
     descriptors: readableDescriptors, replica: true,
     reader: { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries },
