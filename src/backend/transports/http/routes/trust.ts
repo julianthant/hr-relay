@@ -1,6 +1,6 @@
 import type { TrustRouteDeps } from "./trust-types.js";
 
-import { readRunSection } from "../../../runs/queries/run-detail.js";
+import { readRunSectionBody } from "../../../runs/queries/run-detail.js";
 import {
   readDiagnosticBundle,
   readDiagnosticBundleAttachment,
@@ -111,12 +111,13 @@ export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): vo
 
   app.get("/api/v1/runs/:runId/:section", async (c) => {
     const cursor = c.req.query("cursor");
-    return c.json(await readRunSection(
+    return c.body(await readRunSectionBody(
       deps.runDetail,
       c.req.param("runId"),
       c.req.param("section"),
       cursor,
       c.req.raw.signal,
-    ));
+      c.req.header("x-relay-tab"),
+    ), 200, { "Content-Type": "application/json" });
   });
 }

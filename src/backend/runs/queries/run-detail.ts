@@ -1,5 +1,14 @@
 // Serve each section through its own evidence state; absent sections never look like empty successful reads.
+import { z } from "zod";
+import { ErrorCatalogCodeSchema, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
+import { WorkerBrowserObservationSchema, WorkerSetupRefusalCodeSchema } from "../../../models/run/worker-control.js";
+import { WorkerPoolMemberSchema } from "../../../models/run/worker-slot.js";
+import { BrowserSystemIdSchema, IsoInstantSchema, RunIdSchema } from "../../../rules/identity/ids.js";
+import { WorkerActivitySchema, WorkerDirectiveSchema } from "../../runtime/workers/worker-messages.js";
+import type { WorkerMemberView } from "../../runtime/workers/worker-pool.js";
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import { defineLaneRead, type DashboardReadLanes, type LaneReadContext, type LaneReadDefinition } from "../../storage/sqlite/dashboard-read-host.js";
 import type { NativeRunEventWire } from "../../../models/dashboard/run-detail.js";
 import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
 import type { RunDecisionWire } from "../../../models/dashboard/run-decision.js";
@@ -13,6 +22,9 @@ import { aggregateMemberRetryAvailable } from "./run-retry.js";
 import { endedUnfinished, hostedOcrRun, offeredOcrReview } from "./ocr-record-members.js";
 import {
   RunDetailWireSchema,
+  RunCaptureAvailabilityWireSchema,
+  RunDetailSectionResponseSchema,
+  NotePageSchema,
   TimelineStepWireSchema,
   NativeRunEventWireSchema,
   type RunDetailWire,
@@ -32,16 +44,25 @@ import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type Task
 import {
   ProjectionDegradedError,
   LogIdentityRefusedError,
+  LogDisplayRefusedError,
+  DiagnosticBundleCorruptError,
+  DiagnosticBundleBytesMissingError,
+  TargetNotFoundError,
 } from "../commands/refusals.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
-import { requireCanonicalRun } from "./run-read.js";
+import { requireCanonicalRun, SectionNameSchema } from "./run-read.js";
 import { assertRunTimelineCompatible, hasRunDescriptorDrift } from "./run-timeline-compatibility.js";
 import { readDelegationCancellation } from "../../storage/sqlite/delegation-authority.js";
 import type { RunPanel } from "../../../models/dashboard/subscription.js";
 import { SectionUnavailableError } from "../commands/refusals.js";
 import { requireTrustRun } from "../trust/run-reader.js";
-import { buildRunLogsWhole } from "./run-logs.js";
-import { readRunSection } from "./run-sections.js";
+import { buildRunLogsWhole, createRunNoteScanCache, type RunNoteScanCache } from "./run-logs.js";
+import { buildRunSection, readRunSection } from "./run-sections.js";
+import { readItemAttemptHistoryBody } from "./item-attempt-history.js";
+import type { ItemAttemptHistoryRequest } from "../../../models/dashboard/item-attempt-history.js";
+import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
+import { ProtectedSubjectDisplayRefusedError } from "../start/protected-input.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 
 export { availableSections } from "./run-detail/availability.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
@@ -499,22 +520,210 @@ export function runLevelDecision(facts: Readonly<{ status: string; childRetryKey
 
 const PANEL_SECTIONS = ["captures", "identity-gate", "parked-write", "failure", "workbook-writes"] as const;
 
+const workerExitBase = {
+  code: z.int().nullable(), signal: z.string().nullable(), at: IsoInstantSchema, settlement: z.enum(["settled", "failed"]),
+};
+const WorkerExitSchema = z.discriminatedUnion("outcome", [
+  z.strictObject({ ...workerExitBase, outcome: z.literal("stopped"), reason: z.enum(["operator", "shutdown", "logout", "reset", "remove", "fault"]).optional() }),
+  z.strictObject({ ...workerExitBase, outcome: z.literal("crashed"), failureCode: ErrorCatalogCodeSchema.optional() }),
+  z.strictObject({ ...workerExitBase, outcome: z.literal("setup-refused"), failureCode: WorkerSetupRefusalCodeSchema }),
+]);
+const WorkerMemberSchema = z.strictObject({
+  member: WorkerPoolMemberSchema, lifetimeId: z.string().min(1), version: z.int().nonnegative(),
+  state: z.enum(["starting", "running", "stopping", "exited"]), directive: WorkerDirectiveSchema,
+  pid: z.int().positive().optional(), startedAt: IsoInstantSchema, activity: WorkerActivitySchema.optional(),
+  browsers: z.array(WorkerBrowserObservationSchema), browserSystems: z.array(BrowserSystemIdSchema).optional(),
+  exit: WorkerExitSchema.optional(), held: z.enum(["exit-unobserved", "kill-undelivered"]).optional(),
+}).transform((view): WorkerMemberView => ({
+  ...view, pid: view.pid, activity: view.activity, exit: view.exit, held: view.held,
+}));
+const ProcessFactsSchema = z.strictObject({ operatorName: z.string(), workers: z.array(WorkerMemberSchema) });
+type ProcessFacts = z.output<typeof ProcessFactsSchema>;
+
+const RunReadRequestSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("detail"), runId: RunIdSchema, captures: RunCaptureAvailabilityWireSchema }),
+  z.strictObject({ kind: z.literal("section"), runId: RunIdSchema, section: SectionNameSchema, cursor: z.string().optional() }),
+  z.strictObject({ kind: z.literal("panel"), runId: RunIdSchema, captures: RunCaptureAvailabilityWireSchema }),
+]);
+const refusals = [
+  TargetNotFoundError, SectionUnavailableError, LogIdentityRefusedError, LogDisplayRefusedError,
+  ProjectionDegradedError, DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, OcrReviewRefusedError,
+  ProtectedSubjectDisplayRefusedError,
+] as const;
+const WorkbookErrorCodeSchema = z.enum(ErrorCatalogCodeSchema.options.filter(
+  (code): code is Extract<ErrorCatalogCode, `WORKBOOK_${string}`> => code.startsWith("WORKBOOK_"),
+));
+const LaneReplySchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("served"), body: z.string() }),
+  z.strictObject({ state: z.literal("receipt-missing") }),
+  z.strictObject({ state: z.literal("workbook-refused"), code: WorkbookErrorCodeSchema }),
+  z.strictObject({ state: z.literal("refused"), name: z.string(), message: z.string() }),
+  z.strictObject({ state: z.literal("invalid"), issues: z.array(z.strictObject({
+    path: z.array(z.union([z.string(), z.number()])), message: z.string(),
+  })) }),
+]);
+type LaneReply = z.infer<typeof LaneReplySchema>;
+
+export class MissingLaneReceipt extends Error {}
+
+function laneReply(build: () => object): LaneReply {
+  try {
+    return { state: "served", body: JSON.stringify(build()) };
+  } catch (error: unknown) {
+    if (error instanceof MissingLaneReceipt) return { state: "receipt-missing" };
+    if (error instanceof WorkbookLibraryError) return { state: "workbook-refused", code: error.code };
+    if (error instanceof z.ZodError) return { state: "invalid", issues: error.issues.map(({ path, message }) =>
+      ({ path: path.map(key => typeof key === "symbol" ? String(key) : key), message })) };
+    if (error instanceof Error && refusals.some(Refusal => error instanceof Refusal)) {
+      return { state: "refused", name: error.name, message: error.message };
+    }
+    throw error;
+  }
+}
+
+function throwLaneRefusal(name: string, message: string): never {
+  const Refusal = refusals.find(candidate => candidate.name === name);
+  if (Refusal === undefined) throw new Error(`run-read-lane-unknown-refusal: ${name}`);
+  if (Refusal === LogDisplayRefusedError || Refusal === OcrReviewRefusedError || Refusal === ProtectedSubjectDisplayRefusedError) {
+    throw new Refusal();
+  }
+  throw new Refusal(message);
+}
+
+interface RunDetailLaneResources {
+  readonly deps: RunDetailQueryDeps;
+  update(facts: ProcessFacts, through: number): void;
+}
+
+export function defineRunDetailLaneRead(module: string, compose: (context: LaneReadContext, facts: ProcessFacts) => RunDetailLaneResources) {
+  const laneResources = new WeakMap<AuthorityDatabase, RunDetailLaneResources & { noteScanCache: RunNoteScanCache }>();
+  return defineLaneRead(module, "run-detail", {
+    lane: "navigation", priority: "interactive", timeline: true, processFacts: true, args: RunReadRequestSchema,
+    run(context, request) {
+      return laneReply(() => {
+        const facts = ProcessFactsSchema.parse(context.processFacts);
+        let resources = laneResources.get(context.history);
+        if (resources === undefined) {
+          resources = { ...compose(context, facts), noteScanCache: createRunNoteScanCache() };
+          laneResources.set(context.history, resources);
+        }
+        const { deps, noteScanCache } = resources;
+        resources.update(facts, context.history.authority.timelineEvents.highWaterMark());
+        if (request.kind === "section") {
+          return buildRunSection(deps, request.runId, request.section, request.cursor, noteScanCache);
+        }
+        const detail = buildRunDetail(deps, request.runId, request.captures);
+        if (request.kind === "detail") return detail;
+        const logs = readWholePanelLogs(deps, request.runId, detail);
+        const sections = PANEL_SECTIONS.filter(name => name !== "captures" && detail.availableSections.includes(name))
+          .map(name => buildRunSection(deps, request.runId, name));
+        return { detail, logs, sections };
+      });
+    },
+  });
+}
+
+type RunLaneDefinition = LaneReadDefinition<z.output<typeof RunReadRequestSchema>, LaneReply>;
+const runReadBindings = new WeakMap<RunDetailQueryDeps, { lanes: DashboardReadLanes; definition: RunLaneDefinition; revision: number; facts?: string }>();
+
+export function bindRunDetailReadLane(deps: RunDetailQueryDeps, lanes: DashboardReadLanes, definition: RunLaneDefinition): void {
+  runReadBindings.set(deps, { lanes, definition, revision: 0 });
+}
+
+const readOptions = (slot: string, signal?: AbortSignal, tab?: string) => ({
+  ...(signal === undefined ? {} : { signal }),
+  ...(tab === undefined ? {} : { slot: { subscriberId: tab, slot } }),
+});
+
+async function requestRunRead(
+  deps: RunDetailQueryDeps, request: z.input<typeof RunReadRequestSchema>, signal?: AbortSignal, tab?: string,
+): Promise<string | undefined> {
+  const binding = runReadBindings.get(deps);
+  if (binding === undefined) return undefined;
+  signal?.throwIfAborted();
+  const withWorkers = request.kind === "panel" || (request.kind === "section" && request.section === "parked-write");
+  if (deps.operatorName === undefined) throw new Error("run-read-lane-operator-name-missing");
+  const facts = { operatorName: deps.operatorName(), workers: withWorkers ? deps.workerMembers?.() ?? [] : [] };
+  const key = JSON.stringify(facts);
+  if (key !== binding.facts) {
+    binding.facts = key;
+    binding.revision++;
+  }
+  const slot = request.kind === "section" ? `run-section:${request.section}` : "run-detail";
+  const response = await binding.lanes.read(binding.definition, RunReadRequestSchema.parse(request), {
+    ...readOptions(slot, signal, tab), processFacts: { revision: binding.revision, facts },
+  });
+  const reply = LaneReplySchema.parse(JSON.parse(response.body));
+  switch (reply.state) {
+    case "served": return reply.body;
+    case "receipt-missing": {
+      if (request.kind !== "section" || request.section !== "receipt") throw new Error("run-read-lane-unexpected-receipt-refusal");
+      return undefined;
+    }
+    case "workbook-refused": throw new WorkbookLibraryError(reply.code);
+    case "refused": throwLaneRefusal(reply.name, reply.message);
+    case "invalid": throw new z.ZodError(reply.issues.map(issue => ({ ...issue, code: "custom" })));
+  }
+}
+
+export async function readRunDetailBody(deps: RunDetailQueryDeps, runId: string, signal?: AbortSignal, tab?: string): Promise<string> {
+  const captures = await readRunCaptureAvailability(deps, runId, signal);
+  return await requestRunRead(deps, { kind: "detail", runId, captures }, signal, tab)
+    ?? JSON.stringify(buildRunDetail(deps, runId, captures));
+}
+
+export async function readRunSectionBody(deps: RunDetailQueryDeps, runId: string, sectionInput: string,
+  cursor?: string, signal?: AbortSignal, tab?: string): Promise<string> {
+  RunIdSchema.parse(runId);
+  const section = SectionNameSchema.parse(sectionInput);
+  const body = section === "captures" ? undefined : await requestRunRead(deps, { kind: "section", runId, section, cursor }, signal, tab);
+  return body ?? JSON.stringify(await readRunSection(deps, runId, section, cursor, signal));
+}
+
+export function readRunAttemptHistoryBody(deps: RunDetailQueryDeps, runId: string, request: ItemAttemptHistoryRequest,
+  signal?: AbortSignal, tab?: string): string | Promise<string> {
+  const lanes = runReadBindings.get(deps)?.lanes;
+  if (lanes !== undefined) return readItemAttemptHistoryBody(lanes, runId, request, readOptions("run-attempt-history", signal, tab));
+  if (deps.itemAttemptHistory === undefined) throw new SectionUnavailableError("same-item attempt history is not composed");
+  return JSON.stringify(deps.itemAttemptHistory.read(runId, request));
+}
+
+function readWholePanelLogs(deps: RunDetailQueryDeps, runId: string, detail: RunDetailWire) {
+  if (!detail.availableSections.includes("logs")) throw new SectionUnavailableError(`section logs is not available for run ${runId}`);
+  const logs = buildRunLogsWhole(deps, runId, deps.projection.runFold(runId), requireTrustRun(deps.runReader, runId));
+  if (logs.section !== "logs") throw new Error("run panel logs read answered another section");
+  return logs.payload;
+}
+
+const LanePanelSchema = z.strictObject({
+  detail: RunDetailWireSchema, logs: NotePageSchema, sections: z.array(RunDetailSectionResponseSchema),
+});
+
 /** Everything the run panel holds, read by the same queries its routes serve. A refusal throws as the route's would. */
 export async function readRunPanel(
   deps: RunDetailQueryDeps,
   runId: string,
   signal: AbortSignal,
 ): Promise<Extract<RunPanel, { state: "available" }>> {
+  if (runReadBindings.has(deps)) {
+    const captures = await readRunCaptureAvailability(deps, runId, signal);
+    signal.throwIfAborted();
+    const body = await requestRunRead(deps, { kind: "panel", runId, captures }, signal);
+    if (body === undefined) throw new Error("run-read-lane-panel-body-missing");
+    const panel = LanePanelSchema.parse(JSON.parse(body));
+    const sections = panel.detail.captures?.state === "available"
+      ? [await readRunSection(deps, runId, "captures", undefined, signal), ...panel.sections] : panel.sections;
+    signal.throwIfAborted();
+    return { state: "available", detail: panel.detail, logs: panel.logs, sections };
+  }
   const detail = await readRunDetail(deps, runId, signal);
   signal.throwIfAborted();
-  if (!detail.availableSections.includes("logs")) throw new SectionUnavailableError(`section logs is not available for run ${runId}`);
-  const logs = buildRunLogsWhole(deps, runId, deps.projection.runFold(runId), requireTrustRun(deps.runReader, runId));
-  if (logs.section !== "logs") throw new Error("run panel logs read answered another section");
+  const logs = readWholePanelLogs(deps, runId, detail);
   const sections = await Promise.all(PANEL_SECTIONS
     .filter(name => detail.availableSections.includes(name) && (name !== "captures" || detail.captures?.state === "available"))
     .map(name => readRunSection(deps, runId, name, undefined, signal)));
   signal.throwIfAborted();
-  return { state: "available", detail, logs: logs.payload, sections };
+  return { state: "available", detail, logs, sections };
 }
 
 /** The live route adds async capture verification; Archive's synchronous `buildRunDetail` freeze does not inspect that authority. */
