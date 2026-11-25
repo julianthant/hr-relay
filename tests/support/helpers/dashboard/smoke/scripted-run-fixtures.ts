@@ -4,13 +4,13 @@ import { startSeededServer, type SeededServer } from "../served-fixtures/seeded-
 import { expect, test as base } from "./smoke-fixtures.js";
 
 export const test = base.extend<{ seeded: SeededServer }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright parses fixture dependencies from this pattern.
-  seeded: async ({}, use) => {
+  seeded: async ({ page }, use) => {
     const server = await startSeededServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" }, productApp: true, scriptedRuns: true });
     try {
       await use(server);
     } finally {
-      await server.close();
+      try { await page.close(); }
+      finally { await server.close(); }
     }
   },
 });
