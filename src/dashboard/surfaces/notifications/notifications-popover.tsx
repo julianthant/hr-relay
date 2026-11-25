@@ -94,7 +94,7 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
   return <Popover modal open={open} onOpenChange={onOpenChange}>
     <Tooltip side="bottom" content="Notifications" {...(open ? { open: false as const } : {})}><PopoverTrigger asChild>
       <IconButton variant="ghost" size="sm" className="notice-bell" label={label} title=""
-        icon={<><Bell aria-hidden className="size-3" strokeWidth={2.5} />
+        icon={<><Bell aria-hidden className="size-4" />
           {unread > 0 && <span aria-hidden className="notice-bell-status"><span className="notice-bell-dot" /><span className="notice-bell-count">{unread > 99 ? "99+" : unread}</span></span>}</>} />
     </PopoverTrigger></Tooltip>
     {/* Opening focuses the panel itself; the filter would draw its focus ring before anyone has reached it. */}
