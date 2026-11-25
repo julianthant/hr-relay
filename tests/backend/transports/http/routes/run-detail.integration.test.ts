@@ -12,19 +12,19 @@ import * as streams from "../../../../../src/backend/transports/http/subscriptio
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { ItemAttemptHistoryResponseSchema } from "../../../../../src/models/dashboard/item-attempt-history.js";
-import { RunDetailSectionResponseSchema } from "../../../../../src/models/dashboard/run-detail.js";
+import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
 import { searchPartitionDay } from "../../../../../src/models/dashboard/search-calendar.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
-import { CONFIG_SNAPSHOT, NOW, UUID_5 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js";
+import { NOW, UUID_5 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { admitFixtureSlot, testRunService } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { failureRecordOf } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
+import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 import { AuthorityDatabase as SyntheticAuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { measureRunDetailReads } from "../../../../../scripts/bench/run-detail-lane.js";
 
@@ -61,22 +61,34 @@ it("serves run routes and the stream panel through the composed navigation lane"
   const { database } = owner.selectedContext(token);
   assert.equal(composed.length, 1);
   const [detailDeps] = composed;
-  database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);
+  const config = database.authority.runtimeConfig.get();
+  assert.ok(config);
+  const seed = RunRecordSchema.parse(personLookupQueuedRun());
   const run = RunRecordSchema.parse({
-    ...QUEUED_RUN,
-    envelope: { ...QUEUED_RUN.envelope, descriptorVersion: personLookupDescriptor.version,
-      contractFingerprint: personLookupDescriptor.contractFingerprint },
-    input: { ...QUEUED_RUN.input, workbookReferences: [] },
+    ...seed,
+    envelope: { ...seed.envelope, configFingerprint: config.configFingerprint, configSnapshotId: config.configSnapshotId },
+    input: { ...seed.input, workbookReferences: [] },
   });
   database.authority.runs.enqueue(run);
   const { runId, workflow, traceId, attempt } = run.envelope;
+  const origin = `http://127.0.0.1:${String(runtime.port)}`;
+  const path = `${origin}/api/v1/runs/${runId}`;
+  const get = async (suffix: string, runPath = path) => {
+    const response = await fetch(runPath + suffix);
+    const body = await response.text();
+    assert.equal(response.status, 200, `${suffix}: ${body}`);
+    return body;
+  };
   const timeline = createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
   const firstNode = personLookupDescriptor.timeline?.[0]?.nodes[0];
   assert.ok(firstNode);
   timeline.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Fixture run" }));
-  const span = { kind: "task" as const, workflow, runId, traceId, attempt, ts: NOW, spanPath: `${traceId}/${firstNode.id}#1.1` };
-  timeline.emit({ ...span, t: "span.started", parentSpanPath: traceId, name: "Fixture step" });
-  timeline.emit({ ...span, t: "span.ended", outcome: "done" });
+  for (let index = 1; index <= 12; index++) {
+    const span = { kind: "task" as const, workflow, runId, traceId, attempt, ts: NOW, spanPath: `${traceId}/${firstNode.id}#1.${String(index)}` };
+    timeline.emit({ ...span, t: "span.started", parentSpanPath: traceId, name: "Fixture step" });
+    timeline.emit({ ...span, t: "span.ended", outcome: "done" });
+  }
+  assert.equal(RunDetailWireSchema.parse(JSON.parse(await get(""))).timeline.events.length, 12);
   const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
   for (let index = 0; index < 201; index++) {
     notes.emitRunLog({ workflow, address: { runId, traceId, attempt, spanPath: traceId },
@@ -86,11 +98,8 @@ it("serves run routes and the stream panel through the composed navigation lane"
     lifecycle: { state: "terminal", outcome: "discarded", endedAt: NOW } });
   assert.equal(ended.state, "applied");
 
-  const config = database.authority.runtimeConfig.get();
-  assert.ok(config);
   const failedId = randomUUID();
-  const queued = RunRecordSchema.parse({ ...run, envelope: { ...run.envelope, runId: failedId, itemId: failedId,
-    configFingerprint: config.configFingerprint, configSnapshotId: config.configSnapshotId, traceId: "pl-170000-2223" } });
+  const queued = RunRecordSchema.parse({ ...run, envelope: { ...run.envelope, runId: failedId, itemId: failedId, traceId: "pl-170000-2223" } });
   database.authority.runs.enqueue(queued);
   const { workerId } = database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, workflow, 1, NOW));
   const claimed = database.authority.runs.claimNext({ workflow, workerId, now: NOW });
@@ -110,15 +119,6 @@ it("serves run routes and the stream panel through the composed navigation lane"
     descriptorVersion: queued.envelope.descriptorVersion, contractFingerprint: queued.envelope.contractFingerprint,
     expectedVersion: running.run.version, failureId: failure.failureId,
   } });
-  const origin = `http://127.0.0.1:${String(runtime.port)}`;
-  const path = `${origin}/api/v1/runs/${runId}`;
-  const get = async (suffix: string, runPath = path) => {
-    const response = await fetch(runPath + suffix);
-    const body = await response.text();
-    assert.equal(response.status, 200, `${suffix}: ${body}`);
-    return body;
-  };
-  await get("");
   assert.equal(database.authority.evidenceReceipts.findByRun(runId), undefined);
   const derive = vi.spyOn(database, "withAuthorityTransaction");
   const receipt = await get("/receipt");
