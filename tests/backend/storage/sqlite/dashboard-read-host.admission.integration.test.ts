@@ -234,7 +234,9 @@ it("attaches a profile copy's history archive in the lane with the host's logica
   const lanes = createDashboardReadHost({ admission, database, clock: systemClock, lanes: ["navigation"], entry: LANE_READS_ENTRY });
   try {
     assert.deepEqual(JSON.parse((await lanes.read(laneHistory, { after: 0, limit: 1000 })).body), JSON.parse(JSON.stringify(expected)));
-    assert.deepEqual(JSON.parse((await lanes.read(laneWrite, {})).body), { native: "read-lane-write-refused", history: "isolated-history-read-only" });
+    // The history reader's snapshot is paired with the native connection's, so a native write meets that snapshot before the lane's admission.
+    assert.deepEqual(JSON.parse((await lanes.read(laneWrite, {})).body),
+      { native: "authority mutation cannot run inside an authority read snapshot", history: "isolated-history-read-only" });
   } finally { await lanes.close(); }
 
   assert.throws(() => openReadLane(admitReadLane({ ...start, cursorOffset: offset + 1 }), 250), /read-lane-history-cursor-mismatch/u);
