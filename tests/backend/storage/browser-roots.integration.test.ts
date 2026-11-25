@@ -12,6 +12,7 @@ import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority
 import { createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, admitCommandBrowser, commandProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
 import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
+import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture, withOfflineMaintenance } from "../../support/helpers/admission-fixture.js";
 import { createBrowserSessionFactoryFixtures } from "../../support/helpers/browser/session-factory-fixtures.js";
@@ -267,6 +268,22 @@ for (const phase of ["publishing", "abort"] as const)
     } finally { await f.close(); }
   });
 
+it("opens a setup browser after a sign-in moves the session generation past the registry's start", async () => {
+  const f = await createBoundProfileFixture({ pending: "onboarding" });
+  try {
+    const operations = join(f.machine.stateRoot, "machine", "operations"), name = readdirSync(operations).find(name => name.endsWith(".json"));
+    assert.ok(name);
+    const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(operations, name), "utf8")));
+    assert.ok(operation.onboarding);
+    const roots = createBrowserRoots(f.machine);
+    const generation = createProfileRegistry(f.machine).advanceSession(null);
+    const launch = roots.beginSignupLaunch({ profileId: operation.profileId, profileRoot: join(f.machine.stateRoot, "browsers", "onboarding"), credentialFingerprint: null,
+      owner: { kind: "signup", operationId: operation.operationId, accountId: operation.onboarding.accountId, providerGeneration: operation.onboarding.generation } });
+    mkdirSync(launch.input.profileDirectory, { recursive: true, mode: 0o700 });
+    launch.opened(); launch.closing(); launch.closed();
+    assert.equal(roots.inventory().roots[0]?.sessionGeneration, generation);
+  } finally { await f.close(); }
+});
 
 for (const state of ["launching", "open", "closed"] as const)
   it(`requires the prior ${state} launch to close before a later probe for the same worker can take ownership`, async () => {
