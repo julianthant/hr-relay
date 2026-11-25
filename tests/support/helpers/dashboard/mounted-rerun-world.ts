@@ -31,17 +31,28 @@ function button(name: string): HTMLButtonElement {
   assert.equal(matches.length, 1, `one button ${name}: ${text()}`); return matches[0];
 }
 const findButton = (name: string) => [...document.querySelectorAll("button")].find((node) => node.textContent?.trim() === name || node.getAttribute("aria-label") === name);
-/** Checks is the last stage and holds Start: continues from Options and waits for the served readiness to let `name` start. */
-async function reachChecks(name: string) {
-  const next = findButton("Continue");
-  assert.ok(next, `no Continue toward ${name}: ${text()}`);
-  await act(async () => next.click());
+const warningShown = () => document.querySelector('[aria-label="Repeat transaction warning"]') !== null;
+async function waitEnabled(name: string) {
   for (let wait = 0; wait < 300 && (findButton(name) === undefined || findButton(name)?.disabled === true); wait += 1) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
 }
-/** A press of Start from an earlier stage goes to Checks first. */
-async function press(name: string) {
-  if (/^(Start|Create rerun)/u.test(name) && findButton(name) === undefined) await reachChecks(name);
+/** The Start button as drawn: under a shown repeat warning its name ends in "again". */
+const startName = (name: string) => /^Start/u.test(name) && warningShown() && !name.endsWith(" again") ? `${name} again` : name;
+/** One press of a button, with no consent given to a repeat warning it raises. */
+async function pressOnce(asked: string) {
+  const name = startName(asked);
+  if (/^Start/u.test(name)) await waitEnabled(name);
   const node = button(name); assert.equal(node.disabled, false, `${name}: ${text()}`); await act(async () => node.click()); }
+/** A rerun of a source that already filed is warned when Start is first pressed: this reads the warning and leaves `name` ready to press again, which is the consent. */
+async function reachChecks(name: string) {
+  await pressOnce(name);
+  assert.ok(warningShown(), `the repeat warning for ${name}: ${text()}`);
+  await waitEnabled(startName(name));
+}
+/** A press of Start consents to the repeat warning it raises; every other press is one click. */
+async function press(name: string) {
+  await pressOnce(name);
+  if (/^Start/u.test(name) && warningShown()) await pressOnce(name);
+}
 function checkbox(label: string): HTMLButtonElement | HTMLInputElement {
   const nodes = [...document.querySelectorAll<HTMLButtonElement | HTMLInputElement>('[role="checkbox"], [role="switch"]')];
   const node = nodes.find((entry) => [label, `Include ${label}`, `${label} (required)`].includes(entry.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent ?? "")
@@ -75,5 +86,5 @@ async function mount(h: Harness, source: RunRecord | undefined, client: Dashboar
   button(source === undefined ? "Run workflow" : "Rerun source").focus(); await press(source === undefined ? "Run workflow" : "Rerun source");
   return replaceBinding;
 }
-return { setup, text, button, press, reachChecks, checkbox, field, fill, mount, cleanup, unmount };
+return { setup, text, button, press, pressOnce, reachChecks, checkbox, field, fill, mount, cleanup, unmount };
 }

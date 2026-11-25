@@ -267,10 +267,13 @@ export function LoadedApp({
   const assistantIsOpen = useAssistantOpen();
   const servedOpenStart = launch.openStart;
   const openStart = useCallback(() => {
+    if (launch.rerunInOneClick) return;
     setRoute(current => ({ ...current, view: { ...current.view, launchServed: activeWorkflowId, launchWorkflow: undefined, launchSource: undefined, launchStage: "Input", launchCustomize: false } }));
     servedOpenStart();
-  }, [servedOpenStart, activeWorkflowId, setRoute]);
+  }, [servedOpenStart, launch.rerunInOneClick, activeWorkflowId, setRoute]);
   const openRerun = launch.openRerun;
+  /** A one-click rerun still queuing has no dialog to block the page; opening another launch would drop it. */
+  const rerunQueuing = launch.rerunInOneClick;
 
   const [pendingCommand, setPendingCommand] = useState<(PendingCommand & { readonly scope: CommandExecutionScope; readonly onConfirmed?: () => void }) | null>(null);
   /** the run whose name is being edited; `null` while the dialog is shut */
@@ -566,8 +569,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       if (action.kind === "navigation") {
         if (action.navigate.kind === "rerun") {
           const row = dayWire?.queueSurfaces.find(entry => String(entry.runId) === target.runId);
+          if (rerunQueuing) { toast({ tone: "info", title: "Still queuing the last rerun" }); return; }
           openRerun({ ...RerunValuesRequestSchema.parse({ runId: target.runId, expectedVersion: action.navigate.expectedVersion }),
-            ...(row === undefined ? {} : { label: row.title, traceId: String(row.traceId) }) });
+            ...(row === undefined ? {} : { label: row.title, traceId: String(row.traceId) }) }, undefined, row?.status === "done");
         }
         else if (action.navigate.runId !== undefined) selectRun(action.navigate.runId);
         return;
@@ -617,7 +621,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }
       return dispatchCommand(action, target, { source });
     },
-    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, clock, openRerun, unresolvedRunAction, commandScope],
+    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, clock, openRerun, rerunQueuing, unresolvedRunAction, commandScope],
   );
 
   const confirmLogDecision = useCallback<RunWiringConfirm>((pending, onConfirmed) => setPendingCommand({ ...pending, scope: commandScope, onConfirmed }), [commandScope]);

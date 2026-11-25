@@ -25,10 +25,13 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string, authori
   const navigation = useViewNavigation();
   const [localOpen, setLocalOpen] = useState(initialOpen);
   const open = navigation?.start ?? localOpen;
+  /** The rerun queuing itself without the dialog. It is never routed, so a reload cannot queue it. */
+  const [oneClick, setOneClick] = useState<RerunLaunchSource>();
   const routeSetStart = navigation?.setStart;
   const routeUpdate = navigation?.update;
   /** Closing also drops the dialog's coordinates, so the URL keeps nothing of it. */
   const setOpen = useCallback((next: boolean) => {
+    if (!next) setOneClick(undefined);
     if (routeSetStart === undefined || routeUpdate === undefined) { setLocalOpen(next); return; }
     if (!next) routeUpdate(LAUNCH_CLEARED, "replace");
     routeSetStart(next);
@@ -47,8 +50,9 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string, authori
     launcher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   }, []);
   const openStart = useCallback(() => { intakeHandoff.current = false; launcher.current = null; setRerunSource(undefined); setOpen(true); }, [setOpen, setRerunSource]);
-  const openRerun = useCallback((source: RerunLaunchSource, text?: string) => {
+  const openRerun = useCallback((source: RerunLaunchSource, text?: string, inOneClick = false) => {
     rememberLauncher();
+    setOneClick(inOneClick ? source : undefined);
     setRerunDraft(text === undefined ? undefined : { source, text, authority });
     setRerunSource(source); setOpen(true);
   }, [rememberLauncher, setOpen, setRerunSource, authority]);
@@ -62,7 +66,8 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string, authori
   const handOffToIntake = useCallback(() => { intakeHandoff.current = true; }, []);
   const rerunInputText = rerunDraft?.authority === authority && rerunDraft?.source.runId === rerunSource?.runId
     && rerunDraft?.source.expectedVersion === rerunSource?.expectedVersion ? rerunDraft?.text : undefined;
-  return { open, setOpen, openStart, openRerun, rerunSource, rerunInputText, closeFocus, handOffToIntake, rememberLauncher };
+  const rerunInOneClick = open && oneClick !== undefined && oneClick.runId === rerunSource?.runId && oneClick.expectedVersion === rerunSource.expectedVersion;
+  return { open, setOpen, openStart, rerunInOneClick, openRerun, rerunSource, rerunInputText, closeFocus, handOffToIntake, rememberLauncher };
 }
 
 export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[], compatibility: WorkbookCompatibility): readonly RunStartWorkflow[] {
@@ -270,6 +275,6 @@ async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardD
 }
 
 export function runLaunchAppliedToast(input: Readonly<{ label: string; count?: number; rerun: boolean }>) {
-  return { tone: "success" as const, title: input.count === undefined ? "Run submission confirmed" : input.rerun ? "Rerun created" : "Run started",
-    description: input.count === undefined ? input.label : `${String(input.count)} ${input.label} ${input.count === 1 ? "run" : "runs"} created.` };
+  return { tone: "success" as const, title: input.count === undefined ? "Run submission confirmed" : input.rerun ? "Rerun queued" : "Run started",
+    description: input.count === undefined || input.rerun ? input.label : `${String(input.count)} ${input.label} ${input.count === 1 ? "run" : "runs"} created.` };
 }

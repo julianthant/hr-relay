@@ -99,14 +99,13 @@ export class DashboardPage {
     await expect(this.dialog.getByRole("heading", { name: "Start run" })).toBeVisible();
   }
 
-  /** Fills the Work-Study Start run dialog for one employee ID and stops on the Checks stage, ready to press Start. */
+  /** Fills the Work-Study Start run dialog for one employee ID and stops on the Start stage, ready to press Start. */
   async fillStartDialog(eid: string): Promise<void> {
     await this.dialog.locator("textarea").fill(eid);
     await this.dialog.getByRole("button", { name: "Choose effective date" }).click();
     await this.page.getByRole("dialog").last().getByRole("gridcell", { name: /16/ }).first().click();
     await this.dialog.getByRole("button", { name: "Continue" }).click();
-    await expect(this.dialog.getByRole("region", { name: "Run", exact: true })).toBeVisible();
-    await this.dialog.getByRole("button", { name: "Continue" }).click();
+    await expect(this.dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
     await expect(this.dialog.getByText("Ready to start")).toBeVisible();
   }
 
