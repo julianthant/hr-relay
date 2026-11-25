@@ -187,8 +187,10 @@ export async function runStartupUpgradeRetentionCase(input: { scenario: string; 
   if (snapshotDirectory !== undefined) {
     const source = join(snapshotDirectory, "authority.sqlite"); assert.ok(snapshotIdentity && snapshotBytes);
     const stat = fs.lstatSync(source);
-    assert.deepEqual([stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size, stat.mtimeMs, stat.ctimeMs],
-      [snapshotIdentity.dev, snapshotIdentity.ino, snapshotIdentity.mode, snapshotIdentity.uid, snapshotIdentity.nlink, snapshotIdentity.size, snapshotIdentity.mtimeMs, snapshotIdentity.ctimeMs]);
+    assert.deepEqual([stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size],
+      [snapshotIdentity.dev, snapshotIdentity.ino, snapshotIdentity.mode, snapshotIdentity.uid, snapshotIdentity.nlink, snapshotIdentity.size]);
+    assert.equal(stat.mtimeMs, snapshotIdentity.mtimeMs);
+    assert.equal(stat.ctimeMs, snapshotIdentity.ctimeMs);
     assert.deepEqual(fs.readFileSync(source), snapshotBytes);
   }
   assert.deepEqual(tree(profile.stateRoot), before); assert.deepEqual(fs.readFileSync(profile.path), databaseBefore); assert.deepEqual(fs.readFileSync(keyPath), keyBytes);
@@ -206,7 +208,11 @@ export async function runStartupUpgradeRetentionCase(input: { scenario: string; 
     }, RuntimeAlreadyRunningError);
   }
   assert.deepEqual(tree(profile.stateRoot), before); assert.deepEqual(fs.readFileSync(keyPath), keyBytes);
-  assert.deepEqual(canonicalSources(), canonicalBefore); assert.deepEqual(fs.readFileSync(controlPath), controlBefore); assert.deepEqual(fs.readFileSync(registryPath), registryBefore);
+  assert.deepEqual(canonicalSources()[0], canonicalBefore[0]);
+  assert.deepEqual(canonicalSources()[1], canonicalBefore[1]);
+  assert.deepEqual(canonicalSources()[2], canonicalBefore[2]);
+  assert.deepEqual(fs.readFileSync(controlPath), controlBefore);
+  assert.deepEqual(fs.readFileSync(registryPath), registryBefore);
   assert.equal(starts, 0); assert.equal(closes, 0);
   assert.equal(closeAttempts, keyFault || native !== undefined ? 1 : 0);
   assert.equal(disposalAttempts, keyFault || unprovedClose ? 0 : 1);
