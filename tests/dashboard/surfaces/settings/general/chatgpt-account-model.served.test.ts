@@ -15,11 +15,14 @@ function setup(overrides: Partial<ChatGptAccountQueries> = {}, open?: () => Chat
   const initialWall = Date.now();
   let persisted: ChatGptAccountView = { state: "signed-out" };
   const complete: ChatGptAccountQueries["completeChatGptSignIn"] = overrides.completeChatGptSignIn ?? (async () => { calls.push("complete"); return { state: "completed", attemptId, account }; });
-  const queries: ChatGptAccountQueries = { chatGptAccount: async () => { calls.push("read"); return chatGptStatusFixture(persisted); },
+  const read = overrides.chatGptAccount ?? (async () => { calls.push("read"); return chatGptStatusFixture(persisted); });
+  let status = chatGptStatusFixture(persisted);
+  const queries: ChatGptAccountQueries = { checkChatGptAccount: async () => { calls.push("check"); return status; },
     startChatGptSignIn: async () => { calls.push("start"); return started; },
     cancelChatGptSignIn: async () => { calls.push("cancel"); return { state: "cancelled", attemptId }; },
     signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }), testChatGptOcr: async () => { calls.push("ocr"); return { state: "completed", model: "Synthetic OCR" }; },
     ...overrides,
+    chatGptAccount: async () => { status = await read(); return status; },
     completeChatGptSignIn: async (id, signal) => { const result = await complete(id, signal); if (result.state === "completed") persisted = result.account; return result; },
   };
   const popup = { navigate: (url: string) => { calls.push(`navigate:${url}`); }, close: () => { calls.push("close"); } };
@@ -70,7 +73,7 @@ it("suppresses stale reads and completion settlements and resumes the original s
   try { const first = stale.port.refresh(); const second = stale.port.refresh(); assert.equal(first, second); old.resolve(account); await first; assert.deepEqual(stale.port.getSnapshot(), account); assert.equal(reads, 1); } finally { stale.port.dispose(); }
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
   const resumed = setup({ chatGptAccount: async () => chatGptStatusFixture({ state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" } }), completeChatGptSignIn: id => { assert.equal(id, attemptId); return completion.promise; } });
-  const refreshing = resumed.port.refresh(); for (let tick = 0; tick < 4; tick++) await Promise.resolve(); assert.deepEqual(resumed.port.getResource(), { state: "loading", attemptId });
+  const refreshing = resumed.port.refresh(); await vi.waitFor(() => { assert.equal(resumed.port.getSnapshot().state, "signing-in"); }); assert.deepEqual(resumed.port.getResource(), { state: "loading", attemptId });
   const pendingSnapshot = resumed.port.getSnapshot();
   assert.deepEqual(pendingSnapshot, { state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl });
   resumed.port.dispose(); completion.resolve({ state: "completed", attemptId, account }); await refreshing;
@@ -78,7 +81,7 @@ it("suppresses stale reads and completion settlements and resumes the original s
 });
 it("reads current state once at connected expiry without starting sign-in", async () => {
   vi.useFakeTimers(); let reads = 0, now = Date.parse("2026-10-12T12:59:59.000Z");
-  const queries: ChatGptAccountQueries = { signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }), testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }), chatGptAccount: async () => { reads++; return chatGptStatusFixture(reads === 1 ? account : { state: "expired" }); }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }) };
+  const queries: ChatGptAccountQueries = { checkChatGptAccount: async () => chatGptStatusFixture(reads === 1 ? account : { state: "expired" }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }), testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }), chatGptAccount: async () => { reads++; return chatGptStatusFixture(reads === 1 ? account : { state: "expired" }); }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }) };
   const port = createServedChatGptAccountPort(queries, { nowMs: () => now });
   try { await port.refresh(); now += 1000; await vi.advanceTimersByTimeAsync(1000); assert.equal(reads, 2); assert.deepEqual(port.getSnapshot(), { state: "expired" }); } finally { port.dispose(); vi.useRealTimers(); }
 });
@@ -140,6 +143,7 @@ it.each(["focus", "visibilitychange"] as const)("rechecks the original sign-in o
       return Response.json({ state: "completed", attemptId, account });
     }
     if (url.endsWith("/sign-in")) { starts++; return Response.json(started); }
+    if (url.endsWith("/check")) { assert.equal(init?.method, "POST"); assert.equal(init.body, "{}"); return Response.json(chatGptStatusFixture(account)); }
     reads++; return Response.json(chatGptStatusFixture(reads === 1 ? { state: "signed-out" } : account));
   } });
   const port = createServedChatGptAccountPort(client, { nowMs: () => Date.parse("2026-10-12T12:00:00.000Z"), open: () => ({ navigate() {}, close() {} }) });
@@ -458,4 +462,57 @@ it("signOut forgets the connected account, and a refused disconnect leaves it co
     assert.equal(await f.port.signOut(), undefined);
     assert.deepEqual(f.port.getSnapshot(), { state: "signed-out" });
   } finally { f.port.dispose(); }
+});
+
+it("renews an expired account through one guarded check before it is shown", async () => {
+  const f = setup({ chatGptAccount: async () => ({ ...chatGptStatusFixture({ state: "expired" }), connection: { state: "unchecked", checkedAt: null, failureCode: null } }),
+    checkChatGptAccount: async () => { f.calls.push("check"); return chatGptStatusFixture(account); } });
+  const published: string[] = [], unsubscribe = f.port.subscribe(() => { published.push(f.port.getSnapshot().state); });
+  try {
+    await f.port.refresh();
+    assert.deepEqual(f.port.getSnapshot(), account); assert.deepEqual(f.calls, ["check"]);
+    assert.equal(published.includes("expired"), false);
+  } finally { unsubscribe(); f.port.dispose(); }
+});
+
+it("checks a signed-in account after a sign-in and never checks one that is signed out or signing in", async () => {
+  const f = setup();
+  try {
+    await f.port.refresh(); assert.deepEqual(f.calls, ["read"]);
+    await f.port.signIn({ usePlan: true });
+    assert.deepEqual(f.calls.slice(-3), ["read", "check", "close"]);
+  } finally { f.port.dispose(); }
+  const pending = setup({ completeChatGptSignIn: () => new Promise(() => {}), chatGptAccount: async () => chatGptStatusFixture({ state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" } }) });
+  try {
+    void pending.port.refresh();
+    await vi.waitFor(() => { assert.equal(pending.port.getSnapshot().state, "signing-in"); });
+    assert.equal(pending.calls.includes("check"), false);
+  } finally { pending.port.dispose(); }
+});
+
+it("shows a connected account whose check did not complete as failed, and recovers it on the next refresh", async () => {
+  const unproved = { ...chatGptStatusFixture(account), connection: { state: "refused" as const, checkedAt: started.expiresAt, failureCode: "CHATGPT_CONNECTION_FAILED" as const } };
+  let checks = 0;
+  const f = setup({ chatGptAccount: async () => unproved, checkChatGptAccount: async () => ++checks === 1 ? unproved : chatGptStatusFixture(account) });
+  try {
+    await f.port.refresh();
+    assert.deepEqual(f.port.getResource(), { state: "failed", code: "CHATGPT_CONNECTION_FAILED", account });
+    await f.port.refresh();
+    assert.deepEqual(f.port.getSnapshot(), account); assert.equal(checks, 2);
+  } finally { f.port.dispose(); }
+});
+
+it("bounds a hung check and aborts it on disposal", async () => {
+  vi.useFakeTimers();
+  const signals: (AbortSignal | undefined)[] = [];
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(account), checkChatGptAccount: signal => { signals.push(signal); return new Promise(() => {}); } });
+  try {
+    const bounded = f.port.refresh();
+    await vi.advanceTimersByTimeAsync(30_000); await bounded;
+    assert.equal(f.port.getResource().state, "failed"); assert.equal(signals[0]?.aborted, true);
+    const disposed = f.port.refresh();
+    await vi.advanceTimersByTimeAsync(0); assert.equal(signals[1]?.aborted, false);
+    f.port.dispose(); await disposed;
+    assert.equal(signals[1]?.aborted, true);
+  } finally { f.port.dispose(); vi.useRealTimers(); }
 });

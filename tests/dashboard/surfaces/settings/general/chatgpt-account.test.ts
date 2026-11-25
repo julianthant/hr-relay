@@ -79,6 +79,7 @@ it("recovers through Continue after an initial read failure without restarting a
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
   let starts = 0, reads = 0;
   const queries: ChatGptAccountQueries = { chatGptAccount: async () => { reads++; if (reads === 1) throw new Error("synthetic failed read"); return chatGptStatusFixture(reads === 2 ? { state: "signed-out" } : account); },
+    checkChatGptAccount: async () => chatGptStatusFixture(account),
     startChatGptSignIn: async () => { starts++; return started; },
     completeChatGptSignIn: () => completion.promise,
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId: started.attemptId }),

@@ -290,13 +290,14 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const accountFailure = resource !== undefined && 'code' in resource ? resource.code === 'CHATGPT_AUTH_UNAVAILABLE' ? ACCOUNT_READ_FAILED : ERROR_CATALOG[resource.code].text : undefined;
   const accountReadFailed = account.state === 'unavailable' && accountPort.refresh !== undefined;
   const [models, setModels] = useState<AssistantModelCatalog['models']>();
+  // Each account the guarded check settles can serve a new list, so `account` re-reads it.
   useEffect(() => {
     const client = sessions.client;
     if (!readModels || !accountAvailable || client.assistantModels === undefined) return;
     const request = new AbortController();
     client.assistantModels(request.signal).then(catalog => { if (!request.signal.aborted) setModels(catalog.models); }, () => { if (!request.signal.aborted) setModels(undefined); });
     return () => request.abort();
-  }, [readModels, accountAvailable, sessions.client]);
+  }, [readModels, accountAvailable, account, sessions.client]);
   return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
     accountAction: (account.state === 'loading' ? undefined : accountReadFailed ? 'retry' : account.state === 'connected' || account.state === 'unavailable' || account.state === 'signing-in' ? 'settings' : 'sign-in'),
