@@ -193,6 +193,8 @@ describe("moving between stages", () => {
   it("the stage bar goes to an earlier stage only, idle and without a saved submission", () => {
     assert.equal(moved(at({ stage: "Start" }), { type: "go-to", stage: "Input", via: "stage-bar" }).next.stage, "Input");
     assert.equal(refusal(at({ stage: "Input" }), { type: "go-to", stage: "Start", via: "stage-bar" }), "not-here");
+    const path = ["Input", "Start", "Steps"] as const;
+    for (const stage of ["Input", "Start"] as const) assert.equal(moved(at({ stage: "Steps" }), { type: "go-to", stage, via: "stage-bar", path }).next.stage, stage);
     assert.equal(refusal(at({ stage: "Start", recovery: { state: "retained", command: command(PLAN_A) } }), { type: "go-to", stage: "Input", via: "stage-bar" }), "blocked");
     assert.equal(refusal(at({ stage: "Start", activity: { kind: "planning", request: 1, for: FP } }), { type: "go-to", stage: "Input", via: "stage-bar" }), "busy");
   });
@@ -221,6 +223,10 @@ describe("moving between stages", () => {
 
   it("continue on the last stage is not a move", () => {
     assert.equal(refusal(at({ stage: "Start" }), { type: "continue", gates: LAST }), "not-here", "Start is the last stage");
+    const onward = (patch: Partial<LaunchGates>) => refusal(at({ stage: "Start" }), { type: "continue", gates: gates({ next: "Steps", ...patch }) });
+    assert.equal(onward({}), undefined);
+    assert.equal(onward({ optionsBlocked: true }), "blocked");
+    assert.equal(onward({ checksBlocked: true }), "blocked");
   });
 
   it("start's common admission: busy, unreadable, a saved submission for another plan, and only on the last stage", () => {

@@ -240,7 +240,7 @@ export function RunStartDialog({
     ? "Fill and check every step without submitting or saving."
     : "Fill and check every step without submitting.";
   const dryRun = supportsDryRun && dryRunRequested;
-  const launchStages = useMemo(() => runStartStages(isRerun), [isRerun]);
+  const launchStages = useMemo(() => runStartStages(isRerun, customizeSteps), [isRerun, customizeSteps]);
 
   useEffect(() => {
     setCurrentStage((current) => reconcileRunStartStage(launchStages, current));
@@ -375,7 +375,10 @@ export function RunStartDialog({
       recoveryState = retained === null ? { state: "none" } : { state: "retained", command: retained };
     } catch { recoveryState = { state: "unreadable", message: "Relay cannot send the saved start again. Check the queue first." }; }
     if (rerunSource !== undefined) setCustomizeSteps(true);
-    else if (fromRerun.current) update(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === selectedWorkflowRef.current), commandBindingRef.current?.authority.today));
+    else if (fromRerun.current) {
+      setCustomizeSteps(false);
+      update(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === selectedWorkflowRef.current), commandBindingRef.current?.authority.today));
+    }
     fromRerun.current = rerunSource !== undefined;
     // A start keeps the routed stage; only a rerun opens on its own first stage.
     suppressStage.current = rerunSource === undefined;
@@ -420,7 +423,7 @@ export function RunStartDialog({
   }, [open]);
   useEffect(() => { if (!open) setDraftKept(false); }, [open]);
 
-  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Start", open);
+  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Start" || (!isRerun && currentStage === "Steps"), open);
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
   const fixedCheck = useRef<{ check: string; reread: boolean } | null>(null);
   const fixCheck = (item: RunCheckRow) => {
@@ -461,7 +464,7 @@ export function RunStartDialog({
     if (step === undefined) throw new Error(`the Steps screen named step "${key}", which this workflow does not declare`);
     return step.label;
   };
-  const stepsShown = isRerun ? currentStage === "Steps" && snapshot !== null : currentStage === "Start" && customizeSteps;
+  const stepsShown = currentStage === "Steps" && (isRerun ? snapshot !== null : customizeSteps);
 
   const changeCustomizeSteps = (next: boolean) => {
     setCustomizeSteps(next);
@@ -535,9 +538,10 @@ export function RunStartDialog({
   }, [drawn]);
   /** The one thing stopping Continue or Start on this stage, as its own line beside the buttons. */
   const checksHint = gates.checksBlocked ? (checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : null) : null;
+  const planHint = planRefusal === null ? null : planRefusal.sentence.replace(/\. .*$/u, ".");
   const stageHint = currentStage === "Input" ? (compatibilityMissing ? null : blockedReason)
-    : currentStage === "Steps" ? stepsBlockedReason
-    : currentStage === "Start" ? optionsBlockedReason ?? stepsBlockedReason ?? checksHint ?? (planRefusal === null ? null : planRefusal.sentence.replace(/\. .*$/u, "."))
+    : currentStage === "Steps" ? stepsBlockedReason ?? (onLastStage ? checksHint ?? planHint : null)
+    : currentStage === "Start" ? optionsBlockedReason ?? (onLastStage ? stepsBlockedReason ?? checksHint ?? planHint : checksHint)
     : null;
   return (
     <Dialog open={drawn} onOpenChange={closeAndReset}>
@@ -558,7 +562,7 @@ export function RunStartDialog({
                 const activeIndex = launchStages.findIndex(entry => entry.label === currentStage);
                 const current = index === activeIndex;
                 return <li key={stage.label} aria-current={current ? "step" : undefined}>
-                  <BareButton disabled={index > activeIndex || busy || sending || recovery !== null} aria-label={`${stage.number} ${stage.label}`} className={dsFocus} onClick={() => send({ type: "go-to", stage: stage.label, via: "stage-bar" })}>
+                  <BareButton disabled={index > activeIndex || busy || sending || recovery !== null} aria-label={`${stage.number} ${stage.label}`} className={dsFocus} onClick={() => send({ type: "go-to", stage: stage.label, via: "stage-bar", path: gates.path })}>
                   <span aria-hidden className="launch-stage-marker" data-current={current || undefined} data-completed={index < activeIndex || undefined}>{index < activeIndex ? <Check aria-hidden className={dsIcon.sm} /> : stage.number}</span>
                   <span className={cn("text-body", current ? "font-medium" : "text-ui-secondary")}>{stage.label}</span>
                   </BareButton>

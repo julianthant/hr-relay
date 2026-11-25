@@ -29,7 +29,8 @@ async function openSteps(workflow: RunStartWorkflow, typed: string, client = h.s
   await dialog.type(typed);
   await dialog.press("Continue");
   await dialog.press("Customize steps");
-  assert.equal(dialog.stage(), "Start");
+  await dialog.press("Continue");
+  assert.equal(dialog.stage(), "Steps");
   return dialog;
 }
 const alerts = () => [...document.body.querySelectorAll('[role="alert"]')].map(node => (node.textContent ?? "").trim());
@@ -137,9 +138,11 @@ describe("the Steps stage draws the served rows", () => {
     await typeDate("Employment date", "01/15/2020");
     await typeDate("Oath date", "02/20/2020");
     await dialog.press("Back");
+    await dialog.press("Back");
     await dialog.type(`${h.TYPED}; 10000001`);
     await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Start");
+    await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Steps");
     assert.deepEqual(alerts(), ["Typed values fit one person; 2 are entered."]);
     assert.equal(dialog.disabled("Start run"), true);
   });
