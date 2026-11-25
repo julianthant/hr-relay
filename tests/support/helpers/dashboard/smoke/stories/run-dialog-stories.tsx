@@ -71,12 +71,17 @@ const start = (page: Page) => press(page, "Start run");
 
 const stage = scene;
 
+const customizeSteps = (page: Page) => dialog(page).getByRole("switch", { name: "Customize steps" }).click();
+
 const STAGE = {
   Input: stage("Input, nothing typed", () => runDialogClient(), "Input"),
   RerunSteps: stage("A rerun's Steps, each step as the source ended", rerunClient(), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
   Warning: stage("A succeeded write run's rerun, warned that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }, "done"), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG,
     then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
-  Start: stage("Start, options, steps and checks, every check ready", reading(PASS), "Start"),
+  Start: stage("Start, options and checks, every check ready", reading(PASS), "Start"),
+  StartCustomized: stage("Start with Customize steps on, Continue to Steps", reading(PASS), "Start", { then: customizeSteps }),
+  StartSteps: stage("A customized start's Steps, the last page", reading(PASS), "Start", {
+    then: async page => { await customizeSteps(page); await press(page, "Continue"); await at(page, "Steps"); } }),
   RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
 } satisfies Record<string, Story>;
 
