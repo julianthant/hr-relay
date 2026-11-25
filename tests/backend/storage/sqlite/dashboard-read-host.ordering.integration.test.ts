@@ -1,0 +1,71 @@
+import assert from "node:assert/strict";
+import { afterEach, it } from "vitest";
+import { z } from "zod";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
+import { createDashboardReadHost, ReadLaneRestartedError, type DashboardReadReply } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
+import { systemClock } from "../../../../src/rules/time/clock.js";
+import { LANE_READS_ENTRY, laneBackground, laneSearch, laneSleep, laneStuck } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
+
+const cleanups: (() => Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+
+const RunSchema = z.object({ tag: z.string(), run: z.number().int() });
+const run = async (reply: Promise<DashboardReadReply>) => RunSchema.parse(JSON.parse((await reply).body)).run;
+
+async function host(options: Partial<Pick<Parameters<typeof createDashboardReadHost>[0], "checkpoint" | "lanes">> = {}) {
+  const fixture = await openBoundDatabaseFixture("read-lane-ordering");
+  cleanups.push(() => fixture.close());
+  const lanes = createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock,
+    lanes: ["navigation"], entry: LANE_READS_ENTRY, ...options });
+  cleanups.push(() => lanes.close());
+  await lanes.ready;
+  return { fixture, lanes };
+}
+
+it("dispatches a queued click before the next background message after a background reply", async () => {
+  const { lanes } = await host();
+  const scan = lanes.read(laneBackground, { tag: "scan", ms: 150 });
+  const nextScan = lanes.read(laneBackground, { tag: "next-scan", ms: 0 });
+  const click = lanes.read(laneSleep, { tag: "click", ms: 0 });
+  assert.deepEqual(await Promise.all([run(scan), run(click), run(nextScan)]), [1, 2, 3]);
+});
+
+it("dispatches the interactive request first after a WAL checkpoint pause", async () => {
+  const { fixture, lanes } = await host({ checkpoint: { thresholdBytes: 0 } });
+  createNoteTimelineWriter({ repository: fixture.database.authority.timelineEvents, clock: systemClock }).emitNote({ workflow: "person-lookup",
+    address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step", message: "grow the write-ahead log" });
+  // The WAL is over the threshold, so the first request pauses dispatch for a checkpoint; both reads queue behind it.
+  const scan = lanes.read(laneBackground, { tag: "scan", ms: 0 });
+  const click = lanes.read(laneSleep, { tag: "click", ms: 0 });
+  assert.deepEqual(await Promise.all([run(click), run(scan)]), [1, 2]);
+  const [checkpoint] = lanes.status().checkpoints;
+  assert.ok(checkpoint !== undefined);
+  assert.equal(checkpoint.busy, 0);
+  assert.equal(checkpoint.walBytesAfter, 0);
+});
+
+it("dispatches the interactive request first after a lane restart", async () => {
+  const { lanes } = await host();
+  const stuck = lanes.read(laneStuck, {});
+  const scan = lanes.read(laneBackground, { tag: "scan", ms: 0 });
+  const click = lanes.read(laneSleep, { tag: "click", ms: 0 });
+  await assert.rejects(stuck, (error: unknown) => error instanceof ReadLaneRestartedError && error.code === "READ_LANE_RESTARTED");
+  // The restarted lane is a new isolate: its first run is the click.
+  assert.deepEqual(await Promise.all([run(click), run(scan)]), [1, 2]);
+  assert.equal(lanes.status().restarts, 1);
+});
+
+it("routes search to the navigation worker in shape A and to its own worker in shape B", async () => {
+  const shapeA = await host();
+  const blockingA = shapeA.lanes.read(laneSleep, { tag: "navigation", ms: 100 });
+  assert.equal(await run(shapeA.lanes.read(laneSearch, { tag: "search", ms: 0 })), 2);
+  assert.equal(await run(blockingA), 1);
+
+  const shapeB = await host({ lanes: ["navigation", "search"] });
+  const blockingB = shapeB.lanes.read(laneSleep, { tag: "navigation", ms: 300 });
+  const started = performance.now();
+  assert.equal(await run(shapeB.lanes.read(laneSearch, { tag: "search", ms: 0 })), 1);
+  assert.ok(performance.now() - started < 300, "the search lane does not wait for the navigation lane");
+  assert.equal(await run(blockingB), 1);
+});

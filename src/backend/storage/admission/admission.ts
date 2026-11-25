@@ -130,7 +130,18 @@ type AdmissionAuthority = Readonly<{
 
 type AdmissionScope = "profile-layout" | "profile-maintenance" | "flat-backup" | "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "stopped-projection" | "synthetic-stopped-staged"
   | "verified-copy" | "synthetic-verified-copy" | "synthetic"
-  | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-pending-logout-inventory" | "stopped-control-inventory" | "stopped-incomplete-profile-inventory";
+  | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-pending-logout-inventory" | "stopped-control-inventory" | "stopped-incomplete-profile-inventory"
+  | "read-lane";
+
+/** The only members a dashboard read lane answers; every other member, present or future, refuses. */
+const READ_LANE_MEMBERS: ReadonlySet<string> = new Set(["assertLive", "assertReadable", "assertProfileRuntime", "assertAuthorityDatabase",
+  "assertReadOnlyAuthorityDatabase", "assertCheckpointOnlyDatabase", "assertAuthorityOpenMode", "assertStorageRootsSafe", "profileBinding", "stateRoot",
+  "retainSourceClosure", "release"]);
+
+export class ReadLaneWriteRefusedError extends Error {
+  readonly code = "read-lane-write-refused";
+  constructor(readonly member: string) { super("read-lane-write-refused"); this.name = "ReadLaneWriteRefusedError"; }
+}
 
 type ReadyProfileUpgrade = Readonly<{ purpose: "manual" | "startup" | "layout"; sourcePath: string; processLockRoot: string; sourceSchemaVersion: MaintenanceAuthoritySchemaVersion; copyPath?: string;
   capture: ReturnType<InstallationLease["captureStoppedProfileUpgrade"]>;
@@ -157,6 +168,7 @@ export class RuntimeAdmission {
   readonly #sourceFailures = new Set<unknown>();
   #stoppedControlInventory: Readonly<{ claim: StoppedControlProfileInventory; source: ReturnType<typeof requireStoppedControlProfileInventory> }> | undefined;
   #layoutClaim: FixedLayoutProfileClaim | undefined;
+  #readLaneCheckpoint = false;
   #stoppedLogout: { operation: LogoutOperation; restore: OfflineMaintenanceOperation; witness: ReturnType<InstallationLease["capturePendingProfileLogout"]> } | undefined;
   readonly #profileBinding: ProfileDatabaseBinding | undefined;
   readonly #profileParent: RuntimeAdmission | undefined;
@@ -185,8 +197,41 @@ export class RuntimeAdmission {
     this.#flatBackup = flatBackup;
     this.#profileBinding = binding === undefined ? undefined : Object.freeze({ ...binding });
     this.#locator = locator === undefined ? undefined : Object.freeze({ ...locator });
+    if (scope === "read-lane") {
+      for (const [member, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(RuntimeAdmission.prototype))) {
+        if (member === "constructor" || READ_LANE_MEMBERS.has(member)) continue;
+        const refuse = () => { throw new ReadLaneWriteRefusedError(member); };
+        Object.defineProperty(this, member, descriptor.get === undefined && descriptor.set === undefined ? { value: refuse } : { get: refuse, set: refuse });
+      }
+    }
     registerRuntimeAdmission(this);
     Object.freeze(this);
+  }
+
+  /** A worker thread's read-only authority over one profile store, issued from a start record its host already admitted. */
+  static forReadLane(input: Readonly<{ stateRoot: string; path: string; binding: ProfileDatabaseBinding; assertSource: () => void; checkpoint: boolean }>): RuntimeAdmission {
+    if (!isAbsolute(input.stateRoot) || resolve(input.path) !== join(resolve(input.stateRoot), "state.db")) throw new Error("read-lane-path-refused");
+    const authority: AdmissionAuthority = { assertHeld: input.assertSource, assertProfileRuntime: input.assertSource, release() {} };
+    const admission = new RuntimeAdmission(issuanceToken, authority, input.stateRoot, input.stateRoot, [resolve(input.path)], "read-lane", "shared", undefined, input.binding);
+    admission.#readLaneCheckpoint = input.checkpoint;
+    return admission;
+  }
+  /** The checkpoint-only connection: only the read lane its host designated may open the store read-write, and only to checkpoint. */
+  assertCheckpointOnlyDatabase(path: string): void {
+    if (this.#scope !== "read-lane") throw new Error("read-lane-checkpoint-admission-required");
+    if (!this.#readLaneCheckpoint) throw new ReadLaneWriteRefusedError("checkpoint-only");
+    this.#assertReadLanePath(path);
+  }
+  /** Only a read lane opens the dashboard read-worker mode, and a read lane opens nothing else. */
+  assertAuthorityOpenMode(openMode: string): void {
+    this.assertLive();
+    const lane = openMode === "dashboard-read-worker-read-only-no-migrate";
+    if (this.#scope === "read-lane" && !lane) throw new ReadLaneWriteRefusedError(`open:${openMode}`);
+    if (this.#scope !== "read-lane" && lane) throw new Error("read-lane-open-mode-refused");
+  }
+  #assertReadLanePath(path: string): void {
+    this.assertLive();
+    if (!this.#authorityDatabasePaths.has(resolve(path))) throw new Error("read-lane-path-refused");
   }
 
   static forFixedLayoutProfile(machine: RuntimeAdmission, claim: FixedLayoutProfileClaim): RuntimeAdmission {
@@ -496,6 +541,7 @@ export class RuntimeAdmission {
   }
   assertProfileRuntime(): void {
     this.assertLive();
+    if (this.#scope === "read-lane") return;
     this.#assertProfileRuntime();
   }
   #assertProfileRuntime(): void {
@@ -513,6 +559,7 @@ export class RuntimeAdmission {
   }
   assertReadable(): void {
     this.assertLive();
+    if (this.#scope === "read-lane") return;
     if (this.#scope === "profile" || this.#scope === "profile-initialization") this.#assertCurrentProfileAccess();
     if (this.#scope === "profile-upgrade") this.assertOfflineMaintenance(this.maintenanceOperation());
   }
@@ -1230,6 +1277,7 @@ export class RuntimeAdmission {
      ) throw new Error("runtime-admission: verification is read-only");
   }
   assertAuthorityDatabase(path: string): void {
+    if (this.#scope === "read-lane") { this.#assertReadLanePath(path); return; }
     if (this.#scope === "installation") throw new Error("profile-bound-authority-required");
     if (this.#scope === "profile-initialization" || this.#scope === "profile-upgrade") this.assertReadable();
     else if (this.#scope === "adoption-initialization") this.assertLive();
@@ -1240,6 +1288,7 @@ export class RuntimeAdmission {
     if (!this.#authorityDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: authority database path is outside admission");
   }
   assertReadOnlyAuthorityDatabase(path: string): void {
+    if (this.#scope === "read-lane") { this.#assertReadLanePath(path); return; }
     this.assertReadable();
     if (this.#scope === "stopped-incomplete-profile-inventory" && resolve(path) !== join(this.#stateRoot, "state.db")) throw new Error("profile-incomplete-inventory-path-refused");
     if (this.#scope === "stopped-control-inventory" && path === ":memory:") throw new Error("profile-control-upgrade-inspection-path-refused");
