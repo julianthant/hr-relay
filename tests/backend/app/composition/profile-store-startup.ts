@@ -123,14 +123,19 @@ async function measure(workspace: string, bootOnly: boolean): Promise<void> {
   const { completePendingShutdownBackup } = await import("../../../../src/backend/app/bootstrap/secure-env-bootstrap.js");
   const storage = await import("../../../../src/backend/app/composition/storage-compose.js");
   const { systemClock } = await import("../../../../src/rules/time/clock.js");
-  const inspect = AuthorityDatabase.inspectRegisteredPersonAtStartup, recoverOpen = AuthorityDatabase.openStoppedStartupRecovery;
-  const inspectEvidence = AuthorityDatabase.inspectEvidenceSchemaUpgrade;
-  const open = AuthorityDatabase.open, history = AuthorityDatabase.prototype.dashboardHistory;
+  const inspect = AuthorityDatabase.inspectRegisteredPersonAtStartup.bind(AuthorityDatabase);
+  const recoverOpen = AuthorityDatabase.openStoppedStartupRecovery.bind(AuthorityDatabase);
+  const inspectEvidence = AuthorityDatabase.inspectEvidenceSchemaUpgrade.bind(AuthorityDatabase);
+  const open = AuthorityDatabase.open.bind(AuthorityDatabase);
   AuthorityDatabase.inspectRegisteredPersonAtStartup = (...args) => timed("registered inspection", () => inspect(...args));
   AuthorityDatabase.inspectEvidenceSchemaUpgrade = (...args) => timed("evidence upgrade inspection", () => inspectEvidence(...args));
   AuthorityDatabase.openStoppedStartupRecovery = (...args) => timed("recovery authority open", () => recoverOpen(...args));
-  AuthorityDatabase.open = (...args) => timed("profile authority open", () => open(...args));
-  AuthorityDatabase.prototype.dashboardHistory = function () { return timed("history admission", () => history.call(this)); };
+  AuthorityDatabase.open = (...args) => {
+    const database = timed("profile authority open", () => open(...args));
+    const history = database.dashboardHistory.bind(database);
+    database.dashboardHistory = () => timed("history admission", history);
+    return database;
+  };
   const firstPasses = new Map<string, string>();
   const observe = (message: unknown): void => {
     const { phase, elapsedMs, outcome } = StartupObservationSchema.parse(message);
