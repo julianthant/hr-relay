@@ -73,8 +73,8 @@ describe("canonical run-record service", () => {
     }
     const raw = new DatabaseSync(syntheticDatabasePath(database));
     try {
-      raw.prepare("UPDATE runs SET state='terminal' WHERE id=?").run(columnOnly.envelope.runId);
-      raw.prepare("UPDATE runs SET state='queued' WHERE id=?").run(jsonOnly.envelope.runId);
+      raw.prepare("UPDATE runs SET state='terminal', outcome='cancelled' WHERE id=?").run(columnOnly.envelope.runId);
+      raw.prepare("UPDATE runs SET state='queued', outcome=NULL WHERE id=?").run(jsonOnly.envelope.runId);
     } finally { raw.close(); }
     assert.deepEqual(service.historyStatus(), { state: "available", finishedRuns: 1, activeRuns: 2 });
   });

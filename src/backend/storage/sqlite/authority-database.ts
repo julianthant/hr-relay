@@ -4868,25 +4868,10 @@ export class AuthorityDatabase implements Disposable {
         },
         countDryRunEvidenceByRun: (runId: string) => {
           const parsedRunId = RunIdSchema.parse(runId);
-          const count = (sql: string): number => CountRowSchema.parse(
-            this.#database.prepare(sql).get(parsedRunId),
-          ).count;
-          return DryRunWriteSafetyCountsSchema.parse({
-            writeIntents: count(`
-              SELECT count(*) AS count FROM write_intents
-              WHERE json_extract(payload_json, '$.runId') = ?
-            `),
-            writeAttempts: count(`
-              SELECT count(*) AS count FROM write_attempts AS attempt
-              JOIN write_intents AS intent ON intent.id = attempt.intent_id
-              WHERE json_extract(intent.payload_json, '$.runId') = ?
-            `),
-            confirmedOperations: count(`
-              SELECT count(*) AS count FROM timeline_events
-              WHERE run_id = ? AND json_extract(payload_json, '$.payload.kind') = 'operation-confirmed'
-            `),
-          });
-        },
+          const one = (row: unknown): number => z.strictObject({ n: z.number().int() }).parse(row).n;
+        const active = one(this.#database.prepare(`SELECT count(*) AS n FROM runs ${runIndex(this.#database, "runs_nonterminal_idx")}
+          WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'`).get());
+        return Object.freeze({ finished: one(this.#database.prepare("SELECT count(*) AS n FROM runs").get()) - active, active });
       }),
       writeAttempts: Object.freeze({
         get: (writeAttemptId: string) => this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema),
