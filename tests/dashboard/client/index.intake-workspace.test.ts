@@ -149,9 +149,9 @@ it("rejection row actions name their row and Cancel returns focus to the opener"
   const fix = h.host.querySelector<HTMLButtonElement>('button[aria-label^="Fix cell, row "]'); assert.ok(fix, "Fix cell must name its row");
   await flush(() => fix.click());
   await flush(() => h.button("Cancel").click());
-  assert.equal(document.activeElement, fix);
+  assert.equal(document.activeElement === fix, true);
   const exclude = h.host.querySelector<HTMLButtonElement>('button[aria-label^="Exclude row "]'); assert.ok(exclude, "Exclude must name its row");
   await flush(() => exclude.click());
   await flush(() => h.button("Cancel").click());
-  assert.equal(document.activeElement, exclude);
+  assert.equal(document.activeElement === exclude, true);
 });
