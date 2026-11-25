@@ -178,6 +178,8 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: node scripts/ci/allowed-workflows.ts "$PR_BASE_SHA" "$PR_LABELS"
+      - name: Print typecheck compiler version
+        run: npm run typecheck -- --version
       - run: npm run typecheck
       - run: npm ci
         working-directory: fast-duo
