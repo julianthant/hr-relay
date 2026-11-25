@@ -92,15 +92,18 @@ Bootstrap projects the admitted person registry name as the actor label. Appeara
 `app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json` into `WORKFLOW_SOURCES`.
 Every declared value is `served` or `hidden`. `workflowSource` throws `WORKFLOW_SOURCE_UNDECLARED`
 for an absent ID. `PRODUCT_WORKFLOW_COMPOSITION` supplies the static product policy;
-`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup, Separations, Onboarding, Work-Study and the public I-9 Check PDF parent use `served`. OCR and I-9 Lookup are `hidden`: their admitted child runs use served data without public catalog or assistant entries. The I-9 Check person child has no source entry. A workflow that is not built and ready for testing is not declared, so it appears nowhere in the product. The design-mock harness composes its own surfaces in `tests/mocks/helpers/workflow-composition.ts`. There is no runtime served-to-mock fallback.
+`DashboardApp` receives `productWorkflowComposition` by default. The catalog uses the registered
+workflows marked `served` in the source policy. Workflows marked `hidden` can serve data for their
+host without public catalog or assistant entries. The I-9 Check person child has no source entry.
+The design-mock harness composes its own surfaces in
+[`tests/support/helpers/dashboard/mock-world/`](../../tests/support/helpers/dashboard/mock-world/).
+The product uses the served producers.
 
-`WorkflowComposition.sources` controls workflow presentation; `explorerCatalog`, `logs`,
-`dataSources` and `servedDay` allow explicit fixture composition.
-The independent `inbox` and `search` sources are served in the product and mock in the mock composition.
-`sessions` selects its existing served or fixture producer. `buildWorkflowCatalog` lists the
-served registrations the policy marks `served`; it never adds a preview entry. Only a workflow's
-own wiring task changes its source policy after its accepted behavior is implemented across
-Run, Rerun, Queue, Logs, Explorer, Records, notifications, and Analytics where applicable.
+`WorkflowComposition.sources` controls workflow presentation. The test harness injects sample
+Logs, inbox and search through `harness`, and sample Sessions through `sessionsHarness`.
+Only a workflow's own wiring task changes its source policy after its accepted behavior is
+implemented across Run, Rerun, Queue, Logs, Explorer, Records, notifications, and Analytics
+where applicable.
 
 I-9 Check's source is wired; live acceptance remains blocked. Its graph has no transaction node,
 so the planner refuses `dryRun=true`. Ordinary execution reads HR systems and publishes a results
