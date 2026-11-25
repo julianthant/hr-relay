@@ -74,6 +74,8 @@ function containsProtected(value: JsonValue, privateValues: readonly string[]): 
 type NodeFact = RerunValuesSnapshot["steps"][number]["nodes"][number];
 type StepFact = RerunValuesSnapshot["steps"][number];
 const ADVANCE = { unfinished: 0, failed: 1, completed: 2 } as const;
+/** A condition-skipped node is completed but less advanced than one that ran, so preselection, which reads it as not run, sees it whatever the child order. */
+function advance(fact: NodeFact): number { return ADVANCE[fact.state] - (fact.reason === "condition-skipped" ? 0.5 : 0); }
 
 function childWorkflows(descriptor: AnyWorkflowDescriptor): readonly string[] {
   return [...new Set(descriptor.startRows.flatMap(({ members }) => members.flatMap(({ workflow }) => workflow === undefined ? [] : [workflow])))];
@@ -184,7 +186,7 @@ function leastAdvancedSteps(descriptor: AnyWorkflowDescriptor, runs: readonly Re
     const nodes = step.nodes.flatMap(({ id }) => (kinds.get(String(id)) === "transaction" ? (["prepare", "commit"] as const) : [undefined]).map((phase): NodeFact => {
       const blank: NodeFact = { nodeId: NodeIdSchema.parse(id), ...(phase === undefined ? {} : { phase }), state: "unfinished", reason: "not-recorded" };
       const facts = runs.map((run) => run.get(unitKey(String(id), phase)) ?? blank);
-      return facts.reduce((least, fact) => ADVANCE[fact.state] < ADVANCE[least.state] ? fact : least, facts[0] ?? blank);
+      return facts.reduce((least, fact) => advance(fact) < advance(least) ? fact : least, facts[0] ?? blank);
     }));
     const state = nodes.some(({ state }) => state === "failed") ? "failed" : nodes.every(({ state }) => state === "completed") ? "completed" : "unfinished";
     return { key: step.key, state, nodes };
