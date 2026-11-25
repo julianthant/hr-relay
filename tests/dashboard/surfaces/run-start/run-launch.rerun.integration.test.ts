@@ -96,7 +96,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   it("warns on Start without planning; Start again is the consent and executes fresh work", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
     await mount(h, source);
-    assert.equal(document.activeElement?.getAttribute("aria-label"), "Close");
+    assert.equal(document.activeElement?.getAttribute("role"), "dialog", "the dialog opens with focus on its surface, no control ringed");
     const before = h.authoritySnapshot();
     for (const name of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(name).matches(":checked"), true);
     assert.match(text(), /Completed/u); assert.match(text(), /3 of 3 included/u);

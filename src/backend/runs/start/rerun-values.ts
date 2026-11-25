@@ -192,7 +192,7 @@ function acceptsExactly(schema: z.ZodType, value: JsonValue): boolean {
 }
 
 /** The browser mode the run used: recorded, or for a run from before it was, the headless setting of the exact configuration it ran under. Undefined when that configuration is gone. */
-function sourceBrowserMode(repositories: AuthorityDatabase["authority"], { envelope }: RunRecord): BrowserPresentationMode | undefined {
+export function sourceBrowserMode(repositories: AuthorityDatabase["authority"], { envelope }: RunRecord): BrowserPresentationMode | undefined {
   if (envelope.browserMode !== undefined) return envelope.browserMode;
   const settings = repositories.configSnapshots.get(envelope.configSnapshotId);
   if (settings === undefined || settings.fingerprint !== envelope.configFingerprint) return undefined;

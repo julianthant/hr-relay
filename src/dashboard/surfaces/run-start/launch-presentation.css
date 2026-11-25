@@ -45,6 +45,9 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply border-t border-u
 .launch-design .launch-stage-marker[data-completed] { @apply text-ui-positive; }
 .launch-design .launch-content { @apply flex flex-col gap-3; }
 .launch-dialog .launch-content > section { @apply gap-1; }
+/* Cards fill the content width and never shrink: the scope's own width cap left them short, and an overflow-hidden card shrank behind the footer. */
+.launch-dialog .launch-content .ds-body-scope { max-width: none; flex-shrink: 0; }
+.launch-dialog .launch-content > * { flex-shrink: 0; }
 .launch-dialog .launch-content > section > h3 { @apply m-0 text-control font-medium; }
 .launch-dialog .launch-content [data-slot="input"] { @apply bg-ui-field; }
 .launch-dialog .launch-content textarea { @apply h-24 min-h-24 bg-ui-field px-2 py-2; }

@@ -11,7 +11,7 @@ import { PreflightCheckIdSchema } from "../../../../../../src/models/preflight/p
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
-  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
+  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
   never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, type ServedCheck,
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
 import { RUN_DIALOG_REFERENCE_READS } from "../../../../fixtures/dashboard/run-dialog-reference-fixtures.js";
@@ -64,7 +64,7 @@ const PASS: ServedCheck = { check: PreflightCheckIdSchema.parse("config.valid"),
 const WARN: ServedCheck = { check: PreflightCheckIdSchema.parse("fiscal.current"), status: "warning", summary: "The fiscal year ends soon." };
 const FIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("secrets.ucpath-sso"), status: "fail", summary: "The UCPath password is missing." };
 const UNFIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("filesystem.health"), status: "fail", summary: "Relay is out of disk space." };
-const rerunClient = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ rerunValues: async () => runDialogRerunSnapshot(), previewRerunWarnings: async () => runDialogRerunWarning(false), ...served });
+const rerunClient = (served: Partial<DashboardClient> = {}, outcome: "failed" | "done" = "failed") => () => runDialogClient({ rerunValues: async () => runDialogRerunSnapshot(outcome), previewRerunWarnings: async () => runDialogRerunWarning(false), ...served });
 const planning = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ submitStartPlan: async () => runDialogPlan(), executeCommand: async () => RUN_DIALOG_APPLIED, ...served });
 const start = (page: Page) => press(page, "Start run");
 
@@ -72,11 +72,11 @@ const stage = scene;
 
 const STAGE = {
   Input: stage("Input, nothing typed", () => runDialogClient(), "Input"),
-  RerunSteps: stage("A rerun's Steps, each step as the source ended", rerunClient(), "Steps", { rerun: true }),
-  Warning: stage("A rerun's warning that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }), "Steps", { rerun: true,
+  RerunSteps: stage("A rerun's Steps, each step as the source ended", rerunClient(), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
+  Warning: stage("A succeeded write run's rerun, warned that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }, "done"), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG,
     then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
   Start: stage("Start, options, steps and checks, every check ready", reading(PASS), "Start"),
-  RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true }),
+  RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
 } satisfies Record<string, Story>;
 
 const CHECKS = {
@@ -94,7 +94,7 @@ const CHECK_COMBINATION = {
 const RERUN_LOAD = {
   loading: stage("A rerun reading its source", () => runDialogClient({ rerunValues: never }), "Steps", { rerun: true }),
   failed: stage("A rerun whose source could not be read", () => runDialogClient({ rerunValues: async () => { throw new Error("The source run could not be read."); } }), "Steps", { rerun: true }),
-  ready: stage("A rerun with its source read", rerunClient(), "Steps", { rerun: true }),
+  ready: stage("A rerun with its source read", rerunClient(), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
 } satisfies Record<RerunLoad["state"], Story>;
 
 const ACTIVITY = {

@@ -1,6 +1,7 @@
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
 import { z } from "zod";
+import { sourceBrowserMode } from "../start/rerun-values.js";
 import { failureCorrectionSubmission, gateCorrectionSubmission } from "../start/failure-correction.js";
 import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { RunRecoveryMode } from "../../../models/run/envelope.js";
@@ -117,11 +118,11 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         validateRerunSourcePlan(repositories, run);
         const correction = rerunSource.failureCorrection;
         if (rerunSource.gateCorrection !== undefined) {
-          return { input: run.input.parsed, submissions: [gateCorrectionSubmission(descriptor, run, ingress)],
+          return { input: run.input.parsed, submissions: [gateCorrectionSubmission(descriptor, run, ingress, sourceBrowserMode(repositories, run))],
             stepOmissions: run.envelope.stepOmissions, supersedeRunId: run.envelope.runId };
         }
         if (correction === undefined) return { input: run.input.parsed };
-        const submission = failureCorrectionSubmission(descriptor, run, repositories.failures.get(correction.failureId), ingress);
+        const submission = failureCorrectionSubmission(descriptor, run, repositories.failures.get(correction.failureId), ingress, sourceBrowserMode(repositories, run));
         return { input: run.input.parsed, submissions: [submission], stepOmissions: run.envelope.stepOmissions };
       });
       const stepOmissions = resolveStartStepOmissions(descriptor, ingress.selectedStepKeys,

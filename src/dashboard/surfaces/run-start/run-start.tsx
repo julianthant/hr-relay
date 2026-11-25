@@ -776,7 +776,7 @@ export function RunStartDialog({
   return (
     <Dialog open={drawn} onOpenChange={closeAndReset}>
       <DialogContent
-        onOpenAutoFocus={event => { if (isRerun) { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>('button[aria-label="Close"]')?.focus(); } }}
+        onOpenAutoFocus={event => { if (isRerun) { event.preventDefault(); (event.currentTarget as HTMLElement).focus({ preventScroll: true }); } }}
         onCloseAutoFocus={event => { if (hidden) event.preventDefault(); else onCloseAutoFocus?.(event); }}
         size="lg"
         title={isRerun ? "Rerun" : "Start run"}

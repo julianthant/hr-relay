@@ -31,6 +31,7 @@ afterEach(async () => {
 });
 const descriptor = DESCRIPTORS.find(flow => flow.id === "onboarding"); assert.ok(descriptor?.surfaces.inputRun);
 const descriptorId = descriptor.id;
+const rerunDescriptor = descriptor;
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
   requiredWorkbookFields: [...descriptor.requiredWorkbookFields], workbookReference: descriptor.workbookReference,
   referenceSources: [], steps: projectStartSteps(descriptor), inputRun: { state: "present", surface: descriptor.surfaces.inputRun } };
@@ -153,10 +154,10 @@ it("retains the original issued envelope after an unknown result and later mode 
 
 function rerunSnapshot() {
   const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
-  const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
-    descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" }, sourceInput: { state: "available", value: { email: "source@example.test", mode: "rehire" } },
+  const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: rerunDescriptor.id,
+    descriptorVersion: rerunDescriptor.version, contractFingerprint: rerunDescriptor.contractFingerprint, outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" }, sourceInput: { state: "available", value: { email: "source@example.test", mode: "rehire" } },
     spreadsheets: [{ typeId: workflow.workbookReference?.id, libraryId: entry.libraryId, versionId: "version", sheetId: "first", selectedRow: { sheetId: "first", rowId: "row-2" } }],
-    steps: descriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })), values: [], transactions: [] });
+    steps: rerunDescriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })), values: [], transactions: [] });
   return { source, snapshot };
 }
 
