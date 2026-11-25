@@ -1,7 +1,7 @@
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { defaultRerunSteps, initialRerunValueDrafts, plainRerunInputText, partialRerunTypedInput } from "../../../../src/dashboard/surfaces/run-start/run-start-rerun-model.js";
+import { defaultRerunSteps, rerunsInOneClick, initialRerunValueDrafts, plainRerunInputText, partialRerunTypedInput } from "../../../../src/dashboard/surfaces/run-start/run-start-rerun-model.js";
 import { RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
@@ -75,4 +75,15 @@ it("restores a Work Study rerun: the single mode applies, the stored ISO date sh
   assert.equal(restored.draft.effectiveDate, "08/03/2026");
   assert.equal(restored.text, "10000001");
   assert.deepEqual(restored.input, { emplId: "10000001", effectiveDate: "08/03/2026" });
+});
+
+it("reruns in one click only when the run is done and nothing failed, children included", () => {
+  const done = { ...snapshot.source, outcome: "done" as const };
+  const clean = RerunValuesSnapshotSchema.parse({ ...snapshot, source: done,
+    steps: snapshot.steps.map(step => ({ ...step, state: "completed", nodes: step.nodes.map(node => ({ ...node, state: "completed", reason: "checkpoint" })) })) });
+  assert.equal(rerunsInOneClick(clean), true);
+  assert.equal(rerunsInOneClick(snapshot), false);
+  assert.equal(rerunsInOneClick({ ...clean, source: { ...done, outcome: "failed" } }), false);
+  assert.equal(rerunsInOneClick({ ...clean, steps: [{ ...clean.steps[0], nodes: [{ nodeId: "read", state: "failed", reason: "failure" }] }] }), false);
+  assert.equal(rerunsInOneClick({ ...clean, children: [{ workflow: "rerun-proof", steps: [snapshot.steps[1]] }] }), false);
 });

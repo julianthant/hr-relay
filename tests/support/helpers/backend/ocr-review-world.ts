@@ -65,7 +65,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
   return {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; onbaseFiling?: "file" | "skip"; record?: boolean; release?: boolean; pageCount?: number;
-      retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; extractWithOcr?: boolean;
+      retainedProducer?: boolean; coordinator?: boolean; fileName?: string; dryRun?: boolean; extractWithOcr?: boolean;
       parent?: WorkflowModule; ocr?: Pick<WorkflowModule, "descriptor"> & Partial<Pick<WorkflowModule, "stores">>; ocrPage?: WorkflowModule;
       lookupNames?: readonly string[]; employeeIds?: readonly (string | null)[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; holdPages?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
       failManualPageOnce?: number; stopAfterPageFailure?: boolean;
@@ -276,10 +276,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         reading: options.extractWithOcr === false ? { kind: "subscription" }
           : { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
       assert.ok(roster);
-      const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading,
-        ...(options.extractWithOcr === undefined ? {} : { extractWithOcr: options.extractWithOcr }), onbaseFiling: options.onbaseFiling ?? "file" }), { dryRun: options.dryRun ?? false,
-          ...(options.retainedProducer === true || root.descriptor.workbookReference?.id !== "ocr-roster" ? {} : {
-            workbookReferences: [{ entry: 1, libraryId: roster.libraryId,
+      const workbookReferences = options.retainedProducer === true || root.descriptor.workbookReference?.id !== "ocr-roster" ? undefined : [{ entry: 1, libraryId: roster.libraryId,
               versionId: database.authority.workbooks.libraryState(roster.libraryId).selectedVersionId,
               sheetId: "people", expectedVersion: workbooks.read(roster.libraryId).version }, ...(options.checks ?? []).map(check => {
                 const extra = workbooks.create({ name: check.name, themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: check.sheet, width: check.fields.length, hidden: [], headerRow: 1,
@@ -287,8 +284,11 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
                   rows: [{ id: "header", cells: check.fields.map(value => ({ value })) }, ...check.rows.map((cells, index) => ({ id: `row-${String(index)}`, cells: cells.map(value => ({ value })) }))] }] });
                 return { entry: 1, typeId: REFERENCE_CHECK.id, libraryId: extra.libraryId, versionId: workbooks.libraryVersion(extra.libraryId).version.id,
                   sheetId: "sheet", expectedVersion: workbooks.read(extra.libraryId).version };
-              })],
-          }) });
+              })];
+      const submission = coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, ...(options.fileName === undefined ? {} : { fileName: options.fileName }), readingId: request.readingId, roster: request.roster, reading: request.reading,
+        ...(options.extractWithOcr === undefined ? {} : { extractWithOcr: options.extractWithOcr }), onbaseFiling: options.onbaseFiling ?? "file" });
+      const parentRun = canonical.start(root.descriptor, submission, { dryRun: options.dryRun ?? false,
+        ...(workbookReferences === undefined ? {} : { workbookReferences }) });
       const signal = new AbortController().signal;
       const lookupAdmitted = () => database.authority.dependencies.groups(parentRun.envelope.runId)
         .some(({ group }) => group.invocation.nodeId === "lookup-identities");
@@ -371,7 +371,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
             snapshotId: commandId, sourceRunId: current.envelope.runId, revision: review.revision, digest: ocrSnapshotDigest(snapshot),
           } }, ocrApproval: { expectedRevision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: snapshot.selectedRecordIds } } };
       };
-      return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, parentRun, result, approval,
+      return { harness, database, path, clock, admission, workbookReferences, artifacts, artifactReader, sources, canonical, run, parentRun, result, approval,
         reading, corrected, pageBytes, command, root, resolve, stores, signerReads, pageReads, ocrCalls: () => ocrCalls, readResult: () => {
           const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
             "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);

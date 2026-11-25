@@ -60,4 +60,21 @@ describe('served rerun launch source identity', () => {
     assert.notEqual(seen.at(-1), first);
     assert.equal((seen.at(-1) as typeof SOURCE | undefined)?.expectedVersion, 5);
   });
+  it('reruns in one click only while open on the same source, and any other open drops it', async () => {
+    let controller: ReturnType<typeof useRunLaunch> | undefined;
+    function Probe() { controller = useRunLaunch(false, 'main'); return null; }
+    const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+    await act(async () => root?.render(createElement(Probe)));
+    assert.equal(controller?.rerunInOneClick, false);
+    await act(async () => controller?.openRerun(SOURCE, undefined, true));
+    assert.equal(controller?.rerunInOneClick, true);
+    await act(async () => controller?.setOpen(false));
+    assert.equal(controller?.rerunInOneClick, false);
+    await act(async () => controller?.openRerun(SOURCE, undefined, true));
+    await act(async () => controller?.openRerun(SOURCE));
+    assert.equal(controller?.rerunInOneClick, false);
+    await act(async () => controller?.openRerun(SOURCE, undefined, true));
+    await act(async () => controller?.openStart());
+    assert.equal(controller?.rerunInOneClick, false);
+  });
 });
