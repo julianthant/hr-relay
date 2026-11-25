@@ -130,7 +130,7 @@ const buildVersion = () => z.object({ version: z.string() }).parse(JSON.parse(re
 
 const SLOW_READ_REPORT_INTERVAL_MS = 60_000;
 
-export function createSlowOperationEvents(category: "http" | "worker", clock: Clock) {
+export function createSlowOperationEvents(category: "boot" | "http" | "worker", clock: Clock) {
   type Sample = Readonly<{ name: string; durationMs: number; omitted?: number }>;
   const pending: Sample[] = [];
   let lastReadReport = -Infinity, omittedReads = 0, worstReadMs = 0;
@@ -320,9 +320,10 @@ async function recoverRegisteredPersonCrash(workspace: string, lifetime: Runtime
     let database: AuthorityDatabase | undefined, primary: { error: unknown } | undefined;
     try {
       await probeRestoreProfileBrowsersClosed(admission, join(workspace, rebuildRuntimeIsolation.processLockRoot), machine.maintenanceOperation(), clock, profileBrowserClosure);
-      const slowOperations = createSlowOperationEvents("http", clock);
+      const slowOperations = createSlowOperationEvents("boot", clock);
+      slowOperations.attach({ emit: ({ correlationId: _correlationId, ...event }) =>
+        appendLocalDebug({ stateRoot: machine.stateRoot, build: buildVersion(), now: clock.now(), event: { ...event, pinned: false } }) });
       database = AuthorityDatabase.openStoppedStartupRecovery(admission, clock, slowOperations.hook);
-      attachStorageSlowOperations(slowOperations, database, clock, admission.stateRoot);
       const lifecycle = new RunRecordService({ database, clock, ids: { uuid: randomUUID },
         publishQueued: () => { throw new Error("startup-crash-recovery-cannot-enqueue"); } });
       reconcileStoppedStartupCrash({ machine, admission, database, lifecycle, clock, lock: lifetime });
