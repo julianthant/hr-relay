@@ -162,12 +162,14 @@ function QueueProgress({ pipeline }: { pipeline: QueueSurfaceWire["pipeline"] })
 }
 
 
-type RowChipTone = "neutral" | "info" | "warning";
+type RowChipTone = "neutral" | "info" | "warning" | "rehearsal";
 
 const ROW_CHIP_TONE: Record<RowChipTone, string> = {
   neutral: "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg-quiet)]",
   info: "border-[color:var(--ds-info-border)] bg-[var(--ds-info-bg)] text-[color:var(--ds-info-fg)]",
   warning: "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] text-[color:var(--ds-status-waiting-fg)]",
+  /* A rehearsal is not a status: the neutral chip box with the rehearsal's own quiet ink. */
+  rehearsal: "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-rehearsal-fg)]",
 };
 
 const rowChip = (tone: RowChipTone, extra?: string): string =>
