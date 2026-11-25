@@ -270,6 +270,32 @@ jobs:
           echo "$((10 - failed))/10 trials passed"
           test "$failed" -eq 0
 
+      - uses: actions/checkout@v7
+        if: ${{ !cancelled() }}
+        with:
+          ref: 79d25f27f17ff8a69a82f2d9083c26963b780851
+          path: .trial-903-base
+      - name: Compare against development before TypeScript 7
+        if: ${{ !cancelled() }}
+        working-directory: .trial-903-base
+        env:
+          FILE: ${{ matrix.file }}
+          TITLE: ${{ matrix.title }}
+          RELAY_TEST_NATIVE: ${{ runner.os == 'macOS' && '1' || '0' }}
+          CASE: ${{ matrix.case }}
+        run: |
+          npm ci
+          if [[ "$CASE" == "headed capture" ]]; then
+            npx playwright install chromium
+          fi
+          npm run web:build
+          echo "Pre-TypeScript 7 checkout: $(git rev-parse HEAD)"
+          if npm run test:integration -- "$FILE" -t "$TITLE" --reporter=verbose --maxWorkers=1; then
+            echo "Pre-TypeScript 7 trial passed"
+          else
+            echo "Pre-TypeScript 7 trial failed (see assertion above)"
+          fi
+
   ubuntu:
     needs: changes
     name: ubuntu ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}

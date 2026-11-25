@@ -366,7 +366,15 @@ export async function captureFullPage(page: Page, options: Readonly<{
           throw new FullPageCaptureFailedError("unpainted-gap");
         }
         assertCurrent();
-        const buffer = await page.screenshot({ type: "png", clip, mask: options.mask() });
+        const mask = options.mask();
+        let buffer: Buffer;
+        if (nativeViewport === undefined) {
+          buffer = await page.screenshot({ type: "png", clip, mask });
+        } else {
+          const origin = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
+          buffer = await page.screenshot({ type: "png", fullPage: true, mask,
+            clip: { ...clip, x: clip.x + origin.x, y: clip.y + origin.y } });
+        }
         await assertSafe();
         const detail = bandGeometryChange(before, await readGeometry());
         if (detail !== undefined) {
