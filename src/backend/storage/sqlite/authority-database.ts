@@ -188,6 +188,7 @@ export const AuthorityDatabaseOpenModeSchema = z.enum([
   "storage-backup-read-only-no-migrate",
   "storage-doctor-read-only-no-migrate",
   "storage-upgrade-preflight-read-only-no-migrate",
+  "dashboard-read-worker-read-only-no-migrate",
 ]);
 
 export const AuthorityDatabaseOptionsSchema = z.strictObject({
@@ -3133,6 +3134,8 @@ export class AuthorityDatabase implements Disposable {
       }
       if (readOnlyNoMigrate) {
         this.#configureReadOnlyConnection();
+        // Prototype (#486): the read worker's native connection is read-only; TEMP paging tables live on this connection alone.
+        if (options.openMode === "dashboard-read-worker-read-only-no-migrate") this.#database.exec("PRAGMA query_only=OFF; PRAGMA trusted_schema=OFF");
       } else {
         if (!existed && purpose !== "stopped-restore-projection") this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#configureConnection();
