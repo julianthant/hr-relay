@@ -69,7 +69,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     return settingsPath === undefined ? row : <div data-settings-path={settingsPath}>{row}</div>;
   };
   return <section className="settings-compact-page settings-account-page">
-    <PageHeading title="Account" />
+    <PageHeading title="Account" description="Sign-in details and protected workflow configuration." />
     <Group label="Relay account" description="How you sign in to Relay.">
       {details("Name", values.name, next => { const [firstName = "", ...rest] = next.split(/\s+/u); return { name: { firstName, lastName: rest.join(" ") } }; })}
       <RelayLoginRows login={{ ...login, username: read === undefined ? username : read.username }} />
@@ -77,11 +77,11 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
       <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-6" /></span>} />
     </Group>
     {ucpath}
-    <Group label="Workflow configuration">
+    <Group label="Workflow configuration" description="Names workflows put on the forms they file.">
       {details("Timekeeper name", values.timekeeper, timekeeperName => ({ timekeeperName }), "profile.displayName")}
       {details("Timekeeper initials", values.timekeeperInitials, timekeeperInitials => ({ timekeeperInitials }), "profile.initials")}
     </Group>
-    <Group label="Security">
+    <Group label="Security" description="Duo security keys for signing in.">
       <DuoSecurityKeys port={duoKeys} onSetup={onDuoSetup} />
     </Group>
     {deleteAccount}

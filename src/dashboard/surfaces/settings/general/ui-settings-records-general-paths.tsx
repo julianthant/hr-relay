@@ -80,7 +80,7 @@ function PathRow({ editor, field }: { editor: Editor; field: NativePathField }) 
 
 function GeneralContent({ editor, year, appearance }: { editor: Editor; year: number; appearance?: ReactNode }) {
   const date = servedLeaf(editor, `annualDates.FY${String(year)}.jobEndDate`);
-  return <BodySection title="App"><FormGroup label="App">
+  return <BodySection title="App" description="Download folder, employment end date, and appearance."><FormGroup label="App">
     <PathRow editor={editor} field="paths.downloadsDir" />
     <ScalarRow editor={editor} leaf={date} />
     {appearance}
@@ -88,7 +88,7 @@ function GeneralContent({ editor, year, appearance }: { editor: Editor; year: nu
 }
 
 function RunGroups({ editor }: { editor: Editor }) {
-  return <>{GENERAL_RUN_GROUPS.map(group => <BodySection key={group.title} title={group.title}><FormGroup label={group.title}>
+  return <>{GENERAL_RUN_GROUPS.map(group => <BodySection key={group.title} title={group.title} description={group.description}><FormGroup label={group.title}>
     {group.rows.map(row => { const leaf = servedLeaf(editor, row.path); return row.choices === undefined
       ? <ScalarRow key={row.path} editor={editor} leaf={leaf} note={row.note} /> : <ChoiceRow key={row.path} editor={editor} leaf={leaf} choices={row.choices} note={row.note} />; })}
   </FormGroup></BodySection>)}</>;
@@ -96,7 +96,7 @@ function RunGroups({ editor }: { editor: Editor }) {
 
 export function CompactSettingsSection({ editor, appearance }: { editor: Editor; appearance?: ReactNode }) {
   return <section className="settings-compact-page">
-    <PageHeading title="General" />
+    <PageHeading title="General" description="Assistant, app, run, and notification preferences." />
     <AssistantSettings />
     {editor.editor.state === "failed" && <Notice sticky tone="danger" title="Settings unavailable" description="Reopen Settings to try again." />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} appearance={appearance} />
@@ -121,7 +121,7 @@ export function DeleteAccountControl({ presentation }: { presentation: DeleteAcc
   const deleting = presentation.state === "deleting";
   const failed = presentation.state === "refused" || presentation.state === "uncertain";
   const note = failed ? presentation.message : deleting ? "Deleting your account…" : presentation.state === "unavailable" ? "Not available right now." : undefined;
-  return <BodySection title="Delete Account"><FormGroup label="Account">
+  return <BodySection title="Delete Account" description="Permanently erase your runs, history, and settings."><FormGroup label="Account">
     <ResultRow label="Delete account" description={note === undefined ? undefined : <span role={failed ? "alert" : deleting ? "status" : undefined}>{note}</span>}
       value={<Button ref={trigger} variant="danger" disabled={presentation.state !== "ready"} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete"}</Button>} />
     <Dialog open={confirming && presentation.state === "ready"} onOpenChange={setConfirming}>

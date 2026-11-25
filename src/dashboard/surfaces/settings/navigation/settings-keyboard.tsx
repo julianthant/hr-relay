@@ -37,7 +37,7 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
   };
   const resetAll = async () => { if (await commit(DEFAULT_SHORTCUT_PREFERENCES) === true) onSaved?.({ title: 'Shortcuts reset to defaults' }); };
   return <section className="settings-compact-page settings-keyboard-page">
-    <PageHeading title="Keyboard" actions={<Button variant="muted" onClick={() => { void resetAll(); }}>Reset all to defaults</Button>} />
+    <PageHeading title="Keyboard" description="Shortcuts for moving around and sending in Relay." actions={<Button variant="muted" onClick={() => { void resetAll(); }}>Reset all to defaults</Button>} />
     <SearchInput variant="field" aria-label="Search shortcuts" placeholder="Search shortcuts" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />
     {!editing && error && <Banner tone="danger" title={error} />}
     <FormGroup label="Keyboard bindings">
