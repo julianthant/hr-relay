@@ -15,8 +15,15 @@ const reviewed = new Map([
   ["src/backend/runtime/workers/worker-loop.ts#observeWork", "Checks the active run for pause and cancellation requests."],
   ["src/backend/runtime/workers/worker-loop.ts#handle", "Spaces worker claim attempts while the worker is idle or backing off."],
   ["src/backend/runtime/workers/worker-loop.ts#startHeartbeat", "Arms the initial claim heartbeat for each claimed run."],
+  ["src/backend/runtime/execution/run-execution-task.ts#handle", "Spaces task retries during workflow execution."],
+  ["src/backend/runtime/execution/run-execution-task.ts#deadline", "Enforces the immutable task deadline for each invocation."],
+  ["src/backend/runtime/workers/worker-pool.ts#after", "Schedules bounded worker IPC and lifecycle deadlines."],
+  ["src/backend/runtime/workers/worker-sessions.ts#handle", "Bounds closure of each pending browser acquisition during worker shutdown."],
+  ["src/backend/runtime/browser/browser-session-factory.ts#timer", "Spaces exclusive-session lease acquisition attempts."],
+  ["src/backend/runtime/gates/duo-ceremony-gate.ts#handle", "Spaces acquisition attempts for a held Duo ceremony lease."],
   ["src/backend/transports/http/subscriptions/dashboard-stream.ts#cancel", "Retries synchronous row reads while subscribers are owed a value."],
   ["src/backend/transports/http/subscriptions/dashboard-stream.ts#cancelTimer", "Retries run-panel reads after a retryable failure."],
+  ["src/backend/transports/http/subscriptions/dashboard-stream.ts#begin", "Bounds the run-panel read started on each retry."],
   ["src/backend/app/composition/dashboard/assistant.ts#timer", "Reclaims expired conversation history."],
   ["src/backend/storage/maintenance/session-backups.ts#start", "Checks whether the authority generation needs a session backup."],
   ["src/backend/runs/lifecycle/application-lifecycle.ts#observeQuit", "Waits for run custody to settle after the operator requests quit."],
@@ -164,8 +171,8 @@ function walkExecution(
     }
     ts.forEachChild(node, visit);
   };
-  if (ts.isIdentifier(entry) || ts.isPropertyAccessExpression(entry) || ts.isCallExpression(entry)) follow(entry);
-  else visit(entry);
+  if (ts.isExpression(entry)) follow(entry);
+  visit(entry);
 }
 
 function timeoutHandle(call: ts.CallExpression, checker: ts.TypeChecker): ts.Symbol | undefined {
@@ -223,11 +230,12 @@ function assertReviewedTimers(overlay: ReadonlyMap<string, string> = new Map()):
   const files = walkFiles(join(REPO_ROOT, "src/backend"))
     .filter(path => /\b(?:setInterval|setTimeout|schedule|MonotonicDeadlineScheduler)\b/u.test(overlay.get(path) ?? readFileSync(path, "utf8")));
   const program = createGuardProgram(files, {
-    noResolve: true, noLib: true, types: [], moduleResolution: ts.ModuleResolutionKind.Node10,
+    noResolve: true, lib: ["lib.es5.d.ts"], types: [], moduleResolution: ts.ModuleResolutionKind.Node10,
   }, overlay);
   const checker = program.getTypeChecker();
   const scheduler = program.getSourceFile(join(REPO_ROOT, "src/backend/runtime/scheduling/deadline-scheduler.ts"));
-  assert.ok(scheduler, "Missing MonotonicDeadlineScheduler source");
+  const browserScheduler = program.getSourceFile(join(REPO_ROOT, "src/backend/runtime/browser/native-browser.ts"));
+  assert.ok(scheduler && browserScheduler, "Missing deadline scheduler contract source");
   const remaining = new Map(reviewed);
   const unreviewed: string[] = [];
   for (const path of files) {
@@ -266,9 +274,9 @@ function assertReviewedTimers(overlay: ReadonlyMap<string, string> = new Map()):
     for (const call of calls) {
       const declaration = declarationOf(call.expression, checker);
       if (declaration !== undefined && ts.isMethodSignature(declaration)
-        && declaration.getSourceFile() === scheduler && declaration.name.getText() === "schedule"
-        && ts.isInterfaceDeclaration(declaration.parent)
-        && declaration.parent.name.text === "MonotonicDeadlineScheduler") {
+        && declaration.name.getText() === "schedule" && ts.isInterfaceDeclaration(declaration.parent)
+        && ((declaration.getSourceFile() === scheduler && declaration.parent.name.text === "MonotonicDeadlineScheduler")
+          || (declaration.getSourceFile() === browserScheduler && declaration.parent.name.text === "BrowserDeadlineScheduler"))) {
         timeouts.set(call, 1);
         continue;
       }
@@ -351,6 +359,15 @@ describe("backend store-reading timer boundary", () => {
         const defaultParameter = every(read, 1);
         return { defaultImport, destructured, defaultParameter };
       }
+
+      import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
+      export function plantedDeadline(database: AuthorityDatabase, input: Readonly<{ scheduler: MonotonicDeadlineScheduler }>) {
+        const reschedule = () => {
+          database.authority.timelineEvents.highWaterMark();
+          input.scheduler.schedule(1, reschedule);
+        };
+        return reschedule;
+      }
 `;
     assert.throws(() => assertReviewedTimers(new Map([[path, candidate]])), (error: unknown) => {
       assert.ok(error instanceof assert.AssertionError);
@@ -367,7 +384,8 @@ describe("backend store-reading timer boundary", () => {
         `${escapedPath}#fire:\\d+ unreviewed recurring setTimeout`,
         `${escapedPath}#tick:\\d+ unreviewed recurring setTimeout`,
         `${escapedPath}#awaited:\\d+ unreviewed recurring setTimeout`,
-        `${escapedPath}#chained:\\d+ unreviewed recurring setTimeout$`,
+        `${escapedPath}#chained:\\d+ unreviewed recurring setTimeout`,
+        `${escapedPath}#reschedule:\\d+ unreviewed recurring setTimeout$`,
       ].join("\\n"), "u");
       assert.match(error.message, expected);
       process.stdout.write(`${error.message}\n`);
