@@ -56,7 +56,7 @@ test("imports both CSV sizes, opens their saved rows, and picks both as run refe
   }, { timeout: 45_000 });
 
   await page.getByRole("button", { name: /^(Back to dashboard|Close settings)$/u }).click();
-  const checks = dashboard.dialog.getByRole("region", { name: "Reference spreadsheets" });
+  const checks = dashboard.dialog.getByRole("region", { name: "Spreadsheets" });
   for (const { name } of inputs) await test.step(`Pick ${name} as a reference`, async () => {
     await dashboard.openStartDialog();
     await dashboard.dialog.getByRole("navigation", { name: "Workflow" }).getByRole("button", { name: "Person Lookup", exact: true }).click();

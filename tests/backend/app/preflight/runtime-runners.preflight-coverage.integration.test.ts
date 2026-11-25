@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/models/trust/preflight-scenarios.js";
-import { RUNTIME_DEPENDENCIES, auditRuntimeDependencyCoverage, RUNTIME_DEPENDENCY_REGISTRY, LOCAL_PROVIDER_ADAPTER_SPECS } from "../../../src/models/runtime/runtime-dependencies.js";
+import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../src/models/trust/preflight-scenarios.js";
+import { RUNTIME_DEPENDENCIES, auditRuntimeDependencyCoverage, RUNTIME_DEPENDENCY_REGISTRY, LOCAL_PROVIDER_ADAPTER_SPECS } from "../../../../src/models/runtime/runtime-dependencies.js";
 import { existsSync } from "node:fs";
-import { auditPreflightExecutions, executePreflightCorpus, preflightFaultCases } from "../../support/fixtures/preflight/corpus.js";
+import { auditPreflightExecutions, executePreflightCorpus, preflightFaultCases } from "../../../support/fixtures/preflight/corpus.js";
 
 it("executes and closes every preflight manifest and dependency against production detectors",async()=>{
   assert.deepEqual(auditRuntimeDependencyCoverage(RUNTIME_DEPENDENCY_REGISTRY),[]);

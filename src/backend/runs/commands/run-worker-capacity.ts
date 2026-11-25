@@ -1,7 +1,9 @@
 import type { CommandKernel } from "./command-kernel.js";
 import { type CapacityRequest, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import type { WorkerSetupRefusalCode } from "../../../models/run/worker-control.js";
 import { lifecycleCommandId } from "../../../rules/commands/lifecycle-command-id.js";
+import { WorkerSetupRefusedError } from "../../runtime/workers/worker-pool.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 
 export interface RunWorkerCapacity {
@@ -31,6 +33,7 @@ export function createRunWorkerCapacity(deps: {
   kernel: CommandKernel;
   authority: Pick<AuthorityRepositories, "runs" | "startPlans" | "workerPools" | "workerSlots">;
   running(workflowId: string): boolean;
+  setupRefusal?(workflowId: string): WorkerSetupRefusalCode | undefined;
   ensureRunning(workflowId: string): Promise<void>;
   /** The worker pool's owner of startup work no caller waits for. */
   own: (work: Promise<void>) => void;
@@ -52,7 +55,11 @@ export function createRunWorkerCapacity(deps: {
         target: { workflowId, expectedVersion: deps.authority.workerPools.get(workflowId)?.version ?? 0 }, payload: { desiredWorkers: 1 } });
       if (outcome.state !== "applied" && outcome.state !== "already-applied") fail(`worker plan did not apply: ${JSON.stringify(outcome)}`, "refused");
       // The plan already preflighted and started its member; a refused or failed start leaves the workflow without a live member.
-      if (!deps.running(workflowId)) fail("the planned worker did not start", "refused");
+      if (!deps.running(workflowId)) {
+        const code = deps.setupRefusal?.(workflowId);
+        const refusal = code === undefined ? undefined : new WorkerSetupRefusedError(code);
+        fail(refusal?.message ?? "the planned worker did not start", "refused", refusal);
+      }
       return;
     }
     try { await deps.ensureRunning(workflowId); }

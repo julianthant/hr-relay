@@ -12,7 +12,9 @@
 .settings-content > .settings-tab-body { width:min(828px,100%);margin:0 auto; }
 .settings-takeover .settings-compact-page { gap:0;font-size:13px;line-height:1.5; }
 .settings-takeover .settings-compact-form { gap:0; }
-.settings-compact-page > .ds-page-heading { margin-bottom:var(--ds-space-page-heading-content); }
+.settings-takeover .ds-page-heading-title { font-size:var(--ds-settings-title);line-height:var(--ds-settings-title-lh); }
+.settings-compact-page > .ds-page-heading,
+.settings-editor > .ds-page-heading { margin-bottom:var(--ds-settings-heading-content); }
 .settings-takeover .ds-page-heading-copy { gap:4px; }
 .settings-compact-page .ds-page-heading-description { font-size:13px;line-height:20px;max-width:none; }
 .settings-compact-page > .ds-body-section { margin-bottom:var(--ds-settings-section-gap); }

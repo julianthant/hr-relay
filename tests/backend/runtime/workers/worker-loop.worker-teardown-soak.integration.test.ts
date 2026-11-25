@@ -1,27 +1,27 @@
-import { recoverInterruptedTestRun } from "../../support/helpers/backend/run-record-service-world.js";
-import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { createWorkerLoopHarness as workerHarness } from "../../support/helpers/backend/worker-loop-world.js";
+import { recoverInterruptedTestRun } from "../../../support/helpers/backend/run-record-service-world.js";
+import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { createWorkerLoopHarness as workerHarness } from "../../../support/helpers/backend/worker-loop-world.js";
 
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
-import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
-import { runWorkerLoop,WorkerLoopReportSchema } from "../../../src/backend/runtime/workers/worker-loop.js";
+import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
+import { runWorkerLoop,WorkerLoopReportSchema } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import {
 WorkerSessionManager,
 type BrowserSessionCloseProof,
 type WorkerBrowserSessionFactory,
-} from "../../../src/backend/runtime/workers/worker-sessions.js";
-import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
-import type { RunRecord } from "../../../src/models/run/record.js";
+} from "../../../../src/backend/runtime/workers/worker-sessions.js";
+import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
+import type { RunRecord } from "../../../../src/models/run/record.js";
 import {
 BrowserSessionIdSchema,
 FingerprintSchema,
 WorkerIdSchema,
 WorkflowIdSchema,
-} from "../../../src/rules/identity/ids.js";
-import { manualClock } from "../../../src/rules/time/clock.js";
-import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { fixtureDuoCeremonyGates } from "../../support/helpers/duo-ceremony-fixtures.js";
+} from "../../../../src/rules/identity/ids.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import {
 FIXTURE_SESSION_ACQUIRE_MS,
 healthyCrmDriver,
@@ -30,8 +30,8 @@ openAuthorityHarness,
 personLookupQueuedRun,
 sessionFactoryHarness,
 type AuthorityHarness
-} from "../../support/helpers/phase1f-executor-harness.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+} from "../../../support/helpers/phase1f-executor-harness.js";
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const ACTIVE_STATES = new Set(["claimed", "validating", "running"]);
 

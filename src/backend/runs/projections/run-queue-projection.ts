@@ -1466,7 +1466,7 @@ export class RunQueueProjection {
     return chips.length === 0 ? { state: "absent", reason: "this run has no applicable detail values" } : { state: "present", value: chips };
   }
 
-  /** A queued row names NO_WORKER when every active slot of its workflow is exited. */
+  /** A queued row shows why its workflow's workers cannot take it. */
   #notStarting(workflowId: string, status: QueueSurfaceWire["status"]): QueueSurfaceWire["notStarting"] {
     if (status !== "queued") return undefined;
     const slots = this.#deps.authority.listWorkerSlots?.();
@@ -1480,6 +1480,12 @@ export class RunQueueProjection {
     });
     if (live.length === 0) {
       if (this.#deps.authority.workerStartupPending?.(workflowId) === true) return undefined;
+      for (const slot of active) {
+        const exit = viewOf(slot.workerId)?.exit;
+        if (exit?.outcome === "setup-refused" && exit.settlement === "settled") {
+          return { code: exit.failureCode, summary: operatorFailureSentence(exit.failureCode) };
+        }
+      }
       const exited = active.some(slot => viewOf(slot.workerId)?.state === "exited");
       return exited ? QUEUE_NOT_STARTING_NO_WORKER : undefined;
     }

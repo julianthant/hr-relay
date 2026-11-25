@@ -118,7 +118,7 @@ export interface AuthorityImageOwner {
 /** pointInTime: an owner image; later changes to the live files do not make it stale. */
 type SnapshotMarkers = Readonly<{ files: string; authority: string; copiedBytes: bigint }>;
 type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void; pointInTime?: true; markers?: SnapshotMarkers }>;
-type ReadonlyAuthorityImage = Readonly<{ path: string; marker: string }>;
+type ReadonlyAuthorityImage = Readonly<{ path: string; marker: string; copy: SnapshotMarkers }>;
 const readerImages = new WeakMap<DatabaseSync, ReadonlyAuthorityImage>();
 
 export function readonlyAuthorityImage(database: DatabaseSync): ReadonlyAuthorityImage | undefined {
@@ -140,6 +140,7 @@ const maxReusableSnapshotBytes = 256n * 1024n * 1024n;
 
 /** Share guarded copies of unchanged SQLite files during stopped upgrade inspection. */
 export async function withReusableReadonlyAuthoritySnapshots<T>(body: () => Promise<T>): Promise<T> {
+  if (reusableSnapshots.getStore()?.active) return body();
   const copies = new Map<string, ReusableSnapshot>();
   const scope = { active: true, bytes: 0n, copies };
   let primary: { error: unknown } | undefined;
@@ -424,7 +425,7 @@ export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (
  try {
    database = openReadOnlyDatabase(snapshot.path, busyTimeoutMs);
    database.exec("PRAGMA query_only=ON; BEGIN"); transactionOpen = true;
-   if (snapshot.markers !== undefined) readerImages.set(database, Object.freeze({ path, marker: snapshot.markers.authority }));
+   if (snapshot.markers !== undefined) readerImages.set(database, Object.freeze({ path, marker: snapshot.markers.authority, copy: snapshot.markers }));
    try { result = { value: read(database) }; }
    finally { readerImages.delete(database); }
    database.exec("COMMIT"); transactionOpen = false;

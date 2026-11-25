@@ -195,6 +195,8 @@ export const ERROR_CATALOG = Object.freeze({
   DUO_CREDENTIAL_CONFLICT: catalogEntry("The Duo credential changed. Reload its current state and try again.", EmptyParametersSchema),
   DUO_CREDENTIAL_UNCERTAIN: catalogEntry("The Duo change could not be confirmed. Leave this profile as is.", EmptyParametersSchema),
   DUO_CREDENTIAL_UNAVAILABLE: catalogEntry("Duo credentials could not be read or saved safely.", EmptyParametersSchema),
+  DUO_READY_CREDENTIAL_REQUIRED: catalogEntry("Duo isn't set up. Set it up in Settings.", EmptyParametersSchema),
+  DUO_SIGNING_SOURCE_REQUIRED: catalogEntry("Relay couldn't access Duo setup. Check Settings.", EmptyParametersSchema),
   CREDENTIAL_CONVERSION_COUNTER_UNPROVED: catalogEntry("The saved Duo credential has no safe counter. Keep this profile stopped.", EmptyParametersSchema),
   CREDENTIAL_CONVERSION_REQUIRED: catalogEntry("Restart Relay to finish converting this profile’s credentials, then log in.", EmptyParametersSchema),
   CREDENTIAL_CONVERSION_UNSUPPORTED: catalogEntry("Relay cannot convert these credentials. Keep the original installation.", EmptyParametersSchema),
@@ -510,7 +512,11 @@ export const ERROR_CATALOG = Object.freeze({
     z.strictObject({ source: BoundarySourceSchema }),
   ),
   RERUN_SOURCE_INPUT_PROTECTED: catalogEntry(
-    "This input is protected and cannot be copied. Start a new run.",
+    "The original input can't be reused; use Start run.",
+    EmptyParametersSchema,
+  ),
+  RERUN_BROWSER_MODE_UNKNOWN: catalogEntry(
+    "The original browser mode is unknown; use Start run.",
     EmptyParametersSchema,
   ),
   QUEUE_READ_UNAVAILABLE: catalogEntry(

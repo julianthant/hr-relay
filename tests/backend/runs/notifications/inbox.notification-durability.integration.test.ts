@@ -1,18 +1,18 @@
-import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
-import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { createTrustRunReader } from "../../../src/backend/runs/trust/canonical-reader.js";
-import { personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
-import { RunRecordSchema } from "../../../src/models/run/record.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
+import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
 
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { afterAll, afterEach, describe, it } from "vitest";
-import { manualClock } from "../../../src/rules/time/clock.js";
-import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
-import { NotificationTriggerEventSchema, deriveNotificationDedupeFingerprint, notificationDeliverability, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { createNotificationInbox, type NotificationInbox } from "../../../src/backend/runs/notifications/inbox.js";
-import { HASH_A, HASH_B, HASH_C, NOW, UUID_1, UUID_2, UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { NotificationTriggerEventSchema, deriveNotificationDedupeFingerprint, notificationDeliverability, projectNotificationTrigger } from "../../../../src/rules/notifications/notification-triggers.js";
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { createNotificationInbox, type NotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
+import { HASH_A, HASH_B, HASH_C, NOW, UUID_1, UUID_2, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const NEXT = "2026-07-31T17:05:00.000Z";
 const disposers: (() => void | Promise<void>)[] = [];

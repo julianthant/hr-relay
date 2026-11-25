@@ -551,14 +551,15 @@ export function statusLabelOnTitleLine({ page }: StateRuleContext): Promise<read
   });
 }
 
-/** Every page title (Settings and Analytics alike) is 20px. */
+/** Every page title is 20px, except inside Settings, where the operator asked on 2026-11-25 "the title needs to be bigger and more spacing between it and the bottom is needed": those are 28px. */
 export function pageTitle20px({ page }: StateRuleContext): Promise<readonly string[]> {
   return page.evaluate(() => {
     const found: string[] = [];
     for (const title of document.querySelectorAll<HTMLElement>(".ds-page-heading-title")) {
       if (title.getBoundingClientRect().width <= 1) continue;
+      const expected = title.closest(".settings-takeover") === null ? "20px" : "28px";
       const size = getComputedStyle(title).fontSize;
-      if (size !== "20px") found.push(`the page title "${title.textContent?.trim().slice(0, 40) ?? ""}" is ${size}, not 20px`);
+      if (size !== expected) found.push(`the page title "${title.textContent?.trim().slice(0, 40) ?? ""}" is ${size}, not ${expected}`);
     }
     return found;
   });
@@ -577,6 +578,6 @@ export const STATE_RULES: Readonly<Record<StateRuleName, { readonly check: State
   "no-dead-disabled-control": { check: noDeadDisabledControl, failure: "a control shown switched off with nothing to choose" },
   "named-and-focusable": { check: namedAndFocusable, failure: "an interactive element with no name or no visible focus ring" },
   "status-label-on-title-line": { check: statusLabelOnTitleLine, failure: "a queue card whose status label wraps under the title" },
-  "page-title-20px": { check: pageTitle20px, failure: "a page title that is not 20px" },
+  "page-title-20px": { check: pageTitle20px, failure: "a page title that is not 20px (28px inside Settings)" },
   "declared-diagnostics": { check: declaredDiagnostics, failure: "console errors, page errors, failed requests or HTTP errors the story does not declare" },
 });

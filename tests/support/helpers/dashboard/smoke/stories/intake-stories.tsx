@@ -93,8 +93,8 @@ const MAPPING_LAYOUT = MAPPING;
 const CLEAN = intakeSession("validated", { validation: { ...(VALIDATED.validation as object), validRows: 7, unresolvedRows: [], rejected: [], excluded: [] }, reviewBinding: "b".repeat(64) });
 const driven = (command: IntakeCommand, extra: Partial<DashboardClient>): Story => {
   const mapping = { confirm: (page: Page) => page.getByRole("button", { name: /^Bind /u }).click() };
-  const fix = async (page: Page) => { await tab(page, "Review"); await press(page, "Fix cell"); await page.getByRole("textbox", { name: "Corrected value" }).fill("10873698"); await press(page, "Re-coerce this cell"); };
-  const exclude = async (page: Page) => { await tab(page, "Review"); await page.getByRole("button", { name: "Exclude…" }).first().click();
+  const fix = async (page: Page) => { await tab(page, "Review"); await page.getByRole("button", { name: /^Fix cell, row / }).first().click(); await page.getByRole("textbox", { name: "Corrected value" }).fill("10873698"); await press(page, "Re-coerce this cell"); };
+  const exclude = async (page: Page) => { await tab(page, "Review"); await page.getByRole("button", { name: /^Exclude row / }).first().click();
     await page.getByRole("textbox", { name: "Reason" }).fill("duplicate export line"); await press(page, "Exclude with this reason"); };
   const inspect = async (page: Page) => { await page.getByRole("combobox", { name: "Header row" }).click(); await page.getByRole("option").nth(1).click(); await press(page, "Change it anyway"); };
   const enqueue = async (page: Page) => { await page.getByRole("switch", { name: "I confirm this reviewed plan" }).check(); await page.getByRole("button", { name: /^Start \d+ runs?$/u }).click(); };

@@ -1,6 +1,7 @@
 import type { RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import { WORKER_STOP_REASON_LABEL } from "../../surfaces/sessions/worker-stop-reason-label.js";
+import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 
 const QUEUEING_RUN = new Set(["resume", "retry", "recover-run"]);
 const QUEUEING_BULK = new Set(["resume", "retry"]);
@@ -71,6 +72,10 @@ export function stoppedWorkerToasts(day: DashboardDayWire, workflowLabel: (workf
     const none = workers.length === 0 && day.workerAuthority.state === "present" && !day.workerAuthority.members.some(member => member.workflow === workflowId);
     const runs = waiting.filter(row => row.workflowId === workflowId && (!none || row.surfaceKind !== "preview")).length;
     if (runs === 0 || (stopped === undefined && !none)) return [];
+    const refusal = workers.find(card => card.stopReason === "setup-refused")?.failureCode;
+    if (stopped !== undefined && refusal !== undefined) {
+      return [{ tone: "warning" as const, title: operatorFailureSentence(refusal) }];
+    }
     return [{ tone: "warning" as const, title: stopped === undefined ? `${workflowLabel(workflowId)} has no worker. Open Sessions.`
       : `${workflowLabel(workflowId)} worker ${WORKER_STOP_REASON_LABEL[stopped]}. Retry it in Sessions.` }];
   });

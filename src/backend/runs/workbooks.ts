@@ -72,6 +72,10 @@ const onboardingInputBinding = Object.freeze({
   },
 });
 const ocrInputBinding = Object.freeze({
+  sourceToIngress(source: unknown) {
+    if (source === null || typeof source !== "object" || Array.isArray(source)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    return { ...source, roster: null };
+  },
   assertSubmission(input: unknown) {
     if (input !== null && typeof input === "object" && Reflect.get(input, "roster") != null) {
       throw new Error("OCR roster values are captured by Relay; caller-supplied roster input is invalid");

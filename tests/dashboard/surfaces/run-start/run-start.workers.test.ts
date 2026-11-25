@@ -27,7 +27,7 @@ describe("automatic worker forms", () => {
     const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
     const snapshot = RerunValuesSnapshotSchema.parse({
       source: { runId: source.runId, version: source.expectedVersion, workflow: workflow.workflowId,
-        descriptorVersion: workflow.version, contractFingerprint: h.HASH, outcome: "done" },
+        descriptorVersion: workflow.version, contractFingerprint: h.HASH, outcome: "done", dryRun: false, priority: "interactive", browserMode: "headless" },
       sourceInput: { state: "available", value: { emplId: h.TYPED } },
       steps: workflow.steps.map(step => ({ key: step.key, state: "completed", nodes: [{ nodeId: step.key, state: "completed", reason: "checkpoint" }] })),
       values: [], transactions: [] });
@@ -43,8 +43,8 @@ describe("automatic worker forms", () => {
           rerun: { source: request.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: request.warningAcknowledgment } });
       },
     }), { workflows: [workflow], panelWorkflowId: workflow.workflowId, rerunSource: source });
-    await dialog.press("Continue"); await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Options");
+    await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Start");
     assert.equal(document.querySelector('button[aria-label$=" Workers"]') === null, true, "Workers picker must be absent");
     await dialog.press("Start run");
     assert.ok(submitted !== null && typeof submitted === "object");
