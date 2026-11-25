@@ -77,7 +77,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const revision = database.trackAuthorityTables(["timeline_events", ...workerTables], "poll-hint");
   const workerRevision = database.trackAuthorityTables(workerTables, "poll-hint");
   const startupTimelineRevision = database.trackAuthorityTables(["timeline_events"], "poll-hint");
-  let key: ReturnType<AuthorityDatabase["capturedChangeKey"]> | undefined = database.pollCapturedChangeKey();
+  let key: ReturnType<AuthorityDatabase["capturedChangeKey"]> | { state: "retry" } = database.pollCapturedChangeKey();
   const startupWorkers = workerRevision();
   let startupTimeline = startupTimelineRevision();
   let observed = revision();
@@ -100,13 +100,13 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
     };
     pending = projection.pollBackground(request => reader.read(request), now, workerRevisionState).then(expiry => {
       if (expiry === undefined) {
-        key = undefined;
+        key = { state: "retry" };
         checkAfterRead = true;
       } else leaseExpiry = expiry;
     }).catch((error: unknown) => {
       if (stopped) return;
       // A normal commit can supersede paged worker facts while the admitted timeline remains live.
-      if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") key = undefined;
+      if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") key = { state: "retry" };
       else projection.backgroundReadFailed(error);
     }).finally(() => {
       pending = undefined;
@@ -126,7 +126,8 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       const leaseDue = now >= leaseExpiry || now < lastWall;
       const degraded = projection.health().state === "degraded";
       const current = safety || leaseDue || degraded ? database.capturedChangeKey() : database.pollCapturedChangeKey();
-      const unchanged = key?.changeLogSeq === current.changeLogSeq && key.schemaCookie === current.schemaCookie;
+      const retry = "state" in key;
+      const unchanged = !retry && key.changeLogSeq === current.changeLogSeq && key.schemaCookie === current.schemaCookie;
       if (unchanged && !safety && !leaseDue && !degraded) {
         lastWall = now;
         return;
@@ -143,7 +144,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       }
       lastWall = now;
       const next = revision();
-      if (safety || leaseDue || degraded || key === undefined || next === undefined || next !== observed) void startRead(now, workerRevision());
+      if (safety || leaseDue || degraded || retry || next === undefined || next !== observed) void startRead(now, workerRevision());
       key = current;
       observed = next;
       if (safety) safetyAt = elapsed + 60_000;
