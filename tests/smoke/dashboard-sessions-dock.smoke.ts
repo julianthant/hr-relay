@@ -42,7 +42,8 @@ for (const viewport of VIEWPORTS) {
       await page.keyboard.press("Enter");
       const panel = page.locator("#sessions-console");
       await expect(panel).toBeFocused();
-      await expect(panel.getByRole("article")).toHaveCount(2);
+      // The seeded world serves its own workers too.
+      await expect(panel.getByRole("article", { name: /^Worker 9[89] / })).toHaveCount(2);
       await shot("console");
 
       const box = async (selector: string) => {
