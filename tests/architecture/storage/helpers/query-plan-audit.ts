@@ -60,6 +60,7 @@ export const WHOLE_TABLE_READS: Readonly<Record<string, string>> = Object.freeze
   "SELECT json_extract(payload_json,'$.payload.event.runId') AS run_id FROM timeline_events WHERE kind='transaction.fenced'":
     "the doctor's preserved-evidence inspection reads every fence",
   "SELECT id, workflow, trace_id, version FROM runs ORDER BY id": "the doctor's preserved-evidence inspection reads every run",
+  "SELECT count(*) AS n FROM runs": "the run-history status counts every run; the count reads one covering index and decodes no row",
   "SELECT * FROM runs": "run deletion proves no retained run references the deleted cascade",
   "SELECT * FROM timeline_events": "run deletion proves no retained event references the deleted cascade",
   "SELECT id,actor_id,payload_json,publications_json FROM notifications ORDER BY created_at,id":
