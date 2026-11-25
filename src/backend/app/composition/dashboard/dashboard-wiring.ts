@@ -10,7 +10,7 @@ import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
 import { buildExtractionInstruction } from "../../../../models/ocr/instruction.js";
 import { WorkerPoolMemberSchema } from "../../../../models/run/worker-slot.js";
 import { requireStoppedPool, WorkerPoolError, WorkerSetupRefusedError, type WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
-import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
+import { LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema } from "../../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
@@ -139,7 +139,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     if (error instanceof WorkerSetupRefusedError) {
       const event = { category: "worker", area: "supervisor", phase: "failed", correlationId: randomUUID(),
         code: error.code, message: error.message, reason: "setup-refused" };
-      debugEvents.emit(event, origin === undefined ? undefined : { kind: "worker", workerId: origin.workerId });
+      debugEvents.emit(event, origin === undefined ? undefined : { kind: "worker", workerId: WorkerIdSchema.parse(origin.workerId) });
       input.workerProcess?.faultSink?.(JSON.stringify(event));
       return;
     }

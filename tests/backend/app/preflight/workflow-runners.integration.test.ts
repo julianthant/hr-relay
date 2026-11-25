@@ -1,7 +1,7 @@
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { fixtureDuoSigningSource } from "../../../support/helpers/browser/duo-signing.js";
 import assert from "node:assert/strict";
-import { chmodSync,mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
+import { mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
@@ -139,12 +139,13 @@ describe("registered workflow detectors", () => {
     assert.match((await f.observe("browser.assets", true)).summary, /Chromium.*unavailable/u);
     writeFileSync(executable, "synthetic executable", { mode: 0o700 });
     assert.match((await f.observe("browser.assets", true)).summary, /manifest.*unavailable/u);
-    mkdirSync(f.config.paths.duoExtensionDir); writeFileSync(join(f.config.paths.duoExtensionDir, "workflow-manifest.json"), "{}");
+    const manifest = join(f.config.paths.duoExtensionDir, "workflow-manifest.json");
+    mkdirSync(f.config.paths.duoExtensionDir); writeFileSync(manifest, "{}");
     assert.equal((await f.observe("browser.assets", true)).state, "healthy");
-    chmodSync(executable, 0o600);
+    rmSync(manifest);
     const unsafe = await f.observe("browser.assets", true);
     assert.equal(unsafe.state, "unhealthy"); assert.doesNotMatch(JSON.stringify(unsafe), /SYNTHETIC_PRIVATE|setup-detectors-/u);
-    chmodSync(executable, 0o700);
+    writeFileSync(manifest, "{}");
     assert.equal((await f.observe("browser.assets", true)).state, "healthy");
     assert.equal(launch.mock.calls.length, 0);
   });

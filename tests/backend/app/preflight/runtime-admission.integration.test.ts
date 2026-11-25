@@ -102,8 +102,8 @@ async function harness(configureRunners?: (runners: readonly PreflightRunner[], 
     descriptorSetHash: personLookupDescriptor.contractFingerprint, protectedSecrets: { read: () => protectedRecord }, environment: {}, duo,
     runnerFactory: input => {
       const available = healthyRuntimePreflightRunners(input);
-      const missing = supportMissing ? createRuntimePreflightRunners(input).find(runner => runner.check === "browser.assets") : undefined;
-      const controlled = available.map(runner => missing !== undefined && runner.check === "browser.assets" ? missing : ({ ...runner, async run(context: PreflightRunnerContext) {
+      const missing = supportMissing ? createRuntimePreflightRunners(input).find(runner => runner.check === "browser.duo-key") : undefined;
+      const controlled = available.map(runner => missing !== undefined && runner.check === missing.check ? missing : ({ ...runner, async run(context: PreflightRunnerContext) {
         probes.push(runner.check);
         return faults.has(runner.check) ? { check: runner.check, state: "unhealthy" as const, summary: "Controlled dependency unavailable", impact: "Selected work cannot use it" } : runner.run(context);
       } }));

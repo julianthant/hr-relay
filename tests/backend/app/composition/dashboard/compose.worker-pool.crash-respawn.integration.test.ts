@@ -39,8 +39,9 @@ describe("a crashed pool member is respawned once", () => {
     child.exit(1, null);
     await settleMicrotasks();
 
-    assert.equal(view(h).exit?.outcome, "setup-refused");
-    assert.equal(view(h).exit?.failureCode, "DUO_READY_CREDENTIAL_REQUIRED");
+    const exit = view(h).exit;
+    assert.equal(exit?.outcome, "setup-refused");
+    assert.equal(exit.failureCode, "DUO_READY_CREDENTIAL_REQUIRED");
     assert.equal(h.children.length, 1);
     const [run] = h.database.authority.runs.listByWorkflow(WORKFLOW);
     assert.ok(run);
