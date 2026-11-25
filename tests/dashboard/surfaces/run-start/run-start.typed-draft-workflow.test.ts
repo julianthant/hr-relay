@@ -27,7 +27,7 @@ const onboarding: RunStartWorkflow = { ...personLookup, workflowId: onboardingDe
   steps: projectStartSteps(onboardingDescriptor), inputRun: { state: "present", surface: onboardingSurface } };
 
 describe("typed draft belongs to its workflow", () => {
-  it("Person Lookup default with restored Onboarding selection renders Onboarding's unchosen Hire mode", async () => {
+  it("Person Lookup default with restored Onboarding selection renders Onboarding's Hire mode with New hire chosen", async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client: h.stubClient({}),
       children: createElement(ViewNavigationContext.Provider, { value: { view: { launchServed: "onboarding" }, start: true, setStart() {}, update() {} },
@@ -35,7 +35,7 @@ describe("typed draft belongs to its workflow", () => {
           panelWorkflowId: personLookup.workflowId, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {} }) }) }) })));
     const dialog = document.body.querySelector('[role="dialog"]'); assert.ok(dialog);
     assert.ok(dialog.textContent?.includes("Hire mode"));
-    assert.equal(document.body.querySelector<HTMLInputElement>('input[type="radio"][value="new-hire"]')?.checked, false);
+    assert.equal(document.body.querySelector<HTMLInputElement>('input[type="radio"][value="new-hire"]')?.checked, true);
     assert.equal(document.body.querySelector<HTMLInputElement>('input[type="radio"][value="rehire"]')?.checked, false);
     assert.equal(document.body.textContent?.includes("Page unavailable"), false);
   });
