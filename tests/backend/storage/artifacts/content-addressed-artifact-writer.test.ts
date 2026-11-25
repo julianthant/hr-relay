@@ -177,5 +177,10 @@ it("keeps the stored envelope grammar: padding only at the payload's end, large 
     const reorderedFile = Buffer.from(` ${JSON.stringify({ payloadBase64: body.toString("base64"), ref: reordered }, null, 2)}\n`);
     writeFileSync(join(admission.artifactRoot, `${reordered.sha256}.artifact`), reorderedFile, { mode: 0o600 });
     assert.deepEqual(inspectArtifactDeletionFile(admission, reordered), proof(reordered, reorderedFile));
+    const nestedFile = Buffer.from(JSON.stringify({ ref: { ...reordered, nested: { first: 1, payloadBase64: "z" } }, payloadBase64: body.toString("base64") }));
+    assert.equal(nestedFile.indexOf(",\"payloadBase64\":\"") < nestedFile.lastIndexOf(",\"payloadBase64\":\""), true);
+    writeFileSync(join(admission.artifactRoot, `${reordered.sha256}.artifact`), nestedFile, { mode: 0o600 });
+    assert.throws(() => inspectArtifactDeletionFile(admission, reordered), { message: legacyVerdict(nestedFile, reordered.sha256) });
+    assert.throws(() => inspectArtifactDeletionFile(admission, reordered), /nested/u);
   } finally { admission.release(); rmSync(root, { recursive: true, force: true }); }
 });

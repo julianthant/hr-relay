@@ -121,7 +121,11 @@ const sameDeletionProofIdentity = (left: DeletionProofIdentity, right: DeletionP
 // Writer-framed files stream once: one hash of the file and a canonical Base64 decode hashed against the ref, with only the ref parsed.
 // Anything else JSON.parse accepted, and every rejection, takes the whole-file decode so the envelope grammar and its verdicts stay unchanged.
 function proveStoredArtifact(handle: number, size: number, digest: string) {
-  return streamWriterFramedArtifact(handle, size, digest) ?? decodeWholeStoredArtifact(handle, size, digest);
+  let framed: ReturnType<typeof streamWriterFramedArtifact>;
+  // A header split that is not a JSON ref is not the writer's framing; the whole-file decode below gives that file its verdict.
+  try { framed = streamWriterFramedArtifact(handle, size, digest); }
+  catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+  return framed ?? decodeWholeStoredArtifact(handle, size, digest);
 }
 
 function streamWriterFramedArtifact(handle: number, size: number, digest: string) {
@@ -133,9 +137,9 @@ function streamWriterFramedArtifact(handle: number, size: number, digest: string
   const payloadEnd = size - (tail.byteLength - end) - STORED_PAYLOAD_END.byteLength, payloadStart = header.indexOf(STORED_PAYLOAD_KEY);
   if (payloadStart < STORED_REF_KEY.byteLength || !header.subarray(0, STORED_REF_KEY.byteLength).equals(STORED_REF_KEY)
     || end < STORED_PAYLOAD_END.byteLength || !tail.subarray(end - STORED_PAYLOAD_END.byteLength, end).equals(STORED_PAYLOAD_END)) return undefined;
-  let stored: ArtifactRef;
-  try { stored = ArtifactRefSchema.parse(JSON.parse(header.subarray(STORED_REF_KEY.byteLength, payloadStart).toString("utf8")) as unknown); }
-  catch { return undefined; }
+  const parsed = ArtifactRefSchema.safeParse(JSON.parse(header.subarray(STORED_REF_KEY.byteLength, payloadStart).toString("utf8")) as unknown);
+  if (!parsed.success) return undefined;
+  const stored = parsed.data;
   const payloadFrom = payloadStart + STORED_PAYLOAD_KEY.byteLength;
   if (stored.sha256 !== digest || payloadEnd - payloadFrom !== Math.ceil(stored.bytes / 3) * 4) return undefined;
   const storedHash = createHash("sha256").update(header.subarray(0, payloadFrom)), payloadHash = createHash("sha256");
