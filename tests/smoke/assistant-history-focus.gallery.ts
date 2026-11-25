@@ -22,7 +22,7 @@ for (const leave of ["toggle", "Escape"] as const) {
     await page.locator('#hub-shell-assistant [aria-label="History"]').focus();
     await page.keyboard.press("Enter");
     await expect(page.locator(".hub-slot-title", { hasText: "History" })).toBeVisible();
-    if (leave === "toggle") await page.locator('#hub-shell-assistant [aria-label="History"]').press("Enter");
+    if (leave === "toggle") await page.locator('.hub-slot-header [aria-label="History"]').press("Enter");
     else await page.keyboard.press("Escape");
     await expect(page.locator(".hub-slot-title")).toHaveCount(0);
     await expect(page.locator('#hub-shell-assistant .hub-panel-header [aria-label="History"]')).toBeFocused();
