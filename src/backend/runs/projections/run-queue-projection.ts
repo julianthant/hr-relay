@@ -300,6 +300,8 @@ export interface DashboardDayRead {
   readonly dispatchCursor: number;
   /** Built from main's own fold in the dispatching turn, so it is framed at its dispatch cursor with no fold mapping. */
   readonly foldedHere: boolean;
+  /** The day as built here, stamped at the dispatch cursor; a lane read carries none. */
+  readonly wire: DashboardDayWire | undefined;
   /** False once the projection generation or the process facts moved past the read. */
   current(): boolean;
 }
@@ -1844,8 +1846,12 @@ export class RunQueueProjection {
   /** The day and the facts main needs from it, as the lane serves it; the lane's replica calls this inside its read snapshot. */
   buildLaneDay(day: string): { d: UnstampedDayWire; f: LaneDayFacts } {
     const wire = this.buildDashboardDayWire(day);
-    return laneDayBody(wire, { position: this.#timelineCursor, missingPublications: [],
-      surfaces: wire.queueSurfaces.map(({ runId, status, startedAt }) => ({ runId, status, startedAt })) });
+    return laneDayBody(wire, this.#laneFacts(wire));
+  }
+
+  #laneFacts(wire: DashboardDayWire): LaneDayFacts {
+    return { position: this.#timelineCursor, missingPublications: [],
+      surfaces: wire.queueSurfaces.map(({ runId, status, startedAt }) => ({ runId, status, startedAt })) };
   }
 
   /**
@@ -1859,13 +1865,14 @@ export class RunQueueProjection {
     }
     const generation = this.#generationValue, dispatchCursor = this.#cursorValue, lane = this.#deps.dayLane;
     if (lane === undefined) {
-      const { dayJson, facts } = decodeLaneDay(JSON.stringify(this.buildLaneDay(day)));
-      return { dayJson, facts, generation, dispatchCursor, foldedHere: true, current: () => generation === this.#generationValue };
+      const wire = this.buildDashboardDayWire(day);
+      const { dayJson, facts } = decodeLaneDay(JSON.stringify(laneDayBody(wire, this.#laneFacts(wire))));
+      return { dayJson, facts, generation, dispatchCursor, foldedHere: true, wire, current: () => generation === this.#generationValue };
     }
     const revision = lane.processRevision();
     return lane.read(day, { ...request, publications: request.publications ?? [] }).then(reply => {
       const { dayJson, facts } = decodeLaneDay(reply.body);
-      return { dayJson, facts, generation, dispatchCursor, foldedHere: false,
+      return { dayJson, facts, generation, dispatchCursor, foldedHere: false, wire: undefined,
         current: () => generation === this.#generationValue && reply.processRevision === revision && lane.processRevision() === revision };
     });
   }

@@ -125,6 +125,10 @@ interface FramedDay {
   readonly cursor: ProjectionCursor;
   readonly position: number;
   readonly payloadJson: string;
+  /** The day as main built it, when it built it itself at this cursor. */
+  readonly payload: DashboardDayWire | undefined;
+  /** The envelope handed to every connection that has no rows, one object for all of them. */
+  bare?: SnapshotEnvelope;
 }
 
 /** One snapshot read on the lane, and the connections whose outbox holds a place for it. */
@@ -224,7 +228,7 @@ const FRAMED_TEXT = Symbol("dashboard-stream-framed-text");
  * decodes and validates the day only for a reader that asks for it.
  */
 function framedSnapshotEnvelope(frame: FramedDay, rows: readonly StreamRow[]): SnapshotEnvelope {
-  let payload: DashboardDayWire | undefined;
+  let payload = frame.payload;
   const envelope = {
     type: "snapshot" as const, topic: "dashboard-day" as const, cursor: frame.cursor, position: frame.position,
     get payload(): DashboardDayWire { return payload ??= DashboardDayWireSchema.parse(JSON.parse(frame.payloadJson)); },
@@ -550,7 +554,9 @@ export class DashboardStreamHub {
     if (!read.current()) { this.#retrySnapshot(request); return; }
     const position = read.facts.position;
     if (!read.foldedHere && this.#projection.position() < position) {
-      this.#projection.whenFolded(position, request.controller.signal).then(() => { this.#settleSnapshot(request, read); }, () => undefined);
+      // A wait ends early only when every connection gave up its place, which aborts it.
+      this.#projection.whenFolded(position, request.controller.signal).then(() => { this.#settleSnapshot(request, read); },
+        (error: unknown) => { if (!request.controller.signal.aborted) this.#snapshotFailed(request, error); });
       return;
     }
     const baseline = this.#baseline(read);
@@ -565,7 +571,9 @@ export class DashboardStreamHub {
     }
     let frame: FramedDay;
     try {
-      frame = { cursor: ProjectionCursorSchema.parse(`pc:${String(baseline)}`), position, payloadJson: this.#projection.stampDay(request.day, read, baseline) };
+      const cursor = ProjectionCursorSchema.parse(`pc:${String(baseline)}`);
+      const built = read.wire !== undefined && read.wire.snapshotCursor === cursor && read.wire.projectionGeneration === read.generation ? read.wire : undefined;
+      frame = { cursor, position, payloadJson: this.#projection.stampDay(request.day, read, baseline), payload: built };
     } catch (error) {
       this.#snapshotFailed(request, error);
       return;
@@ -599,7 +607,7 @@ export class DashboardStreamHub {
     return Math.max(fold.cursor, read.dispatchCursor);
   }
 
-  /** Asks again, at most SNAPSHOT_ATTEMPTS times in a row; then each connection records the boundary gap and resubscribes. */
+  /** Asks again, at most SNAPSHOT_ATTEMPTS times in a row; then each connection resubscribes. */
   #retrySnapshot(request: SnapshotRequest): void {
     if (request.attempts < SNAPSHOT_ATTEMPTS) { this.#dispatchSnapshot(request); return; }
     this.#snapshotGap(request);
@@ -618,12 +626,9 @@ export class DashboardStreamHub {
     const owners = [...request.subscribers].filter(subscriber => subscriber.phase.state === "open");
     request.subscribers.clear();
     if (owners.length === 0) return;
-    const requestedCursor = this.#projection.cursor();
+    // The connection resubscribes; its reconnect records the boundary as a gap, as any resume across a snapshot does.
     const reset = DashboardStreamEnvelopeSchema.parse({ type: "reset-required", reason: "cursor-expired", cursor: this.#projection.takeCursor() });
     if (reset.type !== "reset-required") throw new Error("dashboard stream reset parsed as another envelope");
-    // The reset goes out whether or not the gap's record lands; a failed record is the notifier's own refusal to report.
-    this.#backfillGaps.detected({ kind: "backfill-gap", detector: "server-resume", reason: "snapshot-boundary", topic: "dashboard-day",
-      requestedCursor, currentCursor: reset.cursor, projectionGeneration: this.#projection.generation() }).catch(() => undefined);
     for (const subscriber of owners) {
       const phase = subscriber.phase;
       if (phase.state !== "open") continue;
@@ -853,7 +858,9 @@ export class DashboardStreamHub {
     })];
     if (entry.kind === "snapshot") {
       subscriber.handedCursor = entry.frame.cursor;
-      return framedSnapshotEnvelope(entry.frame, rows);
+      if (rows.length > 0) return framedSnapshotEnvelope(entry.frame, rows);
+      entry.frame.bare ??= framedSnapshotEnvelope(entry.frame, []);
+      return entry.frame.bare;
     }
     const envelope: ChangeEnvelope = { ...entry.change, after: subscriber.handedCursor, rows };
     subscriber.handedCursor = entry.change.cursor;
@@ -991,8 +998,10 @@ export class DashboardStreamHub {
       this.#projection.takeCursor();
       const framed = Promise.withResolvers<void>();
       subscriber.framed = framed;
-      this.#subscribers.add(subscriber);
+      // Registered once the read is asked, in the same turn: a day built here holds what was published while it was built,
+      // and everything published after a lane read was asked queues behind its place.
       this.#requestSnapshot(day, "handoff", [subscriber]);
+      this.#subscribers.add(subscriber);
       this.#push(subscriber, this.#health("live"));
       try {
         await framed.promise;
