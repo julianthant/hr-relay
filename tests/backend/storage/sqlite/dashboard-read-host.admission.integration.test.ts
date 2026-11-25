@@ -212,7 +212,8 @@ it("joins an already started lane before a partial start failure lets the store 
   });
   let failure: unknown;
   try {
-    createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock, entry: LANE_READS_ENTRY });
+    // Only a parallel start launches a second lane while the first is already running.
+    createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock, entry: LANE_READS_ENTRY, start: "parallel" });
   } catch (error) { failure = error; } finally { spy.mockRestore(); }
   assert.ok(failure instanceof ReadLaneStartError);
   assert.match(failure.message, /injected-second-lane-failure/u);
