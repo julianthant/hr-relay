@@ -520,7 +520,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                   assertCurrent();
                   if (!after.authenticated || pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
                 },
-                mask: () => page.frames().flatMap(frame => [frame.locator(`[${CAPTURE_MASK_ATTRIBUTE}]`), frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)]),
+                mask: frame => [frame.locator(`[${CAPTURE_MASK_ATTRIBUTE}]`), frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)],
                 assertSafe: async () => {
                   assertCurrent();
                   if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");

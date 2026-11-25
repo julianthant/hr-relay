@@ -33,6 +33,7 @@ export async function overrideNativeViewport(page: Page) {
       await session.send("Emulation.setDeviceMetricsOverride", { ...size, deviceScaleFactor: 0, mobile: false });
     },
     async capture(clip: ViewportClip): Promise<Buffer> {
+      // Chromium restores screenshot emulation on the session that took the image.
       const { cssVisualViewport: { pageX, pageY, scale } } = await session.send("Page.getLayoutMetrics");
       const { data } = await session.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true,
         clip: { x: pageX + clip.x, y: pageY + clip.y, width: Math.ceil(clip.width / scale), height: Math.ceil(clip.height / scale), scale } });

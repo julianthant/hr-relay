@@ -6,7 +6,7 @@ import { stageFastDuoExtension } from "../../../../src/backend/runtime/browser/f
 import { PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../../src/models/config/duo-credential-store.js";
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
-import { captureFullPage } from "../../../../src/backend/runtime/browser/full-page-capture.js";
+import { captureFullPage, FullPageCaptureRefusedError } from "../../../../src/backend/runtime/browser/full-page-capture.js";
 import { holdNativeViewport } from "../../../../src/backend/runtime/browser/native-viewport.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
@@ -531,13 +531,16 @@ it("keeps headed evidence independent of native window size and gives resizing b
     const page = context.pages()[0]; assert.ok(page);
     assert.equal(page.viewportSize(), null);
     await page.setContent(`<style>body{margin:0}main{height:2400px;background:#123456}
-      @media(min-width:1100px) and (min-height:1000px){main{background:linear-gradient(#fedcba 0 50%,#123456 50%)}}</style><main></main>`);
+      @media(min-width:1100px) and (min-height:1000px){main{background:linear-gradient(#fedcba 0 50%,#123456 50%)}}</style>
+      <main><div data-mask style="position:absolute;top:40px;left:0;width:70px;height:30px;background:#000"></div></main>`);
     const cdp = await context.newCDPSession(page);
     const { windowId } = await cdp.send("Browser.getWindowForTarget");
     const dimensions = () => page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
     const resize = (width: number, height: number) => cdp.send("Browser.setWindowBounds", { windowId, bounds: { width, height } });
-    const capture = () => captureFullPage(page, {
-      assertCurrent: () => {}, assertSafe: async () => {}, secretControls: 'input[type="password"]', mask: () => [], afterCapture: async () => {},
+    const capture = (sampleLabels?: readonly string[]) => captureFullPage(page, {
+      assertCurrent: () => {}, assertSafe: async () => {}, secretControls: 'input[type="password"]',
+      ...(sampleLabels === undefined ? {} : { sampleLabels }),
+      mask: frame => [frame.locator("[data-mask]")], afterCapture: async () => {},
     });
 
     const opening = await page.evaluate(() => ({ width: window.outerWidth, height: window.outerHeight,
@@ -553,7 +556,9 @@ it("keeps headed evidence independent of native window size and gives resizing b
       return [...pixels.data.subarray(offset, offset + 3)];
     };
     assert.deepEqual(pixel(20), [254, 220, 186]);
+    assert.deepEqual(pixel(50), [255, 0, 255]);
     assert.deepEqual(pixel(pixels.height - 20), [18, 52, 86]);
+    assert.equal(await page.locator("[data-mask]").evaluate(element => getComputedStyle(element).opacity), "1");
     const matchesBaseline = async () => {
       const image = await capture();
       assert.deepEqual([image.width, image.height], [baseline.width, baseline.height]);
@@ -569,7 +574,7 @@ it("keeps headed evidence independent of native window size and gives resizing b
     await expect.poll(dimensions).toEqual(large);
 
     const connect = context.newCDPSession.bind(context);
-    let resized = false;
+    let resized = false, disturbMask = false;
     context.newCDPSession = async target => {
       const session = await connect(target), send = session.send.bind(session);
       session.send = async (method, params) => {
@@ -578,6 +583,12 @@ it("keeps headed evidence independent of native window size and gives resizing b
           await expect.poll(async () => (await cdp.send("Browser.getWindowBounds", { windowId })).bounds.width).toBeLessThan(700);
           assert.deepEqual(await dimensions(), { width: 1280, height: 1200 });
           resized = true;
+        }
+        if (method === "Page.captureScreenshot" && disturbMask) {
+          await page.locator("[data-mask]").evaluate(element => {
+            element.style.setProperty("opacity", "1", "important");
+            element.style.setProperty("opacity", "0", "important");
+          });
         }
         return send(method, params);
       };
@@ -595,6 +606,12 @@ it("keeps headed evidence independent of native window size and gives resizing b
     });
     assert.deepEqual(await readHeldViewport(), small);
     await expect.poll(dimensions).toEqual(large);
+    const labelled = await capture(["Synthetic evidence"]);
+    assert.equal(labelled.width, baseline.width);
+    assert.ok(labelled.height > baseline.height);
+    disturbMask = true;
+    await assert.rejects(() => capture(), FullPageCaptureRefusedError);
+    assert.equal(await page.locator("[data-mask]").evaluate(element => getComputedStyle(element).opacity), "1");
     await cdp.detach();
   } finally { await context.close(); }
 });
