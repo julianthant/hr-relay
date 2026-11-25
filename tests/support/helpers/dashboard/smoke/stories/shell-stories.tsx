@@ -2,9 +2,10 @@
  * workflow rail, search, and the Pause-all and Log out dialogs. The real components run on fixtures and a client that never answers. */
 import { useEffect, useState, type ComponentProps } from "react";
 import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
-import { EmptyState, FailureNotice, Notice, Panel, PanelBody } from "../../../../../../src/dashboard/ds/ui.js";
+import { EmptyState, FailureNotice, Notice, Panel, PanelBody, Switch } from "../../../../../../src/dashboard/ds/ui.js";
 import { QueueSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
-import { PauseAllQuitControls } from "../../../../../../src/dashboard/surfaces/queue/queue-toolbar.js";
+import { QueueHeader } from "../../../../../../src/dashboard/surfaces/queue/queue-header.js";
+import { PausedRunsStrip, QuitDialog } from "../../../../../../src/dashboard/surfaces/queue/queue-toolbar.js";
 import { HubShell } from "../../../../../../src/dashboard/surfaces/shell/hub-shell.js";
 import { StartupLoading } from "../../../../../../src/dashboard/surfaces/shell/startup-loading.js";
 import { WorkflowRail } from "../../../../../../src/dashboard/surfaces/shell/workflow-rail.js";
@@ -63,16 +64,54 @@ const QUEUE_SLOT = {
   "workflow-unavailable": slot("A workflow this build does not serve", () => emptyPanel("Workflow unavailable", "Workflow person-lookup is not served by this build.")),
 } satisfies Record<QueueSlot, Story>;
 
-type RailState = "expanded" | "collapsed" | "running" | "collapsed-running";
-const rail = (title: string, counts: typeof SHELL_STORY_COUNTS_IDLE, collapsed: boolean): Story => ({ title, ready: '[aria-label="Workflows"]',
+type RailState = "expanded" | "collapsed" | "running" | "collapsed-running" | "start-hover" | "start-focus";
+const rail = (title: string, counts: typeof SHELL_STORY_COUNTS_IDLE, collapsed: boolean, play?: Story["play"]): Story => ({ title, ready: '[aria-label="Workflows"]', ...(play === undefined ? {} : { play }),
   render: () => <StoryFrame><aside aria-label="Workspace" className="workspace-rail ui-theme-scope" {...(collapsed ? { "data-collapsed": true } : {})}><div className="workspace-rail-body">
-    <WorkflowRail workflows={SHELL_STORY_WORKFLOWS} counts={counts} active="person-lookup" onSelect={noop} collapsed={collapsed} /></div></aside></StoryFrame> });
+    <WorkflowRail workflows={SHELL_STORY_WORKFLOWS} counts={counts} active="person-lookup" onSelect={noop} collapsed={collapsed} onStart={noop} canStart={() => true} /></div></aside></StoryFrame> });
 const RAIL = {
   expanded: rail("The sidebar open, no run going", SHELL_STORY_COUNTS_IDLE, false),
   collapsed: rail("The sidebar minimized, no run going", SHELL_STORY_COUNTS_IDLE, true),
   running: rail("The sidebar open, runs going", SHELL_STORY_COUNTS_RUNNING, false),
   "collapsed-running": rail("The sidebar minimized, runs going", SHELL_STORY_COUNTS_RUNNING, true),
+  "start-hover": rail("The sidebar with the pointer on a workflow, its Start run + showing", SHELL_STORY_COUNTS_IDLE, false, page => page.locator(".workflow-rail-item").first().hover()),
+  "start-focus": rail("The sidebar with keyboard focus on a workflow's Start run +", SHELL_STORY_COUNTS_IDLE, false, page => page.locator(".workflow-rail-start").first().focus()),
 } satisfies Record<RailState, Story>;
+
+type HeaderState = "closed" | "options-open" | "options-changed";
+const header = (title: string, changed: boolean, play?: Story["play"]): Story => ({ title, ready: '[aria-label="Queue header"]', ...(play === undefined ? {} : { play }),
+  render: () => <StoryFrame><QueueHeader title="Person Lookup" ask={null} startId="story-start-run" onStartRun={noop} day={changed ? "2026-10-29" : "2026-10-30"} today="2026-10-30" onDay={noop}
+    sort={changed ? "oldest" : "attention"} order={changed ? "oldest" : "newest"} onSort={noop} active={changed ? ["failed"] : ["all"]} counts={[]} onFilter={noop} /></StoryFrame> });
+// Opened by keyboard on the last item: it takes the menu's Tab stop, and arrows from it walk the rest without opening a submenu.
+const openOptions: Story["play"] = async page => {
+  await page.getByRole("button", { name: /^Options/ }).press("Enter");
+  await page.getByRole("menu", { name: "Queue options" }).waitFor();
+  await page.keyboard.press("End");
+};
+const HEADER = {
+  closed: header("The queue header with Options closed", false),
+  "options-open": header("The Options menu open: Date, Sort by, Status, Attention first", false, openOptions),
+  "options-changed": header("The queue header with options changed from their defaults", true),
+} satisfies Record<HeaderState, Story>;
+
+type PausedState = "one" | "several" | "resume-unavailable";
+const paused = (title: string, count: number, onResumeAll?: () => void): Story => ({ title, ready: ".queue-paused-strip",
+  render: () => <StoryFrame><div className="dashboard-queue-column"><PausedRunsStrip count={count} onResumeAll={onResumeAll} /></div></StoryFrame> });
+const PAUSED = {
+  one: paused("One run paused, offered Resume all", 1, noop), several: paused("Several runs paused", 3, noop),
+  "resume-unavailable": paused("Runs paused while Resume all cannot be sent", 3),
+} satisfies Record<PausedState, Story>;
+
+type ToggleState = "off" | "on" | "off-hover" | "on-hover" | "focus" | "locked-on" | "disabled-off" | "disabled-on";
+const toggle = (title: string, checked: boolean, disabled: boolean, play?: Story["play"], locked = false): Story => ({ title, ready: '[role="switch"]', ...(play === undefined ? {} : { play }),
+  render: () => <StoryFrame><Panel><PanelBody className="p-[var(--ds-space-base)]"><Switch label="Dry run" checked={checked} disabled={disabled} locked={locked} onCheckedChange={noop} /></PanelBody></Panel></StoryFrame> });
+const point: Story["play"] = page => page.locator(".ds-switch-row").hover();
+const TOGGLE = {
+  off: toggle("A toggle that is off", false, false), on: toggle("A toggle that is on: blue track, white knob", true, false),
+  "off-hover": toggle("A toggle that is off, under the pointer", false, false, point), "on-hover": toggle("A toggle that is on, under the pointer", true, false, point),
+  focus: toggle("A toggle with keyboard focus: a ring with a gap", true, false, page => page.keyboard.press("Tab")),
+  "locked-on": toggle("A required toggle held on, with a lock in its knob", true, true, undefined, true),
+  "disabled-off": toggle("A toggle that is off and unavailable", false, true), "disabled-on": toggle("A toggle that is on and unavailable", true, true),
+} satisfies Record<ToggleState, Story>;
 
 /** Search open on the given filter, or on the given answer from the served search. */
 function searchStory(title: string, data: keyof typeof SEARCH_STORY_DATA, play: Story["play"], ready = 'input[aria-label="Search Relay"]'): Story {
@@ -97,19 +136,12 @@ const SEARCH_ANSWER = {
   "no-match": searchStory("Search that matches nothing", "results", async page => { await opening(page); await page.getByRole("combobox", { name: "Search Relay" }).fill("zzzz"); }, 'text="No matches"'),
 } satisfies Record<SearchAnswer, Story>;
 
-type PauseAllState = ComponentProps<typeof PauseAllQuitControls>["state"];
-const pauseAll = (title: string, state: PauseAllState): Story => ({ title, render: () => <StoryFrame><div className="flex p-4"><PauseAllQuitControls state={state} activeCount={2} /></div></StoryFrame> });
-const PAUSE_ALL = {
-  ready: pauseAll("Pause all, runs going", "ready"), pausing: pauseAll("Pausing every run", "pausing"),
-  paused: pauseAll("Every run paused", "paused"), unavailable: pauseAll("Pause all that cannot be reached", "unavailable"),
-} satisfies Record<PauseAllState, Story>;
-
 type ShellDialog = "quit" | "logout";
 const DIALOG = {
   quit: { title: "Asked to pause everything and quit", ready: '[role="dialog"]',
-    render: () => <StoryFrame><PauseAllQuitControls state="ready" activeCount={2} quitRequested onQuitDismiss={noop} onPauseAndQuit={noop} /></StoryFrame> },
+    render: () => <StoryFrame><QuitDialog requested canQuit onDismiss={noop} onQuit={noop} /></StoryFrame> },
   logout: { title: "Asked to log out", slowFetch: { region: "#hub-shell-assistant" }, ready: '[role="dialog"]', render: () => <StoryFrame><DashboardClientProvider client={CLIENT}>
     <HubShell settingsOpen={false} logoutOpen onLogoutOpenChange={noop} onLogout={noop} /></DashboardClientProvider></StoryFrame> },
 } satisfies Record<ShellDialog, Story>;
 
-export const SHELL_STORIES = defineSurface("shell", { startup: STARTUP, banner: BANNER, queue: QUEUE_SLOT, rail: RAIL, filter: SEARCH_FILTER, search: SEARCH_ANSWER, "pause-all": PAUSE_ALL, dialog: DIALOG });
+export const SHELL_STORIES = defineSurface("shell", { startup: STARTUP, banner: BANNER, queue: QUEUE_SLOT, rail: RAIL, header: HEADER, paused: PAUSED, toggle: TOGGLE, filter: SEARCH_FILTER, search: SEARCH_ANSWER, dialog: DIALOG });

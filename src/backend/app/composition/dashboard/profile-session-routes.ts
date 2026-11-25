@@ -19,7 +19,6 @@ ProfileDuoKeyChangeResponseSchema,
 ProfileDuoKeysReadSchema,
 ProfileLoginChangeResultSchema,
 ProfileLoginRequestSchema,
-profileAccount,
 ProfilePasswordChangeRequestSchema,
 ProfileFirstRunCheckSchema,
 ProfileOnboardingStateSchema,
@@ -248,7 +247,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const row = registry.profiles.find(value => value.profileId === profileId);
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     return { state: "active" as const, profileId, epoch, duoState: row.duoState,
-      account: profileAccount(row, verifiers.identify) };
+      account: profileRuntime.session.account(row) };
   };
   const mountActive = async (result: ActiveProfileSession, onInitialPreflight = input.onInitialPreflight): Promise<PublicProfileState> => {
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);

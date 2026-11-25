@@ -34,7 +34,7 @@ import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
-import { Button,FailureNotice,Notice,DatePicker,EmptyState,Panel,PanelBody,dsIcon,useDemoTheme,useSkeletonWait,useToasts } from "../ds/ui.js";
+import { Button,FailureNotice,Notice,EmptyState,Panel,PanelBody,dsIcon,useDemoTheme,useSkeletonWait,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { createServedClock, ServedClockContext, useClockView } from "../state/served-clock.js";
@@ -61,19 +61,23 @@ import type { QueueBatch, QueueSurfaceWire } from "../surfaces/queue/queue-model
 import {
   attentionQueueKeys,
 visibleQueueKeys,
+type QueueOrder,
 type QueueSortKey,
 } from "../surfaces/queue/queue-model.js";
 import {
 BulkCommandFeedback,
-PauseAllQuitControls,
+PausedRunsStrip,
+QuitDialog,
 } from "../surfaces/queue/queue-toolbar.js";
 import { bulkResultNotice } from "../surfaces/queue/queue-toolbar-model.js";
-import { FocusQueueHeader, FocusQueueToolbar } from '../surfaces/queue/queue-focus.js';
+import { FocusQueueHeader } from '../surfaces/queue/queue-focus.js';
+import { QueueHeader } from '../surfaces/queue/queue-header.js';
+import { AssistantLauncher } from '../surfaces/shell/assistant-launcher.js';
 import type { QueueHandlers } from "../surfaces/queue/queue.js";
 import { QueuePanel,type QueueFilterScope } from "../surfaces/queue/queue.js";
 import { RenameRunDialog,type PendingRename } from "../surfaces/run-detail/identity/run-identity.js";
-import { RunStartButton } from "../surfaces/run-start/run-start.js";
-import { SessionPanel } from "../surfaces/sessions/session-panel.js";
+import { SessionPanel, SessionsProvider } from "../surfaces/sessions/session-panel.js";
+import { SessionRailControls } from "../surfaces/sessions/session-rail-controls.js";
 import {
 DASHBOARD_MAIN_REGION_ID, DASHBOARD_LOGS_REGION_ID, buildSettingsNav, resolveSettingsSection
 } from "../surfaces/settings/settings-model.js";
@@ -146,7 +150,8 @@ interface LoadedAppProps {
   openWells: ReadonlySet<string>;
   onWells: (next: ReadonlySet<string>) => void;
   sort: QueueSortKey;
-  onSort: (sort: QueueSortKey) => void;
+  order: QueueOrder;
+  onSort: (sort: QueueSortKey, order: QueueOrder) => void;
 }
 
 
@@ -185,6 +190,7 @@ export function LoadedApp({
   openWells,
   onWells,
   sort,
+  order,
   onSort,
 }: LoadedAppProps) {
   /** THE clock. The server's instant is the authority; the browser contributes
@@ -271,6 +277,12 @@ export function LoadedApp({
     setRoute(current => ({ ...current, view: { ...current.view, launchServed: activeWorkflowId, launchWorkflow: undefined, launchSource: undefined, launchStage: "Input", launchCustomize: false } }));
     servedOpenStart();
   }, [servedOpenStart, launch.rerunInOneClick, activeWorkflowId, setRoute]);
+  const openStartFor = useCallback((workflowId: string) => {
+    if (launch.rerunInOneClick) return;
+    setRoute(current => ({ ...current, view: { ...current.view, launchServed: workflowId, launchWorkflow: undefined, launchSource: undefined, launchStage: "Input", launchCustomize: false } }));
+    servedOpenStart();
+  }, [servedOpenStart, launch.rerunInOneClick, setRoute]);
+  const canStartRun = useCallback((id: string) => workflowCatalog.some(entry => entry.id === id && entry.served !== undefined && entry.launch.state === "served"), [workflowCatalog]);
   const openRerun = launch.openRerun;
   /** A one-click rerun still queuing has no dialog to block the page; opening another launch would drop it. */
   const rerunQueuing = launch.rerunInOneClick;
@@ -532,20 +544,22 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     await execution;
   }, [commandScope, commandFeedback, executor, client, dayWire, workflowLabelOf, activeWorkflowId, clock, toast, setRoute]);
 
-  const applicationAction = (action: "pause-all" | "pause-all-and-quit" | "resume") => {
+  const pausedRuns = application?.targets.filter(target => target.pause?.state === "paused") ?? [];
+  const resumeAll = () => {
+    if (application === undefined || application.state !== "ready" || applicationBusy || quitting) return;
+    const envelope = { commandId: crypto.randomUUID(), requestedAt: clock.now(), requestedBy: boot.actor.id, source: "dashboard" };
+    const targets = pausedRuns.map(({ runId, expectedVersion }) => ({ runId, expectedVersion }));
+    const plan: BulkVerbPlan = { verb: "resume", label: "Resume", eligible: targets.map(target => ({ ...target,
+      title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? target.runId })), skipped: [], unavailable: [] };
+    void executeShell(BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: envelope.commandId, family: "run", type: "resume", targets, mode: "best-effort" }), "Resume all runs", plan).then(lifecycle.refresh);
+  };
+
+  const quitApplication = () => {
     if (application === undefined || application.state !== "ready" || applicationBusy || quitting) return;
     const envelope = { commandId: crypto.randomUUID(), requestedAt: clock.now(), requestedBy: boot.actor.id, source: "dashboard" };
     const targets = application.targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion }));
-    if (action === "resume") {
-      if (application.pause !== "paused") return;
-      const plan: BulkVerbPlan = { verb: "resume", label: "Resume", eligible: targets.map(target => ({ ...target,
-        title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? target.runId })), skipped: [], unavailable: [] };
-      void executeShell(BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: envelope.commandId, family: "run", type: "resume", targets, mode: "best-effort" }), "Resume all runs", plan).then(lifecycle.refresh);
-    } else {
-      void executeShell(CommandRequestSchema.parse({ ...envelope, family: "application", type: action,
-        target: { runtimeGeneration: application.runtimeGeneration }, payload: { targets, ...(action === "pause-all-and-quit" ? { confirmed: true } : {}) } }),
-      action === "pause-all" ? "Pause all requested" : "Quit requested").then(lifecycle.refresh);
-    }
+    void executeShell(CommandRequestSchema.parse({ ...envelope, family: "application", type: "pause-all-and-quit",
+      target: { runtimeGeneration: application.runtimeGeneration }, payload: { targets, confirmed: true } }), "Quit requested").then(lifecycle.refresh);
   };
 
   const dispatchCommand = useCallback((action: CommandAction, target: ActionTarget, answers: {
@@ -670,7 +684,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     setBatchGrouping, runQueueAction, renameTitle: renameQueueTitle,
   });
 
-  const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, sortNowIso).map(entry => [entry.key, entry])), [surfaces, sort, sortNowIso]);
+  const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, sortNowIso, order).map(entry => [entry.key, entry])), [surfaces, sort, sortNowIso, order]);
   const selectQueueKey = useCallback((key: string) => {
     const entry = keyboardEntries.get(key);
     if (entry === undefined) throw new Error("queue-keyboard-target-unavailable");
@@ -679,12 +693,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [keyboardEntries, openQueueMember, selectRun]);
   const selectedQueueKey = route.view?.queueMember === undefined ? route.run : queueMemberKey(route.view.queueMember);
   const keyboardOrder = useMemo(
-    () => visibleQueueKeys(surfaces, sort, sortNowIso),
-    [surfaces, sort, sortNowIso],
+    () => visibleQueueKeys(surfaces, sort, sortNowIso, order),
+    [surfaces, sort, sortNowIso, order],
   );
   const keyboardAttention = useMemo(
-    () => attentionQueueKeys(surfaces, sort, sortNowIso),
-    [surfaces, sort, sortNowIso],
+    () => attentionQueueKeys(surfaces, sort, sortNowIso, order),
+    [surfaces, sort, sortNowIso, order],
   );
   useGlobalKeys({
     queueVisible: activeTakeover(route) === "none" && dayWire !== undefined,
@@ -742,9 +756,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [client, toast]);
 
   const renderQueueBody = useCallback((body: ReactNode) => (
-    <FocusQueueHeader active={filter} counts={scopedStatusCounts} onFilter={onFilter}
-      >{body}</FocusQueueHeader>
-  ), [filter, scopedStatusCounts, onFilter]);
+    <FocusQueueHeader>{body}</FocusQueueHeader>
+  ), []);
 
   const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
   const settingsResolution = resolveSettingsSection(buildSettingsNav(), route.settings ?? "");
@@ -759,6 +772,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [shownDay, dataSources]);
   const setLaunchOpen = launch.setOpen;
   const onRailSelect = useCallback((id: string) => { selectWorkflow(id); }, [selectWorkflow]);
+  const railAccount = useMemo(() => accountPage === undefined ? undefined : { name: accountPage.values.name, initials: accountPage.values.initials, email: accountPage.values.ucpathUsername }, [accountPage]);
+  const onRailSettings = useCallback(() => openSettings(), [openSettings]);
+  const onRailLogout = useCallback(() => setLogoutOpen(true), []);
+  const railSessionControls = useMemo(() => <SessionRailControls open={sessionsOpen} onOpenChange={setSessionsOpen} />, [sessionsOpen, setSessionsOpen]);
   const harness = workflowComposition.harness;
   const LogPreview = harness?.LogPreview;
   const harnessSearch = (harness?.useSearch ?? noHarnessSearch)({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf });
@@ -899,6 +916,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   return (
     <ServedClockContext.Provider value={clock}>
     <DashboardCommandBindingProvider binding={commandBinding}>
+    <SessionsProvider harness={workflowComposition.sessionsHarness} catalog={workflowCatalog}
+      binding={dayRequested === undefined ? undefined : { client, executor, scope: commandScope, dayState, day, now: clock.now, workflowId: activeWorkflowId }}>
     <div
       data-mock-ready={ready ? "true" : "loading"}
       className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col"
@@ -918,7 +937,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to run logs</a> : null}
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} active={activeWorkflowId}
-        onSelect={onRailSelect} settingsOpen={settingsOpen} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
+        onSelect={onRailSelect} settingsOpen={settingsOpen} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction}
+        account={railAccount} onSettings={onRailSettings} onLogout={onRailLogout} sessionControls={railSessionControls}
+        onStartRun={openStartFor} canStartRun={canStartRun} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -982,6 +1003,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             <div className="dashboard-panel-columns">
               <div className="dashboard-queue-column" aria-busy={keptDay === undefined ? undefined : true}>
                 <h1 className="sr-only">{workflowLabelOf(activeWorkflowId)} queue</h1>
+              <QueueHeader title={workflowLabelOf(activeWorkflowId)} ask={<AssistantLauncher />} startId={RUN_START_DOOR_ID} onStartRun={openStart}
+                day={day} today={today} onDay={next => setRoute({ ...route, day: next, run: undefined })} dayMark={keptDay !== undefined ? <KeptDayMark /> : undefined}
+                sort={sort} order={order} onSort={onSort} active={filter} counts={scopedStatusCounts} onFilter={onFilter} />
+              <PausedRunsStrip count={pausedRuns.length} onResumeAll={application?.state === "ready" && !applicationBusy && !quitting ? resumeAll : undefined} />
               {shownDay === undefined || !queueWorkflowAvailable ? (
                 dateError === undefined && dayResource.state !== "failed" && shownDay === undefined && !streamDown ? <QueueSkeleton /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   {dateError === undefined && dayResource.state === "failed" ? <FailureNotice sentence="Couldn't load the queue."
@@ -1001,29 +1026,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 isToday={day === today}
                 onStartRun={openStart}
                 sort={sort}
+                order={order}
                 renderBody={renderQueueBody}
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
               />}
               </div>
               <div className="dashboard-log-column">
-                <section aria-label="Action panel" className="dashboard-action-panel">
-          <FocusQueueToolbar
-            pauseControls={<PauseAllQuitControls state={application === undefined ? "unavailable" : application.state !== "ready" || application.pause === "pause-pending" ? "pausing" : application.pause === "paused" ? "paused" : "ready"}
-              activeCount={application?.targets.length ?? 0} quitRequested={quitRequested} onQuitDismiss={() => setQuitRequested(false)}
-              onPauseAll={applicationBusy || quitting ? undefined : () => applicationAction("pause-all")} onResumeAll={applicationBusy || quitting ? undefined : () => applicationAction("resume")} onPauseAndQuit={applicationBusy || quitting ? undefined : () => applicationAction("pause-all-and-quit")} />}
-            sort={sort}
-            onSort={onSort}
-            active={filter}
-            counts={scopedStatusCounts}
-            onFilter={onFilter}
-            leading={null}
-            runStart={
-              <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
-            }
-          />
-                <div role="group" aria-label="Log date controls" className="dashboard-log-date">{keptDay !== undefined && <KeptDayMark />}<DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
-                  onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
-                </section>
             <PanelBoundary resetKey={route.run ?? ""} sentence="Couldn't show this run.">
             {route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
               LogPreview !== undefined && (logRow.parent === null || workflowComposition.harness?.logsChildRows === true)
@@ -1047,6 +1055,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           </div>
           </>
           </DashboardTakeovers>
+          {!settingsOpen && <SessionPanel open={sessionsOpen} onOpenChange={setSessionsOpen} />}
           </div>
         </div>
         </DashboardPageBoundary>
@@ -1059,17 +1068,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         else void onProfileLogout();
       })} />
       </PanelBoundary>
-      {/* The Sessions bar and its Ask control belong to the workflow workspace: every Settings page hides them. */}
-      {!settingsOpen && (
-        <SessionPanel
-          harness={workflowComposition.sessionsHarness}
-          binding={dayRequested === undefined ? undefined : { client, executor, scope: commandScope, dayState, day, now: clock.now, workflowId: activeWorkflowId }}
-          catalog={workflowCatalog}
-          open={sessionsOpen}
-          onOpenChange={setSessionsOpen}
-          account={{ onSettings: () => openSettings(), onLogout: () => setLogoutOpen(true) }}
-        />
-      )}
       {workflowComposition.harness?.Host && <workflowComposition.harness.Host />}
 
       <PanelBoundary resetKey={`${activeWorkflowId}:${launch.open}`} sentence="Couldn't open Start run." className="fixed left-1/2 top-4 z-50 -translate-x-1/2">
@@ -1093,6 +1091,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         }}
       />
       </PanelBoundary>
+
+      <QuitDialog requested={quitRequested} canQuit={application?.state === "ready" && application.pause !== "pause-pending" && !applicationBusy && !quitting} onDismiss={() => setQuitRequested(false)} onQuit={quitApplication} />
 
       {/* Destructive commands use their served blast-radius confirmation before dispatch. */}
       <ConfirmCommandDialog
@@ -1127,6 +1127,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         }}
       />
     </div>
+    </SessionsProvider>
     </DashboardCommandBindingProvider>
     </ServedClockContext.Provider>
   );

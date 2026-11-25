@@ -230,10 +230,9 @@ describe("keeps optional steps and removes only the per-start destination", () =
     assert.ok(dialog.text().includes("Runs before bulk batches."));
     assert.equal(document.querySelectorAll('input[type="radio"][name^="Browser mode-"]').length, 2);
     assert.doesNotMatch(dialog.text(), /Active policy|Workflow version|Fixed by the selected workflow/u);
-    const selectedWorkflow = document.body.querySelector('nav[aria-label="Workflow"] button[aria-current="page"]');
     const workflow = WORKFLOWS.find((candidate) => candidate.workflowId === WORKFLOW_ID);
     assert.ok(workflow !== undefined);
-    assert.ok(selectedWorkflow?.textContent?.includes(workflow.label), "the desktop picker must identify the selected workflow");
+    assert.ok(dialog.text().includes(workflow.label), "the dialog must name the workflow it starts");
     assert.equal(
       document.body.querySelectorAll("select:disabled").length,
       0,
