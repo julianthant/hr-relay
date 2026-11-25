@@ -80,9 +80,10 @@ function isLoop(node: ts.Node): boolean {
 
 function walkExecution(entry: ts.Node, checker: ts.TypeChecker, onCall: (call: ts.CallExpression) => void): void {
   const seen = new Set<ts.Node>();
+  const followed = new Set<ts.Expression>();
   const follow = (expression: ts.Expression): void => {
-    if (seen.has(expression)) return;
-    seen.add(expression);
+    if (followed.has(expression)) return;
+    followed.add(expression);
     if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
       visit(expression.body);
       return;
@@ -113,6 +114,15 @@ function walkExecution(entry: ts.Node, checker: ts.TypeChecker, onCall: (call: t
   };
   if (ts.isIdentifier(entry) || ts.isPropertyAccessExpression(entry)) follow(entry);
   else visit(entry);
+}
+
+function timeoutHandle(call: ts.CallExpression, checker: ts.TypeChecker): ts.Symbol | undefined {
+  const owner = call.parent;
+  if (ts.isVariableDeclaration(owner) && owner.initializer === call) return checker.getSymbolAtLocation(owner.name);
+  if (ts.isBinaryExpression(owner) && owner.operatorToken.kind === ts.SyntaxKind.EqualsToken && owner.right === call) {
+    return checker.getSymbolAtLocation(owner.left);
+  }
+  return undefined;
 }
 
 function assertReviewedTimers(overlay: ReadonlyMap<string, string> = new Map()): void {
@@ -147,7 +157,14 @@ function assertReviewedTimers(overlay: ReadonlyMap<string, string> = new Map()):
     for (const timeout of timeouts) {
       const callback = timeout.arguments[0];
       if (callback === undefined) continue;
-      walkExecution(callback, checker, call => { if (call === timeout) repeated.add(call); });
+      const handle = timeoutHandle(timeout, checker);
+      walkExecution(callback, checker, call => {
+        const target = call.expression;
+        if (call === timeout || (handle !== undefined && ts.isPropertyAccessExpression(target)
+          && target.name.text === "refresh" && checker.getSymbolAtLocation(target.expression) === handle)) {
+          repeated.add(timeout);
+        }
+      });
     }
     for (const call of [...intervals, ...repeated]) {
       const site = `${repoRelative(path)}#${timerSite(call)}`;
@@ -165,7 +182,7 @@ describe("backend store-reading timer boundary", () => {
     assertReviewedTimers();
   });
 
-  it("reports planted store-reading intervals and self-rearming timeouts on a scratch overlay", () => {
+  it("reports planted store-reading intervals and repeating timeouts on a scratch overlay", () => {
     const file = "src/backend/app/composition/dashboard/timeline.ts";
     const path = join(REPO_ROOT, file);
     const candidate = `${readFileSync(path, "utf8")}
@@ -177,13 +194,21 @@ describe("backend store-reading timer boundary", () => {
           arm();
         }
         setTimeout(tick, 0);
+        const refreshed = setTimeout(() => {
+          database.authority.timelineEvents.highWaterMark();
+          refreshed.refresh();
+        }, 1_000);
         return plantedInterval;
       }
 `;
     assert.throws(() => assertReviewedTimers(new Map([[path, candidate]])), (error: unknown) => {
       assert.ok(error instanceof assert.AssertionError);
       const escapedPath = file.replaceAll(".", "\\.");
-      const expected = new RegExp(`^${escapedPath}#plantedInterval:\\d+ unreviewed recurring setInterval\\n${escapedPath}#arm:\\d+ unreviewed recurring setTimeout$`, "u");
+      const expected = new RegExp([
+        `^${escapedPath}#plantedInterval:\\d+ unreviewed recurring setInterval`,
+        `${escapedPath}#arm:\\d+ unreviewed recurring setTimeout`,
+        `${escapedPath}#refreshed:\\d+ unreviewed recurring setTimeout$`,
+      ].join("\\n"), "u");
       assert.match(error.message, expected);
       process.stdout.write(`${error.message}\n`);
       return true;
