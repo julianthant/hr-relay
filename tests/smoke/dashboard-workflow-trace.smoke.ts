@@ -215,6 +215,7 @@ test("Work-Study: a write whose answer is lost parks the run and is asked for on
   await expect.poll(async () => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status, { message: "the parked write is not Done" }).toBe("blocked");
   await expect(row).toContainText("Write parked");
   await expect(row).not.toContainText("Running");
+  failures.allowSettingsCancellationOnReload();
   await dashboard.reloadRun(runId);
   await expect(row).toContainText("Write parked");
   expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "save-transaction", eid: "10812345" }]);
