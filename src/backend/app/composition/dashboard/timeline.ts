@@ -126,8 +126,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       const leaseDue = now >= leaseExpiry || now < lastWall;
       const degraded = projection.health().state === "degraded";
       const current = safety || leaseDue || degraded ? database.capturedChangeKey() : database.pollCapturedChangeKey();
-      const retry = "state" in key;
-      const unchanged = !retry && key.changeLogSeq === current.changeLogSeq && key.schemaCookie === current.schemaCookie;
+      const unchanged = !("state" in key) && key.changeLogSeq === current.changeLogSeq && key.schemaCookie === current.schemaCookie;
       if (unchanged && !safety && !leaseDue && !degraded) {
         lastWall = now;
         return;
@@ -144,7 +143,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       }
       lastWall = now;
       const next = revision();
-      if (safety || leaseDue || degraded || retry || next === undefined || next !== observed) void startRead(now, workerRevision());
+      if (safety || leaseDue || degraded || "state" in key || next === undefined || next !== observed) void startRead(now, workerRevision());
       key = current;
       observed = next;
       if (safety) safetyAt = elapsed + 60_000;
