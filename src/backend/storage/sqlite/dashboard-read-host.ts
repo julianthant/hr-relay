@@ -108,23 +108,15 @@ export class ReadLaneReadError extends Error {
   constructor(message: string) { super(message); this.name = "ReadLaneReadError"; }
 }
 
-/** Messages a lane may hold at once; past it the host holds reads until a reply frees a slot. */
-const LANE_SLOTS = 64;
 const LANE_COUNT = ReadLaneNameSchema.options.length;
-/**
- * The gate the host and every lane share: a checkpoint flag, one reading flag per lane, and per lane a started table with
- * one entry per in-flight message slot. Lanes pause each other for a checkpoint through it, and the host reads from it which
- * in-flight reads an exited lane had started.
- */
+/** The gate the host and every lane share: a checkpoint flag and one reading flag per lane, so a checkpoint pauses the other lanes itself. */
 const GATE_FLAG = 0;
-const GATE_LENGTH = 1 + LANE_COUNT + LANE_COUNT * LANE_SLOTS;
+const GATE_LENGTH = 1 + LANE_COUNT;
 const laneIndex = (name: ReadLaneName) => ReadLaneNameSchema.options.indexOf(name);
 const readingAt = (lane: number) => 1 + lane;
-const startedAt = (lane: number, slot: number) => 1 + LANE_COUNT + lane * LANE_SLOTS + slot;
 
 const RequestSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("read"), id: z.number().int().positive(), slot: z.number().int().nonnegative().lt(LANE_SLOTS),
-    beginSeq: z.number().int().nonnegative(), module: z.string().min(1), name: z.string().min(1), key: z.string().min(1), args: z.unknown(),
+  z.strictObject({ kind: z.literal("read"), id: z.number().int().positive(), beginSeq: z.number().int().nonnegative(), module: z.string().min(1), name: z.string().min(1), key: z.string().min(1), args: z.unknown(),
     nowMs: z.number().int(), processRevision: z.number().int().nonnegative().nullable(), processFacts: z.unknown() }),
   z.strictObject({ kind: z.literal("cancel"), id: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("checkpoint"), id: z.number().int().positive() }),
@@ -136,7 +128,7 @@ const LaneDataSchema = z.strictObject({ start: z.unknown(), gate: z.instanceof(I
 const CheckpointRowSchema = z.strictObject({ busy: z.number().int(), log: z.number().int(), checkpointed: z.number().int() });
 /** When the lane started and finished the checkpoint, on the wall clock both threads share. */
 const CheckpointSpanSchema = z.strictObject({ startedAtMs: z.number(), finishedAtMs: z.number() });
-const ReadIdsSchema = z.array(z.number().int().positive()).min(1).max(LANE_SLOTS);
+const ReadIdsSchema = z.array(z.number().int().positive()).min(1);
 const ReplySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("ready") }),
   z.strictObject({ kind: z.literal("read"), ids: ReadIdsSchema, body: z.string(), position: ReadPositionSchema, cached: z.boolean(),
@@ -185,7 +177,7 @@ export interface DashboardReadLanes {
   close(): Promise<void>;
 }
 
-/** One waiter's read: held on the host until its lane can take it, then in flight in the lane until its reply. */
+/** One waiter's read: held on the host while its lane boots, then in flight in the lane until its reply. */
 interface LaneReadRequest {
   readonly id: number;
   readonly dispatchSeq: number;
@@ -199,8 +191,6 @@ interface LaneReadRequest {
   readonly settle: PromiseWithResolvers<DashboardReadReply>;
   readonly release: () => void;
   waiting: boolean;
-  /** The lane's started-table entry while the message is in flight. */
-  sentSlot: number | undefined;
 }
 
 interface Lane {
@@ -210,7 +200,6 @@ interface Lane {
   ready: boolean;
   readonly held: LaneReadRequest[];
   readonly sent: Map<number, LaneReadRequest>;
-  readonly freeSlots: number[];
   checkpoint: number | undefined;
   consecutiveFailures: number;
   failure: Error | undefined;
@@ -288,38 +277,25 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     return lane;
   };
 
-  const canPost = (lane: Lane) => !closing && lane.ready && lane.worker !== undefined && lane.freeSlots.length > 0;
+  const canPost = (lane: Lane) => !closing && lane.ready && lane.worker !== undefined;
   /** An unsendable request never reaches the lane: only its own waiter fails, and the lane keeps serving. */
   const post = (lane: Lane, request: LaneReadRequest) => {
-    const slot = lane.freeSlots.pop();
-    if (slot === undefined || lane.worker === undefined) throw new Error("read-lane-post-unready");
-    const message: LaneRequest = { kind: "read", id: request.id, slot, beginSeq: dispatchSeq, module: request.definition.module,
+    if (lane.worker === undefined) throw new Error("read-lane-post-unready");
+    const message: LaneRequest = { kind: "read", id: request.id, beginSeq: dispatchSeq, module: request.definition.module,
       name: request.definition.name, key: request.key, args: request.args, nowMs: clock.nowMs(), processRevision: request.processRevision,
       processFacts: request.processFacts };
     try { lane.worker.postMessage(message); }
     catch (error) {
-      lane.freeSlots.push(slot);
       settleRequest(request, { error: error instanceof Error ? error : new Error("read-lane-send-failed", { cause: error }) });
       return;
     }
-    request.sentSlot = slot;
     lane.sent.set(request.id, request);
   };
-  /** Held reads go out interactive first, in arrival order within each class. */
+  /** Reads held while the lane booted go out interactive first, in arrival order within each class. */
   const flush = (lane: Lane) => {
     const held = lane.held.splice(0);
-    const ordered = [...held.filter(request => request.definition.priority === "interactive"),
-      ...held.filter(request => request.definition.priority !== "interactive")];
-    for (const request of ordered) {
-      if (canPost(lane)) post(lane, request);
-      else lane.held.push(request);
-    }
-  };
-  const freeSlot = (lane: Lane, request: LaneReadRequest) => {
-    if (request.sentSlot === undefined) return;
-    Atomics.store(gate, startedAt(lane.index, request.sentSlot), 0);
-    lane.freeSlots.push(request.sentSlot);
-    request.sentSlot = undefined;
+    for (const request of [...held.filter(request => request.definition.priority === "interactive"),
+      ...held.filter(request => request.definition.priority !== "interactive")]) post(lane, request);
   };
 
   const beginCheckpoint = () => {
@@ -390,8 +366,6 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       const request = lane.sent.get(reply.id);
       if (request === undefined || request.waiting) throw new Error("read-lane-reply-unexpected");
       lane.sent.delete(reply.id);
-      freeSlot(lane, request);
-      flush(lane);
       return;
     }
     if (!reply.ids.every(id => lane.sent.has(id))) throw new Error("read-lane-reply-unexpected");
@@ -408,11 +382,9 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       const request = lane.sent.get(id);
       if (request === undefined) continue;
       lane.sent.delete(id);
-      freeSlot(lane, request);
       settleRequest(request, outcome);
     }
     observeWal();
-    flush(lane);
   };
 
   function startDeferredLanes() {
@@ -442,10 +414,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     for (const request of lane.held.splice(0)) settleRequest(request, { error: failure });
   };
 
-  /**
-   * An exited lane leaves the gate clear for the others. Its started in-flight reads fail; the rest are held for the
-   * replacement lane, which takes them interactive first.
-   */
+  /** An exited lane leaves the gate clear for the others, and every read in flight to it fails. */
   const recoverExited = (lane: Lane, cause: Error) => {
     Atomics.store(gate, readingAt(lane.index), 0);
     Atomics.notify(gate, readingAt(lane.index));
@@ -454,17 +423,9 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       Atomics.notify(gate, GATE_FLAG);
     }
     if (lane.checkpoint !== undefined) { lane.checkpoint = undefined; finishCheckpoint(undefined); }
-    const unstarted: LaneReadRequest[] = [];
-    for (const request of lane.sent.values()) {
-      const started = request.sentSlot !== undefined && Atomics.load(gate, startedAt(lane.index, request.sentSlot)) !== 0;
-      freeSlot(lane, request);
-      if (!request.waiting) continue;
-      if (closing) settleRequest(request, { error: new ReadLaneClosedError() });
-      else if (started) settleRequest(request, { error: new ReadLaneRestartedError(cause) });
-      else unstarted.push(request);
-    }
+    const sent = [...lane.sent.values()];
     lane.sent.clear();
-    lane.held.unshift(...unstarted);
+    for (const request of sent) settleRequest(request, { error: closing ? new ReadLaneClosedError() : new ReadLaneRestartedError(cause) });
   };
 
   const launch = (lane: Lane) => {
@@ -527,8 +488,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   };
   try {
     for (const name of names) {
-      const lane: Lane = { name, index: laneIndex(name), worker: undefined, ready: false, held: [], sent: new Map(),
-        freeSlots: Array.from({ length: LANE_SLOTS }, (_, slot) => LANE_SLOTS - 1 - slot), checkpoint: undefined,
+      const lane: Lane = { name, index: laneIndex(name), worker: undefined, ready: false, held: [], sent: new Map(), checkpoint: undefined,
         consecutiveFailures: 0, failure: undefined, exited: Promise.resolve() };
       lanes.set(name, lane);
     }
@@ -563,7 +523,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       const request: LaneReadRequest = { id: ++messageId, dispatchSeq: ++dispatchSeq, lane, definition: registered, args: parsed,
         key: canonicalJsonStringify({ lane: lane.name, read: registered.id, args: parsed }), processRevision, processFacts,
         slot: options.slot === undefined ? undefined : canonicalJsonStringify(options.slot), settle: Promise.withResolvers(),
-        release: () => signal?.removeEventListener("abort", onAbort), waiting: true, sentSlot: undefined };
+        release: () => signal?.removeEventListener("abort", onAbort), waiting: true };
       if (signal?.aborted === true) { onAbort(); return request.settle.promise; }
       signal?.addEventListener("abort", onAbort, { once: true });
       if (request.slot !== undefined) {
@@ -743,7 +703,6 @@ function runReadLane(port: MessagePort, data: unknown) {
     }
     const ids = twins.map(twin => twin.message.id);
     const latest = twins.reduce((last, twin) => twin.message.beginSeq > last.message.beginSeq ? twin : last).message;
-    for (const twin of twins) Atomics.store(gate, startedAt(self, twin.message.slot), 1);
     enterRead();
     let reply: LaneReply;
     try { reply = { kind: "read", ids, ...serve(picked.definition, latest) }; }

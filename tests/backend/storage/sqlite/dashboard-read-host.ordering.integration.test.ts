@@ -26,6 +26,8 @@ async function host(options: Partial<Pick<Parameters<typeof createDashboardReadH
 it("dispatches a queued click before the next background message after a background reply", async () => {
   const { lanes } = await host();
   const scan = lanes.read(laneBackground, { tag: "scan", ms: 150 });
+  // The lane picks its own next message, so the scan must be running before the others arrive for it to go first.
+  await new Promise(resolve => setTimeout(resolve, 50));
   const nextScan = lanes.read(laneBackground, { tag: "next-scan", ms: 0 });
   const click = lanes.read(laneSleep, { tag: "click", ms: 0 });
   assert.deepEqual(await Promise.all([run(scan), run(click), run(nextScan)]), [1, 2, 3]);
@@ -45,12 +47,16 @@ it("runs a queued checkpoint first, then the interactive request before the back
   assert.equal(checkpoint.walBytesAfter, 0);
 });
 
-it("dispatches the interactive request first after a lane restart", async () => {
+it("fails every read in flight to an exited lane and dispatches the interactive request first after the restart", async () => {
   const { lanes } = await host();
   const stuck = lanes.read(laneStuck, {});
+  const queued = lanes.read(laneSleep, { tag: "queued", ms: 0 });
+  const restarted = (error: unknown) => error instanceof ReadLaneRestartedError && error.code === "READ_LANE_RESTARTED";
+  await assert.rejects(stuck, restarted);
+  await assert.rejects(queued, restarted);
+  // Both reads arrive while the replacement lane boots: the host holds them and posts the interactive one first.
   const scan = lanes.read(laneBackground, { tag: "scan", ms: 0 });
   const click = lanes.read(laneSleep, { tag: "click", ms: 0 });
-  await assert.rejects(stuck, (error: unknown) => error instanceof ReadLaneRestartedError && error.code === "READ_LANE_RESTARTED");
   // The restarted lane is a new isolate: its first run is the click.
   assert.deepEqual(await Promise.all([run(click), run(scan)]), [1, 2]);
   assert.equal(lanes.status().restarts, 1);
