@@ -139,7 +139,7 @@ it("an updated notification shows its new age at once, even when the label it ha
   root = createRoot(host);
   const draw = (occurredAt: string) => act(async () => root?.render(createElement(ServedClockContext.Provider, { value: clock }, createElement(TooltipProvider, null,
     createElement(NotificationsPopover, { state: { state: "ready", items: [item(occurredAt)], pinned: [] }, open: true, onOpenChange() {}, show: "all", onShow() {},
-      onControl() {}, canAct: () => true, onReadAll() {}, onOpen() {} })))));
+      onControl() {}, canAct: () => true, canClear: () => true, onReadAll() {}, onClear() {}, onClearAll() {}, onOpen() {} })))));
   const age = () => document.querySelector(".notice-age")?.textContent;
   await draw(at(-70));
   assert.equal(age(), "1 min ago");

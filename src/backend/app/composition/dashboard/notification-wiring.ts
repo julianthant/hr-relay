@@ -1,6 +1,7 @@
 import { notificationListProjection, notificationProjection, type ServedNotificationRecord } from "../../../runs/projections/notification-list.js";
 import { FingerprintSchema } from "../../../../rules/identity/ids.js";
 import type { NotificationCollectionOperation } from "../../../../models/notifications/notifications.js";
+import { notificationStandingSources } from "../../../../rules/notifications/notification-triggers.js";
 import type { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
 import type { createDashboardApp } from "../../../transports/http/routes/api.js";
 import type { prepareDashboardRuntime } from "./runtime-resources.js";
@@ -36,6 +37,12 @@ function projectionDependencies({ database, lifecycle, descriptors, runDetailDep
       checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
     },
     source: id => database.authority.notificationPublications.latest(id),
+    standing: notificationStandingSources({
+      runs: { get: id => database.authority.runs.get(id) },
+      notificationPublications: { latest: id => database.authority.notificationPublications.latest(id) },
+      notificationHealth: { get: concern => database.authority.notificationHealth.get(concern) },
+      commands: { readForNotice: id => database.authority.commands.readForNotice(id) },
+    }),
   };
 }
 
@@ -69,7 +76,7 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
   const { database, clock, assertCurrent, notificationObserver, notificationTarget } = input;
   const { list, collection } = input.notificationReads ?? composeNotificationReads(database);
   const deps = projectionDependencies(input);
-  const position = database.trackAuthorityTables(["notifications"]);
+  const position = database.trackAuthorityTables(["notifications", "notification_states"]);
   let retained: { actor: string; position: number; from: number; until: number } | undefined;
   const project = (actor: string) => notificationListProjection(list(actor), clock.nowMs(), deps);
   return {
@@ -92,8 +99,15 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
       const result = respond(candidate, () => notificationListProjection(records, now, {
         source: id => deps.source(id),
         get display() { usedDisplay = true; return deps.display; },
+        standing: {
+          runPark: id => { usedDisplay = true; return deps.standing.runPark(id); },
+          noticePark: id => deps.standing.noticePark(id),
+          storageConcern: id => deps.standing.storageConcern(id),
+          concernActive: concern => deps.standing.concernActive(concern),
+          commandSettled: id => { usedDisplay = true; return deps.standing.commandSettled(id); },
+        },
       }));
-      // Display context can read run, command and retained timeline evidence outside the inbox table.
+      // Display context and run or command standing read evidence outside the tracked tables; health is tracked.
       retained = usedDisplay ? undefined : candidate;
       return result;
     }),
