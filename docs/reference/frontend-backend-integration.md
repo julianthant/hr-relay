@@ -377,7 +377,7 @@ a gap. Missing baseline, gaps, and invalid row application trigger a resnapshot.
 resumable while every retained change above the presented cursor is still held; the server then
 replays them and closes with a `change` that carries no day part. Malformed envelopes and HTTP stream failures stop
 with visible error, except a retryable 503 such as `STORAGE_SNAPSHOT_CHANGED`, which reconnects like network loss;
-`GET /api/v1/dashboard` asks again up to three times, 250 ms apart, on the same refusal.
+`GET /api/v1/dashboard` makes three attempts in total on the same refusal: the first and up to two retries, 250 ms apart.
 Network loss resumes using `lastEventId` and `lastProjectionGeneration`.
 Superseded stream completions cannot reconnect the new stream.
 
