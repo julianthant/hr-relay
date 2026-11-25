@@ -49,7 +49,7 @@ export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileF
   };
   const repository = createChatGptCredentialRepository({ admission, stateRoot: root });
   const service = createChatGptAccountService({ admission, stateRoot: root, clock, fetch: transport });
-  async function callback(attempt: ChatGptAuthorization, patch: { [key: string]: string | null } = {}) {
+  async function callback(attempt: Pick<ChatGptAuthorization, "authorizationUrl">, patch: { [key: string]: string | null } = {}) {
     const authorize = new URL(attempt.authorizationUrl); nonce = authorize.searchParams.get("nonce") ?? "";
     const callback = new URL(authorize.searchParams.get("redirect_uri") ?? "");
     callback.searchParams.set("code", "synthetic-code"); callback.searchParams.set("state", authorize.searchParams.get("state") ?? "");
