@@ -345,14 +345,15 @@ try {
   if (scenario.startsWith("browser-root-")) {
     const { runBrowserRootRetentionCase } = await import("./browser-root-retention.js");
     await runBrowserRootRetentionCase({ scenario, workspace, nonce: z.uuid().parse(crashNonce) });
-  } else if (scenario.startsWith("startup-upgrade-")) {
-    const { runStartupUpgradeRetentionCase } = await import("./startup-upgrade-retention-cases.js");
-    await runStartupUpgradeRetentionCase({ scenario, workspace, nonce: z.uuid().parse(crashNonce) });
-  } else if (scenario === "stopped-upgrade-service" || scenario === "stopped-upgrade-command") {
-    const { runStoppedUpgradeRetentionCase } = await import("./startup-upgrade-retention-cases.js");
+  } else if (scenario.startsWith("startup-upgrade-") || scenario === "stopped-upgrade-service" || scenario === "stopped-upgrade-command") {
+    const { runStartupUpgradeRetentionCase, runStoppedUpgradeRetentionCase } = await import("./startup-upgrade-retention-cases.js");
     const nonce = z.uuid().parse(crashNonce);
-    await runStoppedUpgradeRetentionCase({ entry: scenario === "stopped-upgrade-service" ? "service" : "command",
-      workspace: join(workspace, `.${scenario}-${nonce}`) });
+    if (scenario.startsWith("startup-upgrade-")) {
+      await runStartupUpgradeRetentionCase({ scenario, workspace, nonce });
+    } else {
+      await runStoppedUpgradeRetentionCase({ entry: scenario === "stopped-upgrade-service" ? "service" : "command",
+        workspace: join(workspace, `.${scenario}-${nonce}`) });
+    }
   } else if (scenario === "worker-native-open") await runWorkerNativeOpening();
   else if (scenario === "setup-protected-close") await runSetupProtectedClose();
   else if (scenario === "stopped-head-close") await runStoppedHead();
