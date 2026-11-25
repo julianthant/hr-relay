@@ -533,7 +533,7 @@ for (const failure of ["hung", "rejected"] as const)
     vi.useFakeTimers();
     let checks = 0;
     const f = setup({ checkChatGptAccount: () => ++checks > 1 ? Promise.resolve(chatGptStatusFixture(account))
-      : failure === "hung" ? new Promise(() => {}) : Promise.reject(new Error("synthetic lost check")) });
+      : new Promise((_, reject) => { if (failure === "rejected") setTimeout(() => reject(new Error("synthetic lost check")), 1_000); }) });
     try {
       await f.port.refresh();
       const signing = f.port.signIn({ usePlan: true });
