@@ -11,13 +11,7 @@
     "prelint": "node oxlint.config.mjs"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "eslint": "^10.10.0",
-    "globals": "^17.12.0",
     "oxlint": "1.95.0"
   },
-  "license": "MIT",
-  "overrides": {
-    "minimatch": "11.0.1"
-  }
+  "license": "MIT"
 }
