@@ -198,15 +198,17 @@ describe('compact run headers', () => {
     vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
     const sample = (open?: boolean) => createElement(TooltipProvider, null, createElement(LogSample, { selection: { row, workflowLabel: 'OCR' }, reviewOpen: open, onReview, onLogs }));
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
-    const records = () => host.querySelector<HTMLButtonElement>('button[aria-label="Records 2"]');
+    const menu = () => host.querySelector<HTMLButtonElement>('button[aria-label="More actions"]');
+    const records = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Records (2)');
     try {
       act(() => root.render(sample()));
       assert.equal(document.querySelector('[role="dialog"]') === null, true);
+      act(() => { menu()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
       act(() => records()!.click()); assert.equal(onReview.mock.calls.length, 1);
       act(() => root.render(sample(true)));
       const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
       assert.match(dialog.textContent ?? '', /Review records/);
-      assert.ok(records(), 'the Logs panel stays behind the dialog');
+      assert.ok(menu(), 'the Logs panel stays behind the dialog');
       act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
       assert.equal(onLogs.mock.calls.length, 1);
     } finally { act(() => root.unmount()); host.remove(); }
