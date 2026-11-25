@@ -865,7 +865,7 @@ export function QueueRow({
               <div data-queue-parked-note className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{PARKED_NOTE}</div>
             )}
 
-            {memberSurface !== undefined && (batch !== undefined || membersVisible || memberLines.length === 0) && (
+            {memberSurface !== undefined && (
               <div className="flex flex-col gap-[var(--ds-space-base)]">
                 <GroupMemberList
                   surface={memberSurface}
