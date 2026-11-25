@@ -4868,10 +4868,25 @@ export class AuthorityDatabase implements Disposable {
         },
         countDryRunEvidenceByRun: (runId: string) => {
           const parsedRunId = RunIdSchema.parse(runId);
-          const one = (row: unknown): number => z.strictObject({ n: z.number().int() }).parse(row).n;
-        const active = one(this.#database.prepare(`SELECT count(*) AS n FROM runs ${runIndex(this.#database, "runs_nonterminal_idx")}
-          WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'`).get());
-        return Object.freeze({ finished: one(this.#database.prepare("SELECT count(*) AS n FROM runs").get()) - active, active });
+          const count = (sql: string): number => CountRowSchema.parse(
+            this.#database.prepare(sql).get(parsedRunId),
+          ).count;
+          return DryRunWriteSafetyCountsSchema.parse({
+            writeIntents: count(`
+              SELECT count(*) AS count FROM write_intents
+              WHERE json_extract(payload_json, '$.runId') = ?
+            `),
+            writeAttempts: count(`
+              SELECT count(*) AS count FROM write_attempts AS attempt
+              JOIN write_intents AS intent ON intent.id = attempt.intent_id
+              WHERE json_extract(intent.payload_json, '$.runId') = ?
+            `),
+            confirmedOperations: count(`
+              SELECT count(*) AS count FROM timeline_events
+              WHERE run_id = ? AND json_extract(payload_json, '$.payload.kind') = 'operation-confirmed'
+            `),
+          });
+        },
       }),
       writeAttempts: Object.freeze({
         get: (writeAttemptId: string) => this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema),
@@ -5286,10 +5301,10 @@ export class AuthorityDatabase implements Disposable {
         ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id`).all().map(runRecordFromRow))),
       // Active is the listNonTerminal predicate, so a row whose state column and lifecycle JSON disagree counts as active.
       countByTerminal: () => this.#withReadSnapshot(() => {
-        const count = (sql: string): number => z.strictObject({ n: z.number().int() }).parse(this.#database.prepare(sql).get()).n;
-        const active = count(`SELECT count(*) AS n FROM runs ${runIndex(this.#database, "runs_nonterminal_idx")}
-          WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'`);
-        return Object.freeze({ finished: count("SELECT count(*) AS n FROM runs") - active, active });
+        const one = (row: unknown): number => z.strictObject({ n: z.number().int() }).parse(row).n;
+        const active = one(this.#database.prepare(`SELECT count(*) AS n FROM runs ${runIndex(this.#database, "runs_nonterminal_idx")}
+          WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'`).get());
+        return Object.freeze({ finished: one(this.#database.prepare("SELECT count(*) AS n FROM runs").get()) - active, active });
       }),
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE workflow = ? ORDER BY created_at, id
