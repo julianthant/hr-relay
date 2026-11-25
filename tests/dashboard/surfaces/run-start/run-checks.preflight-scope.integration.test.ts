@@ -236,6 +236,20 @@ it("asks a checks read that got no answer in time again and shows the checks", a
   assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
 });
 
+it("asks the settings read before a rerun again when its first attempt gets no answer in time", async () => {
+  const h = checksHarness("emergency-contact", false);
+  let settingsReads = 0;
+  const client: DashboardClient = { ...h.client, editableSettings: () => (settingsReads += 1) === 1 ? new Promise(() => undefined) : h.client.editableSettings() };
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await mount(client, "emergency-contact");
+  await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS + 250); });
+  await settle();
+  assert.equal(settingsReads, 2);
+  assert.equal(checksUnavailable(), false, document.body.textContent ?? "");
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
+  assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
+});
+
 it("bounds a stalled rerun response, ignores its late completion and permits an explicit fresh check", async () => {
   const response = Promise.withResolvers<void>();
   const h = checksHarness("emergency-contact", false, () => response.promise);
