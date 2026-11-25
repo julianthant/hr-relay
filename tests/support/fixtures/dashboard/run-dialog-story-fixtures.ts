@@ -133,30 +133,36 @@ export function runDialogRerunSnapshot(outcome: "failed" | "done" = "failed"): R
   } });
 }
 
-/** The entry as a write workflow that files one UCPath transaction and then verifies it; every step can be left off. */
-const WRITE_STEPS = [["sign-in", "Sign in to UCPath"], ["submit", "Submit work-study transaction"], ["verify", "Verify the saved transaction"]] as const;
+/** The served Work-Study layout: three required steps, the last filing one UCPath transaction. */
+const WRITE_STEPS = [
+  ["ucpath-auth", "Sign in to UCPath", ["paypath-position"]],
+  ["reference-check", "Check reference spreadsheets", ["reference-check", "reference-stop", "reference-check-review"]],
+  ["transaction", "Submit work-study transaction", ["transaction-plan", "save-transaction"]],
+] as const;
 export const RUN_DIALOG_WRITE_RERUN_CATALOG = catalogOf(flow => {
   const [template] = flow.steps; if (template === undefined) throw new Error("the fixture workflow has no step");
   return { ...flow, label: "Work-Study", steps: WRITE_STEPS.map(([key, label]) => ({ ...template, key, label,
-    control: { state: "omittable" as const, form: { fields: [] }, forces: [] } })) };
+    control: { state: "required" as const, reason: "This workflow requires every node in this step." } })) };
 });
-const WRITE_RECEIPT = { nodeId: "submit", taskId: "ucpath/work-study-submit", writeIntentId: "20000000-0000-4000-8000-000000000002", evidenceDigest: HASH } as const;
+const WRITE_RECEIPT = { nodeId: "save-transaction", taskId: "ucpath/submit-paypath-work-study", writeIntentId: "20000000-0000-4000-8000-000000000002", evidenceDigest: HASH } as const;
 
-/** A Work-Study run cancelled while verifying: it signed in and filed its transaction, and the filing's receipt is the source's own. */
+/** A Work-Study run cancelled after Save and Submit committed, before its filing step finished; the receipt is the source's own. */
 export function runDialogWriteRerunSnapshot(): RerunValuesResponse {
   return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
     sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED } },
     source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome: "cancelled", dryRun: false, priority: "interactive", browserMode: "headless" },
-    steps: WRITE_STEPS.map(([key], index) => { const state = index < 2 ? "completed" : "unfinished";
-      return { key, state, nodes: [{ nodeId: key, state, reason: key === "submit" ? "settled-transaction" : index < 2 ? "checkpoint" : "incomplete-execution" }] }; }),
-    values: [], transactions: [{ stepKey: "submit", ...WRITE_RECEIPT, disposition: "committed", filedBySource: true }],
+    steps: WRITE_STEPS.map(([key, , nodes]) => key !== "transaction"
+      ? { key, state: "completed", nodes: nodes.map(nodeId => ({ nodeId, state: "completed", reason: "checkpoint" })) }
+      : { key, state: "unfinished", nodes: [{ nodeId: "transaction-plan", state: "completed", reason: "checkpoint" },
+        { nodeId: "save-transaction", state: "unfinished", reason: "incomplete-execution" }] }),
+    values: [], transactions: [{ stepKey: "transaction", ...WRITE_RECEIPT, disposition: "committed", filedBySource: true }],
   } });
 }
 
-/** The repeat warning for that Work-Study source once its filing step is switched back on. */
+/** The repeat warning for that Work-Study source: its required filing step runs again. */
 export function runDialogWriteRerunWarning(): RerunWarningWire {
   return RerunWarningWireSchema.parse({ workflowId: RUN_DIALOG_WORKFLOW, rerun: {
-    source: { runId: RUN_ID, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["submit", "verify"] },
+    source: { runId: RUN_ID, expectedVersion: 3, intent: "rerun", selectedStepKeys: WRITE_STEPS.map(([key]) => key) },
     warnings: [{ ...WRITE_RECEIPT, system: "ucpath", businessKeyDigest: HASH }], warningDigest: HASH,
   } });
 }

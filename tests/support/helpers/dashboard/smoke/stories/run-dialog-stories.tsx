@@ -79,11 +79,10 @@ const STAGE = {
     then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
   Start: stage("Start, options, steps and checks, every check ready", reading(PASS), "Start"),
   RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
-  CancelledSteps: stage("A Work-Study run cancelled after it filed: Steps picks up at the step the cancel stopped", writeRerunClient(), "Steps", { rerun: true, catalog: RUN_DIALOG_WRITE_RERUN_CATALOG }),
+  CancelledSteps: stage("A Work-Study run cancelled after it filed: every served step is required, so all run again", writeRerunClient(), "Steps", { rerun: true, catalog: RUN_DIALOG_WRITE_RERUN_CATALOG }),
   CancelledReceipts: stage("That rerun's Start, naming the receipt the source already filed", writeRerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_WRITE_RERUN_CATALOG }),
-  CancelledWarning: stage("That rerun with the filing switched back on, warned before it files again", writeRerunClient({ previewRerunWarnings: async () => runDialogWriteRerunWarning() }), "Steps", { rerun: true, catalog: RUN_DIALOG_WRITE_RERUN_CATALOG,
-    then: async page => { await dialog(page).getByRole("switch", { name: "Submit work-study transaction" }).click(); await press(page, "Continue");
-      await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
+  CancelledWarning: stage("That rerun warned before its filing step files again", writeRerunClient({ previewRerunWarnings: async () => runDialogWriteRerunWarning() }), "Start", { rerun: true, catalog: RUN_DIALOG_WRITE_RERUN_CATALOG,
+    then: async page => { await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
 } satisfies Record<string, Story>;
 
 const CHECKS = {
