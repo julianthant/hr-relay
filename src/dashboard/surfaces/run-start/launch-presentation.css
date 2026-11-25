@@ -44,9 +44,10 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply border-t border-u
 }
 .launch-design .launch-stage-marker[data-current] { @apply border-transparent bg-ui-info text-ui-canvas; }
 .launch-design .launch-stage-marker[data-completed] { @apply text-ui-positive; }
-.launch-design .launch-content { @apply flex flex-col gap-3 pt-5 pb-6; }
+.launch-design .launch-content { @apply flex flex-col gap-3; }
 /* One rhythm for every page: 24px between sections, 12px from a heading to its card, 2px from a heading to its grey line. */
-.launch-dialog .launch-sections { @apply flex min-w-0 flex-col gap-6; }
+/* The body keeps the design system's 12px top; the sections add 8px above and 12px below. */
+.launch-dialog .launch-sections { @apply flex min-w-0 flex-col gap-6 pt-2 pb-3; }
 .launch-dialog .launch-section { @apply flex min-w-0 flex-col gap-3; }
 .launch-dialog .launch-section-head { @apply flex flex-col gap-0.5; }
 .launch-dialog .launch-section-head > div { @apply flex items-baseline justify-between gap-3; }
