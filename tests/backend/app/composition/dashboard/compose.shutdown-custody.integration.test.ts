@@ -24,11 +24,13 @@ it.each(["Pause all and quit", "SIGINT during logout"] as const)("%s closes and 
   const clock = manualClock(new Date("2026-11-14T12:00:00Z"));
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(f.workspace, file));
   const laneSources = { retained: 0, released: 0 };
-  const retainSource = AuthorityDatabase.prototype.retainDashboardReadSource;
+  const retainSource: unknown = Reflect.get(AuthorityDatabase.prototype, "retainDashboardReadSource");
+  if (typeof retainSource !== "function") throw new Error("fixture retainDashboardReadSource missing");
   vi.spyOn(AuthorityDatabase.prototype, "retainDashboardReadSource").mockImplementation(function (this: AuthorityDatabase, ...args) {
-    const release = retainSource.apply(this, args);
+    const release: unknown = Reflect.apply(retainSource, this, args);
+    if (typeof release !== "function") throw new Error("fixture lane source release missing");
     laneSources.retained += 1;
-    return () => { laneSources.released += 1; release(); };
+    return () => { laneSources.released += 1; Reflect.apply(release, undefined, []); };
   });
   const app = await composeDashboardApplication({ admission: f.machine, lifetimeLock: f.lifetime, repoRoot: f.workspace,
     isolation: rebuildRuntimeIsolation, clock, backendPortOverride: 0, frontendPortOverride: 0, env: {},

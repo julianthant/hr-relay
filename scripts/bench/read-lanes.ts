@@ -102,7 +102,7 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
     // Alternate shapes so host drift touches both; every run is a cold process.
     for (let index = 0; index < runs; index++) {
       for (const shape of ShapeSchema.options) {
-        const output = execFileSync(process.execPath, ["--import", "tsx", script, profile, "--shape", shape], { encoding: "utf8", env: process.env });
+        const output = execFileSync(process.execPath, ["--import", "tsx", script, profile, "--shape", shape], { encoding: "utf8" });
         results[shape].push(RunSchema.parse(JSON.parse(output.trim().split("\n").at(-1) ?? "")));
       }
     }

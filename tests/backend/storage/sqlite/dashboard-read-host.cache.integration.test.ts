@@ -77,6 +77,7 @@ it("rebuilds an entry whose change-log interval runs backwards", async () => {
   const first = await lanes.read(lanePool, { workflow: WORKFLOW });
   assert.ok(first.position.changeLogSeq > 0);
   peer.prepare("DELETE FROM authority_changes WHERE seq>=?").run(first.position.changeLogSeq);
+  peer.prepare("UPDATE sqlite_sequence SET seq=? WHERE name='authority_changes'").run(first.position.changeLogSeq - 1);
   const rebuilt = await lanes.read(lanePool, { workflow: WORKFLOW });
   assert.equal(rebuilt.cached, false);
   assert.ok(rebuilt.position.changeLogSeq < first.position.changeLogSeq);

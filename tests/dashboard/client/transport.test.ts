@@ -209,7 +209,7 @@ describe("read lanes", () => {
     const superseded = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); }, fetchImpl: respond("READ_SUPERSEDED") });
     const error: unknown = await superseded.requestJson("/api/v1/dashboard?day=2026-11-25").then(() => undefined, (reason: unknown) => reason);
     assert.equal(isReadSuperseded(error), true);
-    assert.deepEqual(failures, []);
+    assert.equal(failures.length, 0);
     const restarted = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); }, fetchImpl: respond("READ_LANE_RESTARTED") });
     const other: unknown = await restarted.requestJson("/api/v1/dashboard?day=2026-11-25").then(() => undefined, (reason: unknown) => reason);
     assert.equal(other instanceof DashboardClientError && other.status === 409, true);

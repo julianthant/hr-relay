@@ -374,7 +374,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
         return;
       }
       restarts += 1;
-      try { launch(lane); }
+      try { void launch(lane); }
       catch (error) { failLane(lane, error instanceof Error ? error : new Error("read-lane-restart-failed", { cause: error })); }
       startCheckpointWhenIdle();
       pumpAll();
@@ -398,8 +398,11 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     }
   } catch (error) { abandonStart(error); }
 
+  const ready = Promise.all(readyWaits).then(() => undefined);
+  // A lane that never boots fails its reads through lane.failure; ready only reports it to a caller that awaits it.
+  ready.catch(() => {});
   return Object.freeze({
-    ready: Promise.all(readyWaits).then(() => undefined),
+    ready,
     read<Args>(definition: LaneReadDefinition<Args, unknown>, args: Args, options: DashboardReadOptions = {}): Promise<DashboardReadReply> {
       if (closing) return Promise.reject(new ReadLaneClosedError());
       const registered = definitions.get(definition.id);
