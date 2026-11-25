@@ -268,8 +268,9 @@ describe("reviewed architecture guard manifest", () => {
     ] as const) {
       assert.throws(() => assertGuardInventory([...guards]), (error: unknown) => {
         assert.ok(error instanceof assert.AssertionError);
-        assert.equal(error.message, "recursive guard file discovery and inventory must match exactly");
-        process.stdout.write(`Guard inventory ${label} ${first.file}: ${error.code} ${error.message}\n`);
+        const [diagnostic] = error.message.split("\n");
+        assert.equal(diagnostic, "recursive guard file discovery and inventory must match exactly");
+        process.stdout.write(`Guard inventory ${label} ${first.file}: ${error.code} ${diagnostic}\n`);
         return true;
       });
     }
