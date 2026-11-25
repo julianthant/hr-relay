@@ -73,7 +73,8 @@ import type { QueueHandlers } from "../surfaces/queue/queue.js";
 import { QueuePanel,type QueueFilterScope } from "../surfaces/queue/queue.js";
 import { RenameRunDialog,type PendingRename } from "../surfaces/run-detail/identity/run-identity.js";
 import { RunStartButton } from "../surfaces/run-start/run-start.js";
-import { SessionPanel } from "../surfaces/sessions/session-panel.js";
+import { SessionPanel, SessionsProvider } from "../surfaces/sessions/session-panel.js";
+import { SessionRailControls } from "../surfaces/sessions/session-rail-controls.js";
 import {
 DASHBOARD_MAIN_REGION_ID, DASHBOARD_LOGS_REGION_ID, buildSettingsNav, resolveSettingsSection
 } from "../surfaces/settings/settings-model.js";
@@ -271,6 +272,12 @@ export function LoadedApp({
     setRoute(current => ({ ...current, view: { ...current.view, launchServed: activeWorkflowId, launchWorkflow: undefined, launchSource: undefined, launchStage: "Input", launchCustomize: false } }));
     servedOpenStart();
   }, [servedOpenStart, launch.rerunInOneClick, activeWorkflowId, setRoute]);
+  const openStartFor = useCallback((workflowId: string) => {
+    if (launch.rerunInOneClick) return;
+    setRoute(current => ({ ...current, view: { ...current.view, launchServed: workflowId, launchWorkflow: undefined, launchSource: undefined, launchStage: "Input", launchCustomize: false } }));
+    servedOpenStart();
+  }, [servedOpenStart, launch.rerunInOneClick, setRoute]);
+  const canStartRun = useCallback((id: string) => workflowCatalog.some(entry => entry.id === id && entry.served !== undefined && entry.launch.state === "served"), [workflowCatalog]);
   const openRerun = launch.openRerun;
   /** A one-click rerun still queuing has no dialog to block the page; opening another launch would drop it. */
   const rerunQueuing = launch.rerunInOneClick;
@@ -899,6 +906,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   return (
     <ServedClockContext.Provider value={clock}>
     <DashboardCommandBindingProvider binding={commandBinding}>
+    <SessionsProvider harness={workflowComposition.sessionsHarness} catalog={workflowCatalog}
+      binding={dayRequested === undefined ? undefined : { client, executor, scope: commandScope, dayState, day, now: clock.now, workflowId: activeWorkflowId }}>
     <div
       data-mock-ready={ready ? "true" : "loading"}
       className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col"
@@ -918,7 +927,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to run logs</a> : null}
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} active={activeWorkflowId}
-        onSelect={onRailSelect} settingsOpen={settingsOpen} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
+        onSelect={onRailSelect} settingsOpen={settingsOpen} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction}
+        account={accountPage === undefined ? undefined : { name: accountPage.values.name, initials: accountPage.values.initials, email: accountPage.values.username }}
+        onSettings={() => openSettings()} onLogout={() => setLogoutOpen(true)}
+        sessionControls={<SessionRailControls open={sessionsOpen} onOpenChange={setSessionsOpen} />}
+        onStartRun={openStartFor} canStartRun={canStartRun} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -1047,6 +1060,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           </div>
           </>
           </DashboardTakeovers>
+          {!settingsOpen && <SessionPanel open={sessionsOpen} onOpenChange={setSessionsOpen} />}
           </div>
         </div>
         </DashboardPageBoundary>
@@ -1059,17 +1073,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         else void onProfileLogout();
       })} />
       </PanelBoundary>
-      {/* The Sessions bar and its Ask control belong to the workflow workspace: every Settings page hides them. */}
-      {!settingsOpen && (
-        <SessionPanel
-          harness={workflowComposition.sessionsHarness}
-          binding={dayRequested === undefined ? undefined : { client, executor, scope: commandScope, dayState, day, now: clock.now, workflowId: activeWorkflowId }}
-          catalog={workflowCatalog}
-          open={sessionsOpen}
-          onOpenChange={setSessionsOpen}
-          account={{ onSettings: () => openSettings(), onLogout: () => setLogoutOpen(true) }}
-        />
-      )}
       {workflowComposition.harness?.Host && <workflowComposition.harness.Host />}
 
       <PanelBoundary resetKey={`${activeWorkflowId}:${launch.open}`} sentence="Couldn't open Start run." className="fixed left-1/2 top-4 z-50 -translate-x-1/2">
@@ -1127,6 +1130,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         }}
       />
     </div>
+    </SessionsProvider>
     </DashboardCommandBindingProvider>
     </ServedClockContext.Provider>
   );
