@@ -56,6 +56,10 @@ export function debugFailureOutcome(value: unknown, status = 200, readRoute?: st
 }
 
 export function debugFailureOutcomes(value: unknown, status = 200, readRoute?: string): (NonNullable<ReturnType<typeof debugFailureOutcome>> & { correlationId?: string })[] {
+  if (status === 200 && readRoute === "/api/v1/preflight") {
+    const failure = debugFailureOutcome(value, status, readRoute);
+    return failure === undefined ? [] : [failure];
+  }
   const command = CommandResultSchema.safeParse(value);
   if (command.success && (command.data.state === "applied" || command.data.state === "already-applied") && command.data.workerStartup !== undefined) {
     const startup = command.data.workerStartup;

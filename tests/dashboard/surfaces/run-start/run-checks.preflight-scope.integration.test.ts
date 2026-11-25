@@ -257,6 +257,20 @@ it("asks the settings read before a rerun again at the request when its first at
   assert.deepEqual(h.reports, []);
 });
 
+it("asks the workflow-scope read before a rerun again at the request when its first attempt gets no answer in time", async () => {
+  const h = checksHarness("emergency-contact", false, undefined, undefined, { "/api/v1/bootstrap": "silent" });
+  await h.client.readProfileSession();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await mount(h.client, "emergency-contact");
+  await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS + 250); });
+  await settle();
+  assert.equal(h.requests.filter(request => request === "GET /api/v1/bootstrap").length, 2);
+  assert.equal(checksUnavailable(), false, document.body.textContent ?? "");
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
+  assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
+  assert.deepEqual(h.reports, []);
+});
+
 it("asks the settings and workflow-scope reads again at the request after a lost connection and reports nothing", async () => {
   const h = checksHarness("emergency-contact", false, undefined, undefined, { "/api/v1/settings/editable": "lost", "/api/v1/bootstrap": "lost" });
   await h.client.readProfileSession();

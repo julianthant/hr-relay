@@ -126,9 +126,9 @@ export function createDashboardTransport(input: Readonly<{
       : accountStatus || accountCompletion ? "CHATGPT_AUTH_UNAVAILABLE"
       : route === "/api/v1/preflight" ? "PREFLIGHT_READ_UNAVAILABLE"
       : route === "/api/v1/settings/editable" || route === "/api/v1/settings/facts" ? "SETTINGS_INITIAL_READ_UNAVAILABLE"
-      : route?.startsWith("/api/v1/workbooks") || route === "/api/v1/explorer" || route?.startsWith("/api/v1/reports/activity") ? "DASHBOARD_READ_FAILED" : undefined;
+      : route?.startsWith("/api/v1/workbooks") || route === "/api/v1/explorer" || route?.startsWith("/api/v1/reports/activity") || retry ? "DASHBOARD_READ_FAILED" : undefined;
     const retried = method === "GET" && (retry || route === "/api/v1/preflight" || route?.startsWith("/api/v1/workbooks") === true);
-    if (code === undefined && !retried || accountCompletion && init?.signal !== undefined) return sendUnbounded(path, init);
+    if (code === undefined || accountCompletion && init?.signal !== undefined) return sendUnbounded(path, init);
     const deadline = accountCompletion ? CHATGPT_COMPLETION_READ_DEADLINE_MS
       : accountStatus ? CHATGPT_ACCOUNT_READ_DEADLINE_MS : SETTINGS_READ_DEADLINE_MS;
     const attempts = retried ? BOUNDED_READ_ATTEMPTS : 1;
@@ -136,8 +136,7 @@ export function createDashboardTransport(input: Readonly<{
     return (async () => {
       for (let attempt = 1; ; attempt += 1) {
         try {
-          const response = code === undefined ? await sendUnbounded(path, init)
-            : await readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code, deadline, init?.signal ?? undefined);
+          const response = await readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code, deadline, init?.signal ?? undefined);
           if (attempt === attempts || response.status !== 503 || WIRE_ERROR_BODY.safeParse(response.body).data?.retryable !== true) return response;
         } catch (error) {
           if (init?.signal?.aborted) throw networkError(`${method} ${path}`, init.signal.reason);

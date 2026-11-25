@@ -31,6 +31,11 @@ describe("metadata-only failure reports", () => {
     }
     assert.equal(debugFailureOutcome({ state: "present", report }, 200, route), undefined);
     assert.equal(debugFailureOutcome(expired, 503, route)?.reason, "operation-failed");
+    const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const appliedVector = { state: "vector", bulkCommandId: id, type: "pause", requestedCount: 1,
+      results: [{ outcome: "applied", runId: id, commandId: id, replayed: false, detail: "Paused." }] };
+    assert.deepEqual(debugFailureOutcomes(appliedVector, 200), []);
+    assert.deepEqual(debugFailureOutcomes(appliedVector, 200, route), [{ code: "DASHBOARD_READ_FAILED", reason: "response-contract-invalid" }]);
   });
   it("recognizes refusals and unknown results even on HTTP 200", () => {
     assert.deepEqual(debugFailureOutcome({ state: "refused", code: "PROFILE_SESSION_STALE", name: "PRIVATE_NAME" }),
