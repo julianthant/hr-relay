@@ -25,7 +25,7 @@ function StepCard({ stage, label }: { stage: LogTimelineStage; label: string }) 
 /** The run's steps as chips in the header row; the dot carries the step's state. */
 export function LogTimeline({ stages, onJump }: { stages: readonly LogTimelineStage[]; onJump: (stepId: string) => void }) {
   if (stages.length === 0) return null;
-  return <TooltipProvider delayDuration={200} disableHoverableContent><nav aria-label="Run timeline" className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none]">
+  return <TooltipProvider delayDuration={200} disableHoverableContent><nav aria-label="Run timeline" tabIndex={0} className="min-w-0 flex-1 overflow-x-auto rounded-full [scrollbar-width:none] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-info">
     <ol className="m-0 flex list-none items-center gap-2 p-0">
       {stages.map(stage => {
         const style = LOG_TIMELINE_STYLES[stage.state];

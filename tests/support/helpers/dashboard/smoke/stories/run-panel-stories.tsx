@@ -11,7 +11,7 @@ import { ErrorCodeSchema, IsoInstantSchema } from "../../../../../../src/rules/i
 import { Badge, Banner, Notice, FailureNotice } from "../../../../../../src/dashboard/ds/ui.js";
 import { LogPanel } from "../../../../../../src/dashboard/surfaces/run-detail/log-panel.js";
 import { RunStateChips } from "../../../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
-import { LogFeedPadding, LogSkeleton, LogTimelineSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
+import { LogFeedPadding, LogSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
 import { FullDryRunPreview } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
 import type { DryRunPreviewStage } from "../../../../../../src/dashboard/surfaces/run-detail/logs/dry-run-preview-model.js";
 import type { AnsweredKind, LogDecision } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
@@ -204,7 +204,7 @@ const ENTRY = {
 const LOGS_READ_FAILED = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_READ_FAILED_TITLE", {})).text;
 const LOGS_UNAVAILABLE = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_UNAVAILABLE_TITLE", {})).text;
 const LOGS = {
-  loading: { ...panel("Logs still loading", { steps: [], timeline: [], navigation: <LogTimelineSkeleton />, content: <LogFeedPadding><LogSkeleton /></LogFeedPadding> }), slowFetch: { region: READY } },
+  loading: { ...panel("Logs still loading", { steps: [], timeline: [], content: <LogFeedPadding><LogSkeleton /></LogFeedPadding> }), slowFetch: { region: READY } },
   refreshing: panel("Logs refreshing", { steps: readingSteps, timeline: reading, toolbar: <Badge tone="neutral">Refreshing</Badge> }),
   "refresh-failed": panel("Logs that could not refresh", { steps: readingSteps, timeline: reading,
     toolbar: <Notice tone="danger" title={LOGS_READ_FAILED} description="Relay could not refresh these logs." /> }),

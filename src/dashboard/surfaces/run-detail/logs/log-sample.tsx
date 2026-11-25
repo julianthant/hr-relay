@@ -17,7 +17,7 @@ import { rerunAction, type LogSelection } from "./log-selection-model.js";
 import { pauseTimeline } from "./log-timeline-model.js";
 import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
-import { LogFeedPadding, LogSkeleton, LogTimelineSkeleton } from "../../shared/loading/loading.js";
+import { LogFeedPadding, LogSkeleton } from "../../shared/loading/loading.js";
 import { RunStateChips } from "../run-state-chips.js";
 import { isNeedsDuo, queueRowTitle } from "../../queue/queue-model.js";
 import { RunReview } from "../review/review.js";
@@ -103,7 +103,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   const setupProblem = startup !== undefined && WorkerSetupRefusalCodeSchema.safeParse(startup.code).success ? startup.summary : undefined;
   return <><LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
     status={status} navigation={setupProblem !== undefined ? <div className="px-3 py-2"><Banner tone="warning" title={setupProblem} /></div>
-      : resource.snapshot === undefined && resource.state === "loading" ? <LogTimelineSkeleton /> : isNeedsDuo(selection.row) ? <div className="px-3 py-2"><Banner tone="info" title="Approve the Duo sign-in"><span>Approve it on your phone to continue.</span></Banner></div> : undefined}
+      : isNeedsDuo(selection.row) ? <div className="px-3 py-2"><Banner tone="info" title="Approve the Duo sign-in"><span>Approve it on your phone to continue.</span></Banner></div> : undefined}
     onReview={reviewAvailable ? onReview : undefined}
     toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} headerActions={headerActions} rerun={rerun} records={records}
     content={content}
