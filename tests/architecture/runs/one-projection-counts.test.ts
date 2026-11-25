@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { relative } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
-import { type DashboardWorld } from "../../support/helpers/backend/dashboard-harness.js";
 import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 
 const COUNT_FIELDS = new Set(["monthCounts", "workflowCounts", "statusCounts"]);
@@ -110,6 +109,4 @@ describe("one-projection-counts", () => {
       "a write-ledger block is asked for in exactly the declared modules",
     );
   });
-
-  const worlds: DashboardWorld[] = [];
 });
