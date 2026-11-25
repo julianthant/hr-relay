@@ -6,8 +6,11 @@ import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { composeDashboardTimeline } from "../../../../src/backend/app/composition/dashboard/timeline.js";
+import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
@@ -16,6 +19,7 @@ import { readQueueRecordMembers } from "../../../../src/backend/runs/queries/ocr
 import { ConfigSnapshotIdSchema, LOCAL_OPERATOR_ACTOR_ID, WriteAttemptIdSchema } from "../../../../src/rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
+import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { importedLibraryId, importIsolatedProfileData } from "../../../../src/backend/storage/maintenance/isolated-library-import.js";
@@ -34,11 +38,13 @@ import { DASHBOARD_REQUEST_REPORT_MESSAGE, debugFailureOutcome } from "../../../
 import { OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { NotificationCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT, NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { restoreSchema36QueryIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { prePanelModeRetirementSnapshot } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { boundProfileAdmission } from "../../../support/helpers/admission-fixture.js";
-import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { DESCRIPTOR_SET_HASH, runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
@@ -383,7 +389,78 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
   } finally { upgraded.close(); }
 });
 
-it("loads every imported dashboard day with delegated runs and failed Lookup start evidence", async () => {
+it("keeps imported timeline folds through background polling and recovery", async () => {
+  const source = await openCurrentWorld(), copy = await openCurrentWorld();
+  const config = initializeCopyConfig(copy, clock);
+  source.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  const seed = (database: typeof source.database, run: ReturnType<typeof runRecordOf>) => {
+    database.authority.runs.enqueue(run);
+    const writer = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
+    writer.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Queued fixture" }));
+    const { runId, workflow, attempt, traceId } = run.envelope, ts = clock.now().toISOString();
+    writer.emit({ t: "data.observed", ts, observedAt: ts, runId, workflow, attempt, traceId,
+      spanPath: `${traceId}/searching#1.1`, nodeId: "searching", taskId: "ucpath/search-person-org",
+      points: [{ direction: "read", field: "selection", values: [
+        { key: "selection.status", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "resolved" },
+      ] }] });
+  };
+  const archived = runRecordOf({ seed: 596, enqueuedAt: clock.now().toISOString() });
+  seed(source.database, archived);
+  const backup = await takeBackup(source);
+  await importIsolatedProfileData(copy.admission, copy.database, { source: { manifestPath: backup.manifestPath,
+    binding: source.admission.profileBinding }, destination: copy.admission.profileBinding }, clock);
+
+  const database = copy.database, history = database.dashboardHistory();
+  const reader = new RunRecordService({ database: history, clock, ids: { uuid: randomUUID }, publishQueued: () => {} });
+  const projection = createOperatorProjection({ database: history, reader, clock, stateRoot: copy.stateRoot,
+    appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, descriptors: { resolve: () => personLookupDescriptor },
+    ledger: createTransactionHistory(history.authority) });
+  const loggingRepository = database.authority.timelineEvents;
+  const startupCleanups: (() => void | Promise<void>)[] = [];
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    const runtime = composeDashboardTimeline({ database, clock, projection, startupCleanups, admission: copy.admission,
+      lifecycle: reader, loggingRepository, debugEvents: createDebugEventWriter({ repository: loggingRepository, clock, build: "test" }) });
+    const runId = archived.envelope.runId, generation = projection.generation();
+    const fold = projection.runFold(runId), logs = projection.runLogSnapshot(runId);
+    expect(fold?.queued.runId).toBe(runId);
+    expect(logs.entries).toHaveLength(1);
+    await runtime.settled();
+    expect(projection.health().state).toBe("live");
+    expect(projection.generation()).toBe(generation);
+    expect(projection.runFold(runId)).toEqual(fold);
+    expect(projection.runLogSnapshot(runId)).toEqual(logs);
+
+    const local = runRecordOf({ seed: 598, enqueuedAt: clock.now().toISOString() });
+    local.envelope.configFingerprint = config.fingerprint;
+    local.envelope.configSnapshotId = config.configSnapshotId;
+    seed(database, local);
+    vi.advanceTimersByTime(250);
+    await runtime.settled();
+    const localId = local.envelope.runId;
+    expect(projection.runFold(localId)?.eventCount).toBe(1);
+    expect(projection.runLogSnapshot(localId).entries).toHaveLength(1);
+    expect(projection.generation()).toBe(generation);
+
+    const poll = projection.pollBackground.bind(projection);
+    vi.spyOn(projection, "pollBackground").mockImplementationOnce((read, now) => poll(request => read({ ...request, limit: 1 }), now));
+    projection.backgroundReadFailed(new Error("fixture snapshot refusal"));
+    vi.advanceTimersByTime(250);
+    await runtime.settled();
+    expect(projection.health().state).toBe("live");
+    expect(projection.generation()).toBeGreaterThan(generation);
+    expect(projection.runFold(runId)).toEqual(fold);
+    expect(projection.runLogSnapshot(runId).entries).toEqual(logs.entries);
+    expect(projection.runFold(localId)?.eventCount).toBe(1);
+    expect(projection.runLogSnapshot(localId).entries).toHaveLength(1);
+  } finally {
+    for (const close of startupCleanups.reverse()) await close();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  }
+});
+
+it("loads every imported dashboard day with delegated runs and failed Lookup start evidence from a schema-41 archive", async () => {
   const sourceWorld = createOcrReviewWorld();
   cleanups.push(() => sourceWorld.cleanup());
   const source = await sourceWorld.fixture({ coordinator: true, sessions: sessionFactoryHarness({
@@ -411,7 +488,21 @@ it("loads every imported dashboard day with delegated runs and failed Lookup sta
   await importIsolatedProfileData(copy.admission, copy.database, { source: {
     manifestPath: join(directory, `${manifest.backupFileName}.manifest.json`), binding: admission.profileBinding,
   }, destination: copy.admission.profileBinding }, sourceClock);
+  const archivePath = join(copy.stateRoot, "files", "imported-history.sqlite");
+  const archive = new DatabaseSync(archivePath);
+  try {
+    const update = archive.prepare("UPDATE settings_snapshots SET payload_json=? WHERE id=?");
+    const rows = archive.prepare("SELECT payload_json FROM settings_snapshots").all();
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      const snapshot = ConfigSnapshotRecordSchema.parse(JSON.parse(String(row.payload_json)));
+      update.run(canonicalJsonStringify(prePanelModeRetirementSnapshot(snapshot, "sidebar")), snapshot.configSnapshotId);
+    }
+    archive.exec("UPDATE history_header SET schema_version=41");
+  } finally { archive.close(); }
   const history = copy.database.dashboardHistory();
+  expect(withReadonlyAuthoritySnapshot(archivePath, db => db.prepare("SELECT schema_version FROM history_header").get()?.schema_version))
+    .toBe(CURRENT_AUTHORITY_SCHEMA_VERSION);
   for (const planId of plans) {
     expect(history.authority.startPlans.get(planId)).toEqual(database.authority.startPlans.get(planId));
     expect(copy.database.authority.startPlans.get(planId)).toBeUndefined();

@@ -23,6 +23,7 @@ function scriptedProjection(): ScriptedProjection & {
   onChange(listener: (change: RunQueueProjectionChange) => void): () => void;
   health(): { readonly state: "degraded" };
   buildDashboardDayWire(day: string): never;
+  recordPublishedDay(): never;
   generation(): number;
   cursor(): ReturnType<typeof ProjectionCursorSchema.parse>;
   takeCursor(): never;
@@ -41,6 +42,7 @@ function scriptedProjection(): ScriptedProjection & {
     buildDashboardDayWire: () => {
       throw new Error("phase test reaches the day wire only if connect treats the projection as live");
     },
+    recordPublishedDay: () => { throw new Error("phase test publishes no day snapshots"); },
     generation: () => 1,
     cursor: () => ProjectionCursorSchema.parse(`pc:${String(cursor)}`),
     takeCursor: () => {

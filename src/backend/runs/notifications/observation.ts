@@ -1,5 +1,5 @@
 import type { NotificationInbox } from "./inbox.js";
-import type { NotificationTriggerEvent } from "../../../rules/notifications/notification-triggers.js";
+import { deriveNotificationDedupeFingerprint, type NotificationTriggerEvent } from "../../../rules/notifications/notification-triggers.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
 export type NotificationObservation = Readonly<{ event: NotificationTriggerEvent; source: { identity: string; occurredAt: string } }>;
@@ -14,12 +14,15 @@ export function createNotificationObserver(deps: {
 }) {
   let stopped = false, drained = false;
   let healthFailure: NotificationObservationStatus["code"];
-  let running: Promise<void> | undefined, publishing: Promise<void> | undefined;
-  let sourceStatus: NotificationObservationStatus = { state: "ready", pending: 0 };
-  const pending = new Map<string, NotificationObservation>();
+  let running: Promise<void> | undefined;
+  let diagnostics: readonly NonNullable<NotificationObservationStatus["code"]>[] = [];
+  const pendingBySource = new Map<string, NotificationObservation>();
+  const queues = new Map<string, Set<NotificationObservation>>();
+  const active = new Map<string, Promise<void>>();
+  // A nonempty queue without a publisher is waiting to retry its first occurrence.
+  const needsRetry = () => queues.size > active.size;
   const statusListeners = new Set<() => void>();
   let reported = canonicalJsonStringify({ state: "ready", pending: 0 });
-  /** Tells each listener once per distinct status, after the state that moved it is written. */
   const statusMoved = (): void => {
     const next = canonicalJsonStringify(status());
     if (next === reported) return;
@@ -28,36 +31,45 @@ export function createNotificationObserver(deps: {
   };
 
   const observeSources = (changed?: () => boolean): Promise<void> | undefined => {
-    if (stopped || publishing !== undefined) return publishing;
-    let failures = 0;
-    let code: NotificationObservationStatus["code"];
+    if (stopped) return;
     try {
-      if (changed !== undefined && !changed() && sourceStatus.state !== "failed") return;
+      if (changed !== undefined && !changed() && !needsRetry() && diagnostics.length === 0) return;
+      diagnostics = [];
       const read = deps.read();
-      failures = read.diagnostics.length;
-      code = read.diagnostics[0];
+      diagnostics = read.diagnostics;
       for (const item of read.observations) {
-        const prior = pending.get(item.source.identity);
-        if (prior !== undefined && canonicalJsonStringify(prior.event) !== canonicalJsonStringify(item.event)) throw new Error("NOTIFICATION_PENDING_SOURCE_CONFLICT");
-        pending.set(item.source.identity, prior ?? item);
+        const id = item.source.identity;
+        const prior = pendingBySource.get(id);
+        if (prior !== undefined) {
+          if (canonicalJsonStringify(prior.event) !== canonicalJsonStringify(item.event)) throw new Error("NOTIFICATION_PENDING_SOURCE_CONFLICT");
+          continue;
+        }
+        const key = deriveNotificationDedupeFingerprint(item.event);
+        let queue = queues.get(key);
+        if (queue === undefined) {
+          queue = new Set();
+          queues.set(key, queue);
+        }
+        queue.add(item);
+        pendingBySource.set(id, item);
       }
-    } catch { failures += 1; code = "NOTIFICATION_OBSERVATION_FAILED"; }
-    const settle = () => {
-      sourceStatus = failures === 0 ? { state: "ready", pending: 0 }
-        : { state: "failed", code: code ?? "NOTIFICATION_OBSERVATION_FAILED", pending: failures };
-      statusMoved();
-    };
-    if (pending.size === 0) { settle(); return; }
-    sourceStatus = { state: "ready", pending: pending.size };
+    } catch { diagnostics = ["NOTIFICATION_OBSERVATION_FAILED"]; }
+    for (const [key, queue] of queues) {
+      if (active.has(key)) continue;
+      active.set(key, Promise.resolve().then(async () => {
+        for (const item of queue) {
+          try { await deps.inbox.publish(item.event, item.source); }
+          catch { break; }
+          queue.delete(item);
+          pendingBySource.delete(item.source.identity);
+        }
+        active.delete(key);
+        if (queue.size === 0) queues.delete(key);
+        statusMoved();
+      }));
+    }
     statusMoved();
-    publishing = (async () => {
-      for (const [identity, item] of pending) {
-        try { await deps.inbox.publish(item.event, item.source); pending.delete(identity); }
-        catch { failures += 1; code = "NOTIFICATION_OBSERVATION_FAILED"; }
-      }
-      settle();
-    })().finally(() => { publishing = undefined; });
-    return publishing;
+    if (active.size > 0) return Promise.all(active.values()).then(() => {});
   };
   const observe = (): Promise<void> => {
     if (stopped) return Promise.resolve();
@@ -71,8 +83,10 @@ export function createNotificationObserver(deps: {
     return running;
   };
   const status = (): NotificationObservationStatus => {
-    if (healthFailure !== undefined) return { state: "failed", code: healthFailure, pending: sourceStatus.pending + 1 };
-    return drained && sourceStatus.state !== "failed" ? { state: "stopped", pending: 0 } : sourceStatus;
+    const pending = pendingBySource.size + diagnostics.length + Number(healthFailure !== undefined);
+    const code = healthFailure ?? (needsRetry() ? "NOTIFICATION_OBSERVATION_FAILED" : diagnostics[0]);
+    if (code !== undefined) return { state: "failed", code, pending };
+    return { state: drained ? "stopped" : "ready", pending };
   };
   const onStatusChange = (listener: () => void): (() => void) => {
     statusListeners.add(listener);
@@ -80,7 +94,7 @@ export function createNotificationObserver(deps: {
   };
   return Object.freeze({ observe, observeSources, status, onStatusChange, async stop() {
     stopped = true;
-    await Promise.all([running, publishing]);
+    await Promise.all([running, ...active.values()]);
     drained = true;
     statusMoved();
   } });

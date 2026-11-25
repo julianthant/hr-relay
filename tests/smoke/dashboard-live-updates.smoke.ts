@@ -158,7 +158,15 @@ for (const view of Object.keys(DECLARED_GATE_BASELINE) as View[]) {
     const run = await seeded.scripted.drive(runId);
     const row = page.locator(`[data-demo-row-id="${runId}"]`).first();
     await expect(row).toContainText("Running");
-    if (view === "that run open") await dashboard.openRun(runId);
+    if (view === "that run open") {
+      const handoff = page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return url.pathname === "/events/v1" && url.searchParams.get("topics")?.split(",").includes(`run:${runId}`) === true;
+      }).then(async response => {
+        expect(response.status(), response.ok() ? "the run panel stream opens" : await response.text()).toBe(200);
+      });
+      await Promise.all([dashboard.openRun(runId), handoff]);
+    }
     // The failed workflow-preference save reads Settings back up to 1.5 s apart; it must finish before counting.
     await quiet(page, seen, 2_000);
     seen.length = 0;

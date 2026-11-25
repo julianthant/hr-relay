@@ -7,7 +7,6 @@ import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
-import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
 import { RunDetailWireSchema, NotePageSchema } from "../../../src/models/dashboard/run-detail.js";
 import { parseViewRoute } from "../../../src/dashboard/app/navigation/view-route-model.js";
@@ -66,7 +65,7 @@ it("opens shared-lookup records through real routes and keyboard selection witho
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, {
-      workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" }),
+      workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: createPersonPreferences("preview"),
     }) })));
     await vi.waitFor(() => assert.ok(host.querySelector(`[data-queue-record-id="${records[0].recordId}"]`)));
     await act(async () => host.querySelector<HTMLElement>(`[data-queue-record-id="${records[0].recordId}"]`)?.click());

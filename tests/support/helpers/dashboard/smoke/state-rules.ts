@@ -525,6 +525,35 @@ export async function namedAndFocusable({ page, recordTabStop }: StateRuleContex
   return found;
 }
 
+/** A queue card's labels (status, dry run, counts) sit at the right of the title's line; a long title gives way before they wrap under it. */
+export function statusLabelOnTitleLine({ page }: StateRuleContext): Promise<readonly string[]> {
+  return page.evaluate(() => {
+    const found: string[] = [];
+    for (const body of document.querySelectorAll<HTMLElement>("[data-queue-body]")) {
+      const title = body.querySelector<HTMLElement>("[data-demo-row-title]")?.getBoundingClientRect();
+      const labels = body.querySelector<HTMLElement>("[data-queue-labels]")?.getBoundingClientRect();
+      if (title === undefined || labels === undefined || labels.width <= 1) continue;
+      const name = body.querySelector<HTMLElement>("[data-demo-row-title]")?.textContent?.trim().slice(0, 40) ?? "";
+      if (labels.top >= title.bottom || labels.bottom <= title.top) found.push(`the labels of "${name}" sit under the title, not on its line`);
+      else if (labels.left < title.right) found.push(`the labels of "${name}" overlap the title`);
+    }
+    return found;
+  });
+}
+
+/** Every page title (Settings and Analytics alike) is 20px. */
+export function pageTitle20px({ page }: StateRuleContext): Promise<readonly string[]> {
+  return page.evaluate(() => {
+    const found: string[] = [];
+    for (const title of document.querySelectorAll<HTMLElement>(".ds-page-heading-title")) {
+      if (title.getBoundingClientRect().width <= 1) continue;
+      const size = getComputedStyle(title).fontSize;
+      if (size !== "20px") found.push(`the page title "${title.textContent?.trim().slice(0, 40) ?? ""}" is ${size}, not 20px`);
+    }
+    return found;
+  });
+}
+
 /** Every rule. The check loop runs them in `STATE_RULE_NAMES` order: focus near the end because it moves focus, diagnostics last so late failures count. */
 export const STATE_RULES: Readonly<Record<StateRuleName, { readonly check: StateRuleCheck; readonly failure: string }>> = Object.freeze({
   "fits-viewport": { check: fitsViewport, failure: "sideways scroll or clipped text at this size" },
@@ -537,5 +566,7 @@ export const STATE_RULES: Readonly<Record<StateRuleName, { readonly check: State
   "primary-button-accent": { check: primaryButtonAccent, failure: "a primary button that is not the one accent" },
   "no-dead-disabled-control": { check: noDeadDisabledControl, failure: "a control shown switched off with nothing to choose" },
   "named-and-focusable": { check: namedAndFocusable, failure: "an interactive element with no name or no visible focus ring" },
+  "status-label-on-title-line": { check: statusLabelOnTitleLine, failure: "a queue card whose status label wraps under the title" },
+  "page-title-20px": { check: pageTitle20px, failure: "a page title that is not 20px" },
   "declared-diagnostics": { check: declaredDiagnostics, failure: "console errors, page errors, failed requests or HTTP errors the story does not declare" },
 });

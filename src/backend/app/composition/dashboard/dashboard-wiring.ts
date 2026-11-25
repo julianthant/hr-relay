@@ -132,7 +132,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   let startupPending: (workflowId: string) => boolean = () => false;
   const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database: history, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader, listNotifications: notificationReads.list });
 
-  const { noteWriter, timelineTimer, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, lifecycle, debugEvents });
+  const { noteWriter, stopTimeline, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, lifecycle, debugEvents });
 
   const reportSupervisorFault = (error: Error, origin?: Readonly<{ workerId: string; pid?: number }>): void => {
     const detail = error instanceof WorkerPoolError ? error.detail : {}, pid = origin?.pid ?? detail.pid;
@@ -454,5 +454,5 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   startupCleanups.push(() => clearInterval(historyTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, takeWorkerStopFailures: workers.pool.takeShutdownStopFailures, server, gateParkTimer, historyTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, assistantAuthorization, shutdownRequested, noteWriter, stopTimeline, diagnosticRetentionTimer, hub, stopWorkerControl, takeWorkerStopFailures: workers.pool.takeShutdownStopFailures, server, gateParkTimer, historyTimer, custody });
 }
