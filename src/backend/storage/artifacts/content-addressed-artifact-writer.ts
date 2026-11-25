@@ -3,7 +3,7 @@ import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js"
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { createHash, randomUUID } from "node:crypto";
-import { constants, openSync, closeSync, readFileSync, readSync, unlinkSync, fsyncSync, linkSync, readdirSync } from "node:fs";
+import { constants, openSync, closeSync, readSync, unlinkSync, fsyncSync, linkSync, readdirSync } from "node:fs";
 import {
   link,
   mkdir,
@@ -103,6 +103,9 @@ export function decodeStoredArtifact(input: unknown, expectedDigest: string): Re
   return Object.freeze({ ref: Object.freeze(stored.ref), bytes });
 }
 
+const STORED_REF_KEY = Buffer.from("{\"ref\":"), STORED_PAYLOAD_KEY = Buffer.from(",\"payloadBase64\":\""), STORED_PAYLOAD_END = Buffer.from("\"}");
+const DELETION_PROOF_CHUNK_BYTES = 1024 * 1024, JSON_WHITESPACE = [0x20, 0x09, 0x0a, 0x0d];
+
 function inspectDeletionFile(admission: RuntimeAdmission, input: ArtifactRef) {
   requireRuntimeAdmission(admission).assertLive();
   const ref = ArtifactRefSchema.parse(input);
@@ -112,10 +115,29 @@ function inspectDeletionFile(admission: RuntimeAdmission, input: ArtifactRef) {
   try {
     const status = descriptorStatus(handle);
     if (!status.isFile()) throw new Error("artifact-deletion-file-not-regular");
-    const stored = readFileSync(handle);
-    const decoded = decodeStoredArtifact(JSON.parse(stored.toString("utf8")) as unknown, ref.sha256);
-    if (decoded.ref.id !== ref.id || decoded.ref.bytes !== ref.bytes || decoded.ref.mediaType !== ref.mediaType) throw new Error("artifact-deletion-reference-mismatch");
-    return {path,device:status.dev,inode:status.ino,ref,storedSha256:createHash("sha256").update(stored).digest("hex"),storedBytes:stored.byteLength};
+    // Custody needs only the stored bytes' hash and the ref header; decoding the payload cost 30 ms on a 17 MB artifact.
+    const size = privateFileNumber(status.size), hash = createHash("sha256"), chunk = Buffer.allocUnsafe(Math.min(size + 1, DELETION_PROOF_CHUNK_BYTES));
+    let storedBytes = 0, header: Buffer | undefined;
+    for (let read = readSync(handle, chunk, 0, chunk.byteLength, null); read > 0; read = readSync(handle, chunk, 0, chunk.byteLength, null)) {
+      const bytes = chunk.subarray(0, read);
+      header ??= Buffer.from(bytes);
+      hash.update(bytes);
+      storedBytes += read;
+    }
+    if (storedBytes !== size) throw new Error("artifact-deletion-custody-changed");
+    // JSON.parse accepted trailing whitespace, so the proof does too.
+    const window = Math.min(size, chunk.byteLength), tail = chunk.subarray(0, readSync(handle, chunk, 0, window, size - window));
+    let end = tail.byteLength;
+    while (end > 0 && JSON_WHITESPACE.includes(tail[end - 1] ?? 0)) end--;
+    const payloadEnd = size - (tail.byteLength - end) - STORED_PAYLOAD_END.byteLength;
+    const payloadStart = header?.indexOf(STORED_PAYLOAD_KEY) ?? -1;
+    if (header === undefined || payloadStart < STORED_REF_KEY.byteLength || !header.subarray(0, STORED_REF_KEY.byteLength).equals(STORED_REF_KEY)
+      || end < STORED_PAYLOAD_END.byteLength || !tail.subarray(end - STORED_PAYLOAD_END.byteLength, end).equals(STORED_PAYLOAD_END)) throw new Error("artifact-deletion-stored-shape-invalid");
+    const stored = ArtifactRefSchema.parse(JSON.parse(header.subarray(STORED_REF_KEY.byteLength, payloadStart).toString("utf8")) as unknown);
+    if (stored.sha256 !== ref.sha256) throw new Error(`artifact ${stored.id} content digest does not match ${ref.sha256}`);
+    if (payloadEnd - payloadStart - STORED_PAYLOAD_KEY.byteLength !== Math.ceil(stored.bytes / 3) * 4) throw new Error(`artifact ${stored.id} byte length does not match stored content`);
+    if (stored.id !== ref.id || stored.bytes !== ref.bytes || stored.mediaType !== ref.mediaType) throw new Error("artifact-deletion-reference-mismatch");
+    return {path,device:status.dev,inode:status.ino,ref,storedSha256:hash.digest("hex"),storedBytes};
   } finally { closeSync(handle); }
 }
 

@@ -1,12 +1,12 @@
 import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
 import { default as assert } from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { createContentAddressedArtifactWriter, pendingDiagnosticArtifacts, reclaimDiagnosticStages } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter, inspectArtifactDeletionFile, pendingDiagnosticArtifacts, reclaimDiagnosticStages, removeArtifactDeletionFile } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 
@@ -106,4 +106,34 @@ it.skipIf(process.platform !== "linux")("refuses an adjacent high-ID diagnostic 
     assert.deepEqual(readdirSync(f.admission.artifactRoot).sort(), before);
     substituted = false; stage.publish(); stage.dispose();
   } finally { restore(); await f.close(); }
+});
+
+it("proves a deletion file from one streamed hash without parsing its payload and keeps every reference check", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "artifact-deletion-proof-")));
+  const admission = RuntimeAdmission.syntheticRoots(join(root, "state"), join(root, "artifacts"));
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission });
+    const ref = await writer.put(Buffer.alloc(3 * 1024 * 1024 + 1, 7), { mediaType: "application/pdf" });
+    const path = join(admission.artifactRoot, `${ref.sha256}.artifact`), stored = readFileSync(path);
+    const parse = vi.spyOn(JSON, "parse");
+    try {
+      assert.deepEqual(inspectArtifactDeletionFile(admission, ref),
+        { ref, storedSha256: createHash("sha256").update(stored).digest("hex"), storedBytes: stored.byteLength });
+      assert.equal(parse.mock.calls.some(([text]) => typeof text === "string" && text.length > 64 * 1024), false);
+    } finally { parse.mockRestore(); }
+    for (const other of [{ id: "00000000-0000-4000-8000-000000000001" }, { bytes: ref.bytes + 1 }, { mediaType: "application/json" }]) {
+      assert.throws(() => inspectArtifactDeletionFile(admission, { ...ref, ...other }), /artifact-deletion-reference-mismatch/u);
+    }
+    const header = stored.subarray(0, stored.indexOf(",\"payloadBase64\":\""));
+    for (const [corrupt, error] of [[Buffer.concat([stored.subarray(0, stored.byteLength - 6), Buffer.from("\"}")]), /byte length does not match/u],
+      [Buffer.concat([stored.subarray(0, stored.byteLength - 2), Buffer.from("\"")]), /stored-shape-invalid/u],
+      [Buffer.from("{\"ref\":{}}"), /stored-shape-invalid/u],
+      [Buffer.concat([header, Buffer.from(",\"payloadBase64\":\"\"}")]), /byte length does not match/u]] as const) {
+      writeFileSync(path, corrupt);
+      assert.throws(() => inspectArtifactDeletionFile(admission, ref), error);
+    }
+    writeFileSync(path, stored);
+    assert.equal(removeArtifactDeletionFile(admission, inspectArtifactDeletionFile(admission, ref)), "removed");
+    assert.equal(existsSync(path), false);
+  } finally { admission.release(); rmSync(root, { recursive: true, force: true }); }
 });
