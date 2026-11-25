@@ -156,7 +156,8 @@ jobs:
         run: npm run lint
       - run: npm ci
         working-directory: fast-duo
-      - run: npm run lint
+      - name: Lint Fast Duo with Oxlint
+        run: npm run lint
         working-directory: fast-duo
 
   static:
