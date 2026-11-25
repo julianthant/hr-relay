@@ -15,7 +15,8 @@ export interface SettingsQueries {
   settingsFacts(): Promise<SettingsFactsWire>;
 
   /** The closed server-owned editable leaves with current revision and provenance. */
-  editableSettings(): Promise<EditableSettingsWire>;
+  /** `retry` is for the run-start checks, which ask a lost or late read again. */
+  editableSettings(options?: Readonly<{ retry?: boolean }>): Promise<EditableSettingsWire>;
   pickSettingsPath(request: NativePathPickerRequest): Promise<NativePathPickerResponse>;
 }
 
@@ -29,8 +30,8 @@ export function createSettingsQueries(transport: DashboardTransport): SettingsQu
       );
     },
 
-    async editableSettings(): Promise<EditableSettingsWire> {
-      try { return EditableSettingsWireSchema.parse(await transport.requestJson("/api/v1/settings/editable")); }
+    async editableSettings(options?: Readonly<{ retry?: boolean }>): Promise<EditableSettingsWire> {
+      try { return EditableSettingsWireSchema.parse(await transport.requestJson("/api/v1/settings/editable", undefined, options)); }
       catch (cause) { throw new DashboardClientError({ kind: "schema", code: "SETTINGS_READ_UNAVAILABLE", message: "GET /api/v1/settings/editable: settings could not be read or verified", cause }); }
     },
     async pickSettingsPath(request: NativePathPickerRequest): Promise<NativePathPickerResponse> {

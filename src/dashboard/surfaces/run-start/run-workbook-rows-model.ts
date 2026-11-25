@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DashboardClient } from "../../client/index.js";
-import { readWithDeadline } from "../../client/read-deadline.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../../models/failures/error-catalog.js";
 import { DashboardClientError, schemaError } from "../../client/errors.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -97,9 +96,8 @@ export function useWorkbookRows(client: Pick<DashboardClient, "workbookLibraryVe
   useEffect(() => {
     if (!enabled || !ready || version === undefined || keyFieldId === undefined || selectedSheetId === undefined) return;
     let current = true;
-    const controller = new AbortController();
     setLoaded(previous => ({ token, state: "loading", choices: previous?.choices ?? [], error: null }));
-    void readWithDeadline(() => client.workbookLibraryVersion(libraryId, version.id), "DASHBOARD_READ_FAILED", undefined, controller.signal).then(view => {
+    void client.workbookLibraryVersion(libraryId, version.id).then(view => {
       if (!current) return;
       if (view.libraryId !== libraryId || canonicalJsonStringify(view.version) !== canonicalJsonStringify(version)) throw schemaError("Saved spreadsheet version", "named version identity mismatch");
       setLoaded({ token, state: "ready", choices: workbookRowChoices(view.workbook, keyFieldId, selectedSheetId), error: null });
@@ -109,7 +107,7 @@ export function useWorkbookRows(client: Pick<DashboardClient, "workbookLibraryVe
         ? "BOUNDARY_VALIDATION_FAILED" : code.success ? code.data : "DASHBOARD_READ_FAILED";
       if (current) setLoaded(previous => ({ token, state: "error", choices: previous?.choices ?? [], error: ERROR_CATALOG[publicCode].text }));
     });
-    return () => { current = false; controller.abort(); };
+    return () => { current = false; };
   }, [client, token, enabled, ready, libraryId, version, keyFieldId, selectedSheetId]);
   const state = !enabled ? "idle" : !ready ? "stale" : loaded?.token !== token ? "loading" : loaded.state;
   return { authority: token, state, choices: loaded?.choices ?? [], error: state === "error" ? loaded?.error ?? null : null };
@@ -123,9 +121,8 @@ export function useWorkbookVersionSources(client: Pick<DashboardClient, "workboo
   const [loaded, setLoaded] = useState<{ token: object; sources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string; sheetName: string }>[]; error: string | null }>();
   useEffect(() => {
     if (!historical || libraryId === undefined || version === undefined) return;
-    const controller = new AbortController();
     let current = true;
-    void readWithDeadline(() => client.workbookLibraryVersion(libraryId, version.id), "DASHBOARD_READ_FAILED", undefined, controller.signal).then(view => {
+    void client.workbookLibraryVersion(libraryId, version.id).then(view => {
       if (!current) return;
       if (view.libraryId !== libraryId || canonicalJsonStringify(view.version) !== canonicalJsonStringify(version))
         throw schemaError("Saved spreadsheet version", "named version identity mismatch");
@@ -134,7 +131,7 @@ export function useWorkbookVersionSources(client: Pick<DashboardClient, "workboo
         ? [{ libraryId, versionId: version.id, sheetId: sheet.id, sheetName: sheet.name }] : []);
       setLoaded({ token, sources, error: null });
     }).catch(() => { if (current) setLoaded({ token, sources: [], error: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }); });
-    return () => { current = false; controller.abort(); };
+    return () => { current = false; };
   }, [client, token, historical, libraryId, version, requiredFields]);
   if (!historical) return { state: "ready" as const, sources: currentSources.filter(source => source.libraryId === libraryId), error: null };
   return loaded?.token !== token ? { state: "loading" as const, sources: [], error: null } : loaded.error !== null
@@ -163,7 +160,7 @@ export function useCheckVersionSheets(client: Pick<DashboardClient, "workbookLib
     };
     patch(Object.fromEntries(todo.map(([libraryId, versionId]) => [checkVersionKey(libraryId, versionId), { state: "loading" as const, sheets: [] }])));
     for (const [libraryId, versionId] of todo) {
-      void readWithDeadline(() => client.workbookLibraryVersion(libraryId, versionId), "DASHBOARD_READ_FAILED", undefined, new AbortController().signal).then(view => {
+      void client.workbookLibraryVersion(libraryId, versionId).then(view => {
         const sheets = view.workbook.sheets.filter(sheet => (sheet.columnBindings ?? []).some(binding => binding.fieldId === keyFieldId && binding.basis !== "unmapped"))
           .map(sheet => ({ sheetId: sheet.id, sheetName: sheet.name }));
         patch({ [checkVersionKey(libraryId, versionId)]: { state: "ready", sheets } });

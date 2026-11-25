@@ -51,7 +51,7 @@ describe("terminal failures remain observable", () => {
     const api = read("src/backend/transports/http/routes/api.ts");
     assert.ok(api.includes("registerDebugResponses(app, debugEvents)"));
     assert.ok(api.indexOf("registerDebugResponses(app, debugEvents)") < api.indexOf('app.use("*"'));
-    assert.match(read("src/backend/transports/http/routes/debug-responses.ts"), /debugFailureOutcomes\(body, c.res.status\)[\s\S]*writer.emit/u);
+    assert.match(read("src/backend/transports/http/routes/debug-responses.ts"), /debugFailureOutcomes\(body, c.res.status, c.req.method === "GET" \? c.req.routePath : undefined\)[\s\S]*writer.emit/u);
   });
   it("requires retained asynchronous logging faults to surface at readback", () => {
     const source = 'app.post("/auth", c => { try { record(); } catch (error) { current.loggingFailure = { cause: error }; } if (current.loggingFailure !== undefined) return c.json(wireError("LOGGING_UNAVAILABLE", "unavailable", false), 500); });';

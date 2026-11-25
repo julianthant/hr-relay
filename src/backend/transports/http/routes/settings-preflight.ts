@@ -73,7 +73,7 @@ export function registerSettingsPreflightRoutes(app: DashboardApp, deps: Setting
   app.get("/api/v1/preflight", c => {
     const raw = c.req.query("selection");
     const selection = raw === undefined ? undefined : PreflightSelectionSchema.parse(JSON.parse(raw) as unknown);
-    return c.json(deps.preflight.read?.(selection) ?? { state: "unavailable", reason: "Preflight report reader is unavailable." });
+    return c.json(deps.preflight.read?.(selection) ?? { state: "unavailable", code: "PREFLIGHT_READ_FAILED", reason: "Preflight report reader is unavailable." });
   });
   const preflightStarts: number[] = [];
   let preflightActive = false;
