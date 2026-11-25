@@ -28,6 +28,7 @@ import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../..
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { assertChildFrameCaptureMasks } from "../../../support/helpers/browser/full-page-capture.js";
 
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const FORM = `<!doctype html><form action="${SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="username"><label for="ssopassword">Password</label><input id="ssopassword" name="password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
@@ -614,6 +615,15 @@ it("keeps headed evidence independent of native window size and gives resizing b
     assert.equal(await page.locator("[data-mask]").evaluate(element => getComputedStyle(element).opacity), "1");
     await cdp.detach();
   } finally { await context.close(); }
+});
+
+it("masks same-origin and cross-origin child frame pixels in headed evidence", async () => {
+  const browser = await chromium.launch({ headless: false });
+  try {
+    const context = await browser.newContext({ viewport: null });
+    try { await assertChildFrameCaptureMasks(await context.newPage()); }
+    finally { await context.close(); }
+  } finally { await browser.close(); }
 });
 
 for (const expire of [false, true]) it(`real public Reopen proves owned stop, native retry and exact request custody (expired=${expire})`, async () => {
