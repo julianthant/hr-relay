@@ -1255,7 +1255,7 @@ function workbookInspectionReaders(database: DatabaseSync) {
   };
   return {
     remember,
-    saved(json: string): SavedWorkbook {
+    saved: (json: string): SavedWorkbook => {
       const { envelope, payload } = read(json);
       const record = savedWire.parse({ ...envelope, workbook: payload.workbook });
       const workbook = payload.native ??= decodeEditableWorkbook(record.workbook);
