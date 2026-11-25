@@ -141,10 +141,11 @@ export function timelineEvidenceRepositories(database: DatabaseSync, read: Store
   };
 }
 
-export function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, appending = false, read: StoredReaders = CURRENT_READERS): void {
+export function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, appending = false, read: StoredReaders = CURRENT_READERS,
+  readOwner = (runId: string) => readTimelineRun(database, runId, read)): void {
     const refuse = appending ? Error : authorityIntegrityError;
     if (record.scope.kind !== "run") return;
-    const run = readTimelineRun(database, record.scope.runId, read);
+    const run = readOwner(record.scope.runId);
     if (run === undefined) throw refuse("timeline-event-owner-missing");
     if (run.envelope.workflow !== record.workflow) throw refuse("timeline-event-owner-mismatch");
     if (record.payload.kind === "workbook-write-recorded") {
@@ -277,9 +278,9 @@ export function authenticateStoredWriteResolution(database: DatabaseSync, input:
   authenticateParkedWriteResolution(intent,nativeOrdinaryRecordFromRow("write_attempts",attempt),read.command(command),nativeOrdinaryRecordFromRow("command_audits",audit));
 }
 
-export function authenticateStoredResolutionAudit(database: DatabaseSync,input:unknown,read: StoredReaders = CURRENT_READERS):void {
+export function authenticateStoredResolutionAudit(database: DatabaseSync,input:unknown,read: StoredReaders = CURRENT_READERS) {
   const audit=NativeCommandAuditSchema.parse(input);
-  if (!("writeResolution" in audit) || audit.writeResolution === undefined) return;
+  if (!("writeResolution" in audit) || audit.writeResolution === undefined) return audit;
   const intent=audit.writeResolution;
   if (intent.status !== "parked" && ((intent.status !== "committed" && intent.status !== "retryable") || intent.resolution === undefined)) throw authorityIntegrityError("parked-write-resolution-audit-authority-missing");
   const attemptId = intent.status === "parked" ? intent.currentAttemptId : intent.resolution?.writeAttemptId;
@@ -288,6 +289,7 @@ export function authenticateStoredResolutionAudit(database: DatabaseSync,input:u
   const command=database.prepare("SELECT * FROM commands WHERE id=?").get(audit.request.commandId);
   if(attempt === undefined || command === undefined) throw authorityIntegrityError("parked-write-resolution-audit-authority-missing");
   authenticateAuditedParkedWriteResolution(nativeOrdinaryRecordFromRow("write_attempts",attempt),read.command(command),audit);
+  return audit;
 }
 
 export function readDelegationRefreshCommands(database: DatabaseSync, runId: string, read: StoredReaders = CURRENT_READERS) {

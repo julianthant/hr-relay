@@ -11,7 +11,7 @@ import { RunResultRecordSchema } from "../../../models/run/result.js";
 import { deriveBulkChildCommand } from "../../../rules/commands/command-groups.js";
 import { BulkParentCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
-import { NativeCommandAuditSchema, convertPredecessorCommandRowState } from "./command-record-row.js";
+import { convertPredecessorCommandRowState } from "./command-record-row.js";
 import { deletedRunFromRow } from "./deleted-run-row.js";
 import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
 import { generatedArtifactFromRow } from "./generated-artifacts.js";
@@ -278,7 +278,8 @@ export function nativeTableKey(table: AuthorityTableName | "explorer_overrides" 
 
 /** What validating one stored row needs: the store, its schema's readers and the row conversions of the schemas above it. */
 type StoredRowContext = Readonly<{ database: DatabaseSync; read: StoredReaders; expectedSchemaVersion: number; predecessorCustody: boolean;
-  convertPreferences: (table: string, row: unknown) => unknown; commandOutcomeInSnapshot?: StatementSync }>;
+  convertPreferences: (table: string, row: unknown) => unknown; commandOutcomeInSnapshot?: StatementSync;
+  timelineOwnerInSnapshot?: (id: string) => ReturnType<typeof readTimelineRun> }>;
 
 const CommandOutcomeRowSchema = z.object({ outcome_json: z.string() });
 
@@ -302,10 +303,20 @@ export function validatedRowByRow(table: AuthorityTableName | "explorer_override
 
 export function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, workbookPayloads = true): number {
   return withoutNativeRecordReadMemo(() => {
+    const readers = storedRowContext(database, expectedSchemaVersion);
     // The full current-schema scan validates every command, including the binding between its request and outcome.
     const commandOutcomeInSnapshot = database.isTransaction && expectedSchemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION
       ? database.prepare("SELECT outcome_json FROM commands WHERE id=?") : undefined;
-    const context = { ...storedRowContext(database, expectedSchemaVersion), commandOutcomeInSnapshot };
+    // All timeline owners are read and strictly parsed against this scan's SQLite snapshot.
+    const owners = new Map<string, ReturnType<StoredReaders["run"]>>();
+    const timelineOwnerInSnapshot = !database.isTransaction ? undefined : (id: string) => {
+      const prior = owners.get(id);
+      if (prior !== undefined) return prior;
+      const owner = readTimelineRun(database, id, readers.read);
+      if (owner !== undefined && owners.size < 256) owners.set(id, owner);
+      return owner;
+    };
+    const context = { ...readers, commandOutcomeInSnapshot, timelineOwnerInSnapshot };
     if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertAssistantHistoryRetirable(database, nativeOrdinaryRecordFromRow);
     let validated = 0;
     const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
@@ -365,8 +376,8 @@ export function validateStoredRow(context: StoredRowContext, table: AuthorityTab
         else if (table === "assistant_conversations") assistantConversationFromRow(raw);
         else if (table === "assistant_messages") assistantMessageFromRow(raw);
         else if (table === "assistant_attachments") assistantAttachmentFromRow(raw);
-        else if (table === "timeline_events") assertTimelineOwner(database,(expectedSchemaVersion < DEBUG_EVENTS_MIGRATION.version ? predecessorTimelineEventFromRow : timelineEventFromRow)(raw),false,read);
-        else if (table === "debug_events") assertTimelineOwner(database,debugEventFromRow(raw),false,read);
+        else if (table === "timeline_events") assertTimelineOwner(database,(expectedSchemaVersion < DEBUG_EVENTS_MIGRATION.version ? predecessorTimelineEventFromRow : timelineEventFromRow)(raw),false,read,context.timelineOwnerInSnapshot);
+        else if (table === "debug_events") assertTimelineOwner(database,debugEventFromRow(raw),false,read,context.timelineOwnerInSnapshot);
         else if (table === "artifacts") {
           const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
           if (kind === "imported") importedArtifactFromRow(raw);
@@ -403,8 +414,7 @@ export function validateStoredRow(context: StoredRowContext, table: AuthorityTab
           if (table === "run_receipts" && expectedSchemaVersion >= 20) assertRefreshedReceiptSettlement(database,RunEvidenceReceiptSchema.parse(record),raw,expectedSchemaVersion);
           if (table === "write_intents") { authenticateStoredWriteResolution(database,record,read); assertConfirmationPublication(database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId,read); }
           if (table === "command_audits") {
-            const audit = NativeCommandAuditSchema.parse(record);
-            authenticateStoredResolutionAudit(database,audit,read);
+            const audit = authenticateStoredResolutionAudit(database,record,read);
             let commandOutcome: unknown;
             if (context.commandOutcomeInSnapshot !== undefined) {
               commandOutcome = context.commandOutcomeInSnapshot.get(audit.request.commandId);
