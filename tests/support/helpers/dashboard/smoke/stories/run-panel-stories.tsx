@@ -6,7 +6,7 @@ import type { z } from "zod";
 import { WriteStateSchema } from "../../../../../../src/models/trust/failure.js";
 import { projectFailureDisplay } from "../../../../../../src/models/dashboard/failure-display.js";
 import type { RunDecisionType } from "../../../../../../src/models/dashboard/run-decision.js";
-import type { QueueStatusSchema } from "../../../../../../src/models/dashboard/projection.js";
+import { QueueMemberTargetSchema, type QueueStatusSchema } from "../../../../../../src/models/dashboard/projection.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../../src/models/failures/error-catalog.js";
 import { ErrorCodeSchema, IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
 import { Badge, Banner, Notice, FailureNotice } from "../../../../../../src/dashboard/ds/ui.js";
@@ -119,7 +119,7 @@ const LOG_HEADER = {
   "search-child": { ...panel("Search on a running child run", { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("running", 41)} />,
     toolbar: <LogActionButton size="sm" label="Back to Emergency Contact batch" aria-label="Back to Emergency Contact batch" className="max-w-48" icon={<ArrowLeft aria-hidden className="size-4 shrink-0" />} text={<span className="min-w-0 truncate">Emergency Contact batch</span>} />,
     headerActions: <><LogHeaderButton label="Pause Alex Morgan" icon={<Pause aria-hidden className="size-4" />} onClick={noop} /><LogHeaderButton label="Stop Alex Morgan" icon={<Square aria-hidden className="size-4" />} onClick={noop} /></>,
-    linkedRuns: [{ relation: "Parent", name: "Emergency Contact batch", workflow: "Emergency Contact", status: "Running", target: { runId: "parent-run" } as LinkedRunEntry["target"] }] }),
+    linkedRuns: [{ relation: "Parent", name: "Emergency Contact batch", workflow: "Emergency Contact", status: "Running", target: QueueMemberTargetSchema.parse({ section: "logs", runId: "parent-run", partitionDay: "2026-08-03", workflowId: "emergency-contact", label: "Emergency Contact", panelKind: "run", status: "running" }) }] }),
     play: search("employment"), ready: "text=/\\d+ of \\d+/" },
   "menu-open": headerRun("The ⋯ menu open", async page => { await page.getByRole("button", { name: "More actions" }).press("Enter"); }, "[role='menu']"),
 } satisfies Record<string, Story>;
