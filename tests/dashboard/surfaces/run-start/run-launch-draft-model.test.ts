@@ -8,7 +8,7 @@ import {
   restoreRerunDraft, selectWorkbookRows, selectedStepKeys, setLaunchField, toggleManual, toggleRow, typedDraftOf, type LaunchDraft, type LaunchRequestInputs,
 } from "../../../../src/dashboard/surfaces/run-start/run-launch-draft-model.js";
 import { initialRunDialogState, visibleRunDialog, type RunDialogState } from "../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
-import { startRowsOf, type StepRow } from "../../../../src/dashboard/surfaces/run-start/run-steps-model.js";
+import { sourceBadge, startRowsOf, type StepRow } from "../../../../src/dashboard/surfaces/run-start/run-steps-model.js";
 import { RerunValuesRequestSchema, RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
 
@@ -306,6 +306,18 @@ describe("rerun restore", () => {
     const done = withTyped({ source: { ...snapshot.source, outcome: "done" }, steps: snapshot.steps.map(step => ({ ...step, state: "completed",
       nodes: step.nodes.map(node => ({ ...node, state: "completed", reason: "checkpoint" })) })) });
     assert.deepEqual(selectedStepKeys(restoreRerunDraft(done, ran), ran), ["read", "write", "finish"]);
+  });
+  const cancelled = (extra: Record<string, unknown> = {}) => withTyped({ source: { ...snapshot.source, outcome: "cancelled" },
+    steps: [snapshot.steps[0], { key: "write", state: "unfinished", nodes: [{ nodeId: "write", state: "unfinished", reason: "incomplete-execution" }] },
+      { key: "finish", state: "unfinished", nodes: [{ nodeId: "finish", state: "unfinished", reason: "not-recorded" }] }], ...extra });
+  it("badges a step the cancelled source began as Cancelled and one it never reached as Not started", () => {
+    assert.deepEqual(["read", "write", "finish"].map(key => sourceBadge(row(key), cancelled())), ["completed", "cancelled", "not-started"]);
+  });
+  it("picks a cancelled source up where it would if the begun step had not started", () => {
+    const ran = { ...plain, steps: plain.steps.slice(0, 3) };
+    const neverBegun = cancelled({ steps: cancelled().steps.map(step => ({ ...step, nodes: step.nodes.map(node => node.reason === "incomplete-execution" ? { ...node, reason: "not-recorded" } : node) })) });
+    assert.equal(sourceBadge(row("write"), neverBegun), "not-started");
+    assert.deepEqual(selectedStepKeys(restoreRerunDraft(cancelled(), ran), ran), selectedStepKeys(restoreRerunDraft(neverBegun, ran), ran));
   });
   it("keeps the source's mode, priority, browser and spreadsheets, and nothing of the draft before it", () => {
     const reading: RunStartWorkflow = { ...plain, workbookReference: { id: "roster", keyFieldId: "eid", mode: "keys", writableFields: [] }, workbookCheck: { id: "check", keyFieldId: "eid" } };

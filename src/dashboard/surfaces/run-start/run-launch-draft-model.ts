@@ -269,7 +269,7 @@ export function rowInputDriven(workflow: RunStartWorkflow | undefined, typedValu
  * A row stays on when switching it off would take a later row with it, or leave a value nobody recorded to type. */
 function preselectRerunSteps(draft: LaunchDraft, snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow): LaunchDraft {
   const rows = startRowsOf(workflow), badges = rows.map(row => sourceBadge(row, snapshot));
-  const failed = badges.indexOf("failed"), restart = failed >= 0 ? failed : rerunsInOneClick(snapshot) ? 0 : Math.max(0, badges.indexOf("not-started"));
+  const failed = badges.indexOf("failed"), restart = failed >= 0 ? failed : rerunsInOneClick(snapshot) ? 0 : Math.max(0, badges.findIndex(badge => badge === "cancelled" || badge === "not-started"));
   const leavesOut = (index: number) => badges[index] === "skipped" || badges[index] === "completed" && index < restart;
   let next = draft;
   for (const [index, row] of rows.entries()) {

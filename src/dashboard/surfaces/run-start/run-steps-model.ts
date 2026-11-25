@@ -163,7 +163,7 @@ export function firstStepsFailure(open: readonly OpenStepRow[]): StepsFailure | 
 }
 
 /** The source outcome a row's badge shows, from the nodes of the steps it is made of. */
-export type SourceBadge = "completed" | "skipped" | "failed" | "not-started";
+export type SourceBadge = "completed" | "skipped" | "failed" | "cancelled" | "not-started";
 
 export function sourceBadge(row: StepRow, snapshot: RerunValuesSnapshot): SourceBadge | undefined {
   const nodes = row.members.flatMap(member => {
@@ -174,7 +174,8 @@ export function sourceBadge(row: StepRow, snapshot: RerunValuesSnapshot): Source
   if (nodes.length === 0) return undefined;
   if (nodes.some(node => node.state === "failed")) return "failed";
   if (nodes.every(node => node.reason === "step-omitted" || node.reason === "operator-asserted")) return "skipped";
-  return nodes.every(node => node.state === "completed") ? "completed" : "not-started";
+  if (nodes.every(node => node.state === "completed")) return "completed";
+  return snapshot.source.outcome === "cancelled" && nodes.some(node => node.reason === "incomplete-execution") ? "cancelled" : "not-started";
 }
 
 /** The facts the source run typed for a row's step, offered again as typed by hand. */
