@@ -20,6 +20,7 @@ import {
 import { createUcpathPersonOrgDriver } from "../../systems/ucpath/driver/interpreter.js";
 import { ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../systems/ucpath/session.js";
 import type { Page } from "playwright";
+import { holdNativeViewport } from "./native-viewport.js";
 
 export interface BrowserSystemBinding {
   readonly system: BrowserSystemId;
@@ -41,8 +42,14 @@ export const BROWSER_SYSTEM_BINDINGS: BrowserSystemBindings = Object.freeze({
   }),
   ucpath: Object.freeze({
     system: "ucpath",
-    createDriver: (page: Page, clock: Clock, assertCurrent: () => void): BrowserDriver =>
-      createUcpathPersonOrgDriver(assertCurrent, page, clock),
+    createDriver: (page: Page, clock: Clock, assertCurrent: () => void): BrowserDriver => {
+      const driver = createUcpathPersonOrgDriver(assertCurrent, page, clock);
+      return Object.freeze({ ...driver,
+        readTransactionFindings: holdNativeViewport(page, assertCurrent, driver.readTransactionFindings),
+        scanTerminationTransactions: holdNativeViewport(page, assertCurrent, driver.scanTerminationTransactions),
+        stagePendingTerminationSweep: holdNativeViewport(page, assertCurrent, driver.stagePendingTerminationSweep),
+      });
+    },
     login: ucpathLoginRecipe,
     verifyAuthenticated: verifyUcpathAuthenticatedApplication,
   }),
@@ -67,8 +74,12 @@ export const BROWSER_SYSTEM_BINDINGS: BrowserSystemBindings = Object.freeze({
   }),
   "new-kronos": Object.freeze({
     system: "new-kronos",
-    createDriver: (page: Page, clock: Clock, assertCurrent: () => void): BrowserDriver =>
-      createNewKronosTimecardDriver(assertCurrent, page, clock),
+    createDriver: (page: Page, clock: Clock, assertCurrent: () => void): BrowserDriver => {
+      const driver = createNewKronosTimecardDriver(assertCurrent, page, clock);
+      return Object.freeze({ ...driver,
+        readSeparationTimecard: holdNativeViewport(page, assertCurrent, driver.readSeparationTimecard),
+      });
+    },
     login: newKronosLoginRecipe,
     verifyAuthenticated: verifyNewKronosAuthenticatedApplication,
   }),

@@ -10,6 +10,7 @@ import { BrowserSessionClosureUnprovedError, BrowserProfileStillClosingError, ty
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { installNativeSsoGuard } from "../../systems/browser-shared/ucsd-sso-guard.js";
+import { fitNativeWindow } from "./native-viewport.js";
 
 export class BrowserLaunchUncertainError extends BrowserSessionClosureUnprovedError {
   constructor(errors: readonly unknown[], message: string, options?: ErrorOptions) {
@@ -44,11 +45,10 @@ export interface PersistentContextLauncher {
     extensionDirectory: string;
     acceptDownloads: boolean;
     downloadsPath: string;
-    viewport: Readonly<{ width: number; height: number }>;
+    viewport: Readonly<{ width: number; height: number }> | null;
     timeoutMs?: number;
     nativeOnly?: true;
     disablePasswordManager?: true;
-    defaultContextOptions?: true;
     ownedProcess?: (process: OwnedBrowserProcess) => void;
   }>): Promise<BrowserContext>;
 }
@@ -134,6 +134,7 @@ async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["
   });
   const stopped = exit.then(async () => { await closed; throw new Error(profileInUse && exited ? PROFILE_IN_USE_MESSAGES[0] : "DUO_SETUP_OPEN_FAILED", birthFailure === undefined ? undefined : { cause: birthFailure }); });
   startup.connecting = (async () => {
+    // Owned Duo windows retain Chromium's native viewport when Playwright attaches.
     const browser = await chromium.connectOverCDP(transport, { timeout: timeoutMs, noDefaults: true });
     const context = browser.contexts()[0];
     if (!context || browser.contexts().length !== 1) throw new Error("DUO_SETUP_OPEN_FAILED");
@@ -163,12 +164,21 @@ export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
       headless: input.headless,
       ...(input.timeoutMs === undefined ? {} : { timeout: input.timeoutMs }),
       acceptDownloads: input.acceptDownloads,
-      ...(input.defaultContextOptions === true && input.nativeOnly !== true ? {} : { downloadsPath: input.downloadsPath, viewport: input.viewport }),
+      downloadsPath: input.downloadsPath,
+      viewport: input.viewport,
       args: [
         ...(input.nativeOnly === true ? ["--disable-extensions"] : [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`]),
         ...(input.disablePasswordManager === true ? ["--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"] : []),
       ],
     });
+    if (!input.headless && input.viewport === null) {
+      try { await fitNativeWindow(context.pages()[0] ?? await context.newPage()); }
+      catch (error) {
+        try { await context.close(); }
+        catch (closure) { throw new BrowserLaunchUncertainError([error, closure], "visible browser launch closure unproved", { cause: error }); }
+        throw error;
+      }
+    }
     await installNativeSsoGuard(context);
     return context;
   },

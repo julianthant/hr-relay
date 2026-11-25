@@ -62,6 +62,26 @@ async function image(resource: WorkerBrowserResource) {
 const pixel = (png: PNG, x: number, y: number) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)];
 
 describe("whole-page factory screenshots", () => {
+  it("captures a native viewport at the evidence size and leaves it under window control", async () => {
+    const context = await browser.newContext({ viewport: null });
+    try {
+      const page = await context.newPage();
+      await page.setContent(html(content));
+      const dimensions = () => page.evaluate(() => [window.innerWidth, window.innerHeight]);
+      const originalSize = await dimensions();
+      const image = await captureFullPage(page, {
+        assertCurrent: () => {}, assertSafe: async () => {}, afterCapture: async () => {},
+        secretControls: 'input[type="password"]', mask: () => [],
+      });
+      const png = PNG.sync.read(Buffer.from(image.bytes));
+      assert.deepEqual([png.width, png.height], [1280, 3000]);
+      assert.deepEqual(pixel(png, 20, 20), [210, 20, 30]);
+      assert.deepEqual(pixel(png, 20, 2980), [20, 30, 210]);
+      assert.equal(page.viewportSize(), null);
+      assert.deepEqual(await dimensions(), originalSize);
+    } finally { await context.close(); }
+  });
+
   it("adds a visible dry-run sample banner without hiding any form pixels and removes the temporary label", async () => {
     await withPage(content, async (page, resource) => {
       const plain = await image(resource);
