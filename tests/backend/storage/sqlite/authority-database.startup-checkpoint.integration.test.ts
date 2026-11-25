@@ -15,11 +15,13 @@ import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sql
 import { authorityContentFingerprint, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { withReadonlyAuthoritySnapshot, withReusableReadonlyAuthoritySnapshots } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { readStartupFile } from "../../../../src/backend/storage/sqlite/startup-file-proof.js";
+import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
@@ -226,7 +228,15 @@ it("reuses a verified stopped image across a fresh copy of the same source bytes
 
 it("fingerprints all stored rows while inspecting a current authority snapshot", async () => {
   const f = await store();
+  const writer = f.open();
+  try {
+    createWorkbookLibraryService({ repository: writer.authority.workbooks, sync: unexpectedWorkbookSync,
+      clock: manualClock(new Date("2026-10-15T12:00:00.000Z")) })
+      .create({ name: "Roster", themes: [], hasFormulas: false, sheets: [{ id: "people", name: "People", width: 1, hidden: [],
+        rows: [{ id: "one", cells: [{ value: "Example, Avery" }] }] }] });
+  } finally { writer.close(); }
   withReadonlyAuthoritySnapshot(f.profile.path, database => {
+    expect(database.prepare("SELECT * FROM workbook_library").all()).toHaveLength(1);
     const fingerprint = authorityContentFingerprint(database);
     const prepare = vi.spyOn(database, "prepare");
     try {
