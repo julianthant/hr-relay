@@ -292,8 +292,8 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const accountFailure = resource !== undefined && 'code' in resource ? resource.code === 'CHATGPT_AUTH_UNAVAILABLE' ? ACCOUNT_READ_FAILED : ERROR_CATALOG[resource.code].text : undefined;
   const accountReadFailed = account.state === 'unavailable' && accountPort.refresh !== undefined;
   const [catalog, setCatalog] = useState<{ account: typeof account; models: AssistantModelCatalog['models'] }>();
-  // A list belongs to the account snapshot it was read for; the next accepted account shows none until its own is read.
-  const models = catalog?.account === account ? catalog.models : undefined;
+  // A list belongs to the account snapshot it was read for and is withdrawn while a check runs; the next account shows none until its own is read.
+  const models = !checking && catalog?.account === account ? catalog.models : undefined;
   useEffect(() => {
     const client = sessions.client;
     if (!readModels || !accountAvailable || client.assistantModels === undefined) return;
@@ -304,7 +304,7 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const onAction = (action: AssistantAction) => {
     if (!readChecking() || action.type !== 'send' && action.type !== 'retry') controller.action(action);
   };
-  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, onAction, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
+  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => readChecking() ? Promise.resolve() : controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, onAction, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
     accountAction: (checking || account.state === 'loading' ? undefined : accountReadFailed ? 'retry' : account.state === 'connected' || account.state === 'unavailable' || account.state === 'signing-in' ? 'settings' : 'sign-in'),
     accountRetry: () => { void accountPort.refresh?.(); },

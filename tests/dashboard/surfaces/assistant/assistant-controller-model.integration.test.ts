@@ -260,7 +260,7 @@ it('holds composing through the expiry check and shows only the accepted account
     const openMenuPick = current.chooseModel;
     now += 1_000; await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
     assert.equal(account.checks.length, 2);
-    assert.equal(current.models, undefined);
+    assert.equal(current.models === undefined, true);
     await act(async () => { await openMenuPick({ slug: 'first-model', effort: ASSISTANT_DEFAULT_EFFORT }); await current.chooseModel({ slug: 'first-model', effort: ASSISTANT_DEFAULT_EFFORT }); });
     assert.equal(preferenceReads, 0);
     assert.equal(current.canCompose, false); assert.equal(current.accountAvailable, false); assert.equal(current.accountAction, undefined);
