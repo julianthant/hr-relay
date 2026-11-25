@@ -47,6 +47,8 @@ const SystemIds = [
   "sharepoint",
 ] as const;
 
+export const BROWSER_SESSION_CAPABILITIES = deepFreeze(SystemIds.map(system => RuntimeCapabilitySchema.parse(`system.${system}.prod`)));
+
 function expectation(
   id: string,
   selectedFor: readonly RuntimeCapability[],
@@ -71,6 +73,7 @@ function providerExpectations(): readonly PreflightCheckSemanticExpectation[] {
 export const PREFLIGHT_CHECK_EXPECTATIONS = deepFreeze(PreflightCheckSemanticExpectationSchema.array().parse([
   expectation("runtime.compatibility", ["dashboard.serve", "executor.run"], ["dashboard.serve", "executor.run"]),
   expectation("browser.assets", ["executor.run"], ["executor.run"]),
+  expectation("browser.duo-key", BROWSER_SESSION_CAPABILITIES, BROWSER_SESSION_CAPABILITIES),
   expectation("config.valid", ["dashboard.serve", "executor.run"], ["dashboard.serve", "executor.run"]),
   expectation("filesystem.health", ["dashboard.serve", "executor.run"], ["dashboard.serve", "executor.run"]),
   expectation("authority.health", ["dashboard.serve", "executor.run"], ["dashboard.serve", "executor.run"]),

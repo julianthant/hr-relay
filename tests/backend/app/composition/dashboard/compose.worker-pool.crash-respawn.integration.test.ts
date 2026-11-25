@@ -6,7 +6,7 @@ import { QUEUE_NOT_STARTING_NO_WORKER } from "../../../../../src/models/dashboar
 import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
 import { createDashboardPoolTestWorld, type ControlHarness } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 
-const { WORKFLOW, WORKER_1, openControlHarness, settleMicrotasks, view, dashboardLaunch, launchCommands, planWorkers, cleanup } = createDashboardPoolTestWorld();
+const { WORKFLOW, WORKER_1, openControlHarness, settleMicrotasks, view, dashboardLaunch, launchCommands, planWorkers, envelope, memberTarget, cleanup } = createDashboardPoolTestWorld();
 afterEach(cleanup);
 
 function queueRow(h: ControlHarness, runId: string) {
@@ -29,6 +29,34 @@ async function stopMember(h: ControlHarness, reason: "operator" | "shutdown") {
 }
 
 describe("a crashed pool member is respawned once", () => {
+  it("keeps a queued run blocked with its worker setup refusal until an explicit start", async () => {
+    const h = await openControlHarness({ ready: false });
+    assert.equal((await launchCommands(h).submit(dashboardLaunch(h).request)).state, "applied");
+    await settleMicrotasks();
+    const child = h.children[0];
+    assert.ok(child);
+    child.emit({ kind: "worker-setup-refused", code: "DUO_READY_CREDENTIAL_REQUIRED" });
+    child.exit(1, null);
+    await settleMicrotasks();
+
+    assert.equal(view(h).exit?.outcome, "setup-refused");
+    assert.equal(view(h).exit?.failureCode, "DUO_READY_CREDENTIAL_REQUIRED");
+    assert.equal(h.children.length, 1);
+    const [run] = h.database.authority.runs.listByWorkflow(WORKFLOW);
+    assert.ok(run);
+    assert.equal(run.lifecycle.state, "queued");
+    assert.deepEqual(queueRow(h, run.envelope.runId)?.notStarting,
+      { code: "DUO_READY_CREDENTIAL_REQUIRED", summary: "Duo isn't set up. Set it up in Settings." });
+
+    const retry = h.kernel.executeWorkerPool({ ...envelope(h), type: "retry-worker", target: memberTarget(h) });
+    await settleMicrotasks();
+    assert.equal(h.children.length, 2);
+    h.children[1]?.ready();
+    assert.equal((await retry).state, "applied");
+    assert.equal(view(h).state, "running");
+    assert.equal(queueRow(h, run.envelope.runId)?.notStarting, undefined);
+  });
+
   it("respawns a crashed member once when work is queued, then leaves the next crash exited with Cancel", async () => {
     const h = await openControlHarness();
     assert.equal((await launchCommands(h).submit(dashboardLaunch(h, "10873690", { items: 2 }).request)).state, "applied");

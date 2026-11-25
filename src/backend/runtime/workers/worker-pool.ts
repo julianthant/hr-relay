@@ -1,4 +1,5 @@
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
+import type { WorkerSetupRefusalCode } from "../../../models/run/worker-control.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { IsoInstantSchema, type BrowserSystemId } from "../../../rules/identity/ids.js";
@@ -27,16 +28,15 @@ export interface WorkerProcessPort {
   onWorkerMessage(listener: (message: unknown) => void): void;
 }
 
-export interface WorkerExitFact {
+export type WorkerExitFact = Readonly<{
   readonly code: number | null;
   readonly signal: string | null;
   readonly at: string;
-  readonly outcome: "stopped" | "crashed";
-  /** The stop request that ended a stopped member. */
-  readonly reason?: WorkerStopReason;
-  /** The catalog code a crashed child reported before it exited. */
-  readonly failureCode?: ErrorCatalogCode;
-}
+}> & Readonly<
+  | { outcome: "stopped"; reason?: WorkerStopReason }
+  | { outcome: "crashed"; failureCode?: ErrorCatalogCode }
+  | { outcome: "setup-refused"; failureCode: WorkerSetupRefusalCode }
+>;
 
 export interface WorkerMemberView {
   readonly member: WorkerPoolMember;
@@ -71,6 +71,13 @@ export class WorkerPoolError extends Error {
   readonly detail: Readonly<{ pid?: number; field?: string }>;
   constructor(readonly code: ErrorCatalogCode, options?: ErrorOptions & { detail?: Readonly<{ pid?: number; field?: string }> }) {
     super(ERROR_CATALOG[code].text, options); this.name = "WorkerPoolError"; this.detail = options?.detail ?? {};
+  }
+}
+
+export class WorkerSetupRefusedError extends WorkerPoolError {
+  constructor(override readonly code: WorkerSetupRefusalCode) {
+    super(code);
+    this.name = "WorkerSetupRefusedError";
   }
 }
 
@@ -115,6 +122,7 @@ interface MemberRecord {
   browserSystems: readonly BrowserSystemId[] | undefined;
   stopReason: WorkerStopReason | undefined;
   failureCode: ErrorCatalogCode | undefined;
+  setupRefusal: WorkerSetupRefusalCode | undefined;
   held: WorkerMemberView["held"];
   exit: WorkerMemberView["exit"];
   settlementFailure: unknown;
@@ -160,13 +168,16 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   // The OS exit event is the only proof of death; nothing else moves a spawned member to exited.
   const onExit = async (record: MemberRecord, code: number | null, signal: string | null): Promise<void> => {
     record.state = "exited"; record.held = undefined;
-    const fact: WorkerExitFact = record.stopping === undefined
-      ? { code, signal, at: at(), outcome: "crashed", ...(record.failureCode === undefined ? {} : { failureCode: record.failureCode }) }
-      : { code, signal, at: at(), outcome: "stopped", ...(record.stopReason === undefined ? {} : { reason: record.stopReason }) };
+    const identity = { code, signal, at: at() };
+    const fact: WorkerExitFact = record.stopping !== undefined
+      ? { ...identity, outcome: "stopped", ...(record.stopReason === undefined ? {} : { reason: record.stopReason }) }
+      : record.setupRefusal !== undefined && code === 1 && signal === null
+        ? { ...identity, outcome: "setup-refused", failureCode: record.setupRefusal }
+        : { ...identity, outcome: "crashed", ...(record.failureCode === undefined ? {} : { failureCode: record.failureCode }) };
     try {
       cancelTimers(record);
       rejectPending(record, new WorkerPoolError("WORKER_EXITED"));
-      record.ready?.(new WorkerPoolError("WORKER_EXITED"));
+      record.ready?.(fact.outcome === "setup-refused" ? new WorkerSetupRefusedError(fact.failureCode) : new WorkerPoolError("WORKER_EXITED"));
       await deps.settleExit(record.member, fact);
       record.exit = { ...fact, settlement: "settled" };
     } catch (error) {
@@ -263,7 +274,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     }
     const message = parsed.data;
     if (message.kind === "worker-ready") {
-      const field = record.state !== "starting" ? "state" : message.workerId !== record.member.workerId ? "workerId"
+      const field = record.state !== "starting" || record.setupRefusal !== undefined ? "state" : message.workerId !== record.member.workerId ? "workerId"
         : message.pid !== record.port.pid ? "pid" : message.profileId !== deps.profileId ? "profileId"
           : message.sessionGeneration !== deps.sessionGeneration ? "sessionGeneration" : undefined;
       if (field !== undefined) {
@@ -287,6 +298,12 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       changed(record);
     } else if (message.kind === "worker-failed") {
       record.failureCode = message.code;
+    } else if (message.kind === "worker-setup-refused") {
+      if (record.state !== "starting" || record.setupRefusal !== undefined) {
+        fault(record, new WorkerIpcProtocolError(message.kind));
+        return;
+      }
+      record.setupRefusal = message.code;
     } else {
       const pending = record.pending.get(message.requestId);
       if (pending === undefined) { deps.onFault?.(record.member, new WorkerPoolError("WORKER_REQUEST_TIMED_OUT"), record.port.pid); return; }
@@ -363,7 +380,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       let resolveSettled!: () => void;
       const settled = new Promise<void>(resolve => { resolveSettled = resolve; });
       const record: MemberRecord = { member, lifetimeId: deps.ids.uuid(), port, startedAt: at(), version: 0, state: "starting", directive: "run", settling: false,
-        activity: undefined, browsers: new Map(), browserSystems: undefined, stopReason: undefined, failureCode: undefined, held: undefined, exit: undefined, settlementFailure: undefined, stopFailures: [],
+        activity: undefined, browsers: new Map(), browserSystems: undefined, stopReason: undefined, failureCode: undefined, setupRefusal: undefined, held: undefined, exit: undefined, settlementFailure: undefined, stopFailures: [],
         pending: new Map(), requestSequence: 0, timers: [], stopping: undefined, exited, resolveExited, settled, resolveSettled, ready: undefined };
       records.set(member.workerId, record);
       const readiness = new Promise<Error | undefined>(resolve => { record.ready = resolve; });

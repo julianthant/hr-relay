@@ -7,6 +7,7 @@ import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileDetailsChangeRequ
 import { formatDayTime, formatInstantDate } from "../../../lib/date-format.js";
 import { readBack } from "../../../app/commands/command-readback.js";
 import { DuoKeyNameSchema, type DuoKeyChange } from "../../../../models/config/duo-credential-store.js";
+import { DUO_SECURITY_TARGET } from "../preflight/preflight-remedy-model.js";
 import type { DuoKeyChangeResult, DuoKeysSnapshot } from "../../../../models/profiles/public-profile.js";
 
 export interface AccountValues {
@@ -315,7 +316,7 @@ function DuoSecurityKeys({ port, onSetup }: { port?: DuoKeysPort; onSetup?: () =
   };
 
   return <>
-    <ResultRow label="Duo" value={
+    <div data-settings-path={DUO_SECURITY_TARGET}><ResultRow label="Duo" value={
       <span className="inline-flex items-center justify-end gap-3">
         {snapshot !== undefined ? <span className="text-ui-primary">{ready ? "Ready" : "Not set up"}</span>
           : state?.state === "failed" || port === undefined ? <span>Duo keys unavailable</span>
@@ -324,7 +325,7 @@ function DuoSecurityKeys({ port, onSetup }: { port?: DuoKeysPort; onSetup?: () =
           void onSetup().then(failure => { if (failure !== undefined) toast({ tone: "danger", title: "Duo setup not opened", description: failure }); });
         }}>{ready ? "Set up again" : "Set up"}</Button>}
         {state?.state === "failed" && <Button variant="secondary" onClick={refresh}>Retry</Button>}
-      </span>} />
+      </span>} /></div>
     {port !== undefined && snapshot?.keys.map(key => {
       const name = key.name ?? `Key ${key.shortId}`;
       const dates = `Added ${formatInstantDate(key.addedAt)} · ${key.lastUsedAt === undefined ? "Last used unknown" : `Last used ${formatInstantDate(key.lastUsedAt)}`}`;

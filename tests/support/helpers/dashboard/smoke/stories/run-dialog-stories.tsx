@@ -8,6 +8,7 @@ import { RunStartDialog } from "../../../../../../src/dashboard/surfaces/run-sta
 import type { RunStartStage } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import type { LaunchActivity, LaunchRecovery, RerunLoad } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import { PreflightCheckIdSchema } from "../../../../../../src/models/preflight/preflight-contract.js";
+import { ERROR_CATALOG } from "../../../../../../src/models/failures/error-catalog.js";
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
@@ -20,9 +21,9 @@ import { StoryFrame } from "./story-frame.js";
 
 const noop = () => undefined;
 
-function DialogScene({ client, rerun, before, catalog = RUN_DIALOG_CATALOG }: { client: DashboardClient; rerun?: boolean; before?: () => void; catalog?: typeof RUN_DIALOG_CATALOG }) {
+function DialogScene({ client, rerun, before, theme, catalog = RUN_DIALOG_CATALOG }: { client: DashboardClient; rerun?: boolean; before?: () => void; theme?: "light"; catalog?: typeof RUN_DIALOG_CATALOG }) {
   before?.();
-  return <StoryFrame><DashboardClientProvider client={client}><SceneBinding>
+  return <StoryFrame theme={theme}><DashboardClientProvider client={client}><SceneBinding>
     <RunStartDialog open onOpenChange={noop} catalog={catalog} panelWorkflowId={RUN_DIALOG_WORKFLOW} actorId={RUN_DIALOG_ACTOR}
       onOpenIntake={noop} onFixCheck={noop} {...(rerun === true ? { rerunSource: RUN_DIALOG_RERUN_SOURCE } : {})} />
   </SceneBinding></DashboardClientProvider></StoryFrame>;
@@ -50,10 +51,10 @@ async function reach(page: Page, stage: RunStartStage, rerun: boolean): Promise<
   }
 }
 
-interface SceneOptions { readonly catalog?: typeof RUN_DIALOG_CATALOG; readonly rerun?: boolean; readonly then?: (page: Page) => Promise<void>; readonly before?: () => void }
+interface SceneOptions { readonly catalog?: typeof RUN_DIALOG_CATALOG; readonly rerun?: boolean; readonly then?: (page: Page) => Promise<void>; readonly before?: () => void; readonly theme?: "light" }
 const scene = (title: string, client: () => DashboardClient, stage: RunStartStage, extra: Partial<Story> & SceneOptions = {}): Story => {
-  const { rerun = false, then, before, catalog, ...story } = extra;
-  return { title, render: () => <DialogScene client={client()} rerun={rerun} {...(catalog === undefined ? {} : { catalog })} {...(before === undefined ? {} : { before })} />, ready: '[role="dialog"]',
+  const { rerun = false, then, before, catalog, theme, ...story } = extra;
+  return { title, render: () => <DialogScene client={client()} rerun={rerun} theme={theme} {...(catalog === undefined ? {} : { catalog })} {...(before === undefined ? {} : { before })} />, ready: '[role="dialog"]',
     play: async page => { await reach(page, stage, rerun); await then?.(page);
       // The pointer rests on the button just pressed, which would draw its hover fill.
       await page.mouse.move(0, 0); }, ...story };
@@ -89,6 +90,8 @@ const CHECK_COMBINATION = {
   "fixable-failure": stage("A failed check with a Fix button", reading(PASS, FIXABLE), "Checks"),
   "unfixable-failure": stage("A failed check with no Fix button", reading(UNFIXABLE, PASS), "Checks"),
   "failure-and-warning": stage("A failed check and a warning together", reading(FIXABLE, WARN, PASS), "Checks"),
+  "duo-key-missing": stage("A missing Duo key blocks Start", reading({ check: PreflightCheckIdSchema.parse("browser.duo-key"), status: "fail",
+    summary: ERROR_CATALOG.DUO_READY_CREDENTIAL_REQUIRED.text }), "Checks", { theme: "light", ready: '[data-run-check-fix="browser.duo-key"]' }),
 } satisfies Record<string, Story>;
 
 const RERUN_LOAD = {

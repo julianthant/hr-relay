@@ -1,4 +1,4 @@
-import { CURRENT_FISCAL_TARGET, runCheckForTarget } from "./preflight/preflight-remedy-model.js";
+import { CURRENT_FISCAL_TARGET, DUO_SECURITY_TARGET, runCheckForTarget } from "./preflight/preflight-remedy-model.js";
 import { CHECK_COPY } from "./preflight/preflight-check-copy.js";
 import { ArrowUp,ChartNoAxesColumn,Check,CircleAlert,Folder,Gauge,Keyboard,ListTree,Monitor,SlidersHorizontal,Table2,User,X } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
@@ -159,7 +159,8 @@ export function SettingsPage({
   const openedForCheck = backToRun ? runCheckForTarget(requestedTarget) : undefined;
   const openedForCheckName = openedForCheck === undefined ? undefined : CHECK_COPY[openedForCheck]?.name;
   const selectedResult = index.find(result => result.target === searchTarget && result.entry.id === activeId);
-  const target = selectedResult?.target;
+  const target = backToRun && searchTarget === DUO_SECURITY_TARGET && activeId === "account" && accountPage !== undefined
+    ? DUO_SECURITY_TARGET : selectedResult?.target;
   const searchContext = useMemo(() => ({ target, visit: searchVisit }), [target, searchVisit]);
   const content = useRef<HTMLDivElement>(null);
   const scrollPositions = useRef(new Map<string, number>());
@@ -171,7 +172,7 @@ export function SettingsPage({
     element.addEventListener("scroll", remember, { passive: true });
     return () => { element.removeEventListener("scroll", remember); };
   }, [activeId, searchTarget, searchVisit]);
-  useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label, openedForCheck !== undefined);
+  useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label ?? openedForCheckName, openedForCheck !== undefined);
   useEffect(() => { if (backToRun && requestedTarget === undefined) content.current?.focus(); }, [backToRun, requestedTarget]);
   const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount;
   const hasDirtyDraft = totalDirty > 0;

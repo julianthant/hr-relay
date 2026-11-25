@@ -1,8 +1,10 @@
 
 import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createDuoCredentialStore } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
 import { RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { createWorkerCompositionTestWorld } from "../../../support/helpers/backend/worker-composition-world.js";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 
 
 import { afterEach, describe, it, vi } from "vitest";
@@ -26,6 +28,26 @@ function admittedWorkerId(stateRoot: string, clock: TestClock, poolIndex = 1) {
 }
 
 describe("composed worker runtime", () => {
+  it("logs a missing Duo setup by name before opening browsers or claiming work", async () => {
+    const { repoRoot, stateRoot, fixture } = await repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const store = createDuoCredentialStore(fixture.admission, clock);
+    const { revision, keys: [key] } = store.readSettings();
+    assert.ok(key);
+    assert.equal(store.changeKey({ kind: "remove", keyId: key.id, expectedRevision: revision, commandId: randomUUID() }), "changed");
+    const sessions = happySessionHarness();
+    const input = composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 });
+    await assert.rejects(composeWorkerRuntime({ ...input, duoCeremony: undefined }), {
+      code: "DUO_READY_CREDENTIAL_REQUIRED", message: "Duo isn't set up. Set it up in Settings.",
+    });
+    const database = reopen(stateRoot, clock);
+    const logs = database.authority.timelineEvents.debugPage({}).flatMap(row => row.payload.kind === "debug" ? [row.payload.event] : []);
+    assert.ok(logs.some(event => event.code === "DUO_READY_CREDENTIAL_REQUIRED" && event.message === "Duo isn't set up. Set it up in Settings."));
+    assert.equal(logs.some(event => event.code === "WORKER_RUNTIME_FAILED" || event.reason === "cause-unavailable"), false);
+    assert.equal(sessions.opens("ucpath"), 0);
+    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+  });
 
   it("builds the whole dependency graph and drains a queued run to done", async () => {
     const { repoRoot, stateRoot } = await repoRootWithState();
