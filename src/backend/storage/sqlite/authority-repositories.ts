@@ -279,6 +279,7 @@ export type RunRepository = Readonly<{
   listActiveOwners(workflow: string): readonly Readonly<{ workerId: string; runId: string }>[];
   listPage(input: Readonly<{ workflow?: string; offset: number; limit: number }>): readonly RunRecord[];
   listNonTerminal(): readonly RunRecord[];
+  countByTerminal(): Readonly<{ finished: number; active: number }>;
 
   listCurrentByWorkflow(workflow: string): readonly RunRecord[];
   listByPauseState(state: "requested" | "paused"): readonly RunRecord[];
