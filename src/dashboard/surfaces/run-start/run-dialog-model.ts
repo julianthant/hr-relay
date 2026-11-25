@@ -190,11 +190,11 @@ function startRefusal(state: RunDialogState, gates: LaunchGates, current: Planne
   if (gates.checksBlocked) return "blocked";
   if (state.recovery.state === "unreadable") return "blocked";
   if (state.recovery.state === "retained" && current?.plan.startPlanId !== state.recovery.command.target.startPlanId) return "blocked";
-  if (current !== undefined) return current.plan.refused.length > 0 || gates.omissionMismatch || gates.plannedCount === 0 ? "blocked" : undefined;
   if (state.source.kind === "rerun" && state.source.load.state !== "ready") return "blocked";
   if (gates.stepsBlocked) return "blocked";
   if (gates.optionsBlocked) return "blocked";
   if (state.source.kind === "start" ? gates.inputBlocked : gates.rerunInputBlocked) return "blocked";
+  if (current !== undefined && (current.plan.refused.length > 0 || gates.omissionMismatch || gates.plannedCount === 0)) return "blocked";
   return undefined;
 }
 

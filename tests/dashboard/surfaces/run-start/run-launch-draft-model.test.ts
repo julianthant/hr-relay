@@ -62,7 +62,7 @@ const used = (draft: LaunchDraft): LaunchDraft => ({ ...draft, text: "x", source
 
 describe("the launch request fingerprint", () => {
   const REST: LaunchRequestInputs = { draft: freshLaunchDraft(plain), rowIdentity: "row", customizeSteps: false, typedValues: {}, rerunSource: undefined,
-    pdf: { draft: null, picks: {} }, workbookRows: { state: "ready", fresh: true }, library: { loading: false, refreshing: false, error: "", compatibility: undefined },
+    pdf: { draft: null, picks: {}, loading: false, error: null }, workbookRows: { state: "ready", fresh: true }, library: { loading: false, refreshing: false, error: "", compatibility: undefined },
     spreadsheets: [], versionSources: { state: "ready", sources: [] }, checks: { pending: false, selections: [] }, request: "request" };
   const sheet = { libraryId: "l", versionId: "v", sheetId: "s" };
   /** One change per draft field and per input; a field added without one fails to typecheck here. */
@@ -75,7 +75,7 @@ describe("the launch request fingerprint", () => {
   const INPUTS = {
     draft: Object.entries(DRAFT).map(([key, value]) => ({ ...REST.draft, [key]: value })),
     rowIdentity: ["other"], customizeSteps: [true], typedValues: [{ mode: "match" }], rerunSource: [RerunValuesRequestSchema.parse({ runId: "10000000-0000-4000-8000-000000000001", expectedVersion: 3 })],
-    pdf: [{ draft: { files: [], asOf: AT, reviewer: "r" }, picks: {} }, { draft: null, picks: { form: "w4" } }],
+    pdf: [{ ...REST.pdf, draft: { files: [], asOf: AT, reviewer: "r" } }, { ...REST.pdf, picks: { form: "w4" } }, { ...REST.pdf, loading: true }, { ...REST.pdf, error: "refused" }],
     workbookRows: [{ state: "loading", fresh: true }, { state: "ready", fresh: false }],
     library: [{ ...REST.library, loading: true }, { ...REST.library, refreshing: true }, { ...REST.library, error: "failed" }, { ...REST.library, compatibility: { libraries: [] } }],
     spreadsheets: [[["l", 1, 1]], [["l", 2, 1]], [["l", 1, 2]]], versionSources: [{ state: "loading", sources: [] }, { state: "ready", sources: [sheet] }],

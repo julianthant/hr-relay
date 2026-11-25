@@ -1,18 +1,20 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { act } from "react";
+import { act, createElement, useRef, type ReactElement } from "react";
 import { afterEach, describe, it } from "vitest";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartRows, projectStartSteps, startRowWire } from "../../../../src/backend/runs/start/step-selection.js";
+import { useRoute, type PopstateRouteHandler } from "../../../../src/dashboard/app/navigation/route-history-model.js";
+import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../src/models/dashboard/rerun-warning.js";
-import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../../src/models/dashboard/start-plan.js";
+import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
 import { projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
 import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
-import type { CommandResult } from "../../../../src/rules/commands/commands.js";
+import { CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
 import { RUN_DIALOG_REFERENCE_READS } from "../../../support/fixtures/dashboard/run-dialog-reference-fixtures.js";
 import { RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_WORKFLOW, runDialogRerunSnapshot } from "../../../support/fixtures/dashboard/run-dialog-story-fixtures.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
@@ -49,27 +51,29 @@ const FAILED_READS: Partial<DashboardClient> = { workbookList: async () => [], w
   workbookCatalog: async () => { throw new Error("unreachable"); } };
 
 /** The dialog on its Input stage, filled in so that Start is available as soon as it is reached. */
-async function openFilled(kind: Case, served: Partial<DashboardClient>) {
+async function openFilled(kind: Case, served: Partial<DashboardClient>, wrap?: (dialog: ReactElement) => ReactElement) {
   const workflow = WORKFLOW[kind];
-  const dialog = await h.openDialog(h.stubClient({ ...(kind === "spreadsheet" ? RUN_DIALOG_REFERENCE_READS : {}), ...(kind === "failed spreadsheets" ? FAILED_READS : {}), ...served,
+  const dialog = await h.openDialog(h.stubClient({ ...(kind === "spreadsheet" ? RUN_DIALOG_REFERENCE_READS : {}), ...(kind === "failed spreadsheets" ? FAILED_READS : {}),
     uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: h.ACTOR_ID, uploadedAt: "2026-08-03T00:00:00.000Z",
       artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }),
+    ...served,
     rerunValues: async () => kind === "rerun values" ? runDialogRerunSnapshot() : { state: "available", snapshot },
     previewRerunWarnings: async request => RerunWarningWireSchema.parse({ workflowId: workflow.workflowId,
       rerun: { source: RerunWarningRequestSchema.parse(request).source, warnings: [], warningDigest: h.HASH } }),
-  }), { workflows: [workflow], panelWorkflowId: workflow.workflowId, ...(isRerun(kind) ? { rerunSource: RUN_DIALOG_RERUN_SOURCE } : {}) });
+  }), { workflows: [workflow], panelWorkflowId: workflow.workflowId, ...(isRerun(kind) ? { rerunSource: RUN_DIALOG_RERUN_SOURCE } : {}) }, undefined, wrap);
   await settleAll();
   if (kind === "typed" || kind === "spreadsheet" || kind === "failed spreadsheets") await dialog.type(h.TYPED);
   if (kind === "spreadsheet") { await h.chooseReference("Roster"); await settleAll(); }
-  if (kind === "pdf") {
-    const bytes = new TextEncoder().encode("%PDF one"), file = new File([bytes], "one.pdf", { type: "application/pdf" });
-    Object.defineProperty(file, "arrayBuffer", { value: async () => bytes.buffer });
-    const input = document.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
-    Object.defineProperty(input, "files", { configurable: true, value: [file] });
-    await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
-    await settleAll();
-  }
+  if (kind === "pdf") await attachPdf("one");
   return dialog;
+}
+async function attachPdf(name: string) {
+  const bytes = new TextEncoder().encode(`%PDF ${name}`), file = new File([bytes], `${name}.pdf`, { type: "application/pdf" });
+  Object.defineProperty(file, "arrayBuffer", { value: async () => bytes.buffer });
+  const input = document.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+  Object.defineProperty(input, "files", { configurable: true, value: [file] });
+  await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+  await settleAll();
 }
 type Opened = Awaited<ReturnType<typeof openFilled>>;
 
@@ -223,5 +227,72 @@ describe("a start whose command is held", () => {
     await act(async () => { reply.resolve(h.APPLIED); await Promise.resolve(); });
     await settleLong();
     assert.deepEqual(h.closed, [false], "the applied reply closed the dialog");
+  });
+});
+
+/** The dialog over the real address bar, so its stages are browser history entries. */
+function Routed({ children }: { readonly children?: ReactElement }) {
+  const handler = useRef<PopstateRouteHandler | undefined>(undefined);
+  const [route, setRoute] = useRoute(handler);
+  return createElement(ViewNavigationProvider, { route, setRoute, children });
+}
+async function browserBack() {
+  await act(async () => {
+    const popped = new Promise<void>(resolve => window.addEventListener("popstate", () => resolve(), { once: true }));
+    window.history.back();
+    await popped;
+  });
+  await settleAll();
+}
+
+describe("a rebuilt plan whose PDFs changed on Input", () => {
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
+
+  it.each(["is pending", "failed"] as const)("is gone when browser Back returns to Start while the added upload %s", async outcome => {
+    window.history.replaceState(null, "", "/");
+    const planned: StartPlanRequest[] = [], uploads: string[] = [];
+    let commands = 0;
+    const upload = Promise.withResolvers<void>();
+    const dialog = await openFilled("pdf", {
+      uploadOcrSource: async request => {
+        uploads.push(request.fileName);
+        if (uploads.length > 1) await upload.promise;
+        return OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: h.ACTOR_ID, uploadedAt: "2026-08-03T00:00:00.000Z",
+          artifact: { id: `00000000-0000-4000-8000-00000000000${String(uploads.length)}`, mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } });
+      },
+      submitStartPlan: async request => { planned.push(StartPlanRequestSchema.parse(request)); return planFor(request); },
+      executeCommand: () => {
+        commands += 1;
+        return commands > 1 ? new Promise<CommandResult>(() => undefined) : Promise.resolve(CommandResultSchema.parse({ state: "rejected",
+          commandId: "3a000000-0000-4000-8000-000000000001", code: "RUN_START_PLAN_EXPIRED", message: "Expired." }));
+      },
+    }, dialog => createElement(Routed, null, dialog));
+    await toStart(dialog, "pdf");
+    await dialog.press(startLabel("pdf"));
+    await settleLong();
+    assert.equal(planned.length, 2, "the expired plan was rebuilt");
+    assert.ok(h.planIsDrawn());
+
+    await dialog.press("Back");
+    assert.equal(dialog.stage(), "Input");
+    await attachPdf("two");
+    if (outcome === "failed") { await act(async () => { upload.reject(new Error("refused")); }); await settleLong(); }
+    assert.deepEqual(uploads, ["one.pdf", "two.pdf"]);
+    await browserBack();
+    assert.equal(dialog.stage(), "Start", "browser Back revisited Start");
+    assert.equal(h.planIsDrawn(), false, "the plan for the old PDFs is gone");
+    assert.equal(dialog.disabled(startLabel("pdf")), true);
+    await dialog.enter({ on: document.body });
+    await settleLong();
+    assert.equal(commands, 1, "the old plan was not submitted");
+    assert.equal(planned.length, 2, "no plan was asked for without the added PDF");
+    if (outcome === "failed") return;
+
+    await act(async () => { upload.resolve(); });
+    await settleLong();
+    await dialog.press(startLabel("pdf"));
+    await settleLong();
+    assert.equal(planned.length, 3, "Start planned again");
+    assert.match(JSON.stringify(planned[2].submissions), /one\.pdf.*two\.pdf/u);
   });
 });

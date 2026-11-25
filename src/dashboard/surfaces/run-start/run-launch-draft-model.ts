@@ -72,7 +72,7 @@ export type LaunchRequestInputs = Readonly<{
   customizeSteps: boolean;
   typedValues: TypedInputDraft;
   rerunSource: RerunLaunchSource | undefined;
-  pdf: Readonly<{ draft: PdfRunDraft | null; picks: PdfRunPicks }>;
+  pdf: Readonly<{ draft: PdfRunDraft | null; picks: PdfRunPicks; loading: boolean; error: string | null }>;
   workbookRows: Readonly<{ state: string; fresh: boolean }>;
   library: Readonly<{ loading: boolean; refreshing: boolean; error: string | null; compatibility: unknown }>;
   spreadsheets: ReturnType<typeof namedSpreadsheets>;

@@ -337,7 +337,7 @@ export function RunStartDialog({
   const stepOmissions = useMemo(() => stepEntries(openRows), [openRows]);
   const requestFingerprint = launchDraft.launchRequestFingerprint({
     draft, rowIdentity, customizeSteps, typedValues, rerunSource,
-    pdf: { draft: pdfInput.draft, picks: pdfInput.picks },
+    pdf: { draft: pdfInput.draft, picks: pdfInput.picks, loading: pdfInput.loading, error: pdfInput.error },
     workbookRows: { state: workbookRows.state, fresh: rowSelectionFresh },
     library: { loading: library.catalogLoading, refreshing: library.catalogRefreshing, error: library.catalogError, compatibility: library.compatibility },
     spreadsheets: launchDraft.namedSpreadsheets(draft, library.catalog),

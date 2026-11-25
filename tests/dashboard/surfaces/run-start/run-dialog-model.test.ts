@@ -250,6 +250,9 @@ describe("moving between stages", () => {
     assert.equal(refusal(at({ stage: "Start", shown: shownA }), startEvent({ checksBlocked: true })), "blocked", "a plan on screen does not bypass the checks");
     assert.deepEqual(kinds(moved(at({ stage: "Start" }), startEvent({ checksBlocked: false }))), ["request-plan"]);
     assert.equal(refusal(at({ stage: "Start", source: rerunReady() }), startEvent({ rerunInputBlocked: true })), "blocked");
+    for (const blocked of ["inputBlocked", "stepsBlocked", "optionsBlocked"] as const)
+      assert.equal(refusal(at({ stage: "Start", shown: shownA }), startEvent({ [blocked]: true })), "blocked", `a plan on screen does not bypass ${blocked}`);
+    assert.equal(refusal(at({ stage: "Start", source: rerunReady(), shown: shownA }), startEvent({ rerunInputBlocked: true })), "blocked");
     const references = moved(at({ stage: "Start" }), startEvent({ referencesUnavailable: true }));
     assert.equal(references.next.problem, REFERENCES_UNAVAILABLE);
     assert.deepEqual(references.next.activity, { kind: "idle" });

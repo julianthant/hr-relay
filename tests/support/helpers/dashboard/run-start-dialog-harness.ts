@@ -295,10 +295,11 @@ export function createRunStartDialogHarness() {
       panelWorkflowId: WORKFLOW_ID,
     },
     onApplied: (workflowId: string) => void = () => undefined,
+    wrap: (dialog: ReactElement) => ReactElement = dialog => dialog,
   ): Promise<OpenDialog> {
     intakeHandoffs.length = 0; closed.length = 0;
     const catalog = buildWorkflowCatalog(catalogue.workflows, servedFixtureSources(catalogue.workflows));
-    const dialogElement = (extra: Partial<ComponentProps<typeof RunStartDialog>>) => createElement(ToastProvider, { children: createElement(DashboardClientProvider, {
+    const dialogElement = (extra: Partial<ComponentProps<typeof RunStartDialog>>) => wrap(createElement(ToastProvider, { children: createElement(DashboardClientProvider, {
       client,
       children: createElement(FixtureCommandBinding, { actorId: ACTOR_ID, children: createElement(RunStartDialog, {
         open: true,
@@ -313,7 +314,7 @@ export function createRunStartDialogHarness() {
         },
         ...extra,
       }) }),
-    }) });
+    }) }));
     await render(dialogElement({}));
     const rerender = async (extra: Partial<ComponentProps<typeof RunStartDialog>>): Promise<void> => {
       assert.ok(mounted, "the dialog is mounted");
