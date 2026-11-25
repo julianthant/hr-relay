@@ -5,14 +5,17 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import * as writeSafety from "../../../../../src/backend/app/composition/dashboard/write-safety.js";
+import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
 import { readRunDetail, readRunSection, type RunDetailQueryDeps } from "../../../../../src/backend/runs/queries/run-detail.js";
 import * as captures from "../../../../../src/backend/runs/queries/run-captures.js";
 import * as streams from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
+import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { ItemAttemptHistoryResponseSchema } from "../../../../../src/models/dashboard/item-attempt-history.js";
 import { RunDetailSectionResponseSchema } from "../../../../../src/models/dashboard/run-detail.js";
 import { searchPartitionDay } from "../../../../../src/models/dashboard/search-calendar.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_5 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js";
@@ -67,6 +70,13 @@ it("serves run routes and the stream panel through the composed navigation lane"
   });
   database.authority.runs.enqueue(run);
   const { runId, workflow, traceId, attempt } = run.envelope;
+  const timeline = createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+  const firstNode = personLookupDescriptor.timeline?.[0]?.nodes[0];
+  assert.ok(firstNode);
+  timeline.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Fixture run" }));
+  const span = { kind: "task" as const, workflow, runId, traceId, attempt, ts: NOW, spanPath: `${traceId}/${firstNode.id}#1.1` };
+  timeline.emit({ ...span, t: "span.started", parentSpanPath: traceId, name: "Fixture step" });
+  timeline.emit({ ...span, t: "span.ended", outcome: "done" });
   const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
   for (let index = 0; index < 201; index++) {
     notes.emitRunLog({ workflow, address: { runId, traceId, attempt, spanPath: traceId },
@@ -108,6 +118,7 @@ it("serves run routes and the stream panel through the composed navigation lane"
     assert.equal(response.status, 200, `${suffix}: ${body}`);
     return body;
   };
+  await get("");
   assert.equal(database.authority.evidenceReceipts.findByRun(runId), undefined);
   const derive = vi.spyOn(database, "withAuthorityTransaction");
   const receipt = await get("/receipt");
@@ -117,6 +128,7 @@ it("serves run routes and the stream panel through the composed navigation lane"
   assert.ok(storedReceipt);
   const itemHistory = detailDeps.itemAttemptHistory;
   assert.ok(itemHistory);
+  detailDeps.projection.ingestFromTimeline();
   const firstLogs = await readRunSection(detailDeps, runId, "logs");
   assert.ok(firstLogs.section === "logs" && firstLogs.payload.nextCursor.state === "present");
   const cursor = firstLogs.payload.nextCursor.value;

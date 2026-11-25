@@ -673,7 +673,9 @@ export async function readRunSectionBody(deps: RunDetailQueryDeps, runId: string
   cursor?: string, signal?: AbortSignal, tab?: string): Promise<string> {
   RunIdSchema.parse(runId);
   const section = SectionNameSchema.parse(sectionInput);
-  const body = section === "captures" ? undefined : await requestRunRead(deps, { kind: "section", runId, section, cursor }, signal, tab);
+  const body = section === "captures" ? undefined : await requestRunRead(deps, {
+    kind: "section", runId, section, ...(cursor === undefined ? {} : { cursor }),
+  }, signal, tab);
   return body ?? JSON.stringify(await readRunSection(deps, runId, section, cursor, signal));
 }
 
