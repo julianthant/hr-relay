@@ -1,6 +1,6 @@
 import { workerSlotFromRow } from "./worker-slots.js";
 import { CURRENT_RUN_SETTLEMENT_SQL, runSettlementContext } from "./run-settlement-row.js";
-import { SETTINGS_RECORD_CONVERSION_VERSION, convertSettingsRecordRow } from "./settings-record-conversion.js";
+import { SETTINGS_RECORD_CONVERSION_VERSION } from "./settings-record-conversion.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { CHANGE_LOG_SCHEMA_VERSION, RunReferenceSourceSchema, currentRowKey, expectedRunReferences } from "./authority-change-log.js";
@@ -20,7 +20,7 @@ import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow } from "./native-rec
 import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessorWorkerSlotFromRow } from "./worker-custody-predecessor.js";
 import { withoutNativeRecordReadMemo } from "./run-record-row.js";
 import { SearchStateColumnSchema, runSearchIndexFromRow } from "./run-search-index.js";
-import { readAppSettings } from "./settings-storage.js";
+import { readAppSettings, readSettingsRecordConversion } from "./settings-storage.js";
 import { DEBUG_EVENTS_MIGRATION, debugEventFromRow, predecessorTimelineEventFromRow, timelineEventFromRow } from "./timeline-repository.js";
 import { validateWorkbookLibrary, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
 import { RunEvidenceReceiptSchema } from "../../../models/trust/evidence.js";
@@ -283,8 +283,9 @@ type StoredRowContext = Readonly<{ database: DatabaseSync; read: StoredReaders; 
 export function storedRowContext(database: DatabaseSync, expectedSchemaVersion: number): StoredRowContext {
   const predecessorCustody = expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const read: StoredReaders = { ...(predecessorCustody ? PREDECESSOR_CUSTODY_READERS : CURRENT_READERS), run: inspectionRunReader(expectedSchemaVersion) };
+  const readSettings = expectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? readSettingsRecordConversion(database) : undefined;
   const convertPreferences = (table: string, row: unknown) => {
-    const person = expectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow(table, row) : row;
+    const person = readSettings === undefined ? row : readSettings(table, row);
     const effort = expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
     const state = expectedSchemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState(table, effort) : effort;
     return expectedSchemaVersion < FAILURE_NOTE_REMOVAL_SCHEMA_VERSION ? convertFailureNoteRow(table, state) : state;

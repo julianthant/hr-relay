@@ -6,7 +6,8 @@ import { z } from "zod";
 import { applyAuthorityMigrationsAfter } from "../../../../src/backend/storage/sqlite/authority-upgrades.js";
 import { inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { convertSettingsRecordRow, PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/sqlite/settings-record-conversion.js";
+import { convertSettingsRecordRow } from "../../../../src/backend/storage/sqlite/settings-record-conversion.js";
+import { PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, RETIRED_PANEL_MODE } from "../../../../src/models/config/settings-record-conversion.js";
 import { migrateSettingsRecords, readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
@@ -86,7 +87,9 @@ it("upgrades a schema-31 store: every settings value is kept, the later preferen
     assert.deepEqual({ ...upgraded?.initialization, settings: null }, { ...stopped.initialization, settings: null });
     for (const [index, snapshot] of snapshots(f.raw).entries()) {
       const record = ConfigSnapshotRecordSchema.parse(snapshot);
-      assert.deepEqual(record.preferences, { ...z.record(z.string(), z.unknown()).parse(priorSnapshots[index]?.preferences), ...ADDED_DEFAULTS });
+      const { [RETIRED_PANEL_MODE]: retired, ...prior } = z.record(z.string(), z.unknown()).parse(priorSnapshots[index]?.preferences);
+      assert.equal(retired, "floating");
+      assert.deepEqual(record.preferences, { ...prior, ...ADDED_DEFAULTS });
       assert.equal(canonicalJsonStringify({ ...record, preferences: null, preferencesFingerprint: null }), canonicalJsonStringify({ ...priorSnapshots[index], preferences: null, preferencesFingerprint: null }));
     }
     assert.equal(snapshots(f.raw).some(snapshot => ConfigSnapshotRecordSchema.parse(snapshot).preferences.theme === "light"), true);

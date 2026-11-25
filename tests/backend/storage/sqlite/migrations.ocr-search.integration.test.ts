@@ -44,7 +44,7 @@ it("upgrades a stopped schema-40 profile and indexes the latest OCR review", asy
     } finally { start.close(); }
 
     const result = await upgradeProfileAtStartup(profileBrowserClosure, profile.machine, profileId, { primaryDisplay: null }, f.clock);
-    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 40, toSchemaVersion: 41, credentials: "unchanged" });
+    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 40, toSchemaVersion: 42, credentials: "unchanged" });
     const directory = join(profile.stateRoot, "backups", "authority");
     const [backup] = readdirSync(directory).filter(name => name.endsWith(".manifest.json"));
     assert.ok(backup);
@@ -53,7 +53,7 @@ it("upgrades a stopped schema-40 profile and indexes the latest OCR review", asy
     assert.equal(manifest.authorityContentFingerprint, originalFingerprint);
 
     using upgraded = new DatabaseSync(f.path, { readOnly: true });
-    assert.equal(inspectNativeAuthority(upgraded).schemaVersion, 41);
+    assert.equal(inspectNativeAuthority(upgraded).schemaVersion, 42);
     assert.deepEqual(upgraded.prepare("SELECT * FROM ocr_review_revisions ORDER BY id").all(), originalReviews);
     const index = createRunSearchIndex(upgraded);
     const find = (q: string) => index.search({ q, scope: "subject", facets: {}, limit: 20 }, generation).rows.map(row => row.record.envelope.runId);

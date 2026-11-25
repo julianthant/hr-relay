@@ -73,13 +73,14 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
 
 /** Steps an authority back to schema 40, which has no OCR terms in the search projection. */
 export function restoreSchema40OcrSearchTerms(database: DatabaseSync): void {
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 41);
+  const version = database.prepare("PRAGMA user_version").get()?.user_version;
+  assert.ok(version === 41 || version === CURRENT_AUTHORITY_SCHEMA_VERSION);
   database.exec("ALTER TABLE run_search DROP COLUMN ocr_subject_terms; UPDATE database_states SET schema_version=40; PRAGMA user_version=40");
 }
 
 /** Steps an authority back to schema 39: none of the list indexes and no generated dependency parent column. */
 export function restoreSchema39ListIndexes(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 41) restoreSchema40OcrSearchTerms(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 41) restoreSchema40OcrSearchTerms(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 40);
   dropListIndexObjects(database);
   database.exec("UPDATE database_states SET schema_version=39; PRAGMA user_version=39");

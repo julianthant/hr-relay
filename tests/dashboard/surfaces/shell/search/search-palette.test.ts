@@ -34,7 +34,7 @@ it("reopens the search palette with an empty query", async () => {
   assert.equal(input()?.value, "");
 });
 
-it("puts the filter tabs under the input, gives workflows their rail icon and routes data destinations", async () => {
+it("puts the filter tabs after the results, gives workflows their rail icon and routes data destinations", async () => {
   const actions: string[] = [];
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
@@ -42,7 +42,7 @@ it("puts the filter tabs under the input, gives workflows their rail icon and ro
   await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!.click());
   const palette = document.querySelector(".search-palette")!;
   const order = [...palette.querySelector("[cmdk-root]")!.children].filter(child => !child.hasAttribute("cmdk-label")).map(child => child.getAttribute("cmdk-input") !== null ? "input" : child.classList.contains("search-palette-chips") ? "tabs" : "list");
-  assert.deepEqual(order, ["input", "tabs", "list"]);
+  assert.deepEqual(order, ["input", "list", "tabs"]);
   const rows = [...palette.querySelectorAll(".search-palette-row")];
   assert.deepEqual(rows.slice(0, 5).map(row => row.textContent), ["Start a runR", "Spreadsheets", "Explorer", "Analytics", "Settings"]);
   assert.equal(palette.querySelector(".search-palette-key") === null, true);

@@ -1,7 +1,7 @@
 import { workerSlotFromRow } from "./worker-slots.js";
 import { artifactReferencesIn, deletionArtifactReferenceMatcher } from "./artifact-references.js";
 import { fileStatus } from "../file-identity.js";
-import { SETTINGS_RECORD_CONVERSION_VERSION, convertSettingsRecordRow } from "./settings-record-conversion.js";
+import { SETTINGS_RECORD_CONVERSION_VERSION } from "./settings-record-conversion.js";
 import { existsSync,statSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -23,7 +23,7 @@ import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { predecessorWorkerSlotFromRow } from "./worker-custody-predecessor.js";
 import { runRecordFromRow } from "./run-record-row.js";
-import { readAppSettings } from "./settings-storage.js";
+import { readAppSettings, readSettingsRecordConversion } from "./settings-storage.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { DuoCeremonyLeaseRecordSchema } from "../../../rules/sessions/duo-ceremony-lease.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -42,7 +42,7 @@ import { readAuthorityUpgradeRecords } from "./authority-upgrades.js";
 const TableColumnRowSchema = z.object({ name: z.string() });
 
 export function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion: number) {
-  const convert = inspectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow : (_table: string, row: unknown) => row;
+  const convert = inspectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? readSettingsRecordConversion(database) : (_table: string, row: unknown) => row;
   const settings = readAppSettings(database, convert);
   const settingsAuthority = settings === undefined
     ? Object.freeze({ state: "never-initialized" as const })

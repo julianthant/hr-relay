@@ -25,7 +25,6 @@ export const NotificationPreferencesSchema = z.strictObject({
 export const PersonPreferencesSchema = z.strictObject({
   theme: z.enum(["dark", "light"]),
   animations: z.boolean(),
-  workflowPanelMode: z.enum(["floating", "icon", "sidebar"]),
   selectedWorkflowId: z.string().max(120),
   shortcuts: ShortcutPreferencesSchema,
   preventSleepWhileRunning: z.boolean(),
@@ -35,7 +34,7 @@ export const PersonPreferencesSchema = z.strictObject({
 });
 export type PersonPreferences = z.infer<typeof PersonPreferencesSchema>;
 export const NEUTRAL_PERSON_PREFERENCES = deepFreeze(PersonPreferencesSchema.parse({
-  theme: "dark", animations: true, workflowPanelMode: "floating", selectedWorkflowId: "",
+  theme: "dark", animations: true, selectedWorkflowId: "",
   shortcuts: { numberMode: "runs", bindings: { search: ["/"], start: ["r"], next: ["j", "ArrowDown"], previous: ["k", "ArrowUp"], attention: ["n"] } },
   preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run",
   notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" },
