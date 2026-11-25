@@ -2,8 +2,9 @@
  * workflow rail, search, and the Pause-all and Log out dialogs. The real components run on fixtures and a client that never answers. */
 import { useEffect, useState, type ComponentProps } from "react";
 import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
-import { EmptyState, FailureNotice, Notice, Panel, PanelBody } from "../../../../../../src/dashboard/ds/ui.js";
+import { EmptyState, FailureNotice, Notice, Panel, PanelBody, Switch } from "../../../../../../src/dashboard/ds/ui.js";
 import { QueueSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
+import { QueueHeader } from "../../../../../../src/dashboard/surfaces/queue/queue-header.js";
 import { QuitDialog } from "../../../../../../src/dashboard/surfaces/queue/queue-toolbar.js";
 import { HubShell } from "../../../../../../src/dashboard/surfaces/shell/hub-shell.js";
 import { StartupLoading } from "../../../../../../src/dashboard/surfaces/shell/startup-loading.js";
@@ -63,16 +64,37 @@ const QUEUE_SLOT = {
   "workflow-unavailable": slot("A workflow this build does not serve", () => emptyPanel("Workflow unavailable", "Workflow person-lookup is not served by this build.")),
 } satisfies Record<QueueSlot, Story>;
 
-type RailState = "expanded" | "collapsed" | "running" | "collapsed-running";
-const rail = (title: string, counts: typeof SHELL_STORY_COUNTS_IDLE, collapsed: boolean): Story => ({ title, ready: '[aria-label="Workflows"]',
+type RailState = "expanded" | "collapsed" | "running" | "collapsed-running" | "start-hover" | "start-focus";
+const rail = (title: string, counts: typeof SHELL_STORY_COUNTS_IDLE, collapsed: boolean, play?: Story["play"]): Story => ({ title, ready: '[aria-label="Workflows"]', ...(play === undefined ? {} : { play }),
   render: () => <StoryFrame><aside aria-label="Workspace" className="workspace-rail ui-theme-scope" {...(collapsed ? { "data-collapsed": true } : {})}><div className="workspace-rail-body">
-    <WorkflowRail workflows={SHELL_STORY_WORKFLOWS} counts={counts} active="person-lookup" onSelect={noop} collapsed={collapsed} /></div></aside></StoryFrame> });
+    <WorkflowRail workflows={SHELL_STORY_WORKFLOWS} counts={counts} active="person-lookup" onSelect={noop} collapsed={collapsed} onStart={noop} canStart={() => true} /></div></aside></StoryFrame> });
 const RAIL = {
   expanded: rail("The sidebar open, no run going", SHELL_STORY_COUNTS_IDLE, false),
   collapsed: rail("The sidebar minimized, no run going", SHELL_STORY_COUNTS_IDLE, true),
   running: rail("The sidebar open, runs going", SHELL_STORY_COUNTS_RUNNING, false),
   "collapsed-running": rail("The sidebar minimized, runs going", SHELL_STORY_COUNTS_RUNNING, true),
+  "start-hover": rail("The sidebar with the pointer on a workflow, its Start run + showing", SHELL_STORY_COUNTS_IDLE, false, page => page.locator(".workflow-rail-item").first().hover()),
+  "start-focus": rail("The sidebar with keyboard focus on a workflow's Start run +", SHELL_STORY_COUNTS_IDLE, false, page => page.locator(".workflow-rail-start").first().focus()),
 } satisfies Record<RailState, Story>;
+
+type HeaderState = "closed" | "options-open" | "options-changed";
+const header = (title: string, changed: boolean, play?: Story["play"]): Story => ({ title, ready: '[aria-label="Queue header"]', ...(play === undefined ? {} : { play }),
+  render: () => <StoryFrame><QueueHeader title="Person Lookup" ask={null} startId="story-start-run" onStartRun={noop} day={changed ? "2026-10-29" : "2026-10-30"} today="2026-10-30" onDay={noop}
+    sort={changed ? "oldest" : "attention"} onSort={noop} active={changed ? ["failed"] : ["all"]} counts={[]} onFilter={noop} /></StoryFrame> });
+const openOptions: Story["play"] = page => page.getByRole("button", { name: /^Options/ }).click();
+const HEADER = {
+  closed: header("The queue header with Options closed", false),
+  "options-open": header("The Options menu open: Date, Sort by, Status, Attention first", false, openOptions),
+  "options-changed": header("The queue header with options changed from their defaults", true),
+} satisfies Record<HeaderState, Story>;
+
+type ToggleState = "off" | "on" | "disabled-off" | "disabled-on";
+const toggle = (title: string, checked: boolean, disabled: boolean): Story => ({ title, ready: '[role="switch"]',
+  render: () => <StoryFrame><Panel><PanelBody><Switch label="Dry run" checked={checked} disabled={disabled} onCheckedChange={noop} /></PanelBody></Panel></StoryFrame> });
+const TOGGLE = {
+  off: toggle("A toggle that is off", false, false), on: toggle("A toggle that is on: blue track, white knob", true, false),
+  "disabled-off": toggle("A toggle that is off and unavailable", false, true), "disabled-on": toggle("A toggle that is on and unavailable", true, true),
+} satisfies Record<ToggleState, Story>;
 
 /** Search open on the given filter, or on the given answer from the served search. */
 function searchStory(title: string, data: keyof typeof SEARCH_STORY_DATA, play: Story["play"], ready = 'input[aria-label="Search Relay"]'): Story {
@@ -105,4 +127,4 @@ const DIALOG = {
     <HubShell settingsOpen={false} logoutOpen onLogoutOpenChange={noop} onLogout={noop} /></DashboardClientProvider></StoryFrame> },
 } satisfies Record<ShellDialog, Story>;
 
-export const SHELL_STORIES = defineSurface("shell", { startup: STARTUP, banner: BANNER, queue: QUEUE_SLOT, rail: RAIL, filter: SEARCH_FILTER, search: SEARCH_ANSWER, dialog: DIALOG });
+export const SHELL_STORIES = defineSurface("shell", { startup: STARTUP, banner: BANNER, queue: QUEUE_SLOT, rail: RAIL, header: HEADER, toggle: TOGGLE, filter: SEARCH_FILTER, search: SEARCH_ANSWER, dialog: DIALOG });

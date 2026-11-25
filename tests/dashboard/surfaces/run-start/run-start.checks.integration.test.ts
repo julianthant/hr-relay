@@ -8,7 +8,6 @@ import { FIXTURE_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-b
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/fixtures/dashboard/fixture-settings.js";
 import { PreflightRerunCommandRequestSchema } from "../../../../src/models/preflight/preflight-contract.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);

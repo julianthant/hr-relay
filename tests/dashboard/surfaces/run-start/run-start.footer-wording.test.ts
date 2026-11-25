@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act } from "react";
 import { afterEach, describe, it } from "vitest";
 import { START_DOOR_ABSENCE } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
