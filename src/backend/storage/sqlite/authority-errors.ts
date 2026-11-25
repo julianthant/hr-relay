@@ -30,6 +30,15 @@ export class AuthorityWriterBusyError extends Error {
   }
 }
 
+/** A copy's history and native connections kept showing different commits; a later read can pair them. */
+export class AuthoritySnapshotChangedError extends Error {
+  readonly code = "STORAGE_SNAPSHOT_CHANGED";
+  constructor() {
+    super("isolated-history-snapshot-changed");
+    this.name = "AuthoritySnapshotChangedError";
+  }
+}
+
 const integrityFailures = new WeakSet<Error>();
 
 export function authorityIntegrityError(message: string): Error {

@@ -163,6 +163,7 @@ export const ERROR_CATALOG = Object.freeze({
   RUNTIME_ALREADY_RUNNING: catalogEntry("Relay is already running. Close it before starting another.", EmptyParametersSchema),
   PRIVATE_FILE_LOCK_UNAVAILABLE: catalogEntry("Local storage is busy. Wait for the other operation, then try again.", EmptyParametersSchema),
   DATABASE_WRITER_UNAVAILABLE: catalogEntry("Saved data was busy too long. Nothing was written. Try again.", EmptyParametersSchema),
+  STORAGE_SNAPSHOT_CHANGED: catalogEntry("Saved data changed while loading. Loading again.", EmptyParametersSchema),
   RUN_CRASH_RESOURCES_RELEASED: catalogEntry("Resources held by an interrupted worker were released.", EmptyParametersSchema),
   BROWSER_CLOSURE_UNPROVED: catalogEntry("The browser may not have closed. No file or credential was changed.", EmptyParametersSchema),
   DUO_SETUP_OPEN_FAILED: catalogEntry("The setup browser did not start. Select Reopen to try again.", EmptyParametersSchema),

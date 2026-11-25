@@ -2,6 +2,7 @@ import { StartupCrashRecoveryRefusedError } from "../../../../../src/backend/run
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 
 import assert from "node:assert/strict";
+import { AuthoritySnapshotChangedError } from "../../../../../src/backend/storage/sqlite/authority-errors.js";
 import { CredentialMaintenanceHold } from "../../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { describe,it } from "vitest";
 import { z } from "zod";
@@ -118,8 +119,13 @@ describe("failureStatus", () => {
     const degraded = failureStatus(new ProjectionDegradedError("the fold refuses to serve counts"));
     assert.equal(degraded.status, 500);
     assert.equal(degraded.body.code, "PROJECTION_DEGRADED");
-    // The ONE retryable arm: a guarded rebuild can clear it.
+    // A guarded rebuild can clear it.
     assert.equal(degraded.body.retryable, true);
+  });
+
+  it("answers 503+retryable when a copy's history snapshot kept moving", () => {
+    assert.deepEqual(failureStatus(new AuthoritySnapshotChangedError()), { status: 503,
+      body: { state: "error", code: "STORAGE_SNAPSHOT_CHANGED", message: ERROR_CATALOG.STORAGE_SNAPSHOT_CHANGED.text, retryable: true } });
   });
 
   it("answers typed path-free corruption for a diagnostic readback failure", () => {
