@@ -272,15 +272,15 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     const message: LaneRequest = { kind: "read", id: read.id, beginSeq: read.beginSeq, module: read.definition.module, name: read.definition.name,
       key: read.key, args: read.args, nowMs: clock.nowMs(), processRevision: read.processRevision, processFacts: read.processFacts };
     try { lane.worker.postMessage(message); }
-    catch (error) {
-      // The lane never received an unsendable request: only its own waiters fail, and the lane stays idle.
-      lane.running = undefined;
-      const failure = error instanceof Error ? error : new Error("read-lane-send-failed", { cause: error });
-      for (const waiter of [...read.waiters]) settleWaiter(waiter, { error: failure });
-      startCheckpointWhenIdle();
-      pump(lane);
-    }
+    catch (error) { failUnsent(lane, read, error instanceof Error ? error : new Error("read-lane-send-failed", { cause: error })); }
   };
+  /** The lane never received an unsendable request: only its own waiters fail, and the lane stays idle. */
+  function failUnsent(lane: Lane, read: PendingRead, failure: Error) {
+    lane.running = undefined;
+    for (const waiter of [...read.waiters]) settleWaiter(waiter, { error: failure });
+    startCheckpointWhenIdle();
+    pump(lane);
+  }
   const pumpAll = () => { for (const lane of lanes.values()) pump(lane); };
 
   const startCheckpointWhenIdle = () => {
@@ -292,12 +292,14 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     lane.running = "checkpoint";
     const message: LaneRequest = { kind: "checkpoint", id: ++messageId };
     try { lane.worker.postMessage(message); }
-    catch {
-      lane.running = undefined;
-      finishCheckpoint(undefined);
-      pumpAll();
-    }
+    catch { checkpointUnsent(lane); }
   };
+  /** An unsendable checkpoint counts as a failed attempt: the lane stays idle and the retry timer takes over. */
+  function checkpointUnsent(lane: Lane) {
+    lane.running = undefined;
+    finishCheckpoint(undefined);
+    pumpAll();
+  }
   const beginCheckpoint = () => {
     if (checkpointState !== "idle" || closing) return;
     checkpointState = "draining";

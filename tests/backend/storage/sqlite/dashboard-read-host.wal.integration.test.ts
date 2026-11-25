@@ -32,19 +32,16 @@ async function walHost(checkpoint: typeof POLICY = POLICY) {
   let peak = 0;
   const notes = createNoteTimelineWriter({ repository: fixture.database.authority.timelineEvents, clock: systemClock });
   /**
-   * A continuous peer writer on the main connection at WRITER_COMMITS_PER_SECOND, catching up after a late tick, sampling
-   * the WAL after each commit. A held read keeps the WAL from resetting, so its size follows the commit count.
+   * A continuous peer writer on the main connection, one commit per tick at up to WRITER_COMMITS_PER_SECOND, sampling the
+   * WAL after each commit. It shares the host's thread, so it never commits in a burst. A held read keeps the WAL from
+   * resetting, so its size follows the commit count.
    */
   const writer = () => {
     let written = 0;
-    const began = performance.now();
     const timer = setInterval(() => {
-      const due = Math.floor((performance.now() - began) * WRITER_COMMITS_PER_SECOND / 1_000);
-      while (written < due) {
-        notes.emitNote({ workflow: "person-lookup", address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step",
-          message: `peer write ${String(++written)} ${"x".repeat(512)}` });
-        peak = Math.max(peak, walBytes());
-      }
+      notes.emitNote({ workflow: "person-lookup", address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step",
+        message: `peer write ${String(++written)} ${"x".repeat(512)}` });
+      peak = Math.max(peak, walBytes());
     }, 1_000 / WRITER_COMMITS_PER_SECOND);
     return { stop: () => { clearInterval(timer); return written; } };
   };
