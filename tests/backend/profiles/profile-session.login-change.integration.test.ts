@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
-import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 import { syncBuiltinESMExports } from "node:module";
@@ -9,8 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery } from "../../../src/backend/storage/source-closure.js";
 import { ProfileVerifierDocumentSchema } from "../../../src/models/profiles/profile.js";
-import { createProfileSessionWorld, signUpWithLegacyOperation } from "../../support/helpers/backend/profile-session-world.js";
-import { finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
+import { createProfileSessionWorld, selectUnupgradedProfile } from "../../support/helpers/backend/profile-session-world.js";
 import { findProfileFixtureAdmission, findProfileFixtureInWorkspace } from "../../support/helpers/synthetic-database-admission.js";
 
 const worlds: Awaited<ReturnType<typeof createProfileSessionWorld>>[] = [];
@@ -64,29 +62,6 @@ function unclosedSource(error: unknown): AuthoritySourceClosureUnprovedError | u
 }
 function restoreFiles(): void { vi.restoreAllMocks(); syncBuiltinESMExports(); }
 function refusalCode(result: { state: string; code?: string }) { return result.state === "refused" ? result.code : result.state; }
-
-// Stop after publication but before the first successful upgrade, leaving the old registry row intact.
-async function unupgraded(machine: Awaited<ReturnType<typeof world>>, fields = alexFields) {
-  const session = machine.open();
-  const draft = signUpWithLegacyOperation(machine.machineRoot, session, fields);
-  const rename = fs.renameSync;
-  vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-    if (String(to).endsWith("/profile-publication.json") && fs.readFileSync(from, "utf8").includes('"relayEmail"')) {
-      throw new Error("fixture withholds registry upgrade");
-    }
-    rename(from, to);
-  });
-  syncBuiltinESMExports();
-  try { await assert.rejects(finishProfileOnboarding(session, draft), /fixture withholds registry upgrade/u); }
-  finally { restoreFiles(); }
-  const registry = createProfileRegistry(machine.machine);
-  const [row] = registry.read().profiles;
-  assert.ok(row);
-  assert.equal(row.relayEmail, undefined);
-  assert.equal(registry.read().activeProfileId, null);
-  registry.advanceSession(row.profileId);
-  return row.profileId;
-}
 
 function stoppedLoginWrite(machine: Awaited<ReturnType<typeof world>>, profileId: string, email: string, password: string) {
   const owner = machine.machine.admitProfile(profileId);
@@ -182,7 +157,7 @@ describe("Relay login change", () => {
   ])("repairs a stopped legacy %s change only at a proved old sign-in", async (_kind, email, password) => {
     const machine = await world();
     const prior = { ...alexFields, email: " alex@ucsd.edu " };
-    const profileId = await unupgraded(machine, prior);
+    const profileId = await selectUnupgradedProfile(machine, prior);
     stoppedLoginWrite(machine, profileId, email, password);
     machine.saveInSettings(profileId, { sharepointOnboardingRosterUrl: { set: "https://example.test/roster" } });
     const session = machine.open();
@@ -202,7 +177,7 @@ describe("Relay login change", () => {
   });
 
   it("refuses an unmarked legacy mismatch without repairing a Settings edit", async () => {
-    const machine = await world(), profileId = await unupgraded(machine);
+    const machine = await world(), profileId = await selectUnupgradedProfile(machine, alexFields);
     machine.saveInSettings(profileId, { ucpathPassword: { set: "settings-only" } });
     const session = machine.open(), at = alexFields.createdAt;
     const before = machine.credentialBytes(profileId);
@@ -213,7 +188,7 @@ describe("Relay login change", () => {
   });
 
   it("keeps the legacy selection resumable after a missing UCPath password is restored", async () => {
-    const machine = await world(), profileId = await unupgraded(machine);
+    const machine = await world(), profileId = await selectUnupgradedProfile(machine, alexFields);
     const session = machine.open(), at = alexFields.createdAt;
     machine.saveInSettings(profileId, { ucpathPassword: { clear: true } });
     assert.equal(refusalCode(session.resumeSignedInProfile({ at })), "PROFILE_AUTHORITY_UNAVAILABLE");
@@ -247,7 +222,7 @@ describe("Relay login change", () => {
   });
 
   it("surfaces a credential read failure during legacy resume and keeps the selection resumable", async () => {
-    const machine = await world(), profileId = await unupgraded(machine);
+    const machine = await world(), profileId = await selectUnupgradedProfile(machine, alexFields);
     const path = join(machine.machineRoot, "profiles", profileId, "credentials", "protected.json");
     const before = fs.readFileSync(path);
     const restarted = machine.open();
@@ -277,7 +252,7 @@ describe("Relay login change", () => {
   });
 
   it("upgrades a settled legacy selection at resume without changing the protected store or verifier material", async () => {
-    const machine = await world(), profileId = await unupgraded(machine);
+    const machine = await world(), profileId = await selectUnupgradedProfile(machine, alexFields);
     const before = machine.credentialBytes(profileId);
     const verifierDocument = () => ProfileVerifierDocumentSchema.parse(JSON.parse(machine.verifierBytes()));
     const beforeVerifiers = verifierDocument();
@@ -445,7 +420,7 @@ describe("Relay login change", () => {
   });
 
   it.each(["entries-flush", "entries-flush-unowned"] as const)("refuses an unproved legacy restore after %s", async fault => {
-    const machine = await world(), profileId = await unupgraded(machine);
+    const machine = await world(), profileId = await selectUnupgradedProfile(machine, alexFields);
     stoppedLoginWrite(machine, profileId, alexFields.email, "secret-two");
     const session = machine.open(), at = alexFields.createdAt;
     inject(fault);
