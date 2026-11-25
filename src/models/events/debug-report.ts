@@ -26,10 +26,9 @@ export function dashboardReportAccepted(report: DashboardErrorReport): boolean {
 const FailureOutcomeSchema = z.object({ state: z.enum(["error", "failed", "refused", "rejected", "conflict", "unknown", "uncertain", "unavailable"]), code: z.string().optional() });
 const TRANSPORT_CODES = new Set(["SCHEMA_INVALID", "INTERNAL_FAILURE", "REQUEST_IDENTITY_REFUSED", "ROUTE_NOT_FOUND", "SECTION_UNAVAILABLE", "PROJECTION_DEGRADED", "DEBUG_REPORT_INVALID", "DEBUG_REPORT_RATE_LIMIT", "DEBUG_REPORT_SIZE_LIMIT"]);
 
-export function debugFailureOutcome(value: unknown, status = 200) {
-  const readiness = status === 200 ? PreflightReadinessWireSchema.safeParse(value) : undefined;
-  if (readiness?.success && readiness.data.state === "unavailable" && readiness.data.code === "PREFLIGHT_EVIDENCE_EXPIRED"
-    && readiness.data.lastCompleted !== undefined) return undefined;
+export function debugFailureOutcome(value: unknown, status = 200): { code: string; reason: string } | undefined {
+  // An unavailable readiness is an answer: the reader prepares the checks and reads again.
+  if (status === 200 && PreflightReadinessWireSchema.safeParse(value).success) return undefined;
   if (z.object({ state: z.literal("signed-out"), remoteRevocation: z.literal("unconfirmed") }).safeParse(value).success) {
     return { code: "CHATGPT_AUTH_UNAVAILABLE", reason: "remote-revocation-unconfirmed" };
   }
