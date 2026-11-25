@@ -5,7 +5,7 @@ import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import type { StartRowDeclaration } from "../../../../src/models/workflow/step-omission.js";
-import { EidSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
+import { EidSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
@@ -202,8 +202,8 @@ describe("child step facts over a transaction's phases and several child runs", 
       const retried = (outcome: "done" | "failed") => {
         const retryId = RunIdSchema.parse("00000000-0000-4000-8000-00000000fa17");
         const { completion: _completion, sessionId: _sessionId, ...settled } = failed;
-        const retry: RunRecord = { ...settled, envelope: { ...failed.envelope, runId: retryId, retryOf: failed.envelope.runId, attempt: failed.envelope.attempt + 1 },
-          lifecycle: { state: "terminal", outcome, endedAt: h.clock.now().toISOString() } };
+        const retry: RunRecord = { ...settled, envelope: { ...failed.envelope, runId: retryId, retryOf: failed.envelope.runId, attempt: PositiveIntSchema.parse(failed.envelope.attempt + 1) },
+          lifecycle: { state: "terminal", outcome, endedAt: IsoInstantSchema.parse(h.clock.now().toISOString()) } };
         const runs = { ...h.database.authority.runs, listChildren: (id: string) => id === run.envelope.runId ? [...h.database.authority.runs.listChildren(id), retry] : [] };
         return read(h, run, { database: { authority: { ...h.database.authority, runs }, withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database) } }).failedMembers;
       };

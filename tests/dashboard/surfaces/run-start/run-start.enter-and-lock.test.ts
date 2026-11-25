@@ -9,6 +9,7 @@ import { useRoute, type PopstateRouteHandler } from "../../../../src/dashboard/a
 import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
+import { readLaunchRecovery } from "../../../../src/dashboard/surfaces/run-start/run-launch-recovery.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../src/models/dashboard/rerun-warning.js";
@@ -240,7 +241,7 @@ const finished = RerunValuesSnapshotSchema.parse({ ...snapshot, source: { ...sna
 const drawn = () => document.querySelector(".launch-dialog") !== null;
 async function openOneClick(served: Partial<DashboardClient>, extra: Readonly<{ rerunInOneClick?: boolean; workflow?: RunStartWorkflow; source?: typeof snapshot; warns?: boolean }> = {}) {
   const { rerunInOneClick = true, workflow = typed, source = finished, warns = false } = extra;
-  const plans: StartPlanRequest[] = [], commands: unknown[] = [], drawnAtCommand: boolean[] = [];
+  const plans: StartPlanRequest[] = [], commands: unknown[] = [], drawnAtCommand: boolean[] = [], applied: string[] = [];
   const dialog = await h.openDialog(h.stubClient({
     submitStartPlan: async request => { plans.push(StartPlanRequestSchema.parse(request)); return planFor(request); },
     executeCommand: async command => { commands.push(command); drawnAtCommand.push(drawn()); return h.APPLIED; },
@@ -248,8 +249,8 @@ async function openOneClick(served: Partial<DashboardClient>, extra: Readonly<{ 
     previewRerunWarnings: async request => RerunWarningWireSchema.parse({ workflowId: workflow.workflowId, rerun: { source: RerunWarningRequestSchema.parse(request).source, warningDigest: h.HASH,
       warnings: warns ? [{ nodeId: workflow.steps[0].key, taskId: "ucpath/save-row", system: "ucpath", businessKeyDigest: h.HASH, writeIntentId: "d1000000-0000-4000-8000-000000000001", evidenceDigest: h.HASH }] : [] } }),
     ...served,
-  }), { workflows: [workflow], panelWorkflowId: workflow.workflowId, rerunSource: RUN_DIALOG_RERUN_SOURCE, rerunInOneClick });
-  return { dialog, plans, commands, drawnAtCommand };
+  }), { workflows: [workflow], panelWorkflowId: workflow.workflowId, rerunSource: RUN_DIALOG_RERUN_SOURCE, rerunInOneClick }, workflowId => applied.push(workflowId));
+  return { dialog, plans, commands, drawnAtCommand, applied };
 }
 
 describe("a one-click rerun", () => {
@@ -264,6 +265,41 @@ describe("a one-click rerun", () => {
     await act(async () => { ready.resolve(h.READY); await Promise.resolve(); });
     await settleLong();
     assert.deepEqual([plans.length, commands.length, drawnAtCommand], [1, 1, [false]], "a catalog refresh while it waits neither stops nor repeats it");
+  });
+
+  const other: RunStartWorkflow = { ...typed, workflowId: "separations", label: "Separations" };
+  const REFRESHES = { "a catalog refresh": () => ({ catalog: buildWorkflowCatalog([typed], servedFixtureSources([typed])) }),
+    "another active workflow": () => ({ panelWorkflowId: "separations", catalog: buildWorkflowCatalog([typed, other], servedFixtureSources([typed, other])) }) } as const;
+  it.each((["loading", "checking", "planning", "submitting"] as const).flatMap(phase => Object.entries(REFRESHES).map(([name, refresh]) => ({ phase, name, refresh }))))(
+    "keeps its request through $name while $phase, starts once and reports the start", async ({ phase, refresh }) => {
+      const held = Promise.withResolvers<undefined>(), calls = { loading: 0, checking: 0, planning: 0, submitting: 0 };
+      const asked = async (at: typeof phase) => { calls[at] += 1; if (at === phase) await held.promise; };
+      const { dialog, applied } = await openOneClick({
+        rerunValues: async () => { await asked("loading"); return { state: "available", snapshot: finished }; },
+        previewRerunWarnings: async request => { await asked("checking"); return RerunWarningWireSchema.parse({ workflowId: typed.workflowId,
+          rerun: { source: RerunWarningRequestSchema.parse(request).source, warnings: [], warningDigest: h.HASH } }); },
+        submitStartPlan: async request => { await asked("planning"); return planFor(request); },
+        executeCommand: async () => { await asked("submitting"); return h.APPLIED; },
+      });
+      await settleLong();
+      assert.equal(calls[phase], 1, "the phase under test is out");
+      await dialog.rerender(refresh());
+      await settleLong();
+      assert.equal(drawn(), false, "the refresh did not open the dialog");
+      await act(async () => { held.resolve(undefined); await Promise.resolve(); });
+      await settleLong();
+      assert.deepEqual(calls, { loading: 1, checking: 1, planning: 1, submitting: 1 });
+      assert.deepEqual([applied, h.closed], [[typed.workflowId], [false]]);
+      assert.equal(readLaunchRecovery(window.sessionStorage, h.ACTOR_ID), null, "no readback is left behind");
+    });
+
+  it("reads its source again when the workflow it was restored for changed", async () => {
+    let reads = 0;
+    const { dialog } = await openOneClick({ rerunValues: async () => { reads += 1; return { state: "available", snapshot }; } });
+    await settleLong();
+    const changed = { ...typed, version: typed.version + 1 };
+    await dialog.rerender({ catalog: buildWorkflowCatalog([changed], servedFixtureSources([changed])) });
+    assert.deepEqual([reads, dialog.stage()], [2, "Steps"]);
   });
 
   it("presses Start by itself: the original input, once, then closes", async () => {
@@ -347,6 +383,16 @@ describe("what a rerun keeps of its source", () => {
     const { readingId, ...sent } = plans[0].submissions[0] as Record<string, unknown>;
     assert.deepEqual(sent, { document: artifact, fileName: "one.pdf", extractWithOcr: false, form: "w4" });
     assert.notEqual(readingId, value.readingId);
+  });
+
+  it("shows a manually read PDF as read manually, with no OCR switch to turn off", async () => {
+    const value = { document: artifact, fileName: "one.pdf", readingId: "00000000-0000-4000-8000-0000000000ff", form: "w4", reading: { kind: "manual", actorId: h.ACTOR_ID, assertions: [] } };
+    const { dialog } = await openOneClick({}, { workflow: pdf, source: pdfSource(value), rerunInOneClick: false });
+    await settleAll();
+    await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Start");
+    assert.match(dialog.text(), /Manual reading/u);
+    assert.doesNotMatch(dialog.text(), /Read with OCR|OCR o(n|ff)/u);
   });
 
   it("sends the operator to Start run when the original PDF is gone", async () => {

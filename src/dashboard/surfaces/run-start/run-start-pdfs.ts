@@ -37,9 +37,17 @@ export function pdfRunSelectValue(field: Readonly<{ field: string }>, picks: Pdf
   const pick = picks[field.field];
   return typeof pick === "string" ? pick : "";
 }
-/** The footer's OCR state: "OCR off" only when the declared switch is off; a PDF workflow without the switch always reads. */
-export function pdfRunOcrFooter(surface: UploadRunSurface, picks: PdfRunPicks): string {
-  const field = pdfRunLaunchFields(surface).find(candidate => candidate.kind === "boolean" && candidate.field === "extractWithOcr");
+const OCR_FIELD = "extractWithOcr";
+const ManualReadingSchema = z.object({ reading: z.object({ kind: z.literal("manual"), actorId: z.string() }) });
+const readManually = (file: Pdf) => ManualReadingSchema.safeParse(file.original).success;
+/** The launch fields Start offers: a run that keeps a manual reading cannot start without OCR, so it has no OCR switch. */
+export function pdfRunOfferedFields(surface: UploadRunSurface, draft: PdfRunDraft | null) {
+  return pdfRunLaunchFields(surface).filter(({ field }) => field !== OCR_FIELD || draft === null || !draft.files.some(readManually));
+}
+/** How the footer says the PDFs are read: by the manual readings kept for all of them, else "OCR off" only when the declared switch is off; a PDF workflow without the switch always reads. */
+export function pdfRunOcrFooter(surface: UploadRunSurface, draft: PdfRunDraft | null, picks: PdfRunPicks): string {
+  if (draft !== null && draft.files.length > 0 && draft.files.every(readManually)) return "Manual reading";
+  const field = pdfRunLaunchFields(surface).find(candidate => candidate.kind === "boolean" && candidate.field === OCR_FIELD);
   return field?.kind === "boolean" && !pdfRunSwitchValue(field, picks) ? "OCR off" : "OCR on";
 }
 /** The first required launch field without a pick, which blocks planning; null when every required field is picked. */
@@ -63,9 +71,8 @@ export function previewPdfRun(surface: UploadRunSurface, draft: PdfRunDraft | nu
 }
 
 const JsonObjectSchema = z.record(z.string(), JsonValueSchema);
-const ManualReadingSchema = z.object({ reading: z.object({ kind: z.literal("manual"), actorId: z.string() }) });
 
-/** An earlier run's input, each PDF under a new reading ID and everything else as it was; null when it cannot be reused, as a reading another operator asserted cannot. */
+/** An earlier run's input, each PDF under a new reading ID and everything else as it was; null when it cannot be reused, as a reading another operator asserted or a manual reading started without OCR cannot. */
 export function restorePdfRun(surface: UploadRunSurface, value: unknown, actorId: string): { draft: PdfRunDraft; picks: PdfRunPicks } | null {
   const input = surface.pdfInput, record = JsonObjectSchema.safeParse(value).data;
   if (input === undefined || record === undefined) return null;
@@ -77,7 +84,7 @@ export function restorePdfRun(surface: UploadRunSurface, value: unknown, actorId
   for (const original of documents) {
     const source = PdfSourceSchema.safeParse({ artifact: original.document, fileName: original.fileName }).data;
     const asserter = ManualReadingSchema.safeParse(original).data?.reading.actorId;
-    if (source === undefined || asserter !== undefined && asserter !== actorId) return null;
+    if (source === undefined || asserter !== undefined && (asserter !== actorId || record[OCR_FIELD] === false)) return null;
     files.push({ source, readingId: crypto.randomUUID(), original });
   }
   const picks = Object.fromEntries(pdfRunLaunchFields(surface).flatMap(({ field }) => {

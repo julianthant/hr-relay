@@ -42,7 +42,7 @@ import { firstStepsFailure, includedRowCount, lastIncludedSwitch, rowFieldsOpen,
 import { adjacentRunStartStage, reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import { WorkflowPdfInput } from "./run-start-pdf-input.js";
-import { pdfRunLaunchFields, pdfRunOcrFooter, pdfRunSelectValue, pdfRunSwitchValue, previewPdfRun, restorePdfRun, unpickedPdfRunField, usePdfRunInput } from "./run-start-pdfs.js";
+import { pdfRunOcrFooter, pdfRunOfferedFields, pdfRunSelectValue, pdfRunSwitchValue, previewPdfRun, restorePdfRun, unpickedPdfRunField, usePdfRunInput } from "./run-start-pdfs.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration ) */
 
@@ -81,6 +81,11 @@ export interface RunStartWorkflow {
   /** The optional second check: any library spreadsheet that maps the key field fits, and a start may pick none. */
   readonly workbookCheck?: Readonly<{ id: string; keyFieldId: string }>;
   readonly referenceSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string; sheetName: string }>[];
+}
+
+/** Whether a refresh left the workflow's own definition as it was; its spreadsheet matches are read apart from it. */
+function sameDefinition(left: RunStartWorkflow, right: RunStartWorkflow | undefined): boolean {
+  return JSON.stringify({ ...left, referenceSources: [] }) === JSON.stringify({ ...right, referenceSources: [] });
 }
 
 function isStartable(workflow: RunStartWorkflow): boolean {
@@ -221,13 +226,7 @@ export function RunStartDialog({
   const workbookReference = selectedWorkflow?.workbookReference;
   const requiredTypes = useMemo(() => workbookReference === undefined ? [] : [workbookReference.id], [workbookReference]);
   const referenceId = workbookReference?.id;
-  /** A rerun writes to the current version of the original spreadsheet; every other start keeps the version picked. */
-  const writtenVersion = isRerun && (workbookReference?.writableFields.length ?? 0) > 0
-    ? library.catalog.find(entry => referenceId !== undefined && entry.libraryId === referenceDrafts[referenceId]?.libraryId)?.state.selectedVersionId : undefined;
-  const atWrittenVersion = <T extends object>(picks: Readonly<Record<string, T>>): Readonly<Record<string, T>> => referenceId === undefined || writtenVersion === undefined || picks[referenceId] === undefined
-    ? picks : { ...picks, [referenceId]: { ...picks[referenceId], versionId: writtenVersion } };
-  const selectedReferences = atWrittenVersion(referenceSelections);
-  const selectedDraft = referenceId === undefined ? undefined : atWrittenVersion(referenceDrafts)[referenceId];
+  const selectedDraft = referenceId === undefined ? undefined : referenceDrafts[referenceId];
   const selectedLibrary = library.catalog.find(entry => entry.libraryId === selectedDraft?.libraryId && entry.state.origin.kind === 'local' && !entry.state.removed);
   const selectedVersion = selectedLibrary?.state.versions.find(version => version.id === selectedDraft?.versionId);
   const sourceProjection = library.compatibility?.workflows.find(entry => entry.workflowId === workflowId);
@@ -299,7 +298,7 @@ export function RunStartDialog({
   }).map(step => step.key) ?? [], [workflow, declaredInput, typedValues]);
   const selectedStepKeys = customizeSteps || isRerun ? customizedStepKeys : defaultStepKeys;
   const rowCapability = !isRerun && inputRun.state === "present" ? inputRun.surface.workbookRows : undefined;
-  const rowReference = rowCapability === undefined ? undefined : selectedReferences[rowCapability.typeId];
+  const rowReference = rowCapability === undefined ? undefined : referenceSelections[rowCapability.typeId];
   const rowLibrary = library.catalog.find(entry => entry.libraryId === rowReference?.libraryId && entry.state.origin.kind === "local" && !entry.state.removed);
   const rowVersion = rowLibrary?.state.versions.find(version => version.id === rowReference?.versionId);
   const rowReadReady = !library.catalogLoading && !library.catalogRefreshing && !library.catalogError && rowLibrary !== undefined && rowVersion !== undefined
@@ -361,6 +360,8 @@ export function RunStartDialog({
     const binding = commandBindingRef.current;
     return binding !== undefined && binding.scope.client === client && binding.scope.actorId === actorId ? { state: "ok" } : { state: "replaced" };
   };
+  /** The workflow the rerun draft was restored for. */
+  const restoredFor = useRef<RunStartWorkflow | undefined>(undefined);
   const { state: machine, send } = useRunDialogMachine({
     stage: currentStage,
     setStage: next => { if (!suppressStage.current) setCurrentStage(next); },
@@ -380,6 +381,7 @@ export function RunStartDialog({
           pdfInput.restore(pdfs);
         }
         const next = launchDraft.restoreRerunDraft(restored, sourceWorkflow, rerunInputText);
+        restoredFor.current = sourceWorkflow;
         setWorkflowId(sourceWorkflow.workflowId);
         draftRef.current = next;
         setDraft(next);
@@ -434,10 +436,12 @@ export function RunStartDialog({
   }, [workflows, update, setCurrentStage, setCustomizeSteps, setWorkflowId, resetPdfs, commandBinding?.authority.today]);
 
   /** The rerun this dialog is open for, and whether its one click is still going. */
-  const openedFor = useRef<RerunLaunchSource | undefined>(undefined);
+  const openedFor = useRef<Readonly<{ source: RerunLaunchSource; text: string | undefined; service: object }> | undefined>(undefined);
   const [opened, setOpened] = useState<RerunLaunchSource>();
   const unattended = useRef(view.unattended);
   unattended.current = view.unattended;
+  const held = useRef({ sending, failed: sourceError !== null });
+  held.current = { sending, failed: sourceError !== null };
   const fromRerun = useRef(false);
   useEffect(() => { if (!open) { openedFor.current = undefined; setOpened(undefined); } }, [open]);
   /** Nothing is drawn while a one-click rerun goes on by itself. */
@@ -447,6 +451,11 @@ export function RunStartDialog({
   // second time, which is why this keys on `open` rather than running once.
   useEffect(() => {
     if (!open) return;
+    // A refresh under a rerun already open keeps its draft and its requests. A source that failed, or whose workflow changed, is read again once no command is out.
+    const previous = openedFor.current, restored = restoredFor.current;
+    const reopened = previous !== undefined && previous.source === rerunSource && previous.text === rerunInputText && previous.service === launchService;
+    const changed = restored !== undefined && !sameDefinition(restored, workflows.find(entry => entry.workflowId === restored.workflowId));
+    if (reopened && (held.current.sending || !held.current.failed && !changed)) return;
     resetPdfs();
     if (!routed && selectedWorkflowRef.current !== defaultWorkflowId(workflows, panelWorkflowId)) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId), true);
     setPickerQuery("");
@@ -464,9 +473,10 @@ export function RunStartDialog({
     suppressStage.current = rerunSource === undefined;
     try { send({ type: "open", recovery: recoveryState, ...(rerunSource === undefined ? {} : { rerun: rerunSource,
       // A dialog already open for this rerun starts over by itself only while nothing was asked for.
-      unattended: rerunInOneClick && (openedFor.current !== rerunSource || unattended.current === "waiting") }) }); }
+      unattended: rerunInOneClick && (previous?.source !== rerunSource || unattended.current === "waiting") }) }); }
     finally { suppressStage.current = false; }
-    openedFor.current = rerunSource;
+    openedFor.current = rerunSource === undefined ? undefined : { source: rerunSource, text: rerunInputText, service: launchService };
+    restoredFor.current = undefined;
     setOpened(rerunSource);
   }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, rerunInOneClick, actorId, launchService, routed, setCustomizeSteps, resetPdfs, update, send]);
 
@@ -565,7 +575,7 @@ export function RunStartDialog({
       browserMode,
       captureBrowserScreenshots,
       priority,
-      ...(requiredTypes.length || checkSelections.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1,
+      ...(requiredTypes.length || checkSelections.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, referenceSelections, values === null ? preview.submissions.length : 1,
         [...versionSources.sources, ...checkSelections],
         (workbookReference?.writableFields.length ?? 0) > 0,
         rowCapability !== undefined ? { typeId: rowCapability.typeId, rows: selectedWorkbookRows?.choices ?? [] } : sourceRow === undefined ? undefined : { typeId: sourceRow.typeId, rows: [sourceRow.row] },
@@ -576,7 +586,7 @@ export function RunStartDialog({
     });
   };
 
-  const referenceMissing = requiredTypes.some(typeId => selectedReferences[typeId] === undefined);
+  const referenceMissing = requiredTypes.some(typeId => referenceSelections[typeId] === undefined);
   const blockedReason = pdfSurface !== undefined ? pdfInput.loading ? "Reading PDFs…" : pdfInput.error !== null ? "Fix the refused PDF selection first." : preview.entries.length === 0 ? "Choose at least one PDF." : referenceMissing ? MISSING_REFERENCE_REASON : null : inputRun.state !== "present"
     ? inputRun.reason
     : preview.problem !== null
@@ -586,7 +596,7 @@ export function RunStartDialog({
         : referenceMissing
           ? MISSING_REFERENCE_REASON
           : null;
-  const launchFields = pdfSurface === undefined ? [] : pdfRunLaunchFields(pdfSurface);
+  const launchFields = pdfSurface === undefined ? [] : pdfRunOfferedFields(pdfSurface, pdfInput.draft);
   const unpickedField = pdfSurface === undefined ? null : unpickedPdfRunField(pdfSurface, pdfInput.picks);
   /** A required launch field without a pick blocks planning from Options, where it is picked. */
   const optionsBlockedReason = unpickedField === null ? null : `Pick ${unpickedField.label}.`;
@@ -666,7 +676,7 @@ export function RunStartDialog({
         versions: entry.state.versions.map((version, index) => ({ id: version.id, savedAt: version.savedAt, name: version.name || `v${entry.state.versions.length - index}` })), currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
       return <RunSpreadsheets key={typeId} check={check !== undefined && checkSheets.length > 0 ? check : undefined} busy={library.catalogRefreshing || library.compatibility === undefined} locked={sending} catalogError={library.catalogError}
         onRefresh={() => void library.adapter.refreshCatalog()}
-        reference={{ requiredLabel: requiredLabelOf(requiredFields), sheets, chosenLibraryId: draft?.libraryId, chosenVersionId: draft?.versionId, chosenSheetId: selectedReferences[typeId]?.sheetId ?? '',
+        reference={{ requiredLabel: requiredLabelOf(requiredFields), sheets, chosenLibraryId: draft?.libraryId, chosenVersionId: draft?.versionId, chosenSheetId: referenceSelections[typeId]?.sheetId ?? '',
           worksheets: sheetOptions.map(source => ({ sheetId: source.sheetId, sheetName: source.sheetName })), worksheetsState: versionSources.state, worksheetsError: versionSources.error,
           onPick: (libraryId, versionId) => update(current => launchDraft.pickReference(current, typeId, libraryId, versionId)),
           onVersion: versionId => update(current => launchDraft.pickReferenceVersion(current, typeId, versionId)),
@@ -683,7 +693,7 @@ export function RunStartDialog({
   const spreadsheetsError = isRerun && usesSpreadsheets && (Boolean(library.catalogError) || compatibilityMissing);
   const spreadsheetsReading = usesSpreadsheets && !spreadsheetsError && (library.catalogLoading || library.catalogRefreshing || library.compatibility === undefined
     || selectedDraft !== undefined && versionSources.state === "loading" || checkSheets.some(sheet => sheet.pickedSheetIds !== undefined && sheet.worksheetsState === "loading"));
-  const reference = referenceId === undefined ? undefined : selectedReferences[referenceId];
+  const reference = referenceId === undefined ? undefined : referenceSelections[referenceId];
   const spreadsheetGone = usesSpreadsheets && !spreadsheetsReading && !spreadsheetsError && (workbookReference !== undefined
     && !versionSources.sources.some(source => source.libraryId === reference?.libraryId && source.versionId === reference.versionId && source.sheetId === reference.sheetId)
     || checkSelections.length !== (snapshot?.spreadsheets ?? []).filter(pick => pick.typeId === workbookCheck?.id).length);
@@ -731,7 +741,7 @@ export function RunStartDialog({
       return date === undefined ? [] : [{ key: control.label, value: date }];
     })),
     ...(pdfSurface === undefined ? [] : requiredTypes).flatMap(typeId => {
-      const selection = selectedReferences[typeId];
+      const selection = referenceSelections[typeId];
       const chosen = library.catalog.find(entry => entry.libraryId === selection?.libraryId);
       if (selection === undefined || chosen === undefined) return [];
       const version = chosen.state.versions.find(entry => entry.id === selection.versionId)?.name;
@@ -942,7 +952,7 @@ export function RunStartDialog({
               items={[
                 workflow?.label,
                 workflow === undefined ? undefined : `${includedRowCount(rows, selectedStepKeys, manualRows)} of ${rows.length} steps`,
-                pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.picks),
+                pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.draft, pdfInput.picks),
                 priority === "interactive" ? "Priority" : undefined,
               ].filter((item): item is string => item !== undefined)}
             />

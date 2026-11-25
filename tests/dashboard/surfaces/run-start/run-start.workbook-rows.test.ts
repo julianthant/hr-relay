@@ -10,6 +10,7 @@ import { WorkbookLibraryEntrySchema, WorkbookLibraryVersionViewSchema, projectWo
 import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
 import { RerunValuesRequestSchema, RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../src/models/dashboard/rerun-warning.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
@@ -150,12 +151,17 @@ it("retains the original issued envelope after an unknown result and later mode 
   assert.equal(commands.length, 1); assert.equal(dialog.disabled("Continue"), true);
 });
 
-it("reruns the original person, mode and saved spreadsheet, with its row and no roster", async () => {
+function rerunSnapshot() {
   const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
   const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
     descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" }, sourceInput: { state: "available", value: { email: "source@example.test", mode: "rehire" } },
     spreadsheets: [{ typeId: workflow.workbookReference?.id, libraryId: entry.libraryId, versionId: "version", sheetId: "first", selectedRow: { sheetId: "first", rowId: "row-2" } }],
     steps: descriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })), values: [], transactions: [] });
+  return { source, snapshot };
+}
+
+it("reruns the original person, mode and saved spreadsheet, with its row and no roster", async () => {
+  const { source, snapshot } = rerunSnapshot();
   let planned: StartPlanRequest | undefined;
   const dialog = await h.openDialog(h.stubClient({ ...libraryReads, rerunValues: async () => ({ state: "available", snapshot }),
     previewRerunWarnings: async input => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(input).source, warnings: [], warningDigest: h.HASH } }),
@@ -166,6 +172,24 @@ it("reruns the original person, mode and saved spreadsheet, with its row and no 
   await dialog.press("Continue"); await dialog.press("Start live run"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "source@example.test", mode: "rehire" }]);
   assert.deepEqual(planned.workbookReferences, [{ entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "first", expectedVersion: 1, selectedRow: { sheetId: "first", rowId: "row-2" } }]);
+});
+
+it("refuses a rerun whose saved spreadsheet version is no longer the active one, never moving its row to another version", async () => {
+  const { source, snapshot } = rerunSnapshot();
+  const moved = WorkbookLibraryEntrySchema.parse({ ...entry, version: 2, state: { ...entry.state, selectedVersionId: "edited", versions: [...entry.state.versions, { ...entry.state.versions[0], id: "edited", name: "Edited", snapshotId: "edited-snapshot", version: 2 }] } });
+  const reads: string[] = [];
+  const dialog = await h.openDialog(h.stubClient({ ...libraryReads, workbookCatalog: async () => [moved],
+    workbookCompatibility: async () => projectWorkbookCompatibility([descriptor], [{ libraryId: entry.libraryId, versionId: "edited", origin: { kind: "local" }, removed: false,
+      sheets: versionView.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name, mappings: (sheet.columnBindings ?? []).map((binding, column) => ({ fieldId: binding.fieldId!, column, basis: "manual" as const })) })) }]),
+    workbookLibraryVersion: async (_libraryId, versionId) => { reads.push(versionId); return versionView; },
+    rerunValues: async () => ({ state: "available", snapshot }),
+    previewRerunWarnings: async input => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(input).source, warnings: [], warningDigest: h.HASH } }),
+    submitStartPlan: async () => { throw new Error("a stale spreadsheet version must not reach planning"); },
+  }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
+  await h.settle();
+  await dialog.press("Continue"); await dialog.press("Start live run");
+  assert.deepEqual([...new Set(reads)], ["version"], "the original version is the one read");
+  assert.ok(dialog.text().includes(ERROR_CATALOG.WORKBOOK_INVALID.text), dialog.text());
 });
 
 it("keeps earlier selected rows visible and disabled after a named-version change until explicitly cleared", async () => {

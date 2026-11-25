@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { previewPdfRun, restorePdfRun } from "../../../../src/dashboard/surfaces/run-start/run-start-pdfs.js";
+import { pdfRunOcrFooter, pdfRunOfferedFields, previewPdfRun, restorePdfRun } from "../../../../src/dashboard/surfaces/run-start/run-start-pdfs.js";
 import { EmergencyContactInputSchema } from "../../../../src/models/workflows/emergency-contact/input.js";
 import { I9CheckStartInput } from "../../../../src/models/workflows/i9-check/start.js";
 import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
@@ -53,10 +53,27 @@ describe("the original PDF input of a rerun", () => {
     assert.equal(restorePdfRun(contact, { ...contactRun, reading: manual("emergency-contact", "3".repeat(64), "someone-else") }, ACTOR), null);
   });
 
+  it("offers no OCR choice and names the reading when the original was read manually", () => {
+    const state = (surface: typeof i9, value: unknown) => {
+      const restored = restorePdfRun(surface, value, ACTOR); assert.ok(restored);
+      return [pdfRunOfferedFields(surface, restored.draft).map(({ field }) => field), pdfRunOcrFooter(surface, restored.draft, restored.picks)];
+    };
+    assert.deepEqual(state(contact, contactRun), [["onbaseFiling"], "Manual reading"]);
+    assert.deepEqual(state(contact, { ...contactRun, reading: { kind: "subscription" } }), [["onbaseFiling", "extractWithOcr"], "OCR on"]);
+    assert.deepEqual(state(contact, { ...contactRun, reading: { kind: "subscription" }, extractWithOcr: false }), [["onbaseFiling", "extractWithOcr"], "OCR off"]);
+    assert.equal(state(i9, i9Run())[1], "OCR on", "one of its PDFs is still read");
+    assert.equal(state(i9, { ...i9Run(), documents: [i9Run().documents[0]] })[1], "Manual reading");
+    assert.deepEqual([pdfRunOfferedFields(contact, null).length, pdfRunOcrFooter(contact, null, {})], [2, "OCR on"]);
+  });
+
+  it("is not reused when a manual reading was started with OCR off, which the run refuses", () => {
+    assert.equal(restorePdfRun(contact, { ...contactRun, extractWithOcr: false }, ACTOR), null);
+  });
+
   it("reads a PDF of its own afresh when no original stands behind it", () => {
     const restored = restorePdfRun(i9, i9Run(), ACTOR); assert.ok(restored);
-    const added = { source: { artifact: pdf("4"), fileName: "four.pdf" }, readingId: READING_B };
-    const { submissions } = previewPdfRun(i9, { ...restored.draft, files: [added] } as typeof restored.draft);
+    const added = { source: restored.draft.files[0].source, readingId: READING_B };
+    const { submissions } = previewPdfRun(i9, { ...restored.draft, files: [added] });
     assert.deepEqual(I9CheckStartInput.parse(submissions[0]).documents.map(({ reading }) => reading), [{ kind: "subscription" }]);
   });
 });
