@@ -232,6 +232,18 @@ export const RULE_PROBES = {
     },
     finds: { "no-dead-disabled-control": [/the picker "Workflow" is shown switched off/u, /^(?![\s\S]*"Add workers")/u] },
   },
+  "dimmed-with-a-reason": {
+    story: {
+      title: "A dimmed Add workers that says why, beside one that does not, and a settled box beside an open one",
+      render: () => <StoryFrame>
+        <span data-state="closed" aria-label="Sessions are out of date" tabIndex={0}><Button aria-haspopup="dialog" disabled>Add workers</Button></span>
+        <Button aria-haspopup="dialog" disabled>Add people</Button>
+        <div role="group" aria-label="Settled record"><input type="checkbox" aria-label="Include" checked readOnly disabled /></div>
+        <div role="group" aria-label="Open record"><input type="checkbox" aria-label="Include again" disabled /></div>
+      </StoryFrame>,
+    },
+    finds: { "no-dead-disabled-control": [/the picker "Add people" is shown switched off/u, /every choice in "Open record" is switched off/u, /^(?![\s\S]*(?:"Add workers"|Settled record))/u] },
+  },
   "toast-with-a-button": {
     story: { title: "A toast that holds a button", ready: "[data-ds-toast-state]", render: () => <StoryFrame><div data-ds-toast-state="full">Run deleted<Button>Undo</Button></div></StoryFrame> },
     finds: { "toast-text-only": [/the toast "Run deleted\s*Undo" holds 1 control or image/u] },
