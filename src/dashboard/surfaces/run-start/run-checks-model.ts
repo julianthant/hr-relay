@@ -49,7 +49,9 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
   const binding = useDashboardCommandBinding();
   const actorId = binding?.scope.actorId;
   const authority = binding?.authority.epoch;
-  const [state, setState] = useState<RunChecksState>({ state: "checking" });
+  const [read, setRead] = useState<Readonly<{ workflowId: string | undefined; state: RunChecksState }>>({ workflowId, state: { state: "checking" } });
+  /** Another workflow's checks never stand for this one's. */
+  const state: RunChecksState = read.workflowId === workflowId ? read.state : { state: "checking" };
   /** The latest asked-for re-check, bound to the workflow it was asked for; `handled` is the last one sent. */
   const [rerun, setRerun] = useState<Readonly<{ workflowId: string; n: number }>>();
   const handled = useRef(0);
@@ -64,6 +66,7 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
   useEffect(() => {
     if (!active || workflowId === undefined) return;
     let current = true;
+    const setState = (next: RunChecksState) => setRead({ workflowId, state: next });
     const posting = rerun !== undefined && rerun.workflowId === workflowId && rerun.n > handled.current;
     if (rerun !== undefined) handled.current = Math.max(handled.current, rerun.n);
     setState({ state: "checking" });

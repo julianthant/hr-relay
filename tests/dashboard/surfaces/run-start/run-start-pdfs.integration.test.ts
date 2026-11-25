@@ -78,7 +78,6 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
   expect(dialog.disabled("Continue")).toBe(false);
   await dialog.press("Continue");
-  await dialog.press("Continue");
   expect(dialog.text()).toContain("Action History.xlsx · Fall review");
   await dialog.press("Start live run");
   expect(plans).toHaveLength(1);
@@ -111,7 +110,6 @@ it("offers the Dry run switch for the PDF workflow and plans and confirms a dry 
   expect(dryRunSwitch.closest(".ds-run-row")?.textContent).toContain("Dry run");
   expect(dryRunSwitch.closest(".ds-run-row")?.textContent).toContain("Fill and check every step without submitting or saving.");
   await act(async () => dryRunSwitch.click()); await h.settle();
-  await dialog.press("Continue");
   expect(dialog.text()).toContain("Start dry run");
   await dialog.press("Start dry run");
   expect(StartPlanRequestSchema.parse(plans[0]).dryRun).toBe(true);
@@ -130,28 +128,24 @@ it("holds Continue until the required reference spreadsheet is chosen and shows 
   await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
   expect(dialog.disabled("Continue")).toBe(false);
   expect(dialog.text()).not.toContain("Add a reference spreadsheet first.");
-  await dialog.press("Continue"); await dialog.press("Continue");
+  await dialog.press("Continue");
   expect(dialog.text()).toContain("Reference spreadsheet");
   expect(dialog.text()).toContain("Action History.xlsx");
   expect(plans).toEqual([]);
 });
 
-it("keeps Continue held when only a reference check is picked and no roster is chosen", async () => {
+it("offers one Spreadsheets field whose Add spreadsheet fills the required reference first and holds Continue until it is chosen", async () => {
   const checkWorkflow = { ...workflow, workbookCheck: { id: "reference-check", keyFieldId: "eid" } } as RunStartWorkflow;
   const dialog = await h.openDialog(client({ uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
     artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }) }),
   { workflows: [checkWorkflow], panelWorkflowId: checkWorkflow.workflowId });
   await attach([pdf("first.pdf", "%PDF first")]);
-  const check = document.querySelector('[role="region"][aria-label="Also check"]'); assert.ok(check, "the Also check section");
-  const open = [...check.querySelectorAll("button")].find(button => button.textContent?.trim() === "Add spreadsheet"); assert.ok(open, "the check section offers Add spreadsheet");
-  await act(async () => open.click());
-  const search = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a spreadsheet"]'); assert.ok(search, "the picker has a search");
-  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(search, reference.name); search.dispatchEvent(new Event("input", { bubbles: true })); });
-  const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(node => node.textContent?.includes(reference.name)); assert.ok(item, "the picker lists the check spreadsheet");
-  await act(async () => item.click()); await h.settle();
+  const field = document.querySelector('[role="region"][aria-label="Spreadsheets"]'); assert.ok(field, "the Spreadsheets field");
+  expect(document.querySelectorAll('[role="region"][aria-label="Spreadsheets"]')).toHaveLength(1);
+  expect(dialog.text()).not.toContain("Also check");
+  expect(dialog.text()).not.toContain("Reference spreadsheets");
   expect(dialog.disabled("Continue")).toBe(true);
   expect(dialog.text()).toContain("Add a reference spreadsheet first.");
-  expect(dialog.text()).toContain("Also check");
 });
 
 it("keeps the accepted selection and refuses invalid PDFs before planning or uploading them", async () => {
@@ -236,11 +230,11 @@ it("plans one Emergency Contact run per uploaded PDF", async () => {
   const picks = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"][name^="File to OnBase-"]')];
   expect(picks.map(radio => [radio.value, radio.checked])).toEqual([["file", false], ["skip", false]]);
   expect(picks[0]?.closest(".ds-run-row")?.textContent).toContain("File to OnBase");
-  expect(dialog.disabled("Continue")).toBe(true);
+  expect(dialog.disabled("Start dry run")).toBe(true);
   expect(dialog.text()).toContain("Pick File to OnBase.");
   expect(plans).toHaveLength(0);
   const skip = picks[1]; assert.ok(skip); await act(async () => skip.click());
-  expect(dialog.disabled("Continue")).toBe(false);
+  expect(dialog.disabled("Start dry run")).toBe(false);
   await dialog.press("Start dry run");
   const request = StartPlanRequestSchema.parse(plans[0]);
   expect(request.dryRun).toBe(true);
@@ -292,7 +286,6 @@ it("turning the switch off changes the footer and the start request carries extr
   expect((ocrSwitch() as HTMLInputElement).checked).toBe(false);
   expect(dialog.text()).toContain("· OCR off");
   expect(dialog.text()).not.toContain("· OCR on");
-  await dialog.press("Continue");
   await dialog.press("Start run");
   expect(EmergencyContactInputSchema.parse(StartPlanRequestSchema.parse(plans[0]).submissions[0]).extractWithOcr).toBe(false);
 });
@@ -300,7 +293,6 @@ it("turning the switch off changes the footer and the start request carries extr
 it("sends extractWithOcr true when the switch is left on", async () => {
   const plans: unknown[] = [];
   const dialog = await contactDialog(plans);
-  await dialog.press("Continue");
   await dialog.press("Start run");
   expect(EmergencyContactInputSchema.parse(StartPlanRequestSchema.parse(plans[0]).submissions[0]).extractWithOcr).toBe(true);
 });

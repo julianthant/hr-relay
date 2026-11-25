@@ -25,7 +25,7 @@ test("later stages stay off until the input is given", async ({ dashboard }) => 
   await dashboard.openStartDialog();
   const path = dashboard.dialog.getByRole("list", { name: "Run configuration path" });
   await expect(path.getByRole("button", { name: /Input$/ })).toBeEnabled();
-  await expect(path.getByRole("button", { name: /Options$/ })).toBeDisabled();
+  await expect(path.getByRole("button", { name: /Start$/ })).toBeDisabled();
 });
 
 test("Escape closes the dialog and returns focus to Start run", async ({ dashboard, page }) => {

@@ -5,12 +5,13 @@ import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import type { StartRowDeclaration } from "../../../../src/models/workflow/step-omission.js";
-import { EidSchema } from "../../../../src/rules/identity/ids.js";
+import { EidSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
-import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { bindWorkflowDelegationTargets, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
+import { rerunsInOneClick } from "../../../../src/dashboard/surfaces/run-start/run-start-rerun-model.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { plan1Contract, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, WRITE_FIXTURE_EID, WriteFixtureCommit, WriteFixturePrepare } from "../../../support/fixtures/write-sequencer-fixtures.js";
@@ -53,11 +54,11 @@ const pairChild = compileWorkflow(defineWorkflow({ ...common, id: "child-phases-
     return { steps: [[{ key: "pair", label: "Pair" }, [first, second]]], result: result(Pair, [first, second], ({ input }) => ({ eid: input.eid })) };
   } })).descriptor;
 
-function parentOver(child: AnyWorkflowDescriptor, result: z.ZodType, rows: readonly StartRowDeclaration[], binds: readonly string[]) {
-  return compileWorkflow(defineWorkflow({ ...common, id: `${child.id}-parent`, code: "cpr", label: "Child phases parent", rows, scenarios: ["write-fixture/happy"],
+function parentOver(child: AnyWorkflowDescriptor, result: z.ZodType, rows: readonly StartRowDeclaration[], binds: readonly string[], awaited = true, version = 1) {
+  return compileWorkflow(defineWorkflow({ ...common, version, id: `${child.id}-parent`, code: "cpr", label: "Child phases parent", rows, scenarios: ["write-fixture/happy"],
     steps: ({ delegate, result: derived }) => {
       const members = delegate({ id: "members", target: { id: child.id, input: Input, result }, edgeId: "members",
-        cardinality: "many", await: "terminal", join: "all", policy }, [], {
+        cardinality: "many", ...(awaited ? { await: "terminal", join: "all" } as const : { await: "none", join: "none" } as const), policy }, [], {
         bind: () => binds.map((eid) => ({ eid })),
         deriveChildItemId: (_input, identity) => identity.canonicalItemId,
       });
@@ -70,8 +71,8 @@ const writeRows: readonly StartRowDeclaration[] = [members,
   { key: "prepare", label: "Prepare", members: [{ workflow: writeChild.id, step: "write", nodes: ["write"], phase: "prepare" }] },
   { key: "commit", label: "Commit", members: [{ workflow: writeChild.id, step: "write", nodes: ["write"], phase: "commit" }] }];
 
-async function harness(child: AnyWorkflowDescriptor, result: z.ZodType, binds: readonly string[], rows: readonly StartRowDeclaration[]) {
-  const parent = parentOver(child, result, rows, binds);
+async function harness(child: AnyWorkflowDescriptor, result: z.ZodType, binds: readonly string[], rows: readonly StartRowDeclaration[], awaited = true) {
+  const parent = parentOver(child, result, rows, binds, awaited);
   const h = await sourceBoundHarness(parent, (world) => {
     const write = buildWriteFixtureRegistry(world), stores = [...plan1Stores.stores, ...write.stores];
     return defineTaskStoreRegistry(stores, { scenarioIds: [...new Set([...plan1Stores.corpus.scenarioIds, ...write.corpus.scenarioIds])],
@@ -154,5 +155,60 @@ describe("child step facts over a transaction's phases and several child runs", 
     const [child] = children(h, run) ?? [];
     assert.deepEqual(child?.steps.map(({ key, state }) => [key, state]), [["pair", "failed"]]);
     assert.deepEqual(child?.steps[0]?.nodes.map(({ nodeId, state }) => [nodeId, state]), [["first", "failed"], ["second", "unfinished"]]);
+  });
+
+  describe("the failed members of a finished batch", () => {
+    const rows: readonly StartRowDeclaration[] = [members, { key: "pair", label: "Pair", members: [{ workflow: pairChild.id, step: "pair" }] }];
+    /** A Done parent over one failed member and one still queued. */
+    async function mixedBatch() {
+      const h = await harness(pairChild, Pair, [EID_A, EID_B], rows, false);
+      const root = h.start(h.proposal(undefined, undefined, false));
+      await h.execute(root);
+      const [failing, unfinished] = h.database.authority.runs.listChildren(root.envelope.runId);
+      assert.ok(unfinished !== undefined && failing !== undefined);
+      await h.execute(failing);
+      const run = h.fresh(root), failed = h.fresh(failing);
+      assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(run.lifecycle));
+      assert.ok(failed.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed", JSON.stringify(failed.lifecycle));
+      assert.equal(h.fresh(unfinished).lifecycle.state, "queued");
+      return { h, run, failed };
+    }
+    function read(h: Harness, run: RunRecord, change: Partial<Parameters<typeof readRerunValues>[0]> = {}) {
+      const response = readRerunValues({ ...rerunValuesDeps(h), ...change }, { runId: run.envelope.runId, expectedVersion: run.version });
+      assert.equal(response.state, "available", JSON.stringify(response));
+      return response.snapshot;
+    }
+
+    it("are served though an unfinished member leaves every step of theirs unfinished", async () => {
+      const { h, run, failed } = await mixedBatch();
+      const snapshot = read(h, run);
+      assert.deepEqual(snapshot.children?.[0]?.steps.map(({ state }) => state), ["unfinished"], "the least advanced member shows");
+      assert.deepEqual(snapshot.failedMembers, [failed.envelope.runId]);
+      assert.equal(rerunsInOneClick(snapshot), false);
+    });
+
+    it("are served though the batch ran under an older descriptor", async () => {
+      const { h, run, failed } = await mixedBatch();
+      const evolved = parentOver(pairChild, Pair, rows, [EID_A, EID_B], false, 2);
+      bindWorkflowDelegationTargets([evolved, pairChild]);
+      const snapshot = read(h, run, { descriptors: { resolve: () => evolved } });
+      assert.deepEqual(snapshot.children?.[0]?.steps.map(({ state }) => state), ["unfinished"]);
+      assert.deepEqual(snapshot.failedMembers, [failed.envelope.runId]);
+      assert.equal(rerunsInOneClick(snapshot), false);
+    });
+
+    it("are the latest run of each member: a retry stands for the run it retried", async () => {
+      const { h, run, failed } = await mixedBatch();
+      const retried = (outcome: "done" | "failed") => {
+        const retryId = RunIdSchema.parse("00000000-0000-4000-8000-00000000fa17");
+        const { completion: _completion, sessionId: _sessionId, ...settled } = failed;
+        const retry: RunRecord = { ...settled, envelope: { ...failed.envelope, runId: retryId, retryOf: failed.envelope.runId, attempt: PositiveIntSchema.parse(failed.envelope.attempt + 1) },
+          lifecycle: { state: "terminal", outcome, endedAt: IsoInstantSchema.parse(h.clock.now().toISOString()) } };
+        const runs = { ...h.database.authority.runs, listChildren: (id: string) => id === run.envelope.runId ? [...h.database.authority.runs.listChildren(id), retry] : [] };
+        return read(h, run, { database: { authority: { ...h.database.authority, runs }, withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database) } }).failedMembers;
+      };
+      assert.equal(retried("done"), undefined);
+      assert.deepEqual(retried("failed"), ["00000000-0000-4000-8000-00000000fa17"]);
+    });
   });
 });

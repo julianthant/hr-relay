@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { RunReferenceRows } from "../../../../src/dashboard/surfaces/run-start/run-start-kit.js";
+import { RunSpreadsheets } from "../../../../src/dashboard/surfaces/run-start/run-start-kit.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const versions = ["earlier", "current"].map(id => ({ id, name: id, snapshotId: id, version: 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" as const }));
@@ -14,8 +14,9 @@ async function openFound(sheet: { versions: typeof versions; worksheets: string[
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(createElement(RunReferenceRows, { requiredLabel: "Email", sheets: [{ libraryId: "roster", name: "Roster", currentVersionId: "current", ...sheet }], chosenSheetId: "",
-      worksheets: [], worksheetsState: "ready", worksheetsError: null, busy: false, catalogError: null, onPick, onVersion: () => undefined, onWorksheet: () => undefined, onRemove: () => undefined, onRefresh: () => undefined }));
+    root.render(createElement(RunSpreadsheets, { busy: false, catalogError: null, onRefresh: () => undefined, reference: {
+      requiredLabel: "Email", sheets: [{ libraryId: "roster", name: "Roster", currentVersionId: "current", ...sheet }], chosenSheetId: "",
+      worksheets: [], worksheetsState: "ready", worksheetsError: null, onPick, onVersion: () => undefined, onWorksheet: () => undefined, onRemove: () => undefined } }));
   });
   const trigger = [...host.querySelectorAll("button")].find(button => button.textContent?.includes("Add spreadsheet"));
   assert.ok(trigger);

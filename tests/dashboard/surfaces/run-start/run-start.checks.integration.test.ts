@@ -31,13 +31,12 @@ function served(...reports: ReturnType<typeof h.readiness>[]) {
 async function reachChecks(dialog: Awaited<ReturnType<typeof h.openDialog>>) {
   await dialog.type(h.TYPED);
   await dialog.press("Continue");
-  await dialog.press("Continue");
   for (let wait = 0; wait < 6; wait += 1) await h.settle();
-  assert.equal(dialog.stage(), "Checks");
+  assert.equal(dialog.stage(), "Start");
 }
 const fixButton = (name: string) => h.buttons().find(button => h.buttonName(button) === name);
 
-describe("the Run dialog's Checks step", () => {
+describe("the Run dialog's Checks section", () => {
   it("reads the selected workflow's readiness when the dialog opens, before Checks is reached", async () => {
     const { reads, client } = served(h.readiness([PASSING]));
     await h.openDialog(client);
@@ -77,7 +76,6 @@ describe("the Run dialog's Checks step", () => {
     const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
-    await slow.press("Continue");
     await slow.press("Continue");
     assert.equal(slow.disabled("Start run"), true);
     assert.ok(slow.text().includes("Checking"));
@@ -171,7 +169,6 @@ describe("the Run dialog's Checks step", () => {
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
     await slow.press("Continue");
-    await slow.press("Continue");
     const section = document.body.querySelector('section[aria-label="Checks"]');
     assert.equal(((section?.textContent ?? "").match(/Checking/gu) ?? []).length, 1, "the Checks section says Checking once");
     assert.equal(document.body.querySelectorAll('[aria-label="Checking"] .ds-run-row').length, 8);
@@ -205,9 +202,8 @@ describe("the Run dialog's Checks step", () => {
     assert.deepEqual(h.closed, [], "hiding is not closing");
     await dialog.rerender({ onFixCheck: () => undefined, hidden: false });
     assert.equal(reads.length, 2, "the checks run again after Settings");
-    assert.equal(dialog.stage(), "Checks");
+    assert.equal(dialog.stage(), "Start");
     assert.equal(dialog.disabled("Start run"), false, "the fixed check no longer blocks Start");
-    await dialog.press("Back");
     await dialog.press("Back");
     assert.equal(dialog.typedInput().value, h.TYPED);
     assert.equal(window.sessionStorage.length, 0);
@@ -237,7 +233,6 @@ describe("the Run dialog's Checks step", () => {
     const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
-    await slow.press("Continue");
     await slow.press("Continue");
     const region = document.body.querySelector('section[aria-label="Checks"] [role="status"]');
     assert.ok(region?.textContent?.includes("Checking"));
@@ -350,9 +345,8 @@ describe("a refused re-check through the real client", () => {
   }
   async function toChecks(dialog: Awaited<ReturnType<typeof h.openDialog>>) {
     await dialog.press("Continue");
-    await dialog.press("Continue");
     for (let wait = 0; wait < 6; wait += 1) await h.settle();
-    assert.equal(dialog.stage(), "Checks");
+    assert.equal(dialog.stage(), "Start");
   }
 
   it("shows one notice and sends no error report when the server turns the re-check away (429)", async () => {

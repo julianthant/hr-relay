@@ -115,16 +115,20 @@ export const never = <T>(): Promise<T> => new Promise<T>(() => undefined);
 export const RUN_DIALOG_RERUN_SOURCE = { ...RerunValuesRequestSchema.parse({ runId: RUN_ID, expectedVersion: 3 }), label: "Ada Lovelace" };
 const STEPS = ["searching", "cross-verify", "active-status"] as const;
 
-/** What a failed Person Lookup run offers a rerun: the typed input it ran on, each step's state, and one value to copy. */
-export function runDialogRerunSnapshot(): RerunValuesResponse {
+/** The entry with its reading steps switchable, so a rerun can leave the steps that already succeeded off. */
+export const RUN_DIALOG_RERUN_CATALOG = catalogOf(flow => ({ ...flow, steps: flow.steps.map(step => step.control.state === "required"
+  ? { ...step, control: { state: "omittable" as const, form: { fields: [] }, forces: [] } } : step) }));
+
+/** What a Person Lookup run offers a rerun: the typed input it ran on, each step's state (a failed run stops at its last step), and one value to copy. */
+export function runDialogRerunSnapshot(outcome: "failed" | "done" = "failed"): RerunValuesResponse {
   return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
-    sourceInput: { state: "available", value: { eid: RUN_DIALOG_TYPED } },
-    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome: "failed" },
-    steps: STEPS.map((key, index) => ({ key, state: index < 2 ? "completed" : "failed",
-      nodes: [{ nodeId: key, state: index < 2 ? "completed" : "failed", reason: index < 2 ? "checkpoint" : "failure" }] })),
-    values: [{ state: "available", sourceStepKey: "searching", nodeId: "searching", fieldPath: "eid", label: "Employee ID", targetFieldPath: "eid", value: RUN_DIALOG_TYPED,
+    sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED } },
+    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome, dryRun: false, priority: "interactive", browserMode: "headless" },
+    steps: STEPS.map((key, index) => { const ok = outcome === "done" || index < 2; return { key, state: ok ? "completed" : "failed",
+      nodes: [{ nodeId: key, state: ok ? "completed" : "failed", reason: ok ? "checkpoint" : "failure" }] }; }),
+    values: [{ state: "available", sourceStepKey: "searching", nodeId: "searching", fieldPath: "emplId", label: "Employee ID", targetFieldPath: "emplId", value: RUN_DIALOG_TYPED,
       checkpoint: { attempt: 1, writtenAt: "2026-08-26T20:00:00.000Z" },
-      provenance: { path: "eid", source: "live", observedAt: "2026-08-26T20:00:00.000Z", originalObservedAt: "2026-08-26T20:00:00.000Z" } }],
+      provenance: { path: "emplId", source: "live", observedAt: "2026-08-26T20:00:00.000Z", originalObservedAt: "2026-08-26T20:00:00.000Z" } }],
     transactions: [],
   } });
 }
