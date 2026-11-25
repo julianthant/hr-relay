@@ -5,9 +5,12 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { RequestIdentityRefusedError } from "../../../../../src/backend/runs/commands/refusals.js";
+import { AuthoritySnapshotChangedError } from "../../../../../src/backend/storage/sqlite/authority-errors.js";
 import { DashboardClientDisconnectedError } from "../../../../../src/backend/transports/http/http-server.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { PreflightRunnerTimeoutError } from "../../../../../src/models/preflight/preflight.js";
 import { PreflightCheckIdSchema } from "../../../../../src/models/preflight/preflight-contract.js";
+import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { UUID_4 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 
@@ -25,9 +28,21 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const diagnostics = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "request-cause" ? [record.payload.event] : []);
     assert.equal(diagnostics.length, 1);
     assert.equal(diagnostics[0]?.message, "TypeError");
+    assert.equal(diagnostics[0]?.code, "TypeError");
     assert.equal(diagnostics[0]?.stack, "TypeError\n    at src/backend/runs/queries/run-detail.ts:42:7");
     assert.equal(diagnostics[0]?.status, 500);
     assert.equal(/Quillan|Petra|private record/u.test(JSON.stringify(diagnostics)), false);
+  });
+
+  it("answers a day read whose history snapshot moved with a retryable 503 and names the cause", async () => {
+    const h = await harness();
+    vi.spyOn(h.projection, "buildDashboardDayWire").mockImplementation(() => { throw new AuthoritySnapshotChangedError(); });
+    const response = await h.app.request(`http://localhost/events/v1?topics=dashboard-day:${DAY}`, { headers: { host: "localhost" } });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await json(response), { state: "error", code: "STORAGE_SNAPSHOT_CHANGED", message: ERROR_CATALOG.STORAGE_SNAPSHOT_CHANGED.text, retryable: true });
+    const rows = h.database.authority.timelineEvents.debugPage({ limit: 1000 })
+      .flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "request-cause" ? [record.payload.event] : []);
+    assert.deepEqual(rows.map(row => [row.code, row.message, row.status]), [["STORAGE_SNAPSHOT_CHANGED", "AuthoritySnapshotChangedError", 503]]);
   });
 
   it("logs one preflight-timeout row naming the check that missed its budget", async () => {
