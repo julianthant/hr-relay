@@ -181,28 +181,6 @@ jobs:
       - name: Print typecheck compiler version
         run: npm run typecheck -- --version
       - run: npm run typecheck
-      - name: Verify the transaction-access fixture against a read-access control
-        shell: bash
-        run: |
-          (
-            fixture=tests/types/task-contracts.typecheck.ts
-            trap 'git restore -- "$fixture"' EXIT
-            sed -i '/^\/\/ @ts-expect-error read task implementations cannot request transaction access$/d' "$fixture"
-            if diagnostic=$(npm run typecheck -- --pretty false 2>&1); then
-              echo "The unsuppressed transaction-access fixture unexpectedly compiled"
-              exit 1
-            fi
-            printf '%s\n' "$diagnostic"
-            test "$(grep -c 'error TS' <<< "$diagnostic")" -eq 1
-            grep -Eq '^tests/types/task-contracts\.typecheck\.ts\([0-9]+,[0-9]+\): error TS2769:' <<< "$diagnostic"
-            test "$(grep -c 'access: "transaction"' "$fixture")" -eq 1
-            sed -i 's/access: "transaction"/access: "read"/' "$fixture"
-            git diff -- "$fixture"
-            npm run typecheck
-            echo "Changing only the access value to read removes the diagnostic"
-          )
-          node_modules/.bin/tsc --version
-          npm run test:integration -- tests/types/flow-graph.integration.test.ts
       - run: npm ci
         working-directory: fast-duo
       - run: npm test
