@@ -102,26 +102,6 @@ const RERUN_INPUT_GONE = formatErrorCatalogFailure(createErrorCatalogFailure("RE
 
 /** Restore intake focus to its launcher; it is the control that opened the workspace. */
 
-export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void }) {
-  return (
-    <Button
-      id={id}
-      size="toolbar"
-      variant="brand"
-      className="queue-start-trigger"
-      aria-label="Start run"
-      onClick={onOpen}
-      icon={<Play aria-hidden className={dsIcon.sm} />}
-      // Keep shortcut hints in their shared discovery route so the primary control stays focused on its verb.
-      title="Start a run — any workflow, from anywhere (r)"
-    >
-      <span className="queue-start-label">Start run</span>
-    </Button>
-  );
-}
-
-
-
 /** Never auto-pick a harness; select one only when the operator already chose its panel. */
 function defaultWorkflowId(
   workflows: readonly RunStartWorkflow[],
