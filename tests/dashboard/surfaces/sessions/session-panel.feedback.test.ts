@@ -33,7 +33,7 @@ it.each(["normal", "refused", "uncertain"] as const)("shows add progress in the 
   const render = () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, { catalog, harness: sessionsSampleHarness, open: true, onOpenChange() {} }))));
   await act(async () => render());
   const panel = host.querySelector('section[aria-label="Session Panel"]'); assert(panel);
-  const trigger = panel.querySelector('button[aria-label="Add workers"]'); assert(trigger instanceof HTMLButtonElement);
+  const trigger = host.querySelector('button[aria-label="Add workers"]'); assert(trigger instanceof HTMLButtonElement);
   const progress = panel.querySelector('p[role="status"]'); assert(progress);
   assert.equal(progress.textContent, "", "the status line is in the page before there is anything to announce");
   await act(async () => { trigger.focus(); trigger.click(); });

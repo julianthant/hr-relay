@@ -198,7 +198,9 @@ it("retires an upload when the selected workflow changes and ignores its late re
   const file = pdf("retired.pdf", "%PDF retired");
   await attach([file]);
   expect(dialog.text()).toContain("Reading PDFs");
-  await dialog.press(other.label);
+  // The Start run doors name the workflow, so a change of workflow is a close and a reopen on the other one.
+  await dialog.rerender({ open: false });
+  await dialog.rerender({ open: true, panelWorkflowId: other.workflowId });
   expect(held.signal?.aborted).toBe(true);
   const resolve = held.resolve; assert.ok(resolve);
   await act(async () => resolve(OcrSourceUploadSchema.parse({ fileName: file.name, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
