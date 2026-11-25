@@ -152,7 +152,7 @@ it("invalidates a reviewed start when the profile loses its last ready Duo key",
       assert.ok(detector);
       return runners.map(runner => runner.check === detector.check ? detector : runner);
     }, duo);
-    assert.ok(h.plans.prepare);
+    if (h.plans.prepare === undefined) throw new Error("fixture preparation is missing");
     await h.plans.prepare(h.ingress, signal());
     const plan = h.plans.plan(h.ingress);
     const scope = h.preflight.currentScope(personLookupDescriptor.id);
