@@ -10,6 +10,15 @@ import { CompactSettingsSection } from "../general/ui-settings-records-general-p
 import { PerformanceSettingsSection } from "../general/ui-settings-records-performance.js";
 import { useSettingsFormFocus } from "./settings-autosave-model.js";
 
+const SECTION_DESCRIPTION: Readonly<Record<string, string>> = {
+  paths: "Folders Relay reads from and writes to.",
+  routes: "Production destinations, organized by system.",
+};
+const GROUP_DESCRIPTION: Readonly<Record<string, string>> = {
+  "Working locations": "Where Relay keeps files while it works.",
+  "System destinations": "Addresses Relay opens in each system.",
+};
+
 export function EditableSettingsSection({ editor, sectionId, appearance }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string; appearance?: ReactNode }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (sectionId === "general") return <CompactSettingsSection editor={editor} appearance={appearance} />;
@@ -23,12 +32,12 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
   const leaves = sections.flatMap(section => section.leaves);
   const pageTitle = sections[0]?.label ?? sectionId;
   return <section className="settings-editor">
-    <PageHeading title={pageTitle} />
+    <PageHeading title={pageTitle} description={SECTION_DESCRIPTION[sectionId] ?? `${pageTitle} settings.`} />
     <Form validationBehavior="aria" className="flex flex-col gap-[var(--ds-space-section)]" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
       {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description="Reopen Settings to refresh." />}
       {settingsSectionGroups(sectionId, leaves).map(group => <section key={group.title} className="settings-editor-group">
-        <div className="settings-group-heading"><h2 className={cn(dsText.title, "m-0 font-medium text-[color:var(--ds-fg)]")}>{group.title}</h2></div>
+        <div className="settings-group-heading"><h2 className={cn(dsText.title, "m-0 font-medium text-[color:var(--ds-fg)]")}>{group.title}</h2><p className="ds-body-section-description">{GROUP_DESCRIPTION[group.title] ?? `${group.title} settings.`}</p></div>
         <FormGroup label={group.title} className="settings-group">
           <div className="settings-group-rows">
             {group.leaves.map(leaf => {

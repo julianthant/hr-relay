@@ -108,6 +108,25 @@ it.each(["head", "creation-value", "creation-missing"])("refuses corrupt workboo
     && error.cause.code === "WORKBOOK_STORAGE_CORRUPT");
 });
 
+it("refuses a snapshot that names another library's valid workbook payload", async () => {
+  const f = await fixture(), database = f.open();
+  const service = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
+  const first = service.create(workbook), second = service.create({ ...workbook, name: "Another.xlsx" });
+  database.close();
+  const raw = new DatabaseSync(f.path);
+  try {
+    const { payload_json } = raw.prepare("SELECT payload_json FROM workbook_library WHERE id=?").get(second.libraryId) ?? {};
+    const { sql } = raw.prepare("SELECT sql FROM sqlite_master WHERE name='workbook_library_snapshots_update'").get() ?? {};
+    if (typeof payload_json !== "string" || typeof sql !== "string") throw new Error("workbook corruption fixture is incomplete");
+    raw.exec("DROP TRIGGER workbook_library_snapshots_update");
+    assert.equal(raw.prepare(`UPDATE workbook_library_snapshots SET payload_json=json_set(payload_json,
+      '$.workbookDigest', json_extract(?, '$.workbookDigest')) WHERE workbook_id=?`).run(payload_json, first.libraryId).changes, 1);
+    raw.exec(sql);
+  } finally { raw.close(); }
+  assert.throws(f.open, error => error instanceof Error && error.cause instanceof WorkbookLibraryError
+    && error.cause.code === "WORKBOOK_STORAGE_CORRUPT");
+});
+
 it('accounts for workflow selections once, rolls them back atomically and validates them on normal readback', async () => {
   const f = await fixture();
   let database = f.open();

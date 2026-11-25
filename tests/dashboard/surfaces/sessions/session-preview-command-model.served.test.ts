@@ -95,6 +95,18 @@ function harness(initial = dayWith()) {
     effect: (next: typeof effect) => { effect = next; }, audit: (next: unknown) => { audit = next; auditFor = undefined; }, auditBy: (next: (commandId: string) => unknown) => { auditFor = next; }, scope: () => scope, setScope: (next: CommandExecutionScope) => { scope = next; } };
 }
 
+it("shows the served setup refusal on the Sessions card before any browser opens", () => {
+  const base = dayWith();
+  const day = DashboardDayWireSchema.parse({ ...base, workerCards: [{ ...base.workerCards[0], state: "failed",
+    stopReason: "setup-refused", failureCode: "DUO_READY_CREDENTIAL_REQUIRED", endedAt: now, browserRequirements: undefined }] });
+  const view = sessionsFromDay(day, catalog, now);
+  assert.equal(view.state, "ready");
+  const [worker] = view.workers;
+  assert.equal(worker?.state, "failed");
+  assert.equal(worker?.browsersNote, "Duo isn't set up. Set it up in Settings.");
+  assert.deepEqual(worker?.browsers, []);
+});
+
 it("serves all six phases from exact current rows, omits unsupported timelines and never invents subject", () => {
   const base = dayWith();
   for (const state of ["running", "starting", "idle", "waiting", "paused", "failed"] as const) {

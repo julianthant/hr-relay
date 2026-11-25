@@ -1,20 +1,27 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, copyFileSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
 import { composeProfileRuntime, composeSelectedProfileStorage, initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
+import { authorityContentFingerprint, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
+import { withReadonlyAuthoritySnapshot, withReusableReadonlyAuthoritySnapshots } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { readStartupFile } from "../../../../src/backend/storage/sqlite/startup-file-proof.js";
+import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
@@ -180,6 +187,87 @@ it("carries the registered startup inspection through the second startup pass an
       expect(scansRuns(() => AuthorityDatabase.open(profile, { path: f.profile.path, busyTimeoutMs: 250,
         migrationOwner: "startup-resume" }).close())).toBe(false);
       expect(scansRuns(() => AuthorityDatabase.inspectExistingReadOnly(profile, f.profile.path))).toBe(true);
+    } finally { profile.release(); }
+  } finally { machine.release(); }
+});
+
+it("reuses a verified stopped image across a fresh copy of the same source bytes", async () => {
+  const f = await store();
+  const { profileId } = f.profile.admission.profileBinding;
+  await f.profile.closeController();
+  const lifetime = await RuntimeLifetimeLock.acquire(0);
+  cleanups.push(() => lifetime.close());
+  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.profile.workspace, lifetime);
+  try {
+    await AuthorityDatabase.withUpgradeInspections(() => withReusableReadonlyAuthoritySnapshots(async () => {
+      const first = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
+      const read = () => withReadonlyAuthoritySnapshot(f.profile.path, database => inspectNativeAuthority(database));
+      writeFileSync(f.profile.path, readFileSync(f.profile.path));
+      expect(scansRuns(() => expect(read()).toMatchObject({ authorityContentFingerprint: first.authorityContentFingerprint }))).toBe(false);
+
+      // A clean close removes the WAL; opening the store again can leave an empty one.
+      expect(existsSync(f.profile.path + "-wal")).toBe(false);
+      writeFileSync(f.profile.path + "-wal", "", { mode: 0o600 });
+      expect(scansRuns(() => expect(read()).toMatchObject({ authorityContentFingerprint: first.authorityContentFingerprint }))).toBe(false);
+
+      copyFileSync(f.profile.path, f.profile.path + ".copy");
+      renameSync(f.profile.path + ".copy", f.profile.path);
+      expect(scansRuns(() => expect(read()).toMatchObject({ authorityContentFingerprint: first.authorityContentFingerprint }))).toBe(true);
+
+      AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
+      f.edit("UPDATE runs SET id=id");
+      expect(scansRuns(read)).toBe(true);
+
+      AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
+      writeFileSync(f.profile.path, readFileSync(f.profile.path));
+      const serialize = vi.spyOn(DatabaseSync.prototype, "serialize").mockReturnValueOnce(Buffer.from("different private copy"));
+      try { expect(scansRuns(read)).toBe(true); } finally { serialize.mockRestore(); }
+    }));
+  } finally { machine.release(); }
+});
+
+it("fingerprints all stored rows while inspecting a current authority snapshot", async () => {
+  const f = await store();
+  const writer = f.open();
+  try {
+    createWorkbookLibraryService({ repository: writer.authority.workbooks, sync: unexpectedWorkbookSync,
+      clock: manualClock(new Date("2026-10-15T12:00:00.000Z")) })
+      .create({ name: "Roster", themes: [], hasFormulas: false, sheets: [{ id: "people", name: "People", width: 1, hidden: [],
+        rows: [{ id: "one", cells: [{ value: "Example, Avery" }] }] }] });
+  } finally { writer.close(); }
+  withReadonlyAuthoritySnapshot(f.profile.path, database => {
+    expect(database.prepare("SELECT * FROM workbook_library").all()).toHaveLength(1);
+    const fingerprint = authorityContentFingerprint(database);
+    const prepare = vi.spyOn(database, "prepare");
+    try {
+      expect(inspectNativeAuthority(database).authorityContentFingerprint).toBe(fingerprint);
+      expect(prepare.mock.calls.filter(([sql]) => sql === "SELECT * FROM runs ORDER BY id")).toHaveLength(1);
+    } finally { prepare.mockRestore(); }
+  });
+});
+
+it("keeps slow stopped recovery diagnostics without invalidating the verified Resume image", async () => {
+  const f = await createBoundProfileFixture();
+  cleanups.push(() => f.close());
+  const { profileId } = f.admission.profileBinding;
+  await f.closeController();
+  const lifetime = await RuntimeLifetimeLock.acquire(0);
+  cleanups.push(() => lifetime.close());
+  const clock = manualClock(new Date("2026-11-01T20:00:00Z"));
+  let elapsed = 0;
+  vi.spyOn(clock, "monotonicMs").mockImplementation(() => elapsed += 100);
+  await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, clock);
+
+  const log = readLocalDebugLog(join(f.workspace, rebuildRuntimeIsolation.stateRoot));
+  expect(log.state === "present" && log.records.some(record => record.payload.kind === "debug"
+    && record.payload.event.category === "boot" && record.payload.event.code === "authority-transaction"
+    && record.payload.event.reason === "slow-operation")).toBe(true);
+  const machine = acquireEntrypointAdmission(f.workspace, "shared", lifetime);
+  try {
+    const profile = machine.admitProfile(profileId);
+    try {
+      expect(scansRuns(() => AuthorityDatabase.open(profile, { path: f.path, busyTimeoutMs: 250,
+        migrationOwner: "startup-resume" }).close())).toBe(false);
     } finally { profile.release(); }
   } finally { machine.release(); }
 });

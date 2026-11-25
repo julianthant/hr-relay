@@ -379,16 +379,19 @@ admission, or persistence. Tests preserve the real schema parser, provenance col
 kernel, timeline writer, and receipt derivation at the seam they claim to cover.
 Composition tests that replace browser sessions also pass the lease-backed `fixtureDuoCeremonyGates(clock)` through `duoCeremony`; they retain the real worker drain and never read operator credentials.
 
-`tests/architecture/runs/evidence-receipt.test.ts` owns receipt schema/evidence checks.
-`tests/backend/runs/provenance/evidence-receipt.live-workflow-composition.integration.test.ts`
-exercises composition. `tests/architecture/storage/storage-recovery.test.ts` owns real isolated
-backup/recovery behavior; projection-only replay cannot stand in for preserved authority.
+`tests/architecture/runs/evidence-receipt.test.ts` audits declared evidence classifications.
+`tests/backend/runs/provenance/evidence-receipt.strictness.integration.test.ts` exercises receipt
+validation, and `evidence-receipt.live-workflow-composition.integration.test.ts` in the same directory
+exercises composition. Backup, doctor, and restore integration tests under
+`tests/backend/storage/sqlite/` exercise preserved authority in isolated stores.
+`tests/architecture/storage/storage-recovery.test.ts` scans the recovery boundaries.
 The run's retained result and receipt are distinct from emitted progress events.
 
 ### 3.15 Local values and egress checks
 
-`tests/architecture/logs/redaction-surface-scan.test.ts` audits declared surface origins and
-canary-bearing producers. `tests/architecture/logs/no-secret-values-in-logs.test.ts` checks secret
+`tests/architecture/logs/redaction-surface-scan.test.ts` audits declared surface origins.
+Canary tests for the receipt, provenance collector, and workbook library mirror their backend modules.
+`tests/architecture/logs/no-secret-values-in-logs.test.ts` checks secret
 interpolation and diagnostic boundaries. Complete local operator evidence retains supplied values;
 provider prompts and OS notifications have separate egress restrictions. The source owners are
 `src/rules/redaction/redaction.ts`, the receipt producers under `src/backend/runs/provenance/`,

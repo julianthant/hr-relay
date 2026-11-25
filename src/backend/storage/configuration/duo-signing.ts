@@ -1,6 +1,7 @@
 import { createHash, createPrivateKey, createPublicKey, sign } from "node:crypto";
 import { z } from "zod";
 import type { Fingerprint } from "../../../rules/identity/ids.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
 const EncodedSchema = z.string().min(1).max(16_384).regex(/^[A-Za-z0-9+/_-]+={0,2}$/u).refine(value =>
   [Buffer.from(value, "base64").toString("base64"), Buffer.from(value, "base64").toString("base64url")].includes(value));
@@ -39,6 +40,23 @@ export interface DuoSigningSource {
   identity(): Fingerprint;
   credentials(): readonly DuoPublicCredential[];
   sign(request: DuoAssertionRequest): Promise<DuoAssertion>;
+}
+
+export class DuoSetupRefusal extends Error {
+  constructor(readonly code: "DUO_READY_CREDENTIAL_REQUIRED" | "DUO_SIGNING_SOURCE_REQUIRED") {
+    super(ERROR_CATALOG[code].text);
+    this.name = "DuoSetupRefusal";
+  }
+}
+
+export function readDuoKeyReadiness(source: DuoSigningSource | undefined): "ready" | "missing" | "unavailable" {
+  if (source === undefined) return "unavailable";
+  try {
+    source.assertCurrent();
+    return source.credentials().length > 0 ? "ready" : "missing";
+  } catch {
+    return "unavailable";
+  }
 }
 
 export function validateDuoKeyPair(privateKeyPkcs8: string, publicKeySpki: string): void {

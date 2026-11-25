@@ -1,14 +1,14 @@
-import { recoverInterruptedTestRun } from "../../support/helpers/backend/run-record-service-world.js";
-import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
-import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
-import { createWorkerLoopHarness as workerHarness } from "../../support/helpers/backend/worker-loop-world.js";
+import { recoverInterruptedTestRun } from "../../../support/helpers/backend/run-record-service-world.js";
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { createWorkerLoopHarness as workerHarness } from "../../../support/helpers/backend/worker-loop-world.js";
 // Use distinct worker ids over shared authority; composed single-workflow workers share a lease identity.
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
-import { runWorkerLoop } from "../../../src/backend/runtime/workers/worker-loop.js";
-import type { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import type { RunRecord } from "../../../src/models/run/record.js";
-import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
+import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { RunRecord } from "../../../../src/models/run/record.js";
+import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import {
 healthyCrmDriver,
 healthyUcpathDriver,
@@ -17,7 +17,7 @@ personLookupQueuedRun,
 sessionFactoryHarness,
 type AuthorityHarness,
 type SessionFactoryHarness
-} from "../../support/helpers/phase1f-executor-harness.js";
+} from "../../../support/helpers/phase1f-executor-harness.js";
 
 const ACTIVE_STATES = new Set(["claimed", "validating", "running"]);
 const HEARTBEAT_INTERVAL_MS = 500;

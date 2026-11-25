@@ -710,7 +710,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     try {
       context = await this.#launcher.launch({ profileDirectory, ...(config.features.duoWebAuthn ? {} : { nativeOnly: true }), headless: browserMode === "headless",
         extensionDirectory, acceptDownloads, downloadsPath: config.paths.downloadsDir,
-        viewport: { width: config.display.screenWidth, height: config.display.screenHeight },
+        viewport: browserMode === "headless" ? { width: config.display.screenWidth, height: config.display.screenHeight } : null,
         ...(timeoutMs === undefined ? {} : { timeoutMs }) });
       launch.opened();
       return context;

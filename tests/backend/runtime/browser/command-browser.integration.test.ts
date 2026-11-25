@@ -51,6 +51,17 @@ async function fixture() {
     async close() { await context.account.close(); context.database.close(); await f.close(); } };
 }
 
+for (const headless of [false, true]) it(`opens the command page with the matching viewport (headless=${headless})`, async () => {
+  const w = await fixture();
+  try {
+    await w.manager.withBrowser({ ...w.input, config: { ...w.config, browser: { ...w.config.browser, headless } } }, async () => {});
+    const launch = w.native.launches()[0];
+    assert.ok(launch);
+    assert.equal(launch.headless, headless);
+    assert.deepEqual(launch.viewport, headless ? { width: w.config.display.screenWidth, height: w.config.display.screenHeight } : null);
+  } finally { await w.close(); }
+});
+
 it("keeps logical command custody through import after actual browser closure", async () => {
   const w = await fixture(), importing = deferred(), release = deferred();
   try {

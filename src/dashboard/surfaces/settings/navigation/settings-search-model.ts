@@ -3,6 +3,7 @@ import type { EditableSettingsWire } from "../../../../models/dashboard/settings
 import { resolveSettingsSection, type SettingsNavEntry, type SettingsNavGroup } from "../settings-model.js";
 import { GENERAL_RUN_PATHS } from "../general/general-groups-model.js";
 import { settingNote, settingTitle } from "../settings-presentation.js";
+import { DUO_SECURITY_TARGET } from "../preflight/preflight-remedy-model.js";
 
 export interface SettingsSearchResult {
   readonly id: string;
@@ -29,6 +30,7 @@ export function settingsSearchIndex(groups: readonly SettingsNavGroup[], documen
   add("general", "Theme", "appearance.theme", "Appearance dashboard color light dark");
   add("general", "ChatGPT account", "chatgpt.account", "OpenAI sign in login subscription plan OCR manage usage");
   add("general", "Full access", "assistant.fullAccess", "Permissions assistant approval confirm actions");
+  add("account", "Duo security key", DUO_SECURITY_TARGET, "Set up Fast Duo", "Account › Security");
   if (document === undefined) return results;
   for (const fact of PROFILE_WORKFLOW_FACTS) add("credentials", fact.label, fact.target, "Signed-in profile read-only workflow configuration");
   for (const section of document.sections) for (const leaf of section.leaves) {

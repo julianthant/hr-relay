@@ -14,6 +14,11 @@ import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
+const PRIMARY_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  Navigation: "Time allowed for pages to load and respond.",
+  Work: "Time allowed for each workflow step.",
+  "Sign-in & Duo": "Time allowed for sign-in and Duo approval.",
+};
 const ADDITIONAL_DESCRIPTIONS: Partial<Record<PerformanceGroup, string>> = {
   "Worker scheduling": "Worker count and idle polling.",
   "Retry & termination": "Navigation retries and separation timing.",
@@ -59,10 +64,10 @@ export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
       {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description="Reopen Settings to refresh." />}
       <div className="ds-body-stack">
-        {primary.map(group => <BodySection key={group.title} title={group.title}><FormGroup label={group.title}>
+        {primary.map(group => <BodySection key={group.title} title={group.title} description={PRIMARY_DESCRIPTIONS[group.title]}><FormGroup label={group.title}>
           {group.leaves.map(leaf => <PerformanceRow key={leaf.path} editor={editor} leaf={leaf} />)}
         </FormGroup></BodySection>)}
-        {additional.length > 0 && <BodySection title="Additional limits"><FormGroup label="Additional limits">
+        {additional.length > 0 && <BodySection title="Additional limits" description="Scheduling, retry, OCR, and recovery limits."><FormGroup label="Additional limits">
           {additional.map(group => <SettingsSearchDisclosure paths={group.leaves.map(leaf => leaf.path)} key={group.title} variant="body" summary={group.title} description={ADDITIONAL_DESCRIPTIONS[group.title]}
             defaultOpen={group.leaves.some(leaf => editor.errors[leaf.path] !== undefined)}
             className="settings-performance-disclosure" contentClassName="settings-performance-disclosure-content">

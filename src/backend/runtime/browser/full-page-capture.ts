@@ -1,6 +1,7 @@
 import { PNG } from "pngjs";
 import type { Frame, Locator, Page } from "playwright";
 import type { BrowserCaptureFailure } from "../../../workflow-kit/session.js";
+import { overrideNativeViewport } from "./native-viewport.js";
 
 const CAPTURE = { width: 1280, maxWidth: 6000, sliceHeight: 1200, sliceOverlap: 120, maxSlices: 30, maxPixels: 40_000_000, paintTimeoutMs: 1000 };
 
@@ -97,18 +98,27 @@ async function observeSecrets(frame: Frame, selector: string): Promise<void> {
   }, selector);
 }
 
-async function setCaptureWidth(page: Page, assertCurrent: () => void): Promise<void> {
+async function sizeCaptureViewport(page: Page, assertCurrent: () => void, native: Awaited<ReturnType<typeof overrideNativeViewport>> | undefined): Promise<void> {
   assertCurrent();
-  const metrics = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight,
-    docWidth: Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0) }));
-  assertCurrent();
-  let widest = metrics.docWidth;
+  const height = native === undefined ? Math.min(await page.evaluate(() => window.innerHeight), CAPTURE.sliceHeight) : CAPTURE.sliceHeight;
+  if (native !== undefined) {
+    assertCurrent();
+    // Measure responsive content at the same size regardless of the presentation window.
+    await native.resize({ width: CAPTURE.width, height });
+  }
+  let widest = 0;
   for (const frame of page.frames()) {
     assertCurrent();
-    widest = Math.max(widest, await frame.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0)));
+    widest = Math.max(widest, await frame.evaluate(overflowOnly => {
+      const root = document.documentElement;
+      const width = Math.max(root.scrollWidth, document.body?.scrollWidth ?? 0);
+      return overflowOnly && width <= root.clientWidth ? 0 : width;
+    }, native !== undefined));
   }
+  const width = Math.min(Math.max(CAPTURE.width, widest + 24), CAPTURE.maxWidth);
   assertCurrent();
-  await page.setViewportSize({ width: Math.min(Math.max(CAPTURE.width, widest + 24), CAPTURE.maxWidth), height: Math.min(metrics.height, CAPTURE.sliceHeight) });
+  if (native === undefined) await page.setViewportSize({ width, height });
+  else if (width > CAPTURE.width) await native.resize({ width, height });
 }
 
 async function prepareScrollCapture(page: Page): Promise<void> {
@@ -254,9 +264,9 @@ export async function captureFullPage(page: Page, options: Readonly<{
 }>): Promise<Readonly<{ bytes: Uint8Array; width: number; height: number }>> {
   const { assertCurrent } = options;
   assertCurrent();
-  const viewport = page.viewportSize();
-  const originalViewport = viewport ?? await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  const originalViewport = page.viewportSize();
   const frames: Frame[] = [];
+  let nativeViewport: Awaited<ReturnType<typeof overrideNativeViewport>> | undefined;
   let failure: { cause: unknown } | undefined;
   let sampleBannerOwned = false;
   const assertSafe = async (): Promise<void> => {
@@ -277,7 +287,8 @@ export async function captureFullPage(page: Page, options: Readonly<{
     assertCurrent();
     for (const frame of page.frames()) { assertCurrent(); frames.push(frame); await observeSecrets(frame, options.secretControls); }
     await assertSafe();
-    await setCaptureWidth(page, assertCurrent);
+    if (originalViewport === null) nativeViewport = await overrideNativeViewport(page);
+    await sizeCaptureViewport(page, assertCurrent, nativeViewport);
     assertCurrent();
     await prepareScrollCapture(page);
     const bands = await captureBands(CAPTURE.maxSlices, true);
@@ -387,7 +398,8 @@ export async function captureFullPage(page: Page, options: Readonly<{
     const restore = async (action: () => Promise<unknown>): Promise<void> => { try { await action(); } catch (error) { errors.push(error); } };
     if (sampleBannerOwned) await restore(() => page.locator("#relay-dry-run-sample-banner").evaluate(element => element.remove()));
     await restore(() => page.evaluate(() => (window as CaptureWindow).__relayCapture?.restore()));
-    await restore(() => page.setViewportSize(originalViewport));
+    if (originalViewport !== null) await restore(() => page.setViewportSize(originalViewport));
+    else if (nativeViewport !== undefined) await restore(nativeViewport.restore);
     for (const frame of frames) if (!frame.isDetached()) await restore(() => frame.evaluate(() => (window as CaptureWindow).__relayCaptureSecrets?.restore()));
     let afterFailure: Error | undefined;
     if (failure === undefined) {

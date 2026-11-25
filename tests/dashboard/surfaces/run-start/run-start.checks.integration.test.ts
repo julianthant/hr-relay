@@ -110,6 +110,48 @@ describe("the Run dialog's Checks section", () => {
     assert.deepEqual(fixes, [["account", "protected.ucpathPassword"]]);
   });
 
+  it("blocks Start for a missing Duo key and sends Fix to Account Security", async () => {
+    const fixes: (readonly [string, string | undefined])[] = [];
+    const { client } = served(h.readiness([PASSING, { check: "browser.duo-key", status: "fail",
+      summary: "Duo isn't set up. Set it up in Settings." }]));
+    const dialog = await h.openDialog(client);
+    await dialog.rerender({ onFixCheck: (section, target) => fixes.push([section, target]) });
+    await reachChecks(dialog);
+    assert.equal(dialog.disabled("Start run"), true);
+    assert.match(dialog.text(), /Duo isn't set up\. Set it up in Settings\./u);
+    await dialog.press("Fix");
+    assert.deepEqual(fixes, [["account", "security.duo"]]);
+  });
+
+  it("checks again on return from Fix when the Duo evidence changed", async () => {
+    const blocked = h.readiness([{ check: "browser.duo-key", status: "fail", summary: "Duo isn't set up. Set it up in Settings." }]);
+    const stale = { state: "unavailable", reason: "Duo evidence needs a fresh check." } as const;
+    let evidence: ReturnType<typeof h.readiness> = stale;
+    let reruns = 0;
+    const client = h.stubClient({
+      readPreflight: async () => evidence,
+      editableSettings: async () => FIXTURE_EDITABLE_SETTINGS,
+      preflightScopes: async () => WorkflowBootstrapPrimitiveSchema.array().parse(FIXTURE_BOOTSTRAP.workflows),
+      rerunPreflight: async request => {
+        evidence = ++reruns === 1 ? blocked : h.READY;
+        if (evidence.state !== "present") throw new Error("fixture readiness report required");
+        return { state: "completed", commandId: PreflightRerunCommandRequestSchema.parse(request).commandId, report: evidence.report };
+      },
+    });
+    const dialog = await h.openDialog(client);
+    await dialog.rerender({ onFixCheck: () => undefined });
+    await reachChecks(dialog);
+    assert.equal(dialog.disabled("Start run"), true);
+    assert.equal(reruns, 1);
+    await dialog.press("Fix");
+    await dialog.rerender({ hidden: true });
+    evidence = stale;
+    await dialog.rerender({ hidden: false });
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    assert.equal(reruns, 2);
+    assert.equal(dialog.disabled("Start run"), false);
+  });
+
   it("says on a failed check with no Fix button what is wrong and what to do, in one sentence", async () => {
     const files = { check: "filesystem.health", status: "fail", summary: "Relay is out of disk space." } as const;
     const address = { check: "endpoint.crm.prod", status: "fail", summary: "The CRM address is invalid." } as const;

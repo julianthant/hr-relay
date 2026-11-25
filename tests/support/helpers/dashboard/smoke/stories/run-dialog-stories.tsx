@@ -8,6 +8,7 @@ import { RunStartDialog } from "../../../../../../src/dashboard/surfaces/run-sta
 import type { RunStartStage } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import type { LaunchActivity, LaunchRecovery, RerunLoad } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import { PreflightCheckIdSchema } from "../../../../../../src/models/preflight/preflight-contract.js";
+import { ERROR_CATALOG } from "../../../../../../src/models/failures/error-catalog.js";
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
@@ -70,12 +71,17 @@ const start = (page: Page) => press(page, "Start run");
 
 const stage = scene;
 
+const customizeSteps = (page: Page) => dialog(page).getByRole("switch", { name: "Customize steps" }).click();
+
 const STAGE = {
   Input: stage("Input, nothing typed", () => runDialogClient(), "Input"),
   RerunSteps: stage("A rerun's Steps, each step as the source ended", rerunClient(), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
   Warning: stage("A succeeded write run's rerun, warned that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }, "done"), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG,
     then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
-  Start: stage("Start, options, steps and checks, every check ready", reading(PASS), "Start"),
+  Start: stage("Start, options and checks, every check ready", reading(PASS), "Start"),
+  StartCustomized: stage("Start with Customize steps on, Continue to Steps", reading(PASS), "Start", { then: customizeSteps }),
+  StartSteps: stage("A customized start's Steps, the last page", reading(PASS), "Start", {
+    then: async page => { await customizeSteps(page); await press(page, "Continue"); await at(page, "Steps"); } }),
   RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
 } satisfies Record<string, Story>;
 
@@ -89,6 +95,8 @@ const CHECK_COMBINATION = {
   "fixable-failure": stage("A failed check with a Fix button", reading(PASS, FIXABLE), "Start"),
   "unfixable-failure": stage("A failed check with no Fix button", reading(UNFIXABLE, PASS), "Start"),
   "failure-and-warning": stage("A failed check and a warning together", reading(FIXABLE, WARN, PASS), "Start"),
+  "duo-key-missing": stage("A missing Duo key blocks Start", reading({ check: PreflightCheckIdSchema.parse("browser.duo-key"), status: "fail",
+    summary: ERROR_CATALOG.DUO_READY_CREDENTIAL_REQUIRED.text }), "Start", { ready: '[data-run-check-fix="browser.duo-key"]' }),
 } satisfies Record<string, Story>;
 
 const RERUN_LOAD = {

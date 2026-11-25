@@ -7,6 +7,7 @@ import { type CommandRequest, type CommandResult, CommandResultSchema, type Park
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
+import { WorkerSetupRefusedError } from "../../runtime/workers/worker-pool.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateDescendantHome } from "../../storage/sqlite/delegation-authority.js";
@@ -115,10 +116,11 @@ function auditWorkerCommand(dependencies: CommandKernelDependencies, repositorie
 
 /** A pool refusal after admission is the command's recorded outcome; any other failure stays a structured throw. */
 function workerEffectRefusal(request: WorkerBrowserCommand, error: unknown): CommandApplication | undefined {
-  const code = error instanceof Error && "code" in error && typeof error.code === "string" && error.code.startsWith("WORKER_") ? error.code
+  const message = error instanceof WorkerSetupRefusedError ? error.message
+    : error instanceof Error && "code" in error && typeof error.code === "string" && error.code.startsWith("WORKER_") ? error.code
     : error instanceof WorkerControlRefusal ? error.message : undefined;
-  if (code === undefined) return undefined;
-  return { result: CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: code }), versionChanges: [], affectedDependencyIds: [] };
+  if (message === undefined) return undefined;
+  return { result: CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message }), versionChanges: [], affectedDependencyIds: [] };
 }
 
 /**

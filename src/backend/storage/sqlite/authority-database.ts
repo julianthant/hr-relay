@@ -127,7 +127,7 @@ import { applyWriteTransition, AtomicWriteCommitInputSchema, AtomicWriteCommitRe
 import { type ChangeLogReader, changeLogHighWater, CHANGE_LOG_RETAINED_ENTRIES, readAuthorityChanges, validateAuthorityChanges, readSingletonImage, changeLogBaseline, validateAuthorityStore, admitChanges, CHANGE_LOG_PRUNE_INTERVAL_MS } from "./authority-change-admission.js";
 import { readIntPragma, AuthorityDatabaseOptionsSchema, existingDatabaseLocation, errorMessage, inspectionTableNames, readMetaRow, parseDiagnosticPageCount, readTextPragma, optimizeAuthorityPlanner, AUTHORITY_WAL_SIZE_LIMIT_BYTES, AuthorityMetaSchema, sqliteChanges, AuthoritySchemaInspectionSchema, CountRowSchema, configureWritableConnection, tableNames, type MetaRowSchema } from "./authority-connection.js";
 import { inspectStoredData, CredentialContextRequiredError, AuthoritySchemaVersionError, AuthorityFormatUnsupportedError, type StartupFailureClassification, isSqliteDamage, AuthorityWriterBusyError } from "./authority-errors.js";
-import { assertNativeSchema, checkSqliteIntegrity, upgradeInspections, type VerifiedUpgradeImage, type NativeInspection, inspectNativeAuthority, QuickCheckRowSchema, assertPublishedAssistantNumbering, normalizedNativeSchema, expectedNativeSchema, nonProjectionFingerprint, runSearchDefinitions, startupImageDigest, authorityContentFingerprint, inspectStoppedTransaction, commitVerifiedUpgrade, inspectNormalAuthority, inspectOpenDatabase, checkInspectionPragmas } from "./authority-inspection.js";
+import { assertNativeSchema, checkSqliteIntegrity, upgradeInspections, type VerifiedUpgradeImage, type NativeInspection, inspectNativeAuthority, QuickCheckRowSchema, assertPublishedAssistantNumbering, normalizedNativeSchema, expectedNativeSchema, nonProjectionFingerprint, runSearchDefinitions, startupImageDigest, authorityContentFingerprint, inspectStoppedTransaction, commitVerifiedUpgrade, inspectNormalAuthority, inspectOpenDatabase, checkInspectionPragmas, observeReadonlyStartupFile, sameStartupFile } from "./authority-inspection.js";
 import { type AuthorityRepositories, type AuthorityWriteCommitHooks, type AuthorityTerminalizationHooks, type AuthorityLifecycleHooks, type SlowOperationHook, type EarlierRunEvents, type PendingLogoutServices, type ImmutableInsertResult, DiagnosticPurgeDispositionSchema, type CanonicalRunClaimOutcome, type RunRepository, type StartPlanRepository, type DuoCeremonyLeaseRepository, type DuoCeremonyLeaseAcquireOutcome, type WorkerPoolRepository, type RunSessionRepository } from "./authority-repositories.js";
 import { inspectionRunReader, readTimelineRun, assertTimelineOwner, INSPECTED_TIMELINE_KINDS, readRunPages, JsonRowSchema, assertTerminalEvidenceOwner, timelineEvidenceRepositories, assertConfirmationPublication, authenticateStoredWriteResolution, assertRefreshedReceiptSettlement, authenticateStoredResolutionAudit, readConfirmationPublication, authenticatedPublicationDeletion, CURRENT_READERS, readDelegationRefreshCommands } from "./authority-run-evidence.js";
 import { readManagedArtifactReferencesFromDatabase, maintenanceInventory, browserProfileInventory, requireStoppedUpgradeSource, flatQueuedRunCancellationInventory, withDirectReaderAdmission, inspectExistingDatabaseReadOnly, type AuthorityReadIdentitySnapshot, inspectAuthorityReadIdentityReadOnly, inspectSpanRunAuthorityReadOnly } from "./authority-stopped-reads.js";
@@ -200,8 +200,7 @@ function checkpointsFor(admission: RuntimeAdmission) {
 
 function matchesStartupCheckpoint(prior: StartupCheckpoint | undefined, file: StartupFile | undefined,
   digest: string | undefined): prior is StartupCheckpoint {
-  return prior !== undefined && file !== undefined && prior.digest === digest && prior.file.identity === file.identity
-    && prior.file.main === file.main && prior.file.wal === file.wal;
+  return prior !== undefined && file !== undefined && prior.digest === digest && sameStartupFile(prior.file, file);
 }
 
 function checkStartupChanges(database: DatabaseSync, from: StartupPosition): "proved" | "unproved" {
@@ -847,19 +846,15 @@ export class AuthorityDatabase implements Disposable {
     if (!existsSync(path)) throw new Error("profile-startup-database-missing");
     const checkpoints = checkpointsFor(machine);
     const prior = checkpoints.get(path);
-    let checkpoint: StartupCheckpoint | undefined;
+    let checkpoint: (StartupCheckpoint & { inspection: AuthorityCopyInspection }) | undefined;
+    let guarded: ReturnType<typeof readonlyAuthorityImage>;
     const result = AuthorityDatabase.#withRegisteredPersonSnapshot(machine, path, (database, version) => {
-      const observation = version === CURRENT_AUTHORITY_SCHEMA_VERSION ? readStartupFile(path) : undefined;
+      const observation = version === CURRENT_AUTHORITY_SCHEMA_VERSION ? observeReadonlyStartupFile(database, path) : undefined;
       const source = observation?.state === "observed" ? observation.file : undefined;
       const image = source === undefined ? undefined : startupImageDigest(database);
       const digest = image?.state === "observed" ? image.digest : undefined;
       const cached = matchesStartupCheckpoint(prior, source, digest) ? prior.inspection : undefined;
       const inspection = cached === undefined ? inspectNativeAuthority(database, version) : AuthorityCopyInspectionSchema.parse(cached);
-      const scope = upgradeInspections.getStore(), guarded = readonlyAuthorityImage(database);
-      if (cached !== undefined && scope?.active && guarded !== undefined && digest !== undefined) {
-        scope.images.set(guarded.path, { kind: "snapshot", marker: guarded.marker, digest, inspection: structuredClone(inspection) });
-      }
-      if (source !== undefined && digest !== undefined) checkpoint = { file: source, digest, inspection: AuthorityCopyInspectionSchema.parse(inspection) };
       machine.assertOfflineMaintenance(machine.maintenanceOperation());
       if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
       const journal = readAuthorityUpgradeJournal(database);
@@ -872,9 +867,20 @@ export class AuthorityDatabase implements Disposable {
       const layoutLogout = layout?.phase === "complete" ? layout.profiles.find(plan => plan.profileId === id)?.logout : undefined;
       const layoutFile = layoutLogout?.settlement === undefined ? undefined : readPrivateFile(join(machine.stateRoot, "machine", "operations", `${layoutLogout.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
       const layoutContinuation = layoutFile !== undefined && canonicalJsonStringify(LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(layoutFile.bytes)))) === canonicalJsonStringify(layoutLogout);
+      if (source !== undefined && digest !== undefined) {
+        checkpoint = { file: source, digest, inspection: AuthorityCopyInspectionSchema.parse(inspection) };
+        guarded = readonlyAuthorityImage(database);
+      }
       return { ...inspection, requiresContinuation: nativeContinuation || layoutContinuation };
     });
-    if (checkpoint !== undefined) checkpoints.set(path, checkpoint);
+    if (checkpoint !== undefined) {
+      checkpoints.set(path, checkpoint);
+      const scope = upgradeInspections.getStore();
+      if (scope?.active && guarded !== undefined) {
+        scope.images.set(guarded.path, { kind: "snapshot", marker: guarded.marker, digest: checkpoint.digest, source: checkpoint.file,
+          inspection: structuredClone(checkpoint.inspection) });
+      }
+    }
     return result;
   }
 
@@ -5299,6 +5305,13 @@ export class AuthorityDatabase implements Disposable {
       listNonTerminal: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`SELECT * FROM runs ${runIndex(this.#database, "runs_nonterminal_idx")}
         WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'
         ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id`).all().map(runRecordFromRow))),
+      // Active is the listNonTerminal predicate, so a row whose state column and lifecycle JSON disagree counts as active.
+      countByTerminal: () => this.#withReadSnapshot(() => {
+        const one = (row: unknown): number => z.strictObject({ n: z.number().int() }).parse(row).n;
+        const active = one(this.#database.prepare(`SELECT count(*) AS n FROM runs ${runIndex(this.#database, "runs_nonterminal_idx")}
+          WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'`).get());
+        return Object.freeze({ finished: one(this.#database.prepare("SELECT count(*) AS n FROM runs").get()) - active, active });
+      }),
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE workflow = ? ORDER BY created_at, id
       `).all(workflow).map((row) => runRecordFromRow(row))),

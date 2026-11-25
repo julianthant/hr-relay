@@ -158,7 +158,7 @@ describe("a plan with a refused entry", () => {
 describe("a plan outlives nothing that shaped it, in the dialog", () => {
   afterEach(cleanup);
 
-  it("drops the plan for every choice and switch on Start", async () => {
+  it.each([false, true])("drops the plan for every choice and switch on the last page (Customize steps %s)", async customize => {
     const workflow = WORKFLOWS.find(entry => entry.workflowId === WORKFLOW_ID);
     assert.ok(workflow?.inputRun.state === "present");
     const dryRuns = { ...workflow, inputRun: { ...workflow.inputRun, surface: { ...workflow.inputRun.surface, supportsDryRun: true } } };
@@ -170,7 +170,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
       }), { workflows: [dryRuns], panelWorkflowId: WORKFLOW_ID });
       await dialog.type(TYPED);
       await dialog.press("Continue");
-      await dialog.press("Customize steps");
+      if (customize) { await dialog.press("Customize steps"); await dialog.press("Continue"); }
       for (let wait = 0; wait < 6; wait += 1) await settle();
       await dialog.press("Start live run");
       for (let wait = 0; wait < 6; wait += 1) await settle();
@@ -178,7 +178,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
       return offered();
     };
     const count = (await planned()).length;
-    assert.ok(count >= 4, `Customize steps, Dry run, Priority, Browser mode and the steps: ${String(count)}`);
+    assert.ok(count >= (customize ? 1 : 4), `the steps, or Customize steps, Dry run, Priority and Browser mode: ${String(count)}`);
     for (let index = 0; index < count; index += 1) {
       await cleanup();
       const node = (await planned())[index];
@@ -211,7 +211,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
 describe("keeps optional steps and removes only the per-start destination", () => {
   afterEach(cleanup);
 
-  it("keeps Options and the inline Steps section while omitting destination controls", async () => {
+  it("keeps Options and the Steps page while omitting destination controls", async () => {
     let submitted: unknown;
     const dialog = await openDialog(stubClient({
       submitStartPlan: async (input) => {
@@ -241,11 +241,12 @@ describe("keeps optional steps and removes only the per-start destination", () =
     );
 
     await dialog.press("Customize steps");
-    assert.equal(dialog.stage(), "Start");
+    await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Steps");
     assert.ok(dialog.text().includes("CRM Dates"), "the optional step disappeared");
     await dialog.press("CRM Dates");
     await dialog.press("Start run");
-    assert.equal(dialog.stage(), "Start");
+    assert.equal(dialog.stage(), "Steps");
     assert.ok(!dialog.text().includes("Destination"));
     assert.ok(!dialog.text().includes("Test instance"));
     assert.ok(!dialog.text().includes("Test destination"));
@@ -495,7 +496,8 @@ async function openSteps(client: DashboardClient, typed: string = DOCUMENT, scen
   await dialog.type(typed);
   await dialog.press("Continue");
   await dialog.press("Customize steps");
-  assert.equal(dialog.stage(), "Start");
+  await dialog.press("Continue");
+  assert.equal(dialog.stage(), "Steps");
   return dialog;
 }
 
@@ -561,7 +563,7 @@ describe("Start is not sent while an omitted step's form does not parse", () => 
     await dialog.fill("Separation date", "07/01/2026");
 
     assert.equal(dialog.disabled("Start live run"), true, "Start stayed on with an unparsable fact");
-    assert.equal(dialog.stage(), "Start", "an unparsable fact reached the server");
+    assert.equal(dialog.stage(), "Steps", "an unparsable fact reached the server");
     assert.equal(asked, 0, "the dialog asked the server for a plan it knew would be refused");
     assert.equal(document.body.querySelectorAll('[role="alert"]').length, 1, "the refusal was not drawn as one alert");
     assert.ok(dialog.text().includes("Last day worked must be a valid date in MM/DD/YYYY format."), "the first failure was not drawn");
@@ -704,7 +706,7 @@ describe("a plan that omits a different set cannot be started", () => {
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
     await dialog.press("Start live run");
-    assert.equal(dialog.stage(), "Start");
+    assert.equal(dialog.stage(), "Steps");
 
     assert.ok(dialog.text().includes("This plan does not describe the steps you omitted"));
     assert.ok(dialog.text().includes("kronos-timecard"));
@@ -769,6 +771,7 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     await dialog.type(DOCUMENT);
     await dialog.press("Continue");
     await dialog.press("Customize steps");
+    await dialog.press("Continue");
 
     assert.ok(dialog.text().includes("Also omits: UCPath transaction"));
     assert.equal(dialog.disabled("UCPath transaction"), false);

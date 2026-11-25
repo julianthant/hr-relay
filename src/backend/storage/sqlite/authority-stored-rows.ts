@@ -1,7 +1,7 @@
 import { workerSlotFromRow } from "./worker-slots.js";
 import { CURRENT_RUN_SETTLEMENT_SQL, runSettlementContext } from "./run-settlement-row.js";
 import { SETTINGS_RECORD_CONVERSION_VERSION } from "./settings-record-conversion.js";
-import type { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { z } from "zod";
 import { CHANGE_LOG_SCHEMA_VERSION, RunReferenceSourceSchema, currentRowKey, expectedRunReferences } from "./authority-change-log.js";
 import { AuthorityTableNameSchema, RUN_REFERENCES_TABLE, type AuthorityTableName } from "../../../models/config/authority.js";
@@ -11,7 +11,7 @@ import { RunResultRecordSchema } from "../../../models/run/result.js";
 import { deriveBulkChildCommand } from "../../../rules/commands/command-groups.js";
 import { BulkParentCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
-import { NativeCommandAuditSchema, convertPredecessorCommandRowState } from "./command-record-row.js";
+import { convertPredecessorCommandRowState } from "./command-record-row.js";
 import { deletedRunFromRow } from "./deleted-run-row.js";
 import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
 import { generatedArtifactFromRow } from "./generated-artifacts.js";
@@ -278,7 +278,10 @@ export function nativeTableKey(table: AuthorityTableName | "explorer_overrides" 
 
 /** What validating one stored row needs: the store, its schema's readers and the row conversions of the schemas above it. */
 type StoredRowContext = Readonly<{ database: DatabaseSync; read: StoredReaders; expectedSchemaVersion: number; predecessorCustody: boolean;
-  convertPreferences: (table: string, row: unknown) => unknown }>;
+  convertPreferences: (table: string, row: unknown) => unknown; commandOutcomeInSnapshot?: StatementSync;
+  timelineOwnerInSnapshot?: (id: string) => ReturnType<typeof readTimelineRun> }>;
+
+const CommandOutcomeRowSchema = z.object({ outcome_json: z.string() });
 
 export function storedRowContext(database: DatabaseSync, expectedSchemaVersion: number): StoredRowContext {
   const predecessorCustody = expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
@@ -298,21 +301,37 @@ export function validatedRowByRow(table: AuthorityTableName | "explorer_override
   return !(table.startsWith("workbook_") || table === "explorer_overrides" || table === RETIRED_ASSISTANT_GRANT_TABLE || isWorkerCustodyDroppedTable(table));
 }
 
-export function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, workbookPayloads = true): number {
+export function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION,
+  workbookPayloads = true, fingerprint?: Readonly<{ table(name: string): void; row(row: Record<string, unknown>): void }>): number {
   return withoutNativeRecordReadMemo(() => {
-    const context = storedRowContext(database, expectedSchemaVersion);
+    const readers = storedRowContext(database, expectedSchemaVersion);
+    // The full current-schema scan validates every command, including the binding between its request and outcome.
+    const commandOutcomeInSnapshot = database.isTransaction && expectedSchemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION
+      ? database.prepare("SELECT outcome_json FROM commands WHERE id=?") : undefined;
+    // All timeline owners are read and strictly parsed against this scan's SQLite snapshot.
+    const owners = new Map<string, ReturnType<StoredReaders["run"]>>();
+    const timelineOwnerInSnapshot = !database.isTransaction ? undefined : (id: string) => {
+      const prior = owners.get(id);
+      if (prior !== undefined) return prior;
+      const owner = readTimelineRun(database, id, readers.read);
+      if (owner !== undefined && owners.size < 256) owners.set(id, owner);
+      return owner;
+    };
+    const context = { ...readers, commandOutcomeInSnapshot, timelineOwnerInSnapshot };
     if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertAssistantHistoryRetirable(database, nativeOrdinaryRecordFromRow);
     let validated = 0;
     const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
     for (const table of migrationTableNames(expectedSchemaVersion)) {
       // The custody conversion validates the tables it drops.
-      if (!validatedRowByRow(table) || table === "assistant_actions" && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) continue;
-      if (table === "run_search" && (!validateSearch || !searchReady)) continue;
+      const validate = validatedRowByRow(table) && !(table === "assistant_actions" && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION)
+        && !(table === "run_search" && (!validateSearch || !searchReady));
+      if (!validate && fingerprint === undefined) continue;
+      fingerprint?.table(table);
       const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
         : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
       for (const raw of database.prepare(`SELECT * FROM ${table}${retained} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
-        validateStoredRow(context, table, raw);
-        validated++;
+        if (validate) { validateStoredRow(context, table, raw); validated++; }
+        fingerprint?.row(raw);
       }
     }
     return validated + validateAuthorityFamilies(context, workbookPayloads);
@@ -360,8 +379,8 @@ export function validateStoredRow(context: StoredRowContext, table: AuthorityTab
         else if (table === "assistant_conversations") assistantConversationFromRow(raw);
         else if (table === "assistant_messages") assistantMessageFromRow(raw);
         else if (table === "assistant_attachments") assistantAttachmentFromRow(raw);
-        else if (table === "timeline_events") assertTimelineOwner(database,(expectedSchemaVersion < DEBUG_EVENTS_MIGRATION.version ? predecessorTimelineEventFromRow : timelineEventFromRow)(raw),false,read);
-        else if (table === "debug_events") assertTimelineOwner(database,debugEventFromRow(raw),false,read);
+        else if (table === "timeline_events") assertTimelineOwner(database,(expectedSchemaVersion < DEBUG_EVENTS_MIGRATION.version ? predecessorTimelineEventFromRow : timelineEventFromRow)(raw),false,read,context.timelineOwnerInSnapshot);
+        else if (table === "debug_events") assertTimelineOwner(database,debugEventFromRow(raw),false,read,context.timelineOwnerInSnapshot);
         else if (table === "artifacts") {
           const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
           if (kind === "imported") importedArtifactFromRow(raw);
@@ -398,11 +417,19 @@ export function validateStoredRow(context: StoredRowContext, table: AuthorityTab
           if (table === "run_receipts" && expectedSchemaVersion >= 20) assertRefreshedReceiptSettlement(database,RunEvidenceReceiptSchema.parse(record),raw,expectedSchemaVersion);
           if (table === "write_intents") { authenticateStoredWriteResolution(database,record,read); assertConfirmationPublication(database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId,read); }
           if (table === "command_audits") {
-            const audit = NativeCommandAuditSchema.parse(record);
-            authenticateStoredResolutionAudit(database,audit,read);
-            const commandRow = database.prepare("SELECT * FROM commands WHERE id=?").get(audit.request.commandId);
-            if (commandRow === undefined || canonicalJsonStringify(read.command(convertPreferences("commands", commandRow))) !== canonicalJsonStringify(audit.request)
-              || z.object({outcome_json:z.string()}).parse(convertPreferences("commands", commandRow)).outcome_json !== canonicalJsonStringify(audit)) throw authorityIntegrityError("command-audit-settlement-mismatch");
+            const audit = authenticateStoredResolutionAudit(database,record,read);
+            let commandOutcome: unknown;
+            if (context.commandOutcomeInSnapshot !== undefined) {
+              commandOutcome = context.commandOutcomeInSnapshot.get(audit.request.commandId);
+            } else {
+              const row = database.prepare("SELECT * FROM commands WHERE id=?").get(audit.request.commandId);
+              if (row === undefined) throw authorityIntegrityError("command-audit-settlement-mismatch");
+              commandOutcome = convertPreferences("commands", row);
+              if (canonicalJsonStringify(read.command(commandOutcome)) !== canonicalJsonStringify(audit.request))
+                throw authorityIntegrityError("command-audit-settlement-mismatch");
+            }
+            if (commandOutcome === undefined || CommandOutcomeRowSchema.parse(commandOutcome).outcome_json !== canonicalJsonStringify(audit))
+              throw authorityIntegrityError("command-audit-settlement-mismatch");
           }
         } else throw new Error("native row admission is undefined");
       } catch (error) { throw new Error(`authority table ${table} failed native record validation: ${errorMessage(error)}`,{cause:error}); }

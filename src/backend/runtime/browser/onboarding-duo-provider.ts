@@ -806,7 +806,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       catch (error) { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root", error); }
       session.launchStarted = true;
       session.launching = browserLauncher.launch({ profileDirectory: session.profileDirectory, headless: false,
-        extensionDirectory, acceptDownloads: false, downloadsPath: session.profileDirectory, viewport: { width: 640, height: 720 }, timeoutMs: options.closeProofMs, ownedProcess: process => { session.process = process; process.onExit(() => { if (browser === session) closedWindow(); }); }, disablePasswordManager: true, defaultContextOptions: true }).then(context => {
+        extensionDirectory, acceptDownloads: false, downloadsPath: session.profileDirectory, viewport: null, timeoutMs: options.closeProofMs, ownedProcess: process => { session.process = process; process.onExit(() => { if (browser === session) closedWindow(); }); }, disablePasswordManager: true }).then(context => {
         session.context = context;
         context.on("close", () => {
           session.contextClosed = true;

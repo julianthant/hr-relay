@@ -5,6 +5,7 @@ import { ErrorCatalogCodeSchema, shortFailureText } from "../failures/error-cata
 import { PreflightRefusalCodeSchema } from "../preflight/preflight-contract.js";
 import { z } from "zod";
 import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../run/worker-slot.js";
+import { WorkerSetupRefusalCodeSchema } from "../run/worker-control.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../notifications/notifications.js";
 import { NotificationTriggerEventSchema, StorageHealthConcernSchema, projectNotificationTrigger } from "../../rules/notifications/notification-triggers.js";
@@ -184,7 +185,7 @@ export const QueueNotStartingWireSchema = z.union([
     summary: z.literal(QUEUE_NOT_STARTING_NO_WORKER.summary),
   }),
   z.strictObject({
-    code: PreflightRefusalCodeSchema,
+    code: z.union([PreflightRefusalCodeSchema, WorkerSetupRefusalCodeSchema]),
     summary: z.string().min(1).max(4096),
   }),
 ]);
@@ -482,9 +483,9 @@ export const WorkerCardWireSchema = z.strictObject({
   startedAt: IsoInstantSchema,
   /** Present iff the member exited — the observed exit instant, never `now`. */
   endedAt: IsoInstantSchema.optional(),
-  /** Present iff the card is failed — requested stop, Relay's own shutdown or logout drain, crash, or a planned member with no process this boot; never inferred. */
-  stopReason: z.enum(["operator", "shutdown", "crashed", "not-started"]).optional(),
-  /** The catalog code a crashed worker reported before it exited. */
+  /** Present iff the card is failed. */
+  stopReason: z.enum(["operator", "shutdown", "crashed", "not-started", "setup-refused"]).optional(),
+  /** The catalog code a worker reported before it exited. */
   failureCode: ErrorCatalogCodeSchema.optional(),
   currentRun: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
@@ -539,6 +540,9 @@ export const WorkerCardWireSchema = z.strictObject({
       path: ["stopReason"],
       message: `a ${card.state} worker card must ${terminal ? "carry" : "carry no"} stopReason`,
     });
+  }
+  if (card.stopReason === "setup-refused" && !WorkerSetupRefusalCodeSchema.safeParse(card.failureCode).success) {
+    context.addIssue({ code: "custom", path: ["failureCode"], message: "a setup refusal must carry its setup failure code" });
   }
   if (card.endedAt !== undefined && Date.parse(card.endedAt) < Date.parse(card.startedAt)) {
     context.addIssue({ code: "custom", path: ["endedAt"], message: "worker endedAt precedes startedAt" });

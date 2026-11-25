@@ -1,4 +1,4 @@
-import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
+import { DuoSetupRefusal, type DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 
 import { createHash, randomUUID } from "node:crypto";
 import type { DebugEvent } from "../../../models/events/timeline.js";
@@ -294,7 +294,11 @@ class Gate implements DuoCeremonyGateHandle {
 
 // Credential identity follows configured mode; resolution failure cannot select a different identity.
 export function duoCeremonyCredentialKey(config: Config, duo?: DuoSigningSource): Fingerprint {
-  if (config.features.duoWebAuthn) { if (duo === undefined) throw new Error("duo-signing-source-required"); duo.assertCurrent(); return duo.identity(); }
+  if (config.features.duoWebAuthn) {
+    if (duo === undefined) throw new DuoSetupRefusal("DUO_SIGNING_SOURCE_REQUIRED");
+    duo.assertCurrent();
+    return duo.identity();
+  }
   return FingerprintSchema.parse(createHash("sha256")
     .update("hrauto:duo-credential-identity:v1\0hands-on\0")
     .update(config.actor.id)
