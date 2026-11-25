@@ -152,7 +152,7 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Lint root package
+      - name: Lint root with Oxlint
         run: npm run lint
       - run: npm ci
         working-directory: fast-duo
