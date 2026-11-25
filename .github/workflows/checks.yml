@@ -181,6 +181,38 @@ jobs:
       - name: Print typecheck compiler version
         run: npm run typecheck -- --version
       - run: npm run typecheck
+      - name: Measure TypeScript 6 and 7 and verify the task fixture
+        shell: bash
+        run: |
+          nproc
+          uptime
+          classic=(node --max-old-space-size=6144 node_modules/@typescript/old/bin/tsc --noEmit)
+          native=(node node_modules/@typescript/native/bin/tsc --noEmit)
+          "${classic[@]}" --version
+          node --input-type=module -e 'import assert from "node:assert/strict"; import ts from "typescript"; assert.equal(ts.version, "6.0.3"); assert.equal(ts.createSourceFile("probe.ts", "export const x = 1", ts.ScriptTarget.Latest).statements.length, 1); console.log(`Compiler API ${ts.version}`)'
+          for trial in {1..5}; do
+            /usr/bin/time -f "TS6 $trial wall_s=%e peak_rss_kib=%M user_s=%U system_s=%S cpu=%P exit=%x" "${classic[@]}"
+            /usr/bin/time -f "TS7 $trial wall_s=%e peak_rss_kib=%M user_s=%U system_s=%S cpu=%P exit=%x" "${native[@]}"
+          done
+          "${classic[@]}" --extendedDiagnostics
+          "${native[@]}" --extendedDiagnostics
+
+          (
+            fixture=tests/types/task-contracts.typecheck.ts
+            trap 'git restore -- "$fixture"' EXIT
+            sed -i '/^\/\/ @ts-expect-error read task implementations cannot request transaction access$/d' "$fixture"
+            if diagnostic=$(npm run typecheck -- --pretty false 2>&1); then
+              echo "The unsuppressed fixture unexpectedly compiled"
+              exit 1
+            fi
+            printf '%s\n' "$diagnostic"
+            test "$(grep -c 'error TS' <<< "$diagnostic")" -eq 1
+            grep -Eq '^tests/types/task-contracts\.typecheck\.ts\([0-9]+,[0-9]+\): error TS(2322|2769):' <<< "$diagnostic"
+            grep -Eq '"transaction".*not assignable to.*"read"' <<< "$diagnostic"
+          )
+
+          node_modules/.bin/tsc --version
+          npm run test:integration -- tests/types/flow-graph.integration.test.ts
       - run: npm ci
         working-directory: fast-duo
       - run: npm test
