@@ -110,6 +110,25 @@ it("recovers through Continue after an initial read failure without restarting a
 });
 
 
+it("offers Retry for an expired account whose check was refused and recovers it without a sign-in", async () => {
+  const account = ChatGptAccountStateSchema.parse({ state: "connected", name: "Renewed operator", email: "renewed@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" });
+  let checks = 0, starts = 0;
+  const unexpected = async (): Promise<never> => { starts++; throw new Error("unexpected account command"); };
+  const port = createServedChatGptAccountPort({ chatGptAccount: async () => chatGptStatusFixture({ state: "expired" }),
+    checkChatGptAccount: async () => chatGptStatusFixture(++checks === 1 ? { state: "expired" } : account),
+    startChatGptSignIn: unexpected, completeChatGptSignIn: unexpected, cancelChatGptSignIn: unexpected, signOutChatGpt: unexpected, testChatGptOcr: unexpected });
+  try {
+    host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
+    await vi.waitFor(() => { assert.equal(port.getResource().state, "failed"); });
+    await act(async () => {});
+    const retry = [...host.querySelectorAll("button")].find(node => node.textContent === "Retry"); assert.ok(retry);
+    await act(async () => retry.click());
+    await vi.waitFor(() => { assert.match(host?.textContent ?? "", /Renewed operator.*renewed@example\.com/u); });
+    assert.equal(checks, 2); assert.equal(starts, 0);
+  } finally { port.dispose(); }
+});
+
 for (const snapshot of [{ state: "signed-out" }, { state: "expired" }] as const)
   it(`shows the one not-connected row for a ${snapshot.state} account`, async () => {
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);

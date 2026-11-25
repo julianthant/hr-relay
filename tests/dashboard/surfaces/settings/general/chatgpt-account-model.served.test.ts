@@ -83,7 +83,7 @@ it("reads current state once at connected expiry without starting sign-in", asyn
   vi.useFakeTimers(); let reads = 0, now = Date.parse("2026-10-12T12:59:59.000Z");
   const queries: ChatGptAccountQueries = { checkChatGptAccount: async () => chatGptStatusFixture(reads === 1 ? account : { state: "expired" }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }), testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }), chatGptAccount: async () => { reads++; return chatGptStatusFixture(reads === 1 ? account : { state: "expired" }); }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }) };
   const port = createServedChatGptAccountPort(queries, { nowMs: () => now });
-  try { await port.refresh(); now += 1000; await vi.advanceTimersByTimeAsync(1000); assert.equal(reads, 2); assert.deepEqual(port.getSnapshot(), { state: "expired" }); } finally { port.dispose(); vi.useRealTimers(); }
+  try { await port.refresh(); now += 1000; await vi.advanceTimersByTimeAsync(1000); assert.equal(reads, 2); assert.deepEqual(port.getResource(), { state: "failed", code: "CHATGPT_ACCOUNT_EXPIRED", account: { state: "expired" } }); } finally { port.dispose(); vi.useRealTimers(); }
 });
 
 it("closes its owned popup immediately on disposal while completion is pending", async () => {
@@ -515,4 +515,15 @@ it("bounds a hung check and aborts it on disposal", async () => {
     f.port.dispose(); await disposed;
     assert.equal(signals[1]?.aborted, true);
   } finally { f.port.dispose(); vi.useRealTimers(); }
+});
+
+it("keeps a refused check of an expired account failed and retryable until a later check renews it", async () => {
+  let checks = 0;
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture({ state: "expired" }), checkChatGptAccount: async () => ++checks === 1 ? chatGptStatusFixture({ state: "expired" }) : chatGptStatusFixture(account) });
+  try {
+    await f.port.refresh();
+    assert.deepEqual(f.port.getResource(), { state: "failed", code: "CHATGPT_ACCOUNT_EXPIRED", account: { state: "expired" } });
+    await f.port.refresh();
+    assert.deepEqual(f.port.getResource(), { state: "loaded", account }); assert.equal(f.calls.includes("start"), false);
+  } finally { f.port.dispose(); }
 });
