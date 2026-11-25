@@ -18,13 +18,13 @@ Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} di
 
 const PAUSED_AT = "2026-08-03T00:00:00.000Z";
 
-async function mount(pause: "running" | "pause-pending" | "paused" = "running", day: typeof FIXTURE_DAY_WIRE = FIXTURE_DAY_WIRE,
+async function mount(pause: "running" | "pause-pending" | "paused" | "one-paused" = "running", day: typeof FIXTURE_DAY_WIRE = FIXTURE_DAY_WIRE,
   bulkReply: () => Promise<BulkRunCommandResponse> = () => new Promise<never>(() => undefined)) {
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
-  let lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 17, state: "ready", pause, update: "installer-unavailable",
+  let lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 17, state: "ready", pause: pause === "one-paused" ? "running" : pause, update: "installer-unavailable",
     targets: [{ runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, expectedVersion: 7 },
-      { runId: "00000000-0000-4000-8000-000000000099", expectedVersion: 11 }].map(target => pause !== "paused" ? target : { ...target,
+      { runId: "00000000-0000-4000-8000-000000000099", expectedVersion: 11 }].map((target, index) => pause !== "paused" && !(pause === "one-paused" && index === 0) ? target : { ...target,
         pause: { state: "paused", requestedAt: PAUSED_AT, pausedAt: PAUSED_AT, commandId: "00000000-0000-4000-8000-0000000000aa" } }) });
   const reply = Promise.withResolvers<CommandResult>();
   const sent: Array<CommandRequest | BulkRunCommandRequest> = [];
@@ -99,6 +99,16 @@ it("paused runs offer Resume all above the queue, and it sends one resume for ex
     assert.equal(f.sent.length, 1);
     const request = f.sent[0]; assert.ok("targets" in request && request.type === "resume");
     assert.deepEqual(request.targets, f.lifecycle.targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion })));
+  } finally { await f.close(); }
+});
+
+it("with paused and unpaused runs, the strip counts and resumes only the paused ones", async () => {
+  const f = await mount("one-paused");
+  try {
+    assert.match(f.host.textContent ?? "", /1 run paused ·/u);
+    await act(async () => f.button("Resume all").click());
+    const request = f.sent[0]; assert.ok("targets" in request && request.type === "resume");
+    assert.deepEqual(request.targets, [{ runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, expectedVersion: 7 }]);
   } finally { await f.close(); }
 });
 

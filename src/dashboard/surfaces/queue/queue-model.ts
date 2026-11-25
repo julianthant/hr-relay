@@ -51,7 +51,7 @@ export type QueueSortKey = "attention" | "newest" | "oldest" | "longest";
 export type QueueOrder = Exclude<QueueSortKey, "attention">;
 
 export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: string }[] = [
-  { key: "attention", label: "Attention first", note: "What needs you, then what broke, then everything else — the default." },
+  { key: "attention", label: "Attention first", note: "What needs you stays on top — the default." },
   { key: "newest", label: "Newest first", note: "Most recently started first." },
   { key: "oldest", label: "Oldest first", note: "Earliest started first." },
   { key: "longest", label: "Longest running", note: "Biggest elapsed or recorded duration first — where the time is going." },
@@ -216,7 +216,7 @@ export function bandOf(status: ProposedStatus): QueueBandKey {
 
 export const BAND_ORDER: QueueBandKey[] = ["attention", "active", "queued", "finished"];
 
-/** Attention order differs from band order; failures must precede clean completion within their band. */
+/** Ranks the statuses of one batch's members, to name the batch's status. */
 const SORT_STATUS_RANK: Record<ProposedStatus, number> = {
   waiting: 0,
   failed: 1,
@@ -277,25 +277,21 @@ export function queueRowAccessibleName(surface: QueueSurfaceWire, nowIso: string
 
 export function sortQueueBand<Row extends QueueSortRow>(
   rows: readonly Row[],
-  key: QueueSortKey,
+  order: QueueOrder,
   nowIso: string,
-  order: QueueOrder = "newest",
 ): readonly Row[] {
   const born = (surface: Row): number => Date.parse(surface.startedAt);
-  const rank = (surface: Row): number => SORT_STATUS_RANK[dsStatusOf(surface.status)];
-  const by = (chosen: QueueOrder, a: Row, b: Row): number => {
-    if (chosen === "newest") return born(b) - born(a);
-    if (chosen === "oldest") return born(a) - born(b);
+  return [...rows].sort((a, b) => {
+    if (order === "newest") return born(b) - born(a);
+    if (order === "oldest") return born(a) - born(b);
     return elapsedMs(b, nowIso) - elapsedMs(a, nowIso);
-  };
-  // `attention` ranks by status first; the chosen order applies inside a rank.
-  return [...rows].sort((a, b) => key === "attention" ? rank(a) - rank(b) || by(order, a, b) : by(key, a, b));
+  });
 }
 
 /** The view and keyboard navigation share the same row order. */
 export function queueDisplayGroups<Row extends QueueSortRow>(rows: readonly Row[], sort: QueueSortKey, nowIso: string, order: QueueOrder = "newest"): readonly { key: QueueBandKey | null; label: string; rows: readonly Row[] }[] {
   if (sort !== "attention") return [{ key: null, label: "", rows: sortQueueBand(rows, sort, nowIso) }];
-  return BAND_ORDER.map(key => ({ key, label: BAND_LABEL[key], rows: sortQueueBand(rows.filter(row => bandOf(dsStatusOf(row.status)) === key), sort, nowIso, order) }));
+  return BAND_ORDER.map(key => ({ key, label: BAND_LABEL[key], rows: sortQueueBand(rows.filter(row => bandOf(dsStatusOf(row.status)) === key), order, nowIso) }));
 }
 
 /* ── the attention transition ────────────────────────────────────────────── */

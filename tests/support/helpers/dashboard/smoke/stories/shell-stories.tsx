@@ -5,7 +5,7 @@ import { DashboardClientProvider } from "../../../../../../src/dashboard/state/c
 import { EmptyState, FailureNotice, Notice, Panel, PanelBody, Switch } from "../../../../../../src/dashboard/ds/ui.js";
 import { QueueSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
 import { QueueHeader } from "../../../../../../src/dashboard/surfaces/queue/queue-header.js";
-import { QuitDialog } from "../../../../../../src/dashboard/surfaces/queue/queue-toolbar.js";
+import { PausedRunsStrip, QuitDialog } from "../../../../../../src/dashboard/surfaces/queue/queue-toolbar.js";
 import { HubShell } from "../../../../../../src/dashboard/surfaces/shell/hub-shell.js";
 import { StartupLoading } from "../../../../../../src/dashboard/surfaces/shell/startup-loading.js";
 import { WorkflowRail } from "../../../../../../src/dashboard/surfaces/shell/workflow-rail.js";
@@ -93,6 +93,14 @@ const HEADER = {
   "options-changed": header("The queue header with options changed from their defaults", true),
 } satisfies Record<HeaderState, Story>;
 
+type PausedState = "one" | "several" | "resume-unavailable";
+const paused = (title: string, count: number, onResumeAll?: () => void): Story => ({ title, ready: ".queue-paused-strip",
+  render: () => <StoryFrame><div className="dashboard-queue-column"><PausedRunsStrip count={count} onResumeAll={onResumeAll} /></div></StoryFrame> });
+const PAUSED = {
+  one: paused("One run paused, offered Resume all", 1, noop), several: paused("Several runs paused", 3, noop),
+  "resume-unavailable": paused("Runs paused while Resume all cannot be sent", 3),
+} satisfies Record<PausedState, Story>;
+
 type ToggleState = "off" | "on" | "off-hover" | "on-hover" | "focus" | "locked-on" | "disabled-off" | "disabled-on";
 const toggle = (title: string, checked: boolean, disabled: boolean, play?: Story["play"], locked = false): Story => ({ title, ready: '[role="switch"]', ...(play === undefined ? {} : { play }),
   render: () => <StoryFrame><Panel><PanelBody className="p-[var(--ds-space-base)]"><Switch label="Dry run" checked={checked} disabled={disabled} locked={locked} onCheckedChange={noop} /></PanelBody></Panel></StoryFrame> });
@@ -136,4 +144,4 @@ const DIALOG = {
     <HubShell settingsOpen={false} logoutOpen onLogoutOpenChange={noop} onLogout={noop} /></DashboardClientProvider></StoryFrame> },
 } satisfies Record<ShellDialog, Story>;
 
-export const SHELL_STORIES = defineSurface("shell", { startup: STARTUP, banner: BANNER, queue: QUEUE_SLOT, rail: RAIL, header: HEADER, toggle: TOGGLE, filter: SEARCH_FILTER, search: SEARCH_ANSWER, dialog: DIALOG });
+export const SHELL_STORIES = defineSurface("shell", { startup: STARTUP, banner: BANNER, queue: QUEUE_SLOT, rail: RAIL, header: HEADER, paused: PAUSED, toggle: TOGGLE, filter: SEARCH_FILTER, search: SEARCH_ANSWER, dialog: DIALOG });
