@@ -58,7 +58,6 @@ setting providers.geocodeNominatim: The ordinary setting providers.geocodeNomina
 setting paths.duoExtensionDir: The ordinary setting paths.duoExtensionDir is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
 setting preferences.theme: The ordinary setting preferences.theme is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
 setting preferences.animations: The ordinary setting preferences.animations is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
-setting preferences.workflowPanelMode: The ordinary setting preferences.workflowPanelMode is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
 setting preferences.selectedWorkflowId: The ordinary setting preferences.selectedWorkflowId is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
 setting preferences.shortcuts.numberMode: The ordinary setting preferences.shortcuts.numberMode is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
 setting preferences.shortcuts.bindings.search: The ordinary setting preferences.shortcuts.bindings.search is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.

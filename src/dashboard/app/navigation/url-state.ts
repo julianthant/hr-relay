@@ -1,6 +1,6 @@
 import { RunDetailSectionSchema } from "../../../models/dashboard/primitives.js";
 import { PROFILE_ONBOARDING_ROUTE_KEY } from "../../../models/profiles/public-profile.js";
-import { parseViewRoute, ViewRouteSchema, type ViewRoute } from "./view-route-model.js";
+import { parseViewRoute, ViewRouteCoordinatesSchema, type ViewRoute } from "./view-route-model.js";
 import { parseArchiveFolderRoute, parseArchiveBrowse, type ArchiveBrowseState } from "./archive-route-model.js";
 /** The app's visible state lives in the query string. */
 
@@ -79,7 +79,7 @@ export function parseRoute(search: string): AppRouteState {
   else if (Object.keys(view).length) route.view = view;
   const activityPreview = params.get('activityPreview');
   if (activityPreview !== null) {
-    const preview = ViewRouteSchema.shape.activityPreview.safeParse(activityPreview);
+    const preview = ViewRouteCoordinatesSchema.shape.activityPreview.safeParse(activityPreview);
     if (!preview.success) route.viewInvalid = true;
     else route.view = { ...route.view, activityPreview: preview.data };
   }
@@ -165,9 +165,9 @@ export function routeToSearch(route: AppRouteState): string {
     if (route.settingsFrom !== undefined) params.set("settingsFrom", route.settingsFrom);
   }
   if (route.view !== undefined) {
-    const encoded = JSON.stringify(route.view);
-    if (parseViewRoute(encoded) === null) throw new Error("VIEW_ROUTE_INVALID");
-    if (encoded !== "{}") params.set("view", encoded);
+    const view = parseViewRoute(JSON.stringify(route.view));
+    if (view === null) throw new Error("VIEW_ROUTE_INVALID");
+    if (Object.keys(view).length > 0) params.set("view", JSON.stringify(view));
   }
   const query = params.toString();
   return query.length === 0 ? "" : `?${query}`;
