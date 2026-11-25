@@ -62,7 +62,8 @@ describe("canonical run-record service", () => {
 
   it("counts a row whose state column and lifecycle JSON disagree as active", async () => {
     const { service, request, database } = await fixture();
-    const make = (matchKey: string) => created(service, { ...request, matchKey,
+    let sequence = 700;
+    const make = (matchKey: string) => created(service, { ...request, matchKey, commandId: `99000000-0000-4000-8000-${String(sequence++).padStart(12, "0")}`,
       descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint });
     const columnOnly = make("drift-column"), jsonOnly = make("drift-json"), finished = make("drift-finished");
     for (const run of [jsonOnly, finished]) {
