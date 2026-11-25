@@ -120,8 +120,6 @@ const AUDIT_FIXES = "#532";
 const BREAK_SETS = {
   /** The composer's approval picker is switched off while no model preference is served, and its Send button is not painted the accent. */
   COMPOSER: ["no-dead-disabled-control", "primary-button-accent"],
-  /** COMPOSER, and the account strip's text runs past the panel's width. */
-  COMPOSER_OVERFLOW: ["fits-viewport", "no-dead-disabled-control", "primary-button-accent"],
   /** COMPOSER, and a control in the open panel (the message box, or a button in the transcript) shows no visible focus ring. */
   COMPOSER_FOCUS: ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
   /** COMPOSER_FOCUS, and the history skeleton is drawn from the loading flag while no read is held. */
@@ -136,8 +134,8 @@ const KNOWN_BREAKS = {
   "account/signed-out": BREAK_SETS.COMPOSER,
   "account/unavailable": BREAK_SETS.COMPOSER,
   "plan/disabled": BREAK_SETS.COMPOSER,
-  "account/signing-in": BREAK_SETS.COMPOSER_OVERFLOW,
-  "plan/limit-reached": BREAK_SETS.COMPOSER_OVERFLOW,
+  "account/signing-in": BREAK_SETS.COMPOSER,
+  "plan/limit-reached": BREAK_SETS.COMPOSER,
   "account/connected": BREAK_SETS.COMPOSER_FOCUS,
   "attachment/failed": BREAK_SETS.COMPOSER_FOCUS,
   "attachment/spreadsheet": BREAK_SETS.COMPOSER_FOCUS,
