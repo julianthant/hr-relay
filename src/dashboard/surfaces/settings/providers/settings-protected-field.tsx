@@ -1,18 +1,16 @@
-import { Trash2 } from "lucide-react";
-import { Field, IconButton, Input, SecretField, dsIcon } from "../../../ds/ui.js";
+import { Field, Input, SecretField } from "../../../ds/ui.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { formatSetting } from "../editor/settings-draft-model.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
-export function ProtectedSettingField({ editor, name, description, controlWidth = "medium", className, onRemove, inDialog = false }: {
+export function ProtectedSettingField({ editor, name, description, controlWidth = "medium", className, inDialog = false }: {
   editor: Editor;
   name: Parameters<Editor["protectedEditor"]["update"]>[0];
   description: string;
   controlWidth?: "medium" | "wide";
   className?: string;
-  onRemove: (hasSaved: boolean, label: string) => void;
-  /** Inside an edit dialog: label above the input, no helper line, and Remove lives in the dialog footer. */
+  /** Inside an edit dialog: label above the input and no helper line. The UCPath sign-in is required, so nothing offers to remove it. */
   inDialog?: boolean;
 }) {
   if (editor.editor.state !== "loaded") return null;
@@ -24,7 +22,6 @@ export function ProtectedSettingField({ editor, name, description, controlWidth 
   const stored = authority.state === "available" ? authority.entries[name] : undefined;
   const value = operation?.kind === "set" ? operation.raw : operation?.kind === "clear" ? "" : stored === undefined || name !== "ucpathUserId" ? "" : formatSetting(stored.value);
   const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
-  const canRemove = !inDialog && (stored !== undefined || operation?.kind === "set");
   const visible = name === "ucpathUserId";
   const label = name === "ucpathUserId" ? "UCPath username" : row.label;
   return <Field data-settings-path={`protected.${name}`} label={label} {...inDialog ? {} : { description }} error={credentials.errors[name]}
@@ -33,12 +30,8 @@ export function ProtectedSettingField({ editor, name, description, controlWidth 
     {visible ? <div className="ds-secret-field">
       <Input type="text" name={name} value={value} disabled={disabled} autoComplete={name === "ucpathUserId" ? "section-ucpath username" : "off"} spellCheck={false} placeholder="Enter value"
         onChange={event => credentials.update(name, event.target.value)} />
-      {canRemove && <IconButton type="button" label={`Remove ${label}`} disabled={disabled} variant="danger-outline" size="sm"
-        className="ds-secret-remove" icon={<Trash2 aria-hidden className={dsIcon.sm} />}
-        onClick={() => onRemove(stored !== undefined, label)} />}
     </div> : <SecretField label={label} identity={`${name}:${stored?.valueId ?? "empty"}`} value={value}
       name={name} autoComplete={name === "ucpathPassword" ? "section-ucpath new-password" : "off"} spellCheck={false} placeholder="Enter value"
-      onChange={event => credentials.update(name, event.target.value)}
-      {...(canRemove ? { onRemove: () => onRemove(stored !== undefined, label) } : {})} />}
+      onChange={event => credentials.update(name, event.target.value)} />}
   </Field>;
 }

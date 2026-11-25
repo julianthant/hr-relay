@@ -70,6 +70,7 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
       let ellipsed = false;
       let checkX = true;
       let checkY = true;
+      let inRow = false;
       let unseen = false;
       for (let frameElement: HTMLElement | null = element; frameElement !== null && frameElement !== document.body && (checkX || checkY); frameElement = frameElement.parentElement) {
         const frameStyle = getComputedStyle(frameElement);
@@ -86,12 +87,14 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
           checkX = false;
         }
         if (checkY && clips(frameStyle.overflowY) && (bottom > frameTop + frameElement.clientHeight + 1 || top < frameTop - 1)) { cuts.push(`${label} is cut off at the ${bottom > frameTop + frameElement.clientHeight + 1 ? "bottom" : "top"}${by}`); checkY = false; }
+        // A row that scrolls sideways, fits the window and takes the keyboard may run past its right edge.
+        if (scrolls(frameStyle.overflowX) && frameElement.tabIndex >= 0 && box.right <= window.innerWidth + 1) inRow = true;
         // Text past a scrolling container's edge is reachable by scrolling, not clipped.
         if (scrolls(frameStyle.overflowX)) checkX = false;
         if (scrolls(frameStyle.overflowY)) checkY = false;
       }
       if (unseen) continue;
-      if (!ellipsed && right > window.innerWidth + 1) found.push(`${label} runs ${String(Math.round(right - window.innerWidth))}px past the right edge`);
+      if (!ellipsed && !inRow && right > window.innerWidth + 1) found.push(`${label} runs ${String(Math.round(right - window.innerWidth))}px past the right edge`);
       found.push(...cuts);
     }
     return found;
@@ -145,21 +148,37 @@ export function wordLimits({ page }: StateRuleContext): Promise<readonly string[
 export function toastTextOnly({ page }: StateRuleContext): Promise<readonly string[]> {
   return page.evaluate(() => {
     const found: string[] = [];
-    const drawn = (element: Element) => { const box = element.getBoundingClientRect(); return box.width > 1 && box.height > 1; };
-    const chrome = [...document.querySelectorAll('[role="toolbar"], [role="group"][aria-label], h1, h2, h3, [data-slot$="title"]')]
-      .filter(element => drawn(element) && element.closest('[data-ds-toast-state]') === null);
     for (const toast of document.querySelectorAll<HTMLElement>('[data-ds-toast-state]')) {
-      if (!drawn(toast)) continue;
-      const label = `the toast "${toast.innerText.trim().slice(0, 60)}"`;
-      const extras = toast.querySelectorAll("button, a[href], input, select, textarea, img, video");
-      if (extras.length > 0) found.push(`${label} holds ${String(extras.length)} control or image; a toast is text only`);
       const box = toast.getBoundingClientRect();
-      for (const element of chrome) {
-        const other = element.getBoundingClientRect();
-        if (box.left < other.right && other.left < box.right && box.top < other.bottom && other.top < box.bottom) {
-          found.push(`${label} covers ${element.matches('[role="toolbar"], [role="group"]') ? `the toolbar "${element.getAttribute("aria-label") ?? ""}"` : `the title "${(element.textContent ?? "").trim().slice(0, 40)}"`}`);
-        }
-      }
+      if (box.width <= 1 || box.height <= 1) continue;
+      const extras = toast.querySelectorAll("button, a[href], input, select, textarea, img, video");
+      if (extras.length > 0) found.push(`the toast "${toast.innerText.trim().slice(0, 60)}" holds ${String(extras.length)} control or image; a toast is text only`);
+    }
+    return found;
+  });
+}
+
+/** Toasts sit top centre, 12px from the top, inside the window and off the Sessions panel, whatever height the panel is. */
+export function toastPlacement({ page }: StateRuleContext): Promise<readonly string[]> {
+  return page.evaluate(() => {
+    const found: string[] = [];
+    const panel = document.querySelector('[aria-label="Session Panel"]')?.getBoundingClientRect();
+    const shown = [...document.querySelectorAll<HTMLElement>('[data-ds-toast-state]')].filter(toast => { const box = toast.getBoundingClientRect(); return box.width > 1 && box.height > 1; });
+    if (shown.length === 0) return found;
+    const viewport = document.querySelector('[data-slot="toast-viewport"]');
+    const front = shown.find(toast => getComputedStyle(toast).getPropertyValue("--toast-index").trim() === "0");
+    if (viewport === null || front === undefined) return ["a toast is shown without a viewport or a front toast"];
+    for (const [part, element] of [["toast viewport", viewport], ["front toast", front]] as const) {
+      const top = element.getBoundingClientRect().top;
+      if (Math.abs(top - 12) > 1) found.push(`the ${part} sits ${String(Math.round(top))}px from the window's top edge, not 12px`);
+    }
+    for (const toast of shown) {
+      const box = toast.getBoundingClientRect();
+      const label = `the toast "${toast.innerText.trim().slice(0, 60)}"`;
+      const offCentre = Math.abs((box.left + box.right) / 2 - window.innerWidth / 2);
+      if (offCentre > 2) found.push(`${label} is ${String(Math.round(offCentre))}px off the horizontal centre`);
+      if (panel !== undefined && box.bottom > panel.top && box.top < panel.bottom && box.left < panel.right && panel.left < box.right) found.push(`${label} overlaps the Sessions panel`);
+      if (box.top < 0 || box.left < 0 || box.right > window.innerWidth || box.bottom > window.innerHeight) found.push(`${label} runs outside the window`);
     }
     return found;
   });
@@ -287,6 +306,8 @@ export function primaryButtonAccent({ page }: StateRuleContext): Promise<readonl
     };
     const accent = token("--ds-accent");
     const canvasSurface = token("--ds-surface-page");
+    const off = token("--ds-button-off-bg");
+    const same = (first: readonly number[], second: readonly number[]) => first.every((channel, index) => Math.abs(channel - (second[index] ?? 0)) <= 2);
     const found: string[] = [];
     for (const button of document.querySelectorAll<HTMLElement>('body :is(button, [role="button"], a[data-slot="button"])')) {
       const box = button.getBoundingClientRect();
@@ -297,6 +318,8 @@ export function primaryButtonAccent({ page }: StateRuleContext): Promise<readonl
       const declared = button.className.includes("bg-[var(--ds-accent)]") || button.className.includes("text-[color:var(--ds-accent-fg)]");
       const loud = fill[3] >= 250 && contrast(fill, canvasSurface) >= 3;
       if (!declared && !loud) continue;
+      // A dialog's confirm with nothing to save is the flat off grey, not a second accent.
+      if (button.matches(":disabled") && same(fill, off)) continue;
       if (fill[3] < 250 || fill.some((channel, index) => Math.abs(channel - (accent[index] ?? 0)) > 2)) {
         const paint = fill[3] < 250 ? "has no solid fill" : `is filled rgb(${fill.slice(0, 3).join(", ")})`;
         found.push(`the button "${(button.getAttribute("aria-label") ?? button.innerText).trim().slice(0, 40)}" ${paint}, `
@@ -314,6 +337,10 @@ export function noDeadDisabledControl({ page }: StateRuleContext): Promise<reado
     const name = (element: Element) => (element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 40);
     for (const control of document.querySelectorAll<HTMLElement>('body :is(select, [role="combobox"], [aria-haspopup])')) {
       if (!disabled(control) || control.getBoundingClientRect().width <= 1) continue;
+      // A control held off while its own request is in flight says so on itself: that is a lock, not a dead control.
+      if (control.matches('[aria-haspopup][aria-busy="true"]')) continue;
+      // A button that opens a dialog is not a picker; the approved mock keeps Add workers shown and switched off until it can act.
+      if (control.matches('button[aria-haspopup="dialog"]')) continue;
       if (control instanceof HTMLSelectElement && [...control.options].filter(option => !option.disabled).length > 1) continue;
       found.push(`the picker "${name(control)}" is shown switched off with nothing to choose`);
     }
@@ -352,6 +379,9 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
     // A switch's input is laid over its whole row at opacity 0 so the row takes the click; the ring a keyboard user sees
     // is drawn on the visible control beside it (WCAG 2.4.7 asks that a ring be visible, not that it sit on the input).
     const overlay = element instanceof HTMLInputElement && getComputedStyle(element).opacity === "0";
+    // A text field's focus mark is its caret plus the field's border stepping up, drawn on the box around the input.
+    const field = element.matches("input:not([type=checkbox], [type=radio], [type=range]), textarea") ? element.closest('[data-slot="search-field-group"], .ds-secret-input') : null;
+    if (field !== null) return [element, field];
     if (!(element instanceof HTMLInputElement) || box.width > 1 && box.height > 1 && !overlay) return [element];
     return [...element.labels ?? []].flatMap(label => [label, ...label.querySelectorAll("*")]).filter(part => part !== element);
   };
@@ -500,7 +530,8 @@ export const STATE_RULES: Readonly<Record<StateRuleName, { readonly check: State
   "fits-viewport": { check: fitsViewport, failure: "sideways scroll or clipped text at this size" },
   "no-banned-text": { check: noBannedText, failure: "text an operator must never read" },
   "word-limits": { check: wordLimits, failure: "titles, descriptions or errors over their word limit" },
-  "toast-text-only": { check: toastTextOnly, failure: "a toast that holds more than text or covers a toolbar or title" },
+  "toast-text-only": { check: toastTextOnly, failure: "a toast that holds more than text" },
+  "toast-placement": { check: toastPlacement, failure: "a toast that is off top centre, outside the window or over the Sessions panel" },
   "skeleton-only-while-fetching": { check: skeletonOnlyWhileFetching, failure: "a skeleton outside a slow fetch or outside its fetching region" },
   "dialogs-share-shape": { check: dialogsShareShape, failure: "dialogs of one kind that differ in radius, border, title size or padding" },
   "primary-button-accent": { check: primaryButtonAccent, failure: "a primary button that is not the one accent" },

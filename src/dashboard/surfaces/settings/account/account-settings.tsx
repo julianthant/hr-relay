@@ -111,7 +111,7 @@ export function PencilRow({ label, description, shown, pencilLabel, title, dialo
   </>;
 }
 
-/** One text field in a dialog: Save stays off while it is empty and writes only a changed value; a refusal stays under the field with the typed value, and the dialog closes only once the change is saved. */
+/** One text field in a dialog: Save stays off until the value is non-empty and changed; a refusal stays under the field with the typed value, and the dialog closes only once the change is saved. */
 function EditTextDialog({ label, value, close, onSave }: { label: string; value: string; close: () => void; onSave: (next: string) => Promise<string | undefined> }) {
   const [draft, setDraft] = useState(value);
   const [problem, setProblem] = useState<string | undefined>();
@@ -130,7 +130,7 @@ function EditTextDialog({ label, value, close, onSave }: { label: string; value:
     <DialogBody><Field label={label} error={problem}><Input autoFocus aria-label={label} autoComplete="off" spellCheck={false} value={draft} onChange={event => { setDraft(event.target.value); setProblem(undefined); }} /></Field></DialogBody>
     <DialogFooter>
       <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
-      <Button type="submit" variant="primary" disabled={next === "" || saving}>Save</Button>
+      <Button type="submit" variant="primary" disabled={next === "" || next === value || saving}>Save</Button>
     </DialogFooter>
   </form>;
 }
@@ -360,7 +360,6 @@ function DuoKeyDialog({ active, close, focusFallback, submit }: { active: KeyDia
   };
   return <Dialog open onOpenChange={open => { if (!open && !saving) close(); }}>
     <DialogContent size="sm" title={rename ? "Rename security key" : "Remove security key?"}
-      className={rename ? "[&_header_h2]:text-section [&_header_h2]:font-medium [&_label]:font-normal [&_input]:h-10 [&_footer_button]:min-w-[88px] [&_footer_button]:h-9" : undefined}
       description={rename ? "Rename this key in Relay to match Duo." : undefined}
       onOpenAutoFocus={rename ? undefined : event => { event.preventDefault(); cancel.current?.focus(); }}
       onCloseAutoFocus={event => { event.preventDefault(); if (active.trigger.isConnected) active.trigger.focus({ preventScroll: true }); else focusFallback(); }}>

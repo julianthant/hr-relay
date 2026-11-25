@@ -53,12 +53,6 @@
 .settings-takeover .settings-account-page .ds-result-row-value button[data-slot="button"]:not([aria-label]) { width:112px; }
 .settings-search-arrival[data-held="true"]::before { animation: none; opacity: 1; }
 .settings-fix-banner { position: sticky; top: 0; z-index: 2; background: var(--ui-canvas); }
-/* Single-field edit dialogs (ChatGPT "Edit name"): plain label above a tall input, even spacing. Title, header and body spacing come from the small dialog in tokens.css. */
+/* Edit dialogs with more than one field keep 16px between fields; the rest of the shape is the small dialog in tokens.css. */
 .settings-edit-dialog [data-slot="dialog-body"] { display:flex;flex-direction:column;gap:16px; }
-.settings-edit-dialog label.ds-field-label { font-size:13px;line-height:20px;font-weight:400;color:var(--ds-fg); }
 .settings-edit-dialog .ds-field-copy { gap:0; }
-.settings-edit-dialog input { height:40px;min-height:40px;font-size:14px; }
-.settings-edit-dialog .ds-secret-input { height:40px; }
-.settings-edit-dialog input:focus-visible,.settings-edit-dialog .ds-secret-input:focus-within { outline:var(--ds-focus-ring-w) solid var(--ds-focus-ring);outline-offset:1px; }
-.settings-edit-dialog footer button:not(.settings-edit-remove) { min-width:88px;height:36px; }
-.settings-edit-remove { color:var(--ds-danger); }

@@ -294,7 +294,7 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
       return;
     }
     // A refusal the send itself returned keeps its note; one found on read-back is a toast.
-    if (proven?.state === 'refused' && answered) { retain({ request, state: 'refused', message: proven.message, code: proven.code }); return; }
+    if (proven?.state === 'refused' && answered && request.action !== 'remove') { retain({ request, state: 'refused', message: proven.message, code: proven.code }); return; }
     drop(request);
     onRefused.current?.(proven === undefined || request.action === 'retry' ? FAILED[request.action] : proven.message);
   }, [port, acceptReadback, retain, drop]);
@@ -305,12 +305,13 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
       const attemptEpoch = epoch.current;
       const finish = (next?: SessionPreviewOperation) => {
         if (!live.current || operationsRef.current[operation.request.target]?.request.id !== operation.request.id) return;
+        if (next?.state === 'refused' && operation.request.action === 'remove') { drop(operation.request); onRefused.current?.(next.message); return; }
         if (next?.state === 'confirmed' || next?.state === 'refused') { retain(next); return; }
         void settle(operation.request, undefined, attemptEpoch, latestSource.current);
       };
       void (port.afterSettled?.(operation.request) ?? Promise.resolve(undefined)).then(finish, () => finish());
     }
-  }, [port, retain, settle]);
+  }, [port, retain, settle, drop]);
   const perform = useCallback(async (request: SessionPreviewRequest) => {
     if (operationsRef.current[request.target]?.state === 'pending') return;
     retain({ request, state: 'pending', message: `${request.action === 'add' ? 'Adding workers' : `${label(request)} requested`}…` });
@@ -337,14 +338,11 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   };
 }
 
+/** Progress is the pending row in the panel; only the settled result is a toast. */
 export function useSessionAddFeedback(operation?: SessionPreviewOperation) {
-  const { toast, dismiss } = useToasts();
+  const { toast } = useToasts();
   useEffect(() => {
-    if (operation?.state === 'pending') {
-      const id = toast({ tone: 'info', title: operation.message, duration: 0 });
-      return () => dismiss(id);
-    }
     if (operation?.state === 'confirmed') toast({ tone: 'success', title: operation.message });
     if (operation?.state === 'refused') toast({ tone: 'danger', title: "Couldn't add workers", description: operation.message, duration: 6000 });
-  }, [operation, toast, dismiss]);
+  }, [operation, toast]);
 }

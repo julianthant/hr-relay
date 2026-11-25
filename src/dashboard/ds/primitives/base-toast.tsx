@@ -21,7 +21,7 @@ function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
     <ToastPrimitive.Viewport
       data-slot="toast-viewport"
       className={cn(
-        "pointer-events-none fixed bottom-[var(--ds-toast-inset-bottom,0.75rem)] left-1/2 w-[320px] max-w-[calc(100vw-2rem)] -translate-x-1/2 outline-none",
+        "pointer-events-none fixed top-3 left-1/2 w-[320px] max-w-[calc(100vw-2rem)] -translate-x-1/2 outline-none",
         dsLayer.toastViewport,
         className
       )}
@@ -34,8 +34,10 @@ function Toast({ className, ...props }: ToastPrimitive.Root.Props) {
   return (
     <ToastPrimitive.Root
       data-slot="toast"
+      // Its exit is upward, so the swipe is too (the library swipes down by default).
+      swipeDirection={["up", "left", "right"]}
       className={cn(
-        "group/toast pointer-events-auto absolute top-0 left-0 w-full origin-top cursor-pointer rounded-xl border bg-popover text-popover-foreground shadow-md will-change-transform outline-none select-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "group/toast pointer-events-auto absolute top-0 left-0 w-full origin-top cursor-pointer rounded-xl border bg-popover text-popover-foreground shadow-[0_1px_4px_0_rgb(0_0_0/0.4),0_2px_4px_-1px_rgb(0_0_0/0.4)] will-change-transform outline-none select-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
         "[--gap:0.5rem] [--height:var(--toast-frontmost-height,var(--toast-height))] [--offset-y:calc(var(--toast-offset-y)+calc(var(--toast-index)*var(--gap))+var(--toast-swipe-movement-y))] [--peek:0.875rem] [--scale:calc(max(0,1-(var(--toast-index)*0.04)))]",
         "min-h-(--height) [transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(var(--toast-swipe-movement-y)+(var(--toast-index)*var(--peek))))_scale(var(--scale))] [transition:transform_300ms_cubic-bezier(0.22,1,0.36,1),opacity_300ms,height_150ms]",
         "after:absolute after:bottom-full after:left-0 after:h-[calc(var(--gap)+1px)] after:w-full after:content-['']",
@@ -59,7 +61,7 @@ function ToastContent({ className, ...props }: ToastPrimitive.Content.Props) {
     <ToastPrimitive.Content
       data-slot="toast-content"
       className={cn(
-        "flex items-start gap-2 px-3 py-2.5 data-behind:max-h-(--height) data-behind:overflow-hidden transition-opacity duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] data-behind:opacity-0 data-expanded:opacity-100",
+        "flex items-center gap-2 px-3 py-2 data-behind:max-h-[calc(var(--height)-2px)] data-behind:overflow-hidden transition-opacity duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] data-behind:opacity-0 data-expanded:opacity-100",
         className
       )}
       {...props}
