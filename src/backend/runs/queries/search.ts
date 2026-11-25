@@ -198,7 +198,7 @@ export function withSearchSelectionRefusals<Result>(read: () => Result): Result 
   catch (error) {
     if (error instanceof z.ZodError && error.issues.length === 1) {
       const issue = SearchSelectionIssueSchema.safeParse(error.issues[0]);
-      if (issue.success) throw new Error(SEARCH_SELECTION_REFUSAL + JSON.stringify(issue.data));
+      if (issue.success) throw new Error(SEARCH_SELECTION_REFUSAL + JSON.stringify(issue.data), { cause: error });
     }
     throw error;
   }
@@ -571,7 +571,7 @@ export function createAuthorityCrossDateSearchService(input: {
   clock: Pick<Clock, "now">;
   cursorSigningKey: Uint8Array;
   descriptors: { resolve(id: string): AnyWorkflowDescriptor | undefined };
-  queuedTitle(runId: string): string | undefined;
+  queuedTitle: (runId: string) => string | undefined;
 }): CrossDateSearchQueryService {
   const { database, sourceIdentity, clock, cursorSigningKey, descriptors, queuedTitle } = input;
   return createCrossDateSearchService({ clock, cursorSigningKey, descriptors, sourceIdentity,

@@ -72,7 +72,7 @@ it("serves search, calendar and both search export routes with the main read con
           queuedEventOf(world, { seed: 983, title: "Third queued title" }),
         ];
         const query = { q: "", scope: "all", facets: { day: DAY }, limit: 1 };
-        const expectedTitles = new Map(shell.search.search({ ...query, limit: 3 }).results.map(row => [row.runId, row.displayTitle]));
+        const expectedTitles = new Map<string, string | undefined>(shell.search.search({ ...query, limit: 3 }).results.map(row => [row.runId, row.displayTitle]));
         assert.equal(expectedTitles.size, 3);
         assert.equal(expectedTitles.get(events[0].runId), projection.runFold(events[0].runId)?.queued.title);
         assert.equal(expectedTitles.get(events[0].runId), "First queued title");

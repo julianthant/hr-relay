@@ -77,15 +77,17 @@ export async function measureSearchLaneHttp(input: Parameters<typeof composeShel
   const byDay = new Map<string, number>();
   const today = searchPartitionDay(input.clock.now());
   for (const row of input.database.dashboardHistory().readRunSummaries()) {
+    if (row.workflow === "ocr" && row.parent !== null) continue;
     const day = searchPartitionDay(new Date(row.enqueuedAt));
     if (day <= today) byDay.set(day, (byDay.get(day) ?? 0) + 1);
   }
   const busiest = [...byDay].sort(([dayA, countA], [dayB, countB]) => countB - countA || dayB.localeCompare(dayA))[0];
   if (busiest === undefined) throw new Error("search-lane-bench-no-history");
   const [day, runsOnDay] = busiest;
+  const month = day.slice(0, 7);
   const query = CrossDateSearchQuerySchema.omit({ cursor: true }).parse({ q: "", facets: { day }, limit: 50 });
   const searchPath = `/api/v1/search?q=&day=${day}&limit=${String(query.limit)}`;
-  const calendarPath = `/api/v1/calendar?day=${day}&month=${day.slice(0, 7)}`;
+  const calendarPath = `/api/v1/calendar?day=${day}&month=${month}`;
   const sql = countMainSqlite();
   const selectionEnds: number[] = [];
   const readLanes: DashboardReadLanes = { ...input.readLanes,
@@ -97,6 +99,7 @@ export async function measureSearchLaneHttp(input: Parameters<typeof composeShel
   try {
     const shell = composeShell({ ...input, readLanes });
     try {
+      const expectedCalendar = input.database.dashboardHistory().queryRunCalendar({ day, month, today });
       const app: DashboardApp = new Hono();
       const actor = ActorIdSchema.parse("local-operator");
       app.use("*", async (c, next) => { c.set("requestActorId", actor); await next(); });
@@ -119,7 +122,7 @@ export async function measureSearchLaneHttp(input: Parameters<typeof composeShel
           page = CrossDateSearchPageSchema.parse(searchBody);
           const wire = CalendarWireSchema.parse(calendarBody);
           if (page.totalMatches !== runsOnDay || page.results.length !== Math.min(query.limit, runsOnDay)
-            || page.results.some(row => row.partitionDay !== day) || wire.day !== day || !wire.monthCounts.some(row => row.day === day)) {
+            || page.results.some(row => row.partitionDay !== day) || JSON.stringify(wire) !== JSON.stringify(expectedCalendar)) {
             throw new Error("search-lane-bench-busiest-day-mismatch");
           }
           if (index !== 0) { search.push(searchTiming); calendar.push(calendarTiming); }
@@ -175,7 +178,9 @@ async function measureCopy(profile: z.infer<typeof ProfileSchema>, repeats: numb
             const unused = (): never => { throw new Error("unexpected search benchmark dependency"); };
             return await measureSearchLaneHttp({ database, readLanes, clock, artifacts, ids: systemIdFactory,
               descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor },
-              projection: { runFold: unused }, activity: { read: unused, readSelected: unused }, appVersion: "benchmark",
+              projection: { onChange: () => () => {}, health: unused, buildDashboardDayWire: unused, recordPublishedDay: unused,
+                generation: unused, cursor: unused, takeCursor: unused, position: unused, descriptorSetHash: unused, runFold: unused },
+              activity: { read: unused, readSelected: unused }, appVersion: "benchmark",
               actorLabel: unused, descriptorSetHash: FingerprintSchema.parse("0".repeat(64)), preflightReport: unused,
               workbookCompatibility: unused, backfillGaps: { detected: unused } }, repeats);
           } finally { await readLanes.close(); }

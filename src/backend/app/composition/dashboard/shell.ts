@@ -9,9 +9,9 @@ import { DASHBOARD_CATALOG_MODULES, WORKFLOW_MODULES, READABLE_WORKFLOW_MODULES 
 import { SETTINGS_SCHEMA_HASH } from "../../../../models/config/settings.js";
 import { CrossDateSearchQuerySchema } from "../../../../models/dashboard/search.js";
 import { SearchMetadataExportRequestSchema } from "../../../../models/dashboard/search-export.js";
-import { OperatorXlsxSearchDocumentSchema, OperatorXlsxSearchSelectionSchema } from "../../../../models/dashboard/xlsx-export.js";
+import { OperatorXlsxExportRequestSchema, OperatorXlsxSearchDocumentSchema } from "../../../../models/dashboard/xlsx-export.js";
 import { FingerprintSchema } from "../../../../rules/identity/ids.js";
-import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import type { BootstrapQueryDeps } from "../../../runs/queries/bootstrap.js";
 import { createAuthorityCrossDateSearchService, rethrowSearchLaneError, storedSearchQueuedTitle, withSearchSelectionRefusals } from "../../../runs/queries/search.js";
 import { collectSearchDocument, type OperatorXlsxExportServiceDependencies } from "../../../runs/exports/operator-xlsx-export-service.js";
@@ -22,11 +22,12 @@ import { composeGeneratedExports } from "./generated-exports.js";
 const searchDescriptors = { resolve: (id: string) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor };
 // All three search reads share the BFF's key, including after a lane restart.
 const laneSigningKey = { signingKey: FingerprintSchema };
+const [SearchExportSelectionSchema] = OperatorXlsxExportRequestSchema.shape.selection.options;
 type SearchDocumentDependencies = Parameters<typeof collectSearchDocument>[0];
 
 function withLaneSearch<Result>(context: LaneReadContext, signingKey: string, read: (deps: SearchDocumentDependencies) => Result): Result {
   const { history, nowMs } = context;
-  const sourceIdentity = history.getSourceDatabaseIdentity();
+  const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity({ kind: "profile", binding: context.start.binding });
   const search = createAuthorityCrossDateSearchService({ database: history, sourceIdentity, clock: { now: () => new Date(nowMs) },
     cursorSigningKey: Buffer.from(signingKey, "hex"), descriptors: searchDescriptors,
     queuedTitle: runId => storedSearchQueuedTitle(history, runId) });
@@ -41,13 +42,13 @@ const searchPageRead = defineLaneRead(import.meta.url, "search-page", {
 
 const searchMetadataRead = defineLaneRead(import.meta.url, "search-metadata-export", {
   lane: "search", priority: "interactive", args: z.strictObject({ ...laneSigningKey,
-    selection: OperatorXlsxSearchSelectionSchema, format: SearchMetadataExportRequestSchema.shape.format }),
+    selection: SearchExportSelectionSchema, format: SearchMetadataExportRequestSchema.shape.format }),
   run: (context, { signingKey, selection, format }) => withLaneSearch(context, signingKey,
     deps => buildSearchMetadata(collectSearchDocument(deps, selection), format)),
 });
 
 const searchDocumentRead = defineLaneRead(import.meta.url, "search-xlsx-selection", {
-  lane: "search", priority: "interactive", args: z.strictObject({ ...laneSigningKey, selection: OperatorXlsxSearchSelectionSchema }),
+  lane: "search", priority: "interactive", args: z.strictObject({ ...laneSigningKey, selection: SearchExportSelectionSchema }),
   run: (context, { signingKey, selection }) => withLaneSearch(context, signingKey, deps => collectSearchDocument(deps, selection)),
 });
 
@@ -55,7 +56,7 @@ export function composeShellLaneReads(lanes: DashboardReadLanes, cursorSigningKe
   const signingKey = FingerprintSchema.parse(Buffer.from(cursorSigningKey).toString("hex"));
   const read = async <Args>(definition: LaneReadDefinition<Args, unknown>, args: Args, signal?: AbortSignal) => {
     try { return (await lanes.read(definition, args, signal === undefined ? {} : { signal })).body; }
-    catch (error) { rethrowSearchLaneError(error); }
+    catch (error) { return rethrowSearchLaneError(error); }
   };
   return {
     searchPage: (query: z.output<typeof CrossDateSearchQuerySchema>, signal?: AbortSignal) => read(searchPageRead, { query, signingKey }, signal),
@@ -67,7 +68,7 @@ export function composeShellLaneReads(lanes: DashboardReadLanes, cursorSigningKe
       const file = SearchMetadataFileSchema.parse(JSON.parse(body));
       return selectionDownload(file.body, file.filename, file.mediaType, selection.snapshot.token);
     } },
-    async readSearchDocument(selection: z.output<typeof OperatorXlsxSearchSelectionSchema>) {
+    readSearchDocument: async (selection: z.output<typeof SearchExportSelectionSchema>) => {
       const body = await read(searchDocumentRead, { selection, signingKey });
       return OperatorXlsxSearchDocumentSchema.parse(JSON.parse(body));
     },
