@@ -4,7 +4,7 @@ import { act,createElement } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it } from "vitest";
 import type { SessionPreviewOperation } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
-import { SessionsView } from "../../../../src/dashboard/surfaces/sessions/sessions-view.js";
+import { AddWorkers } from "../../../../src/dashboard/surfaces/sessions/add-workers.js";
 import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -26,9 +26,9 @@ async function mount(synchronous = false) {
   root = createRoot(host);
   let operation: SessionPreviewOperation | undefined;
   let calls = 0;
-  const render = () => root?.render(createElement(TooltipProvider, null, createElement(SessionsView, {
-    data: { state: "ready", workers: [] }, open: true, onOpenChange: () => undefined,
-    workflows: [{ id: "person-lookup", label: "Person Lookup" }], onControl: () => undefined,
+  const render = () => root?.render(createElement(TooltipProvider, null, createElement(AddWorkers, {
+    data: { state: "ready", workers: [] }, onAdded: () => undefined,
+    workflows: [{ id: "person-lookup", label: "Person Lookup" }],
     operations: operation ? { add: operation } : {},
     onAdd: (workflow, count) => {
       calls++;

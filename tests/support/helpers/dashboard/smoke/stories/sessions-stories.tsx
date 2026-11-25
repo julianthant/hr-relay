@@ -1,6 +1,7 @@
 /** Sessions stories: the real Sessions bar and its worker cards on fixture workers, one story per worker state, browser state, bar state and command operation. */
 import { useEffect, useState } from "react";
 import { useToasts } from "../../../../../../src/dashboard/ds/ui.js";
+import { AddWorkers } from "../../../../../../src/dashboard/surfaces/sessions/add-workers.js";
 import { SessionsView } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import { ERROR_CATALOG } from "../../../../../../src/models/failures/error-catalog.js";
 import type { SessionBrowserState, SessionWorker, SessionWorkerState, SessionsViewState } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
@@ -17,8 +18,8 @@ const BODY = '[role="region"][aria-label="Sessions"]';
 interface BarOptions { readonly open?: boolean; readonly operations?: Readonly<Record<string, SessionPreviewOperation>>; readonly theme?: "dark" | "light" }
 const bar = (title: string, data: SessionsViewState, { open = true, operations, theme = "dark" }: BarOptions = {}, extra: Partial<Story> = {}): Story => ({ title,
   ready: open ? BODY : '[aria-label="Session Panel"]',
-  render: () => <StoryFrame theme={theme}><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS}
-    {...(operations === undefined ? {} : { operations })} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame>, ...extra });
+  render: () => <StoryFrame theme={theme}><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} workflows={SESSION_STORY_WORKFLOWS}
+    {...(operations === undefined ? {} : { operations })} /></StoryFrame>, ...extra });
 /** Raises one result toast once the story has mounted, as the app does after a command settles. */
 const TOAST_TITLES = ["Workers added", "Worker removed", "Idle sessions refreshed"] as const;
 const TOAST_LINES = {
@@ -48,10 +49,10 @@ function RaiseErrorStack() {
   return null;
 }
 const errorStack = (theme: "dark" | "light"): Story => ({ title: `An error toast in front of two results, ${theme}`, ready: '[data-slot="toast-description"]', play: page => page.waitForTimeout(600),
-  render: () => <StoryFrame theme={theme}><RaiseErrorStack /><SessionsView data={ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle)} open={false} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame> });
+  render: () => <StoryFrame theme={theme}><RaiseErrorStack /><SessionsView data={ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle)} open={false} onOpenChange={noop} onControl={noop} workflows={SESSION_STORY_WORKFLOWS} /></StoryFrame> });
 const withToast = (title: string, data: SessionsViewState, open = true, count = 1, play?: Story["play"], lines: ToastLines = "title"): Story => {
   const base = bar(title, data, { open });
-  return { ...base, ready: '[data-ds-toast-state]', ...(play === undefined ? {} : { play }), render: () => <StoryFrame><RaiseToast count={count} lines={lines} /><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame> };
+  return { ...base, ready: '[data-ds-toast-state]', ...(play === undefined ? {} : { play }), render: () => <StoryFrame><RaiseToast count={count} lines={lines} /><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} workflows={SESSION_STORY_WORKFLOWS} /></StoryFrame> };
 };
 const ready = (...workers: readonly SessionWorker[]): SessionsViewState => ({ state: "ready", workers });
 
@@ -102,8 +103,9 @@ const COMBINATION = {
   "adding-empty": bar("A worker being added to an empty panel, shown as a Starting card", ready(), { operations: ADDING }, { ready: "li[aria-busy]" }),
   adding: bar("A worker being added, its Starting card before an idle card", ready(QUIET_IDLE[0]), { operations: ADDING }, { ready: "li[aria-busy]" }),
   removing: bar("An idle card being removed, the status reads Removing", ready(QUIET_IDLE[0]), { operations: { [(QUIET_IDLE[0]).id]: { request: { id: "remove-1", target: (QUIET_IDLE[0]).id, action: "remove" }, state: "pending", message: "Remove requested…" } } }, { ready: 'text="Removing"' }),
-  "add-workers": bar("The Add workers dialog", ready(SESSION_WORKER_BY_STATE.running), {}, { ready: '[role="dialog"]',
-    play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } }),
+  "add-workers": { title: "The Add workers dialog, opened from the sidebar footer", ready: '[role="dialog"]',
+    render: () => <StoryFrame><AddWorkers data={ready(SESSION_WORKER_BY_STATE.running)} workflows={SESSION_STORY_WORKFLOWS} onAdd={noop} onAdded={noop} /></StoryFrame>,
+    play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } },
 } satisfies Record<string, Story>;
 
 /** Toasts sit top centre at every panel height: collapsed, empty, one row and several. */

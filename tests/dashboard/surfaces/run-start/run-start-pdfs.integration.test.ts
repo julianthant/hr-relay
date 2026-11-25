@@ -198,7 +198,9 @@ it("retires an upload when the selected workflow changes and ignores its late re
   const file = pdf("retired.pdf", "%PDF retired");
   await attach([file]);
   expect(dialog.text()).toContain("Reading PDFs");
-  await dialog.press(other.label);
+  // The Start run doors name the workflow, so a change of workflow is a close and a reopen on the other one.
+  await dialog.rerender({ open: false });
+  await dialog.rerender({ open: true, panelWorkflowId: other.workflowId });
   expect(held.signal?.aborted).toBe(true);
   const resolve = held.resolve; assert.ok(resolve);
   await act(async () => resolve(OcrSourceUploadSchema.parse({ fileName: file.name, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
@@ -206,6 +208,21 @@ it("retires an upload when the selected workflow changes and ignores its late re
   expect(dialog.text()).not.toContain(file.name);
   expect(document.querySelector('[aria-label="Selected PDFs"]')).toBeNull();
   expect(document.querySelector("textarea")).not.toBeNull();
+});
+
+it("says a draft was kept only when it reopens on the workflow it was typed in", async () => {
+  const other = h.WORKFLOWS.find(candidate => candidate.inputRun.state === "present" && candidate.workflowId !== workflow.workflowId); assert.ok(other);
+  const text = h.WORKFLOWS.find(candidate => candidate.inputRun.state === "present" && candidate.uploadRun === undefined); assert.ok(text);
+  const next = other.workflowId === text.workflowId ? workflow : other;
+  const dialog = await h.openDialog(client({}), { workflows: [text, next], panelWorkflowId: text.workflowId });
+  const reopen = async (panelWorkflowId: string) => {
+    await dialog.press("Cancel"); await dialog.rerender({ open: false }); await dialog.rerender({ open: true, panelWorkflowId });
+  };
+  await dialog.type("10812345");
+  await reopen(text.workflowId);
+  expect(dialog.text()).toContain("Draft kept");
+  await reopen(next.workflowId);
+  expect(dialog.text()).not.toContain("Draft kept");
 });
 
 it("plans one Emergency Contact run per uploaded PDF", async () => {

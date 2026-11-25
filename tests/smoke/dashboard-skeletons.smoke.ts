@@ -65,8 +65,11 @@ function startFrames(page: Page, trigger: Awaited<ReturnType<Locator["elementHan
       const at = performance.now();
       const skeletons = [...document.querySelectorAll(skeleton)].filter(visible);
       const outside = skeletons.filter(element => scene.pendingRegion === undefined || !element.closest(scene.pendingRegion));
-      const sessions = document.querySelector('.session-pill-counts');
-      const sessionText = sessions !== null && visible(sessions) ? sessions.textContent?.trim() : undefined;
+      // The console starts closed, so the footer's Add workers control carries the Sessions state.
+      const sessions = document.querySelector('.workspace-rail-icons');
+      const sessionText = sessions === null || !visible(sessions) ? undefined
+        : sessions.querySelector('[aria-label="Sessions are loading"]') ? "Loading"
+        : sessions.querySelector('[aria-label="Sessions are unavailable"]') ? "Unavailable" : "Ready";
       const currentFixedElement = findTarget(scene.keep);
       fixedElement ??= currentFixedElement;
       const drillIn = scene.analyticsPeriod === undefined ? undefined : findTarget(openRuns);

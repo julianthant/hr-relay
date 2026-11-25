@@ -65,7 +65,7 @@ it("offers the details step from the deep-link page that asks for the details", 
 it("keeps three worker cards in one row that scrolls sideways from the keyboard", async () => {
   const worker = (id: string, workflow: string) => ({ id, label: id, workflow, state: "running", action: "Working", browsers: [] }) as unknown as SessionWorker;
   const host = await mount(createElement(TooltipProvider, null, createElement(SessionsView, { data: { state: "ready", workers: [worker("w1", "Separations"), worker("w2", "Person Lookup"), worker("w3", "OnBase")] },
-    open: true, onOpenChange: () => undefined, workflows: [], onControl: () => undefined, onAdd: () => undefined })));
+    open: true, onOpenChange: () => undefined, workflows: [], onControl: () => undefined })));
   const strip = host.querySelector("[data-session-strip]"); assert.ok(strip);
   assert.ok(strip.classList.contains("overflow-x-auto")); assert.ok(!strip.classList.contains("flex-wrap"));
   assert.equal(strip.getAttribute("tabindex"), "0"); assert.equal(strip.getAttribute("aria-label"), "Workers");

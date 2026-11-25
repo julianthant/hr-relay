@@ -429,6 +429,8 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
       if (element.matches(':disabled, [aria-disabled="true"]') || element.closest('[inert], [aria-hidden="true"]') !== null) continue;
       // A tab list hands its Tab stop to the active tab, so the tabs are the stops; the list counts as reached only while that tab can take focus.
       if (element.getAttribute("role") === "tablist" && element.querySelector('[role="tab"][aria-selected="true"]:not(:disabled, [aria-disabled="true"])') !== null) continue;
+      // A menu popup hands its stop to its items the same way; one with no enabled item still counts.
+      if (element.getAttribute("role") === "menu" && element.querySelector('[role^="menuitem"]:not(:disabled, [aria-disabled="true"])') !== null) continue;
       if (element.getAttribute("tabindex") === "-1") {
         // Settings names the highlighted row so it can announce the destination; its controls still have their own stops.
         const settingsPath = element.getAttribute("data-settings-path");

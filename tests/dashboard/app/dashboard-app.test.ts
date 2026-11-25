@@ -334,8 +334,6 @@ describe_m1("served sign-up Finish", () => {
       await vi_m1.waitFor(() => { assert_m1.equal(resumes, 1); assert_m1.ok(document.querySelector(".dashboard-shell")); });
       await act_m1(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Start run"]')?.click(); });
       const dialog = document.querySelector('[role="dialog"]'); assert_m1.ok(dialog);
-      const workflow = [...dialog.querySelectorAll("button")].find(button => button.textContent?.includes("Fixture workflow"));
-      assert_m1.ok(workflow); await act_m1(async () => workflow.click());
       const draft = dialog.querySelector<HTMLTextAreaElement | HTMLInputElement>('[aria-label="Input"] textarea, [aria-label="Input"] input:not([type="checkbox"])');
       assert_m1.ok(draft, "the actual Run input must be mounted");
       const setter = Object.getOwnPropertyDescriptor(draft instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")?.set?.bind(draft);

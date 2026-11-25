@@ -28,6 +28,7 @@ import { useBootstrap } from "../state/use-bootstrap.js";
 
 
 import {
+type QueueOrder,
 type QueueSortKey,
 } from "../surfaces/queue/queue-model.js";
 
@@ -99,7 +100,8 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const setOpenWells = useCallback((next: ReadonlySet<string>) => setRoute(current => ({ ...current, view: { ...current.view, queueOpen: [...next] } })), [setRoute]);
   /** the toolbar's ordering control and its select mode — client UI state */
   const sort = route.view?.queueSort ?? "attention";
-  const setSort = useCallback((next: QueueSortKey) => setRoute(current => ({ ...current, view: { ...current.view, queueSort: next } })), [setRoute]);
+  const order = route.view?.queueOrder ?? "newest";
+  const setSort = useCallback((next: QueueSortKey, nextOrder: QueueOrder) => setRoute(current => ({ ...current, view: { ...current.view, queueSort: next, queueOrder: nextOrder } })), [setRoute]);
 
   const boot = bootstrap.state === "loaded" ? bootstrap.value : undefined;
 
@@ -160,6 +162,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           openWells={openWells}
           onWells={setOpenWells}
           sort={sort}
+          order={order}
           onSort={setSort}
         /></DashboardPageBoundary></ViewNavigationProvider></StartupLoading>
       )}

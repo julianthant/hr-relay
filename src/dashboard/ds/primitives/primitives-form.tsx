@@ -499,9 +499,12 @@ export function Switch({
   disabled,
   className,
   hideLabel = false,
+  locked = false,
 }: {
   name?: string;
   hideLabel?: boolean;
+  /** A required choice held on: the knob shows a lock. Pass it with `checked` and `disabled`. */
+  locked?: boolean;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label: ReactNode;
@@ -513,18 +516,14 @@ export function Switch({
     <HeroSwitch name={name} isSelected={checked} onChange={onCheckedChange} isDisabled={disabled} className={cn("ds-switch-row relative flex items-start gap-[var(--ds-space-base)] [&_span:has(>input)]:!absolute [&_span:has(>input)]:!z-10 [&_span:has(>input)]:!inset-0 [&_span:has(>input)]:!m-0 [&_span:has(>input)]:!h-full [&_span:has(>input)]:!w-full [&_span:has(>input)]:![clip:auto] [&_span:has(>input)]:![clip-path:none] [&_span:has(>input)]:!overflow-visible [&_input]:!absolute [&_input]:!inset-0 [&_input]:!m-0 [&_input]:!h-full [&_input]:!w-full [&_input]:!cursor-pointer [&_input]:!opacity-0", className)}>
       <HeroSwitch.Content className="ds-switch-content flex min-w-0 flex-1 flex-row-reverse items-center justify-between">
         <HeroSwitch.Control onClick={event => { event.preventDefault(); event.stopPropagation(); if (!disabled) onCheckedChange(!checked); }} className={cn(
-        "ds-switch-control relative inline-flex shrink-0 cursor-pointer items-center rounded-full border",
-        checked
-          ? "ds-switch-control-checked border-transparent bg-[var(--ds-accent)]"
-          : "border-transparent bg-[var(--ui-stroke-control)]",
+        "ds-switch-control relative inline-flex shrink-0 cursor-pointer items-center rounded-full border border-transparent",
+        checked && "ds-switch-control-checked",
         dsFocus,
         dsMotion.fast,
         )}><HeroSwitch.Thumb className={cn(
-        "ds-switch-thumb block shrink-0 rounded-full shadow-[0_1px_2px_rgb(0_0_0/0.3)] transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
-        checked
-          ? "ds-switch-thumb-checked bg-[var(--ds-accent-fg)]"
-          : "bg-[var(--ds-body-switch-thumb-bg)]",
-        )} /></HeroSwitch.Control>
+        "ds-switch-thumb shrink-0 rounded-full shadow-[0_1px_2px_rgb(0_0_0/0.3)]",
+        checked && "ds-switch-thumb-checked",
+        )}>{locked && <Lock aria-hidden />}</HeroSwitch.Thumb></HeroSwitch.Control>
         <span className={cn("ds-switch-copy flex min-w-0 flex-1 flex-col", hideLabel && "sr-only")}>
           <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{label}</span>
           {description && <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{description}</span>}

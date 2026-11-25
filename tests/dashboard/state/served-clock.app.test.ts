@@ -10,7 +10,7 @@ import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { ToastProvider, TooltipProvider } from "../../../src/dashboard/ds/ui.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { createServedClock, ServedClockContext } from "../../../src/dashboard/state/served-clock.js";
-import { SessionPanel } from "../../../src/dashboard/surfaces/sessions/session-panel.js";
+import { SessionPanel } from "../../support/helpers/dashboard/sessions-host.js";
 import { NotificationsPopover } from "../../../src/dashboard/surfaces/notifications/notifications-popover.js";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../support/helpers/dashboard/mock-world/fixture-day.js";
@@ -72,7 +72,7 @@ it("ten ticks re-render no part of a collapsed Sessions panel", async () => {
   await act(async () => root?.render(createElement(ServedClockContext.Provider, { value: clock }, createElement(TooltipProvider, null, createElement(ToastProvider, null,
     createElement(Profiler, { id: "sessions", onRender: () => { commits += 1; } }, createElement(SessionPanel, { catalog, binding, open: false, onOpenChange() {} })))))));
   await act(async () => {});
-  assert.match(document.querySelector(".session-pill-counts")?.textContent ?? "", /\d/);
+  assert.ok(document.querySelector('button[aria-label="Sessions console"]'), "the sidebar toggle is drawn");
   const drawn = commits;
   for (let second = 0; second < 10; second += 1) await tick(1000);
   assert.equal(commits, drawn, "a tick re-rendered the collapsed Sessions panel");
