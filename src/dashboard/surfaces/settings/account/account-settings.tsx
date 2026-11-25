@@ -7,6 +7,7 @@ import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileDetailsChangeRequ
 import { formatDayTime, formatInstantDate } from "../../../lib/date-format.js";
 import { readBack } from "../../../app/commands/command-readback.js";
 import { DuoKeyNameSchema, type DuoKeyChange } from "../../../../models/config/duo-credential-store.js";
+import { DUO_SECURITY_TARGET } from "../preflight/preflight-remedy-model.js";
 import type { DuoKeyChangeResult, DuoKeysSnapshot } from "../../../../models/profiles/public-profile.js";
 
 export interface AccountValues {
@@ -68,7 +69,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     return settingsPath === undefined ? row : <div data-settings-path={settingsPath}>{row}</div>;
   };
   return <section className="settings-compact-page settings-account-page">
-    <PageHeading title="Account" />
+    <PageHeading title="Account" description="Sign-in details and protected workflow configuration." />
     <Group label="Relay account" description="How you sign in to Relay.">
       {details("Name", values.name, next => { const [firstName = "", ...rest] = next.split(/\s+/u); return { name: { firstName, lastName: rest.join(" ") } }; })}
       <RelayLoginRows login={{ ...login, username: read === undefined ? username : read.username }} />
@@ -76,11 +77,11 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
       <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-6" /></span>} />
     </Group>
     {ucpath}
-    <Group label="Workflow configuration">
+    <Group label="Workflow configuration" description="Names workflows put on the forms they file.">
       {details("Timekeeper name", values.timekeeper, timekeeperName => ({ timekeeperName }), "profile.displayName")}
       {details("Timekeeper initials", values.timekeeperInitials, timekeeperInitials => ({ timekeeperInitials }), "profile.initials")}
     </Group>
-    <Group label="Security">
+    <Group label="Security" description="Duo security keys for signing in.">
       <DuoSecurityKeys port={duoKeys} onSetup={onDuoSetup} />
     </Group>
     {deleteAccount}
@@ -315,7 +316,7 @@ function DuoSecurityKeys({ port, onSetup }: { port?: DuoKeysPort; onSetup?: () =
   };
 
   return <>
-    <ResultRow label="Duo" value={
+    <div data-settings-path={DUO_SECURITY_TARGET}><ResultRow label="Duo" value={
       <span className="inline-flex items-center justify-end gap-3">
         {snapshot !== undefined ? <span className="text-ui-primary">{ready ? "Ready" : null}</span>
           : state?.state === "failed" || port === undefined ? <span>Duo keys unavailable</span>
@@ -324,7 +325,7 @@ function DuoSecurityKeys({ port, onSetup }: { port?: DuoKeysPort; onSetup?: () =
           void onSetup().then(failure => { if (failure !== undefined) toast({ tone: "danger", title: "Duo setup not opened", description: failure }); });
         }}>{ready ? "Set up again" : "Set up"}</Button>}
         {state?.state === "failed" && <Button variant="secondary" onClick={refresh}>Retry</Button>}
-      </span>} />
+      </span>} /></div>
     {port !== undefined && snapshot?.keys.map(key => {
       const name = key.name ?? `Key ${key.shortId}`;
       const dates = `Added ${formatInstantDate(key.addedAt)} · ${key.lastUsedAt === undefined ? "Last used unknown" : `Last used ${formatInstantDate(key.lastUsedAt)}`}`;

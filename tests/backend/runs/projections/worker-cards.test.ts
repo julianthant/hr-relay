@@ -224,7 +224,8 @@ describe("worker custody card data", () => {
   it("serves a crashed exit's failure code and never a stopped exit's", () => {
     assert.equal(exitedCard({ outcome: "crashed", failureCode: "BROWSER_ROOT_UNAVAILABLE" }).failureCode, "BROWSER_ROOT_UNAVAILABLE");
     assert.equal("failureCode" in exitedCard({ outcome: "crashed" }), false);
-    assert.equal("failureCode" in exitedCard({ outcome: "stopped", reason: "operator", failureCode: "BROWSER_ROOT_UNAVAILABLE" }), false);
+    const malformedStop = { outcome: "stopped", reason: "operator", failureCode: "BROWSER_ROOT_UNAVAILABLE" } as const;
+    assert.equal("failureCode" in exitedCard(malformedStop), false);
   });
 
   it("serves the required browser systems with those not yet signed in, only when the view names them", () => {

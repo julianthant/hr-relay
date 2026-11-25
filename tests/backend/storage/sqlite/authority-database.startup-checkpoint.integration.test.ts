@@ -1,12 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, copyFileSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
 import { composeProfileRuntime, composeSelectedProfileStorage, initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
 import { readStartupFile } from "../../../../src/backend/storage/sqlite/startup-file-proof.js";
@@ -180,6 +183,32 @@ it("carries the registered startup inspection through the second startup pass an
       expect(scansRuns(() => AuthorityDatabase.open(profile, { path: f.profile.path, busyTimeoutMs: 250,
         migrationOwner: "startup-resume" }).close())).toBe(false);
       expect(scansRuns(() => AuthorityDatabase.inspectExistingReadOnly(profile, f.profile.path))).toBe(true);
+    } finally { profile.release(); }
+  } finally { machine.release(); }
+});
+
+it("keeps slow stopped recovery diagnostics without invalidating the verified Resume image", async () => {
+  const f = await createBoundProfileFixture();
+  cleanups.push(() => f.close());
+  const { profileId } = f.admission.profileBinding;
+  await f.closeController();
+  const lifetime = await RuntimeLifetimeLock.acquire(0);
+  cleanups.push(() => lifetime.close());
+  const clock = manualClock(new Date("2026-11-01T20:00:00Z"));
+  let elapsed = 0;
+  vi.spyOn(clock, "monotonicMs").mockImplementation(() => elapsed += 100);
+  await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, clock);
+
+  const log = readLocalDebugLog(join(f.workspace, rebuildRuntimeIsolation.stateRoot));
+  expect(log.state === "present" && log.records.some(record => record.payload.kind === "debug"
+    && record.payload.event.category === "boot" && record.payload.event.code === "authority-transaction"
+    && record.payload.event.reason === "slow-operation")).toBe(true);
+  const machine = acquireEntrypointAdmission(f.workspace, "shared", lifetime);
+  try {
+    const profile = machine.admitProfile(profileId);
+    try {
+      expect(scansRuns(() => AuthorityDatabase.open(profile, { path: f.path, busyTimeoutMs: 250,
+        migrationOwner: "startup-resume" }).close())).toBe(false);
     } finally { profile.release(); }
   } finally { machine.release(); }
 });

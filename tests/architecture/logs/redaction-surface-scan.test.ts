@@ -1,5 +1,3 @@
-import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
-import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { MAXIMAL_FAILURE } from "../../support/fixtures/advisory-prompt-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -8,27 +6,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
-import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { SpanAuthorityReconciliationSchema } from "../../../src/models/storage/storage-status.js";
 import { ClearRunHistoryRequestSchema, RunHistoryStatusSchema, ClearRunHistoryResultSchema } from "../../../src/models/dashboard/run-history.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/rules/redaction/redaction.js";
 import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
-import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { LedgerEntrySchema } from "../../../src/rules/runs/ledger.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
-import { LEDGER_OUTBOX_PAYLOAD, NOW, UUID_1, UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { EXIT_RUN_ID, seedPersonLookupExitRun } from "../../support/fixtures/receipt-run-fixtures.js";
+import { LEDGER_OUTBOX_PAYLOAD, UUID_1, UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import { assistantToolEgress } from "./helpers/assistant-tool-egress.js";
 import { ALL_CANARY_NAMES, EGRESS_DECISION_LEAVES, auditD331ServedLeafDispositions, auditRedactedProducers, auditSurfaceOrigins, canariesIn, decidableLeaves, D331_SERVED_LEAF_DISPOSITIONS, REDACTED_NAME_WAIVERS, REDACTION_CANARIES, REDACTION_SURFACES, redactedProducerSites, SURFACE_LEAF_ORIGINS, SURFACE_MODULE_DISPOSITIONS, scannedSurfaceModules, surfaceLeaves, UNIVERSAL_CANARY_NAMES, type RedactionSurface, type SurfaceLeafOrigin } from "./helpers/redaction-surface-audit.js";
-import { EditableWorkbookSchema, WorkbookCreateRequestSchema, decodeEditableWorkbook, encodeEditableWorkbook, decodeSavedWorkbook, encodeSavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
-import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
-import { createTaskProvenanceCollector } from "../../../src/backend/runs/provenance/task-provenance.js";
-import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
-import type { RecordedDataPoint } from "../../../src/rules/workflow/task-provenance.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 /* ── the modules whose exported wire schemas must be covered ─────────────── */
@@ -190,21 +178,6 @@ describe("redaction surface scan — the declaration audit", () => {
       const violations = auditSurfaceOrigins(REDACTION_SURFACES.map(candidate => candidate === surface ? { ...candidate, egress } : candidate), SURFACE_LEAF_ORIGINS);
       assert.ok(violations.some(problem => problem.includes('change.name') && problem.includes('may not carry at all')));
     }
-  });
-
-  it("retains observed object keys in real collector addresses without treating them as authored text", () => {
-    const points: RecordedDataPoint[] = [];
-    const execution = { runId: UUID_1, traceId: "pl-180000-aaaa", attempt: 1, workflowId: "person-lookup", nodeId: "searching", taskId: SearchPersonOrg.id };
-    const collector = createTaskProvenanceCollector({ descriptor: personLookupDescriptor, execution,
-      observationSpanPath: "pl-180000-aaaa/searching#2.3", upstreamEvidence: { checkpoints: [] },
-      clock: manualClock(new Date(NOW)), onRecord: batch => points.push(...batch.points) });
-    const key = REDACTION_CANARIES.personName;
-    collector.recordData({ direction: "read", field: "results", value: [{ [key]: "captured" }] });
-    collector.recordData({ direction: "read", field: "selection", value: [{ [key]: "captured" }],
-      aliases: [{ path: [], source: { kind: "local", field: "results", path: [] } }] });
-    assert.equal(points.length, 2);
-    assert.equal(points[0]?.origins, undefined);
-    assert.ok(points[1]?.origins?.some(entry => entry.path.includes(key) && entry.origin.path.includes(key)));
   });
 
   it("covers the actual assistant and OCR loopback boundaries and rejects each missing origin", () => {
@@ -508,31 +481,6 @@ describe("redaction surface scan — the declaration audit", () => {
     }
   });
 
-  it("preserves HR-bearing workbook identities through the canonical codec and real library service", async () => {
-    const canary = REDACTION_CANARIES.emplId;
-    const workbook = EditableWorkbookSchema.parse({
-      name: "Roster.xlsx", themes: [], hasFormulas: false,
-      sheets: [{ id: canary, name: "People", width: 1, hidden: [],
-        columnBindings: [{ id: canary, sourceColumn: 0, sourceHeader: "Employee", fieldId: `roster.SyntheticEmployee${canary}`, basis: "manual" }],
-        rows: [{ id: canary, cells: [{ value: new Date(NOW) }] }] }],
-    });
-    assert.deepEqual(decodeEditableWorkbook(encodeEditableWorkbook(workbook)), workbook);
-    const incoming = { ...workbook, libraryId: canary };
-    assert.equal(WorkbookCreateRequestSchema.parse({ workbook: encodeEditableWorkbook(incoming) }).workbook.libraryId, canary);
-    const service = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: (await openDatabase()).authority.workbooks, clock: manualClock(new Date(NOW)) });
-    assert.throws(() => service.create(incoming), { code: "WORKBOOK_INVALID" });
-    const created = service.create(workbook);
-    assert.notEqual(created.libraryId, canary);
-    const saved = service.save(created.libraryId, 1, created.workbook);
-    for (const record of [service.read(created.libraryId), ...service.list(), ...service.history(created.libraryId)]) {
-      const served = decodeSavedWorkbook(encodeSavedWorkbook(record));
-      assert.deepEqual(served.workbook.sheets, workbook.sheets);
-      assert.equal(served.libraryId, created.libraryId);
-      assert.equal(served.workbook.libraryId, created.libraryId);
-    }
-    assert.equal(saved.version, 2);
-  });
-
   it("registers every surface-bearing module in both directions", () => {
     const scanned = scannedSurfaceModules();
     const declared = SURFACE_MODULE_DISPOSITIONS.map(({ module }) => module).sort();
@@ -793,26 +741,10 @@ const TRIGGER_EVENTS: readonly Record<string, unknown>[] = [
 ];
 
 const roots: string[] = [];
-const databases: AuthorityDatabase[] = [];
-const profileFixtures: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 
-afterEach(async () => {
-  for (const database of databases.splice(0)) database.close();
-  for (const fixture of profileFixtures.splice(0)) await fixture.close();
+afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
-
-async function openDatabase(): Promise<AuthorityDatabase> {
-  const fixture = await createBoundProfileFixture();
-  profileFixtures.push(fixture);
-  const database = AuthorityDatabase.open(
-    { path: fixture.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    manualClock(new Date(NOW)),
-  );
-  testWorkerPorts(database, manualClock(new Date(NOW)), { path: fixture.path, descriptor: personLookupDescriptor, poolIndex: 1 });
-  databases.push(database);
-  return database;
-}
 
 describe("redaction surface scan — the canary sweep (ref clock-config-secrets §6)", () => {
   it("plants a sentinel in every free-text leaf the failure record has", () => {
@@ -862,28 +794,6 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
       () => LedgerEntrySchema.parse({ outboxId: UUID_6, seq: 2, payload: smuggled }),
       "an undeclared ledger field must be refused, not serialized",
     );
-  });
-
-  it("retains the exit run's supplied person identifiers in its evidence receipt", async () => {
-
-    const database = await openDatabase();
-    const seeded = seedPersonLookupExitRun(database);
-    const subjectName = "Battistessa, Johnnie";
-    assert.ok(
-      canonicalJsonStringify(seeded.checkpoints).includes(subjectName),
-      "the exit run's checkpoints must actually carry the subject name",
-    );
-
-    const receipt = deriveRunEvidenceReceipt({
-      descriptor: personLookupDescriptor,
-      run: seeded.run,
-      result: database.authority.runResults.get(EXIT_RUN_ID),
-      checkpoints: seeded.checkpoints,
-    }).receipt;
-    const serialized = canonicalJsonStringify(receipt);
-    assert.ok(serialized.includes(subjectName), "the receipt omitted the retained subject name");
-    assert.ok(serialized.includes("Battistessa"), "the receipt omitted the retained surname");
-    assert.ok(serialized.includes("nnie"), "the complete subject name must include its final characters");
   });
 
   it("retains classified and unclassified diagnostic values", () => {

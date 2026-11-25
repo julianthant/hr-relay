@@ -426,6 +426,7 @@ export function RunStartDialog({
   const fixCheck = (item: RunCheckRow) => {
     if (item.fix === undefined || onFixCheck === undefined) return;
     fixedCheck.current = { check: item.check, reread: false };
+    checks.prepareAfterFix();
     onFixCheck(item.fix.section, item.fix.target);
   };
   useEffect(() => {

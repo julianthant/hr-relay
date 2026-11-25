@@ -58,7 +58,7 @@ export function createPreflightAdmission(input: Readonly<{
     if (entry === undefined || entry.pending > 0 || entry.report === undefined || entry.completedAt === undefined) {
       throw new PreflightAdmissionRefusal("unavailable", "Preflight evidence is unavailable for this exact scope; re-check readiness.");
     }
-    if (entry.observationIdentity !== input.observationIdentity?.(scope)) throw new PreflightAdmissionRefusal("stale", "Protected settings changed; re-check readiness.");
+    if (entry.observationIdentity !== input.observationIdentity?.(scope)) throw new PreflightAdmissionRefusal("stale", "Run prerequisites changed; re-check readiness.");
     const age = input.clock.monotonicMs() - entry.completedAt;
     if (age < 0) throw new PreflightAdmissionRefusal("stale", "Preflight evidence is dated in the future; re-check readiness.");
     if (age >= freshnessMs) throw new PreflightEvidenceExpiredError(entry.report);
@@ -80,7 +80,7 @@ export function createPreflightAdmission(input: Readonly<{
       try {
         const report = await entry.authority.refresh(signal);
         input.validate(scope);
-        if (input.observationIdentity?.(scope) !== observationIdentity) throw new PreflightAdmissionRefusal("stale", "Protected settings changed during preflight; re-check readiness.");
+        if (input.observationIdentity?.(scope) !== observationIdentity) throw new PreflightAdmissionRefusal("stale", "Run prerequisites changed during preflight; re-check readiness.");
         entry.observationIdentity = observationIdentity;
         entry.report = report;
         entry.completedAt = input.clock.monotonicMs();

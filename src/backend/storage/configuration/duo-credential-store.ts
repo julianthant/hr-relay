@@ -7,7 +7,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { CanonicalCredentialError, createCanonicalCredentials } from "./canonical-credential-store.js";
-import { createDuoAssertion, validateDuoKeyPair, DuoAssertionRequestSchema, type DuoAssertionRequest, type DuoPublicCredential } from "./duo-signing.js";
+import { createDuoAssertion, validateDuoKeyPair, DuoAssertionRequestSchema, DuoSetupRefusal, type DuoAssertionRequest, type DuoPublicCredential } from "./duo-signing.js";
 
 export class DuoCredentialError extends Error {
   readonly code: "DUO_CREDENTIAL_BUSY" | "DUO_CREDENTIAL_CONFLICT" | "DUO_CREDENTIAL_UNCERTAIN" | "DUO_CREDENTIAL_UNAVAILABLE";
@@ -76,7 +76,7 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
     identity() {
       const credentials = read().record.credentials.filter(value => value.state === "ready").map(({ credentialId, publicKeySpki }) => ({ credentialId, publicKeySpki }))
         .sort((a, b) => a.credentialId.localeCompare(b.credentialId));
-      if (credentials.length === 0) throw new Error("duo-ready-credential-required");
+      if (credentials.length === 0) throw new DuoSetupRefusal("DUO_READY_CREDENTIAL_REQUIRED");
       return FingerprintSchema.parse(createHash("sha256").update(canonicalJsonStringify(credentials)).digest("hex"));
     },
     credentials: publicCredentials,

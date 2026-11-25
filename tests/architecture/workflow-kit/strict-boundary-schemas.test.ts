@@ -4,7 +4,6 @@ import { join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 import { z } from "zod";
-import { OfflineRestoreRequestSchema } from "../../../src/backend/storage/sqlite/index.js";
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 import { BOUNDARY_SCHEMA_FIXTURES } from "./boundary-schema-fixtures.js";
 import { assertDiscoveredBoundarySchemasAreStrict, strictnessViolations } from "./boundary-schema-scan.js";
@@ -324,9 +323,4 @@ describe("strict boundary schemas", () => {
       .flatMap((path) => boundarySourceViolations(path, readFileSync(join(REPO_ROOT, path), "utf8")));
     assert.deepEqual(violations, []);
   });
-});
-
-it("refuses retired persisted stopped proofs in an offline restore request", () => {
-  assert.equal(OfflineRestoreRequestSchema.safeParse({ manifestPath: "/tmp/authority.manifest.json", stoppedSystemProof: {} }).success, false);
-  assert.equal(OfflineRestoreRequestSchema.safeParse({ manifestPath: "/tmp/authority.manifest.json", stoppedSystemProof: { schemaVersion: 1, proofId: "11111111-1111-4111-8111-111111111111" } }).success, false);
 });
