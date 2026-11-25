@@ -30,7 +30,7 @@ const rootTypeScriptConfigFiles = tsconfig.include
   .toSorted();
 
 const EXACT_GATE_COMMANDS = {
-  typecheck: "node --max-old-space-size=6144 node_modules/typescript/bin/tsc --noEmit",
+  typecheck: "node node_modules/@typescript/native/bin/tsc --noEmit",
   lint: "oxlint --type-aware --max-warnings 0 src scripts tests vitest.config.ts vite.dashboard.config.ts vite.mocks.config.ts",
   test: "vitest run --project unit --project integration --project architecture --project perf",
   "test:coverage": "vitest run --coverage --project unit --project integration --project architecture",

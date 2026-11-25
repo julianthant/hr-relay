@@ -2,10 +2,12 @@ import { createGuardProgram } from "../../support/helpers/caching-compiler-host.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { describe, it } from "vitest";
 import ts from "typescript";
 import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
+
+const ES5_LIB_PATH = join(dirname(ts.getDefaultLibFilePath({})), "lib.es5.d.ts");
 
 function sourceFiles(): readonly { path: string; content: string }[] {
   return walkFiles(join(REPO_ROOT, "src"), { extensions: [".ts", ".tsx"] })
@@ -28,7 +30,8 @@ function admittedFactoryDelegations(source: ts.SourceFile, checker: ts.TypeCheck
   const canonicalValue = (node: ts.Node, name: string, owner: string): boolean => {
     let symbol = checker.getSymbolAtLocation(node);
     if (symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-    return symbol?.name === name && symbol.declarations?.some(declaration => declaration.getSourceFile().fileName.replaceAll("\\", "/").endsWith(owner)) === true;
+    return symbol?.name === name
+      && symbol.declarations?.some(declaration => resolve(declaration.getSourceFile().fileName) === owner) === true;
   };
   function visit(node: ts.Node): void {
     if (ts.isFunctionDeclaration(node) && canonicalType(node.type, "WorkerBrowserSessionFactory", "src/workflow-kit/session.ts")
@@ -42,7 +45,7 @@ function admittedFactoryDelegations(source: ts.SourceFile, checker: ts.TypeCheck
       if (ts.isReturnStatement(statement) && statement.expression !== undefined
         && ts.isCallExpression(statement.expression) && statement.expression.expression.getText(source) === "Object.freeze"
         && ts.isPropertyAccessExpression(statement.expression.expression)
-        && canonicalValue(statement.expression.expression.expression, "Object", "/typescript/lib/lib.es5.d.ts")
+        && canonicalValue(statement.expression.expression.expression, "Object", ES5_LIB_PATH)
         && statement.expression.arguments.length === 1 && ts.isObjectLiteralExpression(statement.expression.arguments[0])) {
         const properties = statement.expression.arguments[0].properties;
         const method = properties[0];
@@ -59,7 +62,7 @@ function admittedFactoryDelegations(source: ts.SourceFile, checker: ts.TypeCheck
             && ts.isBlock(scopeCheck.thenStatement) && scopeCheck.elseStatement === undefined
             && scopeCheck.thenStatement.statements.length === 1 && ts.isThrowStatement(scopeCheck.thenStatement.statements[0])
             && ts.isNewExpression(scopeCheck.thenStatement.statements[0].expression)
-            && canonicalValue(scopeCheck.thenStatement.statements[0].expression.expression, "PreflightAdmissionRefusal", "/src/rules/preflight/preflight-admission.ts")
+            && canonicalValue(scopeCheck.thenStatement.statements[0].expression.expression, "PreflightAdmissionRefusal", join(REPO_ROOT, "src/rules/preflight/preflight-admission.ts"))
             && compact(scopeCheck.thenStatement.statements[0].expression) === 'newPreflightAdmissionRefusal("scope-mismatch","Browserrequestdiffersfromitsadmittedpreflightscope.")'
             && compact(prepare) === 'awaitpreflight.prepareSession(scope,request.system,request.signal);'
             && ts.isReturnStatement(delegate) && delegate.expression !== undefined

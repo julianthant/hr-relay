@@ -73,8 +73,7 @@ export const typedReadTask = defineTask(typedUcpathDriver, contract, {
 // @ts-expect-error read task implementations cannot request transaction access
 defineTask(typedUcpathDriver, contract, {
   sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
-  async run({ input }) {
-    // oxlint-disable-next-line typescript/no-unsafe-return -- The invalid task declaration is the negative type fixture.
+  async run({ input }: Parameters<typeof typedReadTask.impl.run>[0]) {
     return input;
   },
 });
