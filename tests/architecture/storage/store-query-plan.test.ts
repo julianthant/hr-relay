@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { QUERY_INDEXES, SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
 import { DatabaseSync } from "node:sqlite";
 import { CHANGE_LOG_PAGE_ENTRIES } from "../../../src/backend/storage/sqlite/authority-change-admission.js";
 import { seedStorageReadFixture } from "../../perf/storage-read-fixture.js";
 import { traceSqliteStatements } from "../../perf/sqlite-statement-counter.js";
-import { auditPlans, literalStatements, normalizeSql, tracedStatements, WHOLE_TABLE_READS, type PlanAudit } from "./helpers/query-plan-audit.js";
+import { auditPlans, auditStoreQueryPlans, literalStatements, normalizeSql, tracedStatements, WHOLE_TABLE_READS, type PlanAudit } from "./helpers/query-plan-audit.js";
 
 const probe = (statements: readonly string[]) => new Map(statements.map(sql => [sql, new Set(["probe"])]));
 
 describe("store query plans", () => {
   let audit: PlanAudit;
+  beforeAll(async () => { audit = await auditStoreQueryPlans(); }, 120_000);
 
   it("plans the store's literal statements and the statements traced from the dashboard and a worker", () => {
     expect(audit.planned.length).toBeGreaterThan(150);
