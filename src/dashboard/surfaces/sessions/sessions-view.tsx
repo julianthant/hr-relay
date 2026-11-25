@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, UsersRound, X } from "lucide-react";
 import { BareButton, dsFocus, IconButton, Skeleton, useSkeletonWait } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { SESSIONS_CONSOLE_ID } from "./sessions-context.js";
+import "../shell/assistant-launcher.css";
 import { SESSION_STATE_LABELS, sessionTallies, type SessionControl, type SessionsViewState } from "./sessions-view-model.js";
 import type { SessionPreviewOperation } from "./session-preview-command-model.js";
 import { StartingCard, WorkerCard } from "./worker-card.js";
