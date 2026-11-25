@@ -117,7 +117,7 @@ export interface AuthorityImageOwner {
 
 /** pointInTime: an owner image; later changes to the live files do not make it stale. */
 type SnapshotMarkers = Readonly<{ files: string; authority: string; copiedBytes: bigint }>;
-type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: (discard?: boolean) => void; pointInTime?: true; markers?: SnapshotMarkers }>;
+type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: (mode?: "discard") => void; pointInTime?: true; markers?: SnapshotMarkers }>;
 type ReadonlyAuthorityImage = Readonly<{ path: string; marker: string; copy: SnapshotMarkers }>;
 const readerImages = new WeakMap<DatabaseSync, ReadonlyAuthorityImage>();
 
@@ -173,9 +173,9 @@ function borrowSnapshot(copy: ReusableSnapshot, discard: () => void): ReadonlySn
       if (released) throw new Error("authority-readonly-snapshot-closed");
       copy.snapshot.assertUnchanged();
     },
-    dispose(failed = false) {
+    dispose(mode?: "discard") {
       if (!released) { released = true; copy.readers--; }
-      if (failed) discard();
+      if (mode === "discard") discard();
       else if (copy.retired && copy.readers === 0) copy.snapshot.dispose();
     },
   });
@@ -446,8 +446,13 @@ export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (
    catch (error) { throw retainAuthoritySourceClosure([...failures, error], { snapshot, database }); }
  }
  try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
- try { snapshot.dispose(failures.length !== 0); }
- catch (error) { throw retainAuthoritySourceClosure([...failures, error], { snapshot }); }
+ // A failed reader must account for disposal before its admission can release.
+ try { snapshot.dispose(failures.length === 0 ? undefined : "discard"); }
+ catch (cleanup) {
+   const error = failures.length === 0 ? cleanup
+     : new AggregateError([...failures, cleanup], "authority-read-and-snapshot-disposal-failed", { cause: cleanup });
+   throw retainAuthoritySourceClosure([error], { snapshot });
+ }
  if (failures.length === 1) throw failures[0];
  if (failures.some(error => error instanceof AuthoritySourceClosureUnprovedError)) throw retainAuthoritySourceClosure(failures, {});
  if (failures.length > 1) throw new AggregateError(failures, "authority-read-only-failed", { cause: failures[0] });
