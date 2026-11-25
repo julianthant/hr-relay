@@ -112,7 +112,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       assert.deepEqual(h.database.authority.writeIntents.listByRun(source.envelope.runId).filter(intent => intent.status === "committed"), []);
       await mount(h, source);
       await press("Continue");
-      assert.equal(document.querySelector('[aria-label="Already submitted by this run"]'), null);
+      assert.equal(document.querySelector('[aria-label="Already submitted by this run"]') === null, true);
     } finally { await cleanup(); await h.dispose(); }
   });
   it("submits an earlier source as a new current run with repeat consent and fresh evidence", async () => {
