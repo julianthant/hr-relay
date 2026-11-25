@@ -10,6 +10,7 @@ export { RunDisplayNameSchema } from "../../models/run/display-name.js";
 
 import { MarkedProtectedSettingsPatchSchema,ProtectedSettingsPatchSchema,ProtectedSettingsReceiptEntriesSchema,markProtectedSettingsPatch } from "../../models/config/protected-settings.js";
 import { SettingsLeafOperationSchema,SettingsPatchSchema } from "../../models/config/settings.js";
+import { RETIRED_PANEL_MODE, RetiredPanelModeSchema, SettingsSchemaWithPanelMode } from "../../models/config/settings-record-conversion.js";
 import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
 import { ActorIdSchema,BrowserSessionIdSchema,CommandAuditIdSchema,CommandIdSchema,DependencyIdSchema,FingerprintSchema,GateIdSchema,IntakeManifestIdSchema,IntakeSessionIdSchema,IntakeTargetFieldIdSchema,IsoInstantSchema,ItemIdSchema,LOCAL_OPERATOR_ACTOR_ID,NodeIdSchema,NonNegativeIntSchema,NotificationIdSchema,PositiveIntSchema,RunIdSchema,RunSessionIdSchema,SourceColumnIdSchema,SourceSurfaceIdSchema,StartPlanIdSchema,TaskIdSchema,TraceIdSchema,WorkerIdSchema,WorkflowIdSchema,WriteAttemptIdSchema,WriteIntentIdSchema } from "../identity/ids.js";
 import { JsonValueSchema,canonicalJsonStringify } from "../validation/canonical-json.js";
@@ -224,7 +225,16 @@ export const SettingsCommandRequestSchema = z.strictObject({
     patchFingerprint: FingerprintSchema,
     patch: z.record(z.string().min(1), SettingsLeafOperationSchema),
   }).superRefine((payload, context) => {
-    const ordinary = SettingsPatchSchema.safeParse(payload.patch);
+    const path = `preferences.${RETIRED_PANEL_MODE}`;
+    const { [path]: retired, ...current } = payload.patch;
+    const historical = retired !== undefined && SettingsSchemaWithPanelMode.safeParse(payload.settingsSchemaHash).success;
+    if (historical) {
+      if ("set" in retired && !RetiredPanelModeSchema.safeParse(retired.set).success) {
+        context.addIssue({ code: "custom", path: ["patch", path], message: `settings path ${path} has an invalid historical value` });
+      }
+      if (Object.keys(current).length === 0) return;
+    }
+    const ordinary = SettingsPatchSchema.safeParse(historical ? current : payload.patch);
     if (!ordinary.success) for (const issue of ordinary.error.issues) context.addIssue({ ...issue, path: ["patch", ...issue.path] });
   }),
 });

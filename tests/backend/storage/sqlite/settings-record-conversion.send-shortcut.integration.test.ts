@@ -4,11 +4,12 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { z } from "zod";
 import { applyAuthorityMigrationsAfter, inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { SETTINGS_RECORD_CONVERSION_VERSION, convertSettingsRecordRow } from "../../../../src/backend/storage/sqlite/settings-record-conversion.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { SEND_SHORTCUT_CONVERSION_MARKER, convertSettingsRecordRow } from "../../../../src/backend/storage/sqlite/settings-record-conversion.js";
 import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
+import { RETIRED_PANEL_MODE } from "../../../../src/models/config/settings-record-conversion.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { preSendShortcutSettingsRow, restorePreSendShortcutSettingsRows } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { regressSchema35SendShortcut, removeSchema36WorkbookSyncStatus } from "../../../support/fixtures/storage/historical-run-schema.js";
@@ -60,9 +61,9 @@ async function schema34Store() {
   return { ...f, raw };
 }
 
-it("converts settings records in migration 35, under the current schema 41", () => {
-  assert.equal(SETTINGS_RECORD_CONVERSION_VERSION, 35);
-  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 41);
+it("converts settings records in migration 35, under the current schema 42", () => {
+  assert.ok(SQLITE_MIGRATIONS.find(migration => migration.version === 35)?.statements.includes(SEND_SHORTCUT_CONVERSION_MARKER));
+  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 42);
   assert.deepEqual(migrationTableNames(35), migrationTableNames(34));
 });
 
@@ -88,7 +89,9 @@ it("upgrades a schema-34 store: every stored snapshot gains the Enter send short
     assert.deepEqual(readAppSettings(f.raw)?.saved, stopped.saved);
     for (const [index, snapshot] of snapshots(f.raw).entries()) {
       const record = ConfigSnapshotRecordSchema.parse(snapshot);
-      assert.deepEqual(record.preferences, { ...ObjectSchema.parse(priorSnapshots[index]?.preferences), sendShortcut: "enter" });
+      const { [RETIRED_PANEL_MODE]: retired, ...prior } = ObjectSchema.parse(priorSnapshots[index]?.preferences);
+      assert.equal(retired, "floating");
+      assert.deepEqual(record.preferences, { ...prior, sendShortcut: "enter" });
       assert.equal(canonicalJsonStringify({ ...record, preferences: null, preferencesFingerprint: null }), canonicalJsonStringify({ ...priorSnapshots[index], preferences: null, preferencesFingerprint: null }));
     }
     assert.throws(() => f.raw.exec("UPDATE settings_snapshots SET revision=revision+1"), /retained-evidence-immutable/u);
