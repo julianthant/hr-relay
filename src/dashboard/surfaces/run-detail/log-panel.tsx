@@ -8,6 +8,7 @@ import { LogActionButton } from "./logs/log-action-button.js";
 import { LogActionsMenu, type LogMenuRecords, type LogMenuRerun } from "./logs/log-actions-menu.js";
 import { LogSearch } from "./logs/log-search.js";
 import { LogHeaderCompact } from "./logs/log-header-compact.js";
+import { cn } from "../../lib/utils.js";
 import { LinkedRunsButton } from "./linked-runs.js";
 import type { LinkedRunEntry } from "./linked-runs-model.js";
 import type { LinkedRunWire } from "../queue/queue-model.js";
@@ -18,8 +19,8 @@ const headerIcon = (label: string) => label === "Review" ? <ClipboardCheck aria-
 /** Below this header width the text buttons collapse to icons. */
 const COMPACT_HEADER_WIDTH = 520;
 
-/** One row: the title truncates, the actions stay on the line. */
-function LogHeader({ title, status, middle, children }: { title: string; status?: ReactNode; middle?: ReactNode; children: ReactNode }) {
+/** One row: the title truncates, the actions stay on the line. While search is open, text buttons collapse to icons and the field shrinks, so nothing is pushed past the edge. */
+function LogHeader({ title, status, middle, searching, children }: { title: string; status?: ReactNode; middle?: ReactNode; searching: boolean; children: ReactNode }) {
   const row = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
   useEffect(() => {
@@ -30,8 +31,8 @@ function LogHeader({ title, status, middle, children }: { title: string; status?
     return () => observer.disconnect();
   }, []);
   return <header className="shrink-0 border-b border-ui-stroke bg-ui-table px-4 py-3">
-    <div ref={row} className="flex min-h-6 min-w-0 items-center gap-3"><h2 className="m-0 min-w-0 truncate text-heading" title={title}>{title}</h2>{status && <span className="flex shrink-0 items-center gap-2">{status}</span>}{middle}
-      <LogHeaderCompact.Provider value={compact}><span className="ml-auto flex shrink-0 items-center gap-2">{children}</span></LogHeaderCompact.Provider>
+    <div ref={row} className="flex min-h-6 min-w-0 items-center gap-3"><h2 className={cn("m-0 truncate text-heading", searching ? "min-w-24" : "min-w-0")} title={title}>{title}</h2>{status && <span className="flex shrink-0 items-center gap-2">{status}</span>}{middle}
+      <LogHeaderCompact.Provider value={compact || searching}><span className={cn("ml-auto flex items-center gap-2", searching ? "min-w-0 [&>:not([role=search])]:shrink-0" : "shrink-0")}>{children}</span></LogHeaderCompact.Provider>
     </div>
   </header>;
 }
@@ -47,7 +48,7 @@ export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar
 }) {
   const action = runHeaderAction(steps, timeline);
   const [searching, setSearching] = useState(false);
-  const header = (jump?: (stepId: string, entryId?: string) => void, tools?: LogTools) => <LogHeader title={title} status={status} middle={jump && !searching ? <LogTimeline stages={timeline} onJump={stepId => jump(stepId)} /> : undefined}>
+  const header = (jump?: (stepId: string, entryId?: string) => void, tools?: LogTools) => <LogHeader title={title} status={status} searching={searching} middle={jump && !searching ? <LogTimeline stages={timeline} onJump={stepId => jump(stepId)} /> : undefined}>
     {action && jump && <LogActionButton label={action.label} variant={action.label === 'Review' ? 'primary' : undefined} icon={headerIcon(action.label)} onClick={() => action.label === 'Review' && onReview ? onReview() : jump(action.stepId, action.entryId)} />}{toolbar}{linkedRuns && <LinkedRunsButton entries={linkedRuns} onOpen={onOpenLinkedRun} />}{headerActions}
     {tools && <><span role="status" className="text-caption text-ui-muted">{tools.copyState === "copied" ? "Copied" : tools.copyState === "failed" ? "Copy unavailable" : ""}</span><LogSearch tools={tools} onOpenChange={setSearching} /></>}
     <LogActionsMenu title={title} tools={tools} rerun={rerun} records={records} />

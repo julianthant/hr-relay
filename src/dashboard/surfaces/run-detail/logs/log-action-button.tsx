@@ -5,7 +5,7 @@ import { cn } from "../../../lib/utils.js";
 
 export const LogActionButton = forwardRef<HTMLButtonElement, Omit<ComponentProps<typeof Button>, "icon" | "children"> & { label: string; icon: ReactNode; text?: ReactNode }>(function LogActionButton({ label, text, icon, className, ...props }, ref) {
   const compact = useContext(LogHeaderCompact);
-  const button = <Button ref={ref} size="md" aria-label={compact ? label : undefined} icon={icon} className={cn(compact && "w-[var(--ds-h-md)] justify-center px-0", className)} {...props}>{compact ? undefined : text ?? label}</Button>;
+  const button = <Button ref={ref} size="md" aria-label={compact ? label : undefined} icon={icon} className={cn(compact && "w-[var(--ds-h-md)] justify-center px-0", className)} {...props} {...(compact && { title: "" })}>{compact ? undefined : text ?? label}</Button>;
   return compact ? <Tooltip side="bottom" content={label}>{button}</Tooltip> : button;
 });
 

@@ -1,5 +1,6 @@
 /** Run panel stories: header, timeline, Logs, decision and failure cards, write states, captures, OCR review and the dry-run plan. */
 import type { Page } from "@playwright/test";
+import { ArrowLeft, Pause, Square } from "lucide-react";
 import type { ReactNode } from "react";
 import type { z } from "zod";
 import { WriteStateSchema } from "../../../../../../src/models/trust/failure.js";
@@ -10,6 +11,8 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../.
 import { ErrorCodeSchema, IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
 import { Badge, Banner, Notice, FailureNotice } from "../../../../../../src/dashboard/ds/ui.js";
 import { LogPanel } from "../../../../../../src/dashboard/surfaces/run-detail/log-panel.js";
+import { LogActionButton, LogHeaderButton } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-action-button.js";
+import type { LinkedRunEntry } from "../../../../../../src/dashboard/surfaces/run-detail/linked-runs-model.js";
 import { RunStateChips } from "../../../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
 import { LogFeedPadding, LogSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
 import { FullDryRunPreview } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
@@ -49,6 +52,8 @@ interface PanelProps {
   timeline: readonly LogTimelineStage[];
   status?: ReactNode;
   toolbar?: ReactNode;
+  headerActions?: ReactNode;
+  linkedRuns?: readonly LinkedRunEntry[];
   navigation?: ReactNode;
   content?: ReactNode;
   trailingContent?: ReactNode;
@@ -111,6 +116,11 @@ const LOG_HEADER = {
   default: panel("The run header: steps, search and the menu", { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("done", 40)} />, rerun: { label: "Rerun", run: noop } }),
   "search-matches": headerRun("Search with matches", search("employment"), "text=/\\d+ of \\d+/"),
   "search-none": headerRun("Search with no matches", search("badge"), "text=\"No matches\""),
+  "search-child": { ...panel("Search on a running child run", { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("running", 41)} />,
+    toolbar: <LogActionButton size="sm" label="Back to Emergency Contact batch" aria-label="Back to Emergency Contact batch" className="max-w-48" icon={<ArrowLeft aria-hidden className="size-4 shrink-0" />} text={<span className="min-w-0 truncate">Emergency Contact batch</span>} />,
+    headerActions: <><LogHeaderButton label="Pause Alex Morgan" icon={<Pause aria-hidden className="size-4" />} onClick={noop} /><LogHeaderButton label="Stop Alex Morgan" icon={<Square aria-hidden className="size-4" />} onClick={noop} /></>,
+    linkedRuns: [{ relation: "Parent", name: "Emergency Contact batch", workflow: "Emergency Contact", status: "Running", target: { runId: "parent-run" } as LinkedRunEntry["target"] }] }),
+    play: search("employment"), ready: "text=/\\d+ of \\d+/" },
   "menu-open": headerRun("The ⋯ menu open", async page => { await page.getByRole("button", { name: "More actions" }).press("Enter"); }, "[role='menu']"),
 } satisfies Record<string, Story>;
 

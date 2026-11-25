@@ -1,6 +1,7 @@
 import type { DryRunPreviewStage } from "./dry-run-preview-model.js";
 import { useCallback, useMemo } from "react";
 import { ArrowLeft, RotateCcw } from "lucide-react";
+import { LogActionButton } from "./log-action-button.js";
 import { MemberRunControls } from "./log-member-controls.js";
 import type { DelegatedRecordRef } from "../../../../models/workflow/delegated-record.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
@@ -95,7 +96,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   const headerActions = useMemo(() => <MemberRunControls selection={selection} onAction={onAction} />, [selection, onAction]);
   const status = useMemo(() => <RunStateChips row={selection.row} />, [selection.row]);
   const parentRun = selection.row.parent;
-  const toolbar = useMemo(() => <>{parentRun !== null && onOpenLinked !== undefined && <Button size="sm" aria-label={`Back to ${parentRun.title}`} title={`Back to ${parentRun.title}`} className="max-w-48" onClick={() => onOpenLinked(parentRun)}><ArrowLeft aria-hidden className="size-4 shrink-0" /><span className="min-w-0 truncate">{parentRun.title}</span></Button>}{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Notice sticky tone="warning" title="Earlier review changes no longer apply" description="Review the new values." />}{resource.snapshot?.detail.childRetry !== undefined && <IconButton size="md" label={resource.snapshot.detail.childRetry.label}
+  const toolbar = useMemo(() => <>{parentRun !== null && onOpenLinked !== undefined && <LogActionButton size="sm" label={`Back to ${parentRun.title}`} aria-label={`Back to ${parentRun.title}`} title={`Back to ${parentRun.title}`} className="max-w-48" icon={<ArrowLeft aria-hidden className="size-4 shrink-0" />} text={<span className="min-w-0 truncate">{parentRun.title}</span>} onClick={() => onOpenLinked(parentRun)} />}{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Notice sticky tone="warning" title="Earlier review changes no longer apply" description="Review the new values." />}{resource.snapshot?.detail.childRetry !== undefined && <IconButton size="md" label={resource.snapshot.detail.childRetry.label}
     icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}
       {batchRetry !== undefined && <IconButton size="md" label={batchRetry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onBatchMemberRetry === undefined} onClick={resource.onBatchMemberRetry} />}
       {retry !== undefined && onAction !== undefined && <IconButton size="md" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [parentRun,onOpenLinked,resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,retry,onAction,retryEnabled,retryRun,feedback]);

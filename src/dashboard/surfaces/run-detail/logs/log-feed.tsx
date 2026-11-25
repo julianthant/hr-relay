@@ -208,7 +208,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
     <div className={cn("@container min-w-0 flex-1 px-4 pb-6 pt-5", !embedded && "overflow-y-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-info")} onScroll={embedded ? undefined : measureEnd} ref={attachScroller} role={embedded ? undefined : "region"} aria-label={embedded ? undefined : label} tabIndex={embedded ? undefined : 0} aria-busy={loading || undefined}>
       {beforeContent}
       {windowed
-        ? viewport !== null && <Virtuoso ref={list} customScrollParent={viewport} data={visual} computeItemKey={(_, step) => step.id} increaseViewportBy={600}
+        ? viewport !== null && <Virtuoso ref={list} customScrollParent={viewport} totalListHeightChanged={measureEnd} data={visual} computeItemKey={(_, step) => step.id} increaseViewportBy={600}
           {...(initialIndex < 0 ? {} : { initialTopMostItemIndex: initialIndex })}
           // flow-root keeps each step's own spacing inside the measured item
           itemContent={(index, step) => <div className="flow-root">{stepNode(step, index)}</div>} />
