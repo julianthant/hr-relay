@@ -1,4 +1,4 @@
-import { Terminal } from "lucide-react";
+import { SquareTerminal } from "lucide-react";
 import { IconButton, Tooltip } from "../../ds/ui.js";
 import { AddWorkers } from "./add-workers.js";
 import { SESSIONS_CONSOLE_ID, useSessionsState } from "./sessions-context.js";
@@ -12,7 +12,7 @@ export function SessionRailControls({ open, onOpenChange }: { open: boolean; onO
   return <>
     <Tooltip side="right" content="Sessions console">
       <span className="relative inline-flex">
-        <IconButton variant="ghost" size="sm" label="Sessions console" title="" aria-expanded={open} aria-controls={SESSIONS_CONSOLE_ID} onClick={() => onOpenChange(!open)} icon={<Terminal aria-hidden className="size-4" />} />
+        <IconButton variant="ghost" size="sm" label="Sessions console" title="" aria-expanded={open} aria-controls={SESSIONS_CONSOLE_ID} onClick={() => onOpenChange(!open)} icon={<SquareTerminal aria-hidden className="size-4" />} />
         {dot !== undefined && <span aria-hidden data-sessions-dot={dot} className="session-rail-dot" />}
       </span>
     </Tooltip>
