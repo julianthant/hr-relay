@@ -111,7 +111,7 @@ const LOG_HEADER = {
   default: panel("The run header: steps, search and the menu", { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("done", 40)} />, rerun: { label: "Rerun", run: noop } }),
   "search-matches": headerRun("Search with matches", search("employment"), "text=/\\d+ of \\d+/"),
   "search-none": headerRun("Search with no matches", search("badge"), "text=\"No matches\""),
-  "menu-open": headerRun("The ⋯ menu open", async page => { await page.getByRole("button", { name: "More actions" }).click(); }, "[role='menu']"),
+  "menu-open": headerRun("The ⋯ menu open", async page => { await page.getByRole("button", { name: "More actions" }).press("Enter"); }, "[role='menu']"),
 } satisfies Record<string, Story>;
 
 const PAUSE = {

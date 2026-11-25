@@ -13,7 +13,7 @@ export function LogSearch({ tools, onOpenChange }: { tools: LogTools; onOpenChan
   const close = () => { tools.setQuery(""); change(false); requestAnimationFrame(() => icon.current?.focus()); };
   if (!open) return <IconButton ref={icon} size="md" label="Search logs" icon={<Search aria-hidden className="size-4" />} onClick={() => change(true)} />;
   const none = tools.query.trim() !== "" && tools.total === 0;
-  return <div role="search" className="flex h-[34px] w-[360px] max-w-full min-w-0 items-center gap-2 rounded-lg border border-ui-info bg-ui-table pl-2.5 pr-1.5">
+  return <div role="search" data-slot="search-field-group" className="flex h-[34px] w-[360px] max-w-full min-w-0 items-center gap-2 rounded-lg border border-ui-stroke-control has-[input:focus]:border-ui-info bg-ui-table pl-2.5 pr-1.5">
     <Search aria-hidden className="size-4 shrink-0 text-ui-muted" />
     <input ref={input} aria-label="Search logs" placeholder="Search logs" value={tools.query} className="min-w-0 flex-1 bg-transparent text-body text-ui-primary outline-none placeholder:text-ui-muted"
       onChange={event => tools.setQuery(event.target.value)}
