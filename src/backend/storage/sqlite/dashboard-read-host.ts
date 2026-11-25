@@ -65,7 +65,7 @@ export interface LaneReadDefinition<Args, Result> {
 const definitions = new Map<string, LaneReadDefinition<unknown, unknown>>();
 const laneReadId = (module: string, name: string) => `${module}#${name}`;
 
-/** Declares a read a lane can run. The defining module is imported inside the lane by its own URL. */
+/** Declares a read a lane can run. The lane entry module imports every defining module, so the lane knows the read by id. */
 export function defineLaneRead<Args, Result>(module: string, name: string, spec: Readonly<{
   lane: ReadLaneName; priority: "interactive" | "background"; args: z.ZodType<Args>; tables?: readonly AuthorityTableName[];
   timeline?: boolean; processFacts?: boolean; cacheMs?: number; run(context: LaneReadContext, args: Args): Result;
@@ -182,10 +182,13 @@ interface Lane {
  */
 export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmission; database: AuthorityDatabase; clock: Clock;
   /** The lanes to start; a read routed to a lane not started is refused. Every routed lane by default. */
-  lanes?: readonly ReadLaneName[]; checkpoint?: Partial<typeof WAL_CHECKPOINT_DEFAULTS> }>): DashboardReadLanes {
+  lanes?: readonly ReadLaneName[]; checkpoint?: Partial<typeof WAL_CHECKPOINT_DEFAULTS>;
+  /** The module each lane worker runs: it imports its read modules and calls runReadLaneWorker. Relay's lane entry by default. */
+  entry?: URL }>): DashboardReadLanes {
   const owner = requireRuntimeAdmission(input.admission);
   const { database, clock } = input;
   const policy = { ...WAL_CHECKPOINT_DEFAULTS, ...input.checkpoint };
+  const entry = input.entry ?? new URL("./dashboard-read-lane.js", import.meta.url);
   const names = [...new Set(input.lanes ?? Object.values(LANE_ROUTES))];
   const starts = new Map(names.map(name => [name, prepareReadLaneStart(owner, database, name)] as const));
   const navigationStart = starts.get("navigation");
@@ -328,7 +331,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     const releaseSource = database.retainDashboardReadSource(owner, start.identity);
     let worker: Worker;
     try {
-      worker = new Worker(new URL(import.meta.url), { name: `relay-dashboard-read-${lane.name}`, workerData: start,
+      worker = new Worker(entry, { name: `relay-dashboard-read-${lane.name}`, workerData: start,
         execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
     } catch (error) { releaseSource(); throw error; }
     lane.worker = worker;
@@ -454,18 +457,11 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   });
 }
 
-/** Lane modules live in this checkout; a request names its read by the defining module's URL. */
-const SOURCE_ROOT = new URL("../../../../", import.meta.url).href;
-
-async function resolveLaneRead(module: string, name: string): Promise<LaneReadDefinition<unknown, unknown>> {
-  const id = laneReadId(module, name);
-  const known = definitions.get(id);
-  if (known !== undefined) return known;
-  if (!module.startsWith("file:") || !module.startsWith(SOURCE_ROOT)) throw new Error("read-lane-module-refused");
-  await import(module);
-  const loaded = definitions.get(id);
-  if (loaded === undefined) throw new Error("read-lane-read-unknown");
-  return loaded;
+/** The lane loads no module on request: a read its entry did not import is unknown. */
+function resolveLaneRead(module: string, name: string): LaneReadDefinition<unknown, unknown> {
+  const known = definitions.get(laneReadId(module, name));
+  if (known === undefined) throw new Error("read-lane-read-unknown");
+  return known;
 }
 
 interface CacheEntry {
@@ -531,7 +527,7 @@ function runReadLane(port: MessagePort, data: unknown) {
     });
   };
 
-  const handle = async (input: unknown): Promise<void> => {
+  const handle = (input: unknown): void => {
     const message = RequestSchema.parse(input);
     if (message.kind === "close") { close(); return; }
     let reply: LaneReply;
@@ -543,7 +539,7 @@ function runReadLane(port: MessagePort, data: unknown) {
       } catch (error) { reply = { kind: "checkpoint-failed", id: message.id, message: error instanceof Error ? error.message : "read-lane-checkpoint-failed" }; }
     } else {
       try {
-        const definition = await resolveLaneRead(message.module, message.name);
+        const definition = resolveLaneRead(message.module, message.name);
         reply = { kind: "read", id: message.id, ...serve(definition, message) };
       } catch (error) { reply = { kind: "read-failed", id: message.id, message: error instanceof Error && error.message !== "" ? error.message : "read-lane-read-failed" }; }
     }
@@ -551,15 +547,17 @@ function runReadLane(port: MessagePort, data: unknown) {
     if (leftInTransaction()) process.exit(LANE_TRANSACTION_EXIT_CODE);
     port.postMessage(reply);
   };
-  let queue = Promise.resolve();
   port.on("message", (input: unknown) => {
     // A malformed request or a failed close leaves the lane in an unknown state; the host restarts it from its exit.
-    queue = queue.then(() => handle(input)).catch(() => { process.exit(LANE_FAILURE_EXIT_CODE); });
+    try { handle(input); } catch { process.exit(LANE_FAILURE_EXIT_CODE); }
   });
   const ready: LaneReply = { kind: "ready" };
   port.postMessage(ready);
 }
 
-if (!isMainThread && parentPort !== null && z.object({ protocol: z.literal(READ_LANE_PROTOCOL) }).safeParse(workerData).success) {
-  runReadLane(parentPort, workerData);
+/** A lane entry calls this after importing its read modules; outside a lane worker it does nothing. */
+export function runReadLaneWorker(): void {
+  if (!isMainThread && parentPort !== null && z.object({ protocol: z.literal(READ_LANE_PROTOCOL) }).safeParse(workerData).success) {
+    runReadLane(parentPort, workerData);
+  }
 }
