@@ -169,8 +169,10 @@ describe("child step facts over a transaction's phases and several child runs", 
     const waiting = h.fresh(root);
     const cancel = composeCommandRequest({ kind: "command", command: "cancel", expectedVersion: waiting.version } as unknown as CommandAction,
       { runId: waiting.envelope.runId, expectedVersion: waiting.version }, { actorId: "local-operator", source: "run-detail", requestedAt: h.clock.now().toISOString() });
-    assert.ok(cancel.state === "ready" && !("reason" in cancel.request));
-    assert.equal(h.kernel.execute(CommandRequestSchema.parse(cancel.request)).state, "applied");
+    assert.ok(cancel.state === "ready");
+    const request = CommandRequestSchema.parse(cancel.request);
+    assert.ok(!("reason" in request));
+    assert.equal(h.kernel.execute(request).state, "applied");
     const run = h.fresh(root);
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled", JSON.stringify(run.lifecycle));
     return { h, run, members: h.database.authority.runs.listChildren(root.envelope.runId) };
