@@ -13,7 +13,8 @@ import { convertSettingsRecordRow, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH } from "
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
-import { applyAuthorityMigrationsAfter, inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { applyAuthorityMigrationsAfter } from "../../../../src/backend/storage/sqlite/authority-upgrades.js";
+import { inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../../src/models/config/person-preferences.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";

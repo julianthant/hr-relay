@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { selectNewRunIdentity,selectRunSettings } from "../../../../src/backend/runs/settings/run-settings.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const WRITE_ID = "22222222-2222-4222-8222-222222222222";

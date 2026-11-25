@@ -10,7 +10,7 @@ import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { deriveItemId } from "../../../rules/identity/identifiers.js";
 import { ItemIdSchema } from "../../../rules/identity/ids.js";
 import { workflowPlanning } from "../../../workflow-kit/workflow.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { fanOutQueuedRuns, type TargetReference } from "../lifecycle/run-fan-out.js";
 import { selectNewRunIdentity } from "../settings/run-settings.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../start/plan.js";

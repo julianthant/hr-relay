@@ -6,7 +6,7 @@ import type { createOperatorProjection } from "./queue.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { createNoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
 import { createDashboardBackgroundReader } from "../../../storage/sqlite/dashboard-background-read-worker.js";
-import { AuthorityDatabase } from "../../../storage/sqlite/index.js";
+import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { type StartupCleanup } from "./runtime-contracts.js";
 import { createDiagnosticRetentionSweep, type DiagnosticRetentionSweepDependencies } from "../../../logs/diagnostics/diagnostic-retention.js";
 import type { createDebugEventWriter } from "../../../logs/debug-events.js";

@@ -19,7 +19,7 @@ import type { FailureRecord } from "../../../models/trust/failure.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { RuntimeFlowNode, RuntimeScope } from "../../../models/workflow/graph.js";
 import type { planStepOmissions } from "../../../models/workflow/step-omission.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import type { runSpanPath, SpanEmitter } from "../../logs/span-emitter.js";
 import type { RunMutationOutcome, WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";

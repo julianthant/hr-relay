@@ -4,7 +4,7 @@ import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/autho
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 import { SavedWorkbookWireSchema } from "../../../../src/models/dashboard/workbooks.js";

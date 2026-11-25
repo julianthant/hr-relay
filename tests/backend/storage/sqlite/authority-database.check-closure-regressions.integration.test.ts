@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { readAuthorityChanges, validateAuthorityChanges, validateAuthorityStore } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { readAuthorityChanges, validateAuthorityChanges, validateAuthorityStore } from "../../../../src/backend/storage/sqlite/authority-change-admission.js";
 import type { ChangeEntry } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import { dropGuardTriggers, logCursor } from "../../../support/fixtures/storage/raw-authority-writer.js";
 import type { AuthorityTableName } from "../../../../src/models/config/authority.js";

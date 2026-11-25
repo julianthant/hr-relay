@@ -6,7 +6,7 @@ import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-sett
 import { readRunCheckpoint, captureRunContinuation, continuationEvidenceDigest } from "../../../../src/backend/storage/sqlite/run-continuation.js";
 import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
 import { AuthenticatedRunContinuation } from "../../../../src/backend/storage/sqlite/run-continuation-delegation.js";
 import { RunRecordSchema, runClaim, type RunRecord } from "../../../../src/models/run/record.js";

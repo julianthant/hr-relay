@@ -28,7 +28,8 @@ import { composeStorageCommand as composeStorageCommand_m0 } from "../../../../s
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createCredentialSecretSource } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { type RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { AuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-connection.js";
 import { requireSecret } from "../../../../src/models/config/secrets.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";

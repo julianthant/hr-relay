@@ -14,7 +14,7 @@ import { writeAppSettings } from "../../../../src/backend/storage/sqlite/setting
 import { insertNativeCommand, settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
-import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { QUEUED_RUN } from "../phase1f-run-fixtures.js";
 import { ledgerCommitFixture } from "../ledger-projection-fixtures.js";

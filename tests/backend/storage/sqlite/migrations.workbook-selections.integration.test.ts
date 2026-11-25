@@ -1,7 +1,7 @@
 import { applyOlderBuildStatements } from '../../../support/fixtures/storage/older-build-authority.js';
 import { installRetainedMergeFixture } from '../../../support/fixtures/storage/retained-workbook-merge.js';
 import { withCurrentWorkbookLayout } from '../../../support/fixtures/storage/historical-run-schema.js';
-import { applyAuthorityMigrationsAfter } from '../../../../src/backend/storage/sqlite/authority-database.js';
+import { applyAuthorityMigrationsAfter } from '../../../../src/backend/storage/sqlite/authority-upgrades.js';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { expect, it } from 'vitest';

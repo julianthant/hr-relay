@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { backup, DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, it } from "vitest";
-import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { SQLITE_MIGRATIONS, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { updateRunRecord } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";

@@ -74,7 +74,7 @@ export class WorkerPoolPlanVersionConflict extends Error {
 }
 
 /** Plans the count and reconciles slots in the command transaction; the excess members already exited before this runs. */
-export function applyWorkerPoolPlan(repositories: import("./authority-database.js").AuthorityRepositories,
+export function applyWorkerPoolPlan(repositories: import("./authority-repositories.js").AuthorityRepositories,
   request: Extract<CommandRequest, { type: "plan-worker-count" }>, now: string, basisVersion: number) {
   const workflow = request.target.workflowId, desired = request.payload.desiredWorkers;
   const planned = repositories.workerPools.plan({ workflow, expectedVersion: basisVersion, desiredWorkers: desired, requestedBy: request.requestedBy, now });

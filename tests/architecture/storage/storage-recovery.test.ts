@@ -44,7 +44,8 @@ import { RUN_RECORD_JSON_SQL } from "../../../src/backend/storage/sqlite/run-rec
 import { AuthorityDatabase as RealAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { storageHealthCauseOf } from "../../../src/backend/storage/sqlite/storage-doctor.js";
 import type { StorageHealthCause } from "../../../src/models/storage/storage-status.js";
-import { AuthorityBackupService, AuthorityDatabase, AuthorityHealthPreflightRunner, OfflineAuthorityRestoreService, OfflineRestoreFailure, SpanAuthorityRunRootSchema, doctorAuthorityStorage, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/index.js";
+import { AuthorityBackupService, AuthorityHealthPreflightRunner, OfflineAuthorityRestoreService, OfflineRestoreFailure, SpanAuthorityRunRootSchema, doctorAuthorityStorage, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/index.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { plantOldBuildArtifact } from "../../support/helpers/storage/old-build-artifact.js";
 import {
   QUEUED_RUN,
@@ -2560,7 +2561,15 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/assistant-history.ts",
       "src/backend/storage/sqlite/assistant-model-preference.ts",
       "src/backend/storage/sqlite/assistant-proposals.ts",
+      "src/backend/storage/sqlite/authority-change-admission.ts",
+      "src/backend/storage/sqlite/authority-connection.ts",
+      "src/backend/storage/sqlite/authority-dashboard-snapshot.ts",
       "src/backend/storage/sqlite/authority-database.ts",
+      "src/backend/storage/sqlite/authority-inspection.ts",
+      "src/backend/storage/sqlite/authority-run-evidence.ts",
+      "src/backend/storage/sqlite/authority-stopped-reads.ts",
+      "src/backend/storage/sqlite/authority-stored-rows.ts",
+      "src/backend/storage/sqlite/authority-upgrades.ts",
       "src/backend/storage/sqlite/backup-inspection.ts",
       "src/backend/storage/sqlite/command-record-row.ts",
       "src/backend/storage/sqlite/exclusive-session-leases.ts",

@@ -70,7 +70,7 @@ import { createNoteTimelineWriter } from "../../storage/events/note-timeline-wri
 
 
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
-import { AuthorityDatabase } from "../../storage/sqlite/index.js";
+import { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { taskStoreRegistry } from "../registries/task-registry.js";
 
 // Cadences are composition choices; the contracts constrain renewal and recovery ordering, not numeric defaults.

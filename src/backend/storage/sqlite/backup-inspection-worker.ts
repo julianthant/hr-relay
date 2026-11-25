@@ -8,7 +8,7 @@ import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { createPrivateDirectory, fsyncPath } from "../private-path.js";
-import { isAuthorityInspectionIntegrityFailure } from "./authority-database.js";
+import { isAuthorityInspectionIntegrityFailure } from "./authority-errors.js";
 import { inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
 import { backupReadOnlyDatabase, readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { BackupCopyInspectionSchema } from "./recovery-contracts.js";

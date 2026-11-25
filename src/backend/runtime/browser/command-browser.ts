@@ -13,7 +13,7 @@ import { requireRuntimeAdmission } from '../../storage/admission/admission-ident
 import { admitCommandBrowser, commandProfileDirectory, createBrowserRoots, profileReservations, assertPrivateProfilePath, type BrowserRootLaunchInput } from '../../storage/browser-roots.js';
 import { fsyncPath } from '../../storage/private-path.js';
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
-import type { DuoCeremonyLeaseRepository } from '../../storage/sqlite/authority-database.js';
+import type { DuoCeremonyLeaseRepository } from '../../storage/sqlite/authority-repositories.js';
 import { composeDuoCeremonyGateFactory } from '../gates/duo-ceremony-gate.js';
 import type { DuoCeremonyGateHandle } from '../gates/duo-ceremony-gate.js';
 import { assertFastDuoReady, browserSignInFingerprint } from './browser-session-factory.js';

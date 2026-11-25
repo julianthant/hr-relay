@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { upgradeProfileAtStartup } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { parseBackupManifestFile } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";

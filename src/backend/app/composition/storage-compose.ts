@@ -59,7 +59,9 @@ import { acquireRecoveryRuntimeRestore,RuntimeAdmission as StorageAdmission,type
 import { reclaimStartupArtifactStages } from "../../storage/artifacts/content-addressed-artifact-writer.js";
 import { takeCanonicalCredentialStartupStageRepairs } from "../../storage/configuration/canonical-credential-store.js";
 import { reconcileStartupAuthorityStages } from "../../storage/sqlite/backup-service.js";
-import { AuthorityDatabase,AuthorityFormatUnsupportedError,doctorAuthorityStorage,OfflineAuthorityRestoreService,summarizeSpanAuthorityReconciliation } from "../../storage/sqlite/index.js";
+import { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import { AuthorityFormatUnsupportedError } from "../../storage/sqlite/authority-errors.js";
+import { doctorAuthorityStorage, OfflineAuthorityRestoreService, summarizeSpanAuthorityReconciliation } from "../../storage/sqlite/index.js";
 
 import { resumeAutomaticAuthorityRestore } from "../../storage/sqlite/offline-restore.js";
 import { withReusableReadonlyAuthoritySnapshots } from "../../storage/sqlite/readonly-authority-snapshot.js";

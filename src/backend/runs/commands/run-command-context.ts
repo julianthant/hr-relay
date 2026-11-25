@@ -2,7 +2,7 @@ import type { RunExistence, RunRecordRefusal } from "../../../models/config/auth
 import type { RunRecord } from "../../../models/run/record.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import type { RelatedRunChange, RunMutationOutcome } from "../lifecycle/run-record-service.js";
 import type { CommandKernelDependencies } from "./command-kernel.js";
 import { conflict, reject } from "./command-refusal.js";

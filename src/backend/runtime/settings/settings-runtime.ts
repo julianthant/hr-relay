@@ -10,7 +10,8 @@ import type { CredentialStore } from "../../../models/config/credential-store.js
 import { resolveConfigWithProvenance, type AdmittedRuntimeStoragePair } from "../../app/config/resolve.js";
 import { SettingsRuntimeStatusSchema, SETTINGS_SCHEMA_HASH, initialSettingsFileRecord, settingsRuntimeIdentity, type SettingsFileRecord, type SettingsRuntimeIdentity, type SettingsRuntimeStatus } from "../../../models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback, type ProtectedSettingsReadback, type ProtectedStoreRecord } from "../../../models/config/protected-settings.js";
-import type { AuthorityDatabase, AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { randomUUID } from "node:crypto";
 import { resolvePersonPreferences } from "../../../models/config/person-preferences.js";
 import { createKeepAwake, type KeepAwakeOptions } from "./keep-awake.js";

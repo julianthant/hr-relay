@@ -14,7 +14,6 @@ import { createCredentialStore as realCreateCredentialStore } from "../../../src
 import type { composeTestDataCommand as realComposeTestDataCommand } from "../../../src/backend/app/test-data/compose.js";
 import { AuthorityHealthPreflightRunner as RealAuthorityHealthPreflightRunner } from "../../../src/backend/storage/sqlite/authority-health-runner.js";
 
-export * from "../../../src/backend/storage/sqlite/authority-database.js";
 export * from "../../../src/backend/storage/sqlite/index.js";
 export * from "../../../src/backend/storage/sqlite/backup-service.js";
 export * from "../../../src/backend/storage/sqlite/offline-restore.js";

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { settlePredecessorRunEvidence } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { settlePredecessorRunEvidence } from "../../../../src/backend/storage/sqlite/authority-upgrades.js";
 import { SQLITE_MIGRATIONS, WORKER_CUSTODY_CONVERSION_ID, WORKER_CUSTODY_MIGRATION_STATEMENTS, WORKER_CUSTODY_SCAN_ID, WORKER_CUSTODY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatement } from "../../../../src/backend/storage/sqlite/worker-custody-migration.js";
 

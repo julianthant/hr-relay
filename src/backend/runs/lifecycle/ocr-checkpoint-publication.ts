@@ -6,7 +6,7 @@ import { OcrInputSchema } from "../../../models/workflows/ocr/input.js";
 import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { authenticateDescendantHome } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";

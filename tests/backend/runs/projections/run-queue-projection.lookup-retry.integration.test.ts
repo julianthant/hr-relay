@@ -2,7 +2,7 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/se
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, derivePersistedSettingsFingerprint } from "../../../../src/models/config/settings.js";
 import { batchMemberRetryAvailable } from "../../../../src/backend/runs/queries/run-retry.js";
 import { workflowQueueCapabilities } from "../../../../src/backend/app/registries/workflow-registry.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it, vi } from "vitest";

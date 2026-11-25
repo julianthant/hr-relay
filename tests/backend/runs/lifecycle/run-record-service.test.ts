@@ -13,7 +13,7 @@ import { RunRecordService, runContinuationPort } from "../../../../src/backend/r
 import { createItemAttemptHistoryQuery } from "../../../../src/backend/runs/queries/item-attempt-history.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase, detachBoundFixtureWorkers, registerBoundFixtureWorker } from "../../../support/helpers/synthetic-database-admission.js";
 import { deletedRunFromRow } from "../../../../src/backend/storage/sqlite/deleted-run-row.js";

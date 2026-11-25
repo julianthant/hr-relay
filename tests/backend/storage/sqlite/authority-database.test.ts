@@ -11,7 +11,8 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { acquireSharedRuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createContentAddressedArtifactWriter, pendingDiagnosticArtifacts } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { STOPPED_PROTECTED_SETTINGS_SCHEMA_HASH as PROTECTED_SETTINGS_SCHEMA_HASH, StoppedProtectedSettingsApplyInputSchema as ProtectedSettingsApplyInputSchema, StoppedProtectedStoreRecordSchema as ProtectedStoreRecordSchema } from "../../../../src/backend/storage/configuration/protected-settings-upgrade.js";

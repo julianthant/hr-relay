@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/authority.js";
-import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { AUTHORITY_APPLICATION_ID, migrationTableNames, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { execMigrationStatement } from "../../../../src/backend/storage/sqlite/worker-custody-migration.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";

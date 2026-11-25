@@ -14,7 +14,8 @@ import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authorit
 import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { AppSettingsSchema } from "../../../../src/models/config/app-settings.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { RunSessionRecordSchema } from "../../../../src/models/run/session.js";

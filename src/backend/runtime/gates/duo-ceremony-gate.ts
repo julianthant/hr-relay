@@ -10,7 +10,7 @@ import { DuoCeremonyLeaseHolderSchema, type DuoCeremonyLeaseHolder, type DuoCere
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import type { BrowserSystemId, Fingerprint, WorkerId } from "../../../rules/identity/ids.js";
 import { DuoTerminalRefusalError } from "../../systems/browser-shared/login-contract.js";
-import type { DuoCeremonyLeaseRepository } from "../../storage/sqlite/authority-database.js";
+import type { DuoCeremonyLeaseRepository } from "../../storage/sqlite/authority-repositories.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 
 /** §10.4 — another worker holds the ceremony for this credential, and the budget is spent. */

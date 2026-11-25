@@ -11,7 +11,7 @@ import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js"
 import { readDelegationEvidence, readDelegationInvocationEvidence, currentDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
 import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
 import { DelegationInvocationRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
-import type { AuthorityDatabase } from "../../storage/sqlite/index.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { authenticateOcrSnapshotApproval } from "../lifecycle/ocr-review-authority.js";
 import {
 ensureRunEvidenceReceipt,

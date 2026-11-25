@@ -23,7 +23,8 @@ import { CONFIG_SNAPSHOT, NOW, UUID_1, UUID_6, HASH_C, LATER, WRITE_INTENT_ATTEM
 import { QUEUED_RUN, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { testWorkerPorts, testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
-import { AuthorityDatabase, type AuthorityLifecycleHooks, type AuthorityTerminalizationHooks } from "../synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import type { AuthorityLifecycleHooks, AuthorityTerminalizationHooks } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { on, once } from "node:events";
 import { fork, type Serializable } from "node:child_process";
 import { z } from "zod";

@@ -7,7 +7,7 @@ import { ProtectedSettingsCommandRequestSchema,deriveSettingsCommandFingerprint 
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { ResolvedConfigSchema,type ResolvedConfig } from "../../app/config/resolve.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import type { SettingsApplicationExecutor,SettingsCommand } from "./settings-command.js";
 import { OrdinaryPathValidationError,validateOrdinaryPathChanges } from "./ordinary-path-validator.js";
 

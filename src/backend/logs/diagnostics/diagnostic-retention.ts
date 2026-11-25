@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { ArtifactIdSchema, DiagnosticBundleIdSchema, IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { planDiagnosticSweep } from "../../../models/trust/diagnostic-capture.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 
 export const DiagnosticSweepReportSchema = z.strictObject({
   sweptAt: IsoInstantSchema,

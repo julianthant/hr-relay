@@ -22,7 +22,7 @@ import { RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema, 
 import { DelegationAdmissionRequestSchema, DelegationInvocationRequestSchema, DelegationRefreshRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 import { authenticateOriginalDelegationGroup, currentDelegationManifests, readDelegationScopeEvidence, readManualDelegationResume, delegationAccountingExecution } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateDelegationRefresh } from "../../storage/sqlite/delegation-refresh.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import type { ChildRunBatchContext, ChildRunContext } from "../../runtime/execution/run-execution-contract.js";
 import { resolveInstances } from "../start/plan.js";
 import { selectRunRuntime, selectRunSettings } from "../settings/run-settings.js";

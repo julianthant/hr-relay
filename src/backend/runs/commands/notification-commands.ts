@@ -2,7 +2,7 @@ import { type NotificationCollectionOperation, notificationMatchesCollection, no
 import { notificationStandingSources } from "../../../rules/notifications/notification-triggers.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import type { TargetReference } from "../lifecycle/run-fan-out.js";
 import { applied, type CommandApplication } from "./command-application.js";
 import { reject } from "./command-refusal.js";

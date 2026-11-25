@@ -18,7 +18,7 @@ import {
   type ServerVerifiedArtifactReader,
   type VerifiedByteLease,
 } from "../../storage/artifacts/server-verified-artifact-reader.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../storage/sqlite/storage-records.js";
 import { DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, TargetNotFoundError, SectionUnavailableError } from "../commands/refusals.js";
 import {

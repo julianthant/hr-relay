@@ -8,7 +8,7 @@ import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, NotificationIdSchema } from "../../../rules/identity/ids.js";
 import { NotificationDeliverabilitySchema, NotificationTriggerEventSchema, notificationDeliverability, projectNotificationTrigger } from "../../../rules/notifications/notification-triggers.js";
 import { NotificationRecordSchema, type NotificationRecord } from "../../../models/notifications/notifications.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 
 const NotificationDeliveryOutcomeSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("suppressed-snoozed"), until: IsoInstantSchema }),

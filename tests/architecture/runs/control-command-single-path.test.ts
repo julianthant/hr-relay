@@ -15,7 +15,8 @@ import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime
 import { createCommandKernel, type CommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
 import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../src/backend/runs/commands/command-arms.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
-import { AuthorityDatabase,type AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-repositories.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../src/models/config/settings.js";
 import { COMMAND_FAMILY_REGISTRY,CommandRequestSchema,CommandResultSchema } from "../../../src/rules/commands/commands.js";
 import { PositiveIntSchema } from "../../../src/rules/identity/ids.js";
@@ -419,9 +420,9 @@ function withoutDelegationAuditReads(content: string, path: string, commandSourc
   const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true);
   const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
   const importsRepository = source.statements.some(node => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
-    && node.moduleSpecifier.text === (path === "src/backend/runs/workbooks.ts" ? "../storage/sqlite/authority-database.js"
+    && node.moduleSpecifier.text === (path === "src/backend/runs/workbooks.ts" ? "../storage/sqlite/authority-repositories.js"
       : ["src/backend/runs/lifecycle/delegation-admission.ts", "src/backend/runs/lifecycle/ocr-review-authority.ts",
-        "src/backend/runs/commands/ocr-source-service.ts"].includes(path) ? "../../storage/sqlite/authority-database.js" : "./authority-database.js")
+        "src/backend/runs/commands/ocr-source-service.ts"].includes(path) ? "../../storage/sqlite/authority-repositories.js" : "./authority-repositories.js")
     && node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
     && node.importClause.namedBindings.elements.some(binding => binding.name.text === "AuthorityRepositories" && binding.propertyName === undefined));
   if (!importsRepository) return content;
@@ -1130,6 +1131,10 @@ describe("control-command-single-path", () => {
     ]);
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
     const movedAuthorityCalls = new Map<string, Readonly<Record<string, number>>>([
+      ["src/backend/storage/sqlite/authority-repositories.ts", { "commandAudits: CommandAuditRepository;": 1 }],
+      ["src/backend/storage/sqlite/authority-run-evidence.ts", {
+        '"commandAudits">': 1, "commandAudits.get(recheck.auditId)": 1, "commandAudits: {get(id:string)": 1,
+      }],
       [REPLAY_PATH, { "commandAudits.findByCommand(": 2, "startPlans.consume(": 1 }],
       [SETTINGS_COMMAND_PATH, { ".commands.insert(": 1, "commandAudits.insert(": 1 }],
       ["src/backend/runs/commands/start-command.ts", { "startPlans.consume(": 1 }],

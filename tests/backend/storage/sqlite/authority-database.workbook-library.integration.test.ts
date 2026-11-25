@@ -195,7 +195,7 @@ it('refreshes cached workbooks after own and cross-process commits and discards 
       change: { kind: 'save', expectedVersion: 2, workbook: { ...encodeSavedWorkbook(second).workbook, name: 'External.xlsx' } } };
     const result = execFileSync(process.execPath, ['--import', testProcessImport(), '--input-type=module', '--eval', `
       import { DatabaseSync } from 'node:sqlite';
-      import { configureWritableConnection } from ${JSON.stringify(new URL('../../../../src/backend/storage/sqlite/authority-database.js', import.meta.url).href)};
+      import { configureWritableConnection } from ${JSON.stringify(new URL('../../../../src/backend/storage/sqlite/authority-connection.js', import.meta.url).href)};
       import { createWorkbookLibraryRepository } from ${JSON.stringify(new URL('../../../../src/backend/storage/sqlite/workbook-library-repository.js', import.meta.url).href)};
       const [path, id, operation] = process.argv.slice(1);
       const database = new DatabaseSync(path);

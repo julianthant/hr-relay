@@ -8,7 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { TimelineAppendSchema } from "../../../src/models/events/timeline.js";
-import { AuthoritySchemaVersionError } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthoritySchemaVersionError } from "../../../src/backend/storage/sqlite/authority-errors.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { insertMeasuredSearchRun } from "../../support/helpers/backend/cross-date-search-harness.js";

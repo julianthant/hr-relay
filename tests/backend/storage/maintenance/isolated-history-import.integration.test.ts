@@ -23,7 +23,7 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { importedLibraryId, importIsolatedProfileData } from "../../../../src/backend/storage/maintenance/isolated-library-import.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
-import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { withUpgradedBackupCopy } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";

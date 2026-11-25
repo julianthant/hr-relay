@@ -66,7 +66,8 @@ import { CONFIG_SNAPSHOT,UUID_4 } from "../../fixtures/phase1c-contract-fixtures
 import { RUN_ID,sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
 import { personLookupQueuedRun } from "../phase1f-executor-harness.js";
-import { AuthorityDatabase,type AuthorityRepositories } from "../synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { AT,DAY,traceOf,uuidOf } from "./dashboard-harness.js";
 export const HASH_B = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), manualClock(AT)).fingerprint;
 

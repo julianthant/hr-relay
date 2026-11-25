@@ -15,7 +15,7 @@ import { canonicalJsonStringify, type JsonValue, JsonValueSchema } from "../../.
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { type AnyWorkflowDescriptor, descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { readRunCheckpoint } from "../../storage/sqlite/run-continuation.js";
 import { assertOcrReviewChildrenCurrent, assertOcrSelectionCurrent, readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
 import { runTarget, type TargetReference } from "../lifecycle/run-fan-out.js";

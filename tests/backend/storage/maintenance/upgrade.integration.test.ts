@@ -24,7 +24,9 @@ import { debugTimelineFixture } from "../../../support/helpers/backend/debug-tim
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { AuthorityDatabase, AuthoritySchemaVersionError, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/authority.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";

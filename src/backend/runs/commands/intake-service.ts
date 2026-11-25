@@ -37,7 +37,7 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { suggestBindings } from "../../../models/intake/suggestions.js";
 import { validateIntakeRows } from "../../../models/intake/validate.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../models/intake/wire.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import type { PreparedIntakeParser } from "../../processing/spreadsheet/intake-parser.js";
 import { TargetNotFoundError } from "./refusals.js";
 
