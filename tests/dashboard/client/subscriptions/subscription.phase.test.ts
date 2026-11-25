@@ -633,7 +633,7 @@ describe("dashboard day subscription phase", () => {
   it("stops on a non-network rejection and classifies an unknown rejection", async () => {
     const http = new DashboardClientError({
       kind: "http",
-      status: 503,
+      status: 500,
       code: "PROJECTION_DEGRADED",
       message: "the day projection is unavailable",
       retryable: true,
