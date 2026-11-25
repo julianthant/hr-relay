@@ -128,14 +128,18 @@ it("G1-WAL: bounds the WAL under a continuous writer, a held peer read and a fai
   const status = lanes.status();
   // The bound is the read, checkpoint and main-thread writer time inside a click's window plus 50 ms.
   const checkpointSpans = status.checkpoints.map(attempt => ({ startedAt: attempt.startedAtMs, finishedAt: attempt.finishedAtMs }));
-  const measured = clicks.map(click => {
+  const restartBootMs = status.bootMs.at(-1);
+  const measured = clicks.map((click, index) => {
     const waitMs = click.startedAt - click.dispatchedAt, readAheadMs = aheadOf(click.dispatchedAt, click.startedAt, spans);
     const checkpointAheadMs = aheadOf(click.dispatchedAt, click.startedAt, checkpointSpans);
     const writerMs = aheadOf(click.dispatchedAt, click.startedAt, write.ticks);
+    // The restart click's bound is the replacement lane's measured boot plus 50 ms; every other click's is its parts plus 50 ms.
+    const boundMs = click.afterRestart ? (restartBootMs ?? Number.NaN) + 50 : readAheadMs + checkpointAheadMs + writerMs + 50;
     // The parts can overlap: a writer tick only delays a click while it holds the main thread at a dispatch or reply.
-    return { afterRestart: click.afterRestart, waitMs, readAheadMs, checkpointAheadMs, writerMs,
+    return { click: index, afterRestart: click.afterRestart, waitMs, readAheadMs, checkpointAheadMs, writerMs,
       writerTicks: write.ticks.filter(tick => tick.finishedAt > click.dispatchedAt && tick.startedAt < click.startedAt).length,
-      queueingMs: waitMs - readAheadMs - checkpointAheadMs - writerMs, overBoundMs: waitMs - readAheadMs - checkpointAheadMs - writerMs - 50 };
+      queueingMs: waitMs - readAheadMs - checkpointAheadMs - writerMs,
+      ...(click.afterRestart ? { bootMs: restartBootMs } : {}), boundMs, overBoundMs: waitMs - boundMs };
   });
   const longest = measured.filter(click => !click.afterRestart)
     .reduce((worst, click) => click.overBoundMs > worst.overBoundMs ? click : worst);
@@ -145,23 +149,21 @@ it("G1-WAL: bounds the WAL under a continuous writer, a held peer read and a fai
     checkpoints: frames(lanes),
     writerTickMs: { count: write.ticks.length, max: Math.max(...write.ticks.map(tick => tick.finishedAt - tick.startedAt)),
       total: write.ticks.reduce((sum, tick) => sum + tick.finishedAt - tick.startedAt, 0) },
-    worstClicks: [...measured].filter(click => !click.afterRestart).sort((a, b) => b.overBoundMs - a.overBoundMs).slice(0, 5),
-    restartClick: measured.find(click => click.afterRestart) }));
+    perClick: measured }));
   assert.ok(resetMs !== undefined, "the WAL is empty within two windows of the release");
   assert.ok(Math.max(peak(), status.walPeakBytes) < WAL_PEAK_LIMIT_BYTES);
   const last = status.checkpoints.at(-1);
   assert.equal(last?.busy, 0);
   assert.equal(last?.walBytesAfter, 0);
-  // Every click outside the restart waits at most for the reads, checkpoints and writer ticks inside its window plus 50 ms.
-  for (const click of measured.filter(click => !click.afterRestart)) {
-    assert.ok(click.waitMs <= click.readAheadMs + click.checkpointAheadMs + click.writerMs + 50, `interactive wait ${String(click.waitMs)} ms behind `
-      + `${String(click.readAheadMs)} ms of read, ${String(click.checkpointAheadMs)} ms of checkpoint and ${String(click.writerMs)} ms of writer ticks`);
+  // Every click meets its own published bound: its reads, checkpoints and writer ticks plus 50 ms, or the measured boot plus 50 ms after the restart.
+  assert.ok(restartBootMs !== undefined && status.bootMs.length === 2);
+  assert.equal(measured.filter(click => click.afterRestart).length, 1);
+  for (const click of measured) {
+    assert.ok(click.waitMs <= click.boundMs, click.afterRestart
+      ? `restart click ${String(click.click)} waited ${String(click.waitMs)} ms behind a ${String(restartBootMs)} ms boot`
+      : `click ${String(click.click)} waited ${String(click.waitMs)} ms behind ${String(click.readAheadMs)} ms of read, `
+        + `${String(click.checkpointAheadMs)} ms of checkpoint and ${String(click.writerMs)} ms of writer ticks`);
   }
-  // The click sent during the restart waits at most for the replacement lane's measured boot plus 50 ms.
-  const restartClick = measured.find(click => click.afterRestart);
-  const restartBootMs = status.bootMs.at(-1);
-  assert.ok(restartClick !== undefined && restartBootMs !== undefined && status.bootMs.length === 2);
-  assert.ok(restartClick.waitMs <= restartBootMs + 50, `restart click waited ${String(restartClick.waitMs)} ms behind a ${String(restartBootMs)} ms boot`);
 });
 
 it("takes the writer's automatic checkpoints while the host runs and hands them back at close", async () => {
