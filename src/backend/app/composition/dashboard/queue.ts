@@ -1,3 +1,4 @@
+import type { DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
 import { aggregateMemberRetryAvailable, batchMemberRetryAvailable } from "../../../runs/queries/run-retry.js";
 import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
@@ -13,7 +14,9 @@ import { queryAssistantUsage } from "../../../assistant/usage-counts.js";
 
 export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline" | "assistantUsage"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
   workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
-  listNotifications?: Parameters<typeof createRunQueueProjection>[0]["authority"]["listNotifications"] }) {
+  listNotifications?: Parameters<typeof createRunQueueProjection>[0]["authority"]["listNotifications"];
+  /** Seam for the queue-day lane read. */
+  readLanes?: DashboardReadLanes }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
   const changeKey = database.trackAuthorityTables(["runs", "run_batches", "worker_pools"]);
   return createRunQueueProjection({

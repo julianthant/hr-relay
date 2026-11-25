@@ -12,9 +12,9 @@ export function registerQueueRoutes(app: DashboardApp, deps: QueueRouteDeps): vo
     return c.json(deps.startPlans.previewWarnings(await c.req.json()));
   });
   const dayResponse = createReadResponse();
-  app.get("/api/v1/dashboard", etag(), (c) => {
+  app.get("/api/v1/dashboard", etag(), async (c) => {
     const day = DayQuerySchema.parse(c.req.query("day"));
-    return dayResponse(deps.queue.day(day));
+    return dayResponse(await deps.queue.day(day, { tab: c.req.header("x-relay-tab"), signal: c.req.raw.signal }));
   });
 
   app.post("/api/v1/start-plans", async (c) => {

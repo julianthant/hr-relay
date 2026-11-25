@@ -125,7 +125,7 @@ import { FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema
 import { DiagnosticAttachmentStorageRecordSchema, type ArtifactOutboxStorageRecord, type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
 import { applyWriteTransition, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, ResolvedParkedWriteAbsenceInputSchema, ResolvedParkedWriteCommitInputSchema, WriteFenceInputSchema, WriteFenceRecordsSchema, WriteIntentParkRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRecheckParkRequestSchema, WriteRecheckRequestSchema, WriteRefenceInputSchema, type AtomicWriteCommitReport } from "./write-commit-contracts.js";
 import { type ChangeLogReader, changeLogHighWater, CHANGE_LOG_RETAINED_ENTRIES, readAuthorityChanges, validateAuthorityChanges, readSingletonImage, changeLogBaseline, validateAuthorityStore, admitChanges, CHANGE_LOG_PRUNE_INTERVAL_MS } from "./authority-change-admission.js";
-import { readIntPragma, AuthorityDatabaseOptionsSchema, existingDatabaseLocation, errorMessage, inspectionTableNames, readMetaRow, parseDiagnosticPageCount, readTextPragma, optimizeAuthorityPlanner, AUTHORITY_WAL_SIZE_LIMIT_BYTES, AuthorityMetaSchema, sqliteChanges, AuthoritySchemaInspectionSchema, CountRowSchema, configureWritableConnection, tableNames, type MetaRowSchema } from "./authority-connection.js";
+import { readIntPragma, AuthorityDatabaseOptionsSchema, type AuthorityDatabaseOpenModeSchema, existingDatabaseLocation, errorMessage, inspectionTableNames, readMetaRow, parseDiagnosticPageCount, readTextPragma, optimizeAuthorityPlanner, AUTHORITY_WAL_SIZE_LIMIT_BYTES, AuthorityMetaSchema, sqliteChanges, AuthoritySchemaInspectionSchema, CountRowSchema, configureWritableConnection, tableNames, type MetaRowSchema } from "./authority-connection.js";
 import { inspectStoredData, CredentialContextRequiredError, AuthoritySchemaVersionError, AuthorityFormatUnsupportedError, type StartupFailureClassification, isSqliteDamage, AuthorityWriterBusyError, AuthoritySnapshotChangedError } from "./authority-errors.js";
 import { assertNativeSchema, checkSqliteIntegrity, upgradeInspections, type VerifiedUpgradeImage, type NativeInspection, inspectNativeAuthority, QuickCheckRowSchema, assertPublishedAssistantNumbering, normalizedNativeSchema, expectedNativeSchema, nonProjectionFingerprint, runSearchDefinitions, startupImageDigest, authorityContentFingerprint, inspectStoppedTransaction, commitVerifiedUpgrade, inspectNormalAuthority, inspectOpenDatabase, checkInspectionPragmas, observeReadonlyStartupFile, sameStartupFile } from "./authority-inspection.js";
 import { type AuthorityRepositories, type AuthorityWriteCommitHooks, type AuthorityTerminalizationHooks, type AuthorityLifecycleHooks, type SlowOperationHook, type EarlierRunEvents, type PendingLogoutServices, type ImmutableInsertResult, DiagnosticPurgeDispositionSchema, type CanonicalRunClaimOutcome, type RunRepository, type StartPlanRepository, type DuoCeremonyLeaseRepository, type DuoCeremonyLeaseAcquireOutcome, type WorkerPoolRepository, type RunSessionRepository } from "./authority-repositories.js";
@@ -220,6 +220,21 @@ function checkStartupChanges(database: DatabaseSync, from: StartupPosition): "pr
   return "proved";
 }
 
+/** (cursor, through] is retained whole, runs forward, and names none of the selected tables; a reversed or pruned interval is unproved. */
+function changeLogIntervalClear(database: DatabaseSync, cursor: number, through: number, selected: string): boolean {
+  if (cursor === through) return true;
+  const first = z.strictObject({ seq: z.number().int().positive().nullable() }).parse(
+    database.prepare(`SELECT min(seq) AS seq FROM ${CHANGE_LOG_TABLE}`).get()).seq;
+  if (through <= cursor || (first ?? through + 1) > cursor + 1) return false;
+  // Every seq in (cursor, through] must still be present: an interior gap may have held a selected table's change.
+  const present = z.strictObject({ n: z.number().int().nonnegative() }).parse(
+    database.prepare(`SELECT count(*) AS n FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND seq <= ?`).get(cursor, through)).n;
+  return present === through - cursor
+    && database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name IN (SELECT value FROM json_each(?)) LIMIT 1`).get(cursor, selected) === undefined;
+}
+
+const SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES = 1000;
+
 export class AuthorityDatabase implements Disposable {
   static async withUpgradeInspections<T>(work: () => Promise<T>): Promise<T> {
     if (upgradeInspections.getStore()?.active) return work();
@@ -234,10 +249,12 @@ export class AuthorityDatabase implements Disposable {
   #clock: Clock;
   #path: string;
   #busyTimeoutMs: number;
+  #openMode: z.infer<typeof AuthorityDatabaseOpenModeSchema> = "read-write";
   #credentialCommandIds: (commandId: string) => boolean;
   #optimizeOnClose: boolean;
   #closed = false;
   #historyReader?: AuthorityDatabase;
+  #checkpointCustodians = 0;
   #historyOwner?: AuthorityDatabase;
   #historyCursorOffset = 0;
   readonly #dashboardReadSources = new Set<symbol>();
@@ -294,6 +311,7 @@ export class AuthorityDatabase implements Disposable {
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
+    this.#admission.assertAuthorityOpenMode(options.openMode);
     this.#admitMutation = purpose === "stopped-startup-recovery" ? () => this.#admission.assertStoppedStartupRecoveryDatabase(options.path)
       : purpose === "stopped-layout-target" ? () => this.#admission.assertFixedLayoutDatabase(options.path)
       : purpose === "stopped-layout-source" ? () => { throw new Error("fixed-layout-source-read-only-required"); }
@@ -343,6 +361,7 @@ export class AuthorityDatabase implements Disposable {
     this.#slowOperation = slowOperation;
     this.#path = options.path;
     this.#busyTimeoutMs = options.busyTimeoutMs;
+    this.#openMode = options.openMode;
     this.#database = new DatabaseSync(readOnlyNoMigrate || mayCreate ? options.path : existingDatabaseLocation(options.path), {
       readOnly: readOnlyNoMigrate,
       enableForeignKeyConstraints: true,
@@ -1515,6 +1534,76 @@ export class AuthorityDatabase implements Disposable {
     } catch (error) { reader.close(); throw error; }
   }
 
+  /**
+   * The read lane's counterpart of dashboardHistory(): the archive its host admitted, attached on a second read-only
+   * connection whose validation runs on this one. The archive file and its logical cursor offset must match the host's.
+   */
+  readLaneHistory(archive: Readonly<{ path: string; identity: Readonly<z.infer<typeof FileIdentitySchema>>; cursorOffset: number }> | undefined): AuthorityDatabase {
+    this.#assertOpen();
+    const owner = this.#admission;
+    owner.assertProfileRuntime();
+    if (this.#openMode !== "dashboard-read-worker-read-only-no-migrate" || this.#historyOwner !== undefined) throw new Error("read-lane-history-owner-required");
+    if (archive === undefined) return this;
+    if (this.#historyReader !== undefined) throw new Error("read-lane-history-already-attached");
+    if (archive.path !== historyArchivePath(owner.stateRoot)) throw new Error("read-lane-history-path-refused");
+    const admitArchive = () => {
+      const status = fileStatus(archive.path);
+      if (!status.isFile() || BigInt(status.nlink) !== 1n || privatePathRejects(archive.path, status, "group-write")
+        || !sameDirectory({ device: String(status.dev), inode: String(status.ino) }, archive.identity)) throw new Error("read-lane-history-source-changed");
+    };
+    admitArchive();
+    const reader = new AuthorityDatabase(owner, { path: this.#path, busyTimeoutMs: this.#busyTimeoutMs,
+      migrationOwner: "dashboard-read-lane-history", openMode: "dashboard-read-worker-read-only-no-migrate" }, this.#clock);
+    try {
+      // A lane never writes the archive: one that is stale or missing an index is refused, not upgraded.
+      reader.#historyCursorOffset = attachHistoryArchive(reader.#database, archive.path, owner.profileBinding, "validate");
+      admitArchive();
+      if (reader.#historyCursorOffset !== archive.cursorOffset) throw new Error("read-lane-history-cursor-mismatch");
+      reader.#historyOwner = this;
+      this.#historyReader = reader;
+      return reader;
+    } catch (error) { reader.close(); throw error; }
+  }
+
+  /**
+   * Inside a read snapshot: the change log's high water, and whether (since, high water] is proved to touch none of tables.
+   * The same interval test trackAuthorityTables runs.
+   */
+  readChangeInterval(since: number, tables: readonly AuthorityTableName[]): Readonly<{ through: number; clear: boolean }> {
+    this.#assertOpen();
+    if (this.#transactionMode !== "read") throw new Error("change-interval-read-snapshot-required");
+    const through = changeLogHighWater(this.#database);
+    return Object.freeze({ through, clear: changeLogIntervalClear(this.#database, since, through, JSON.stringify(z.array(AuthorityTableNameSchema).min(1).parse(tables))) });
+  }
+
+  /**
+   * A dashboard read host's checkpoint lane takes WAL checkpoints from this writer: its commits stop checkpointing
+   * automatically until the returned release restores SQLite's default.
+   */
+  holdCheckpointCustody(): () => void {
+    this.#assertOpen();
+    if (this.#checkpointCustodians++ === 0) this.#database.exec("PRAGMA wal_autocheckpoint=0");
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      if (--this.#checkpointCustodians === 0 && this.#database.isOpen) {
+        this.#database.exec(`PRAGMA wal_autocheckpoint=${String(SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES)}`);
+      }
+    };
+  }
+
+  /** The writer's automatic checkpoint interval in pages; 0 while a read host holds checkpoint custody. */
+  autoCheckpointPages(): number {
+    this.#assertOpen();
+    return z.strictObject({ wal_autocheckpoint: z.number().int() }).parse(this.#database.prepare("PRAGMA wal_autocheckpoint").get()).wal_autocheckpoint;
+  }
+
+  /** A read lane exits rather than read again from a connection a failed rollback left inside a transaction. */
+  hasOpenTransaction(): boolean {
+    return this.#database.isOpen && this.#database.isTransaction;
+  }
+
   timelineCursorOffset(): number {
     this.#assertOpen();
     return this.#historyCursorOffset;
@@ -1713,15 +1802,7 @@ export class AuthorityDatabase implements Disposable {
           if (uncertain) { cursor = through; return ++revision; }
         }
         if (cursor === through) return revision;
-        if (cursor !== undefined) {
-          const first = z.strictObject({ seq: z.number().int().positive().nullable() }).parse(
-            this.#database.prepare(`SELECT min(seq) AS seq FROM ${CHANGE_LOG_TABLE}`).get()).seq;
-          if (through < cursor || (first ?? through + 1) > cursor + 1
-            || this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE}
-              WHERE seq > ? AND table_name IN (SELECT value FROM json_each(?)) LIMIT 1`).get(cursor, selected) !== undefined) {
-            revision += 1;
-          }
-        }
+        if (cursor !== undefined && !changeLogIntervalClear(this.#database, cursor, through, selected)) revision += 1;
         cursor = through;
         return revision;
       });
@@ -3052,6 +3133,8 @@ export class AuthorityDatabase implements Disposable {
     this.#database.exec("PRAGMA foreign_keys = ON");
     this.#database.exec("PRAGMA query_only = ON");
     this.#database.exec(`PRAGMA busy_timeout = ${String(this.#busyTimeoutMs)}`);
+    // A read lane pages through TEMP tables and views. Its connection opened read-only, so main and any attachment still refuse writes.
+    if (this.#openMode === "dashboard-read-worker-read-only-no-migrate") this.#database.exec("PRAGMA query_only=OFF; PRAGMA trusted_schema=OFF");
   }
 
   #admitExistingSchema(): number {
