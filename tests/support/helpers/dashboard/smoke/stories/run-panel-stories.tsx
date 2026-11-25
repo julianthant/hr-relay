@@ -1,4 +1,5 @@
 /** Run panel stories: header, timeline, Logs, decision and failure cards, write states, captures, OCR review and the dry-run plan. */
+import type { Page } from "@playwright/test";
 import type { ReactNode } from "react";
 import type { z } from "zod";
 import { WriteStateSchema } from "../../../../../../src/models/trust/failure.js";
@@ -52,6 +53,7 @@ interface PanelProps {
   content?: ReactNode;
   trailingContent?: ReactNode;
   initialStepId?: string;
+  rerun?: { label: string; run: () => void };
 }
 
 /** The Logs column as the dashboard lays it out, beside an empty queue column. */
@@ -98,6 +100,19 @@ const TIMELINE = {
   completed: timelineStory("completed"), active: timelineStory("active"), waiting: timelineStory("waiting"), failed: timelineStory("failed"),
   pending: timelineStory("pending"), skipped: timelineStory("skipped"), cancelled: timelineStory("cancelled"),
 } satisfies Record<LogTimelineState, Story>;
+
+const headerRun = (title: string, play: (page: Page) => Promise<void>, ready: string): Story => ({
+  ...panel(title, { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("done", 40)} />, rerun: { label: "Rerun", run: noop } }), play, ready });
+const search = (text?: string) => async (page: Page): Promise<void> => {
+  await page.getByRole("button", { name: "Search logs" }).click();
+  if (text !== undefined) await page.getByRole("textbox", { name: "Search logs" }).fill(text);
+};
+const LOG_HEADER = {
+  default: panel("The run header: steps, search and the menu", { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("done", 40)} />, rerun: { label: "Rerun", run: noop } }),
+  "search-matches": headerRun("Search with matches", search("employment"), "text=/\\d+ of \\d+/"),
+  "search-none": headerRun("Search with no matches", search("badge"), "text=\"No matches\""),
+  "menu-open": headerRun("The ⋯ menu open", async page => { await page.getByRole("button", { name: "More actions" }).click(); }, "[role='menu']"),
+} satisfies Record<string, Story>;
 
 const PAUSE = {
   "pause-pending": panel("A run asked to pause at the next step", { steps: readingSteps, timeline: pauseTimeline(reading, "pause-pending") }),
@@ -227,6 +242,6 @@ const REVIEW = {
 } satisfies Record<ReviewCase, Story>;
 
 export const RUN_PANEL_STORIES = defineSurface("run-panel", {
-  header: HEADER, timeline: TIMELINE, pause: PAUSE, logs: LOGS, decision: DECISION, card: CARD, answered: ANSWERED,
+  header: HEADER, "log-header": LOG_HEADER, timeline: TIMELINE, pause: PAUSE, logs: LOGS, decision: DECISION, card: CARD, answered: ANSWERED,
   write: WRITE, failure: FAILURE, capture: CAPTURE, "capture-problem": CAPTURE_PROBLEM, entry: ENTRY, note: NOTE, "dry-run": DRY_RUN, review: REVIEW,
 });

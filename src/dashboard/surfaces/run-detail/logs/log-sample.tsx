@@ -1,7 +1,6 @@
 import type { DryRunPreviewStage } from "./dry-run-preview-model.js";
 import { useCallback, useMemo } from "react";
-import { ArrowLeft, ListChecks, RotateCcw, RotateCw } from "lucide-react";
-import { LogFooterButton } from "./log-action-button.js";
+import { ArrowLeft, RotateCcw } from "lucide-react";
 import { MemberRunControls } from "./log-member-controls.js";
 import type { DelegatedRecordRef } from "../../../../models/workflow/delegated-record.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
@@ -14,7 +13,7 @@ import type { LinkedRunWire } from "../../queue/queue-model.js";
 import type { LogDecisionHandler } from "./log-feed.js";
 import { isCancelOption } from "./log-decision-model.js";
 import type { ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
-import { rerunFooterAction, type LogSelection } from "./log-selection-model.js";
+import { rerunAction, type LogSelection } from "./log-selection-model.js";
 import { pauseTimeline } from "./log-timeline-model.js";
 import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
@@ -91,16 +90,9 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   }, [retry,onAction,selection.row.runId,selection.row.rowRevision]);
   const linkedRuns = useMemo(() => linkedRunEntries(selection.row), [selection.row]);
   const recordCount = resource.snapshot?.detail.ocrRecordCount;
-  const rerun = useMemo(() => {
-    const action = rerunFooterAction(selection, onAction);
-    return action === undefined ? undefined : <LogFooterButton label={action.label} icon={<RotateCw aria-hidden className="size-4" />} onClick={action.run} />;
-  }, [selection, onAction]);
-  const footerActions = useMemo(() => {
-    const records = reviewAvailable && recordCount !== undefined && onReview !== undefined;
-    const members = selection.row.parent !== null && selection.row.status === "running";
-    if (!records && rerun === undefined && !members) return undefined;
-    return <><MemberRunControls selection={selection} onAction={onAction} />{records && <LogFooterButton label={`Records ${recordCount}`} count={recordCount} pressed={Boolean(reviewOpen)} icon={<ListChecks aria-hidden className="size-4" />} onClick={onReview} />}{rerun}</>;
-  }, [reviewAvailable, recordCount, onReview, reviewOpen, rerun, selection, onAction]);
+  const rerun = useMemo(() => rerunAction(selection, onAction), [selection, onAction]);
+  const records = useMemo(() => reviewAvailable && recordCount !== undefined && onReview !== undefined ? { count: recordCount, open: onReview } : undefined, [reviewAvailable, recordCount, onReview]);
+  const headerActions = useMemo(() => <MemberRunControls selection={selection} onAction={onAction} />, [selection, onAction]);
   const status = useMemo(() => <RunStateChips row={selection.row} />, [selection.row]);
   const parentRun = selection.row.parent;
   const toolbar = useMemo(() => <>{parentRun !== null && onOpenLinked !== undefined && <Button size="sm" aria-label={`Back to ${parentRun.title}`} title={`Back to ${parentRun.title}`} className="max-w-48" onClick={() => onOpenLinked(parentRun)}><ArrowLeft aria-hidden className="size-4 shrink-0" /><span className="min-w-0 truncate">{parentRun.title}</span></Button>}{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Notice sticky tone="warning" title="Earlier review changes no longer apply" description="Review the new values." />}{resource.snapshot?.detail.childRetry !== undefined && <IconButton size="md" label={resource.snapshot.detail.childRetry.label}
@@ -113,7 +105,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     status={status} navigation={setupProblem !== undefined ? <div className="px-3 py-2"><Banner tone="warning" title={setupProblem} /></div>
       : resource.snapshot === undefined && resource.state === "loading" ? <LogTimelineSkeleton /> : isNeedsDuo(selection.row) ? <div className="px-3 py-2"><Banner tone="info" title="Approve the Duo sign-in"><span>Approve it on your phone to continue.</span></Banner></div> : undefined}
     onReview={reviewAvailable ? onReview : undefined}
-    toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} footerActions={footerActions}
+    toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} headerActions={headerActions} rerun={rerun} records={records}
     content={content}
     afterStep={afterStep} trailingContent={emptyPreview} />
     {reviewAvailable && <ReviewDialog open={Boolean(reviewOpen)} onOpenChange={open => { if (!open) onLogs?.(); }} subject={selection.workflowLabel}><RunReview selection={selection} focus={reviewFocus} /></ReviewDialog>}</>;

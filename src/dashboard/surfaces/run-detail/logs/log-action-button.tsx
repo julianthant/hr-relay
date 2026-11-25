@@ -9,8 +9,7 @@ export const LogActionButton = forwardRef<HTMLButtonElement, Omit<ComponentProps
   return compact ? <Tooltip side="bottom" content={label}>{button}</Tooltip> : button;
 });
 
-/** A 28px icon button for the Logs footer: the shared Tooltip names it, an optional count rides on the icon, `pressed` marks a toggle that is on. */
-export const LogFooterButton = forwardRef<HTMLButtonElement, Omit<ComponentProps<typeof IconButton>, "title"> & { count?: number; pressed?: boolean }>(function LogFooterButton({ label, icon, count, pressed, className, ...props }, ref) {
-  return <Tooltip side="top" content={label}><IconButton ref={ref} title="" label={label} aria-pressed={pressed} className={cn("relative", pressed && "bg-[var(--ds-surface-3)] text-[color:var(--ds-fg)]", className)}
-    icon={<>{icon}{count !== undefined && <span aria-hidden className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--ds-surface-3)] px-1 text-[10px] font-medium leading-none tabular-nums text-[color:var(--ds-fg)] ring-2 ring-[var(--ui-panel)]">{count}</span>}</>} {...props} /></Tooltip>;
+/** An icon button in the run header: the shared Tooltip names it. */
+export const LogHeaderButton = forwardRef<HTMLButtonElement, Omit<ComponentProps<typeof IconButton>, "title" | "size">>(function LogHeaderButton({ label, ...props }, ref) {
+  return <Tooltip side="bottom" content={label}><IconButton ref={ref} size="md" title="" label={label} {...props} /></Tooltip>;
 });

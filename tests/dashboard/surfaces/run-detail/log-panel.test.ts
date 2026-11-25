@@ -35,12 +35,28 @@ afterEach_m0(_afterEachFixture1);
     try {
       const hiddenHeadingSteps = [{ ...steps[0], header: false, entries: [{ kind: 'note' as const, id: 'before-match', time: '09:09:00', message: 'Identity read finished.' }, ...steps[0].entries] }];
       await act_m0(async () => root.render(createElement_m0(LogPanel_m0, { title: 'Jordan', steps: hiddenHeadingSteps, timeline: [], onDecision: decision })));
-      const search = host.querySelector<HTMLInputElement>('input[aria-label="Search logs"]'); assert_m0(search);
-      await act_m0(async () => {
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'no match');
-        search.dispatchEvent(new Event('input', { bubbles: true }));
+      const typeInto = async (input: HTMLInputElement, text: string) => act_m0(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, text);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
       });
-      assert_m0.match(host.textContent ?? '', /No matching actions/);
+      const press = async (input: HTMLInputElement, key: string, shiftKey = false) => act_m0(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true })); await new Promise(resolve => setTimeout(resolve, 10)); });
+      assert_m0.equal(host.querySelector('footer'), null, 'the log has no footer row');
+      const openSearch = host.querySelector<HTMLButtonElement>('button[aria-label="Search logs"]'); assert_m0(openSearch);
+      await act_m0(async () => openSearch.click());
+      const search = host.querySelector<HTMLInputElement>('input[aria-label="Search logs"]'); assert_m0(search);
+      assert_m0.equal(document.activeElement, search, 'opening search focuses the field');
+      await typeInto(search, 'identity');
+      assert_m0.match(host.querySelector('[role="search"]')?.textContent ?? '', /1 of 2/);
+      await press(search, 'Enter');
+      assert_m0.match(host.querySelector('[role="search"]')?.textContent ?? '', /2 of 2/);
+      await press(search, 'Enter', true);
+      assert_m0.match(host.querySelector('[role="search"]')?.textContent ?? '', /1 of 2/);
+      await typeInto(search, 'no match');
+      assert_m0.match(host.querySelector('[role="search"]')?.textContent ?? '', /No matches/);
+      assert_m0.equal(host.querySelectorAll('section[class*="opacity-45"]').length, 0, 'nothing dims when nothing matches');
+      await press(search, 'Escape');
+      assert_m0.equal(host.querySelector('input[aria-label="Search logs"]'), null, 'Escape closes the search');
+      assert_m0.equal(document.activeElement?.getAttribute('aria-label'), 'Search logs', 'focus returns to the search icon');
       const review = [...host.querySelectorAll('button')].find(button => button.textContent === 'Review'); assert_m0(review);
       await act_m0(async () => { review.click(); await new Promise(resolve => setTimeout(resolve, 40)); });
       assert_m0.equal(document.activeElement?.tagName, 'FORM');
