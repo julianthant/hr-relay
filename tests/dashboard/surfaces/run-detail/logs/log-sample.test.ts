@@ -189,7 +189,7 @@ describe('compact run headers', () => {
     assert.match(markup, /Review the new values/);
   });
 
-  it('opens Review records as a dialog over the Logs panel and closes back to Logs', () => {
+  it('opens Review records as a dialog over the Logs panel and closes back to Logs', async () => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
     useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Native OCR' }, availableSections: ['logs', 'review'], ocrRecordCount: 2 }, logs: {}, unavailableEvidence: [] } });
@@ -203,8 +203,8 @@ describe('compact run headers', () => {
     try {
       act(() => root.render(sample()));
       assert.equal(document.querySelector('[role="dialog"]') === null, true);
-      act(() => { menu()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
-      act(() => records()!.click()); assert.equal(onReview.mock.calls.length, 1);
+      await act(async () => { menu()!.click(); await new Promise(resolve => setTimeout(resolve, 0)); });
+      await act(async () => { records()!.click(); }); assert.equal(onReview.mock.calls.length, 1);
       act(() => root.render(sample(true)));
       const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
       assert.match(dialog.textContent ?? '', /Review records/);
