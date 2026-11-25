@@ -100,7 +100,8 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
         source: id => deps.source(id),
         get display() { usedDisplay = true; return deps.display; },
         standing: {
-          runState: id => { usedDisplay = true; return deps.standing.runState(id); },
+          runPark: id => { usedDisplay = true; return deps.standing.runPark(id); },
+          noticePark: id => deps.standing.noticePark(id),
           storageConcern: id => deps.standing.storageConcern(id),
           concernActive: concern => deps.standing.concernActive(concern),
           commandSettled: id => { usedDisplay = true; return deps.standing.commandSettled(id); },

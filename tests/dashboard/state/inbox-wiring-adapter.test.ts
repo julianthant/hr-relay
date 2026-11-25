@@ -51,7 +51,7 @@ function publication(notification: NotificationWire, n = 1, listed: Notification
 }
 const ERROR = WireErrorSchema.parse({ state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true });
 async function harness(enabled = true, initiallyFailed = false, statusDelivered = true) {
-  let rows: readonly NotificationWire[] = [row()], lose = false, refuseTarget = false, refuseClear = false;
+  let rows: readonly NotificationWire[] = [row()], lose = false, refuseTarget = false, refuseClear = false, repeatClear = false;
   const feedbacks: string[] = [];
   let postWait: Promise<void> | undefined;
   const requests: string[] = [];
@@ -80,7 +80,9 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
         if (refuseClear || cleared.length !== target.members.length || cleared.some(item => item.kind !== "backfill-gap" && item.standing === true)) {
           return Response.json({ state: "rejected", commandId: command.commandId, code: "policy-refused", message: "This notice still waits on you." });
         }
-        rows = rows.filter(item => !cleared.includes(item));
+        // A repeat committed between the clear and its readback folds each row back in as unread news.
+        rows = rows.flatMap(item => !cleared.includes(item) ? [item] : repeatClear && item.kind !== "backfill-gap"
+          ? [NotificationWireSchema.parse({ ...item, revision: item.revision + 2, readState: "unread", state: "unread" })] : []);
         return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: cleared.map(item => ({ family: "notification", notificationId: item.notificationId })) });
       }
       const affected = rows.filter(item => item.kind === "notification" && ("members" in target ? target.members.some(member => member.notificationId === item.notificationId) && item.readState === "unread" : item.notificationId === target.notificationId));
@@ -120,7 +122,7 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
     setRows: (next: readonly NotificationWire[]) => { rows = next; dayServed = next; },
     /** A day snapshot the stream delivers without changing what the server serves, such as one frozen before a command. */
     serveDay: (next: readonly NotificationWire[]) => { dayServed = next; }, lose: () => { lose = true; }, refuseTarget: () => { refuseTarget = true; },
-    refuseClear: () => { refuseClear = true; }, feedbacks,
+    refuseClear: () => { refuseClear = true; }, repeatClears: () => { repeatClear = true; }, feedbacks,
     holdCommands: () => { let release = () => {}; postWait = new Promise<void>(resolve => { release = resolve; }); return release; } };
 }
 it("defines all eight source policies with exact target kinds and honest gap/missing-source notice", () => {
@@ -602,3 +604,31 @@ it("Clear all names only the rows it showed, so a notice that arrives meanwhile 
   assert.deepEqual(shownIds(h.value), [arrived.notificationId]);
 });
 
+
+it("Unread Clear all judges an item by the rows it shows, not by a cleared row a stale day still lists", async () => {
+  const h = await harness();
+  const unread = row("run-failed", { notificationId: "00000000-0000-4000-8000-000000000551", occurredAt: "2026-08-03T16:58:00.000Z", summary: "CRM sign-in failed." });
+  const read = row("run-failed", { notificationId: "00000000-0000-4000-8000-000000000552", occurredAt: "2026-08-03T16:59:00.000Z", summary: "CRM sign-in failed.", readState: "read", state: "read" });
+  h.setRows([unread]); await h.render();
+  await act(async () => { assert.equal(await h.value.clear(unread.notificationId), true); });
+  h.setRows([read]); h.serveDay([unread, read]); await h.render();
+  assert.deepEqual(shownIds(h.value), [read.notificationId]);
+  await act(async () => { await h.value.clearAll("unread"); });
+  assert.equal(h.commands.length, 1, "the read repeat is not unread, so nothing more is sent");
+  await act(async () => { assert.equal(await h.value.clear(read.notificationId), true); });
+  assert.deepEqual(h.commands.map(command => "members" in command.target ? command.target.members.map(member => member.notificationId) : []),
+    [[unread.notificationId], [read.notificationId]], "clearing the item names only the row it shows");
+});
+
+it("confirms a clear whose row a repeat brought back, and a later Clear all is not blocked", async () => {
+  const h = await harness();
+  const failed = row("run-failed", { notificationId: "00000000-0000-4000-8000-000000000561" });
+  h.setRows([failed]); await h.render();
+  h.repeatClears();
+  await act(async () => { assert.equal(await h.value.clear(failed.notificationId), true); });
+  assert.deepEqual(h.feedbacks, []);
+  h.setRows([NotificationWireSchema.parse({ ...failed, revision: 3 })]); await h.render();
+  assert.deepEqual(shownIds(h.value), [failed.notificationId], "the repeat lists again as news");
+  await act(async () => { await h.value.clearAll("all"); });
+  assert.deepEqual(h.commands.map(command => "members" in command.target ? command.target.members.map(member => Number(member.expectedVersion)) : []), [[1], [3]]);
+});

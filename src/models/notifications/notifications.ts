@@ -161,20 +161,26 @@ export type NotificationCollectionTarget = z.infer<typeof NotificationCollection
 export const NotificationClearTargetSchema = NotificationCollectionTargetSchema.refine(
   target => target.members.length > 0 && target.matchingCount === target.members.length, "notification-clear-members-invalid");
 
-/** What a row's standing reads: the linked run's lifecycle state, and for storage the concern its latest publication names and whether that concern is still active. */
+/** The gate or parked write a run holds or a notice names. */
+export type NotificationPark = Readonly<{ trigger: "gate-waiting" | "write-parked"; id: string }>;
+/** What a row's standing reads: the gate or write the linked run holds and the one its latest publication names, and for storage the concern that publication names and whether that concern is still active. */
 export type NotificationStandingSources = Readonly<{
-  runState(runId: string): string | undefined;
+  runPark(runId: string): NotificationPark | undefined;
+  noticePark(notificationId: string): NotificationPark | undefined;
   storageConcern(notificationId: string): string | undefined;
   concernActive(concern: string): boolean | undefined;
   /** Whether the command has its result; undefined when the command is not stored. */
   commandSettled(commandId: string): boolean | undefined;
 }>;
-/** Still waiting on the operator: an open gate or parked write the run still holds, a recovery command still unsettled, or a storage problem still active.
- * A storage row whose concern or health cannot be read stands, since nothing proves it handled. */
+/** Still waiting on the operator: the named gate or parked write the run still holds, a recovery command still unsettled, or a storage problem still active.
+ * A row whose publication cannot be read stands while its run holds any park of its kind, and a storage row stands when its concern or health cannot be read, since nothing proves it handled. */
 export function notificationStanding(row: NotificationRecord, sources: NotificationStandingSources): boolean {
   const link = row.links[0];
   if (row.trigger === "gate-waiting" || row.trigger === "write-parked") {
-    return link !== undefined && "runId" in link && sources.runState(link.runId) === (row.trigger === "gate-waiting" ? "parked-gate" : "parked-write");
+    const held = link !== undefined && "runId" in link ? sources.runPark(link.runId) : undefined;
+    if (held === undefined || held.trigger !== row.trigger) return false;
+    const named = sources.noticePark(row.notificationId);
+    return named === undefined || named.id === held.id;
   }
   if (row.trigger === "command") return link?.kind === "recovery" && sources.commandSettled(link.commandId) === false;
   if (row.trigger !== "storage") return false;

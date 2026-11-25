@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createNotificationInboxTestWorld } from "../../../support/helpers/backend/notification-inbox-world.js";
-import { LATER } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { HASH_C, LATER, NOW, UUID_2 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { projectNotificationTrigger } from "../../../../src/rules/notifications/notification-triggers.js";
 import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
 const profileFixtures = createProfileFixtureSet();
@@ -80,6 +83,38 @@ describe("clearing notifications", () => {
     database.authority.commandAudits.insert({ auditId: randomUUID(), request: pending, completedAt: LATER, versionChanges: [], affectedDependencyIds: [],
       result: { state: "rejected", commandId: pending.commandId, code: "target-not-found", message: "gone" } });
     assert.equal(kernel.execute(one(notice)).state, "applied");
+    assert.deepEqual(listed(database), []);
+  });
+
+  it.each([
+    { trigger: "gate-waiting",
+      event: { kind: "gate-opened", runId: UUID_2, workflowId: "person-lookup", gateId: "approval" },
+      same: { state: "parked-gate", gateId: "approval", parkedAt: NOW, resumeAt: "approval" },
+      other: { state: "parked-gate", gateId: "review", parkedAt: LATER, resumeAt: "review" } },
+    { trigger: "write-parked",
+      event: { kind: "write-parked", runId: UUID_2, workflowId: "person-lookup", writeIntentId: "33333333-3333-4333-8333-333333333333" },
+      same: { state: "parked-write", writeIntentId: "33333333-3333-4333-8333-333333333333", intentGeneration: 1, parkedAt: NOW, code: "unknown", message: "Synthetic unknown write" },
+      other: { state: "parked-write", writeIntentId: "44444444-4444-4444-8444-444444444444", intentGeneration: 1, parkedAt: LATER, code: "unknown", message: "Synthetic unknown write" } },
+  ])("refuses a $trigger notice while the run holds what it names, and clears it once handled or held elsewhere", async ({ event, same, other }) => {
+    let lifecycle: unknown = same;
+    const { database, kernel } = await harness(repositories => ({ ...repositories, runs: { ...repositories.runs,
+      get: () => RunRecordSchema.parse({ ...personLookupQueuedRun({ runId: UUID_2 }), lifecycle }) } }));
+    const projection = projectNotificationTrigger(event);
+    const id = randomUUID();
+    database.authority.notifications.create(record({ ...projection, notificationId: id }));
+    database.withAuthorityTransaction(repositories => repositories.notificationPublications.create({ sourceId: HASH_C, actorId: ACTOR,
+      notificationId: id, event, occurredAt: NOW, createdAt: NOW, adopted: false }));
+    const refused = kernel.execute(one(id));
+    assert.equal(refused.state, "rejected");
+    if (refused.state === "rejected") assert.equal(refused.code, "policy-refused");
+    lifecycle = other;
+    assert.equal(kernel.execute(one(id)).state, "applied", "the run holds another one; this one is handled");
+    const folded = database.withAuthorityTransaction(repositories => repositories.notifications.fold({ actorId: ACTOR, dedupeFingerprint: projection.dedupeFingerprint,
+      seenAt: LATER, title: projection.title, summary: projection.summary })).notification;
+    lifecycle = same;
+    assert.equal(kernel.execute(one(id, folded.version)).state, "rejected");
+    lifecycle = { state: "queued" };
+    assert.equal(kernel.execute(one(id, folded.version)).state, "applied", "handled");
     assert.deepEqual(listed(database), []);
   });
 

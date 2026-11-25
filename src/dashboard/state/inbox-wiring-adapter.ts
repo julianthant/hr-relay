@@ -133,10 +133,12 @@ const clearedRow = (row: NotificationWire, cleared: ReadonlyMap<string, number>)
   const at = cleared.get(row.notificationId);
   return at !== undefined && row.kind !== "backfill-gap" && row.revision <= at;
 };
+/** The rows the panel shows: the listed rows the person has not cleared. */
+const shownRows = (rows: readonly NotificationWire[], cleared: ReadonlyMap<string, number> = new Map()) => rows.filter(row => !clearedRow(row, cleared));
 
 export function inboxProjection(rows: readonly NotificationWire[], nowIso: string, gone: ReadonlySet<string> = new Set(), cleared: ReadonlyMap<string, number> = new Map()): { state: NotificationsState; notice: string; needsYou: number } {
   const notice = rows.some(row => row.kind === "backfill-gap") ? inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") : "";
-  const items = foldRows(rows.filter(row => !clearedRow(row, cleared))).map((group): NotificationItem => {
+  const items = foldRows(shownRows(rows, cleared)).map((group): NotificationItem => {
     const shown = notificationItem(group[0], nowIso);
     // A repeating notice says the failure repeats; it is not one more failure.
     const counted = group.filter(row => row === group[0] || !repeatingNotice(row)).reduce((sum, row) => sum + (row.kind === "notification" ? row.count : 1), 0);
@@ -296,7 +298,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     if (row.readOnlyHistory === true) return false;
     const owner = current.current.binding;
     // Marking an item read marks every unread row it stands for.
-    const group = action === "read" ? foldRows(rowsRef.current ?? []).find(members => members.includes(row)) ?? [] : [];
+    const group = action === "read" ? foldRows(shownRows(rowsRef.current ?? [], clearedRef.current)).find(members => members.includes(row)) ?? [] : [];
     const repeats = group.flatMap(other => other.kind === "notification" && other !== row && other.readState !== "read" ? [{ notificationId: other.notificationId, revision: other.revision }] : []);
     const members = [...(row.group?.members ?? [{ notificationId: id, revision: row.revision }]), ...repeats];
     for (const member of members) {
@@ -351,7 +353,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       const row = listed.find(row => row.notificationId === id);
       if (row === undefined || row.kind === "backfill-gap" || row.actorId !== request.scope.actorId) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
       // Clearing an item clears every row it stands for: its repeats and a storage group's members.
-      const group = foldRows(listed).find(members => members.includes(row)) ?? [row];
+      const group = foldRows(shownRows(listed, clearedRef.current)).find(members => members.includes(row)) ?? [row];
       if (!group.every(clearable)) return false;
       const members = group.flatMap(durableRows);
       if (heldAttempt(new Set(members.map(([memberId]) => memberId))) !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
@@ -361,7 +363,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       if (!enabled || current.current.request !== request || !current.current.usable) return;
       if (heldAttempt() !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return; }
       // Whole displayed items only: a standing item stays whole, and Unread clears every row of an item with any unread row.
-      const groups = foldRows(rowsRef.current ?? []).filter(group => group.every(clearable)
+      const groups = foldRows(shownRows(rowsRef.current ?? [], clearedRef.current)).filter(group => group.every(clearable)
         && (show === "all" || group.some(row => row.readState === "unread")));
       const entries = groups.flatMap(group => group.flatMap(durableRows)).filter(([id, revision]) => (clearedRef.current?.get(id) ?? -1) < revision);
       if (entries.length > 0) await sendClear(entries);

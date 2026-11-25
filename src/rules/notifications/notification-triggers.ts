@@ -16,7 +16,8 @@ import {
   WriteIntentIdSchema,
 } from "../identity/ids.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
-import { NotificationRecordSchema, NotificationTriggerSchema, type NotificationStandingSources } from "../../models/notifications/notifications.js";
+import { NotificationRecordSchema, NotificationTriggerSchema, type NotificationPark, type NotificationStandingSources } from "../../models/notifications/notifications.js";
+import type { RunLifecycle } from "../../models/run/record.js";
 import { sha256Hex } from "../validation/sha256.js";
 
 /** The enumerated concerns — storage degradation, stalled lease/outbox, failed backup — and a concern that is not on this list is not a notification. */
@@ -274,15 +275,29 @@ export function notificationDeliverability(recordInput: unknown, nowInput: unkno
   return NotificationDeliverabilitySchema.parse({ state: "deliverable" });
 }
 
-/** Standing reads from authority: the linked run's lifecycle, the storage concern of the row's latest publication and that concern's health. */
+/** The gate or parked write this lifecycle holds. */
+export function lifecyclePark(lifecycle: RunLifecycle): NotificationPark | undefined {
+  return lifecycle.state === "parked-gate" ? { trigger: "gate-waiting", id: lifecycle.gateId }
+    : lifecycle.state === "parked-write" ? { trigger: "write-parked", id: lifecycle.writeIntentId } : undefined;
+}
+
+/** The gate or parked write a notice's latest publication names. */
+export function publicationPark(source: { event: unknown } | undefined): NotificationPark | undefined {
+  const event = source === undefined ? undefined : NotificationTriggerEventSchema.parse(source.event);
+  return event?.kind === "gate-opened" ? { trigger: "gate-waiting", id: event.gateId }
+    : event?.kind === "write-parked" ? { trigger: "write-parked", id: event.writeIntentId } : undefined;
+}
+
+/** Standing reads from authority: the linked run's lifecycle, the gate, write or storage concern of the row's latest publication and that concern's health. */
 export function notificationStandingSources(repositories: {
-  runs: { get(runId: string): { lifecycle: { state: string } } | undefined };
+  runs: { get(runId: string): { lifecycle: RunLifecycle } | undefined };
   notificationPublications: { latest(notificationId: string): { event: unknown } | undefined };
   notificationHealth: { get(concern: string): { active: boolean } | undefined };
   commands: { readForNotice(commandId: string): { result?: unknown } | undefined };
 }): NotificationStandingSources {
   return {
-    runState: runId => repositories.runs.get(runId)?.lifecycle.state,
+    runPark: runId => { const run = repositories.runs.get(runId); return run === undefined ? undefined : lifecyclePark(run.lifecycle); },
+    noticePark: notificationId => publicationPark(repositories.notificationPublications.latest(notificationId)),
     storageConcern: notificationId => {
       const source = repositories.notificationPublications.latest(notificationId);
       const event = source === undefined ? undefined : NotificationTriggerEventSchema.parse(source.event);

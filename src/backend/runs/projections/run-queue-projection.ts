@@ -9,7 +9,7 @@ import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { notificationListProjection, type ServedNotificationRecord } from "./notification-list.js";
-import { NotificationTriggerEventSchema } from "../../../rules/notifications/notification-triggers.js";
+import { lifecyclePark, NotificationTriggerEventSchema, publicationPark } from "../../../rules/notifications/notification-triggers.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
@@ -1804,7 +1804,8 @@ export class RunQueueProjection {
       },
       source: id => this.#deps.authority.latestNotificationSource?.(id),
       standing: {
-        runState: id => { const read = readSharedRun(id); return read.state === "present" ? read.run.lifecycle.state : undefined; },
+        runPark: id => { const read = readSharedRun(id); return read.state === "present" ? lifecyclePark(read.run.lifecycle) : undefined; },
+        noticePark: id => publicationPark(this.#deps.authority.latestNotificationSource?.(id)),
         storageConcern: id => {
           const event = this.#deps.authority.latestNotificationSource?.(id)?.event;
           const parsed = event === undefined ? undefined : NotificationTriggerEventSchema.parse(event);
