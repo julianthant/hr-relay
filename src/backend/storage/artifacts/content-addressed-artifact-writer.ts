@@ -1,6 +1,7 @@
 import { fileModified, fileChanged, asyncFileStatus, descriptorStatus, fileStatus, asyncDescriptorStatus, privateFileNumber } from "../file-identity.js";
 import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { systemClock } from "../../../rules/time/clock.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { createHash, randomUUID } from "node:crypto";
 import { constants, openSync, closeSync, fstatSync, readSync, unlinkSync, fsyncSync, linkSync, readdirSync } from "node:fs";
@@ -168,7 +169,7 @@ function inspectDeletionFile(admission: RuntimeAdmission, input: ArtifactRef) {
       if (!sameDeletionProofIdentity(identity, deletionProofIdentity(handle))) throw new Error("artifact-deletion-custody-changed");
       proof = { identity, ...proved };
       // Coarse filesystem clocks can stamp a same-size rewrite with the old times, so only settled files are reused.
-      if (BigInt(Date.now()) * 1_000_000n - identity.changed > DELETION_PROOF_SETTLED_NS) deletionProofs.set(path, proof);
+      if (BigInt(systemClock.nowMs()) * 1_000_000n - identity.changed > DELETION_PROOF_SETTLED_NS) deletionProofs.set(path, proof);
     }
     const { stored, storedSha256, storedBytes } = proof;
     if (stored.id !== ref.id || stored.bytes !== ref.bytes || stored.mediaType !== ref.mediaType) throw new Error("artifact-deletion-reference-mismatch");

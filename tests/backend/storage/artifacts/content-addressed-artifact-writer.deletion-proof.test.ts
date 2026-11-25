@@ -9,7 +9,7 @@ import { createContentAddressedArtifactWriter, inspectArtifactDeletionFile, remo
 const reads = vi.hoisted(() => ({ count: 0 }));
 vi.mock("node:fs", async () => {
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
-  return { ...actual, readSync: (...args: Parameters<typeof actual.readSync>) => { reads.count++; return Reflect.apply(actual.readSync, actual, args) as number; } };
+  return { ...actual, readSync: (...args: Parameters<typeof actual.readSync>) => { reads.count++; return Reflect.apply<typeof actual, Parameters<typeof actual.readSync>, number>(actual.readSync, actual, args); } };
 });
 
 afterEach(() => { vi.useRealTimers(); });
