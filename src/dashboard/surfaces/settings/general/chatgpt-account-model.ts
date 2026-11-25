@@ -16,6 +16,8 @@ export type ChatGptAccountSnapshot =
 
 export interface ChatGptAccountPort {
   readonly getResource?: () => ChatGptAccountResource;
+  /** True from the start of an account read until its guarded check settles; subscribers are told of both. */
+  readonly getChecking?: () => boolean;
   readonly refresh?: () => Promise<void>;
   readonly mode: "preview" | "live";
   readonly getSnapshot: () => ChatGptAccountSnapshot;
@@ -76,7 +78,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
   let snapshot: ChatGptAccountSnapshot = { state: "loading" };
   let resource: ChatGptAccountResource = { state: "loading" };
   let epoch = 0, disposed = false, busy = false, loaded = false;
-  let cancelling: number | undefined;
+  let cancelling: number | undefined, checking: number | undefined;
   let ownedPopup: ChatGptAuthorizationWindow | undefined;
   let refreshing: Promise<void> | undefined;
   let completionController: AbortController | undefined;
@@ -139,7 +141,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     notify();
   };
   const acceptChecked = (account: ChatGptAccountState, { failureCode }: ChatGptAccountStatus["connection"]) => {
-    if (account.state === "connected" && account.planUsage === "enabled" && failureCode !== null) problem("failed", failureCode, account);
+    if (failureCode !== null && (account.state === "expired" || account.state === "connected" && account.planUsage === "enabled")) problem("failed", failureCode, account);
     else accept(account);
   };
   const reconcileProblem = async (request: number, code: ErrorCatalogCode = "CHATGPT_AUTH_UNAVAILABLE", state: "uncertain" | "refused" = "uncertain") => {
@@ -203,18 +205,19 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     completionController?.abort();
     const controller = new AbortController();
     completionController = controller;
-    busy = true; notify();
+    busy = true; checking = request; notify();
     try {
       const { account, connection } = await checkedStatus(request, controller.signal);
       if (!current(request)) return;
       loaded = true;
       if (account.state === "signing-in") {
+        checking = undefined;
         const authorizationUrl = account.authorizationUrl;
         signingIn({ attemptId: account.attemptId, expiresAt: account.expiresAt, ...(authorizationUrl === undefined ? {} : { authorizationUrl }) }, request);
         await complete(account.attemptId, account.expiresAt, request);
       } else acceptChecked(account, connection);
     } catch { if (current(request)) problem("failed", "CHATGPT_AUTH_UNAVAILABLE"); }
-    finally { if (current(request)) { busy = false; notify(); } }
+    finally { if (current(request)) { busy = false; checking = undefined; notify(); } }
   }
   function refresh(): Promise<void> {
     if (refreshing !== undefined) return refreshing;
@@ -224,6 +227,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
   }
   return {
     mode: "live", getSnapshot: () => snapshot, getResource: (): ChatGptAccountResource => resource.state === "loaded" && (busy || refreshing !== undefined) ? { state: "loading" } : resource,
+    getChecking: () => checking === epoch,
     subscribe: listener => {
       listeners.add(listener);
       if (!loaded && !busy && listeners.size === 1) { loaded = true; void refresh(); }
