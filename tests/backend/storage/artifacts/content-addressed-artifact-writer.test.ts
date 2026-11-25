@@ -108,7 +108,13 @@ it.skipIf(process.platform !== "linux")("refuses an adjacent high-ID diagnostic 
   } finally { restore(); await f.close(); }
 });
 
-it("proves a deletion file from one streamed hash without parsing its payload and keeps every reference check", async () => {
+function replacePayloadText(stored: Buffer, offset: number, text: string): Buffer {
+  const copy = Buffer.from(stored);
+  copy.write(text, stored.indexOf(",\"payloadBase64\":\"") + 18 + offset, "latin1");
+  return copy;
+}
+
+it("proves a deletion file from one streamed hash without parsing its payload and keeps every Base64, digest and reference check", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "artifact-deletion-proof-")));
   const admission = RuntimeAdmission.syntheticRoots(join(root, "state"), join(root, "artifacts"));
   try {
@@ -128,7 +134,10 @@ it("proves a deletion file from one streamed hash without parsing its payload an
     for (const [corrupt, error] of [[Buffer.concat([stored.subarray(0, stored.byteLength - 6), Buffer.from("\"}")]), /byte length does not match/u],
       [Buffer.concat([stored.subarray(0, stored.byteLength - 2), Buffer.from("\"")]), /stored-shape-invalid/u],
       [Buffer.from("{\"ref\":{}}"), /stored-shape-invalid/u],
-      [Buffer.concat([header, Buffer.from(",\"payloadBase64\":\"\"}")]), /byte length does not match/u]] as const) {
+      [Buffer.concat([header, Buffer.from(",\"payloadBase64\":\"\"}")]), /byte length does not match/u],
+      [replacePayloadText(stored, 1_000_000, "!"), /invalid base64 payload/u],
+      [replacePayloadText(stored, 1_000_000, "C"), /content digest does not match/u],
+      [replacePayloadText(stored, stored.byteLength - stored.indexOf(",\"payloadBase64\":\"") - 18 - 5, "x"), /invalid base64 payload/u]] as const) {
       writeFileSync(path, corrupt);
       assert.throws(() => inspectArtifactDeletionFile(admission, ref), error);
     }
