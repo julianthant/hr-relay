@@ -71,7 +71,7 @@ it("Enter advances and starts, Shift+Enter keeps its newline, buttons keep their
   assert.deepEqual(revealed, [WORKFLOW_ID]);
 });
 
-describe("a settlement that arrives after the request moved is DROPPED", () => {
+describe("a settlement and the request it answers", () => {
   afterEach(cleanup);
 
   it("does not land a plan for text the operator has already edited away", async () => {
@@ -105,7 +105,7 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     assert.equal(dialog.stage(), "Input");
   });
 
-  it("does not land a result for a plan the operator has already edited away", async () => {
+  it("offers no way back to edit a plan whose command is out, and lands its reply", async () => {
 
     let release: ((result: CommandResult) => void) | undefined;
     const dialog = await openDialog(stubClient({
@@ -121,22 +121,73 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     const settleCommand = release;
     assert.ok(settleCommand !== undefined, "the dialog never called executeCommand");
 
+    assert.equal(dialog.disabled("Back"), true);
     await dialog.press("Back");
-    await dialog.type("10873698; Battistessa, Johnnie");
+    assert.equal(dialog.stage(), "Start");
 
     await act(async () => {
       settleCommand(APPLIED);
       await Promise.resolve();
     });
-    await settle();
+    for (let wait = 0; wait < 4; wait += 1) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
-    assert.ok(!dialog.text().includes("Start applied"), "a superseded result banner landed");
-    assert.equal(dialog.stage(), "Input");
+    assert.deepEqual(closed, [false], "the applied reply closed the dialog");
+  });
+});
+
+describe("a plan with a refused entry", () => {
+  afterEach(cleanup);
+
+  it("starts by neither the button nor Enter until it is fixed", async () => {
+    const commands: unknown[] = [];
+    const dialog = await openDialog(stubClient({
+      submitStartPlan: async () => ({ ...planResponse("5a000000-0000-4000-8000-000000000001"), priority: "bulk", refused: [{ entry: 2, code: "input-invalid", message: "Bad row." }] }),
+      executeCommand: async command => { commands.push(command); return APPLIED; },
+    }));
+    await dialog.type(`${TYPED}\n10873699`);
+    await dialog.press("Start run");
+    for (let wait = 0; wait < 6; wait += 1) await settle();
+    assert.ok(planIsDrawn(), "the plan never rendered");
+    assert.equal(dialog.disabled("Start run"), true);
+    assert.equal(await dialog.enter({ on: document.body }), false, "Enter does what the button does: nothing");
+    for (let wait = 0; wait < 6; wait += 1) await settle();
+    assert.deepEqual(commands, []);
+    assert.ok(!dialog.text().includes("Enter to start"));
   });
 });
 
 describe("a plan outlives nothing that shaped it, in the dialog", () => {
   afterEach(cleanup);
+
+  it("drops the plan for every choice and switch on Start", async () => {
+    const workflow = WORKFLOWS.find(entry => entry.workflowId === WORKFLOW_ID);
+    assert.ok(workflow?.inputRun.state === "present");
+    const dryRuns = { ...workflow, inputRun: { ...workflow.inputRun, surface: { ...workflow.inputRun.surface, supportsDryRun: true } } };
+    const offered = () => [...document.querySelectorAll<HTMLInputElement>('.launch-content :is(input[type="radio"], [role="switch"], [role="checkbox"])')]
+      .filter(node => !node.matches(":disabled") && !(node.type === "radio" && node.checked));
+    const planned = async () => {
+      const dialog = await openDialog(stubClient({
+        submitStartPlan: async () => ({ ...planResponse("5a000000-0000-4000-8000-000000000001"), planned: [], refused: [{ entry: 1, code: "input-invalid", message: "Bad row." }] }),
+      }), { workflows: [dryRuns], panelWorkflowId: WORKFLOW_ID });
+      await dialog.type(TYPED);
+      await dialog.press("Continue");
+      await dialog.press("Customize steps");
+      for (let wait = 0; wait < 6; wait += 1) await settle();
+      await dialog.press("Start live run");
+      for (let wait = 0; wait < 6; wait += 1) await settle();
+      assert.ok(planIsDrawn(), "the plan never rendered");
+      return offered();
+    };
+    const count = (await planned()).length;
+    assert.ok(count >= 4, `Customize steps, Dry run, Priority, Browser mode and the steps: ${String(count)}`);
+    for (let index = 0; index < count; index += 1) {
+      await cleanup();
+      const node = (await planned())[index];
+      await act(async () => node.click());
+      await settle();
+      assert.ok(!planIsDrawn(), `the plan survived ${node.getAttribute("aria-label") ?? node.closest("label")?.textContent ?? node.outerHTML}`);
+    }
+  });
 
   it("drops the plan when a run control moves under it", async () => {
 

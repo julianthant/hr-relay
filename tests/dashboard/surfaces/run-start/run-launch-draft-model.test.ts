@@ -4,9 +4,10 @@ import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-reg
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import {
   changeDryRun, changeFact, changeText, changeTypedValue, changeWorkflow, clearWorkbookRows, copyOmittedValue,
-  enterCustomization, freshLaunchDraft, leaveCustomization, pickReference, pickReferenceVersion, pickWorksheet, removeReference,
-  restoreRerunDraft, selectWorkbookRows, selectedStepKeys, setLaunchField, toggleManual, toggleRow, typedDraftOf, type LaunchDraft,
+  enterCustomization, freshLaunchDraft, launchRequestFingerprint, leaveCustomization, namedSpreadsheets, pickReference, pickReferenceVersion, pickWorksheet, removeReference,
+  restoreRerunDraft, selectWorkbookRows, selectedStepKeys, setLaunchField, toggleManual, toggleRow, typedDraftOf, type LaunchDraft, type LaunchRequestInputs,
 } from "../../../../src/dashboard/surfaces/run-start/run-launch-draft-model.js";
+import { initialRunDialogState, visibleRunDialog, type RunDialogState } from "../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import { startRowsOf, type StepRow } from "../../../../src/dashboard/surfaces/run-start/run-steps-model.js";
 import { RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
@@ -58,6 +59,51 @@ const used = (draft: LaunchDraft): LaunchDraft => ({ ...draft, text: "x", source
   referenceSelections: { ref: { libraryId: "l", versionId: "v", sheetId: "s" } }, referenceDrafts: { ref: { libraryId: "l", versionId: "v" } },
   selectedWorkbookRows: { source: "s", choices: [] }, launchFields: { fileToOnBase: "yes" },
   valueDrafts: { 0: { text: "t", copied: false } }, copiedOmissions: { 0: true } });
+
+describe("the launch request fingerprint", () => {
+  const REST: LaunchRequestInputs = { draft: freshLaunchDraft(plain), rowIdentity: "row", customizeSteps: false, typedValues: {}, rerunSource: undefined,
+    pdf: { draft: null, picks: {} }, workbookRows: { state: "ready", fresh: true }, library: { loading: false, refreshing: false, error: "", compatibility: undefined },
+    spreadsheets: [], versionSources: { state: "ready", sources: [] }, checks: { pending: false, selections: [] }, request: "request" };
+  const sheet = { libraryId: "l", versionId: "v", sheetId: "s" };
+  /** One change per draft field and per input; a field added without one fails to typecheck here. */
+  const DRAFT = {
+    text: "x", typed: { workflowId: "plain", draft: { mode: "match" } }, sourceInputUnchanged: true, stepSelection: { workflowId: "plain", keys: ["read"] },
+    stepDrafts: { read: { reason: "r" } }, manualRows: ["kid"], priority: "bulk", dryRunRequested: true, browserMode: "headless",
+    referenceSelections: { ref: sheet }, referenceDrafts: { ref: { libraryId: "l" } }, checkPicks: { l: { versionId: "v", sheetIds: ["s"] } },
+    selectedWorkbookRows: { source: "s", choices: [] }, launchFields: { fileToOnBase: "yes" }, valueDrafts: { 0: { text: "t", copied: false } }, copiedOmissions: { 0: true },
+  } satisfies Required<LaunchDraft>;
+  const INPUTS = {
+    draft: Object.entries(DRAFT).map(([key, value]) => ({ ...REST.draft, [key]: value })),
+    rowIdentity: ["other"], customizeSteps: [true], typedValues: [{ mode: "match" }], rerunSource: [{ runId: "10000000-0000-4000-8000-000000000001", expectedVersion: 3 }],
+    pdf: [{ draft: { files: [], asOf: AT, reviewer: "r" }, picks: {} }, { draft: null, picks: { form: "w4" } }],
+    workbookRows: [{ state: "loading", fresh: true }, { state: "ready", fresh: false }],
+    library: [{ ...REST.library, loading: true }, { ...REST.library, refreshing: true }, { ...REST.library, error: "failed" }, { ...REST.library, compatibility: { libraries: [] } }],
+    spreadsheets: [[["l", 1, 1]], [["l", 2, 1]], [["l", 1, 2]]], versionSources: [{ state: "loading", sources: [] }, { state: "ready", sources: [sheet] }],
+    checks: [{ pending: true, selections: [] }, { pending: false, selections: [sheet] }], request: ["other"],
+  } satisfies { [K in keyof LaunchRequestInputs]: readonly LaunchRequestInputs[K][] };
+
+  it("moves for every draft field and every other input, and a moved one drops the plan on screen", () => {
+    assert.deepEqual(Object.keys(DRAFT).sort(), Object.keys(freshLaunchDraft(plain)).sort(), "every draft field has a change");
+    assert.deepEqual(Object.keys(INPUTS).sort(), Object.keys(REST).sort(), "every input has a change");
+    const rest = launchRequestFingerprint(REST);
+    const shown = { for: rest, plan: {}, request: {}, expired: false } as unknown as NonNullable<RunDialogState["shown"]>;
+    const state: RunDialogState = { ...initialRunDialogState, stage: "Start", shown };
+    assert.equal(visibleRunDialog(state, launchRequestFingerprint({ ...REST, draft: { ...REST.draft } })).shown, shown, "an unchanged request keeps its plan");
+    const seen = new Set([rest]);
+    for (const [key, values] of Object.entries(INPUTS)) for (const value of values) {
+      const moved = launchRequestFingerprint({ ...REST, [key]: value });
+      assert.ok(!seen.has(moved), `${key}: ${JSON.stringify(value)} did not move the fingerprint`);
+      seen.add(moved);
+      assert.equal(visibleRunDialog(state, moved).shown, undefined, `${key} kept the plan`);
+    }
+  });
+
+  it("names the spreadsheets of every pick: a worksheet, a half-made reference and a check", () => {
+    const catalog = ["a", "b", "c", "d"].map((libraryId, index) => ({ libraryId, version: index, state: { revision: index + 10 } }));
+    const draft = { ...freshLaunchDraft(plain), referenceSelections: { ref: { ...sheet, libraryId: "a" } }, referenceDrafts: { ref: { libraryId: "b" } }, checkPicks: { c: { versionId: "v", sheetIds: [] } } };
+    assert.deepEqual(namedSpreadsheets(draft, catalog), [["a", 0, 10], ["b", 1, 11], ["c", 2, 12]]);
+  });
+});
 
 describe("the fresh draft", () => {
   it("starts empty with the resting options", () => {

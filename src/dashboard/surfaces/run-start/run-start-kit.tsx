@@ -165,8 +165,8 @@ function PlanRowCard({ row }: { row: StartPlanResponse["planned"][number] }) {
 }
 
 /** The failed spreadsheet list, drawn under its own heading with no empty card. */
-function ReferenceFailure({ onRefresh }: { onRefresh: () => void }) {
-  return <FailureNotice sentence="Couldn't load spreadsheets." action={{ label: "Retry", onClick: onRefresh }} />;
+function ReferenceFailure({ locked, onRefresh }: { locked: boolean; onRefresh: () => void }) {
+  return <FailureNotice sentence="Couldn't load spreadsheets." {...(locked ? {} : { action: { label: "Retry", onClick: onRefresh } })} />;
 }
 
 export interface StageSpec {
@@ -464,7 +464,7 @@ export function RunSpreadsheets({ reference, check, busy: reading, locked = fals
   }, [chosenSheetId, worksheetsState, worksheets, onWorksheet]);
   const title = "Spreadsheets";
   const description = reference === undefined ? SPREADSHEETS_CHECK : check === undefined ? SPREADSHEETS_REFERENCE(reference.requiredLabel) : SPREADSHEETS_BOTH(reference.requiredLabel);
-  if (catalogError) return <div className="flex min-w-0 flex-col gap-3"><RunSection title={title} description={description}><ReferenceFailure onRefresh={onRefresh} /></RunSection></div>;
+  if (catalogError) return <div className="flex min-w-0 flex-col gap-3"><RunSection title={title} description={description}><ReferenceFailure locked={locked} onRefresh={onRefresh} /></RunSection></div>;
   const addsCheck = check !== undefined && (reference === undefined || chosen !== undefined);
   const referenceOptions = reference === undefined ? [] : reference.sheets.map((sheet): PickerOption => {
     const uncoverable = sheet.worksheets.length === 0 && sheet.versions.length < 2;

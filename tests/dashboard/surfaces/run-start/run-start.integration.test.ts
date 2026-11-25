@@ -1,4 +1,4 @@
-import { afterAll, afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
 import { createMountedRerunWorld } from "../../../support/helpers/dashboard/mounted-rerun-world.js";
@@ -98,17 +98,17 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       if (replacement !== "actor") assert.equal(button("Replay exact submission").disabled, false);
     });
   }
-  it("does not publish a late final result after editing the reviewed plan", async () => {
+  it("offers no way back while the final command is out and publishes its late result", async () => {
     const h = await setup(); const source = await h.completeSource(); let release: (() => void) | undefined;
     const pending = new Promise<void>(resolve => { release = resolve; });
     const client = { ...h.client, executeCommand: async (input: unknown) => { const reply = await h.client.executeCommand(input); await pending; return reply; } };
     await mount(h, source, client); await press("Continue");
     await act(async () => checkbox("Dry run").click());
     await reachChecks("Start dry run"); await act(async () => button("Start dry run").click());
-    await press("Back"); await fill(field("Employee ID"), "10812346");
+    assert.equal(button("Back").disabled, true);
     const finish = release; assert.ok(finish); await act(async () => finish());
-    assert.equal(document.querySelector('[role="dialog"]') !== null, true); assert.equal(text().includes("Rerun created"), false);
-    assert.equal(window.sessionStorage.length, 1); assert.equal(h.finalCommands.length, 1);
+    await vi.waitFor(() => assert.equal(document.querySelector('[role="dialog"]'), null));
+    assert.equal(window.sessionStorage.length, 0); assert.equal(h.finalCommands.length, 1);
   });
   it("refuses a final submission without a command binding", async () => {
     const h = await setup(); const source = await h.completeSource(); const replaceBinding = await mount(h, source);

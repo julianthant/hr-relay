@@ -15,7 +15,7 @@ import { createMountedRerunWorld } from "../../../support/helpers/dashboard/moun
 
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
-const { setup, mount, cleanup, press, reachChecks, checkbox, button, fill, field, text, unmount } = createMountedRerunWorld(profiles.create);
+const { setup, mount, cleanup, press, reachChecks, checkbox, button, fill, text, unmount } = createMountedRerunWorld(profiles.create);
 afterEach(async () => { vi.restoreAllMocks(); await cleanup(); });
 
 for (const rerun of [false, true]) {
@@ -101,12 +101,13 @@ for (const rerun of [false, true]) {
     } });
     await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
     assert.equal(previews, 2 + warned); assert.equal(h.finalCommands.length, 1);
+    assert.equal(button("Back").disabled, true, "the draft cannot move under the re-preview");
     await act(async () => gate.resolve());
     assert.equal(text().includes("Run not started"), false);
     assert.equal(h.finalCommands.length, 1);
     await press("Start dry run"); assert.equal(h.finalCommands.length, 2);
   });
-  for (const replacement of ["draft", "scope", "close"] as const) it(`${rerun ? "Rerun" : "Run"} ignores an expiry response after ${replacement} replacement`, async () => {
+  for (const replacement of ["scope", "close"] as const) it(`${rerun ? "Rerun" : "Run"} ignores an expiry response after ${replacement} replacement`, async () => {
     const h = await setup(); const gate = Promise.withResolvers<void>(); let previews = 0;
     const client = { ...h.client, submitStartPlan: async (request: unknown) => {
       if (++previews > 1 + warned) await gate.promise;
@@ -114,12 +115,7 @@ for (const rerun of [false, true]) {
     } };
     const replaceBinding = await review(h, client);
     await act(async () => button("Start dry run").click());
-    if (replacement === "draft") {
-      await press("Back");
-      const box = rerun ? field("Employee ID") : document.querySelector("textarea");
-      assert.ok(box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement);
-      await fill(box, "10812346");
-    } else if (replacement === "scope") await replaceBinding(client, { requestKey: 1 });
+    if (replacement === "scope") await replaceBinding(client, { requestKey: 1 });
     else await press("Cancel");
     await act(async () => gate.resolve());
     assert.equal(text().includes("This plan expired, so it was checked again."), false);

@@ -10,6 +10,7 @@ import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-st
 import { RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../src/models/dashboard/rerun-warning.js";
 import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../../src/models/dashboard/start-plan.js";
+import { projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
 import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
 import type { CommandResult } from "../../../../src/rules/commands/commands.js";
 import { RUN_DIALOG_REFERENCE_READS } from "../../../support/fixtures/dashboard/run-dialog-reference-fixtures.js";
@@ -25,15 +26,15 @@ assert.ok(descriptor?.surfaces.inputRun);
 const typed: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
   steps: projectStartSteps(descriptor), rows: projectStartRows(descriptor).map(startRowWire),
   inputRun: { state: "present", surface: { ...descriptor.surfaces.inputRun, supportsDryRun: true } } };
-const CASES = ["typed", "pdf", "spreadsheet", "rerun", "rerun values"] as const;
+const CASES = ["typed", "pdf", "spreadsheet", "failed spreadsheets", "rerun", "rerun values"] as const;
 type Case = typeof CASES[number];
 const isRerun = (kind: Case) => kind === "rerun" || kind === "rerun values";
 const servedIn = (catalog: typeof RUN_DIALOG_PDF_CATALOG): RunStartWorkflow => {
   const found = catalog.find(entry => entry.id === RUN_DIALOG_WORKFLOW)?.served; assert.ok(found); return found;
 };
-/** Every dialog whose controls differ: typed input, PDFs, a spreadsheet, a rerun's input and a rerun's copied values. */
+/** Every dialog whose controls differ: typed input, PDFs, a spreadsheet, an optional spreadsheet list that failed to load, a rerun's input and a rerun's copied values. */
 const WORKFLOW: Readonly<Record<Case, RunStartWorkflow>> = { typed, pdf: servedIn(RUN_DIALOG_PDF_CATALOG),
-  spreadsheet: servedIn(RUN_DIALOG_REFERENCE_CATALOG), rerun: typed, "rerun values": servedIn(RUN_DIALOG_DRY_RUN_CATALOG) };
+  spreadsheet: servedIn(RUN_DIALOG_REFERENCE_CATALOG), "failed spreadsheets": { ...typed, workbookCheck: { id: "reference-check", keyFieldId: "eid" } }, rerun: typed, "rerun values": servedIn(RUN_DIALOG_DRY_RUN_CATALOG) };
 
 const snapshot = RerunValuesSnapshotSchema.parse({
   sourceInput: { state: "available", value: { mode: "search", emplId: "10873698", crmCheck: true, keepNonHdh: false, includeCrmDates: true } },
@@ -44,10 +45,13 @@ const snapshot = RerunValuesSnapshotSchema.parse({
 });
 
 
+const FAILED_READS: Partial<DashboardClient> = { workbookList: async () => [], workbookTypes: async () => [], workbookCompatibility: async () => projectWorkbookCompatibility([], []),
+  workbookCatalog: async () => { throw new Error("unreachable"); } };
+
 /** The dialog on its Input stage, filled in so that Start is available as soon as it is reached. */
 async function openFilled(kind: Case, served: Partial<DashboardClient>) {
   const workflow = WORKFLOW[kind];
-  const dialog = await h.openDialog(h.stubClient({ ...(kind === "spreadsheet" ? RUN_DIALOG_REFERENCE_READS : {}), ...served,
+  const dialog = await h.openDialog(h.stubClient({ ...(kind === "spreadsheet" ? RUN_DIALOG_REFERENCE_READS : {}), ...(kind === "failed spreadsheets" ? FAILED_READS : {}), ...served,
     uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: h.ACTOR_ID, uploadedAt: "2026-08-03T00:00:00.000Z",
       artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }),
     rerunValues: async () => kind === "rerun values" ? runDialogRerunSnapshot() : { state: "available", snapshot },
@@ -55,7 +59,7 @@ async function openFilled(kind: Case, served: Partial<DashboardClient>) {
       rerun: { source: RerunWarningRequestSchema.parse(request).source, warnings: [], warningDigest: h.HASH } }),
   }), { workflows: [workflow], panelWorkflowId: workflow.workflowId, ...(isRerun(kind) ? { rerunSource: RUN_DIALOG_RERUN_SOURCE } : {}) });
   await settleAll();
-  if (kind === "typed" || kind === "spreadsheet") await dialog.type(h.TYPED);
+  if (kind === "typed" || kind === "spreadsheet" || kind === "failed spreadsheets") await dialog.type(h.TYPED);
   if (kind === "spreadsheet") { await h.chooseReference("Roster"); await settleAll(); }
   if (kind === "pdf") {
     const bytes = new TextEncoder().encode("%PDF one"), file = new File([bytes], "one.pdf", { type: "application/pdf" });
@@ -70,6 +74,7 @@ async function openFilled(kind: Case, served: Partial<DashboardClient>) {
 type Opened = Awaited<ReturnType<typeof openFilled>>;
 
 async function settleAll() { for (let wait = 0; wait < 6; wait += 1) await h.settle(); }
+async function settleLong() { for (let wait = 0; wait < 6; wait += 1) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); }); }
 async function toStart(dialog: Opened, kind: Case) {
   await dialog.press("Continue");
   assert.equal(dialog.stage(), "Start");
@@ -77,7 +82,7 @@ async function toStart(dialog: Opened, kind: Case) {
     const form = document.querySelector<HTMLInputElement>('input[type="radio"][value="w4"]'); assert.ok(form, "the Form choice");
     await act(async () => form.click());
   }
-  if (kind === "typed") await dialog.press("Customize steps");
+  if (kind === "typed" || kind === "failed spreadsheets") await dialog.press("Customize steps");
   await settleAll();
 }
 const startLabel = (kind: Case) => kind === "spreadsheet" ? "Start run" : "Start live run";
@@ -139,11 +144,12 @@ describe("Enter on a focused control", () => {
   });
 });
 
-/** Controls that shape the request and still take a change. Checks, the Show more toggle and the footer do not shape it. */
+/** What stays usable while a command is out: leaving the dialog, searching the workflow list and reading the checks again. Every other control must be off. */
+const USABLE = (node: HTMLElement) => ["Close", "Cancel", "Clear search"].includes(node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "")
+  || node.matches('input[type="search"], input[aria-label*="workflow" i]') || node.closest('section[aria-label="Checks"]') !== null;
 function openControls(): string[] {
-  const shaping = '.launch-content :is(input:not([hidden]), textarea, select, button, [role="combobox"], [role="spinbutton"]), nav[aria-label="Workflow"] button';
-  return [...document.querySelectorAll<HTMLElement>(shaping)].filter(node => node.closest('section[aria-label="Checks"]') === null
-    && !node.matches(':disabled, [aria-disabled="true"], [data-disabled]')).map(nameOf);
+  return [...document.querySelectorAll<HTMLElement>(`.launch-dialog :is(${FOCUSABLE}, [role="combobox"], [role="spinbutton"])`)]
+    .filter(node => !USABLE(node) && !node.matches(':disabled, [aria-disabled="true"], [data-disabled], [tabindex="-1"]')).map(nameOf);
 }
 const chosen = (label: string) => document.querySelector(`[data-run-choice="${label}"]`)?.textContent;
 
@@ -160,33 +166,62 @@ function planFor(request: unknown) {
 }
 
 describe("a start whose command is held", () => {
-  it.each(CASES)("shows every request-shaping control read-only on Start and Input in the %s dialog, then settles", async kind => {
-    let release: ((result: CommandResult) => void) | undefined;
+  it.each(CASES)("locks every control that could move the request, on Start and on Input, in the %s dialog, then settles", async kind => {
     const sent: unknown[] = [];
+    const replies: PromiseWithResolvers<CommandResult>[] = [];
     const dialog = await openFilled(kind, {
       submitStartPlan: async request => { sent.push(request); return planFor(request); },
-      executeCommand: async () => new Promise<CommandResult>(resolve => { release = resolve; }),
+      executeCommand: () => { const reply = Promise.withResolvers<CommandResult>(); replies.push(reply); return reply.promise; },
     });
     assert.ok(openControls().length > 0, "Input is open before the start");
+    if (kind === "failed spreadsheets") assert.ok(openControls().some(name => /Retry/u.test(name)), "the failed read offers Retry before the start");
     await toStart(dialog, kind);
-    assert.ok(openControls().length > 0, "Start is open before the start");
+    assert.ok(openControls().some(name => /Back/u.test(name)) && openControls().some(name => /headless/u.test(name)), "Start is open before the start");
     await dialog.chooseBrowserMode("headless");
     await dialog.press(startLabel(kind));
     await settleAll();
-    const settleCommand = release; assert.ok(settleCommand !== undefined, `the command is out: ${dialog.text()}`);
+    assert.equal(replies.length, 1, `the command is out: ${dialog.text()}`);
 
     assert.deepEqual(openControls(), [], "Start");
     assert.equal(document.querySelectorAll('.launch-content input[type="radio"]').length, 0, "no choice is offered while its changes are refused");
     assert.equal(chosen("Browser mode"), "Hidden");
     if (kind === "pdf") assert.equal(chosen("Form"), "W-4");
+
+    // An unknown outcome gives the dialog back; its replay is a command held on Input.
+    await act(async () => { replies[0].reject(new Error("connection lost")); });
+    await settleLong();
     await dialog.press("Back");
     assert.equal(dialog.stage(), "Input");
+    await dialog.press("Replay exact submission");
+    await settleAll();
+    assert.equal(replies.length, 2, `the replay is out: ${dialog.text()}`);
     assert.deepEqual(openControls(), [], "Input");
     if (kind === "typed" || kind === "rerun") assert.ok(document.querySelector("[data-run-choice]"), "the Lookup mode shows its chosen value");
 
     assert.equal(sent.length, 1);
-    await act(async () => { settleCommand(h.APPLIED); await Promise.resolve(); });
-    for (let wait = 0; wait < 4; wait += 1) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    await act(async () => { replies[1].resolve(h.APPLIED); await Promise.resolve(); });
+    await settleLong();
+    assert.deepEqual(h.closed, [false], "the applied reply closed the dialog");
+  });
+
+  it.each(["answers", "fails"] as const)("lands its reply when a spreadsheet read that was out %s under it", async outcome => {
+    const catalog = Promise.withResolvers<never[]>();
+    const reply = Promise.withResolvers<CommandResult>();
+    let sent = 0;
+    const dialog = await openFilled("failed spreadsheets", {
+      workbookCatalog: () => catalog.promise,
+      submitStartPlan: async request => planFor(request),
+      executeCommand: () => { sent += 1; return reply.promise; },
+    });
+    await toStart(dialog, "failed spreadsheets");
+    await dialog.press(startLabel("failed spreadsheets"));
+    await settleAll();
+    assert.equal(sent, 1);
+    await act(async () => { if (outcome === "answers") catalog.resolve([]); else catalog.reject(new Error("unreachable")); });
+    await settleLong();
+    assert.deepEqual(h.closed, [], "the command is still out");
+    await act(async () => { reply.resolve(h.APPLIED); await Promise.resolve(); });
+    await settleLong();
     assert.deepEqual(h.closed, [false], "the applied reply closed the dialog");
   });
 });

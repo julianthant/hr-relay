@@ -6,7 +6,8 @@ import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { WorkbookLibraryEntrySchema, WorkbookLibraryVersionViewSchema, projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
-import { StartPlanRequestSchema, type StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
+import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
+import { CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
 const h = createRunStartDialogHarness();
@@ -82,6 +83,31 @@ it("picks and removes a row in place; the optional check starts with no pick and
   assert.equal(h.buttons().some(button => h.buttonName(button) === "Remove I-9 tracker"), false);
   await dialog.press("Continue"); await dialog.press("Start run");
   assert.deepEqual(planned?.workbookReferences, [{ typeId: "reference-check", entry: 1, libraryId: "roster", versionId: "v", sheetId: "First", expectedVersion: 2 }]);
+});
+
+it("plans again without a check removed after its expired plan was rebuilt", async () => {
+  const planned: StartPlanRequest[] = [], commands: unknown[] = [];
+  const dialog = await h.openDialog(h.stubClient({ ...served,
+    submitStartPlan: async input => {
+      const request = StartPlanRequestSchema.parse(input); planned.push(request);
+      const plan = h.planResponse(`5a000000-0000-4000-8000-00000000000${String(planned.length)}`);
+      const references = (request.workbookReferences ?? []).map(chosen => ({ libraryId: chosen.libraryId, version: chosen.expectedVersion, versionId: chosen.versionId, versionName: "v6",
+        worksheets: [{ sheetId: chosen.sheetId, name: chosen.sheetId }], type: roster.type }));
+      return StartPlanWireSchema.parse({ ...plan, planned: plan.planned.map(entry => references.length === 0 ? entry : { ...entry, workbookReferences: references }) });
+    },
+    executeCommand: async input => { commands.push(input); return commands.length > 1 ? new Promise<CommandResult>(() => undefined)
+      : CommandResultSchema.parse({ state: "rejected", commandId: "3a000000-0000-4000-8000-000000000001", code: "RUN_START_PLAN_EXPIRED", message: "Expired." }); },
+  }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
+  await h.settle(); await dialog.type(h.TYPED); await add("Spreadsheets", "Contact roster");
+  await dialog.press("Continue"); await dialog.press("Start run");
+  for (let wait = 0; wait < 10; wait += 1) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  assert.equal(commands.length, 1); assert.equal(planned.length, 2, "the expired plan was rebuilt"); assert.ok(h.planIsDrawn());
+  await dialog.press("Back"); await click("Remove Contact roster"); await dialog.press("Continue");
+  assert.equal(h.planIsDrawn(), false, "the rebuilt plan went with its spreadsheet");
+  await dialog.press("Start run");
+  assert.equal(planned.length, 3, "Start planned again");
+  assert.equal(planned[1].workbookReferences?.length, 1);
+  assert.equal(planned[2].workbookReferences, undefined);
 });
 
 it("offers the version select on a picked row and sends the named version's worksheet", async () => {

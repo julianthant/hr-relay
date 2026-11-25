@@ -1,3 +1,4 @@
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
@@ -10,6 +11,8 @@ import {
   changeTypedInput, initialStepOmissionDraft, restoreTypedInput, toggleStepSelection, typedInputDefaults, typedInputText, typedDateControls, usDateText,
   type BrowserMode, type StartPriority, type StepOmissionDraft, type StepOmissionFactDraft,
 } from "./run-start-model.js";
+import type { RerunLaunchSource } from "./run-launch-model.js";
+import type { PdfRunDraft, PdfRunPicks } from "./run-start-pdfs.js";
 import type { WorkbookRowChoice } from "./run-workbook-rows-model.js";
 import { factDraft, sourceTypedFacts, type ManualRows, type StepRow } from "./run-steps-model.js";
 
@@ -60,6 +63,36 @@ const defaultStepKeys = (workflow: RunStartWorkflow | undefined): string[] =>
 const omit = <T>(record: Readonly<Record<string, T>>, key: string): Record<string, T> =>
   Object.fromEntries(Object.entries(record).filter(([entry]) => entry !== key));
 const withSteps = (draft: LaunchDraft, workflowId: string, keys: readonly string[]): LaunchDraft => ({ ...draft, stepSelection: { workflowId, keys } });
+
+/** Every input the plan request is built from or refused by. A new one must be added here to reach the request. */
+export type LaunchRequestInputs = Readonly<{
+  /** The whole draft, so a new draft field shapes the request without being named. */
+  draft: LaunchDraft;
+  rowIdentity: string;
+  customizeSteps: boolean;
+  typedValues: TypedInputDraft;
+  rerunSource: RerunLaunchSource | undefined;
+  pdf: Readonly<{ draft: PdfRunDraft | null; picks: PdfRunPicks }>;
+  workbookRows: Readonly<{ state: string; fresh: boolean }>;
+  library: Readonly<{ loading: boolean; refreshing: boolean; error: string | null; compatibility: unknown }>;
+  spreadsheets: ReturnType<typeof namedSpreadsheets>;
+  versionSources: Readonly<{ state: string; sources: readonly ReferenceSelection[] }>;
+  checks: Readonly<{ pending: boolean; selections: readonly ReferenceSelection[] }>;
+  /** `startRequestFingerprint`: the request controls as the dialog resolves them. */
+  request: string;
+}>;
+
+/** The library facts of every spreadsheet the draft names, picked or half picked. */
+export function namedSpreadsheets(draft: LaunchDraft, catalog: readonly Readonly<{ libraryId: string; version: number; state: Readonly<{ revision: number }> }>[]) {
+  const named = new Set([...[draft.referenceSelections, draft.referenceDrafts].flatMap(picks => Object.values(picks).map(pick => pick.libraryId)), ...Object.keys(draft.checkPicks)]);
+  return catalog.filter(entry => named.has(entry.libraryId)).map(entry => [entry.libraryId, entry.version, entry.state.revision] as const);
+}
+
+/** A plan is good for one fingerprint: a change to any input drops it. */
+export function launchRequestFingerprint(inputs: LaunchRequestInputs): string {
+  // JSON drops the draft's undefined fields, which the canonical form refuses.
+  return canonicalJsonStringify(JSON.parse(JSON.stringify(inputs)));
+}
 
 export function freshLaunchDraft(workflow: RunStartWorkflow | undefined, today?: string): LaunchDraft {
   return {

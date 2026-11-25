@@ -100,7 +100,7 @@ export type RunDialogEvent =
   | { type: "plan-failed"; request: number; message: string }
   | { type: "warnings-settled"; request: number; warning: RerunWarningWire }
   | { type: "warnings-failed"; request: number; message: string }
-  | { type: "acknowledge"; via: "button" | "enter" } | { type: "cancel-warning" }
+  | { type: "acknowledge" } | { type: "cancel-warning" }
   | { type: "start"; gates: LaunchGates; authority: AuthorityCheck; planRequest: () => StartPlanRequest;
       prepare: (plan: StartPlanResponse) => LaunchFinalCommand }
   | { type: "replay"; authority: AuthorityCheck }
@@ -148,6 +148,10 @@ function previousStage(state: RunDialogState, path: readonly RunStartStage[] = s
 const requests = (state: RunDialogState): readonly DetachedRequest[] =>
   state.activity.kind === "idle" ? state.detached : [state.activity, ...state.detached];
 const sendingExists = (state: RunDialogState) => requests(state).some(r => r.kind === "submitting" || r.kind === "replanning");
+/** The fingerprint the dialog acts on. A held command keeps its own, so a catalog refresh under it cannot orphan its reply. */
+export function heldFingerprint(state: RunDialogState, fingerprint: string): string {
+  return requests(state).find(r => r.kind === "submitting" || r.kind === "replanning")?.for ?? fingerprint;
+}
 const withoutAnswer = (recovery: LaunchRecovery): LaunchRecovery =>
   recovery.state === "retained" && recovery.answer !== undefined ? { state: "retained", command: recovery.command } : recovery;
 const currentShown = (state: RunDialogState, fingerprint: string) => state.shown?.for === fingerprint ? state.shown : undefined;
@@ -186,7 +190,7 @@ function startRefusal(state: RunDialogState, gates: LaunchGates, current: Planne
   if (gates.checksBlocked) return "blocked";
   if (state.recovery.state === "unreadable") return "blocked";
   if (state.recovery.state === "retained" && current?.plan.startPlanId !== state.recovery.command.target.startPlanId) return "blocked";
-  if (current !== undefined) return gates.omissionMismatch || gates.plannedCount === 0 ? "blocked" : undefined;
+  if (current !== undefined) return current.plan.refused.length > 0 || gates.omissionMismatch || gates.plannedCount === 0 ? "blocked" : undefined;
   if (state.source.kind === "rerun" && state.source.load.state !== "ready") return "blocked";
   if (gates.stepsBlocked) return "blocked";
   if (gates.optionsBlocked) return "blocked";
@@ -203,10 +207,9 @@ function continueRefusal(state: RunDialogState, gates: LaunchGates): RunDialogRe
   return undefined;
 }
 
-function acknowledgeRefusal(state: RunDialogState, via: "button" | "enter"): RunDialogRefusal | undefined {
+function acknowledgeRefusal(state: RunDialogState): RunDialogRefusal | undefined {
   if (state.stage !== "Warning" || state.source.kind !== "rerun" || state.source.load.state !== "ready" || state.source.load.warning === undefined) return "not-here";
-  if (via === "button") return undefined;
-  if (state.activity.kind !== "idle") return "busy";
+  if (state.activity.kind !== "idle" || sendingExists(state)) return "busy";
   return state.recovery.state === "none" ? undefined : "blocked";
 }
 
@@ -322,6 +325,7 @@ export function runDialogTransition(state: RunDialogState, event: RunDialogEvent
       return step(next, effects);
     }
     case "go-to": {
+      if (sendingExists(state)) return { refused: "busy" };
       if (event.via === "back") {
         const previous = previousStage(state, event.path);
         return previous === null || previous !== event.stage ? { refused: "not-here" } : step({ ...state, stage: previous });
@@ -359,7 +363,7 @@ export function runDialogTransition(state: RunDialogState, event: RunDialogEvent
         ? planShown(released, { for: owner.for, plan: event.plan, request: event.planRequest, expired: false }, [{ kind: "auto-start" }])
         : planShown(released, { for: owner.for, plan: event.plan, request: owner.planRequest, expired: true }, []));
     case "acknowledge": {
-      const refusal = acknowledgeRefusal(state, event.via);
+      const refusal = acknowledgeRefusal(state);
       if (refusal !== undefined || state.source.kind !== "rerun" || state.source.load.state !== "ready" || state.source.load.warning === undefined) return { refused: refusal ?? "not-here" };
       const warning = state.source.load.warning;
       return step({ ...cleared(state, ["shown"]), warningsFor: fingerprint, source: withWarning(state.source, warning, warning.rerun.warningDigest), stage: "Start" });
@@ -437,33 +441,30 @@ export type RunDialogControls = Readonly<{
   primary: Readonly<{ label: string; enabled: boolean; loading: boolean; event: (input: RunDialogPrimaryInput) => RunDialogEvent }>;
   back: RunStartStage | null;
   cancel: Extract<RunDialogEvent, { type: "cancel-warning" | "close" }>;
-  /** The Enter key's event, or null when Enter does nothing. */
-  enter: ((input: RunDialogPrimaryInput) => RunDialogEvent) | null;
   hint: "Enter to start" | "Enter to continue" | null;
 }>;
 
-/** The footer, once: the button, the hint and the Enter handler all read it. `view` comes from `visibleRunDialog`. */
+/** The footer, once: the button, the hint and the Enter handler all read `primary`. `view` comes from `visibleRunDialog`. */
 export function runDialogControls(view: RunDialogState, gates: LaunchGates): RunDialogControls {
   const loading = view.activity.kind !== "idle";
   const back = previousStage(view, gates.path);
   if (view.stage === "Warning") {
-    const button = (via: "button" | "enter") => () => ({ type: "acknowledge", via }) as const;
-    return { primary: { label: "Confirm", enabled: acknowledgeRefusal(view, "button") === undefined && !loading && view.recovery.state === "none", loading, event: button("button") },
-      back, cancel: { type: "cancel-warning" }, enter: acknowledgeRefusal(view, "enter") === undefined ? button("enter") : null,
-      hint: acknowledgeRefusal(view, "enter") === undefined ? "Enter to continue" : null };
+    const enabled = acknowledgeRefusal(view) === undefined;
+    return { primary: { label: "Confirm", enabled, loading, event: () => ({ type: "acknowledge" }) }, back, cancel: { type: "cancel-warning" },
+      hint: enabled ? "Enter to continue" : null };
   }
   if (gates.next !== null) {
     const enabled = continueRefusal(view, gates) === undefined;
     const event = (input: RunDialogPrimaryInput) => ({ type: "continue", gates: input.gates }) as const;
     return { primary: { label: "Continue", enabled, loading, event }, back, cancel: { type: "close" },
-      enter: enabled ? event : null, hint: enabled ? "Enter to continue" : null };
+      hint: enabled ? "Enter to continue" : null };
   }
   const plan = view.shown?.plan;
   const label = gates.dryRun === undefined ? "Start run" : (plan === undefined ? gates.dryRun : plan.dryRun) ? "Start dry run" : "Start live run";
   const enabled = startRefusal(view, gates, view.shown) === undefined;
   const event = (input: RunDialogPrimaryInput) => ({ type: "start", ...input }) as const;
   return { primary: { label, enabled, loading, event }, back, cancel: { type: "close" },
-    enter: enabled ? event : null, hint: enabled ? "Enter to start" : null };
+    hint: enabled ? "Enter to start" : null };
 }
 
 /** The dialog's side effects. Each async result becomes the settled event for the effect's request number. */
@@ -499,7 +500,7 @@ export function useRunDialogMachine(input: Readonly<{ stage: RunStartStage; setS
   if (live.current.stage !== input.stage) live.current = { ...live.current, stage: input.stage };
 
   const send = useCallback((event: RunDialogEvent): RunDialogStep => {
-    const result = runDialogTransition(live.current, event, latest.current.fingerprint);
+    const result = runDialogTransition(live.current, event, heldFingerprint(live.current, latest.current.fingerprint));
     if ("refused" in result) return result;
     live.current = result.next;
     setState(result.next);
