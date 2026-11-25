@@ -8,7 +8,7 @@ import { act as act_m1 } from "react";
 import { type Root as Root_m1 } from "react-dom/client";
 import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from "vitest";
 import { logDecisionExamples as logDecisionExamples_m1 } from "../../../../support/fixtures/dashboard/log-preview/log-decision-fixture";
-import { filterLogSteps as filterLogSteps_m1,logPlainText as logPlainText_m1,logRowCount as logRowCount_m1,type LogEntry as LogEntry_m1,type LogStep as LogStep_m1 } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import { findLogMatches as findLogMatches_m1,logPlainText as logPlainText_m1,type LogEntry as LogEntry_m1,type LogStep as LogStep_m1 } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 
 
 {
@@ -38,10 +38,14 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(logDecisionExamples_m1.length, 35);
     assert_m1.equal(new Set(logDecisionExamples_m1.map(item => item.id)).size, 35);
     const steps: readonly LogStep_m1[] = [{ id: "file", time: "09:32:17", title: "File termination", entries: [example("failure-prepared")] }];
-    assert_m1.equal(logRowCount_m1(steps), 1);
-    assert_m1.equal(filterLogSteps_m1(steps, "employment record confirmed").length, 1);
+    assert_m1.equal(findLogMatches_m1(steps, "employment record confirmed").hits.length, 1);
     assert_m1.match(logPlainText_m1(steps), /last day worked.*Employee and employment record confirmed.*09\/25\/2026/u);
-    assert_m1.equal(filterLogSteps_m1(steps, "missing value").length, 0);
+    assert_m1.equal(findLogMatches_m1(steps, "missing value").hits.length, 0);
+    const twice: readonly LogStep_m1[] = [{ id: "a", time: "09:00:00", title: "Read employment", entries: [{ kind: "note", id: "n", time: "09:00:01", message: "Employment found; employment ok" }] }, { id: "b", time: "09:00:02", title: "Other", entries: [] }];
+    const found = findLogMatches_m1(twice, "EMPLOYMENT");
+    assert_m1.deepEqual(found.hits, [{ stepId: "a", nth: 0 }, { stepId: "a", entryId: "n", nth: 0 }, { stepId: "a", entryId: "n", nth: 1 }]);
+    assert_m1.deepEqual([...found.stepIds], ["a"]);
+    assert_m1.equal(findLogMatches_m1(twice, "  ").hits.length, 0);
   });
 });
 }

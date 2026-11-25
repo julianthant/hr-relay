@@ -82,18 +82,28 @@ export function logEntryText(entry: LogEntry): string {
   }
 }
 
-export function filterLogSteps(steps: readonly LogStep[], query: string): readonly LogStep[] {
-  const needle = query.trim().toLocaleLowerCase();
-  if (!needle) return steps;
-  return steps.flatMap(step => {
-    if (`${step.title} ${step.system ?? ""}`.toLocaleLowerCase().includes(needle)) return [step];
-    const entries = step.entries.filter(entry => logEntryText(entry).toLocaleLowerCase().includes(needle));
-    return entries.length ? [{ ...step, entries }] : [];
-  });
-}
+/** One occurrence of the search text: in a step's heading (no `entryId`) or in one of its entries. `nth` counts occurrences inside that heading or entry. */
+export type LogHit = Readonly<{ stepId: string; entryId?: string; nth: number }>;
 
-export function logRowCount(steps: readonly LogStep[]): number {
-  return steps.reduce((count, step) => count + step.entries.reduce((total, entry) => total + (entry.kind === "fields" ? entry.fields.length : 1), 0), 0);
+const occurrences = (text: string, needle: string) => {
+  let count = 0;
+  for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length)) count += 1;
+  return count;
+};
+
+/** Every occurrence of `query` in log order, and the steps holding any; an empty query matches nothing. */
+export function findLogMatches(steps: readonly LogStep[], query: string): { readonly hits: readonly LogHit[]; readonly stepIds: ReadonlySet<string> } {
+  const needle = query.trim().toLocaleLowerCase();
+  const hits: LogHit[] = [];
+  if (!needle) return { hits, stepIds: new Set() };
+  const add = (stepId: string, entryId: string | undefined, text: string) => {
+    for (let nth = 0, total = occurrences(text.toLocaleLowerCase(), needle); nth < total; nth += 1) hits.push(entryId === undefined ? { stepId, nth } : { stepId, entryId, nth });
+  };
+  for (const step of steps) {
+    if (step.header !== false) add(step.id, undefined, `${step.title} ${step.system ?? ""}`);
+    for (const entry of step.entries) add(step.id, entry.id, logEntryText(entry));
+  }
+  return { hits, stepIds: new Set(hits.map(hit => hit.stepId)) };
 }
 
 export function logPlainText(steps: readonly LogStep[]): string {
