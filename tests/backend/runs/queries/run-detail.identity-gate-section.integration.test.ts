@@ -208,6 +208,7 @@ function depsOf(
     database: {
       withAuthorityReadSnapshot: <Result>(read: () => Result) => read(),
       authority: {
+        configSnapshots: w.database.authority.configSnapshots,
         runs: { listChildren: () => [], get: () => w.authority.getRun(RUN_ID) },
         deletedRuns: { get: () => undefined },
         writeIntents: { listAttemptingByItem: () => attemptingWriteIntents, listByRun: () => [], listByBusinessKey: () => [] },
