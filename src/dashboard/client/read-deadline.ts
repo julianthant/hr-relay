@@ -6,6 +6,11 @@ export const CHATGPT_ACCOUNT_READ_DEADLINE_MS = 30_000;
 /** A rerun runs live detectors, each bounded by the server; this only ends a rerun that never answers. */
 export const PREFLIGHT_RERUN_DEADLINE_MS = 60_000;
 export const CHATGPT_COMPLETION_READ_DEADLINE_MS = 310_000;
+/** A run-start read that got no answer in time, lost its connection or met a retryable 503 is asked again before its caller sees a failure. */
+export const BOUNDED_READ_ATTEMPTS = 3;
+export const BOUNDED_READ_RETRY_MS = 250;
+/** The longest a run-start read takes with every attempt used. */
+export const BOUNDED_READ_BUDGET_MS = BOUNDED_READ_ATTEMPTS * SETTINGS_READ_DEADLINE_MS + (BOUNDED_READ_ATTEMPTS - 1) * BOUNDED_READ_RETRY_MS;
 
 const expiredReads = new WeakSet<Error>();
 /** True for the error a read gets when its deadline passed before any answer. */

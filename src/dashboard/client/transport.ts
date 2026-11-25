@@ -4,11 +4,7 @@ import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import { PublicProfileStateSchema } from "../../models/profiles/public-profile.js";
 import { debugFailureOutcome, debugFailureOutcomes, diagnosticRequestRoute } from "../../models/events/debug-report.js";
 import { DashboardClientError, WIRE_ERROR_BODY, httpError,networkError,markDashboardErrorReported } from "./errors.js";
-import { CHATGPT_ACCOUNT_READ_DEADLINE_MS, CHATGPT_COMPLETION_READ_DEADLINE_MS, SETTINGS_READ_DEADLINE_MS, readDeadlineExpired, readWithDeadline } from "./read-deadline.js";
-
-/** A run-start read (checks or workbooks) that got no answer in time, or a retryable 503, is asked again before its caller sees a failure. */
-const BOUNDED_READ_ATTEMPTS = 3;
-const BOUNDED_READ_RETRY_MS = 250;
+import { BOUNDED_READ_ATTEMPTS, BOUNDED_READ_RETRY_MS, CHATGPT_ACCOUNT_READ_DEADLINE_MS, CHATGPT_COMPLETION_READ_DEADLINE_MS, SETTINGS_READ_DEADLINE_MS, readDeadlineExpired, readWithDeadline } from "./read-deadline.js";
 
 /** The closed cause of a request that ended without a response body. */
 const unansweredReason = (error: unknown): string => readDeadlineExpired(error) ? "read-deadline"
@@ -112,9 +108,12 @@ export function createDashboardTransport(input: Readonly<{
     } catch (error) {
       throw networkError(`${init?.method ?? "GET"} ${path}`, error);
     }
-    const body: unknown = await response.json().catch((error: unknown) => {
-      throw httpError(response.status, { unparseable: String(error) });
-    });
+    let text: string;
+    try { text = await response.text(); }
+    catch (error) { throw networkError(`${init?.method ?? "GET"} ${path}`, error); }
+    let body: unknown;
+    try { body = JSON.parse(text); }
+    catch (error) { throw httpError(response.status, { unparseable: String(error) }); }
     observeProfileSession(path, response.status, body, notify);
     return Object.freeze({ headers: response.headers, status: response.status, ok: response.ok, body });
   };
@@ -129,15 +128,19 @@ export function createDashboardTransport(input: Readonly<{
       : route === "/api/v1/preflight" ? "PREFLIGHT_READ_UNAVAILABLE"
       : route === "/api/v1/settings/editable" || route === "/api/v1/settings/facts" ? "SETTINGS_INITIAL_READ_UNAVAILABLE"
       : route?.startsWith("/api/v1/workbooks") || route === "/api/v1/explorer" || route?.startsWith("/api/v1/reports/activity") ? "DASHBOARD_READ_FAILED" : undefined;
-    if (code === undefined || accountCompletion && init?.signal !== undefined) return sendUnbounded(path, init);
+    /** The run-start reads: checks, workbooks, and the settings and workflow scopes a checks rerun needs. */
+    const retried = method === "GET" && (route === "/api/v1/preflight" || route?.startsWith("/api/v1/workbooks") === true
+      || route === "/api/v1/settings/editable" || route === "/api/v1/bootstrap");
+    if (code === undefined && !retried || accountCompletion && init?.signal !== undefined) return sendUnbounded(path, init);
     const deadline = accountCompletion ? CHATGPT_COMPLETION_READ_DEADLINE_MS
       : accountStatus ? CHATGPT_ACCOUNT_READ_DEADLINE_MS : SETTINGS_READ_DEADLINE_MS;
-    const attempts = route === "/api/v1/preflight" || route?.startsWith("/api/v1/workbooks") === true ? BOUNDED_READ_ATTEMPTS : 1;
+    const attempts = retried ? BOUNDED_READ_ATTEMPTS : 1;
     const pause = () => new Promise(resolve => setTimeout(resolve, BOUNDED_READ_RETRY_MS));
     return (async () => {
       for (let attempt = 1; ; attempt += 1) {
         try {
-          const response = await readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code, deadline, init?.signal ?? undefined);
+          const response = code === undefined ? await sendUnbounded(path, init)
+            : await readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code, deadline, init?.signal ?? undefined);
           if (attempt === attempts || response.status !== 503 || WIRE_ERROR_BODY.safeParse(response.body).data?.retryable !== true) return response;
         } catch (error) {
           if (init?.signal?.aborted) throw networkError(`${method} ${path}`, init.signal.reason);
@@ -151,7 +154,8 @@ export function createDashboardTransport(input: Readonly<{
   const reportFailure = (path: string, body: unknown, status = 200, method = "GET", reason?: string): void => {
     if (path === "/api/v1/debug/errors") return;
     if (EXPECTED_REFUSALS[`${method.toUpperCase()} ${path.split("?")[0] ?? path}`]?.includes(status) === true) return;
-    for (const failure of debugFailureOutcomes(body, status, diagnosticRequestRoute(path))) input.onFailure?.({ ...failure, ...(reason === undefined ? {} : { reason }), route: diagnosticRequestRoute(path) });
+    const readRoute = method.toUpperCase() === "GET" ? path.split(/[?#]/u)[0] : undefined;
+    for (const failure of debugFailureOutcomes(body, status, readRoute)) input.onFailure?.({ ...failure, ...(reason === undefined ? {} : { reason }), route: diagnosticRequestRoute(path) });
   };
   const send = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
     try {

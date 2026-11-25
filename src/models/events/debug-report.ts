@@ -30,10 +30,17 @@ const TRANSPORT_CODES = new Set(["SCHEMA_INVALID", "INTERNAL_FAILURE", "REQUEST_
 /** Readiness answers the checks act on by preparing again; any other unavailable readiness is a failure. */
 const EXPECTED_READINESS_CODES = new Set(["PREFLIGHT_EVIDENCE_EXPIRED", "PREFLIGHT_EVIDENCE_MISSING", "PREFLIGHT_EVIDENCE_STALE"]);
 
-export function debugFailureOutcome(value: unknown, status = 200, route?: string): { code: string; reason: string } | undefined {
-  const readiness = status === 200 && route === "/api/v1/preflight" ? PreflightReadinessWireSchema.safeParse(value) : undefined;
-  if (readiness?.success && readiness.data.state === "unavailable" && EXPECTED_READINESS_CODES.has(readiness.data.code ?? "")
-    && (readiness.data.code !== "PREFLIGHT_EVIDENCE_EXPIRED" || readiness.data.lastCompleted !== undefined)) return undefined;
+/** `readRoute` is the exact route of a GET; only the preflight read's 200 is held to the readiness contract. */
+export function debugFailureOutcome(value: unknown, status = 200, readRoute?: string): { code: string; reason: string } | undefined {
+  if (status === 200 && readRoute === "/api/v1/preflight") {
+    const readiness = PreflightReadinessWireSchema.safeParse(value);
+    if (!readiness.success) return { code: "DASHBOARD_READ_FAILED", reason: "response-contract-invalid" };
+    const { data } = readiness;
+    if (data.state === "present") return undefined;
+    if (data.code === undefined) return { code: "DASHBOARD_READ_FAILED", reason: "readiness-code-missing" };
+    if (data.code === "PREFLIGHT_EVIDENCE_EXPIRED" && data.lastCompleted === undefined) return { code: data.code, reason: "readiness-report-missing" };
+    if (EXPECTED_READINESS_CODES.has(data.code)) return undefined;
+  }
   if (z.object({ state: z.literal("signed-out"), remoteRevocation: z.literal("unconfirmed") }).safeParse(value).success) {
     return { code: "CHATGPT_AUTH_UNAVAILABLE", reason: "remote-revocation-unconfirmed" };
   }
@@ -48,7 +55,7 @@ export function debugFailureOutcome(value: unknown, status = 200, route?: string
   return { code, reason: uncertain ? "outcome-unknown" : state === "refused" || state === "rejected" || state === "conflict" ? "operation-refused" : "operation-failed" };
 }
 
-export function debugFailureOutcomes(value: unknown, status = 200, route?: string): (NonNullable<ReturnType<typeof debugFailureOutcome>> & { correlationId?: string })[] {
+export function debugFailureOutcomes(value: unknown, status = 200, readRoute?: string): (NonNullable<ReturnType<typeof debugFailureOutcome>> & { correlationId?: string })[] {
   const command = CommandResultSchema.safeParse(value);
   if (command.success && (command.data.state === "applied" || command.data.state === "already-applied") && command.data.workerStartup !== undefined) {
     const startup = command.data.workerStartup;
@@ -62,7 +69,7 @@ export function debugFailureOutcomes(value: unknown, status = 200, route?: strin
       code: "code" in result ? result.code : undefined });
     return failure === undefined ? [] : [{ ...failure, correlationId: result.commandId }];
   });
-  const failure = debugFailureOutcome(value, status, route);
+  const failure = debugFailureOutcome(value, status, readRoute);
   return failure === undefined ? [] : [failure];
 }
 

@@ -378,8 +378,10 @@ resumable while every retained change above the presented cursor is still held; 
 replays them and closes with a `change` that carries no day part. Malformed envelopes and HTTP stream failures stop
 with visible error, except a retryable 503 such as `STORAGE_SNAPSHOT_CHANGED`, which reconnects like network loss;
 `GET /api/v1/dashboard` makes three attempts in total on the same refusal: the first and up to two retries, 250 ms apart.
-`GET /api/v1/preflight` and `GET /api/v1/workbooks/**` make the same three attempts after a read deadline, a network
-failure or a retryable 503; a reported failure names its cause (`read-deadline`, `network-failed`).
+`GET /api/v1/preflight`, `GET /api/v1/workbooks/**`, `GET /api/v1/settings/editable` and `GET /api/v1/bootstrap` make
+the same three attempts after a read deadline, a network failure (including a body cut off in delivery) or a retryable
+503; a reported failure names its cause (`read-deadline`, `network-failed`, `response-json-invalid`). A preflight 200
+outside the readiness contract reports `response-contract-invalid`, `readiness-code-missing` or `readiness-report-missing`.
 Network loss resumes using `lastEventId` and `lastProjectionGeneration`.
 Superseded stream completions cannot reconnect the new stream.
 

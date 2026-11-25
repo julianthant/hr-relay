@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PreflightSelectionSchema, type PreflightReadinessWire } from "../../../models/preflight/preflight-contract.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { PREFLIGHT_RERUN_DEADLINE_MS, readWithDeadline } from "../../client/read-deadline.js";
+import { BOUNDED_READ_BUDGET_MS, PREFLIGHT_RERUN_DEADLINE_MS, readWithDeadline } from "../../client/read-deadline.js";
 import type { PreflightQueries } from "../../client/queries/preflight-queries.js";
 import type { SettingsQueries } from "../../client/queries/settings-queries.js";
-import { DashboardClientError } from "../../client/errors.js";
 import { useDashboardCommandBinding } from "../../state/client-context.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { CHECK_COPY } from "../settings/preflight/preflight-check-copy.js";
@@ -24,14 +23,6 @@ export type RunChecksState =
   | Readonly<{ state: "checking" }>
   | Readonly<{ state: "ready"; rows: readonly RunCheckRow[] }>
   | Readonly<{ state: "unavailable"; message: string }>;
-
-/** The settings and workflow-scope reads before a rerun get three attempts, 250 ms apart. */
-const PREREQUISITE_READ_ATTEMPTS = 3;
-const PREREQUISITE_READ_RETRY_MS = 250;
-
-/** A read that got no answer in time, lost its connection or met a retryable 503, here or as the cause of a wrapped failure. */
-const transientRead = (error: unknown): boolean => error instanceof DashboardClientError
-  && (error.kind === "network" || error.kind === "http" && error.status === 503 && error.retryable || transientRead(error.cause));
 
 const RANK: Readonly<Record<RunCheckVerdict, number>> = { fail: 0, warning: 1, pass: 2 };
 
@@ -89,16 +80,8 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
         if (!prepareNow.current) { setHeld(workflowId); return; }
       }
       if (actorId === undefined) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_SCOPE_UNAVAILABLE.text };
-      const readPrerequisites = async () => {
-        for (let attempt = 1; ; attempt += 1) {
-          try { return await readWithDeadline(() => Promise.all([client.editableSettings(), client.preflightScopes()]), "PREFLIGHT_SCOPE_UNAVAILABLE"); }
-          catch (error) {
-            if (!current || attempt === PREREQUISITE_READ_ATTEMPTS || !transientRead(error)) throw error;
-            await new Promise(resolve => setTimeout(resolve, PREREQUISITE_READ_RETRY_MS));
-          }
-        }
-      };
-      const [settings, workflows] = await readPrerequisites();
+      const [settings, workflows] = await readWithDeadline(() => Promise.all([client.editableSettings(), client.preflightScopes()]),
+        "PREFLIGHT_SCOPE_UNAVAILABLE", BOUNDED_READ_BUDGET_MS);
       if (!current) return;
       const workflow = workflows.find(candidate => candidate.id === workflowId);
       if (workflow === undefined) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_SCOPE_UNAVAILABLE.text };
