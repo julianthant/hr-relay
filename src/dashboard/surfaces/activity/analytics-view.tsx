@@ -25,7 +25,7 @@ export function AnalyticsToolbar({ range, shown = range, today, onRange, workflo
 }) {
   const quick = QUICK.find(option => { const candidate = quickRange(option.value, today); return candidate.from === range.from && candidate.to === range.to; })?.value;
   return <>
-    <PageHeading title="Analytics" />
+    <PageHeading title="Analytics" description="Runs, outcomes, and time saved over a period." />
     <div className="ds-toolbar-row mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
       <SegmentedChoice hideLabel label="Report period" value={(quick ?? "") as Quick} options={QUICK} onChange={value => onRange(quickRange(value, today))} />
       {isActivityCalendarDate(shown.from) && isActivityCalendarDate(shown.to) && shown.from <= shown.to && <span className="flex items-center gap-1">
