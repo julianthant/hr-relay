@@ -53,7 +53,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, ac
       <WorkflowRail workflows={workflows} counts={counts} active={active} onSelect={onSelect} collapsed={collapsed} onStart={onStartRun} canStart={canStartRun} />
     </div>
     <footer className="workspace-rail-footer">
-      {account && <div className="workspace-rail-profile" title={collapsed ? account.name : undefined}><span aria-hidden className="workspace-rail-avatar">{account.initials}</span>
+      {account && <div className="workspace-rail-profile" title={collapsed ? [account.name, account.email].filter(Boolean).join(" · ") : account.email}><span aria-hidden className="workspace-rail-avatar">{account.initials}</span>
         <span className="workspace-rail-profile-text"><strong>{account.name}</strong>{account.email !== undefined && <small>{account.email}</small>}</span></div>}
       <div className="workspace-rail-icons">
         <span className="workspace-rail-icon-group">
