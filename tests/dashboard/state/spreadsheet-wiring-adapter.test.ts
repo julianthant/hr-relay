@@ -8,6 +8,8 @@ import { closeDraft, editMapping, importWorkbook } from '../../../src/dashboard/
 import { datasetOf } from '../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2-model.js';
 import { prepareSpreadsheetColumns } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
 import { DashboardClientError } from '../../../src/dashboard/client/errors.js';
+import { createDashboardClient } from '../../../src/dashboard/client/index.js';
+import { SETTINGS_READ_DEADLINE_MS } from '../../../src/dashboard/client/read-deadline.js';
 import type { WorkbookLibraryQueries } from '../../../src/dashboard/client/queries/workbook-library-queries.js';
 import { SavedWorkbookSchema, encodeEditableWorkbook, type SavedWorkbook, type WorkbookSummary } from '../../../src/models/dashboard/workbooks.js';
 const book = () => ({ ...newEditableWorkbook(), libraryId: 'saved' });
@@ -202,6 +204,25 @@ describe('named library actions', () => {
     await adapter.refreshCatalog();
     assert.equal(adapter.snapshot().compatibility, undefined);
     assert.equal(adapter.snapshot().catalogError, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
+  });
+  it('loads the catalog when its first read gets no answer in time', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let catalogReads = 0;
+      const bodies: Record<string, unknown> = { '/api/v1/workbooks/catalog': [], '/api/v1/workbooks/compatibility': { workflows: [], libraries: [] }, '/api/v1/workbooks/types': [] };
+      const client = createDashboardClient({ baseUrl: 'http://relay.test', fetchImpl: async url => {
+        const path = new URL(url).pathname;
+        if (path === '/api/v1/workbooks/catalog' && (catalogReads += 1) === 1) return new Promise<Response>(() => undefined);
+        return Response.json(bodies[path]);
+      } });
+      const adapter = createSpreadsheetWiringAdapter(client);
+      const refreshing = adapter.refreshCatalog();
+      await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS + 250);
+      await refreshing;
+      assert.equal(catalogReads, 2);
+      assert.equal(adapter.snapshot().catalogError, '');
+      assert.deepEqual(adapter.snapshot().compatibility, { workflows: [], libraries: [] });
+    } finally { vi.useRealTimers(); }
   });
   it('replaces Run eligibility after a workbook mapping change without replacing the adapter', async () => {
     const { client, adapter } = setup(), file = entry();
