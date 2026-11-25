@@ -112,7 +112,7 @@ const COMBINATION = {
 
 /** The sidebar icon: each dot, and pressed while the console is open. With the panel closed it is all that shows. */
 const icon = (title: string, data: SessionsViewState, open = false): Story => ({ title, ready: 'button[aria-label="Sessions console"]',
-  render: () => <StoryFrame><ConsoleToggle data={data} open={open} onOpenChange={noop} /></StoryFrame> });
+  render: () => <StoryFrame><div className="flex"><ConsoleToggle data={data} open={open} onOpenChange={noop} /></div></StoryFrame> });
 const ICON = {
   "no-workers": icon("Panel closed, no workers: no dot", ready()),
   idle: icon("Panel closed, idle workers: green dot", ready(SESSION_WORKER_BY_STATE.idle)),

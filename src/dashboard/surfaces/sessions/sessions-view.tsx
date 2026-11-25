@@ -81,7 +81,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, workflows = 
     ...workers.filter(worker => operations[worker.id]?.state === "pending" && operations[worker.id]?.request.action === "remove").map(worker => `Removing ${worker.label}, ${worker.workflow}.`),
   ].filter(Boolean).join(" ");
   if (!open) return <section id={SESSIONS_CONSOLE_ID} aria-label="Session Panel" className="sr-only"><p role="status">{announcement}</p></section>;
-  return <section ref={consoleRef} id={SESSIONS_CONSOLE_ID} aria-label="Session Panel" tabIndex={-1} className={cn("session-console ui-theme-scope font-ui text-ui-primary", dsFocus, "focus-visible:-outline-offset-2")} style={{ maxHeight: height }}>
+  return <section ref={consoleRef} id={SESSIONS_CONSOLE_ID} aria-label="Session Panel" tabIndex={-1} className={"session-console ui-theme-scope font-ui text-ui-primary outline-none"} style={{ maxHeight: height }}>
     <div role="separator" aria-orientation="horizontal" aria-label="Resize Sessions" aria-valuemin={MIN_HEIGHT} aria-valuemax={Math.max(height, limit)} aria-valuenow={height} tabIndex={0} className={cn("session-console-grip", dsFocus)} onPointerDown={drag} onKeyDown={key} />
     <header className="session-console-header">
       <BareButton ref={toggleRef} type="button" aria-expanded={!collapsed} aria-controls={`${SESSIONS_CONSOLE_ID}-body`} className={cn("session-toggle", dsFocus)} onClick={() => setCollapsed(value => !value)}>
