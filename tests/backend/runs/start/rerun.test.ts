@@ -46,7 +46,7 @@ function fixture(outcome: "done" | "failed" | "interrupted" | "cancelled", older
     selectedStepKeys: descriptor.timeline.map(step => step.key) };
   return { repositories, source };
 }
-it.each(["done", "failed", "interrupted"] as const)("ordinary Rerun accepts %s without inheriting saved work", outcome => {
+it.each(["done", "failed", "interrupted", "cancelled"] as const)("ordinary Rerun accepts %s without inheriting saved work", outcome => {
   for (const older of [false, true]) {
     const f = fixture(outcome, older);
     const plan = previewRerunWarnings(f.repositories, descriptor, f.source);
@@ -62,8 +62,8 @@ it.each(["parked", "attempting"] as const)("ordinary Rerun still refuses %s writ
       error => error instanceof RerunRefusedError && error.code === "invalid-state");
   }
 });
-it("ordinary Rerun refuses a cancelled source", () => {
-  const f = fixture("cancelled");
+it.each(["parked", "attempting"] as const)("Rerun of a cancelled source still refuses %s write authority", uncertain => {
+  const f = fixture("cancelled", false, uncertain);
   assert.throws(() => previewRerunWarnings(f.repositories, descriptor, f.source),
     error => error instanceof RerunRefusedError && error.code === "invalid-state");
 });

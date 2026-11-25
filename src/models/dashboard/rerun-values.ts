@@ -44,7 +44,7 @@ export const RerunValuesSnapshotSchema = z.strictObject({
   source: z.strictObject({
     runId: RunIdSchema, version: PositiveIntSchema, workflow: WorkflowIdSchema,
     descriptorVersion: PositiveIntSchema, contractFingerprint: FingerprintSchema,
-    outcome: z.enum(["done", "failed", "interrupted"]),
+    outcome: z.enum(["done", "failed", "interrupted", "cancelled"]),
     /** How the source ran; a rerun keeps it, and is refused without a browser mode. */
     dryRun: z.boolean(), priority: RunPrioritySchema, browserMode: BrowserPresentationModeSchema.optional(),
   }),

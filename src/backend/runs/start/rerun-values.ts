@@ -216,7 +216,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       const older = descriptor.version !== run.envelope.descriptorVersion
         || descriptor.contractFingerprint !== run.envelope.contractFingerprint;
       const { lifecycle } = run;
-      if (lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(lifecycle.outcome)) refuse("source-ineligible");
+      if (lifecycle.state !== "terminal" || !["done", "failed", "interrupted", "cancelled"].includes(lifecycle.outcome)) refuse("source-ineligible");
       if (!older && ((schemaReader?.({ kind: "run-input", id: run.envelope.runId }, run.input, run.input.parsed.schemaHash, deriveSchemaHash(descriptor.canonicalInput, "output")) ?? run.input.parsed.schemaHash) !== deriveSchemaHash(descriptor.canonicalInput, "output")
         || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)) refuse("source-invalid");
       const repositories = deps.database.authority;
