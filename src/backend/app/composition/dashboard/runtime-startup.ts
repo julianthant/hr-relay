@@ -1,9 +1,6 @@
 import { RuntimeCustodyUncertainError } from "../storage-compose.js";
 import { type DashboardComposeInput,type DashboardRuntime,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
 
-
-import { composeDashboardRuntimeStartup } from "./dashboard-wiring.js";
-
 async function unwindDashboardStartup(
   cleanups: readonly StartupCleanup[],
   primary: unknown,
@@ -30,6 +27,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const startupCleanups: StartupCleanup[] = [];
   const custody: StartupCustody = { failedClosures: [], transportClosed: true };
   try {
+    const { composeDashboardRuntimeStartup } = await import("./dashboard-wiring.js");
     const runtime = await composeDashboardRuntimeStartup(input, startupCleanups, custody);
     startupCleanups.length = 0;
     return runtime;
