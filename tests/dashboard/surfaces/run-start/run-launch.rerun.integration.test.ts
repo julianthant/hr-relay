@@ -29,7 +29,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     h.registerDescriptor(launchDescriptor("reject-active", { fingerprint: "b".repeat(64),
       ...(change === "version" ? { version: 2 } : {}), ...(change === "steps" ? { stepPrefix: "current-" } : {}) }));
     await mount(h, source);
-    assert.equal(document.querySelector("textarea"), null);
+    assert.equal(document.querySelector("textarea") === null, true);
     for (const label of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(label).matches(":checked"), true);
     await press("Continue");
     await pressOnce("Start live run");

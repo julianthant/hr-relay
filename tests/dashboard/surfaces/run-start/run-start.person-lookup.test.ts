@@ -30,7 +30,7 @@ describe("served Person Lookup Run and Rerun", () => {
     const dialog = await h.openDialog(h.stubClient({ rerunValues: async () => ({ state: "available", snapshot }) }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
     assert.match(dialog.text(), /The original input can't be reused; use Start run\./u);
     assert.equal(dialog.disabled("Continue"), true);
-    assert.equal(document.querySelector(".launch-dialog textarea"), null);
+    assert.equal(document.querySelector(".launch-dialog textarea") === null, true);
   });
   it("fills a missing older control from current defaults without changing accepted identity", async () => {
     const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion,
@@ -112,7 +112,7 @@ describe("served Person Lookup Run and Rerun", () => {
       { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
     assert.match(dialog.text(), /The original input can't be reused; use Start run\./u);
     assert.equal(dialog.stage(), "Steps");
-    assert.equal(document.querySelector(".launch-dialog textarea"), null);
+    assert.equal(document.querySelector(".launch-dialog textarea") === null, true);
     assert.equal(dialog.disabled("Continue"), true);
   });
   for (const older of [false, true]) for (const input of [
@@ -130,7 +130,7 @@ describe("served Person Lookup Run and Rerun", () => {
       submitStartPlan: async options => { request = options; const parsed = StartPlanRequestSchema.parse(options); return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
     }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
     assert.equal(dialog.stage(), "Steps");
-    assert.equal(document.querySelector(".launch-dialog textarea"), null);
+    assert.equal(document.querySelector(".launch-dialog textarea") === null, true);
     assert.equal(document.body.innerHTML.includes("123456789"), false);
     await dialog.press("Continue"); await dialog.press("Start run");
     const planned = StartPlanRequestSchema.parse(request);

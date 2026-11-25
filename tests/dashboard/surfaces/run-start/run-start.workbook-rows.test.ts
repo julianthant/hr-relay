@@ -162,7 +162,7 @@ it("reruns the original person, mode and saved spreadsheet, with its row and no 
     submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return proposal(planned); },
   }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
   await h.settle();
-  assert.equal(checkboxRows().length, 0); assert.equal(document.querySelector(".launch-dialog textarea"), null);
+  assert.equal(checkboxRows().length, 0); assert.equal(document.querySelector(".launch-dialog textarea") === null, true);
   await dialog.press("Continue"); await dialog.press("Start live run"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "source@example.test", mode: "rehire" }]);
   assert.deepEqual(planned.workbookReferences, [{ entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "first", expectedVersion: 1, selectedRow: { sheetId: "first", rowId: "row-2" } }]);
