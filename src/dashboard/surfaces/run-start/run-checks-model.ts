@@ -80,7 +80,7 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
         if (!prepareNow.current) { setHeld(workflowId); return; }
       }
       if (actorId === undefined) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_SCOPE_UNAVAILABLE.text };
-      const [settings, workflows] = await readWithDeadline(() => Promise.all([client.editableSettings(), client.preflightScopes()]),
+      const [settings, workflows] = await readWithDeadline(() => Promise.all([client.editableSettings({ retry: true }), client.preflightScopes()]),
         "PREFLIGHT_SCOPE_UNAVAILABLE", BOUNDED_READ_BUDGET_MS);
       if (!current) return;
       const workflow = workflows.find(candidate => candidate.id === workflowId);

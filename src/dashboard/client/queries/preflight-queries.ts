@@ -25,7 +25,7 @@ export interface PreflightQueries {
 
 export function createPreflightQueries(transport: DashboardTransport): PreflightQueries { return Object.freeze({
     async preflightScopes() {
-      const boot = parseOrThrow(FrontendBootstrapWireSchema, "GET /api/v1/bootstrap", await transport.requestJson("/api/v1/bootstrap"));
+      const boot = parseOrThrow(FrontendBootstrapWireSchema, "GET /api/v1/bootstrap", await transport.requestJson("/api/v1/bootstrap", undefined, { retry: true }));
       return z.array(WorkflowBootstrapPrimitiveSchema).parse(boot.workflows);
     },
     async readPreflight(selection?: PreflightSelection) {

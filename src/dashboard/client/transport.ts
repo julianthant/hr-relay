@@ -42,7 +42,8 @@ export interface BinaryResponse {
 }
 
 export interface DashboardTransport {
-  requestJson(path: string, init?: RequestInit): Promise<unknown>;
+  /** `retry` asks a run-start read again, as the checks and workbook reads always are. */
+  requestJson(path: string, init?: RequestInit, options?: Readonly<{ retry?: boolean }>): Promise<unknown>;
   /** The same request, with the status line preserved.
  * Two routes make the status load-bearing rather than incidental: the command */
   requestJsonResponse(path: string, init?: RequestInit): Promise<JsonResponse>;
@@ -108,17 +109,15 @@ export function createDashboardTransport(input: Readonly<{
     } catch (error) {
       throw networkError(`${init?.method ?? "GET"} ${path}`, error);
     }
-    let text: string;
-    try { text = await response.text(); }
-    catch (error) { throw networkError(`${init?.method ?? "GET"} ${path}`, error); }
-    let body: unknown;
-    try { body = JSON.parse(text); }
-    catch (error) { throw httpError(response.status, { unparseable: String(error) }); }
+    // A body that is not JSON is the server's answer; a body cut off in delivery is a lost connection.
+    const body: unknown = await response.json().catch((error: unknown) => {
+      throw error instanceof SyntaxError ? httpError(response.status, { unparseable: String(error) }) : networkError(`${init?.method ?? "GET"} ${path}`, error);
+    });
     observeProfileSession(path, response.status, body, notify);
     return Object.freeze({ headers: response.headers, status: response.status, ok: response.ok, body });
   };
 
-  const sendWithDeadline = (path: string, init?: RequestInit): Promise<JsonResponse> => {
+  const sendWithDeadline = (path: string, init?: RequestInit, retry = false): Promise<JsonResponse> => {
     const method = init?.method?.toUpperCase() ?? "GET";
     const route = path.split("?")[0];
     const accountStatus = route === "/api/v1/settings/chatgpt-account";
@@ -128,9 +127,7 @@ export function createDashboardTransport(input: Readonly<{
       : route === "/api/v1/preflight" ? "PREFLIGHT_READ_UNAVAILABLE"
       : route === "/api/v1/settings/editable" || route === "/api/v1/settings/facts" ? "SETTINGS_INITIAL_READ_UNAVAILABLE"
       : route?.startsWith("/api/v1/workbooks") || route === "/api/v1/explorer" || route?.startsWith("/api/v1/reports/activity") ? "DASHBOARD_READ_FAILED" : undefined;
-    /** The run-start reads: checks, workbooks, and the settings and workflow scopes a checks rerun needs. */
-    const retried = method === "GET" && (route === "/api/v1/preflight" || route?.startsWith("/api/v1/workbooks") === true
-      || route === "/api/v1/settings/editable" || route === "/api/v1/bootstrap");
+    const retried = method === "GET" && (retry || route === "/api/v1/preflight" || route?.startsWith("/api/v1/workbooks") === true);
     if (code === undefined && !retried || accountCompletion && init?.signal !== undefined) return sendUnbounded(path, init);
     const deadline = accountCompletion ? CHATGPT_COMPLETION_READ_DEADLINE_MS
       : accountStatus ? CHATGPT_ACCOUNT_READ_DEADLINE_MS : SETTINGS_READ_DEADLINE_MS;
@@ -157,9 +154,9 @@ export function createDashboardTransport(input: Readonly<{
     const readRoute = method.toUpperCase() === "GET" ? path.split(/[?#]/u)[0] : undefined;
     for (const failure of debugFailureOutcomes(body, status, readRoute)) input.onFailure?.({ ...failure, ...(reason === undefined ? {} : { reason }), route: diagnosticRequestRoute(path) });
   };
-  const send = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
+  const send = async (path: string, init?: RequestInit, retry = false): Promise<JsonResponse> => {
     try {
-      const response = await sendWithDeadline(path, init);
+      const response = await sendWithDeadline(path, init, retry);
       reportFailure(path, response.body, response.ok ? response.status : Math.max(400, response.status), init?.method);
       return response;
     } catch (error) {
@@ -169,8 +166,8 @@ export function createDashboardTransport(input: Readonly<{
   };
 
   return Object.freeze({
-    async requestJson(path: string, init?: RequestInit): Promise<unknown> {
-      const response = await send(path, init);
+    async requestJson(path: string, init?: RequestInit, options?: Readonly<{ retry?: boolean }>): Promise<unknown> {
+      const response = await send(path, init, options?.retry);
       // Typed command refusals use 409/422; other non-success responses follow the wire-error contract.
       if (!response.ok && !isTypedCommandResultStatus(path, response.status)) {
         const error = httpError(response.status, response.body);
@@ -180,7 +177,7 @@ export function createDashboardTransport(input: Readonly<{
       return response.body;
     },
 
-    requestJsonResponse: send,
+    requestJsonResponse: (path: string, init?: RequestInit) => send(path, init),
 
     async requestBinary(path: string, init?: RequestInit): Promise<BinaryResponse> {
       const notify = input.captureProfileSessionStale?.();

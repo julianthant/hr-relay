@@ -74,7 +74,7 @@ function checksHarness(workflowId: string, failingCheck: "config.valid" | "secre
     const path = new URL(url).pathname;
     requests.push(`${init?.method ?? "GET"} ${path}`);
     if (path === "/api/v1/profile/state") return Response.json({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready" });
-    if (path === "/api/v1/debug/errors") { reports.push(JSON.parse(String(init?.body))); return Response.json({ state: "recorded" }); }
+    if (path === "/api/v1/debug/errors") { assert.ok(typeof init?.body === "string"); reports.push(JSON.parse(init.body)); return Response.json({ state: "recorded" }); }
     if (firstAttempt[path] !== undefined && requests.filter(request => request === `GET ${path}`).length === 1) {
       if (firstAttempt[path] === "lost") throw new TypeError("Failed to fetch");
       await new Promise<never>(() => undefined);
