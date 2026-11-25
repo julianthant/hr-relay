@@ -143,3 +143,15 @@ it("a served required target without a binding stays visible and blocks Start", 
   const h = await mount({ ...base, targets: [{ ...target, required: true }], bindings: [], constants: [] });
   assert.ok(h.host.textContent?.includes(`${target.label} is not bound`)); assert.equal(h.button("Start 2 runs").disabled, true);
 });
+
+it("rejection row actions name their row and Cancel returns focus to the opener", async () => {
+  const h = await mount();
+  const fix = h.host.querySelector<HTMLButtonElement>('button[aria-label^="Fix cell, row "]'); assert.ok(fix, "Fix cell must name its row");
+  await flush(() => fix.click());
+  await flush(() => h.button("Cancel").click());
+  assert.equal(document.activeElement === fix, true);
+  const exclude = h.host.querySelector<HTMLButtonElement>('button[aria-label^="Exclude row "]'); assert.ok(exclude, "Exclude must name its row");
+  await flush(() => exclude.click());
+  await flush(() => h.button("Cancel").click());
+  assert.equal(document.activeElement === exclude, true);
+});
