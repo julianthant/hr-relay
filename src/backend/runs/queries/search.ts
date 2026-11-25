@@ -11,6 +11,12 @@ import {
   RunIdSchema,
 } from "../../../rules/identity/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
+import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import { ReadLaneReadError } from "../../storage/sqlite/dashboard-read-host.js";
+import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
+import { resolveResultTitle, resolveSubjectTitle } from "../projections/run-subject-title.js";
 import {
   CROSS_DATE_SEARCH_MATCH_ORDER,
   CROSS_DATE_SEARCH_MAX_MATCH_RANK,
@@ -41,7 +47,7 @@ interface CrossDateSearchAuthoritySnapshot {
 }
 
 export interface CrossDateSearchQueryDeps {
-  readonly clock: Clock;
+  readonly clock: Pick<Clock, "now">;
   readonly sourceIdentity: string;
   readonly cursorSigningKey: Uint8Array;
   readonly descriptors: {
@@ -173,20 +179,37 @@ function canonicalUtcInstant(instant: string): z.infer<typeof IsoInstantSchema> 
   return IsoInstantSchema.parse(new Date(Date.parse(instant)).toISOString());
 }
 
+const SearchSelectionIssueSchema = z.strictObject({
+  code: z.literal("custom"), path: z.tuple([z.enum(["cursor", "snapshotToken"])]), message: z.string().min(1),
+});
+const SEARCH_SELECTION_REFUSAL = "search-selection-refusal:";
+
 function cursorRefusal(message: string): never {
-  const refusal = z.string().superRefine((_value, context) => {
-    context.addIssue({ code: "custom", path: ["cursor"], message });
-  }).safeParse("cursor");
-  if (refusal.success) throw new Error("cursor refusal schema accepted its deliberate issue");
-  throw refusal.error;
+  throw new z.ZodError([{ code: "custom", path: ["cursor"], message }]);
 }
 
 function snapshotTokenRefusal(message: string): never {
-  const refusal = z.string().superRefine((_value, context) => {
-    context.addIssue({ code: "custom", path: ["snapshotToken"], message });
-  }).safeParse("snapshotToken");
-  if (refusal.success) throw new Error("snapshot token refusal schema accepted its deliberate issue");
-  throw refusal.error;
+  throw new z.ZodError([{ code: "custom", path: ["snapshotToken"], message }]);
+}
+
+/** The host carries messages for lane errors. Preserve the HTTP validation contract for selection refusals. */
+export function withSearchSelectionRefusals<Result>(read: () => Result): Result {
+  try { return read(); }
+  catch (error) {
+    if (error instanceof z.ZodError && error.issues.length === 1) {
+      const issue = SearchSelectionIssueSchema.safeParse(error.issues[0]);
+      if (issue.success) throw new Error(SEARCH_SELECTION_REFUSAL + JSON.stringify(issue.data));
+    }
+    throw error;
+  }
+}
+
+export function rethrowSearchLaneError(error: unknown): never {
+  if (error instanceof ReadLaneReadError && error.message.startsWith(SEARCH_SELECTION_REFUSAL)) {
+    const issue = SearchSelectionIssueSchema.parse(JSON.parse(error.message.slice(SEARCH_SELECTION_REFUSAL.length)));
+    throw new z.ZodError([issue]);
+  }
+  throw error;
 }
 
 function queryHashOf(query: CrossDateSearchQuery): z.infer<typeof FingerprintSchema> {
@@ -530,5 +553,42 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
       );
       return search(query, selectedSnapshot);
     },
+  });
+}
+
+export function storedSearchQueuedTitle(database: Pick<AuthorityDatabase, "authority">, runId: string): string | undefined {
+  const [queued, duplicate] = database.authority.timelineEvents.page({ after: 0, runId, spanTypes: ["run.queued"], limit: 2 });
+  if (queued === undefined) return undefined;
+  if (duplicate !== undefined || queued.payload.kind !== "span" || queued.payload.event.t !== "run.queued") {
+    throw new Error(`search-queued-title-source-invalid: ${runId}`);
+  }
+  return queued.payload.event.title;
+}
+
+export function createAuthorityCrossDateSearchService(input: {
+  database: AuthorityDatabase;
+  sourceIdentity: string;
+  clock: Pick<Clock, "now">;
+  cursorSigningKey: Uint8Array;
+  descriptors: { resolve(id: string): AnyWorkflowDescriptor | undefined };
+  queuedTitle(runId: string): string | undefined;
+}): CrossDateSearchQueryService {
+  const { database, sourceIdentity, clock, cursorSigningKey, descriptors, queuedTitle } = input;
+  return createCrossDateSearchService({ clock, cursorSigningKey, descriptors, sourceIdentity,
+    authority: { readSnapshot: read => database.withAuthorityReadSnapshot(() => read({
+      authorityGeneration: database.getMeta().authorityGeneration,
+      searchRuns: searchInput => database.authority.runs.search(searchInput),
+      displayTitle: run => {
+        if (run.displayName !== undefined && retainedRunProtectedBindings(run).length === 0) return run.displayName;
+        const { runId, workflow, itemId, shape } = run.envelope;
+        const descriptor = descriptors.resolve(workflow);
+        const receipt = descriptor?.titleProjection !== undefined && shape !== "operation"
+          && runResultCurrent(run) && run.lifecycle.outcome === "done" ? database.authority.evidenceReceipts.findByRun(runId) : undefined;
+        return (descriptor === undefined ? undefined : resolveResultTitle(descriptor, run, receipt))
+          ?? resolveSubjectTitle(descriptor?.subjectProjection, { workflowId: workflow, itemId },
+            { latestCheckpoint: (workflowId, item, node) => database.authority.runCheckpoints.latest(workflowId, item, node) })
+          ?? queuedTitle(runId) ?? runId;
+      },
+    })) },
   });
 }

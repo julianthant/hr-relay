@@ -33,6 +33,9 @@ import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeI
 import { composeSettings } from "./settings.js";
 import { createDashboardReadHost, ReadLaneStartError } from "../../../storage/sqlite/dashboard-read-host.js";
 
+export function createComposedDashboardReadHost(input: Omit<Parameters<typeof createDashboardReadHost>[0], "entry">) {
+  return createDashboardReadHost({ ...input, entry: new URL("./read-lane-entry.js", import.meta.url) });
+}
 
 export function prepareDashboardEnvironment(input: DashboardComposeInput, custody: StartupCustody) {
   const requireProducerClosure = (): void => {
@@ -127,7 +130,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   });
   // Read lanes boot on their own threads while the rest of startup runs; they close before the store they read.
   const readLanes = (() => {
-    try { return createDashboardReadHost({ admission, database, clock }); }
+    try { return createComposedDashboardReadHost({ admission, database, clock }); }
     catch (error) {
       // Lanes that did start still hold the store: the unwind joins them before it closes the database.
       if (error instanceof ReadLaneStartError) startupCleanups.push(requiredClosure(() => error.exited));
