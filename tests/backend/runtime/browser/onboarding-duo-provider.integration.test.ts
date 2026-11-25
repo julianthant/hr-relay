@@ -6,6 +6,8 @@ import { stageFastDuoExtension } from "../../../../src/backend/runtime/browser/f
 import { PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../../src/models/config/duo-credential-store.js";
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { captureFullPage } from "../../../../src/backend/runtime/browser/full-page-capture.js";
+import { holdNativeViewport } from "../../../../src/backend/runtime/browser/native-viewport.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
@@ -15,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect } from "@playwright/test";
 import { chromium, type BrowserContext } from "playwright";
+import { PNG } from "pngjs";
 import { beforeAll, it } from "vitest";
 import { z } from "zod";
 import { createProfileOnboardingDuoProvider, duoScreenSnapshot, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
@@ -470,13 +473,14 @@ it("measures, centers and clamps the exact native setup normal window and execut
   await focus.show(relayContext, relayPage);
   const relay = await focus.captureRelay(); assert.ok(relay?.workArea);
   const context = await DEFAULT_BROWSER_LAUNCHER.launch({ profileDirectory: root, extensionDirectory, headless: false, acceptDownloads: false,
-    downloadsPath: root, viewport: { width: 640, height: 720 }, timeoutMs: 5000, ownedProcess: owned => { process = owned; } });
+    downloadsPath: root, viewport: null, timeoutMs: 5000, ownedProcess: owned => { process = owned; } });
   try {
     const worker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js"))
       ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js"), timeout: 5000 });
     const target = z.object({ tabId: z.number(), windowId: z.number(), url: z.string() }).parse(await worker.evaluate(`globalThis.relayOnboarding.browserInstall(crypto.randomUUID())`));
     await expect.poll(() => context.pages().some(page => page.url() === target.url)).toBe(true);
     const page = context.pages().find(page => page.url() === target.url); assert.ok(page);
+    assert.equal(page.viewportSize(), null);
     const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
     const initial = { methods: { key: idle } };
     const reply = worker.evaluate(async initial => {
@@ -508,6 +512,78 @@ it("measures, centers and clamps the exact native setup normal window and execut
     await focus.show(context, page);
   } finally { assert.ok(process); await process.stop(5000, true); assert.equal(process.exited(), true); }
   } finally { await relayBrowser.close(); }
+});
+
+it("keeps headed evidence independent of native window size and gives resizing back after capture", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "relay-headed-capture-")));
+  const context = await DEFAULT_BROWSER_LAUNCHER.launch({ profileDirectory: root, extensionDirectory: "", nativeOnly: true,
+    headless: false, acceptDownloads: false, downloadsPath: root, viewport: null });
+  try {
+    const page = context.pages()[0]; assert.ok(page);
+    assert.equal(page.viewportSize(), null);
+    await page.setContent(`<style>body{margin:0}main{height:2400px;background:#123456}
+      @media(min-width:1100px) and (min-height:1000px){main{background:linear-gradient(#fedcba 0 50%,#123456 50%)}}</style><main></main>`);
+    const cdp = await context.newCDPSession(page);
+    const { windowId } = await cdp.send("Browser.getWindowForTarget");
+    const dimensions = () => page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    const resize = (width: number, height: number) => cdp.send("Browser.setWindowBounds", { windowId, bounds: { width, height } });
+    const capture = () => captureFullPage(page, {
+      assertCurrent: () => {}, assertSafe: async () => {}, secretControls: 'input[type="password"]', mask: () => [], afterCapture: async () => {},
+    });
+
+    const opening = await page.evaluate(() => ({ width: window.outerWidth, height: window.outerHeight,
+      workWidth: screen.availWidth, workHeight: screen.availHeight }));
+    assert.ok(opening.width <= opening.workWidth && opening.height <= opening.workHeight);
+    await resize(650, 500);
+    await expect.poll(async () => (await dimensions()).width).toBeLessThan(700);
+    const small = await dimensions();
+    const baseline = await capture();
+    const pixels = PNG.sync.read(Buffer.from(baseline.bytes));
+    const pixel = (y: number) => {
+      const offset = (y * pixels.width + 20) * 4;
+      return [...pixels.data.subarray(offset, offset + 3)];
+    };
+    assert.deepEqual(pixel(20), [254, 220, 186]);
+    assert.deepEqual(pixel(pixels.height - 20), [18, 52, 86]);
+    const matchesBaseline = async () => {
+      const image = await capture();
+      assert.deepEqual([image.width, image.height], [baseline.width, baseline.height]);
+      assert.equal(Buffer.compare(image.bytes, baseline.bytes), 0);
+    };
+    assert.equal(page.viewportSize(), null);
+    await expect.poll(dimensions).toEqual(small);
+
+    await resize(850, 650);
+    await expect.poll(async () => (await dimensions()).width).toBeGreaterThan(small.width);
+    const large = await dimensions();
+    await matchesBaseline();
+    await expect.poll(dimensions).toEqual(large);
+
+    const screenshot = page.screenshot.bind(page);
+    let resized = false;
+    page.screenshot = async options => {
+      if (!resized) {
+        await resize(650, 500);
+        await expect.poll(async () => (await cdp.send("Browser.getWindowBounds", { windowId })).bounds.width).toBeLessThan(700);
+        assert.deepEqual(await dimensions(), { width: 1280, height: 1200 });
+        resized = true;
+      }
+      return screenshot(options);
+    };
+    await matchesBaseline();
+    assert.equal(resized, true);
+    assert.equal(page.viewportSize(), null);
+    await expect.poll(dimensions).toEqual(small);
+
+    const readHeldViewport = holdNativeViewport(page, () => {}, async () => {
+      await resize(850, 650);
+      await expect.poll(async () => (await cdp.send("Browser.getWindowBounds", { windowId })).bounds.width).toBeGreaterThan(800);
+      return dimensions();
+    });
+    assert.deepEqual(await readHeldViewport(), small);
+    await expect.poll(dimensions).toEqual(large);
+    await cdp.detach();
+  } finally { await context.close(); }
 });
 
 for (const expire of [false, true]) it(`real public Reopen proves owned stop, native retry and exact request custody (expired=${expire})`, async () => {
