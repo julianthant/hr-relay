@@ -9,8 +9,8 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     for (const label of WORKFLOW_LABELS) {
       test(`${label} shows its Input stage inside the window`, async ({ dashboard }) => {
         await dashboard.open();
-        await dashboard.openStartDialog();
-        await dashboard.dialog.getByRole("navigation", { name: "Workflow" }).getByRole("button", { name: label, exact: true }).click();
+        await dashboard.page.getByRole("button", { name: `Start a ${label} run`, exact: true }).click();
+        await expect(dashboard.dialog).toBeVisible();
         await expect(dashboard.dialog.getByRole("banner")).toContainText(label);
         // The Input stage can contain a second region named Input for the text entry.
         await expect(dashboard.dialog.getByRole("region", { name: "Input", exact: true }).first()).toBeVisible();

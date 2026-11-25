@@ -268,24 +268,11 @@ describe("asking for a re-check", () => {
     assert.equal(served.reruns(), 1, "a second visit to Checks only reads");
   });
 
-  it("does not ask again after switching workflow or returning from Settings, and asks once more after a reopen", async () => {
+  it("does not ask again after returning from Settings, and asks once more after a reopen", async () => {
     const served = missing(async () => { throw new Error("refused"); });
-    const separations = DESCRIPTORS.find(flow => flow.id === "separations");
-    assert.ok(separations?.surfaces.inputRun);
-    const other = { ...h.WORKFLOWS[0], workflowId: separations.id, label: separations.label, version: separations.version,
-      steps: projectStartSteps(separations), inputRun: { state: "present" as const, surface: separations.surfaces.inputRun } };
-    const dialog = await h.openDialog(served.client, { workflows: [h.WORKFLOWS[0], other], panelWorkflowId: h.WORKFLOW_ID });
+    const dialog = await h.openDialog(served.client, { workflows: [h.WORKFLOWS[0]], panelWorkflowId: h.WORKFLOW_ID });
     await reachChecks(dialog);
     assert.equal(served.reruns(), 1);
-    const pick = async (label: string) => {
-      const button = [...document.body.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflow"] button')].find(node => node.textContent?.includes(label));
-      assert.ok(button, label);
-      await act(async () => button.click());
-      for (let wait = 0; wait < 6; wait += 1) await h.settle();
-    };
-    await pick(other.label);
-    await pick(h.WORKFLOWS[0].label);
-    assert.equal(served.reruns(), 1, "switching workflow asks for no second re-check");
     await dialog.rerender({ hidden: true });
     await dialog.rerender({ hidden: false });
     assert.equal(served.reruns(), 1, "returning from Settings asks for no second re-check");

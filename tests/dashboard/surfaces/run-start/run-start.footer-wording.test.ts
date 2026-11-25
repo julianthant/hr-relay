@@ -30,15 +30,6 @@ describe("Run dialog footer and priority wording", () => {
       await h.cleanup();
     }
   });
-  it("names the picked workflow after switching in the picker", async () => {
-    const dialog = await h.openDialog(h.stubClient({}), { workflows: PICKER, panelWorkflowId: STARTABLE[0].workflowId });
-    for (const workflow of [...STARTABLE, ...STARTABLE].reverse()) {
-      const button = [...document.body.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflow"] button')].find(node => node.textContent?.includes(workflow.label));
-      assert.ok(button, workflow.label);
-      await act(async () => button.click());
-      assert.match(dialog.text(), new RegExp(`${workflow.label} · \\d+ of \\d+ steps`), workflow.workflowId);
-    }
-  });
   it("words priority as Priority, never Interactive or Bulk", async () => {
     const dialog = await h.openDialog(h.stubClient({ submitStartPlan: async () => h.planResponse("5a000000-0000-4000-8000-000000000001") }));
     await dialog.type(h.TYPED);
