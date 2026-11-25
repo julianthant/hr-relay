@@ -207,7 +207,7 @@ function HeaderChips({
       {testSystems.length > 0 && (
         <span
           title={testInstanceHazardTitle(testSystems)}
-          className={rowChip("info", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}
+          className={rowChip("info", cn(dsText.caps, "!uppercase tracking-[var(--ds-tracking-caps)]"))}
         >
           test
         </span>
@@ -215,7 +215,7 @@ function HeaderChips({
       {surface.dryRun && (
         <span
           title="Dry run — this rehearsal reads the systems and writes nothing."
-          className={rowChip("rehearsal", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}
+          className={rowChip("rehearsal", cn(dsText.caps, "!uppercase tracking-[var(--ds-tracking-caps)]"))}
         >
           dry run
         </span>
@@ -803,7 +803,7 @@ export function QueueRow({
               <div data-queue-labels className="ml-auto flex shrink-0 flex-nowrap items-center justify-end gap-[var(--ds-space-snug)]">
                 {batch !== undefined ? <>
                   {batchTestSystems.length > 0 && <span title={testInstanceHazardTitle(batchTestSystems)} className={rowChip("info")}>test</span>}
-                  {batch.members.some(member => member.dryRun) && <span className={rowChip("rehearsal", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}
+                  {batch.members.some(member => member.dryRun) && <span className={rowChip("rehearsal", cn(dsText.caps, "!uppercase tracking-[var(--ds-tracking-caps)]"))}
                     title="Includes dry-run people — rehearsals read the systems and write nothing.">dry run</span>}
                   {batchWarnings.length > 0 && <span className={rowChip("warning")} title={batchWarnings.map(warning => warning.first).join("; ")}>
                     <AlertTriangle aria-hidden className={dsIcon.sm} />{batchWarnings.reduce((total, warning) => total + warning.count, 0)}
@@ -1107,8 +1107,8 @@ export const QueuePanel = memo(function QueuePanel({
           dsText.caps,
           "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-loose)] mb-[var(--ds-space-snug)] flex items-center gap-[var(--ds-space-base)] !font-semibold !uppercase tracking-[var(--ds-tracking-caps)]",
           band.key === "attention"
-            ? "text-[color:var(--ds-status-waiting-fg)]"
-            : "text-[color:var(--ds-fg-muted)]",
+            ? "!text-[color:var(--ds-status-waiting-fg)]"
+            : "!text-[color:var(--ds-fg-muted)]",
         )}
       >
         {/* `Finished today` is only true on today's partition. */}
