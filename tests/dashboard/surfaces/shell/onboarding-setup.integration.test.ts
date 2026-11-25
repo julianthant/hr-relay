@@ -57,3 +57,13 @@ it("shows one plain failure and disables Add this device when the status read fa
     assert.equal(f.host.querySelector("h1")?.textContent, "Set up Duo again");
   } finally { await f.close(); }
 });
+
+it("shows a stop-refused failure once when Reopen is refused with the same failure", async () => {
+  const code = "DUO_SETUP_STOP_FAILED";
+  const f = await mount(draft({ state: "failed", generation: 2, code }), { reopenBrowser: async () => { throw Object.assign(new Error("refused"), { code }); } });
+  try {
+    await act(async () => { f.button("Reopen")?.click(); });
+    assert.equal(f.host.querySelectorAll("[role=alert]").length, 1);
+    assert.ok(f.button("Reopen"));
+  } finally { await f.close(); }
+});
