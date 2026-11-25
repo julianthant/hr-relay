@@ -1666,7 +1666,7 @@ body[data-demo-theme="light"] {
 .ds-switch-row .ds-switch-thumb.ds-switch-thumb-checked { background: var(--ds-on-signal); }
 .ds-switch-row:not([data-disabled="true"]):hover .ds-switch-control.ds-switch-control { background: var(--ds-switch-off-hover); }
 .ds-switch-row:not([data-disabled="true"]):hover .ds-switch-control.ds-switch-control-checked { background: var(--ds-switch-on-hover); }
-.ds-switch-row[data-focus-visible="true"] .ds-switch-control.ds-switch-control { outline: 2px solid var(--ds-switch-ring); outline-offset: 2px; }
+.ds-switch-row [data-focus-visible="true"] .ds-switch-control.ds-switch-control { outline: 2px solid var(--ds-switch-ring); outline-offset: 2px; }
 .ds-switch-row.ds-switch-row[data-disabled="true"] { opacity: 1; }
 .ds-switch-row[data-disabled="true"] .ds-switch-control { opacity: 0.45; cursor: default; }
 .ds-switch-thumb > svg { width: 10px; height: 10px; color: var(--ds-switch-off); }
