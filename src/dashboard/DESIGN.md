@@ -76,7 +76,7 @@ values remain ISO dates. Partial segments remain editor state.
 | `cancelled` | Tinted neutral | Deliberate stop |
 | `verifiedDone` | Solid green Done | Finished and read back |
 
-A dry run is the FlaskConical icon and "Dry run" in meta text beside the status: no border, fill, caps or violet, and the same in the queue row, the Logs header and the identity bar.
+A queue row marks a dry run with a "dry run" chip (the rehearsal chip, caps) before the status label; the Logs header and the identity bar keep the FlaskConical icon and "Dry run" in meta text.
 
 `DS_ATTENTION_STATUSES` contains `waiting` and `failed`. A displayed status does not confer command
 permission. Served actions and exact write authority decide which controls are available.
@@ -108,7 +108,7 @@ The Baton mark appears only in the sign-up and login title: the 24 px accent sym
 Waiting, parked and failed runs sit under Needs you.
 
 Double-clicking a run title in its queue row renames it in place, and the Logs header shows the same name: Enter saves, Escape cancels, and an empty name restores the default name (the PDF or run name). Queue rows draw no subtitle; a group's count chip ("12/12") carries its size.
-Queue group labels (Needs you, Active, Finished today) are sentence case, 11px medium muted text with the count; the outcome breakdown is muted text on the same line, and there is no separate Today box. A run card draws its title on its own line, with the status pill, Dry run and count on the line below. A run with one member draws no member table; a group or batch keeps it. The selected card is recognisable at a glance: the selected surface plus the loud border. A day with no runs shows one title, "No runs on this day", and the Start run button.
+Queue group headings (Needs you, Active, Finished today) are an uppercase label, a count pill and a hairline rule; under Finished today a separate dashed "Today:" box holds the outcome breakdown. A run card draws its title on the left and truncating, and the labels (test, dry run, warning count, status, member count) on the same line at the right; a long title gives way before the labels wrap. A run with one member keeps the member table like any group or batch. The selected card keeps the card fill and takes the loud border only. The search palette's filters (All, Actions, Runs, Workflows, Spreadsheets) are one row at the bottom, after the results, under a top border. Every page title, Settings and Analytics alike, is the 20px `pageTitle` step with no per-page size. A day with no runs shows one title, "No runs on this day", and the Start run button.
 The queue column is `--ds-w-queue-column` (360px, the smallest width where a running card's footer fits; 336px below 1100px window width, where the footer also drops the run id). A running card's footer has Pause beside Cancel; on a group or batch card they read `Pause all N` and `Stop all N` and act on every member still running. Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
 how a run was created belongs in its information disclosure. Clicking anywhere on a member line selects
 that member. Its name remains a keyboard-accessible button without a hover underline. Logs group ordered action entries
@@ -224,7 +224,7 @@ Each state keeps its own badge in the queue row and the run header, its own word
 
 ### Timeline
 
-The waiting segment is an amber hatch on amber, low contrast, never black stripes. Step labels use the secondary text colour and the bar carries the state colour. A step under one second reads "<1s". Skipped is a dashed outline and Upcoming a solid outline.
+The waiting segment is a solid warning hatch (warning stripes on the table colour), never black stripes. Step labels use the secondary text colour and the bar carries the state colour. A step under one second reads "<1s". Skipped is a dashed outline and Upcoming a solid outline.
 
 ## Explorer
 

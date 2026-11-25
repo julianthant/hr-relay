@@ -41,7 +41,7 @@ it('describes the lifecycle done count as completed without claiming receipt ver
   const selected: string[] = [];
   try {
     await act(async () => root.render(createElement(QueuePanel, { surfaces: [surface], state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect(id) { selected.push(id); } }, workflowLabelOf: () => 'Person Lookup', panelLabel: 'Person Lookup', day: '2026-08-03', isToday: true })));
-    assert.match(host.textContent ?? '', /Finished today\s*1\s*1 completed/u);
+    assert.match(host.textContent ?? '', /Finished today\s*1\s*Today:\s*1 completed/u);
     assert.doesNotMatch(host.textContent ?? '', /1 verified/u);
     assert.equal(host.querySelectorAll('[data-demo-row-id]').length, 1);
     await act(async () => host.querySelector<HTMLElement>('[data-demo-row-id]')?.click());

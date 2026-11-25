@@ -1,7 +1,7 @@
 /** Planted violations that prove each state rule bites, on the dashboard's real primitives. Never part of the catalogue. */
 import { useEffect, useState } from "react";
 import {
-  Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, Switch, Tab, TabList, TabPanel, Tabs, useToasts,
+  Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, PageHeading, SegmentedChoice, Skeleton, Switch, Tab, TabList, TabPanel, Tabs, useToasts,
 } from "../../../../../../src/dashboard/ds/ui.js";
 import { SessionsView } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import type { StateRuleName } from "../state-rule-limits.js";
@@ -201,6 +201,31 @@ export const RULE_PROBES = {
       </DialogContent></Dialog></StoryFrame>,
     },
     finds: { "dialogs-share-shape": [/a dialog:sm dialog has body padding 0px; the design system draws it with /u, /a dialog:sm dialog has bottom border 4px /u, /^(?![\s\S]*(?:header|footer) padding)/u] },
+  },
+  "label-under-title": {
+    story: { title: "A queue card whose labels wrap under the title", render: () => <StoryFrame>
+      <div data-queue-body className="flex flex-col"><span data-demo-row-title>Ana Example</span><div data-queue-labels>Waiting</div></div>
+    </StoryFrame> },
+    finds: { "status-label-on-title-line": [/the labels of "Ana Example" sit under the title/u] },
+    atBothDesktopWidths: true,
+  },
+  "label-on-title-line": {
+    story: { title: "A queue card whose labels sit on the title's line", render: () => <StoryFrame>
+      <div data-queue-body className="flex items-center"><span data-demo-row-title className="min-w-0 flex-1 truncate">Ana Example</span><div data-queue-labels>Waiting</div></div>
+    </StoryFrame> },
+    finds: {},
+    clean: ["status-label-on-title-line"],
+  },
+  "page-title-27": {
+    story: { title: "A page title larger than 20px", render: () => <StoryFrame>
+      <PageHeading title="General" className="[&_h1]:!text-[27px]" />
+    </StoryFrame> },
+    finds: { "page-title-20px": [/the page title "General" is 27px, not 20px/u] },
+  },
+  "page-title-20": {
+    story: { title: "A page title at 20px", render: () => <StoryFrame><PageHeading title="General" /></StoryFrame> },
+    finds: {},
+    clean: ["page-title-20px"],
   },
   "toast-over-sessions": {
     story: { title: "A toast off centre and over the Sessions panel", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastOverSessions /></StoryFrame> },
