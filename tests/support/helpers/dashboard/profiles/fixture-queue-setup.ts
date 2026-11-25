@@ -171,7 +171,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
         memberRollup: { total: memberSeeds.length, terminal, failed },
         memberPreview: memberSeeds.length === 0
           ? { state: "absent", reason: "this group has fanned out to no members yet" }
-          : { state: "present", value: `EID 10873698 +${String(memberSeeds.length - 1)} more` },
+          : { state: "present", value: memberSeeds.length === 1 ? "EID 10873698" : `EID 10873698 +${String(memberSeeds.length - 1)} more` },
       };
     }
     return { ...base, surfaceKind: kind };

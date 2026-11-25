@@ -3,7 +3,7 @@ import { currentBuildId } from "../../../../../src/backend/runtime/build-id.js";
 
 import { WorkerActivitySchema, type WorkerActivity } from "../../../../../src/backend/runtime/workers/worker-messages.js";
 import type { Clock } from "../../../../../src/rules/time/clock.js";
-import { admitFixtureSlot, testWorkerLifetime } from "../../../fixtures/run-lifecycle-fixtures.js";
+import { admitFixtureSlot, testRunService, testWorkerLifetime } from "../../../fixtures/run-lifecycle-fixtures.js";
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../run-integration-world.js";
 import { fenceWriteFixture } from "../../write-fence-fixture.js";
 import { browserSessionSpanPath,workerSpanPath } from "../../../../../src/backend/logs/span-emitter.js";
@@ -525,16 +525,21 @@ export function seed(world: SeedWorld): Record<string, string> {
   if (parkedTransition.state !== "applied") throw new Error("parked-write transition was refused");
   reportWorker(world, claimOf(parked).workerId);
 
-  // cancelled — a real terminal transition (the arm `transition` still owns).
+  // cancelled — the operator requests cancellation and the claim holder settles it.
   const cancelled = startRunning(world, { seed: 7, title: "EID 10222333" }, 5, "searching");
-  const cancelTransition = world.database.authority.runs.transition({
+  const lifecycle = testRunService(world.database, world.clock);
+  const requested = lifecycle.transition({
+    commandId: uuidOf(910),
     runId: cancelled.envelope.runId,
     expectedVersion: cancelled.version,
-    claim: claimOf(cancelled),
     lifecycle: { state: "terminal", outcome: "cancelled", endedAt: SEEDED_NOW },
-    now: SEEDED_NOW,
   });
-  if (cancelTransition.state !== "applied") throw new Error("cancel transition was refused");
+  if (requested.state !== "applied") throw new Error("seed cancellation request was refused");
+  const settled = lifecycle.terminalize({
+    kind: "cancelled", commandId: uuidOf(911), runId: cancelled.envelope.runId,
+    expectedVersion: requested.run.version, claim: claimOf(cancelled), endedAt: SEEDED_NOW,
+  }, personLookupDescriptor);
+  if (settled.state !== "applied") throw new Error("seed cancellation settlement was refused");
   reportWorker(world, claimOf(cancelled).workerId);
 
   if (world.leaveQueueEmpty !== true) {

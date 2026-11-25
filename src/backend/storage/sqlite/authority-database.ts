@@ -108,7 +108,7 @@ import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
 import { createRunSummaries, listRunWorkflows } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
-import { readAppSettings, migrateSettingsRecords } from "./settings-storage.js";
+import { readAppSettings, readSettingsRecordConversion, migrateSettingsRecords } from "./settings-storage.js";
 import { DEBUG_EVENTS_MIGRATION,TimelineRecordError,createTimelineRepository,debugEventFromRow,predecessorTimelineEventFromRow,timelineEventFromRow } from "./timeline-repository.js";
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
@@ -1406,8 +1406,9 @@ type StoredRowContext = Readonly<{ database: DatabaseSync; read: StoredReaders; 
 function storedRowContext(database: DatabaseSync, expectedSchemaVersion: number): StoredRowContext {
   const predecessorCustody = expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const read: StoredReaders = { ...(predecessorCustody ? PREDECESSOR_CUSTODY_READERS : CURRENT_READERS), run: inspectionRunReader(expectedSchemaVersion) };
+  const readSettings = expectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? readSettingsRecordConversion(database) : undefined;
   const convertPreferences = (table: string, row: unknown) => {
-    const person = expectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow(table, row) : row;
+    const person = readSettings === undefined ? row : readSettings(table, row);
     const effort = expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
     const state = expectedSchemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState(table, effort) : effort;
     return expectedSchemaVersion < FAILURE_NOTE_REMOVAL_SCHEMA_VERSION ? convertFailureNoteRow(table, state) : state;
@@ -2581,7 +2582,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
 }
 
 function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion: number) {
-  const convert = inspectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow : (_table: string, row: unknown) => row;
+  const convert = inspectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? readSettingsRecordConversion(database) : (_table: string, row: unknown) => row;
   const settings = readAppSettings(database, convert);
   const settingsAuthority = settings === undefined
     ? Object.freeze({ state: "never-initialized" as const })
@@ -4267,6 +4268,11 @@ export class AuthorityDatabase implements Disposable {
     } catch (error) { reader.close(); throw error; }
   }
 
+  timelineCursorOffset(): number {
+    this.#assertOpen();
+    return this.#historyCursorOffset;
+  }
+
   /** Proves this open store is the person's own state.db, opened by exactly this live, exclusive admission. */
   assertOpenedByExclusive(admission: RuntimeAdmission): void {
     if (this.#admission !== admission) throw new Error("authority-database-owner-mismatch");
@@ -4418,15 +4424,27 @@ export class AuthorityDatabase implements Disposable {
   }
 
   /** An independent revision for a reader's authority sources, backed by the retained change log. */
-  trackAuthorityTables(tables: readonly AuthorityTableName[]): () => number | undefined {
+  trackAuthorityTables(tables: readonly AuthorityTableName[], mode: "validated" | "poll-hint" = "validated"): () => number | undefined {
     const selected = JSON.stringify(z.array(AuthorityTableNameSchema).min(1).parse(tables));
     let cursor: number | undefined;
     let revision = 0;
+    let schemaCookie: number | undefined;
     return () => {
       if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
+      if (mode === "poll-hint") {
+        const key = this.capturedChangeKey();
+        if (cursor === key.changeLogSeq && schemaCookie === key.schemaCookie) return revision;
+      }
       return this.#withReadSnapshot(() => {
-        this.#validateExternalQuerySources();
+        if (mode === "validated") this.#validateExternalQuerySources();
         const through = changeLogHighWater(this.#database);
+        if (mode === "poll-hint") {
+          const cookie = readIntPragma(this.#database, "schema_version");
+          // Schema changes and large tails wake the observer without scanning the full log here.
+          const uncertain = cursor !== undefined && (cookie !== schemaCookie || through < cursor || through - cursor > 256);
+          schemaCookie = cookie;
+          if (uncertain) { cursor = through; return ++revision; }
+        }
         if (cursor === through) return revision;
         if (cursor !== undefined) {
           const first = z.strictObject({ seq: z.number().int().positive().nullable() }).parse(

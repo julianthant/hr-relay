@@ -1,4 +1,4 @@
-import { PERSON_PREFERENCES_CONVERSION_MARKER, RUNS_NOTIFICATIONS_CONVERSION_MARKER, SEND_SHORTCUT_CONVERSION_MARKER, SETTINGS_RECORD_CONVERSION_VERSION } from "./settings-record-conversion.js";
+import { PANEL_MODE_RETIREMENT_CONVERSION_MARKER, PERSON_PREFERENCES_CONVERSION_MARKER, RUNS_NOTIFICATIONS_CONVERSION_MARKER, SEND_SHORTCUT_CONVERSION_MARKER, SETTINGS_RECORD_CONVERSION_VERSION } from "./settings-record-conversion.js";
 import { createHash } from "node:crypto";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js";
@@ -1164,7 +1164,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   ] },
   COMMAND_ROW_STATE_MIGRATION,
   FAILURE_NOTE_REMOVAL_MIGRATION,
-  { version: SETTINGS_RECORD_CONVERSION_VERSION, statements: [
+  { version: 35, statements: [
     "DROP TRIGGER settings_snapshots_immutable",
     "DROP TRIGGER command_audits_immutable",
     SEND_SHORTCUT_CONVERSION_MARKER,
@@ -1183,6 +1183,15 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   DEBUG_EVENTS_MIGRATION,
   LIST_INDEX_MIGRATION,
   { version: OCR_SEARCH_TERMS_SCHEMA_VERSION, statements: [OCR_SEARCH_TERMS_COLUMN_SQL, `SELECT '${OCR_SEARCH_TERMS_BACKFILL_ID}'`] },
+  { version: SETTINGS_RECORD_CONVERSION_VERSION, statements: [
+    "DROP TRIGGER settings_snapshots_immutable",
+    "DROP TRIGGER command_audits_immutable",
+    PANEL_MODE_RETIREMENT_CONVERSION_MARKER,
+    `CREATE TRIGGER settings_snapshots_immutable BEFORE UPDATE ON settings_snapshots
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+    `CREATE TRIGGER command_audits_immutable BEFORE UPDATE ON command_audits
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+  ] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,

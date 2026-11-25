@@ -116,41 +116,6 @@ export const toolbarControl = (): string =>
   );
 
 
-/** ── Workflow Panel ──────────────────────────────────────────────────────── */
-
-/** Where the Workflow Panel is, and how much of the window it costs.
- * `floating` — a window over the panels. */
-export type WorkflowPanelMode = "floating" | "icon" | "sidebar";
-
-
-const PANEL_MODE_CYCLE: WorkflowPanelMode[] = ["floating", "icon", "sidebar"];
-
-
-export const WORKFLOW_PANEL_MODE_LABEL: Record<WorkflowPanelMode, string> = {
-  floating: "floating window",
-  icon: "icon",
-  sidebar: "sidebar",
-};
-
-
-export function useWorkflowPanelMode(): {
-  mode: WorkflowPanelMode;
-  setMode: (mode: WorkflowPanelMode) => void;
-  cycleMode: () => void;
-  opened: boolean;
-} {
-  const preferences = usePersonPreferences();
-  const mode = preferences.value.workflowPanelMode;
-  const [opened, setOpened] = useState(false);
-  const change = preferences.change;
-  const setMode = useCallback((next: WorkflowPanelMode) => {
-    setOpened(true);
-    void change?.({ "preferences.workflowPanelMode": { set: next } });
-  }, [change]);
-  const cycleMode = useCallback(() => setMode(PANEL_MODE_CYCLE[(PANEL_MODE_CYCLE.indexOf(mode) + 1) % PANEL_MODE_CYCLE.length]), [mode, setMode]);
-  return { mode, setMode, cycleMode, opened };
-}
-
 export type WorkflowRailGroup = WorkflowCategoryGroup<WorkflowBootstrapPrimitive>;
 
 

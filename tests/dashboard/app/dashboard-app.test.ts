@@ -816,7 +816,7 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
     return app.request(url, init);
   } });
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE_m2.day}${options.search ? `&${options.search}` : ""}`);
-  const preview = options.preferences ?? createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const preview = options.preferences ?? createPersonPreferences("preview");
   const host = document.createElement('div'); document.body.append(host); root = createRoot_m2(host);
   const workflowComposition = options.workflowComposition ?? MOCK_WORKFLOW_COMPOSITION_m2;
   await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { workflowComposition, previewPreferences: preview }) })));

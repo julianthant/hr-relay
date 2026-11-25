@@ -1,5 +1,4 @@
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
-import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
 import { act, createElement } from 'react';
@@ -39,7 +38,7 @@ it('opens a linked child using its own partition day and exact run identity', as
     return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, '', `/?day=${parentWire.day}`);
-  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const preview = createPersonPreferences("preview");
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
@@ -171,7 +170,7 @@ async function relatedFixture(options: Readonly<{ failure?: 'missing' | 'wrong-p
     return FrontendBootstrapWireSchema.parse({ ...boot,workflows: [{ ...first,id: 'emergency-contact',code: 'ec',label: 'Emergency Contact' }] }); },
     subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) { subscription = input;input.onDay(input.day === parentDay ? parentWire : childWire);input.onState({ state: 'live' });return { select() {}, close() {} }; } };
   window.history.replaceState(null,'',`/?day=${parentDay}`);
-  const preferences = createPersonPreferences('preview',{ ...NEUTRAL_PERSON_PREFERENCES,workflowPanelMode: 'sidebar' });
+  const preferences = createPersonPreferences('preview');
   const host = document.createElement('div');document.body.append(host);root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider,{ client,children: createElement(DashboardApp,{ workflowComposition: workflows => servedLogsComposition(workflows),
     previewPreferences: preferences }) })));
