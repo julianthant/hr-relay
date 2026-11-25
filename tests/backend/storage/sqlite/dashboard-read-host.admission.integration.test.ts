@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { chmodSync, linkSync, renameSync, unlinkSync } from "node:fs";
-import { once } from "node:events";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
@@ -43,7 +42,7 @@ it("refuses a wrong protocol by name in a worker started on Relay's lane entry",
   const { start } = await laneFixture();
   const worker = new Worker(new URL("../../../../src/backend/storage/sqlite/dashboard-read-lane.js", import.meta.url), {
     workerData: { ...start, protocol: "relay.dashboard-read-lane.v0" }, execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
-  const [failure]: unknown[] = await once(worker, "error");
+  const failure = await new Promise<unknown>(resolve => worker.once("error", resolve));
   assert.ok(failure instanceof Error);
   assert.match(failure.message, /read-lane-protocol-mismatch/u);
 });

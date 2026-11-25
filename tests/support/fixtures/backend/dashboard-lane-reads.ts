@@ -1,4 +1,3 @@
-import { DatabaseSync } from "node:sqlite";
 import { parentPort } from "node:worker_threads";
 import { z } from "zod";
 import "../../../../src/backend/storage/sqlite/dashboard-background-read-worker.js";
@@ -94,12 +93,16 @@ export const laneStuck = defineLaneRead(import.meta.url, "lane-stuck", { lane: "
  * so the failed read leaves that connection inside its read transaction.
  */
 export const laneRollbackFails = defineLaneRead(import.meta.url, "lane-rollback-fails", { lane: "navigation", priority: "interactive",
-  args: z.strictObject({}), run() {
-    const exec: unknown = Reflect.get(DatabaseSync.prototype, "exec");
-    if (typeof exec !== "function") throw new Error("fixture DatabaseSync exec missing");
-    Reflect.set(DatabaseSync.prototype, "exec", function (this: DatabaseSync, sql: string) {
+  args: z.strictObject({}), run(context) {
+    const probe = openReadOnlyDatabase(context.start.path, 250);
+    const prototype: unknown = Object.getPrototypeOf(probe);
+    probe.close();
+    if (typeof prototype !== "object" || prototype === null) throw new Error("fixture connection prototype missing");
+    const exec: unknown = Reflect.get(prototype, "exec");
+    if (typeof exec !== "function") throw new Error("fixture connection exec missing");
+    Reflect.set(prototype, "exec", function (this: unknown, sql: string) {
       if (sql !== "ROLLBACK") { Reflect.apply(exec, this, [sql]); return; }
-      Reflect.set(DatabaseSync.prototype, "exec", exec);
+      Reflect.set(prototype, "exec", exec);
       throw new Error("injected-rollback-failure");
     });
     throw new Error("injected-read-failure");

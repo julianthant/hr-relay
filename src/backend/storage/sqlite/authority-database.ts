@@ -1585,7 +1585,7 @@ export class AuthorityDatabase implements Disposable {
   /** The writer's automatic checkpoint interval in pages; 0 while a read host holds checkpoint custody. */
   autoCheckpointPages(): number {
     this.#assertOpen();
-    return readIntPragma(this.#database, "wal_autocheckpoint");
+    return z.strictObject({ wal_autocheckpoint: z.number().int() }).parse(this.#database.prepare("PRAGMA wal_autocheckpoint").get()).wal_autocheckpoint;
   }
 
   /** A read lane exits rather than read again from a connection a failed rollback left inside a transaction. */

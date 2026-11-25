@@ -105,11 +105,14 @@ const RequestSchema = z.discriminatedUnion("kind", [
 ]);
 type LaneRequest = z.infer<typeof RequestSchema>;
 const CheckpointRowSchema = z.strictObject({ busy: z.number().int(), log: z.number().int(), checkpointed: z.number().int() });
+/** When the lane started and finished the checkpoint, on the wall clock both threads share. */
+const CheckpointSpanSchema = z.strictObject({ startedAtMs: z.number(), finishedAtMs: z.number() });
+const laneWallMs = () => performance.timeOrigin + performance.now();
 const ReplySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("ready") }),
   z.strictObject({ kind: z.literal("read"), id: z.number().int().positive(), body: z.string(), position: ReadPositionSchema, cached: z.boolean() }),
   z.strictObject({ kind: z.literal("read-failed"), id: z.number().int().positive(), message: z.string().min(1) }),
-  z.strictObject({ kind: z.literal("checkpoint"), id: z.number().int().positive(), ...CheckpointRowSchema.shape }),
+  z.strictObject({ kind: z.literal("checkpoint"), id: z.number().int().positive(), ...CheckpointRowSchema.shape, ...CheckpointSpanSchema.shape }),
   z.strictObject({ kind: z.literal("checkpoint-failed"), id: z.number().int().positive(), message: z.string().min(1) }),
 ]);
 type LaneReply = z.infer<typeof ReplySchema>;
@@ -134,6 +137,9 @@ export interface WalCheckpointAttempt {
   readonly log: number;
   readonly checkpointed: number;
   readonly walBytesAfter: number;
+  /** The lane's checkpoint run, in wall-clock milliseconds: interactive reads wait behind it. */
+  readonly startedAtMs: number;
+  readonly finishedAtMs: number;
 }
 
 export interface DashboardReadLanes {
@@ -288,7 +294,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   const observeWal = () => {
     if (checkpointState === "idle" && retryTimer === undefined && walBytes() > policy.thresholdBytes) beginCheckpoint();
   };
-  const finishCheckpoint = (row: z.infer<typeof CheckpointRowSchema> | undefined) => {
+  const finishCheckpoint = (row: (z.infer<typeof CheckpointRowSchema> & z.infer<typeof CheckpointSpanSchema>) | undefined) => {
     checkpointState = "idle";
     paused = false;
     const after = walBytes();
@@ -324,7 +330,8 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     if (reply.kind === "checkpoint" || reply.kind === "checkpoint-failed") {
       if (running !== "checkpoint") throw new Error("read-lane-reply-unexpected");
       lane.running = undefined;
-      finishCheckpoint(reply.kind === "checkpoint" ? { busy: reply.busy, log: reply.log, checkpointed: reply.checkpointed } : undefined);
+      finishCheckpoint(reply.kind === "checkpoint" ? { busy: reply.busy, log: reply.log, checkpointed: reply.checkpointed,
+        startedAtMs: reply.startedAtMs, finishedAtMs: reply.finishedAtMs } : undefined);
     } else {
       if (running === undefined || running === "checkpoint" || running.id !== reply.id) throw new Error("read-lane-reply-unexpected");
       lane.running = undefined;
@@ -571,7 +578,9 @@ function runReadLane(port: MessagePort, data: unknown) {
       try {
         if (checkpoint === undefined) throw new Error("read-lane-checkpoint-unowned");
         lane.assertSource();
-        reply = { kind: "checkpoint", id: message.id, ...CheckpointRowSchema.parse(checkpoint.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get()) };
+        const startedAtMs = laneWallMs();
+        const row = CheckpointRowSchema.parse(checkpoint.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get());
+        reply = { kind: "checkpoint", id: message.id, ...row, startedAtMs, finishedAtMs: laneWallMs() };
       } catch (error) { reply = { kind: "checkpoint-failed", id: message.id, message: error instanceof Error ? error.message : "read-lane-checkpoint-failed" }; }
     } else {
       try {
