@@ -154,7 +154,7 @@ it("pages runs through TEMP tables without an archive while the lane's connectio
   const { fixture } = await laneFixture();
   const database = fixture.database;
   if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  for (const seed of [8591, 8592, 8593]) database.authority.runs.enqueue(runRecordOf({ seed, enqueuedAt: systemClock.now().toISOString() }));
+  for (const seed of [859, 860, 861]) database.authority.runs.enqueue(runRecordOf({ seed, enqueuedAt: systemClock.now().toISOString() }));
   const expected = database.authority.runs.listPage({ offset: 0, limit: 10 }).map(run => run.envelope.runId);
   assert.equal(expected.length, 3);
   const lanes = createDashboardReadHost({ admission: fixture.profile.admission, database, clock: systemClock, lanes: ["navigation"], entry: LANE_READS_ENTRY });
