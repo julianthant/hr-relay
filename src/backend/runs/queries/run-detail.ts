@@ -545,11 +545,9 @@ const RunReadRequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("section"), runId: RunIdSchema, section: SectionNameSchema, cursor: z.string().optional() }),
   z.strictObject({ kind: z.literal("panel"), runId: RunIdSchema, captures: RunCaptureAvailabilityWireSchema }),
 ]);
-const refusals = [
-  TargetNotFoundError, SectionUnavailableError, LogIdentityRefusedError, LogDisplayRefusedError,
-  ProjectionDegradedError, DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, OcrReviewRefusedError,
-  ProtectedSubjectDisplayRefusedError,
-] as const;
+const messageRefusals = [TargetNotFoundError, SectionUnavailableError, LogIdentityRefusedError,
+  ProjectionDegradedError, DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError] as const;
+const catalogRefusals = [LogDisplayRefusedError, OcrReviewRefusedError, ProtectedSubjectDisplayRefusedError] as const;
 const WorkbookErrorCodeSchema = z.enum(ErrorCatalogCodeSchema.options.filter(
   (code): code is Extract<ErrorCatalogCode, `WORKBOOK_${string}`> => code.startsWith("WORKBOOK_"),
 ));
@@ -574,7 +572,7 @@ function laneReply(build: () => object): LaneReply {
     if (error instanceof WorkbookLibraryError) return { state: "workbook-refused", code: error.code };
     if (error instanceof z.ZodError) return { state: "invalid", issues: error.issues.map(({ path, message }) =>
       ({ path: path.map(key => typeof key === "symbol" ? String(key) : key), message })) };
-    if (error instanceof Error && refusals.some(Refusal => error instanceof Refusal)) {
+    if (error instanceof Error && [...messageRefusals, ...catalogRefusals].some(Refusal => error instanceof Refusal)) {
       return { state: "refused", name: error.name, message: error.message };
     }
     throw error;
@@ -582,11 +580,10 @@ function laneReply(build: () => object): LaneReply {
 }
 
 function throwLaneRefusal(name: string, message: string): never {
-  const Refusal = refusals.find(candidate => candidate.name === name);
+  const CatalogRefusal = catalogRefusals.find(candidate => candidate.name === name);
+  if (CatalogRefusal !== undefined) throw new CatalogRefusal();
+  const Refusal = messageRefusals.find(candidate => candidate.name === name);
   if (Refusal === undefined) throw new Error(`run-read-lane-unknown-refusal: ${name}`);
-  if (Refusal === LogDisplayRefusedError || Refusal === OcrReviewRefusedError || Refusal === ProtectedSubjectDisplayRefusedError) {
-    throw new Refusal();
-  }
   throw new Refusal(message);
 }
 
@@ -661,7 +658,7 @@ async function requestRunRead(
       return undefined;
     }
     case "workbook-refused": throw new WorkbookLibraryError(reply.code);
-    case "refused": throwLaneRefusal(reply.name, reply.message);
+    case "refused": return throwLaneRefusal(reply.name, reply.message);
     case "invalid": throw new z.ZodError(reply.issues.map(issue => ({ ...issue, code: "custom" })));
   }
 }
@@ -690,9 +687,7 @@ export function readRunAttemptHistoryBody(deps: RunDetailQueryDeps, runId: strin
 
 function readWholePanelLogs(deps: RunDetailQueryDeps, runId: string, detail: RunDetailWire) {
   if (!detail.availableSections.includes("logs")) throw new SectionUnavailableError(`section logs is not available for run ${runId}`);
-  const logs = buildRunLogsWhole(deps, runId, deps.projection.runFold(runId), requireTrustRun(deps.runReader, runId));
-  if (logs.section !== "logs") throw new Error("run panel logs read answered another section");
-  return logs.payload;
+  return buildRunLogsWhole(deps, runId, deps.projection.runFold(runId), requireTrustRun(deps.runReader, runId)).payload;
 }
 
 const LanePanelSchema = z.strictObject({

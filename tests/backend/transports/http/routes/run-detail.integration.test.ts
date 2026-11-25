@@ -2,11 +2,10 @@ import { createRunExecutorTestWorld } from "../../../../support/helpers/backend/
 import assert from "node:assert/strict";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import * as writeSafety from "../../../../../src/backend/app/composition/dashboard/write-safety.js";
-import { readRunDetail, readRunSection } from "../../../../../src/backend/runs/queries/run-detail.js";
+import { readRunDetail, readRunSection, type RunDetailQueryDeps } from "../../../../../src/backend/runs/queries/run-detail.js";
 import * as captures from "../../../../../src/backend/runs/queries/run-captures.js";
 import * as streams from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
@@ -18,11 +17,10 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_5 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
-import { testAdmittedWorker, testRunService } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { admitFixtureSlot, testRunService } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { failureRecordOf } from "../../../../support/helpers/backend/dashboard-harness.js";
-import { releaseSeededWriteOwners } from "../../../../support/helpers/timeline-write-fixture.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase as SyntheticAuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { measureRunDetailReads } from "../../../../../scripts/bench/run-detail-lane.js";
@@ -35,7 +33,13 @@ const dashboard = createDashboardPortTestWorld(() => vi.restoreAllMocks(), relea
 afterEach(dashboard.cleanup);
 
 it("serves run routes and the stream panel through the composed navigation lane", async () => {
-  const compose = vi.spyOn(writeSafety, "composeWriteSafety");
+  const composed: RunDetailQueryDeps[] = [];
+  const compose = writeSafety.composeWriteSafety;
+  vi.spyOn(writeSafety, "composeWriteSafety").mockImplementation(input => {
+    const deps = compose(input);
+    composed.push(deps.runDetailDeps);
+    return deps;
+  });
   const inPanel = new AsyncLocalStorage<boolean>();
   const createHub = streams.createDashboardStreamHub;
   vi.spyOn(streams, "createDashboardStreamHub").mockImplementation(deps => {
@@ -51,10 +55,9 @@ it("serves run routes and the stream panel through the composed navigation lane"
   });
   dashboard.cleanups.push(() => runtime.stop());
   const { runtime: owner, token } = profile.dashboardInput.profile;
-  const { database, admission } = owner.selectedContext(token);
-  const deps = compose.mock.results[0]?.value;
-  assert.ok(deps);
-  const detailDeps = deps.runDetailDeps;
+  const { database } = owner.selectedContext(token);
+  assert.equal(composed.length, 1);
+  const [detailDeps] = composed;
   database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);
   const run = RunRecordSchema.parse({
     ...QUEUED_RUN,
@@ -79,10 +82,7 @@ it("serves run routes and the stream panel through the composed navigation lane"
   const queued = RunRecordSchema.parse({ ...run, envelope: { ...run.envelope, runId: failedId, itemId: failedId,
     configFingerprint: config.configFingerprint, configSnapshotId: config.configSnapshotId, traceId: "pl-170000-2223" } });
   database.authority.runs.enqueue(queued);
-  const { workerId } = testAdmittedWorker(database, clock, {
-    path: join(admission.stateRoot, "state.db"), workflow, poolIndex: 1, browserSystems: ["crm", "ucpath"],
-  });
-  dashboard.cleanups.push(() => releaseSeededWriteOwners(database, NOW));
+  const { workerId } = database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, workflow, 1, NOW));
   const claimed = database.authority.runs.claimNext({ workflow, workerId, now: NOW });
   assert.ok(claimed.state === "claimed" && claimed.run.envelope.runId === failedId);
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
@@ -149,6 +149,7 @@ it("serves run routes and the stream panel through the composed navigation lane"
   vi.spyOn(database, "listItemAttemptHistorySources").mockImplementation(refuse);
   vi.spyOn(detailDeps.projection, "runFold").mockImplementation(refuse);
   vi.spyOn(detailDeps.projection, "runLogSnapshot").mockImplementation(refuse);
+  await assert.rejects(readRunDetail(detailDeps, runId), /request-thread run read touched authority/u);
   for (const [suffix, body] of expected) assert.equal(await get(suffix), body, suffix);
   assert.equal(await get("/failure", `${origin}/api/v1/runs/${failedId}`), JSON.stringify(failed));
 

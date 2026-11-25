@@ -12,7 +12,7 @@ import {
   LogPageCursorSchema,
   ObservedLogRowWireSchema,
   LogRowWireSchema,
-  RunDetailSectionResponseSchema,
+  NotePageSchema,
   type RunDetailSectionResponse,
 } from "../../../models/dashboard/run-detail.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -33,6 +33,7 @@ import type { RunDetailQueryDeps, RunDetailDescriptorView, RunDetailDataOriginVi
 import { hasRunDescriptorDrift } from "./run-timeline-compatibility.js";
 
 const LOGS_PAGE_SIZE = 200;
+type RunLogsSection = Extract<RunDetailSectionResponse, { section: "logs" }>;
 const UI_LABELS = new Map(buildUiTaskLinks().map(entry => [entry.id, entry]));
 
 const LEVEL_MAP = { error: "error", warn: "warning", waiting: "warning", step: "info", success: "info", debug: "info" } as const;
@@ -553,7 +554,7 @@ export function buildRunLogsWhole(
   runId: string,
   row: RunFoldRecord | undefined,
   authority: RunRecord,
-): RunDetailSectionResponse {
+): RunLogsSection {
   const entries = logLinesForRun(deps, row, authority, runId);
   return logsPage(deps, runId, authority, { id: "whole", entries }, 0, entries.length);
 }
@@ -565,7 +566,7 @@ function logsPage(
   snapshot: RunLogSnapshot,
   offset: number,
   size: number,
-): RunDetailSectionResponse {
+): RunLogsSection {
   const all = snapshot.entries;
   const page = all.slice(offset, offset + size);
   const unread = unreadReadFields(deps, authority, all);
@@ -576,9 +577,9 @@ function logsPage(
     true,
     unread?.logId === logIdOf(entry) ? unread.labels : [],
   )));
-  return RunDetailSectionResponseSchema.parse({
+  return {
     section: "logs",
-    payload: {
+    payload: NotePageSchema.parse({
       runId,
       ...(authority.envelope.dryRun ? { dryRunPreview: dryRunPreviewForLogs(deps, authority) } : {}),
       rows,
@@ -586,6 +587,6 @@ function logsPage(
       nextCursor: offset + size < all.length
         ? { state: "present", value: `lc:${snapshot.id}:${String(offset + size)}` }
         : { state: "absent", reason: "end-of-page" },
-    },
-  });
+    }),
+  };
 }
