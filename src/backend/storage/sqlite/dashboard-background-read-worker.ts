@@ -47,66 +47,104 @@ function sourceIdentity(path: string, requireWal = false) {
   return { device: String(source.dev), inode: String(source.ino) };
 }
 
-/** One in-flight page per profile reader. close() drains the accepted page and awaits native connection closure and thread exit. */
+/** One in-flight page per profile reader. A worker's exit releases its native connection and WAL source. */
 export function createDashboardBackgroundReader(admission: RuntimeAdmission, source: AuthorityDatabase) {
   const owner = requireRuntimeAdmission(admission);
   owner.assertProfileRuntime();
   const path = join(owner.stateRoot, "state.db");
   owner.assertReadOnlyAuthorityDatabase(path);
   const start = StartSchema.parse({ protocol: PROTOCOL, path, binding: owner.profileBinding, identity: sourceIdentity(path) });
+  const history = source.dashboardHistory();
+  const offset = history.timelineCursorOffset();
+  const nativeCursor = (cursor: number) => Math.max(0, cursor - offset);
   const admit = () => {
     owner.assertProfileRuntime();
     owner.assertReadOnlyAuthorityDatabase(path);
     if (!sameDirectory(sourceIdentity(path), start.identity)) throw new Error("profile-database-open-source-changed");
   };
-  const releaseSource = source.retainDashboardReadSource(owner, start.identity);
-  let worker: Worker;
-  try {
-    worker = new Worker(new URL(import.meta.url), { name: "relay-dashboard-background-read", workerData: start,
-      execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
-  } catch (error) { releaseSource(); throw error; }
   let closing = false;
-  let failure: Error | undefined;
-  let pending: ReturnType<typeof Promise.withResolvers<DashboardBackgroundReadResult>> | undefined;
-  const fail = (error: Error) => {
-    failure = error;
-    pending?.reject(error);
-    pending = undefined;
-  };
-  worker.on("error", (error: unknown) => fail(error instanceof Error ? error : new Error("dashboard-background-worker-failed", { cause: error })));
-  worker.on("messageerror", (error: Error) => { fail(error); void worker.terminate(); });
-  worker.on("message", (message: unknown) => {
-    const read = pending;
-    pending = undefined;
-    if (read === undefined) return;
+  let closure: Promise<void> | undefined;
+  let active: ReturnType<typeof launch> | undefined = launch();
+  function launch() {
+    const releaseSource = source.retainDashboardReadSource(owner, start.identity);
+    let worker: Worker;
     try {
-      const reply = ReplySchema.parse(message);
-      if ("error" in reply) throw new Error(reply.error);
-      admit();
-      read.resolve(reply);
-    } catch (error) { read.reject(error instanceof Error ? error : new Error("dashboard-background-reply-invalid", { cause: error })); }
-  });
-  const exit = new Promise<void>(resolve => worker.once("exit", code => {
-    releaseSource();
-    if (failure === undefined && (!closing || code !== 0 || pending !== undefined)) fail(new Error(`dashboard-background-worker-exited: ${String(code)}`));
-    resolve();
-  }));
+      worker = new Worker(new URL(import.meta.url), { name: "relay-dashboard-background-read", workerData: start,
+        execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
+    } catch (error) { releaseSource(); throw error; }
+    let failure: Error | undefined;
+    let pending: ReturnType<typeof Promise.withResolvers<DashboardBackgroundReadResult>> | undefined;
+    let termination: Promise<number> | undefined;
+    const fail = (error: Error) => {
+      failure ??= error;
+      pending?.reject(failure);
+      pending = undefined;
+    };
+    worker.on("error", (error: unknown) => fail(error instanceof Error ? error : new Error("dashboard-background-worker-failed", { cause: error })));
+    worker.on("messageerror", (error: Error) => {
+      fail(error);
+      termination ??= worker.terminate();
+      void termination.catch(fail);
+    });
+    worker.on("message", (message: unknown) => {
+      const read = pending;
+      pending = undefined;
+      if (read === undefined) return;
+      try {
+        const reply = ReplySchema.parse(message);
+        if ("error" in reply) throw new Error(reply.error);
+        admit();
+        read.resolve(reply);
+      } catch (error) { read.reject(error instanceof Error ? error : new Error("dashboard-background-reply-invalid", { cause: error })); }
+    });
+    const exit = new Promise<void>(resolve => worker.once("exit", code => {
+      releaseSource();
+      active = undefined;
+      if (pending !== undefined) fail(new Error(`dashboard-background-worker-exited: ${String(code)}`));
+      resolve();
+    }));
+    return {
+      read(request: DashboardBackgroundReadRequest) {
+        if (failure !== undefined) throw failure;
+        if (pending !== undefined) throw new Error("dashboard-background-read-pending");
+        const read = Promise.withResolvers<DashboardBackgroundReadResult>();
+        worker.postMessage(request);
+        pending = read;
+        return read.promise;
+      },
+      async close(cancelPending: boolean) {
+        if (cancelPending && pending !== undefined) {
+          fail(new Error("dashboard-background-read-cancelled"));
+          termination ??= worker.terminate();
+        } else if (failure === undefined) worker.postMessage(null);
+        await Promise.all([termination, exit]);
+      },
+    };
+  }
   return {
     async read(input: DashboardBackgroundReadRequest): Promise<DashboardBackgroundReadResult> {
-      if (failure !== undefined) throw failure;
       if (closing) throw new Error("dashboard-background-reader-closed");
-      if (pending !== undefined) throw new Error("dashboard-background-read-pending");
       const request = RequestSchema.parse(input);
       admit();
-      const read = Promise.withResolvers<DashboardBackgroundReadResult>();
-      worker.postMessage(request);
-      pending = read;
-      return read.promise;
+      const connection = active ??= launch();
+      if (offset === 0) return connection.read(request);
+      if (request.through !== undefined && request.after > request.through) throw new Error("timeline-cursor-reset-required");
+      const archive = request.after < offset ? history.authority.timelineEvents.page({ after: request.after,
+        through: Math.min(request.through ?? offset, offset), limit: request.limit, spanTypes: request.spanTypes }) : [];
+      const throughNative = request.through === undefined ? undefined : nativeCursor(request.through);
+      // A full archive page needs worker facts and a valid high water, but no native rows.
+      const page = await connection.read({ ...request, through: throughNative,
+        after: archive.length === request.limit && throughNative !== undefined ? throughNative : nativeCursor(request.after) });
+      const through = request.through ?? page.through + offset;
+      const records = [...archive, ...page.records.slice(0, request.limit - archive.length)
+        .map(record => ({ ...record, cursor: PositiveIntSchema.parse(record.cursor + offset) }))];
+      const cursor = records.length === request.limit ? records[records.length - 1].cursor : through;
+      return { ...page, records, cursor, through };
     },
-    async close(): Promise<void> {
-      if (!closing) { closing = true; worker.postMessage(null); }
-      await exit;
-      if (failure !== undefined) throw failure;
+    close(options?: { cancelPending: boolean }): Promise<void> {
+      closing = true;
+      closure ??= active?.close(options?.cancelPending ?? false) ?? Promise.resolve();
+      return closure;
     },
   };
 }

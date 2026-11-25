@@ -144,6 +144,30 @@ describe("dashboard stream hub", () => {
       assert.equal(reconnects, 0); assert.equal(fetches, 1);
     } finally { subscription.close(); connection.close(); }
   });
+  it("freezes a background snapshot once per subscribed day before delivering it", async () => {
+    const { w, hub } = await harness();
+    const a = await hub.connect({ day: DAY });
+    const b = await hub.connect({ day: DAY });
+    const other = await hub.connect({ day: "2026-08-02" });
+    const build = vi.spyOn(w.projection, "buildDashboardDayWire");
+    const fingerprint = w.projection.descriptorSetHash();
+    try {
+      await w.projection.pollBackground(async () => ({
+        through: 0, cursor: 0, records: [], workers: { fingerprint, next: null, slotWorkflows: [], batchVersions: [], heldDuoLeases: [] },
+      }), w.clock.nowMs());
+      assert.deepEqual(build.mock.calls, [[DAY], ["2026-08-02"]]);
+      const [first, shared, second] = await Promise.all([a.next(), b.next(), other.next()]);
+      assert.equal(first, shared);
+      assert.ok(first?.type === "snapshot" && second?.type === "snapshot");
+      assert.equal(first.cursor, second.cursor);
+      assert.equal(first.position, second.position);
+      assert.equal(first.cursor, w.projection.cursor());
+    } finally {
+      build.mockRestore();
+      a.close(); b.close(); other.close();
+    }
+  });
+
   it("opens with hello -> snapshot -> health and stamps the projection identity", async () => {
     const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
