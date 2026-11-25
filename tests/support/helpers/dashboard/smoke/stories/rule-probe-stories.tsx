@@ -169,6 +169,16 @@ export const RULE_PROBES = {
     },
     finds: { "named-and-focusable": [/"Frozen tab" cannot be reached with the keyboard/u, /has no name/u, /^(?![\s\S]*"(?:Steps|One|Two)" cannot)/u] },
   },
+  "menu-popup-hands-over-its-stop": {
+    story: {
+      title: "A menu whose item takes the stop, and one with no enabled item",
+      render: () => <StoryFrame>
+        <div role="menu" aria-label="Held actions" tabIndex={-1}><div role="menuitem" tabIndex={-1}>Stuck item</div></div>
+        <div role="menu" aria-label="Empty actions" tabIndex={-1}><div role="menuitem" aria-disabled="true" tabIndex={-1}>Unavailable</div></div>
+      </StoryFrame>,
+    },
+    finds: { "named-and-focusable": [/"Stuck item" cannot be reached with the keyboard/u, /"Empty actions" cannot be reached with the keyboard/u, /^(?![\s\S]*"Held actions")/u] },
+  },
   "switch-ring-on-its-control": {
     story: {
       title: "A switch that rings its control, and an invisible input that rings nothing",
