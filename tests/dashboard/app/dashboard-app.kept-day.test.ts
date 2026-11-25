@@ -7,7 +7,6 @@ import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
-import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
@@ -41,7 +40,7 @@ it("Back to a kept day with its run open shows both at once, marked Updating, th
     return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
-  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const preview = createPersonPreferences("preview");
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
@@ -94,7 +93,7 @@ it("Back to a kept day gives the held run's Logs no Pause, Stop or Cancel, and s
     return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
-  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const preview = createPersonPreferences("preview");
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
@@ -132,7 +131,7 @@ it("a stream reset with a run open shows neither the pre-reset row nor its logs 
     return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
-  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const preview = createPersonPreferences("preview");
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
