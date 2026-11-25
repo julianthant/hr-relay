@@ -26,7 +26,11 @@ export type NotificationItem = Readonly<{
   at?: string;
   /** The run or failure it pointed at was deleted: the item says so and opens nothing. */
   gone?: boolean;
+  /** Still waiting on the operator (an open gate, a parked write, a storage problem): it cannot be cleared until handled. */
+  standing?: true;
 }>;
+/** Whether the person can clear the item now: not while it still waits on them, and never a read-only history notice. */
+export const itemClearable = (item: NotificationItem) => item.standing !== true && item.readOnlyHistory !== true;
 
 /** Whole minutes, hours, then days since `at`. */
 export function notificationAge(at: string, nowIso: string): string {

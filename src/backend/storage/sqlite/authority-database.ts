@@ -4478,7 +4478,7 @@ export class AuthorityDatabase implements Disposable {
         table_name IN ('run_batches','run_delegations','delegation_dependencies','run_checkpoints',
           'gate_results','run_failures','run_receipts','write_intents','write_attempts','dryrun_results',
           'worker_pools','worker_slots','auth_leases','ocr_review_revisions','ocr_approved_snapshots','ocr_source_uploads',
-          'notifications','settings','settings_snapshots')
+          'notifications','notification_states','settings','settings_snapshots')
         OR (table_name = 'run_results' AND (
           NOT EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%')
           OR EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%' AND substr(value,5) NOT IN (SELECT id FROM changed_runs))
@@ -6462,11 +6462,12 @@ export class AuthorityDatabase implements Disposable {
           if (Date.parse(request.seenAt) < Date.parse(existing.lastSeenAt)) {
             throw new Error(`notification ${existing.notificationId} cannot fold an observation older than its last seen instant`);
           }
+          const { clearedAt: _cleared, ...uncleared } = existing;
           const folded = NotificationRecordSchema.parse({
-            ...existing,
+            ...uncleared,
             title: request.title,
             summary: request.summary,
-            // A repeat is news again: the operator has not seen this occurrence.
+            // A repeat is news again: the operator has not seen this occurrence, even one they cleared.
             status: "unread",
             snooze: existing.snooze,
             count: existing.count + 1,
@@ -6494,6 +6495,7 @@ export class AuthorityDatabase implements Disposable {
             ...existing,
             status: request.status,
             snooze: request.snooze,
+            ...(request.clearedAt === undefined ? {} : { clearedAt: request.clearedAt }),
             version: existing.version + 1,
             updatedAt: request.updatedAt,
           });

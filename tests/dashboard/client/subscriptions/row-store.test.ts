@@ -51,7 +51,14 @@ describe("row store notification status", () => {
     rows.apply([statusRow({ state: "available", value: failed })]);
     assert.deepEqual(rows.notificationStatus(), { status: failed, unavailable: false });
     assert.equal(notified, 4);
+    rows.reopened();
+    rows.reopened();
+    assert.deepEqual(rows.notificationStatus(), { status: failed, unavailable: false, stale: true }, "a reopened stream has not delivered it yet");
+    assert.equal(notified, 5);
+    rows.apply([statusRow({ state: "available", value: ready })]);
+    assert.deepEqual(rows.notificationStatus(), { status: ready, unavailable: false });
     rows.reset();
+    rows.reopened();
     assert.equal(rows.notificationStatus(), undefined, "a reset drops it with the panels");
   });
 });

@@ -521,6 +521,7 @@ export function PopoverContent({
   hideClose,
   className,
   surfaceRef,
+  onOpenAutoFocus,
   sideOffset,
   children,
 }: {
@@ -536,6 +537,7 @@ export function PopoverContent({
   hideClose?: boolean;
   className?: string;
   surfaceRef?: Ref<HTMLDivElement>;
+  onOpenAutoFocus?: (event: Event) => void;
   children: ReactNode;
 }) {
   return (
@@ -551,6 +553,7 @@ export function PopoverContent({
         hideClose={hideClose}
         className={className}
         surfaceRef={surfaceRef}
+        onOpenAutoFocus={onOpenAutoFocus}
         sideOffset={sideOffset}
       >
         {children}
@@ -572,6 +575,7 @@ function PopoverSurface({
   hideClose,
   className,
   surfaceRef,
+  onOpenAutoFocus,
   sideOffset = 6,
   children,
 }: {
@@ -586,6 +590,7 @@ function PopoverSurface({
   hideClose?: boolean;
   className?: string;
   surfaceRef?: Ref<HTMLDivElement>;
+  onOpenAutoFocus?: (event: Event) => void;
   children: ReactNode;
 }) {
   const entered = useEntered();
@@ -599,6 +604,7 @@ function PopoverSurface({
       sideOffset={sideOffset}
       collisionPadding={8}
       aria-label={title}
+      onOpenAutoFocus={onOpenAutoFocus}
     >
       <FloatingSurface
         id={id}

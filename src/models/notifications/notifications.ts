@@ -49,6 +49,8 @@ export const NotificationRecordSchema = z.strictObject({
     /* A repeated identical trigger folds into the ONE row its `(actorId, dedupeFingerprint)` already owns; `count` and `lastSeenAt` are not derivable from an insert-only history. */
   count: PositiveIntSchema,
   lastSeenAt: IsoInstantSchema,
+  /** The person cleared it from the bell; a repeat folds it back in as news. */
+  clearedAt: IsoInstantSchema.optional(),
   version: PositiveIntSchema,
   createdAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
@@ -73,6 +75,12 @@ export const NotificationRecordSchema = z.strictObject({
       path: ["status"],
       message: "a pinned backfill gap must remain unread",
     });
+  }
+  if (notification.trigger === "backfill-gap" && notification.clearedAt !== undefined) {
+    context.addIssue({ code: "custom", path: ["clearedAt"], message: "a pinned backfill gap cannot be cleared" });
+  }
+  if (notification.clearedAt !== undefined && Date.parse(notification.clearedAt) > Date.parse(notification.updatedAt)) {
+    context.addIssue({ code: "custom", path: ["clearedAt"], message: "notification clearedAt cannot follow updatedAt" });
   }
   if (notification.trigger === "backfill-gap" && notification.snooze.state !== "not-snoozed") {
     context.addIssue({
@@ -109,6 +117,8 @@ export const NotificationStateRequestSchema = z.strictObject({
   expectedVersion: PositiveIntSchema,
   status: z.enum(["unread", "read"]),
   snooze: NotificationSnoozeSchema,
+  /** Present only to clear the row; otherwise the row keeps its clearedAt. */
+  clearedAt: IsoInstantSchema.optional(),
   updatedAt: IsoInstantSchema,
 });
 
@@ -147,13 +157,44 @@ export const NotificationCollectionTargetSchema = z.strictObject({
   }
 });
 export type NotificationCollectionTarget = z.infer<typeof NotificationCollectionTargetSchema>;
+/** Members are exactly the rows to clear, at the versions the operator saw. */
+export const NotificationClearTargetSchema = NotificationCollectionTargetSchema.refine(
+  target => target.members.length > 0 && target.matchingCount === target.members.length, "notification-clear-members-invalid");
+
+/** The gate or parked write a run holds or a notice names. */
+export type NotificationPark = Readonly<{ trigger: "gate-waiting" | "write-parked"; id: string }>;
+/** What a row's standing reads: the gate or write the linked run holds and the one its latest publication names, and for storage the concern that publication names and whether that concern is still active. */
+export type NotificationStandingSources = Readonly<{
+  runPark(runId: string): NotificationPark | undefined;
+  noticePark(notificationId: string): NotificationPark | undefined;
+  storageConcern(notificationId: string): string | undefined;
+  concernActive(concern: string): boolean | undefined;
+  /** Whether the command has its result; undefined when the command is not stored. */
+  commandSettled(commandId: string): boolean | undefined;
+}>;
+/** Still waiting on the operator: the named gate or parked write the run still holds, a recovery command still unsettled, or a storage problem still active.
+ * A row whose publication cannot be read stands while its run holds any park of its kind, and a storage row stands when its concern or health cannot be read, since nothing proves it handled. */
+export function notificationStanding(row: NotificationRecord, sources: NotificationStandingSources): boolean {
+  const link = row.links[0];
+  if (row.trigger === "gate-waiting" || row.trigger === "write-parked") {
+    const held = link !== undefined && "runId" in link ? sources.runPark(link.runId) : undefined;
+    if (held === undefined || held.trigger !== row.trigger) return false;
+    const named = sources.noticePark(row.notificationId);
+    return named === undefined || named.id === held.id;
+  }
+  if (row.trigger === "command") return link?.kind === "recovery" && sources.commandSettled(link.commandId) === false;
+  if (row.trigger !== "storage") return false;
+  const concern = sources.storageConcern(row.notificationId);
+  return concern === undefined || sources.concernActive(concern) !== false;
+}
 export function notificationMatchesCollection(row: NotificationRecord, operation: NotificationCollectionOperation): boolean {
-  if (row.trigger === "backfill-gap") return false;
+  if (row.trigger === "backfill-gap" || row.clearedAt !== undefined) return false;
   return operation === "read" ? row.status === "unread" : operation === "unread" ? row.status === "read"
     : operation === "unsnooze" ? row.snooze.state === "snoozed" : true;
 }
+/** Every listed row is a member, so any change to the inbox refuses a stale collection; a cleared row is no longer listed. */
 export function notificationCollectionTarget(records: readonly NotificationRecord[], actorId: string, operation: NotificationCollectionOperation): NotificationCollectionTarget {
-  const rows = records.map(row => NotificationRecordSchema.parse(row));
+  const rows = records.map(row => NotificationRecordSchema.parse(row)).filter(row => row.clearedAt === undefined);
   if (rows.some(row => row.actorId !== actorId)) throw new Error("notification-collection-actor-mismatch");
   return NotificationCollectionTargetSchema.parse({ actorId,
     members: rows.map(row => ({ notificationId: row.notificationId, expectedVersion: row.version })).sort((a, b) => a.notificationId < b.notificationId ? -1 : a.notificationId > b.notificationId ? 1 : 0),

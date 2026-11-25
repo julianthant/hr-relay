@@ -143,3 +143,26 @@ it("serves the same storage group through canonical inbox and day snapshots, kee
     await observer.stop();
   }
 });
+
+it("drops a storage notice's standing from the day snapshot when only its concern's health clears", async () => {
+  const w = await world();
+  const { database, clock } = w;
+  let seed = 300;
+  const ids = { uuid: () => uuidOf(++seed) };
+  const lifecycle = new RunRecordService({ database, clock, ids, publishQueued: () => undefined });
+  const descriptors = { resolve: () => personLookupDescriptor };
+  const inbox = createNotificationInbox({ authority: database, clock, ids, actorId: "local-operator" });
+  const health = (active: boolean) => {
+    const at = clock.now().toISOString();
+    database.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active, occurrence: active ? 1 : 0, observedAt: at, createdAt: at, samples: [] }));
+  };
+  health(true);
+  await inbox.publish({ kind: "storage-degraded", concern: "disk-space", state: "failed", diagnosticFingerprint: "a".repeat(64) });
+  const queue = createOperatorProjection({ database, reader: lifecycle, clock, stateRoot: w.stateRoot,
+    appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, ledger: createTransactionHistory(database.authority), descriptors });
+  const standing = () => queue.buildDashboardDayWire(DAY).notifications.map(row => row.kind !== "backfill-gap" && row.standing === true);
+  assert.deepEqual(standing(), [true]);
+  clock.advanceWall(1000);
+  health(false);
+  assert.deepEqual(standing(), [false], "a health-only write invalidates the day cache");
+});
