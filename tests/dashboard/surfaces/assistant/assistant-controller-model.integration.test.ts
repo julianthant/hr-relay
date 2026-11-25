@@ -211,8 +211,24 @@ it('treats an unreadable usage meter as a working sign-in with no test gate', as
     const resource = account.port.getResource(); assert.ok('code' in resource); assert.equal(resource.code, 'CHATGPT_USAGE_UNAVAILABLE');
     await act(async () => { current.onAction({ type: "edit", value: 'Who ran today?' }); current.onAction({ type: "send" }); });
     await vi.waitFor(() => assert.equal(calls, 1));
-    assert.equal(account.reads, 1);
+    assert.equal(account.reads, 2); // the stored account and its one guarded check
   } finally { account.port.dispose(); }
+});
+it('reads the model list again for each account the guarded check settles, including the same account', async () => {
+  const connected: ChatGptAccountSnapshot = { state: 'connected', name: 'Synthetic', email: 'synthetic@example.com', planUsage: 'enabled' };
+  let snapshot: ChatGptAccountSnapshot = connected, observed = false, reads = 0, current!: ReturnType<typeof useAssistantController>;
+  const listeners = new Set<() => void>();
+  const account: ChatGptAccountPort = { mode: 'live', getSnapshot: () => snapshot, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    signIn: async () => {}, cancelSignIn: async () => {}, signOut: async () => undefined };
+  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { return { state: 'answered', text: 'Unused' }; },
+    async assistantModels() { reads++; if (!observed) throw new Error('synthetic unobserved catalog'); return { models: [{ slug: 'synthetic-model', displayName: 'Synthetic model' }] }; } });
+  function Harness() { current = useAssistantController(client, 'profile', undefined, false); return null; }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
+  assert.equal(reads, 1); assert.equal(current.models, undefined);
+  observed = true;
+  await act(async () => { snapshot = { ...connected }; for (const listener of listeners) listener(); });
+  assert.equal(reads, 2); assert.deepEqual(current.models, [{ slug: 'synthetic-model', displayName: 'Synthetic model' }]);
 });
 it('refuses setup attachments before send callbacks, file readers and registration through the existing composer', async () => {
   for (const text of [ASSISTANT_MODEL_COMMAND, ASSISTANT_MODEL_COMMAND + ' fixture-selected ' + ASSISTANT_DEFAULT_EFFORT]) {
