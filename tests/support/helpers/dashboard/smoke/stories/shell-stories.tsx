@@ -80,7 +80,7 @@ const RAIL = {
 type HeaderState = "closed" | "options-open" | "options-changed";
 const header = (title: string, changed: boolean, play?: Story["play"]): Story => ({ title, ready: '[aria-label="Queue header"]', ...(play === undefined ? {} : { play }),
   render: () => <StoryFrame><QueueHeader title="Person Lookup" ask={null} startId="story-start-run" onStartRun={noop} day={changed ? "2026-10-29" : "2026-10-30"} today="2026-10-30" onDay={noop}
-    sort={changed ? "oldest" : "attention"} onSort={noop} active={changed ? ["failed"] : ["all"]} counts={[]} onFilter={noop} /></StoryFrame> });
+    sort={changed ? "oldest" : "attention"} order={changed ? "oldest" : "newest"} onSort={noop} active={changed ? ["failed"] : ["all"]} counts={[]} onFilter={noop} /></StoryFrame> });
 // Opened by keyboard on the last item: it takes the menu's Tab stop, and arrows from it walk the rest without opening a submenu.
 const openOptions: Story["play"] = async page => {
   await page.getByRole("button", { name: /^Options/ }).press("Enter");
@@ -93,11 +93,15 @@ const HEADER = {
   "options-changed": header("The queue header with options changed from their defaults", true),
 } satisfies Record<HeaderState, Story>;
 
-type ToggleState = "off" | "on" | "disabled-off" | "disabled-on";
-const toggle = (title: string, checked: boolean, disabled: boolean): Story => ({ title, ready: '[role="switch"]',
-  render: () => <StoryFrame><Panel><PanelBody><Switch label="Dry run" checked={checked} disabled={disabled} onCheckedChange={noop} /></PanelBody></Panel></StoryFrame> });
+type ToggleState = "off" | "on" | "off-hover" | "on-hover" | "focus" | "locked-on" | "disabled-off" | "disabled-on";
+const toggle = (title: string, checked: boolean, disabled: boolean, play?: Story["play"], locked = false): Story => ({ title, ready: '[role="switch"]', ...(play === undefined ? {} : { play }),
+  render: () => <StoryFrame><Panel><PanelBody><Switch label="Dry run" checked={checked} disabled={disabled} locked={locked} onCheckedChange={noop} /></PanelBody></Panel></StoryFrame> });
+const point: Story["play"] = page => page.locator(".ds-switch-row").hover();
 const TOGGLE = {
   off: toggle("A toggle that is off", false, false), on: toggle("A toggle that is on: blue track, white knob", true, false),
+  "off-hover": toggle("A toggle that is off, under the pointer", false, false, point), "on-hover": toggle("A toggle that is on, under the pointer", true, false, point),
+  focus: toggle("A toggle with keyboard focus: a ring with a gap", true, false, page => page.keyboard.press("Tab")),
+  "locked-on": toggle("A required toggle held on, with a lock in its knob", true, true, undefined, true),
   "disabled-off": toggle("A toggle that is off and unavailable", false, true), "disabled-on": toggle("A toggle that is on and unavailable", true, true),
 } satisfies Record<ToggleState, Story>;
 
