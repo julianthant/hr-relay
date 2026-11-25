@@ -1,14 +1,14 @@
-import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
-import { fenceWriteFixture, writeFenceFixtureInput } from "../../support/helpers/write-fence-fixture.js";
-import { atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { fenceWriteFixture, writeFenceFixtureInput } from "../../../support/helpers/write-fence-fixture.js";
+import { atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { manualClock } from "../../../src/rules/time/clock.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 import {
   deriveIdempotencyKeyDigest,
   deriveWriteBindingProofDigest,
-} from "../../../src/rules/write-safety/write-safety.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+} from "../../../../src/rules/write-safety/write-safety.js";
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import {
   ATOMIC_WRITE_COMMIT,
   IDEMPOTENCY_KEY,
@@ -21,7 +21,7 @@ import {
   UUID_7,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
-} from "../../support/fixtures/phase1c-contract-fixtures.js";
+} from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const CLOCK = manualClock(new Date(NOW));
 const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
