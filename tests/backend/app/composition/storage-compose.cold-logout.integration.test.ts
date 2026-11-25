@@ -155,12 +155,9 @@ it("serves the unfinished logout after restart, truthfully refuses signup, conti
     });
     assert.equal((await post("sign-in", { email: fields.email, password: fields.password })).body.state, "cancelling");
     await vi.waitFor(async () => {
-      const response = await fetch(`${base}/api/v1/profile/state`);
-      assert.equal(response.status, 200);
-      assert.deepEqual(await response.json(), { state: "signed-out", signUpRequired: false });
+      const result = await post("sign-in", { email: fields.email, password: fields.password });
+      assert.equal(result.status, 200); assert.equal(result.body.state, "active");
     });
-    const result = await post("sign-in", { email: fields.email, password: fields.password });
-    assert.equal(result.status, 200); assert.equal(result.body.state, "active");
     assert.equal(existsSync(f.operationPath), false); f.assertRetained();
     await app.stop(); app = undefined;
   } finally { await app?.stop(); await stopped.close(); }

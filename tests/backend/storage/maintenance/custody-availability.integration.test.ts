@@ -377,10 +377,9 @@ it("refuses Windows flat-store migration before hashing the legacy source", asyn
 
 it("refuses authenticated Windows account deletion without logging out and keeps ordinary logout usable", async () => {
   const f = await createBoundProfileFixture();
-  // Host stalls can append unrelated diagnostics between the WAL snapshots.
   const application = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine,
     isolation: rebuildRuntimeIsolation, repoRoot: process.cwd(), backendPortOverride: 0, frontendPortOverride: 0,
-    env: {}, clock, loopDelay: false, preflightRunnerFactory: healthyRuntimePreflightRunners });
+    env: {}, clock, preflightRunnerFactory: healthyRuntimePreflightRunners });
   const base = `http://127.0.0.1:${application.port}`;
   const post = (path: string, body: unknown, credential?: string) => fetch(`${base}${path}`, { method: "POST",
     headers: { "content-type": "application/json", origin: base, ...(credential === undefined ? {} : { "x-relay-session": credential }) }, body: JSON.stringify(body) });

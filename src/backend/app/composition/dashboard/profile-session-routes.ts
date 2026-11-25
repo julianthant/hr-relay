@@ -43,7 +43,7 @@ import { ensureChildDirectory } from "../../../storage/configuration/credential-
 import { assertMaintenanceCustodyAvailable } from "../../../storage/maintenance/custody-availability.js";
 import { dispatchMountedRequest,startDashboardHttpServer } from "../../../transports/http/http-server.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/request-identity.js";
-import type { DashboardApp } from "../../../transports/http/routes/api.js";
+import { createDashboardApp } from "../../../transports/http/routes/api.js";
 import { registerDebugResponses } from "../../../transports/http/routes/debug-responses.js";
 import { failureStatus } from "../../../transports/http/routes/failure-status.js";
 import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
@@ -259,7 +259,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       debugEvents.emit({ ...failure.body, reason: "profile-request-failed" });
       return c.json(failure.body, failure.status);
     });
-    let selectedApp: DashboardApp | undefined;
+    let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
     const admitted = new WeakSet<Request>();
     guarded.all("*", c => {
       const request = c.req.raw;
