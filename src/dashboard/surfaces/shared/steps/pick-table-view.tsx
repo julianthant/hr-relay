@@ -33,7 +33,7 @@ export function PickTableView({ title, columns, rows, typed, chosen, onChoose, o
   };
   return <PageCard title={title} mode="Pick">
     <Table label={title}>
-      <THead><TR><TH className="w-9 pl-3"><span className="sr-only">Choose</span></TH>{columns.map((column, index) => <TH key={column.id} align={index === last ? "right" : "left"} className="text-caption font-normal normal-case whitespace-nowrap">{column.label}</TH>)}</TR></THead>
+      <THead><TR><TH className="w-9 pl-3"><span className="sr-only">Choose</span></TH>{columns.map((column, index) => <TH key={column.id} align={index === last ? "right" : "left"} title={column.label} className={cn("text-caption font-normal normal-case whitespace-nowrap", index === flex && "w-full max-w-0 truncate")}>{column.label}</TH>)}</TR></THead>
       <TBody>
         {rows.map(item => row(item.id, item.label, columns.map((column, index) => {
           const cell = item.cells[index];

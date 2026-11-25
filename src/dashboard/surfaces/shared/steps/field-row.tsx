@@ -41,7 +41,7 @@ function FieldValueCell({ value, mark, className }: { value: string; mark?: stri
     observer.observe(node);
     return () => observer.disconnect();
   }, [value]);
-  return <Tooltip side="bottom" content={value} open={cut ? undefined : false}><dd ref={cell} tabIndex={cut ? 0 : undefined} aria-label={cut ? value : undefined} className={className}><FieldValue value={value} />{mark !== undefined && <span className="ml-2 whitespace-nowrap text-caption font-normal text-ui-muted">{mark}</span>}</dd></Tooltip>;
+  return <Tooltip side="bottom" content={value} open={cut ? undefined : false}><dd ref={cell} {...(cut ? { role: "group", tabIndex: 0, "aria-label": displayExtractedDate(value) } : {})} className={cn(className, "rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ui-info")}><FieldValue value={value} />{mark !== undefined && <span className="ml-2 whitespace-nowrap text-caption font-normal text-ui-muted">{mark}</span>}</dd></Tooltip>;
 }
 
 function FieldValue({ value }: { value: string }) {
