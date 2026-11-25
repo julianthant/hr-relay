@@ -465,6 +465,8 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
 
 export async function namedAndFocusable({ page, recordTabStop }: StateRuleContext): Promise<readonly string[]> {
   const found: string[] = [];
+  // A story may open focused. Blur on its own turn so a state-driven ring (React Aria) is gone before the unfocused look is read.
+  await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); });
   const { controls } = await page.evaluate(focusProbe, { step: "tag", selector: CONTROL_SELECTOR });
   try {
     for (const { index, label } of controls) {

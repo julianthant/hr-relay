@@ -58,6 +58,7 @@ for (const viewport of VIEWPORTS) {
         await page.keyboard.press("ArrowRight");
         await expect(page.getByRole("menu", { name: label })).toBeVisible();
         await shot(frame);
+        if (frame === "options-status") await expect(page.getByRole("menuitemcheckbox", { name: /^Needs approval/ })).toBeVisible();
         if (frame === "options-sort") await page.getByRole("menu", { name: label }).getByRole("menuitemradio", { name: "Oldest first" }).click();
         await page.keyboard.press("Escape");
         await expect(page.getByRole("menu", { name: label })).toHaveCount(0);

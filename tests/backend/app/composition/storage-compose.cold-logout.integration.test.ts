@@ -28,6 +28,17 @@ import { healthyRuntimePreflightRunners } from "../../../support/fixtures/prefli
 import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
 import { StorageMaintenanceCustodyUnavailableError } from "../../../../src/backend/storage/maintenance/custody-availability.js";
 
+/** Lane start mode for the measurement below, and the hosts the composed application created. */
+const laneStart = vi.hoisted((): { mode: "staggered" | "parallel" | undefined; hosts: { status(): { bootMs: readonly number[] } }[] } => ({ mode: undefined, hosts: [] }));
+vi.mock("../../../../src/backend/storage/sqlite/dashboard-read-host.js", async importOriginal => {
+  const original = await importOriginal<typeof import("../../../../src/backend/storage/sqlite/dashboard-read-host.js")>();
+  return { ...original, createDashboardReadHost: (input: Parameters<typeof original.createDashboardReadHost>[0]) => {
+    const host = original.createDashboardReadHost(laneStart.mode === undefined ? input : { ...input, start: laneStart.mode });
+    laneStart.hosts.push(host);
+    return host;
+  } };
+});
+
 const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-21T12:01:00.000Z" };
 
 async function fixture(phase: "admitted" | "cancelling" | "incomplete" = "cancelling") {
@@ -376,3 +387,28 @@ for (const boundary of ["prepared", "commit-intent", "after-commit", "done", "re
   it(`proves native Logout2 ${boundary} custody in an owned child before cleanup`, async () => {
     await runLogoutSettlementCase(boundary);
   });
+
+it.for(["parallel", "staggered"] as const)("measures sign-in after a cancelled cold logout with a %s lane start", async (mode, { annotate }) => {
+  const f = await fixture(), stopped = await f.restart("shared");
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.f.workspace, name));
+  laneStart.mode = mode;
+  laneStart.hosts.length = 0;
+  let app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  try {
+    app = await composeDashboardApplication({ admission: stopped.machine, lifetimeLock: stopped.lifetime, repoRoot: f.f.workspace,
+      isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, clock: f.clock, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+    const base = `http://127.0.0.1:${app.port}`;
+    const signIn = async () => PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/sign-in`, { method: "POST",
+      headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify({ email: fields.email, password: fields.password }) })).json());
+    assert.equal((await signIn()).state, "cancelling");
+    const started = performance.now(), cpu = process.cpuUsage();
+    let state = "";
+    while (state !== "active" && performance.now() - started < 30_000) state = (await signIn()).state;
+    const signInActiveMs = performance.now() - started, used = process.cpuUsage(cpu);
+    assert.equal(state, "active");
+    await new Promise(resolve => setTimeout(resolve, 5_000));
+    await annotate(JSON.stringify({ measure: "cold-logout sign-in", mode, signInActiveMs, processCpuMs: (used.user + used.system) / 1_000,
+      laneBootMs: laneStart.hosts.map(host => host.status().bootMs) }));
+    await app.stop(); app = undefined;
+  } finally { laneStart.mode = undefined; await app?.stop(); await stopped.close(); }
+});

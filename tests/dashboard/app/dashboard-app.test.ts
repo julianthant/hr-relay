@@ -300,6 +300,32 @@ describe_m1("served signed-out appearance", () => {
   }
 });
 
+describe_m1("the sidebar's Start run +", () => {
+  afterEach_m1(_afterEachFixture0);
+
+  it_m1("says a draft was kept only when the same workflow's + reopens it", async () => {
+    window.history.replaceState(null, "", "/");
+    const [flow] = APP_BOOTSTRAP_WITH_INPUT.workflows; assert_m1.ok(flow);
+    const bootstrap = FrontendBootstrapWireSchema_m1.parse({ ...APP_BOOTSTRAP_WITH_INPUT, workflows: [flow, { ...flow, id: "second-workflow", code: "sw", label: "Second workflow" }] });
+    await mountSurface({ ...appClient(), bootstrap: async () => bootstrap }, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => assert_m1.ok(document.querySelector('[aria-label="Start a Second workflow run"]')));
+    await loadLazyPages();
+    const click = (selector: string) => act_m1(async () => { const node = document.querySelector<HTMLButtonElement>(selector); assert_m1.ok(node, selector); node.click(); await new Promise(resolve => setTimeout(resolve, 35)); });
+    const input = () => { const node = document.querySelector<HTMLTextAreaElement | HTMLInputElement>('[role="dialog"] [aria-label="Input"] textarea, [role="dialog"] [aria-label="Input"] input:not([type="checkbox"])'); assert_m1.ok(node, "the Run input is mounted"); return node; };
+    const cancel = () => act_m1(async () => { const node = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(entry => entry.textContent?.trim() === "Cancel"); assert_m1.ok(node); node.click(); await new Promise(resolve => setTimeout(resolve, 35)); });
+    const text = () => document.querySelector('[role="dialog"]')?.textContent ?? "";
+    const type = (value: string) => act_m1(async () => { const node = input(); Object.getOwnPropertyDescriptor(node instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")?.set?.call(node, value); node.dispatchEvent(new Event("input", { bubbles: true })); });
+
+    await click('[aria-label="Start a Fixture workflow run"]');
+    await type("10873698"); await cancel();
+    await click('[aria-label="Start a Fixture workflow run"]');
+    assert_m1.match(text(), /Draft kept/u); assert_m1.equal(input().value, "10873698");
+    await cancel();
+    await click('[aria-label="Start a Second workflow run"]');
+    assert_m1.doesNotMatch(text(), /Draft kept/u); assert_m1.equal(input().value, "");
+  });
+});
+
 describe_m1("served sign-up Finish", () => {
   afterEach_m1(_afterEachFixture0);
 

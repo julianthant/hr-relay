@@ -2,6 +2,7 @@ import { createRunQueueProjectionTestWorld } from "../../../support/helpers/back
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { claimEventOf, DAY, taskEventsOf, traceOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
 const {world, queuedEventOf, appendOther, seedExitRunShape, cleanup } = createRunQueueProjectionTestWorld();
@@ -45,8 +46,9 @@ describe("THE run/queue projection", () => {
   it("folds another SQLite connection's task spans — the run enqueued after boot gets its timeline", async () => {
 
     const w = await world();
-    queuedEventOf(w, { seed: 1 });
-    claimEventOf(w, 1);
+    const unpublished = { ...w, writer: createTimelineEmitter({ repository: w.timeline, clock: w.clock, pid: 4242 }) };
+    queuedEventOf(unpublished, { seed: 1 });
+    claimEventOf(unpublished, 1);
     const base = {
       workflow: "person-lookup", pid: 777, runId: uuidOf(1), attempt: 1,
       traceId: traceOf(1), spanPath: `${traceOf(1)}/searching#1`, parentSpanPath: traceOf(1),
@@ -56,6 +58,7 @@ describe("THE run/queue projection", () => {
 
     const publications: string[] = [];
     const generation = w.database.getMeta().authorityGeneration;
+    assert.deepEqual(w.changes, []);
     w.projection.onChange(change => w.database.withAuthorityTransaction(() => { publications.push(change.kind); }));
     w.projection.ingestFromTimeline();
 

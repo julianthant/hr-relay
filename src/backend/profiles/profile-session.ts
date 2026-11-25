@@ -193,12 +193,8 @@ export function createProfileSession(input: {
     return store;
   }
 
-  /** The account line is display only: an unreadable credential store leaves the UCPath username out and keeps the session. */
   function accountOf(row: ProfileRegistryRow): ProfileAccount {
-    let ucpathUsername: string | undefined;
-    try { ucpathUsername = storeFor(row.profileId).read().entries.ucpathUserId?.value; }
-    catch { ucpathUsername = undefined; }
-    return profileAccount(row, verifiers.identify, ucpathUsername);
+    return profileAccount(row, verifiers.identify, storeFor(row.profileId).read().entries.ucpathUserId?.value);
   }
 
   function releaseOrdinary(profileId: string): void {

@@ -1,4 +1,5 @@
-import { SearchMetadataExportRequestSchema } from "../../../models/dashboard/search-export.js";
+import { z } from "zod";
+import { SearchMetadataExportRequestSchema, type SearchMetadataExportRequest } from "../../../models/dashboard/search-export.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { collectSearchDocument } from "./operator-xlsx-export-service.js";
 import { spreadsheetCsvRow } from "./spreadsheet-csv.js";
@@ -6,18 +7,27 @@ import { selectionDownload } from "./selection-download.js";
 
 /** Export the exact collected search values; snapshot validation owns membership and ordering. */
 export function exportSearchMetadata(deps: Parameters<typeof collectSearchDocument>[0], input: unknown): Response {
-  const request=SearchMetadataExportRequestSchema.parse(input);
-  if(request.selection.kind!=="search")throw new Error("search-export-selection-required");
-  const document=collectSearchDocument(deps,request.selection),snapshot=document.selection.snapshot;
+  const request = SearchMetadataExportRequestSchema.parse(input);
+  if (request.selection.kind !== "search") throw new Error("search-export-selection-required");
+  const file = buildSearchMetadata(collectSearchDocument(deps, request.selection), request.format);
+  return selectionDownload(file.body, file.filename, file.mediaType, request.selection.snapshot.token);
+}
+
+export const SearchMetadataFileSchema = z.strictObject({
+  body: z.string(), filename: z.string().min(1), mediaType: z.enum(["text/csv; charset=utf-8", "application/json; charset=utf-8"]),
+});
+
+export function buildSearchMetadata(document: ReturnType<typeof collectSearchDocument>, format: SearchMetadataExportRequest["format"]): z.infer<typeof SearchMetadataFileSchema> {
+  const snapshot = document.selection.snapshot;
   const rows=document.results;
   const base=`hr-run-search-${snapshot.generatedAt.slice(0,10)}-g${String(snapshot.authorityGeneration)}`;
-  if(request.format==="diagnostic")return selectionDownload(canonicalJsonStringify({
+  if (format === "diagnostic") return { body: canonicalJsonStringify({
     format:2,kind:"complete-search-diagnostic-metadata",generatedAt:snapshot.generatedAt,
     authorityGeneration:snapshot.authorityGeneration,order:snapshot.order,totalMatches:snapshot.totalMatches,
     coverage:snapshot.coverage,
     selection:document.selection,
     exclusions:["inputs and proofs not collected by search","screenshots and artifact bytes not collected by search"],rows,
-  }),`${base}-diagnostic.json`,"application/json; charset=utf-8",request.selection.snapshot.token);
+  }), filename: `${base}-diagnostic.json`, mediaType: "application/json; charset=utf-8" };
   const csv=[
     spreadsheetCsvRow(["Run search snapshot",snapshot.generatedAt]),
     spreadsheetCsvRow(["Matches",snapshot.totalMatches]),
@@ -49,5 +59,5 @@ export function exportSearchMetadata(deps: Parameters<typeof collectSearchDocume
       row.metadata.actor.state === "available" ? row.metadata.actor.value : "",
     ])),
   ].join("\r\n")+"\r\n";
-  return selectionDownload(csv,`${base}.csv`,"text/csv; charset=utf-8",request.selection.snapshot.token);
+  return { body: csv, filename: `${base}.csv`, mediaType: "text/csv; charset=utf-8" };
 }

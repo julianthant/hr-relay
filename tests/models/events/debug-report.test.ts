@@ -5,17 +5,37 @@ import { buildPreflightReport, requiredPreflightChecks } from "../../../src/mode
 import { manualClock } from "../../../src/rules/time/clock.js";
 
 describe("metadata-only failure reports", () => {
-  it("keeps an explicitly expired readiness 200 distinct from failed or malformed reads", () => {
+  it("keeps an expected readiness 200 on the preflight route distinct from failed or malformed reads", () => {
     const report = buildPreflightReport({ configFingerprint: "a".repeat(64), requestedCapabilities: ["dashboard.serve"],
       clock: manualClock(new Date("2026-11-04T00:00:00Z")),
       observations: requiredPreflightChecks(["dashboard.serve"]).map(check => ({ check, state: "healthy", summary: "Fixture healthy" })) });
+    const route = "/api/v1/preflight";
     const expired = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_EXPIRED", reason: "Readiness expired.", lastCompleted: report };
-    assert.equal(debugFailureOutcome(expired, 200), undefined);
-    assert.equal(debugFailureOutcomes(expired, 200).length, 0);
-    for (const [body, status] of [[expired, 503], [{ ...expired, lastCompleted: {} }, 200],
-      [{ state: "unavailable", reason: "Storage could not be read." }, 200], [{ ...expired, code: "PRIVATE_CODE" }, 200]] as const) {
-      assert.equal(debugFailureOutcome(body, status)?.reason, "operation-failed");
+    const missing = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_MISSING", reason: "Preflight evidence is unavailable for this exact scope; re-check readiness." };
+    const stale = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_STALE", reason: "Run prerequisites changed; re-check readiness." };
+    for (const body of [expired, missing, stale]) {
+      assert.equal(debugFailureOutcome(body, 200, route), undefined);
+      assert.equal(debugFailureOutcomes(body, 200, route).length, 0);
+      assert.equal(debugFailureOutcome(body, 200, "/api/v1/settings")?.reason, "operation-failed");
     }
+    assert.equal(debugFailureOutcome(missing, 200, "/api/v1/preflight/rerun")?.reason, "operation-failed");
+    assert.equal(debugFailureOutcome(missing, 200)?.reason, "operation-failed");
+    const expiredWithoutReport = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_EXPIRED", reason: "Readiness expired." };
+    assert.deepEqual(debugFailureOutcome(expiredWithoutReport, 200, route), { code: "PREFLIGHT_EVIDENCE_EXPIRED", reason: "readiness-report-missing" });
+    assert.deepEqual(debugFailureOutcome({ state: "unavailable", code: "PREFLIGHT_READ_FAILED", reason: "Preflight report reader is unavailable." }, 200, route),
+      { code: "PREFLIGHT_READ_FAILED", reason: "operation-failed" });
+    assert.deepEqual(debugFailureOutcome({ state: "unavailable", reason: "Storage could not be read." }, 200, route),
+      { code: "DASHBOARD_READ_FAILED", reason: "readiness-code-missing" });
+    for (const body of [{ ...expired, lastCompleted: {} }, { ...expired, code: "PRIVATE_CODE" }, { state: "error" }, "PRIVATE_BODY"]) {
+      assert.deepEqual(debugFailureOutcome(body, 200, route), { code: "DASHBOARD_READ_FAILED", reason: "response-contract-invalid" });
+    }
+    assert.equal(debugFailureOutcome({ state: "present", report }, 200, route), undefined);
+    assert.equal(debugFailureOutcome(expired, 503, route)?.reason, "operation-failed");
+    const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const appliedVector = { state: "vector", bulkCommandId: id, type: "pause", requestedCount: 1,
+      results: [{ outcome: "applied", runId: id, commandId: id, replayed: false, detail: "Paused." }] };
+    assert.deepEqual(debugFailureOutcomes(appliedVector, 200), []);
+    assert.deepEqual(debugFailureOutcomes(appliedVector, 200, route), [{ code: "DASHBOARD_READ_FAILED", reason: "response-contract-invalid" }]);
   });
   it("recognizes refusals and unknown results even on HTTP 200", () => {
     assert.deepEqual(debugFailureOutcome({ state: "refused", code: "PROFILE_SESSION_STALE", name: "PRIVATE_NAME" }),
@@ -23,7 +43,9 @@ describe("metadata-only failure reports", () => {
     assert.equal(debugFailureOutcome({ state: "unknown" })?.reason, "outcome-unknown");
     assert.equal(debugFailureOutcome({ state: "applied" }), undefined);
     assert.equal(debugFailureOutcome({ state: "error", code: "PRIVATE_CODE" })?.code, "DASHBOARD_READ_FAILED");
-    assert.equal(debugFailureOutcome("PRIVATE_BODY", 503)?.reason, "operation-failed");
+    assert.equal(debugFailureOutcome("PRIVATE_BODY", 503)?.reason, "response-contract-invalid");
+    assert.deepEqual(debugFailureOutcome({ detail: "PRIVATE_DETAIL" }, 503, "/api/v1/workbooks"), { code: "DASHBOARD_READ_FAILED", reason: "response-contract-invalid" });
+    assert.deepEqual(debugFailureOutcome({ state: "error", code: "STORAGE_SNAPSHOT_CHANGED", message: "busy", retryable: true }, 503, "/api/v1/workbooks")?.reason, "operation-failed");
   });
   it("keeps request values out of diagnostic routes", () => {
     assert.equal(diagnosticRequestRoute("/api/v1/runs/PRIVATE_NAME/ocr?eid=PRIVATE_EID#token=PRIVATE_TOKEN"), "/api/v1/runs");
