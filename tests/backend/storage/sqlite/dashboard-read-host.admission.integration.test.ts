@@ -4,7 +4,7 @@ import { chmodSync, linkSync, renameSync, unlinkSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { z } from "zod";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -14,7 +14,7 @@ import { workerBootstrapEnvironment } from "../../../../src/models/config/secret
 import { workerExecArgv } from "../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createDashboardReadHost } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
+import { createDashboardReadHost, ReadLaneStartError } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { historyArchivePath } from "../../../../src/backend/storage/sqlite/isolated-history-store.js";
 import { admitReadLane, openReadLane, prepareReadLaneStart, READ_LANE_OPEN_MODE } from "../../../../src/backend/storage/sqlite/read-lane-admission.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
@@ -197,4 +197,27 @@ it("attaches a profile copy's history archive in the lane with the host's logica
       assert.throws(() => connection.exec(sql), /readonly|read-only/u, sql);
     }
   } finally { connection.close(); }
+});
+
+it("joins an already started lane before a partial start failure lets the store close", async () => {
+  const fixture = await openBoundDatabaseFixture("read-lane-partial-start");
+  const retain: unknown = Reflect.get(AuthorityDatabase.prototype, "retainDashboardReadSource");
+  if (typeof retain !== "function") throw new Error("fixture retainDashboardReadSource missing");
+  let calls = 0;
+  const spy = vi.spyOn(AuthorityDatabase.prototype, "retainDashboardReadSource").mockImplementation(function (this: AuthorityDatabase, ...args) {
+    if (++calls === 2) throw new Error("injected-second-lane-failure");
+    const release: unknown = Reflect.apply(retain, this, args);
+    if (typeof release !== "function") throw new Error("fixture lane source release missing");
+    return () => { Reflect.apply(release, undefined, []); };
+  });
+  let failure: unknown;
+  try {
+    createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock, entry: LANE_READS_ENTRY });
+  } catch (error) { failure = error; } finally { spy.mockRestore(); }
+  assert.ok(failure instanceof ReadLaneStartError);
+  assert.match(failure.message, /injected-second-lane-failure/u);
+  // The navigation lane started and still holds its source until it exits.
+  assert.throws(() => { fixture.database.close(); }, /dashboard-background-reader-open/u);
+  await failure.exited;
+  await fixture.close();
 });

@@ -95,3 +95,16 @@ it("rebuilds an expired entry", async () => {
   assert.equal(expired.cached, false);
   assert.equal(body(expired).run, 2);
 });
+
+it("rebuilds an entry whose change-log interval has an interior gap", async () => {
+  const { lanes, note, peer, plan } = await cacheHost();
+  const first = await lanes.read(lanePool, { workflow: WORKFLOW });
+  plan(2);
+  note("after the declared write");
+  // The declared table's change rows vanish from the middle of the interval; the rows after them remain.
+  const removed = peer.prepare("DELETE FROM authority_changes WHERE seq>? AND table_name='worker_pools'").run(first.position.changeLogSeq).changes;
+  assert.ok(Number(removed) > 0);
+  const rebuilt = await lanes.read(lanePool, { workflow: WORKFLOW });
+  assert.equal(rebuilt.cached, false);
+  assert.deepEqual(body(rebuilt), { run: 2, desiredWorkers: 2 });
+});

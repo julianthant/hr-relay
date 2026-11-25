@@ -122,23 +122,31 @@ it("G1-WAL: bounds the WAL under a continuous writer, a held peer read and a fai
   const recorded = performance.now() + 1_000;
   while (lanes.status().checkpoints.at(-1)?.walBytesAfter !== 0 && performance.now() < recorded) await delay(10);
   const status = lanes.status();
-  // A checkpoint is lane work a click waits behind, like a read. The click after the failed rollback waits for the restart.
+  // Checkpoints are reported but not allowed for: the bound is the read running ahead plus 50 ms, for every click.
   const checkpointSpans = status.checkpoints.map(attempt => ({ startedAt: attempt.startedAtMs, finishedAt: attempt.finishedAtMs }));
-  const measured = clicks.filter(click => !click.afterRestart).map(click => ({ waitMs: click.startedAt - click.dispatchedAt,
-    readAheadMs: aheadOf(click.dispatchedAt, click.startedAt, spans), checkpointAheadMs: aheadOf(click.dispatchedAt, click.startedAt, checkpointSpans),
-    aheadMs: aheadOf(click.dispatchedAt, click.startedAt, [...spans, ...checkpointSpans]) }));
-  const longest = measured.reduce((worst, click) => click.waitMs - click.aheadMs > worst.waitMs - worst.aheadMs ? click : worst);
+  const measured = clicks.map(click => ({ afterRestart: click.afterRestart, waitMs: click.startedAt - click.dispatchedAt,
+    readAheadMs: aheadOf(click.dispatchedAt, click.startedAt, spans), checkpointAheadMs: aheadOf(click.dispatchedAt, click.startedAt, checkpointSpans) }));
+  const longest = measured.filter(click => !click.afterRestart)
+    .reduce((worst, click) => click.waitMs - click.readAheadMs > worst.waitMs - worst.readAheadMs ? click : worst);
   await annotate(JSON.stringify({ gate: "G1-WAL", commitsPerSecond: WRITER_COMMITS_PER_SECOND, written, peakWalBytes: Math.max(peak(), status.walPeakBytes),
     resetMs, clicks: measured.length, longestInteractiveWaitMs: longest.waitMs, readAheadMs: longest.readAheadMs,
-    checkpointAheadMs: longest.checkpointAheadMs, restartWaitMs, checkpointMs: checkpointSpans.map(span => span.finishedAt - span.startedAt),
+    checkpointAheadMs: longest.checkpointAheadMs, restartWaitMs, bootMs: status.bootMs, checkpointMs: checkpointSpans.map(span => span.finishedAt - span.startedAt),
     checkpoints: frames(lanes) }));
   assert.ok(resetMs !== undefined, "the WAL is empty within two windows of the release");
   assert.ok(Math.max(peak(), status.walPeakBytes) < WAL_PEAK_LIMIT_BYTES);
   const last = status.checkpoints.at(-1);
   assert.equal(last?.busy, 0);
   assert.equal(last?.walBytesAfter, 0);
-  // A click waits at most for the lane work running ahead of it, measured in the lane, plus 50 ms.
-  assert.ok(longest.waitMs <= longest.aheadMs + 50, `interactive wait ${String(longest.waitMs)} ms behind ${String(longest.aheadMs)} ms of lane work`);
+  // Every click outside the restart waits at most for the read running ahead of it plus 50 ms; checkpoints get no allowance.
+  for (const click of measured.filter(click => !click.afterRestart)) {
+    assert.ok(click.waitMs <= click.readAheadMs + 50, `interactive wait ${String(click.waitMs)} ms behind ${String(click.readAheadMs)} ms of read`);
+  }
+  // The click sent during the restart waits at most for the replacement lane's measured boot plus 50 ms, and never 2 s.
+  const restartClick = measured.find(click => click.afterRestart);
+  const restartBootMs = status.bootMs.at(-1);
+  assert.ok(restartClick !== undefined && restartBootMs !== undefined && status.bootMs.length === 2);
+  assert.ok(restartClick.waitMs <= restartBootMs + 50, `restart click waited ${String(restartClick.waitMs)} ms behind a ${String(restartBootMs)} ms boot`);
+  assert.ok(restartClick.waitMs <= 2_000, `restart click waited ${String(restartClick.waitMs)} ms`);
 });
 
 it("takes the writer's automatic checkpoints while the host runs and hands them back at close", async () => {

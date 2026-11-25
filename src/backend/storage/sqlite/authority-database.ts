@@ -225,7 +225,11 @@ function changeLogIntervalClear(database: DatabaseSync, cursor: number, through:
   if (cursor === through) return true;
   const first = z.strictObject({ seq: z.number().int().positive().nullable() }).parse(
     database.prepare(`SELECT min(seq) AS seq FROM ${CHANGE_LOG_TABLE}`).get()).seq;
-  return through > cursor && (first ?? through + 1) <= cursor + 1
+  if (through <= cursor || (first ?? through + 1) > cursor + 1) return false;
+  // Every seq in (cursor, through] must still be present: an interior gap may have held a selected table's change.
+  const present = z.strictObject({ n: z.number().int().nonnegative() }).parse(
+    database.prepare(`SELECT count(*) AS n FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND seq <= ?`).get(cursor, through)).n;
+  return present === through - cursor
     && database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name IN (SELECT value FROM json_each(?)) LIMIT 1`).get(cursor, selected) === undefined;
 }
 

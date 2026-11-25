@@ -83,6 +83,17 @@ export class ReadSupersededError extends Error {
   readonly code = "READ_SUPERSEDED";
   constructor() { super("read-superseded"); this.name = "ReadSupersededError"; }
 }
+/**
+ * A host that could not start every lane. The lanes it did start are terminating and still hold the store they read:
+ * the caller's unwind awaits exited before it closes that store.
+ */
+export class ReadLaneStartError extends Error {
+  constructor(cause: unknown, readonly exited: Promise<void>) {
+    super(cause instanceof Error ? cause.message : "read-lane-start-failed", { cause });
+    this.name = "ReadLaneStartError";
+  }
+}
+
 export class ReadLaneRestartedError extends Error {
   readonly code = "READ_LANE_RESTARTED";
   constructor(cause?: unknown) { super("read-lane-restarted", { cause }); this.name = "ReadLaneRestartedError"; }
@@ -145,7 +156,8 @@ export interface DashboardReadLanes {
   /** Settles when every lane has opened once; reads queue until their lane is ready. */
   readonly ready: Promise<void>;
   read<Args>(definition: LaneReadDefinition<Args, unknown>, args: Args, options?: DashboardReadOptions): Promise<DashboardReadReply>;
-  status(): Readonly<{ walPeakBytes: number; checkpoints: readonly WalCheckpointAttempt[]; restarts: number; retryPending: boolean }>;
+  /** bootMs: each lane start, first or restart, from creating its worker to its ready reply. */
+  status(): Readonly<{ walPeakBytes: number; checkpoints: readonly WalCheckpointAttempt[]; restarts: number; retryPending: boolean; bootMs: readonly number[] }>;
   close(): Promise<void>;
 }
 
@@ -203,6 +215,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   const lanes = new Map<ReadLaneName, Lane>();
   const checkpoints: WalCheckpointAttempt[] = [];
   let dispatchSeq = 0, messageId = 0, restarts = 0, walPeakBytes = 0;
+  const bootMs: number[] = [];
   let paused = false, closing = false;
   let checkpointState: "idle" | "draining" | "running" = "idle";
   let retryTimer: ReturnType<typeof setTimeout> | undefined, retryDelayMs = policy.minRetryMs;
@@ -258,7 +271,15 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     lane.running = read;
     const message: LaneRequest = { kind: "read", id: read.id, beginSeq: read.beginSeq, module: read.definition.module, name: read.definition.name,
       key: read.key, args: read.args, nowMs: clock.nowMs(), processRevision: read.processRevision, processFacts: read.processFacts };
-    lane.worker.postMessage(message);
+    try { lane.worker.postMessage(message); }
+    catch (error) {
+      // The lane never received an unsendable request: only its own waiters fail, and the lane stays idle.
+      lane.running = undefined;
+      const failure = error instanceof Error ? error : new Error("read-lane-send-failed", { cause: error });
+      for (const waiter of [...read.waiters]) settleWaiter(waiter, { error: failure });
+      startCheckpointWhenIdle();
+      pump(lane);
+    }
   };
   const pumpAll = () => { for (const lane of lanes.values()) pump(lane); };
 
@@ -270,7 +291,12 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     checkpointState = "running";
     lane.running = "checkpoint";
     const message: LaneRequest = { kind: "checkpoint", id: ++messageId };
-    lane.worker.postMessage(message);
+    try { lane.worker.postMessage(message); }
+    catch {
+      lane.running = undefined;
+      finishCheckpoint(undefined);
+      pumpAll();
+    }
   };
   const beginCheckpoint = () => {
     if (checkpointState !== "idle" || closing) return;
@@ -369,13 +395,19 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     lane.worker = worker;
     lane.ready = false;
     const ready = Promise.withResolvers<void>();
+    const bootStartedAt = clock.nowMs();
+    let booted = false;
     let failure: Error | undefined;
     worker.on("message", (message: unknown) => {
       // A lane that sent one invalid reply is terminating; nothing it sends after that settles a waiter.
       if (failure !== undefined) return;
       try {
         onReply(lane, start, message);
-        if (lane.ready) ready.resolve();
+        if (lane.ready && !booted) {
+          booted = true;
+          bootMs.push(clock.nowMs() - bootStartedAt);
+          ready.resolve();
+        }
       } catch (error) {
         failure ??= error instanceof Error ? error : new Error("read-lane-reply-invalid", { cause: error });
         void worker.terminate();
@@ -416,7 +448,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   const abandonStart = (error: unknown): never => {
     closing = true;
     for (const lane of lanes.values()) void lane.worker?.terminate();
-    throw error;
+    throw new ReadLaneStartError(error, Promise.all([...lanes.values()].map(lane => lane.exited)).then(() => undefined));
   };
   try {
     for (const name of names) {
@@ -470,7 +502,8 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       pump(lane);
       return settle.promise;
     },
-    status: () => Object.freeze({ walPeakBytes, checkpoints: Object.freeze([...checkpoints]), restarts, retryPending: retryTimer !== undefined }),
+    status: () => Object.freeze({ walPeakBytes, checkpoints: Object.freeze([...checkpoints]), restarts, retryPending: retryTimer !== undefined,
+      bootMs: Object.freeze([...bootMs]) }),
     async close(): Promise<void> {
       if (!closing) {
         closing = true;

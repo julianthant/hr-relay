@@ -31,7 +31,7 @@ import { createTrustNotifications } from "./notifications.js";
 import { ownedDiagnostics } from "./notification-health.js";
 import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeInput,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
 import { composeSettings } from "./settings.js";
-import { createDashboardReadHost } from "../../../storage/sqlite/dashboard-read-host.js";
+import { createDashboardReadHost, ReadLaneStartError } from "../../../storage/sqlite/dashboard-read-host.js";
 
 
 export function prepareDashboardEnvironment(input: DashboardComposeInput, custody: StartupCustody) {
@@ -126,7 +126,14 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     databaseClosed = true;
   });
   // Read lanes boot on their own threads while the rest of startup runs; they close before the store they read.
-  const readLanes = createDashboardReadHost({ admission, database, clock });
+  const readLanes = (() => {
+    try { return createDashboardReadHost({ admission, database, clock }); }
+    catch (error) {
+      // Lanes that did start still hold the store: the unwind joins them before it closes the database.
+      if (error instanceof ReadLaneStartError) startupCleanups.push(requiredClosure(() => error.exited));
+      throw error;
+    }
+  })();
   startupCleanups.push(requiredClosure(() => readLanes.close()));
   importLocalDebugLog(stateRoot, database.authority.timelineEvents);
   importLocalDebugLog(machineAdmission.stateRoot, database.authority.timelineEvents);

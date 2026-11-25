@@ -106,3 +106,11 @@ it("carries the position a read reports from its own snapshot", async () => {
   assert.equal(reply.position.authorityGeneration, 424_242);
   assert.equal(reply.position.changeLogSeq, 4_242);
 });
+
+it("fails only the waiters of a request the lane cannot be sent and keeps the lane serving", async () => {
+  const lanes = await host();
+  const unsendable = { revision: 1, facts: { compute: () => 1 } };
+  await assert.rejects(lanes.read(laneFacts, { tag: "unsendable", ms: 0 }, { processFacts: unsendable }), (error: unknown) => error instanceof Error && error.name === "DataCloneError");
+  assert.deepEqual(await run(lanes.read(laneSleep, { tag: "after", ms: 0 })), { tag: "after", run: 1 });
+  assert.equal(lanes.status().restarts, 0);
+});
