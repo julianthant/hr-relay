@@ -527,3 +527,22 @@ it("keeps a refused check of an expired account failed and retryable until a lat
     assert.deepEqual(f.port.getResource(), { state: "loaded", account }); assert.equal(f.calls.includes("start"), false);
   } finally { f.port.dispose(); }
 });
+
+for (const failure of ["hung", "rejected"] as const)
+  it(`settles a confirmed sign-in before its ${failure} check and offers account Retry past the old sign-in deadline`, async () => {
+    vi.useFakeTimers();
+    let checks = 0;
+    const f = setup({ checkChatGptAccount: () => ++checks > 1 ? Promise.resolve(chatGptStatusFixture(account))
+      : failure === "hung" ? new Promise(() => {}) : Promise.reject(new Error("synthetic lost check")) });
+    try {
+      await f.port.refresh();
+      const signing = f.port.signIn({ usePlan: true });
+      await vi.advanceTimersByTimeAsync(0);
+      assert.equal(f.port.getChecking(), true); assert.notEqual(f.port.getSnapshot().state, "signing-in");
+      await vi.advanceTimersByTimeAsync(10 * 60_000); await signing;
+      assert.deepEqual(f.port.getResource(), { state: "failed", code: "CHATGPT_AUTH_UNAVAILABLE" });
+      assert.equal(f.port.getChecking(), false);
+      await f.port.refresh();
+      assert.deepEqual(f.port.getSnapshot(), account); assert.equal(f.calls.filter(call => call === "start").length, 1);
+    } finally { f.port.dispose(); vi.useRealTimers(); }
+  });

@@ -242,10 +242,11 @@ function delayedAccount(nowMs: () => number) {
 }
 it('holds composing through the expiry check and shows only the accepted account model list', async () => {
   vi.useFakeTimers();
-  let now = Date.parse('2026-10-12T12:59:59.000Z'), requests = 0, current!: ReturnType<typeof useAssistantController>;
+  let now = Date.parse('2026-10-12T12:59:59.000Z'), requests = 0, preferenceReads = 0, current!: ReturnType<typeof useAssistantController>;
   const account = delayedAccount(() => now), lists: PromiseWithResolvers<{ models: { slug: string; displayName: string }[] }>[] = [];
   const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected' }; },
-    assistantModels: () => { const list = Promise.withResolvers<{ models: { slug: string; displayName: string }[] }>(); lists.push(list); return list.promise; } });
+    assistantModels: () => { const list = Promise.withResolvers<{ models: { slug: string; displayName: string }[] }>(); lists.push(list); return list.promise; },
+    assistantModelPreference: async () => { preferenceReads++; throw new Error('unexpected preference read'); } });
   function Harness() { current = useAssistantController(client, 'profile', undefined, false); return null; }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   const connected = (name: string, expiresAt: string) => ({ state: 'connected', name, email: 'synthetic@example.com', planUsage: 'enabled', expiresAt });
@@ -256,8 +257,12 @@ it('holds composing through the expiry check and shows only the accepted account
     assert.equal(current.canCompose, true); assert.equal(lists.length, 1);
     lists[0].resolve({ models: [{ slug: 'first-model', displayName: 'First model' }] }); await account.settle();
     assert.deepEqual(current.models?.map(model => model.slug), ['first-model']);
+    const openMenuPick = current.chooseModel;
     now += 1_000; await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
     assert.equal(account.checks.length, 2);
+    assert.equal(current.models, undefined);
+    await act(async () => { await openMenuPick({ slug: 'first-model', effort: ASSISTANT_DEFAULT_EFFORT }); await current.chooseModel({ slug: 'first-model', effort: ASSISTANT_DEFAULT_EFFORT }); });
+    assert.equal(preferenceReads, 0);
     assert.equal(current.canCompose, false); assert.equal(current.accountAvailable, false); assert.equal(current.accountAction, undefined);
     await act(async () => { current.onAction({ type: 'edit', value: 'Held request' }); current.onAction({ type: 'send' }); });
     assert.equal(requests, 0); assert.equal(current.state.draft, 'Held request'); assert.equal(current.state.turn.state, 'idle');
