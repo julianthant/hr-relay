@@ -375,7 +375,10 @@ export function RunStartDialog({
       recoveryState = retained === null ? { state: "none" } : { state: "retained", command: retained };
     } catch { recoveryState = { state: "unreadable", message: "Relay cannot send the saved start again. Check the queue first." }; }
     if (rerunSource !== undefined) setCustomizeSteps(true);
-    else if (fromRerun.current) update(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === selectedWorkflowRef.current), commandBindingRef.current?.authority.today));
+    else if (fromRerun.current) {
+      setCustomizeSteps(false);
+      update(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === selectedWorkflowRef.current), commandBindingRef.current?.authority.today));
+    }
     fromRerun.current = rerunSource !== undefined;
     // A start keeps the routed stage; only a rerun opens on its own first stage.
     suppressStage.current = rerunSource === undefined;
