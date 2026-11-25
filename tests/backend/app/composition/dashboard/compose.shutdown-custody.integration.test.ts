@@ -23,6 +23,13 @@ it.each(["Pause all and quit", "SIGINT during logout"] as const)("%s closes and 
   const f = await createBoundProfileFixture({ sharedMachine: true });
   const clock = manualClock(new Date("2026-11-14T12:00:00Z"));
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(f.workspace, file));
+  const laneSources = { retained: 0, released: 0 };
+  const retainSource = AuthorityDatabase.prototype.retainDashboardReadSource;
+  vi.spyOn(AuthorityDatabase.prototype, "retainDashboardReadSource").mockImplementation(function (this: AuthorityDatabase, ...args) {
+    const release = retainSource.apply(this, args);
+    laneSources.retained += 1;
+    return () => { laneSources.released += 1; release(); };
+  });
   const app = await composeDashboardApplication({ admission: f.machine, lifetimeLock: f.lifetime, repoRoot: f.workspace,
     isolation: rebuildRuntimeIsolation, clock, backendPortOverride: 0, frontendPortOverride: 0, env: {},
     preflightRunnerFactory: healthyRuntimePreflightRunners });
@@ -92,6 +99,9 @@ it.each(["Pause all and quit", "SIGINT during logout"] as const)("%s closes and 
     assert.ok(log.state === "present" && log.records.some(record => record.payload.kind === "debug"
       && record.payload.event.code === "read-snapshot" && record.payload.event.durationMs === 51));
     assert.ok(readdirSync(join(f.stateRoot, "backups", "authority")).some(name => name.endsWith(".shutdown.sqlite.manifest.json")));
+    // Both read lanes started with the runtime and released their store before the shutdown backup.
+    assert.ok(laneSources.retained >= 2);
+    assert.equal(laneSources.released, laneSources.retained);
   } finally {
     releaseDrain.resolve();
     vi.restoreAllMocks();

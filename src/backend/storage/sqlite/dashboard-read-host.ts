@@ -11,16 +11,14 @@ import { fileStatus, sameDirectory } from "../file-identity.js";
 import { existingDatabaseLocation } from "./authority-connection.js";
 import type { AuthorityDatabase } from "./authority-database.js";
 import { workerExecArgv } from "./backup-inspection-worker.js";
-import { admitReadLane, openReadLane, prepareReadLaneStart, READ_LANE_PROTOCOL, readLaneSourceIdentity, type ReadLaneName, type ReadLaneStart } from "./read-lane-admission.js";
+import { admitReadLane, openReadLane, prepareReadLaneStart, READ_LANE_PROTOCOL, ReadLaneNameSchema, readLaneSourceIdentity, type ReadLaneName, type ReadLaneStart } from "./read-lane-admission.js";
 
-/** Which worker serves each logical lane. Shape B runs both; shape A maps search to navigation. */
-const LANE_ROUTES: Readonly<Record<ReadLaneName, ReadLaneName>> = Object.freeze({ navigation: "navigation", search: "search" });
 
 const LANE_BUSY_TIMEOUT_MS = 250;
 const LANE_TRANSACTION_EXIT_CODE = 70;
 const LANE_FAILURE_EXIT_CODE = 71;
 const LANE_RESTART_LIMIT = 3;
-export const WAL_CHECKPOINT_DEFAULTS = Object.freeze({ thresholdBytes: 4 * 1024 * 1024, minRetryMs: 250, maxRetryMs: 2_000 });
+export const WAL_CHECKPOINT_DEFAULTS: Readonly<{ thresholdBytes: number; minRetryMs: number; maxRetryMs: number }> = Object.freeze({ thresholdBytes: 4 * 1024 * 1024, minRetryMs: 250, maxRetryMs: 2_000 });
 
 export const ReadPositionSchema = z.strictObject({
   source: z.string().min(1),
@@ -181,7 +179,7 @@ interface Lane {
  * read-key sharing, lane restarts, and the WAL checkpoint window. The main thread runs no SQLite for a lane read.
  */
 export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmission; database: AuthorityDatabase; clock: Clock;
-  /** The lanes to start; a read routed to a lane not started is refused. Every routed lane by default. */
+  /** The workers to start; a read whose lane has no worker runs on navigation (shape A). Both lanes by default (shape B). */
   lanes?: readonly ReadLaneName[]; checkpoint?: Partial<typeof WAL_CHECKPOINT_DEFAULTS>;
   /** The module each lane worker runs: it imports its read modules and calls runReadLaneWorker. Relay's lane entry by default. */
   entry?: URL }>): DashboardReadLanes {
@@ -189,7 +187,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   const { database, clock } = input;
   const policy = { ...WAL_CHECKPOINT_DEFAULTS, ...input.checkpoint };
   const entry = input.entry ?? new URL("./dashboard-read-lane.js", import.meta.url);
-  const names = [...new Set(input.lanes ?? Object.values(LANE_ROUTES))];
+  const names = [...new Set(input.lanes ?? ReadLaneNameSchema.options)];
   const starts = new Map(names.map(name => [name, prepareReadLaneStart(owner, database, name)] as const));
   const navigationStart = starts.get("navigation");
   if (navigationStart === undefined) throw new Error("read-lane-navigation-required");
@@ -200,7 +198,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   let dispatchSeq = 0, messageId = 0, restarts = 0, walPeakBytes = 0;
   let paused = false, closing = false;
   let checkpointState: "idle" | "draining" | "running" = "idle";
-  let retryTimer: ReturnType<typeof setTimeout> | undefined, retryDelayMs: number = policy.minRetryMs;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined, retryDelayMs = policy.minRetryMs;
   const readyWaits: Promise<void>[] = [];
 
   const admit = (start: ReadLaneStart) => {
@@ -237,7 +235,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     if (read !== undefined) dropIfUnwanted(read);
   };
   const laneOf = (definition: LaneReadDefinition<unknown, unknown>): Lane => {
-    const lane = lanes.get(LANE_ROUTES[definition.lane]);
+    const lane = lanes.get(definition.lane) ?? lanes.get("navigation");
     if (lane === undefined) throw new Error("read-lane-unrouted");
     return lane;
   };
@@ -410,7 +408,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       if (registered.processFacts && options.processFacts === undefined) return Promise.reject(new Error("read-lane-process-facts-required"));
       const processRevision = registered.processFacts ? options.processFacts?.revision ?? null : null;
       const processFacts = registered.processFacts ? options.processFacts?.facts ?? null : null;
-      const key = canonicalJsonStringify({ lane: LANE_ROUTES[registered.lane], read: registered.id, args: parsed });
+      const key = canonicalJsonStringify({ lane: lane.name, read: registered.id, args: parsed });
       const seq = ++dispatchSeq;
       const settle = Promise.withResolvers<DashboardReadReply>();
       const signal = options.signal;
@@ -448,7 +446,8 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
           }
           const worker = lane.worker;
           if (worker === undefined) continue;
-          if (lane.running === undefined) {
+          // An idle lane closes its connections itself; a lane still booting or mid-read is terminated rather than awaited.
+          if (lane.ready && lane.running === undefined) {
             const message: LaneRequest = { kind: "close" };
             worker.postMessage(message);
           } else void worker.terminate();
@@ -509,12 +508,13 @@ function runReadLane(port: MessagePort, data: unknown) {
       const base = { source, schemaVersion: meta.schemaVersion, schemaCookie: change.schemaCookie, authorityGeneration: meta.authorityGeneration };
       if (cached !== undefined) {
         const held = cached.position;
+        // Every authority commit moves the generation, so the proved change-log interval, not the generation, decides reuse.
         const reusable = held.source === base.source && held.schemaVersion === base.schemaVersion && held.schemaCookie === base.schemaCookie
-          && held.authorityGeneration === base.authorityGeneration && (held.validUntil === null || message.nowMs < held.validUntil)
+          && (held.validUntil === null || message.nowMs < held.validUntil)
           && held.processRevision === message.processRevision && held.timelineThrough === timelineThrough
           && history.readChangeInterval(held.changeLogSeq, definition.tables).clear;
         if (reusable) {
-          cached.position = { ...held, changeLogSeq: change.changeLogSeq };
+          cached.position = { ...held, authorityGeneration: base.authorityGeneration, changeLogSeq: change.changeLogSeq };
           cached.beginSeq = message.beginSeq;
           return { body: cached.body, position: cached.position, cached: true };
         }

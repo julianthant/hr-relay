@@ -50,3 +50,19 @@ The two-run verdict identifies any missed limit of zero stalls and less than 2% 
 A base comparison reports no measurable difference when the ranges overlap. If a range shows
 a gap, use an extra profiling run to identify the underlying limiter before attributing an
 improvement. The two-run threshold verdict and RSS endpoints are the measurements for #485 and #415.
+
+# Read-lane start benchmark (G2)
+
+Run this from a Relay checkout with its dependencies installed. Stop the copy dashboard first. The copy must be
+signed in and hold [imported run history](../profiles/README.md); prepare it with that import command, not by hand.
+
+```sh
+node --import tsx scripts/bench/read-lanes.ts development --runs 3
+```
+
+Each run is a cold process that opens the copy's store the way the dashboard does and starts the real read host:
+shape A starts the navigation lane alone and shape B starts the navigation and search lanes. Shapes alternate between
+runs. A run records the time from host creation until every lane is ready, the process RSS added by the lanes after
+one timeline page, and that page's time. Each shape passes G2 on its own when every run is ready within 5 s and adds
+at most 350 MiB. The backend runs under tsx, as `npm run dashboard:prod` runs it, because there is no packaged build.
+The command writes the JSON report in the invoking directory with mode `600`.

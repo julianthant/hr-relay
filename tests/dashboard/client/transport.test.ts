@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { DashboardClientError } from "../../../src/dashboard/client/index.js";
 
-import { createDashboardTransport } from "../../../src/dashboard/client/transport.js";
+import { createDashboardTransport, DASHBOARD_TAB_HEADER, isReadSuperseded } from "../../../src/dashboard/client/transport.js";
 const HASH_D = "d".repeat(64);
 
 it("classifies binary body failures once without reporting body values", async () => {
@@ -182,5 +182,39 @@ describe("expected refusals", () => {
       await assert.rejects(transport.requestJson(path, { method }));
       assert.equal(failures.length, 1, `${method} ${path} ${String(status)}`);
     }
+  });
+});
+
+describe("read lanes", () => {
+  it("names the tab on every request, one identity per transport unless the caller supplies it", async () => {
+    const tabs: (string | null)[] = [];
+    const fetchImpl = async (_url: string, init?: RequestInit) => {
+      tabs.push(new Headers(init?.headers).get(DASHBOARD_TAB_HEADER));
+      return Response.json({ ok: true });
+    };
+    const first = createDashboardTransport({ baseUrl: "http://relay.test", fetchImpl, profileHeaders: () => ({ [DASHBOARD_TAB_HEADER]: "forged" }) });
+    await first.requestJson("/api/v1/dashboard?day=2026-11-25");
+    await first.requestJson("/api/v1/settings/editable");
+    await createDashboardTransport({ baseUrl: "http://relay.test", fetchImpl }).requestJson("/api/v1/dashboard?day=2026-11-25");
+    await createDashboardTransport({ baseUrl: "http://relay.test", fetchImpl, tabId: "tab-fixed" }).requestJson("/api/v1/dashboard?day=2026-11-25");
+    assert.equal(tabs[0], tabs[1]);
+    assert.match(tabs[0] ?? "", /^[0-9a-f-]{36}$/u);
+    assert.notEqual(tabs[2], tabs[0]);
+    assert.equal(tabs[3], "tab-fixed");
+  });
+
+  it("rejects a superseded read as READ_SUPERSEDED without reporting it, and still reports a lane restart", async () => {
+    const respond = (code: string) => async () => Response.json({ state: "error", code, message: "refused", retryable: true }, { status: 409 });
+    const failures: unknown[] = [];
+    const superseded = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); }, fetchImpl: respond("READ_SUPERSEDED") });
+    const error: unknown = await superseded.requestJson("/api/v1/dashboard?day=2026-11-25").then(() => undefined, (reason: unknown) => reason);
+    assert.equal(isReadSuperseded(error), true);
+    assert.deepEqual(failures, []);
+    const restarted = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); }, fetchImpl: respond("READ_LANE_RESTARTED") });
+    const other: unknown = await restarted.requestJson("/api/v1/dashboard?day=2026-11-25").then(() => undefined, (reason: unknown) => reason);
+    assert.equal(other instanceof DashboardClientError && other.status === 409, true);
+    assert.equal(isReadSuperseded(other), false);
+    assert.equal(failures.length, 1);
+    assert.equal(isReadSuperseded(new Error("READ_SUPERSEDED")), false);
   });
 });
