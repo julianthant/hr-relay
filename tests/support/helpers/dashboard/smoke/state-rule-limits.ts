@@ -12,6 +12,8 @@ export const STATE_RULE_NAMES = [
   "no-dead-disabled-control",
   "named-and-focusable",
   "declared-diagnostics",
+  "status-label-on-title-line",
+  "page-title-20px",
 ] as const;
 export type StateRuleName = typeof STATE_RULE_NAMES[number];
 
