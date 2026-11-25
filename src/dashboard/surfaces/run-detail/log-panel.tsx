@@ -19,13 +19,16 @@ const headerIcon = (label: string) => label === "Review" ? <ClipboardCheck aria-
 /** Below this header width the text buttons collapse to icons. */
 const COMPACT_HEADER_WIDTH = 520;
 const SEARCH_FIELD_WIDTH = 360;
+/** Below this header width an open search and the actions take their own line under the title. */
+const STACKED_SEARCH_WIDTH = 600;
 
-/** One row: the title truncates, the actions stay on the line. While search is open, text buttons collapse sooner and the field shrinks, so nothing is pushed past the edge. */
+/** One row: the title truncates, the actions stay on the line. An open search collapses text buttons sooner, shrinks the field, and on a narrow panel moves below the title, so nothing is pushed past the edge. */
 function LogHeader({ title, status, middle, searching, children }: { title: string; status?: ReactNode; middle?: ReactNode; searching: boolean; children: ReactNode }) {
   const row = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(Infinity);
   // An open search takes the field's width from the text buttons.
   const compact = width < COMPACT_HEADER_WIDTH + (searching ? SEARCH_FIELD_WIDTH : 0);
+  const stacked = searching && width < STACKED_SEARCH_WIDTH;
   useEffect(() => {
     const node = row.current;
     if (node === null) return;
@@ -34,8 +37,8 @@ function LogHeader({ title, status, middle, searching, children }: { title: stri
     return () => observer.disconnect();
   }, []);
   return <header className="shrink-0 border-b border-ui-stroke bg-ui-table px-4 py-3">
-    <div ref={row} className="flex min-h-6 min-w-0 items-center gap-3"><h2 className={cn("m-0 truncate text-heading", searching ? "min-w-24" : "min-w-0")} title={title}>{title}</h2>{status && <span className="flex shrink-0 items-center gap-2">{status}</span>}{middle}
-      <LogHeaderCompact.Provider value={compact}><span className={cn("ml-auto flex items-center gap-2", searching ? "min-w-0 [&>:not([role=search])]:shrink-0" : "shrink-0")}>{children}</span></LogHeaderCompact.Provider>
+    <div ref={row} className={cn("flex min-h-6 min-w-0 items-center gap-3", stacked && "flex-wrap")}><h2 className={cn("m-0 truncate text-heading", searching ? "min-w-24" : "min-w-0")} title={title}>{title}</h2>{status && <span className="flex shrink-0 items-center gap-2">{status}</span>}{middle}
+      <LogHeaderCompact.Provider value={compact}><span className={cn("ml-auto flex items-center gap-2", searching ? "min-w-0 [&>:not([role=search])]:shrink-0" : "shrink-0", stacked && "w-full flex-wrap justify-end")}>{children}</span></LogHeaderCompact.Provider>
     </div>
   </header>;
 }
