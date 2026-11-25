@@ -3016,6 +3016,7 @@ export class AuthorityDatabase implements Disposable {
   #projectionRowReads: ProjectionRowReads | undefined;
   /** Absent below schema 31, whose readers run the whole-store check after every peer commit. */
   #changeReader: ChangeLogReader | undefined;
+  #polledChange: Readonly<{ dataVersion: number; key: ReturnType<AuthorityDatabase["capturedChangeKey"]> }> | undefined;
   #startupOwner?: { checkpoints: Map<string, StartupCheckpoint>; file: StartupFile;
     digest: string; position: StartupPosition; dataVersion: number; inspection?: AuthorityCopyInspection };
   #lastChangePruneMs: number | undefined;
@@ -4422,6 +4423,26 @@ export class AuthorityDatabase implements Disposable {
     return Object.freeze({ changeLogSeq: changeLogHighWater(this.#database), schemaCookie: readIntPragma(this.#database, "schema_version") });
   }
 
+  /** Idle hint only. Read and write paths still admit their own authority access. */
+  pollCapturedChangeKey(): ReturnType<AuthorityDatabase["capturedChangeKey"]> {
+    if (this.#closed || !this.#database.isOpen) throw new Error("authority database is closed");
+    if (this.#database.isTransaction) return this.capturedChangeKey();
+
+    // data_version covers peer commits, and the log and cookie also observe this connection's changes.
+    const dataVersion = readIntPragma(this.#database, "data_version");
+    const changeLogSeq = changeLogHighWater(this.#database);
+    const schemaCookie = readIntPragma(this.#database, "schema_version");
+    const previous = this.#polledChange;
+    if (previous?.dataVersion === dataVersion && previous.key.changeLogSeq === changeLogSeq && previous.key.schemaCookie === schemaCookie) {
+      return previous.key;
+    }
+    this.#polledChange = undefined;
+    this.#assertOpen();
+    const key = Object.freeze({ changeLogSeq, schemaCookie });
+    this.#polledChange = { dataVersion, key };
+    return key;
+  }
+
   /** An independent revision for a reader's authority sources, backed by the retained change log. */
   trackAuthorityTables(tables: readonly AuthorityTableName[], mode: "validated" | "poll-hint" = "validated"): () => number | undefined {
     const selected = JSON.stringify(z.array(AuthorityTableNameSchema).min(1).parse(tables));
@@ -4431,7 +4452,7 @@ export class AuthorityDatabase implements Disposable {
     return () => {
       if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
       if (mode === "poll-hint") {
-        const key = this.capturedChangeKey();
+        const key = this.pollCapturedChangeKey();
         if (cursor === key.changeLogSeq && schemaCookie === key.schemaCookie) return revision;
       }
       return this.#withReadSnapshot(() => {

@@ -17,6 +17,7 @@ import { createOperatorProjection } from "../../../../../src/backend/app/composi
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
+import { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { createDashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { declareProjectionWorker, DESCRIPTOR_SET_HASH, runRecordOf, workerMemberOf } from "../../../../support/helpers/backend/dashboard-harness.js";
@@ -313,10 +314,13 @@ it("publishes a peer commit on the next tick while an earlier publication is sti
   const observer = createNotificationObserver({ inbox: { publish }, read, health: async () => {} });
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   const timer = startNotificationPolling(f.db, f.clock, { ...observer, healthDueAt: () => Infinity });
+  const assertHeld = vi.spyOn(RuntimeLifetimeLock.prototype, "assertHeld");
   try {
     await vi.advanceTimersByTimeAsync(0);
     expect(publish).toHaveBeenCalledTimes(1);
+    assertHeld.mockClear();
     await vi.advanceTimersByTimeAsync(1000);
+    expect(assertHeld).not.toHaveBeenCalled();
     expect(read).toHaveBeenCalledTimes(1);
     const second = seedRun({ ...f, db: peer }, gate(2));
     await vi.advanceTimersByTimeAsync(1000);
@@ -329,6 +333,7 @@ it("publishes a peer commit on the next tick while an earlier publication is sti
     expect(links()).toContainEqual({ kind: "run", runId: first.envelope.runId });
     expect(observer.status()).toEqual({ state: "stopped", pending: 0 });
   } finally {
+    assertHeld.mockRestore();
     clearInterval(timer);
     release.resolve();
     await observer.stop();
@@ -399,6 +404,7 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
   const pollBackground = projection.pollBackground.bind(projection);
   const poll = vi.spyOn(projection, "pollBackground");
   const synchronousIngest = vi.spyOn(projection, "ingestFromTimeline");
+  const assertHeld = vi.spyOn(RuntimeLifetimeLock.prototype, "assertHeld");
   let revisionReads = 0;
   const track = database.trackAuthorityTables.bind(database);
   vi.spyOn(database, "trackAuthorityTables").mockImplementation((tables, mode) => {
@@ -423,8 +429,10 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
     await runtime.settled();
     expect(projection.cursor()).toBe(startupCursor);
     poll.mockClear();
+    assertHeld.mockClear();
     revisionReads = 0;
     tick(500);
+    expect(assertHeld).not.toHaveBeenCalled();
     debug();
     tick(250);
     expect(poll).not.toHaveBeenCalled();
@@ -557,8 +565,10 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
       `timeline:${eventId}`, `timeline:${peerId}`, `timeline:${nextId}`,
     ]);
     poll.mockClear();
+    assertHeld.mockClear();
     tick(60_000);
     expect(poll).toHaveBeenCalledTimes(1);
+    expect(assertHeld).toHaveBeenCalled();
     await runtime.settled();
     const second = database.withAuthorityTransaction(repositories =>
       admitFixtureSlot(repositories, "onboarding", 1, clock.now().toISOString()));

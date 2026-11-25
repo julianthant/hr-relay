@@ -77,7 +77,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const revision = database.trackAuthorityTables(["timeline_events", ...workerTables], "poll-hint");
   const workerRevision = database.trackAuthorityTables(workerTables, "poll-hint");
   const startupTimelineRevision = database.trackAuthorityTables(["timeline_events"], "poll-hint");
-  let key: string | { state: "retry" } = JSON.stringify(database.capturedChangeKey());
+  let key: ReturnType<AuthorityDatabase["capturedChangeKey"]> | undefined = database.pollCapturedChangeKey();
   const startupWorkers = workerRevision();
   let startupTimeline = startupTimelineRevision();
   let observed = revision();
@@ -100,13 +100,13 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
     };
     pending = projection.pollBackground(request => reader.read(request), now, workerRevisionState).then(expiry => {
       if (expiry === undefined) {
-        key = { state: "retry" };
+        key = undefined;
         checkAfterRead = true;
       } else leaseExpiry = expiry;
     }).catch((error: unknown) => {
       if (stopped) return;
       // A normal commit can supersede paged worker facts while the admitted timeline remains live.
-      if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") key = { state: "retry" };
+      if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") key = undefined;
       else projection.backgroundReadFailed(error);
     }).finally(() => {
       pending = undefined;
@@ -121,19 +121,20 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   function check() {
     if (stopped) return;
     try {
-      const current = JSON.stringify(database.capturedChangeKey());
       const now = clock.nowMs(), elapsed = clock.monotonicMs();
       const safety = elapsed >= safetyAt;
       const leaseDue = now >= leaseExpiry || now < lastWall;
       const degraded = projection.health().state === "degraded";
-      if (current === key && !safety && !leaseDue && !degraded) {
+      const current = safety || leaseDue || degraded ? database.capturedChangeKey() : database.pollCapturedChangeKey();
+      const unchanged = key?.changeLogSeq === current.changeLogSeq && key.schemaCookie === current.schemaCookie;
+      if (unchanged && !safety && !leaseDue && !degraded) {
         lastWall = now;
         return;
       }
       if (pending !== undefined) {
         checkAfterRead = true;
         // Initial worker validation can take longer than the timeline's publication deadline.
-        if (initialRead && !degraded && current !== key) {
+        if (initialRead && !degraded && !unchanged) {
           const nextTimeline = startupTimelineRevision();
           if (nextTimeline === undefined || nextTimeline !== startupTimeline) projection.ingestFromTimeline();
           startupTimeline = nextTimeline;
@@ -142,7 +143,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       }
       lastWall = now;
       const next = revision();
-      if (safety || leaseDue || degraded || typeof key !== "string" || next === undefined || next !== observed) void startRead(now, workerRevision());
+      if (safety || leaseDue || degraded || key === undefined || next === undefined || next !== observed) void startRead(now, workerRevision());
       key = current;
       observed = next;
       if (safety) safetyAt = elapsed + 60_000;
