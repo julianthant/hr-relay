@@ -42,5 +42,5 @@ export function routePresentation(leaf: EditableSettingsLeafWire) {
 
 export function routeLoadingGroups() {
   return Object.entries(ROUTES).sort(([left], [right]) => Number(right === "crm") - Number(left === "crm"))
-    .map(([system, route]) => ({ title: route.name, rows: Object.keys(route.fields).length + Number(system === "sharepoint") }));
+    .map(([system, route]) => ({ title: route.name, description: route.description, rows: Object.keys(route.fields).length + Number(system === "sharepoint") }));
 }

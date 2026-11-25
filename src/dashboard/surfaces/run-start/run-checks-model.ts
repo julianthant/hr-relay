@@ -44,12 +44,14 @@ export function runCheckRows(wire: PreflightReadinessWire): RunChecksState {
 export const runChecksBlocked = (state: RunChecksState): boolean =>
   state.state !== "ready" || state.rows.some(row => row.verdict === "fail");
 
-/** Reads exact-scope evidence while `active`. While the dialog is `open` it asks for at most one re-check by itself, and only on the Checks stage (`prepare`); `recheck` always asks. */
-export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "editableSettings">, workflowId: string | undefined, active: boolean, prepare: boolean, open: boolean): Readonly<{ state: RunChecksState; recheck: () => void }> {
+/** Reads exact-scope evidence while active. Checks may prepare missing evidence once per open dialog and once after a Fix visit. */
+export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "editableSettings">, workflowId: string | undefined, active: boolean, prepare: boolean, open: boolean) {
   const binding = useDashboardCommandBinding();
   const actorId = binding?.scope.actorId;
   const authority = binding?.authority.epoch;
-  const [state, setState] = useState<RunChecksState>({ state: "checking" });
+  const [read, setRead] = useState<Readonly<{ workflowId: string | undefined; state: RunChecksState }>>({ workflowId, state: { state: "checking" } });
+  /** Another workflow's checks never stand for this one's. */
+  const state: RunChecksState = read.workflowId === workflowId ? read.state : { state: "checking" };
   /** The latest asked-for re-check, bound to the workflow it was asked for; `handled` is the last one sent. */
   const [rerun, setRerun] = useState<Readonly<{ workflowId: string; n: number }>>();
   const handled = useRef(0);
@@ -64,6 +66,7 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
   useEffect(() => {
     if (!active || workflowId === undefined) return;
     let current = true;
+    const setState = (next: RunChecksState) => setRead({ workflowId, state: next });
     const posting = rerun !== undefined && rerun.workflowId === workflowId && rerun.n > handled.current;
     if (rerun !== undefined) handled.current = Math.max(handled.current, rerun.n);
     setState({ state: "checking" });
@@ -99,5 +102,5 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
     return () => { current = false; };
   }, [client, workflowId, active, rerun, actorId, authority]);
   const recheck = useCallback(() => { if (workflowId !== undefined) ask(workflowId); }, [ask, workflowId]);
-  return { state, recheck };
+  return { state, recheck, prepareAfterFix: () => { asked.current = false; } };
 }

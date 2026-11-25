@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { WorkerRefusalStandingSchema } from "../../../models/preflight/preflight-contract.js";
-import { WorkerBrowserObservationSchema } from "../../../models/run/worker-control.js";
+import { WorkerBrowserObservationSchema, WorkerSetupRefusalCodeSchema } from "../../../models/run/worker-control.js";
 import { ErrorCatalogCodeSchema } from "../../../models/failures/error-catalog.js";
 import { BrowserSessionIdSchema, BrowserSystemIdSchema, IsoInstantSchema, RunIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
@@ -42,6 +42,7 @@ export const WorkerChildMessageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("worker-reply"), requestId: z.uuid(), outcome: WorkerReplyOutcomeSchema }),
   /** The catalog code of the error ending this child, sent before it exits. */
   z.strictObject({ kind: z.literal("worker-failed"), code: ErrorCatalogCodeSchema }),
+  z.strictObject({ kind: z.literal("worker-setup-refused"), code: WorkerSetupRefusalCodeSchema }),
 ]);
 export type WorkerChildMessage = z.infer<typeof WorkerChildMessageSchema>;
 

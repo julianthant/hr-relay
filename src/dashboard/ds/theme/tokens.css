@@ -291,6 +291,9 @@
   --ds-space-heading-description: 4px;
   --ds-space-heading-content: 12px;
   --ds-space-page-heading-content: 24px;
+  --ds-settings-title: 28px;
+  --ds-settings-title-lh: 34px;
+  --ds-settings-heading-content: 40px;
   --ds-w-body-content: 828px;
   --ds-w-body-performance: 1090px;
   --ds-w-body-control-standard: 237px;
@@ -2079,6 +2082,11 @@ body[data-demo-theme],
 [role="dialog"] { --ds-dialog-footer-gap: 12px; }
 [data-slot="dialog-footer"] [data-slot="button"][data-variant] { height: 32px; min-height: 32px; border-radius: 10px; padding-inline: 16px; font-size: 14px; }
 [data-slot="dialog-footer"] [data-variant="primary"]:disabled { opacity: 1; background: var(--ds-button-off-bg); color: var(--ds-button-off-fg); }
+
+/* The run dialog's size: 20px inset, a 12px header and the same X. */
+[data-size="lg"][role="dialog"] { --ds-dialog-pad: 20px; }
+[data-size="lg"][role="dialog"] > header { position: relative; height: auto; padding: 12px 48px 12px 20px; }
+[data-size="lg"][role="dialog"] .ds-dialog-close { position: absolute; top: 14px; right: 14px; }
 
 /* The small dialog (single-field edits, renames and confirmations): 520 wide, 20px inset, the title centred 34px down, the X centred 28px in from the top right corner, a 36px field 20px above the footer. */
 [data-size="sm"][role="dialog"] { --ds-dialog-pad: 20px; --ds-dialog-header-pb: 0px; --ds-dialog-body-pt: 21px; --ds-dialog-body-pb: 0px; --ds-dialog-footer-pt: 20px; }

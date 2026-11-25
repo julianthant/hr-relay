@@ -474,7 +474,7 @@ function Controls() {
   const [draft, setDraft] = useState_m8("private employee draft");
   return createElement_m8("div", null,
     createElement_m8("output", null, `${tab}/${stage}/${query}/${draft}`),
-    createElement_m8("button", { onClick: () => { setTab("types"); setStage("Options"); } }, "Next"),
+    createElement_m8("button", { onClick: () => { setTab("types"); setStage("Start"); } }, "Next"),
     createElement_m8("button", { onClick: () => setQuery("exact run") }, "Find"),
     createElement_m8("button", { onClick: () => setDraft("edited private draft") }, "Edit"));
 }
@@ -516,7 +516,7 @@ afterEach_m8(_afterEachFixture0);
   });
 
   it_m8("round-trips only bounded navigation metadata and refuses corrupt/private payloads", () => {
-    const route = { start: true, settings: "spreadsheets", view: ViewRouteSchema_m8.parse({ spreadsheetTab: "types", launchStage: "Options", search: true, reviewPages: { "record-1": 1 }, launchRerun: { runId: "00000000-0000-4000-8000-000000000001", expectedVersion: 1 }, queueOpen: ["batch-1"] }) };
+    const route = { start: true, settings: "spreadsheets", view: ViewRouteSchema_m8.parse({ spreadsheetTab: "types", launchStage: "Start", search: true, reviewPages: { "record-1": 1 }, launchRerun: { runId: "00000000-0000-4000-8000-000000000001", expectedVersion: 1 }, queueOpen: ["batch-1"] }) };
     assert_m8.deepEqual(parseRoute_m8(routeToSearch_m8(route)), route);
     for (const raw of ['{"draft":"secret"}', '{"launchStage":"Unknown"}', '{"spreadsheetPage":-1}', "{", "x".repeat(16001)]) assert_m8.equal(parseViewRoute_m8(raw), null);
     assert_m8.equal(parseRoute_m8("?view=%7B").viewInvalid, true);
@@ -525,10 +525,10 @@ afterEach_m8(_afterEachFixture0);
   it_m8("batches one gesture into one history entry, restores views, and retains private edits", async () => {
     await mount(); const push = vi.spyOn(window.history, "pushState");
     await click("Next"); assert_m8.equal(push.mock.calls.length, 1);
-    assert_m8.match(document.querySelector("output")?.textContent ?? "", /types\/Options/);
+    assert_m8.match(document.querySelector("output")?.textContent ?? "", /types\/Start/);
     await click("Edit"); assert_m8.doesNotMatch(location.search, /private|employee|draft/);
     await move("back"); assert_m8.match(document.querySelector("output")?.textContent ?? "", /registered\/Input\/\/edited private draft/);
-    await move("forward"); assert_m8.match(document.querySelector("output")?.textContent ?? "", /types\/Options\/\/edited private draft/);
+    await move("forward"); assert_m8.match(document.querySelector("output")?.textContent ?? "", /types\/Start\/\/edited private draft/);
     assert_m8.equal(push.mock.calls.length, 1, "traversal must not create another entry");
   });
   it_m8("replaces typed search state without adding a character-by-character history trail", async () => {

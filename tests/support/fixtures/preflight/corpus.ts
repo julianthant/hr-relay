@@ -30,7 +30,8 @@ export function preflightFaultCases() {
     const variants = dependency.secretNames !== undefined ? dependency.secretNames
       : system !== undefined ? system.routes
       : feature !== undefined ? PROVIDER_ADAPTER_SPECS.filter(provider=>provider.capabilities.includes(feature.providerCapability)).map(provider=>provider.provider)
-      : dependency.id === "browser.duo-extension" ? ["extension", "backend-signer"] : [dependency.id];
+      : dependency.id === "browser.duo-extension" ? ["extension"]
+      : dependency.id === "browser.duo-key" ? ["ready-key", "backend-signer"] : [dependency.id];
     return variants.map(variant=>({dependency, variant}));
   });
 }
@@ -59,9 +60,10 @@ async function inject(f: Awaited<ReturnType<typeof runtimeFixture>>, entry: Case
     syncBuiltinESMExports();
     return () => { access.mockRestore(); syncBuiltinESMExports(); assert.equal(injected, true); f.admission.assertLive(); };
   }
-  if (id === "browser.duo-extension" && entry.variant === "backend-signer") {
+  if (id === "browser.duo-key") {
     const source = f.input.duo; assert.ok(source);
-    Reflect.deleteProperty(f.input, "duo");
+    if (entry.variant === "backend-signer") Reflect.deleteProperty(f.input, "duo");
+    else Reflect.set(f.input, "duo", { ...source, credentials: () => [] });
     return () => { Reflect.set(f.input, "duo", source); };
   }
   if (id === "browser.chromium" || id === "browser.duo-extension" || id === "path.artifact") {

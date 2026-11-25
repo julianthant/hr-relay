@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useToasts } from "../../../../../../src/dashboard/ds/ui.js";
 import { SessionsView } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view.js";
+import { ERROR_CATALOG } from "../../../../../../src/models/failures/error-catalog.js";
 import type { SessionBrowserState, SessionWorker, SessionWorkerState, SessionsViewState } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import type { SessionPreviewOperation } from "../../../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import {
@@ -84,6 +85,9 @@ const OPERATION = {
 
 const ADDING: Readonly<Record<string, SessionPreviewOperation>> = { add: { request: { id: "add-1", target: "add", action: "add", workflow: "separations", count: 1, ordinal: 1 }, state: "pending", message: "Adding workers…" } };
 
+const DUO_SETUP_REFUSED: SessionWorker = { ...SESSION_WORKER_BY_STATE.idle, state: "failed", action: "Worker setup stopped.",
+  elapsed: "0s", browsers: [], browsersNote: ERROR_CATALOG.DUO_READY_CREDENTIAL_REQUIRED.text };
+
 /** The combinations a person meets: a closed bar, an empty pool, a mixed pool, a stale day, a wide card and the Add workers dialog. */
 const COMBINATION = {
   closed: bar("The bar collapsed, counts only", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle), { open: false }),
@@ -92,6 +96,7 @@ const COMBINATION = {
   mixed: bar("Cards for busy and idle workers", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE)),
   "all-states": bar("One worker in every state", ready(...Object.values(SESSION_WORKER_BY_STATE))),
   "one-row-light": bar("Five workers in one row, the next card peeking, light", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE), { theme: "light" }),
+  "duo-setup-refused": bar("A worker stopped during Duo setup", ready(DUO_SETUP_REFUSED), { theme: "light" }, { ready: 'text="Duo isn\'t set up. Set it up in Settings."' }),
   stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }),
   wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER)),
   "adding-empty": bar("A worker being added to an empty panel, shown as a Starting card", ready(), { operations: ADDING }, { ready: "li[aria-busy]" }),

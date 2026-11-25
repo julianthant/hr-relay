@@ -9,8 +9,8 @@ import type { ClearRunHistoryRequest } from "../../../../models/dashboard/run-hi
 import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
 import { buildExtractionInstruction } from "../../../../models/ocr/instruction.js";
 import { WorkerPoolMemberSchema } from "../../../../models/run/worker-slot.js";
-import { requireStoppedPool, WorkerPoolError, type WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
-import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
+import { requireStoppedPool, WorkerPoolError, WorkerSetupRefusedError, type WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
+import { LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema } from "../../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
@@ -27,7 +27,7 @@ import { createNominatimGeocodeAdapter } from "../../../processing/providers/geo
 import { createCommandKernel } from "../../../runs/commands/command-kernel.js";
 import { createDashboardCommandService } from "../../../runs/commands/command-service.js";
 import { createOcrSourceService } from "../../../runs/commands/ocr-source-service.js";
-import { createRunWorkerCapacity } from "../../../runs/commands/run-worker-capacity.js";
+import { createRunWorkerCapacity, RunWorkerStartupError } from "../../../runs/commands/run-worker-capacity.js";
 import { createStartPlanService } from "../../../runs/commands/start-plan-service.js";
 import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
@@ -135,6 +135,14 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const { noteWriter, stopTimeline, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, readLanes, lifecycle, debugEvents });
 
   const reportSupervisorFault = (error: Error, origin?: Readonly<{ workerId: string; pid?: number }>): void => {
+    if (error instanceof RunWorkerStartupError && error.cause instanceof WorkerSetupRefusedError) return;
+    if (error instanceof WorkerSetupRefusedError) {
+      const event = { category: "worker", area: "supervisor", phase: "failed", correlationId: randomUUID(),
+        code: error.code, message: error.message, reason: "setup-refused" };
+      debugEvents.emit(event, origin === undefined ? undefined : { kind: "worker", workerId: WorkerIdSchema.parse(origin.workerId) });
+      input.workerProcess?.faultSink?.(JSON.stringify(event));
+      return;
+    }
     const detail = error instanceof WorkerPoolError ? error.detail : {}, pid = origin?.pid ?? detail.pid;
     emitFaultWithCauses(debugEvents, input.workerProcess?.faultSink, error, { category: "worker", area: "supervisor", code: "WORKER_SUPERVISOR_FAILED",
       reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "supervisor-failed",
@@ -260,7 +268,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);
 
 
-  const startWorkerCapacity = createRunWorkerCapacity({ kernel, authority: database.authority, running: workers.running, ensureRunning: workers.ensureRunning,
+  const startWorkerCapacity = createRunWorkerCapacity({ kernel, authority: database.authority, running: workers.running, ensureRunning: workers.ensureRunning, setupRefusal: workers.setupRefusal,
     own: workers.own, reportDetachedFailure: reportSupervisorFault, startupPendingChanged: () => { projection.reconcileWorkerAuthority(); } });
   startupPending = startWorkerCapacity.startupPending;
   const commands = createDashboardCommandService({

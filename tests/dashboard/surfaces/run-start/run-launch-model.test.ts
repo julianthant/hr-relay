@@ -45,7 +45,7 @@ describe('served rerun launch source identity', () => {
     let update: RouteSetter | undefined;
     function Probe() { seen.push(useRunLaunch(true, 'main').rerunSource); return null; }
     function Harness() {
-      const [route, setRoute] = useState<AppRouteState>({ start: true, view: { launchRerun: SOURCE, launchStage: 'Steps' } });
+      const [route, setRoute] = useState<AppRouteState>({ start: true, view: { launchRerun: SOURCE, launchStage: 'Input' } });
       update = setRoute;
       return createElement(ViewNavigationProvider, { route, setRoute, children: createElement(Probe) });
     }
@@ -54,10 +54,27 @@ describe('served rerun launch source identity', () => {
     const first = seen.at(-1);
     assert.deepEqual(first, SOURCE);
     // Advancing a stage re-parses the whole view; the unchanged source must not look like a new rerun.
-    await act(async () => update?.(current => ({ ...current, view: { ...current.view, launchRerun: { ...SOURCE }, launchStage: 'Values' } })));
+    await act(async () => update?.(current => ({ ...current, view: { ...current.view, launchRerun: { ...SOURCE }, launchStage: 'Start' } })));
     assert.equal(seen.at(-1), first);
     await act(async () => update?.(current => ({ ...current, view: { ...current.view, launchRerun: sourceOf({ ...RAW, expectedVersion: 5 }) } })));
     assert.notEqual(seen.at(-1), first);
     assert.equal((seen.at(-1) as typeof SOURCE | undefined)?.expectedVersion, 5);
+  });
+  it('reruns in one click only while open on the same source, and any other open drops it', async () => {
+    let controller: ReturnType<typeof useRunLaunch> | undefined;
+    function Probe() { controller = useRunLaunch(false, 'main'); return null; }
+    const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+    await act(async () => root?.render(createElement(Probe)));
+    assert.equal(controller?.rerunInOneClick, false);
+    await act(async () => controller?.openRerun(SOURCE, undefined, true));
+    assert.equal(controller?.rerunInOneClick, true);
+    await act(async () => controller?.setOpen(false));
+    assert.equal(controller?.rerunInOneClick, false);
+    await act(async () => controller?.openRerun(SOURCE, undefined, true));
+    await act(async () => controller?.openRerun(SOURCE));
+    assert.equal(controller?.rerunInOneClick, false);
+    await act(async () => controller?.openRerun(SOURCE, undefined, true));
+    await act(async () => controller?.openStart());
+    assert.equal(controller?.rerunInOneClick, false);
   });
 });

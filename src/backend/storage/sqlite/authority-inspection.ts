@@ -247,13 +247,21 @@ export function inspectOpenDatabase(database: DatabaseSync, requireOperationalPr
   return AuthorityCopyInspectionSchema.parse(inspectNativeAuthority(database, CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas, false, workbookPayloads));
 }
 
+const startupCopyDigests = new WeakMap<object, string>();
+
 export function startupImageDigest(database: DatabaseSync): { state: "observed"; digest: string } | { state: "unavailable" } {
+  // Readers of the same guarded private copy see the same main file and WAL.
+  const copy = database.isTransaction ? readonlyAuthorityImage(database)?.copy : undefined;
+  const prior = copy === undefined ? undefined : startupCopyDigests.get(copy);
+  if (prior !== undefined) return { state: "observed", digest: prior };
   try {
     // serialize reads this transaction's pages, including committed WAL frames. Bound its temporary allocation.
     const pages = PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count;
     const size = z.strictObject({ page_size: z.number().int().positive() }).parse(database.prepare("PRAGMA page_size").get()).page_size;
     if (pages * size > 256 * 1024 * 1024) return { state: "unavailable" };
-    return { state: "observed", digest: createHash("sha256").update(database.serialize()).digest("hex") };
+    const digest = createHash("sha256").update(database.serialize()).digest("hex");
+    if (copy !== undefined) startupCopyDigests.set(copy, digest);
+    return { state: "observed", digest };
   } catch { return { state: "unavailable" }; }
 }
 

@@ -127,5 +127,5 @@ export function ChatGptAccountSettings({ port: override, grouped = false }: { po
     </div>
     {dialog}
   </>;
-  return grouped ? content : <BodySection title="ChatGPT">{content}</BodySection>;
+  return grouped ? content : <BodySection title="ChatGPT" description="Account the assistant signs in with.">{content}</BodySection>;
 }

@@ -13,6 +13,7 @@ import { createDiagnosticRetentionSweep, type DiagnosticRetentionSweepDependenci
 import type { createDebugEventWriter } from "../../../logs/debug-events.js";
 import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { inspectArtifactDeletionFile } from "../../../storage/artifacts/content-addressed-artifact-writer.js";
+import { startStartupObservation } from "./startup-observation.js";
 
 const TIMELINE_POLL_MS = 250;
 const RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000;
@@ -86,8 +87,10 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   let safetyAt = clock.monotonicMs() + 60_000;
 
   // Fold whatever span history already exists before serving a single count.
+  const fold = startStartupObservation("timeline-fold");
   projection.rebuildFromTimeline();
   const initialHealth = projection.health();
+  fold?.(initialHealth.state === "degraded" ? "failed" : "completed");
   if (initialHealth.state === "degraded") {
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
@@ -97,12 +100,14 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const stopping = new AbortController();
   let pending: Promise<void> | undefined, stopped = false, checkAfterRead = false, initialRead = true;
   const startRead = (now: number, workersAtStart: number | undefined) => {
+    const observation = initialRead ? startStartupObservation("timeline-observer") : undefined;
     const workerRevisionState = () => {
       const current = workerRevision();
       return { readUnchanged: current !== undefined && current === workersAtStart,
         startupUnchanged: current !== undefined && current === startupWorkers };
     };
     pending = projection.pollBackground(request => reader.read(request, stopping.signal), now, workerRevisionState).then(expiry => {
+      observation?.(expiry === undefined ? "superseded" : "completed");
       if (expiry === undefined) {
         key = { state: "retry" };
         checkAfterRead = true;
@@ -110,8 +115,13 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
     }).catch((error: unknown) => {
       if (stopped) return;
       // A normal commit can supersede paged worker facts while the admitted timeline remains live.
-      if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") key = { state: "retry" };
-      else projection.backgroundReadFailed(error);
+      if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") {
+        observation?.("superseded");
+        key = { state: "retry" };
+      } else {
+        observation?.("failed");
+        projection.backgroundReadFailed(error);
+      }
     }).finally(() => {
       pending = undefined;
       initialRead = false;

@@ -1,4 +1,5 @@
 import { GATE_PARK_WATCH_MS } from "./timeline.js";
+import { startStartupObservation } from "./startup-observation.js";
 import { createNotificationObserver } from "../../../runs/notifications/observation.js";
 import { readNotificationSources } from "./notification-sources.js";
 import { createNotificationHealthObserver, readNotificationHealth } from "./notification-health.js";
@@ -74,16 +75,18 @@ export function startNotificationPolling(database: AuthorityDatabase, clock: Clo
   };
   let safetyAt = Infinity;
   let healthDueAt = Infinity;
-  const safetyPass = () => {
+  const safetyPass = (initial = false) => {
+    const startup = initial ? startStartupObservation("notification-observer") : undefined;
     safetyAt = Infinity;
     healthDueAt = Infinity;
     void observation.observe().then(() => {
       const failed = observation.status().state === "failed";
+      startup?.(failed ? "failed" : "completed");
       safetyAt = clock.monotonicMs() + (failed ? GATE_PARK_WATCH_MS : 60_000);
       if (!failed) healthDueAt = observation.healthDueAt();
     });
   };
-  safetyPass();
+  safetyPass(true);
   const timer = setInterval(() => {
     if (clock.monotonicMs() >= safetyAt || clock.nowMs() >= healthDueAt) safetyPass();
     else void observation.observeSources(changed);

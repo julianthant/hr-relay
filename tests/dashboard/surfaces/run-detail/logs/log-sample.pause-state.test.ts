@@ -52,3 +52,12 @@ describe("Logs timeline shows the served pause control and interrupt", () => {
     assert.match(render("paused"), /Pause recorded\. Resume to continue\./u);
   });
 });
+
+it("shows a queued run's served worker setup refusal in Logs", () => {
+  const queued = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.status === "queued");
+  assert.ok(queued);
+  const row = QueueSurfaceWireSchema.parse({ ...queued, notStarting: { code: "DUO_READY_CREDENTIAL_REQUIRED",
+    summary: "Duo isn't set up. Set it up in Settings." } });
+  const log = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(LogSample, { selection: { row, workflowLabel: "Person Lookup" } })));
+  assert.match(log, /Duo isn&#x27;t set up\. Set it up in Settings\./u);
+});

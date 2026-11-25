@@ -1,4 +1,4 @@
-import { testProcessImport } from "../../support/compiled-process.js";
+import { testProcessImport } from "../../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { once } from "node:events";
@@ -10,14 +10,14 @@ import { fileURLToPath } from "node:url";
 import childProcesses, { fork, spawnSync } from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 import { it, vi } from "vitest";
-import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { inspectAuthorityBackupReadOnly } from "../../../src/backend/storage/sqlite/backup-inspection.js";
-import { boundProfileCredentials, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
-import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
-import { fileStatus } from "../../../src/backend/storage/file-identity.js";
-import { withOperationProof } from "../../../src/backend/storage/configuration/credential-safe-file.js";
-import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from "../../../src/backend/storage/source-closure.js";
-import { AuthoritySourceChangedError, createReadonlyAuthoritySnapshot, isAuthoritySourceChanged, openReadOnlyDatabase, withActiveAuthorityObservation, withReadonlyAuthoritySnapshot } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { fileStatus } from "../../../../src/backend/storage/file-identity.js";
+import { withOperationProof } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from "../../../../src/backend/storage/source-closure.js";
+import { AuthoritySourceChangedError, createReadonlyAuthoritySnapshot, isAuthoritySourceChanged, openReadOnlyDatabase, withActiveAuthorityObservation, withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 
 function inventory(directory: string) {
   const child = spawnSync(process.execPath, ["--input-type=commonjs", "-e", `
@@ -185,7 +185,7 @@ function readPair(snapshotPath: string): { a: number; b: number; quick: string }
 }
 
 it("with an owner open, a doctor pass leaves live authority names and bytes unchanged, and child scripts do not open sqlite", async () => {
-  const source = readFileSync(new URL("../../../src/backend/storage/sqlite/readonly-authority-snapshot.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../../../src/backend/storage/sqlite/readonly-authority-snapshot.ts", import.meta.url), "utf8");
   const scripts = [...source.matchAll(/Script = `([\s\S]*?)`;/gu)];
   assert.ok(scripts.length >= 1);
   for (const script of scripts) {
@@ -478,7 +478,7 @@ it("removes the owner image directory when the scope exits and a later proof rea
 
 for (const mode of ["reader", "doctor"] as const) it(`keeps the owner image and refuses admission when a pinned ${mode} close fails`, async () => {
   const fixture = await createBoundProfileFixture({ sharedMachine: true });
-  const child = fork(fileURLToPath(new URL("../../support/processes/owner-image-close-retention.ts", import.meta.url)),
+  const child = fork(fileURLToPath(new URL("../../../support/processes/owner-image-close-retention.ts", import.meta.url)),
     [String(fixture.lifetime.port), fixture.workspace, fixture.admission.profileBinding.profileId, fixture.path, mode],
     { execArgv: ["--import", testProcessImport()], stdio: ["ignore", "inherit", "inherit", "ipc"] });
   let directory: string | undefined;

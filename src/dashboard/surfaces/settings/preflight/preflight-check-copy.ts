@@ -1,6 +1,9 @@
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+
 export const CHECK_COPY: Record<string, { name: string; description: string }> = {
   "runtime.compatibility": { name: "Relay installation", description: "Relay's installation is out of date or damaged. Reinstall Relay, then check again." },
   "browser.assets": { name: "Browser tools", description: "Relay is missing files it needs to open websites. Reinstall Relay, then check again." },
+  "browser.duo-key": { name: "Duo security key", description: ERROR_CATALOG.DUO_READY_CREDENTIAL_REQUIRED.text },
   "config.valid": { name: "Relay settings", description: "Relay's settings could not be read. Restart Relay, then check again." },
   "filesystem.health": { name: "Files and disk space", description: "This computer is low on disk space. Free up space, then check again." },
   "authority.health": { name: "Saved runs", description: "Relay can't read its saved runs. Restart Relay, then check again." },

@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
-import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
-import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
-import { TimelineRecordError } from "../../../src/backend/storage/sqlite/timeline-repository.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { TimelineRecordError } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 
 const NOW = "2026-10-10T12:00:00.000Z";
 

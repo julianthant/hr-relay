@@ -6,6 +6,8 @@ import { CONFIG_ROUTE_SCHEMAS } from "../../../models/config/schema.js";
 import { PreflightObservationSchema, requiredPreflightChecks, type PreflightRunner } from "../../../models/preflight/preflight.js";
 import { PREFLIGHT_CHECKS, RUNTIME_DEPENDENCIES, SYSTEM_RUNTIME_SPECS } from "../../../models/runtime/runtime-dependencies.js";
 import { inspectSecret, readProfileIdentity } from "../../../models/config/secrets.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { readDuoKeyReadiness } from "../../storage/configuration/duo-signing.js";
 import type { RuntimePreflightRunnerInput } from "./runtime-runners.js";
 
 function result(check: PreflightRunner["check"], ready: boolean, summary: string) {
@@ -36,13 +38,13 @@ export function createWorkflowPreflightRunners(input: RuntimePreflightRunnerInpu
       } catch {
         return result(check, false, "Duo extension manifest is unavailable.");
       }
-      try {
-        if (input.duo === undefined) throw new Error("duo-signing-source-required");
-        input.duo.assertCurrent(); input.duo.credentials();
-      } catch {
-        return result(check, false, "Duo backend signing source is unavailable.");
-      }
-      return result(check, true, "Chromium, Duo extension and backend signing source are present.");
+      return result(check, true, "Chromium and the Duo extension are installed.");
+    };
+    if (check === "browser.duo-key") inspect = () => {
+      if (!input.config.features.duoWebAuthn) return result(check, true, "Fast Duo is disabled in the retained settings.");
+      const readiness = readDuoKeyReadiness(input.duo);
+      if (readiness === "ready") return result(check, true, "A Duo security key is ready.");
+      return result(check, false, ERROR_CATALOG[readiness === "missing" ? "DUO_READY_CREDENTIAL_REQUIRED" : "DUO_CREDENTIAL_UNAVAILABLE"].text);
     };
     if (check === "fiscal.current") inspect = () => {
       const year = `FY${String(input.dashboard.clock.fiscalYear())}`;
