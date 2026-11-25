@@ -494,6 +494,27 @@ async function move(method: "back" | "forward") {
 describe_m8("view navigation", () => {
 afterEach_m8(_afterEachFixture0);
 
+  const retiredView = {
+    bumpScope: "dashboard",
+    bumpSelection: ["workflow"],
+    bumpReview: "review",
+    preflightScope: "workflow",
+    capabilitiesQuery: "search",
+  };
+  it_m8("omits retired coordinates when writing dashboard links", () => {
+    const search = routeToSearch_m8({ start: false, view: { ...retiredView, spreadsheetTab: "types" } });
+    assert_m8.equal(new URLSearchParams(search).get("view"), '{"spreadsheetTab":"types"}');
+  });
+  it_m8("opens saved dashboard links after stripping retired coordinates", () => {
+    const savedLink = (view: object) => `?settings=spreadsheets&${new URLSearchParams({ view: JSON.stringify(view) })}`;
+    assert_m8.deepEqual(parseRoute_m8(savedLink({ ...retiredView, spreadsheetTab: "types" })), {
+      start: false, settings: "spreadsheets", view: { spreadsheetTab: "types" },
+    });
+    assert_m8.equal(routeToSearch_m8(parseRoute_m8(savedLink(retiredView))), "?settings=spreadsheets");
+    assert_m8.equal(parseRoute_m8(savedLink({ ...retiredView, spreadsheetTab: "unknown" })).viewInvalid, true);
+    assert_m8.equal(parseRoute_m8(savedLink({ ...retiredView, unknown: true })).viewInvalid, true);
+  });
+
   it_m8("round-trips only bounded navigation metadata and refuses corrupt/private payloads", () => {
     const route = { start: true, settings: "spreadsheets", view: ViewRouteSchema_m8.parse({ spreadsheetTab: "types", launchStage: "Start", search: true, reviewPages: { "record-1": 1 }, launchRerun: { runId: "00000000-0000-4000-8000-000000000001", expectedVersion: 1 }, queueOpen: ["batch-1"] }) };
     assert_m8.deepEqual(parseRoute_m8(routeToSearch_m8(route)), route);

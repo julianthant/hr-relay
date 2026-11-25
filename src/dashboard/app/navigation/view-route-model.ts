@@ -7,7 +7,8 @@ import type { AppRouteState } from "./url-state.js";
 
 const identity = z.string().max(200);
 const stage = z.enum(["Input", "Steps", "Start"]);
-export const ViewRouteSchema = z.object({
+const retiredViewKeys = ["bumpScope", "bumpSelection", "bumpReview", "preflightScope", "capabilitiesQuery"];
+export const ViewRouteCoordinatesSchema = z.object({
   queueMember: QueueMemberSelectionSchema.optional(),
   logFailure: z.strictObject({ runId: RunIdSchema, failureId: FailureIdSchema }).optional(),
   workflow: identity.optional(), preview: identity.nullable().optional(), mockRun: identity.optional(), records: identity.optional(),
@@ -23,15 +24,22 @@ export const ViewRouteSchema = z.object({
   spreadsheetTab: z.enum(["registered", "types"]).optional(), spreadsheetQuery: z.string().max(500).optional(), spreadsheet: identity.nullable().optional(),
   spreadsheetSheet: identity.optional(), spreadsheetPage: z.number().int().min(0).max(100000).optional(), spreadsheetRowsQuery: z.string().max(500).optional(), spreadsheetColumnPage: z.number().int().min(0).max(100000).optional(),
   explorerSource: z.object({ field: identity, step: z.number().int().min(1).max(10000), form: identity.optional() }).optional(), explorerWorkflow: identity.optional(), explorerOpen: z.record(z.string().max(200), z.boolean()).refine(value => Object.keys(value).length <= 200).optional(),
-  bumpScope: z.enum(["workflows", "dashboard"]).optional(), bumpSelection: z.array(identity).max(100).optional(), bumpReview: z.string().max(4000).nullable().optional(),
   keyboardQuery: z.string().max(500).optional(),
-  preflightScope: identity.optional(), capabilitiesQuery: z.string().max(500).optional(),
   activityBrowse: z.object({ metric: z.enum(['completed', 'outstanding', 'failed', 'timed']), workflow: identity.optional(),
     page: z.number().int().min(0).max(100000), run: identity.optional(), query: z.string().max(500).optional(),
     sort: z.object({ column: z.enum(['name', 'duration']), direction: z.enum(['ascending', 'descending']) }).strict().optional() }).strict().nullable().optional(),
   activityPreview: z.enum(['normal', 'empty', 'incomplete', 'loading', 'unavailable']).optional(),
 }).strict();
-export type ViewRoute = z.infer<typeof ViewRouteSchema>;
+export type ViewRoute = z.infer<typeof ViewRouteCoordinatesSchema>;
+
+export const ViewRouteSchema = z.preprocess(decoded => {
+  if (typeof decoded !== "object" || decoded === null || Array.isArray(decoded)
+    || !retiredViewKeys.some(key => Object.hasOwn(decoded, key))) return decoded;
+  const coordinates = { ...decoded };
+  for (const key of retiredViewKeys) Reflect.deleteProperty(coordinates, key);
+  return coordinates;
+}, ViewRouteCoordinatesSchema);
+
 /** The patch that removes the Start run dialog's coordinates from the view when the dialog closes. */
 export const LAUNCH_CLEARED: Readonly<Partial<ViewRoute>> = Object.freeze({
   launchRerun: undefined, launchServed: undefined, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined, launchCustomize: undefined,
