@@ -88,12 +88,6 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start borde
 .launch-dialog aside.launch-workflow-rail > p:last-child { @apply pt-3 text-ui-primary; }
 
 
-.launch-dialog .launch-picker { background: var(--ds-surface-1); }
-.launch-dialog .launch-picker-search { @apply shrink-0 p-3; }
-.launch-dialog .launch-picker .workflow-rail { @apply p-2 pt-0; }
-.launch-dialog .launch-picker .workflow-rail-groups { @apply gap-4 pb-2; }
-.launch-dialog .launch-picker .workflow-rail h3 { @apply text-caption font-medium text-ui-muted; }
-.launch-dialog .launch-picker .workflow-rail button { @apply h-8 rounded-lg pl-[30px] font-normal; }
 
 .required-capture-row { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-loose); padding: var(--ds-space-cozy) var(--ds-space-loose); }
 
