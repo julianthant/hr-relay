@@ -17,6 +17,7 @@ import { initialFailureColumns, initialNotificationColumns } from "./native-reco
 import { backupReadOnlyDatabase, openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
 import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
 import { backfillRunSearchOcrSubjects, copySeedSearchColumns } from "./run-search-index.js";
+import { convertSettingsRecordRow } from "./settings-record-conversion.js";
 import { timelineEventColumns } from "./timeline-repository.js";
 import { privatePathRejects } from "../private-path.js";
 
@@ -252,12 +253,22 @@ function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBi
 }
 
 /** Each step lifts an archive written at its key's schema to the next one; the archive keeps every row it imported. */
-const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync) => void>> = {
+const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync, format: number) => void>> = {
   39: archive => archive.exec(`ALTER TABLE delegation_dependencies ADD COLUMN parent_run_id;
     UPDATE delegation_dependencies SET parent_run_id=json_extract(payload_json,'$.parentRunId')`),
   40: archive => {
     archive.exec(OCR_SEARCH_TERMS_COLUMN_SQL);
     backfillRunSearchOcrSubjects(archive);
+  },
+  41: (archive, format) => {
+    if (format === 1) return; // Format 1 predates archived settings snapshots.
+    const update = archive.prepare("UPDATE settings_snapshots SET payload_json=? WHERE id=?");
+    const snapshotRow = z.object({ id: z.string(), payload_json: z.string() });
+    for (const row of archive.prepare("SELECT id,payload_json FROM settings_snapshots").all()) {
+      const before = snapshotRow.parse(row);
+      const after = snapshotRow.parse(convertSettingsRecordRow("settings_snapshots", before));
+      if (after.payload_json !== before.payload_json) update.run(after.payload_json, before.id);
+    }
   },
 };
 const ArchiveVersion = z.strictObject({ format: z.literal([1, archiveFormat]), schema_version: z.number().int(), installation_id: z.uuid(), profile_id: z.uuid() });
@@ -286,7 +297,7 @@ function upgradeHistoryArchive(native: DatabaseSync, path: string, binding: Prof
       for (; version < CURRENT_AUTHORITY_SCHEMA_VERSION; version += 1) {
         const step = ARCHIVE_UPGRADES[version];
         if (step === undefined) throw new Error(`isolated-history-schema-unsupported: ${String(version)}`);
-        step(archive);
+        step(archive, start.format);
       }
       if (start.format === 1) {
         for (const name of Object.keys(dashboardEvidenceTables)) {
