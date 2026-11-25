@@ -98,19 +98,25 @@ export function scanProfileCredentialCopy(path: string, capturedSecrets: readonl
 
 
 
+/** Verdicts of one assessment's backup scans, reused only while a backup keeps the exact file identity it was scanned under. */
+type BackupCredentialScans = Map<string, Readonly<{ identity: string; digest: string; containsSecret: boolean }>>;
+
 type CredentialMaintenancePurpose = Readonly<{ kind: "ordinary" }> | Readonly<{ kind: "stopped-control"; claim: StoppedControlProfileInventory }>;
 
 function assessProfileCredentialCopies(admission: RuntimeAdmission, before: ReturnType<typeof enumerateProfileCredentialMembership>,
   backups: readonly Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[], fields: Readonly<{ capturedSecrets: readonly string[];
     capturedSecretsComplete: boolean; containsKey(value: unknown): boolean; readonly keyScanOverlap: number; inspectEncrypted(path: string): Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> }>,
-  purpose: CredentialMaintenancePurpose) {
+  purpose: CredentialMaintenancePurpose, backupScans: BackupCredentialScans) {
   const root = admission.stateRoot, backupPlaintext: string[] = [], unknownFormats = [...before.unsupported];
   if (purpose.kind === "stopped-control") {
     const issued = requireStoppedControlProfileInventory(purpose.claim);
     if (issued.binding.profileId !== admission.profileBinding.profileId || issued.stateRoot !== root) throw new Error("profile-control-upgrade-inventory-owner-mismatch");
   }
       for (const path of [...before.copies, ...before.backupPaths]) {
-        const scanned = scanProfileCredentialCopy(path, fields.capturedSecrets, fields), backup = backups.find(value => value.backupPath === path);
+        const backup = backups.find(value => value.backupPath === path);
+        const identity = canonicalJsonStringify(inventoryFileIdentity(path)), kept = backup === undefined ? undefined : backupScans.get(path);
+        const reused = kept?.identity === identity ? kept : undefined;
+        const scanned = reused ?? scanProfileCredentialCopy(path, fields.capturedSecrets, fields);
         const suspect = before.suspects.find(value => value.path === path);
         if (backup !== undefined && scanned.digest !== backup.manifest.sha256) throw new Error("profile-inventory-backup-changed");
         if (suspect !== undefined && scanned.digest !== suspect.sha256) throw new Error("profile-inventory-suspect-changed");
@@ -154,7 +160,7 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
             unknownFormats.push(path);
           }
         }
-        if (backup !== undefined || suspect !== undefined && !suspect.companion) {
+        if (backup !== undefined && reused === undefined || suspect !== undefined && !suspect.companion) {
           const digest = backup?.manifest.sha256 ?? suspect?.sha256;
           if (digest === undefined) throw new Error("profile-inventory-copy-custody-unproved");
           const copyAdmission = admission.verifiedReadOnlyCopy(path, digest);
@@ -173,6 +179,7 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
             });
           } finally { copyAdmission.release(); }
         }
+        if (backup !== undefined) backupScans.set(path, { identity, digest: scanned.digest, containsSecret });
         if (containsSecret) backupPlaintext.push(path);
         if (!fields.capturedSecretsComplete && !retainedEngine) unknownFormats.push(path);
       }
@@ -245,6 +252,7 @@ export function composeStoppedControlCredentialInventory(input: Readonly<{ claim
   try {
     const source = admission.readStoppedControlCredentialInventorySource(input.claim);
     const assess = (copies: StoppedCredentialCopyInspection) => {
+      const backupScans: BackupCredentialScans = new Map();
       const observe = () => {
         source.revalidateSource();
         const plan = source.pendingPlan();
@@ -263,7 +271,7 @@ export function composeStoppedControlCredentialInventory(input: Readonly<{ claim
         if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("credential-maintenance-backup-membership-unproved");
         const currentRecord = join(admission.stateRoot, "credentials", "chatgpt-account.json");
         const assessment = assessProfileCredentialCopies(admission, { ...membership, copies: membership.copies.filter(path => path !== currentRecord) }, backups, copies,
-          { kind: "stopped-control", claim: input.claim });
+          { kind: "stopped-control", claim: input.claim }, backupScans);
         if (assessment.backupPlaintext.length !== 0 || assessment.unknownFormats.length !== 0) throw new Error("credential-maintenance-copy-capture-incomplete");
         const login = countProfileCredentialLoginRows(membership.loginDataPaths);
         if (login === "unreadable" || typeof login === "number" && login > 0) throw new Error("credential-maintenance-login-copy-present");
