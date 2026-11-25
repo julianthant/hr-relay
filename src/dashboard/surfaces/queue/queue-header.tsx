@@ -1,7 +1,8 @@
 import { type ReactNode } from "react";
 import { parseDate } from "@internationalized/date";
 import { ArrowDownUp, CalendarDays, ListFilter, Plus, SlidersHorizontal } from "lucide-react";
-import { Button, Calendar, IconButton, Tooltip } from "../../ds/ui.js";
+import { BareButton, Calendar, IconButton, Tooltip, dsFocus } from "../../ds/ui.js";
+import { cn } from "../../lib/utils.js";
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
   DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
@@ -32,7 +33,7 @@ export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay
 }) {
   // Attention first groups the runs; the chosen order applies inside each group, or to the whole queue when it is off.
   const order = sort === "attention" ? grouped : sort;
-  const label = (status: StatusBucket) => status === "all" ? "All" : status === "needsYou" ? "Needs you" : PROPOSED_STATUS[dsStatusOf(status)].accessibleLabel;
+  const label = (status: StatusBucket) => status === "all" ? "All" : status === "needsYou" ? "Needs you" : status === "awaiting-approval" ? "Needs approval" : PROPOSED_STATUS[dsStatusOf(status)].accessibleLabel;
   const count = (status: StatusBucket) => status === "all" ? totalCount(counts) : status === "needsYou" ? needsYouCount(counts) : statusCount(counts, status);
   const changed = nonDefaultOptionCount({ day, today, sort, order, active });
   return <header aria-label="Queue header" className="queue-header">
@@ -53,7 +54,7 @@ export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay
               {/* A calendar is not menu items: its keys stay inside, so Tab and the arrows work it. Escape still closes. */}
               <div onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}>
                 <Calendar autoFocus label="Dashboard date" value={calendarDay(day, today)} maxValue={parseDate(today)} onChange={date => onDay(date.toString())} />
-                <div className="queue-date-footer"><Button size="sm" variant="ghost" onClick={() => onDay(today)}>Today</Button><span>Runs from this day</span></div>
+                <div className="queue-date-footer"><BareButton type="button" className={cn("queue-date-today", dsFocus)} onClick={() => onDay(today)}>Today</BareButton><span>Runs from this day</span></div>
               </div>
             </DropdownMenuSubContent>
           </DropdownMenuSub>

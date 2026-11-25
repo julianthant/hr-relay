@@ -118,3 +118,4 @@
 .queue-options-value { margin-left: auto; padding-right: 8px; color: var(--ui-secondary); }
 .queue-options-note { margin: 0; padding: 6px 10px 8px; max-width: 240px; color: var(--ui-secondary); font-size: 12px; line-height: 1.4; }
 .queue-date-footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--ui-stroke); padding: 8px 8px 4px; color: var(--ui-secondary); font-size: 12px; }
+.queue-date-today { padding: 0; border: 0; background: transparent; color: var(--ds-fg-link); cursor: pointer; font-size: 13px; }
