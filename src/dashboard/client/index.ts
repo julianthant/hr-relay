@@ -426,7 +426,8 @@ export function createDashboardClient(input: Readonly<{
       if (dashboardErrorReported(error)) throw error;
       if (!(error instanceof DashboardClientError) || error.kind === "schema" || error.kind === "protocol") {
         const failure = debugFailureOutcome({ state: "error", code: error instanceof DashboardClientError ? error.code : undefined });
-        if (failure !== undefined) reportFailure({ ...failure, route: `client:${method}` });
+        const reason = !(error instanceof DashboardClientError) ? "client-exception" : error.kind === "schema" ? "response-schema-invalid" : "response-protocol-invalid";
+        if (failure !== undefined) reportFailure({ ...failure, reason, route: `client:${method}` });
       }
       throw error;
     };
