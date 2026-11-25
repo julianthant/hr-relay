@@ -319,7 +319,8 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
     // obtain renewed consent if its eventual natural key is not in this set.
     if (missingDependency) {
       if (transactionCheckpoint !== undefined || repositories.writeIntents.listByRun(source.runId)
-        .some((intent) => intent.status === "committed" && intent.taskId === node.commit.uses.id)) {
+        .some((intent) => intent.status === "committed" && intent.taskId === node.commit.uses.id && "bindingProof" in intent
+          && intent.bindingProof.afterPrepareSpanPath === `${run.envelope.traceId}/${node.id}/prepare`)) {
         throw new RerunRefusedError("invalid-value", "Previous transaction warning evidence is unavailable");
       }
       continue;
