@@ -4,7 +4,11 @@ import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import { PublicProfileStateSchema } from "../../models/profiles/public-profile.js";
 import { debugFailureOutcome, debugFailureOutcomes, diagnosticRequestRoute } from "../../models/events/debug-report.js";
 import { DashboardClientError, WIRE_ERROR_BODY, httpError,networkError,markDashboardErrorReported } from "./errors.js";
-import { CHATGPT_ACCOUNT_READ_DEADLINE_MS, CHATGPT_COMPLETION_READ_DEADLINE_MS, SETTINGS_READ_DEADLINE_MS, readWithDeadline } from "./read-deadline.js";
+import { BOUNDED_READ_ATTEMPTS, BOUNDED_READ_RETRY_MS, CHATGPT_ACCOUNT_READ_DEADLINE_MS, CHATGPT_COMPLETION_READ_DEADLINE_MS, SETTINGS_READ_DEADLINE_MS, readDeadlineExpired, readWithDeadline } from "./read-deadline.js";
+
+/** The closed cause of a request that ended without a response body. */
+const unansweredReason = (error: unknown): string => readDeadlineExpired(error) ? "read-deadline"
+  : error instanceof DashboardClientError && error.kind === "http" ? "response-json-invalid" : "network-failed";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -38,7 +42,8 @@ export interface BinaryResponse {
 }
 
 export interface DashboardTransport {
-  requestJson(path: string, init?: RequestInit): Promise<unknown>;
+  /** `retry` asks a run-start read again, as the checks and workbook reads always are. */
+  requestJson(path: string, init?: RequestInit, options?: Readonly<{ retry?: boolean }>): Promise<unknown>;
   /** The same request, with the status line preserved.
  * Two routes make the status load-bearing rather than incidental: the command */
   requestJsonResponse(path: string, init?: RequestInit): Promise<JsonResponse>;
@@ -115,14 +120,15 @@ export function createDashboardTransport(input: Readonly<{
     } catch (error) {
       throw networkError(`${init?.method ?? "GET"} ${path}`, error);
     }
+    // A body that is not JSON is the server's answer; a body cut off in delivery is a lost connection.
     const body: unknown = await response.json().catch((error: unknown) => {
-      throw httpError(response.status, { unparseable: String(error) });
+      throw error instanceof SyntaxError ? httpError(response.status, { unparseable: String(error) }) : networkError(`${init?.method ?? "GET"} ${path}`, error);
     });
     observeProfileSession(path, response.status, body, notify);
     return Object.freeze({ headers: response.headers, status: response.status, ok: response.ok, body });
   };
 
-  const sendWithDeadline = (path: string, init?: RequestInit): Promise<JsonResponse> => {
+  const sendWithDeadline = (path: string, init?: RequestInit, retry = false): Promise<JsonResponse> => {
     const method = init?.method?.toUpperCase() ?? "GET";
     const route = path.split("?")[0];
     const accountStatus = route === "/api/v1/settings/chatgpt-account";
@@ -131,14 +137,25 @@ export function createDashboardTransport(input: Readonly<{
       : accountStatus || accountCompletion ? "CHATGPT_AUTH_UNAVAILABLE"
       : route === "/api/v1/preflight" ? "PREFLIGHT_READ_UNAVAILABLE"
       : route === "/api/v1/settings/editable" || route === "/api/v1/settings/facts" ? "SETTINGS_INITIAL_READ_UNAVAILABLE"
-      : route?.startsWith("/api/v1/workbooks") || route === "/api/v1/explorer" || route?.startsWith("/api/v1/reports/activity") ? "DASHBOARD_READ_FAILED" : undefined;
+      : route?.startsWith("/api/v1/workbooks") || route === "/api/v1/explorer" || route?.startsWith("/api/v1/reports/activity") || retry ? "DASHBOARD_READ_FAILED" : undefined;
+    const retried = method === "GET" && (retry || route === "/api/v1/preflight" || route?.startsWith("/api/v1/workbooks") === true);
     if (code === undefined || accountCompletion && init?.signal !== undefined) return sendUnbounded(path, init);
     const deadline = accountCompletion ? CHATGPT_COMPLETION_READ_DEADLINE_MS
       : accountStatus ? CHATGPT_ACCOUNT_READ_DEADLINE_MS : SETTINGS_READ_DEADLINE_MS;
-    return readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code, deadline, init?.signal ?? undefined).catch((error: unknown) => {
-        if (init?.signal?.aborted) throw networkError(`${method} ${path}`, init.signal.reason);
-        throw error;
-      });
+    const attempts = retried ? BOUNDED_READ_ATTEMPTS : 1;
+    const pause = () => new Promise(resolve => setTimeout(resolve, BOUNDED_READ_RETRY_MS));
+    return (async () => {
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          const response = await readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code, deadline, init?.signal ?? undefined);
+          if (attempt === attempts || response.status !== 503 || WIRE_ERROR_BODY.safeParse(response.body).data?.retryable !== true) return response;
+        } catch (error) {
+          if (init?.signal?.aborted) throw networkError(`${method} ${path}`, init.signal.reason);
+          if (attempt === attempts || !(error instanceof DashboardClientError && error.kind === "network")) throw error;
+        }
+        await pause();
+      }
+    })();
   };
 
   const superseded = (status: number, body: unknown): boolean => {
@@ -146,25 +163,26 @@ export function createDashboardTransport(input: Readonly<{
     const parsed = WIRE_ERROR_BODY.safeParse(body);
     return parsed.success && parsed.data.code === "READ_SUPERSEDED";
   };
-  const reportFailure = (path: string, body: unknown, status = 200, method = "GET"): void => {
+  const reportFailure = (path: string, body: unknown, status = 200, method = "GET", reason?: string): void => {
     if (path === "/api/v1/debug/errors" || superseded(status, body)) return;
     if (EXPECTED_REFUSALS[`${method.toUpperCase()} ${path.split("?")[0] ?? path}`]?.includes(status) === true) return;
-    for (const failure of debugFailureOutcomes(body, status)) input.onFailure?.({ ...failure, route: diagnosticRequestRoute(path) });
+    const readRoute = method.toUpperCase() === "GET" ? path.split(/[?#]/u)[0] : undefined;
+    for (const failure of debugFailureOutcomes(body, status, readRoute)) input.onFailure?.({ ...failure, ...(reason === undefined ? {} : { reason }), route: diagnosticRequestRoute(path) });
   };
-  const send = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
+  const send = async (path: string, init?: RequestInit, retry = false): Promise<JsonResponse> => {
     try {
-      const response = await sendWithDeadline(path, init);
+      const response = await sendWithDeadline(path, init, retry);
       reportFailure(path, response.body, response.ok ? response.status : Math.max(400, response.status), init?.method);
       return response;
     } catch (error) {
-      if (!init?.signal?.aborted) { reportFailure(path, { state: "error" }); markDashboardErrorReported(error); }
+      if (!init?.signal?.aborted) { reportFailure(path, { state: "error" }, 200, init?.method, unansweredReason(error)); markDashboardErrorReported(error); }
       throw error;
     }
   };
 
   return Object.freeze({
-    async requestJson(path: string, init?: RequestInit): Promise<unknown> {
-      const response = await send(path, init);
+    async requestJson(path: string, init?: RequestInit, options?: Readonly<{ retry?: boolean }>): Promise<unknown> {
+      const response = await send(path, init, options?.retry);
       // Typed command refusals use 409/422; other non-success responses follow the wire-error contract.
       if (!response.ok && !isTypedCommandResultStatus(path, response.status)) {
         const error = httpError(response.status, response.body);
@@ -174,7 +192,7 @@ export function createDashboardTransport(input: Readonly<{
       return response.body;
     },
 
-    requestJsonResponse: send,
+    requestJsonResponse: (path: string, init?: RequestInit) => send(path, init),
 
     async requestBinary(path: string, init?: RequestInit): Promise<BinaryResponse> {
       const notify = input.captureProfileSessionStale?.();

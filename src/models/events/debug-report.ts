@@ -2,6 +2,7 @@ import { z } from "zod";
 import { RunIdSchema } from "../../rules/identity/ids.js";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { PreflightReadinessWireSchema } from "../preflight/preflight-contract.js";
+import { WireErrorSchema } from "../dashboard/primitives.js";
 import { clientCauseRowAccepted } from "../failures/error-origins.js";
 import { BulkRunCommandResponseSchema, CommandRejectionCodeSchema, CommandResultSchema } from "../../rules/commands/commands.js";
 export const DashboardErrorReportSchema = z.strictObject({
@@ -26,24 +27,39 @@ export function dashboardReportAccepted(report: DashboardErrorReport): boolean {
 const FailureOutcomeSchema = z.object({ state: z.enum(["error", "failed", "refused", "rejected", "conflict", "unknown", "uncertain", "unavailable"]), code: z.string().optional() });
 const TRANSPORT_CODES = new Set(["SCHEMA_INVALID", "INTERNAL_FAILURE", "REQUEST_IDENTITY_REFUSED", "ROUTE_NOT_FOUND", "SECTION_UNAVAILABLE", "PROJECTION_DEGRADED", "DEBUG_REPORT_INVALID", "DEBUG_REPORT_RATE_LIMIT", "DEBUG_REPORT_SIZE_LIMIT"]);
 
-export function debugFailureOutcome(value: unknown, status = 200) {
-  const readiness = status === 200 ? PreflightReadinessWireSchema.safeParse(value) : undefined;
-  if (readiness?.success && readiness.data.state === "unavailable" && readiness.data.code === "PREFLIGHT_EVIDENCE_EXPIRED"
-    && readiness.data.lastCompleted !== undefined) return undefined;
+/** Readiness answers the checks act on by preparing again; any other unavailable readiness is a failure. */
+const EXPECTED_READINESS_CODES = new Set(["PREFLIGHT_EVIDENCE_EXPIRED", "PREFLIGHT_EVIDENCE_MISSING", "PREFLIGHT_EVIDENCE_STALE"]);
+
+/** `readRoute` is the exact route of a GET; only the preflight read's 200 is held to the readiness contract. */
+export function debugFailureOutcome(value: unknown, status = 200, readRoute?: string): { code: string; reason: string } | undefined {
+  if (status === 200 && readRoute === "/api/v1/preflight") {
+    const readiness = PreflightReadinessWireSchema.safeParse(value);
+    if (!readiness.success) return { code: "DASHBOARD_READ_FAILED", reason: "response-contract-invalid" };
+    const { data } = readiness;
+    if (data.state === "present") return undefined;
+    if (data.code === undefined) return { code: "DASHBOARD_READ_FAILED", reason: "readiness-code-missing" };
+    if (data.code === "PREFLIGHT_EVIDENCE_EXPIRED" && data.lastCompleted === undefined) return { code: data.code, reason: "readiness-report-missing" };
+    if (EXPECTED_READINESS_CODES.has(data.code)) return undefined;
+  }
   if (z.object({ state: z.literal("signed-out"), remoteRevocation: z.literal("unconfirmed") }).safeParse(value).success) {
     return { code: "CHATGPT_AUTH_UNAVAILABLE", reason: "remote-revocation-unconfirmed" };
   }
   const parsed = FailureOutcomeSchema.safeParse(value);
   if (!parsed.success && status < 400) return undefined;
   const state = parsed.success ? parsed.data.state : "error";
-  const code = parsed.success && parsed.data.code !== undefined
-    && (Object.hasOwn(ERROR_CATALOG, parsed.data.code) || TRANSPORT_CODES.has(parsed.data.code) || CommandRejectionCodeSchema.safeParse(parsed.data.code).success)
-    ? parsed.data.code : state === "conflict" ? "COMMAND_CONFLICT" : state === "rejected" || state === "refused" ? "COMMAND_REFUSED" : "DASHBOARD_READ_FAILED";
+  const own = parsed.success ? parsed.data.code : undefined;
+  const known = own !== undefined && (Object.hasOwn(ERROR_CATALOG, own) || TRANSPORT_CODES.has(own) || CommandRejectionCodeSchema.safeParse(own).success);
+  const code = known ? own : state === "conflict" ? "COMMAND_CONFLICT" : state === "rejected" || state === "refused" ? "COMMAND_REFUSED" : "DASHBOARD_READ_FAILED";
+  if (!known && code === "DASHBOARD_READ_FAILED" && status >= 400 && !WireErrorSchema.safeParse(value).success) return { code, reason: "response-contract-invalid" };
   const uncertain = state === "unknown" || state === "uncertain";
   return { code, reason: uncertain ? "outcome-unknown" : state === "refused" || state === "rejected" || state === "conflict" ? "operation-refused" : "operation-failed" };
 }
 
-export function debugFailureOutcomes(value: unknown, status = 200): (NonNullable<ReturnType<typeof debugFailureOutcome>> & { correlationId?: string })[] {
+export function debugFailureOutcomes(value: unknown, status = 200, readRoute?: string): (NonNullable<ReturnType<typeof debugFailureOutcome>> & { correlationId?: string })[] {
+  if (status === 200 && readRoute === "/api/v1/preflight") {
+    const failure = debugFailureOutcome(value, status, readRoute);
+    return failure === undefined ? [] : [failure];
+  }
   const command = CommandResultSchema.safeParse(value);
   if (command.success && (command.data.state === "applied" || command.data.state === "already-applied") && command.data.workerStartup !== undefined) {
     const startup = command.data.workerStartup;
@@ -57,7 +73,7 @@ export function debugFailureOutcomes(value: unknown, status = 200): (NonNullable
       code: "code" in result ? result.code : undefined });
     return failure === undefined ? [] : [{ ...failure, correlationId: result.commandId }];
   });
-  const failure = debugFailureOutcome(value, status);
+  const failure = debugFailureOutcome(value, status, readRoute);
   return failure === undefined ? [] : [failure];
 }
 

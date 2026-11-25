@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfilePasswordChangeRequestSchema, ProfileUsernameChangeRequestSchema, ProfileLoginChangeResultSchema, ProfileDetailsChangeRequestSchema, ProfileDetailsChangeResultSchema, DuoReenrolStateSchema, PROFILE_ONBOARDING_STATE, PublicProfileStateSchema, type DuoReenrolState, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
 type ProfilePasswordChangeRequest = z.infer<typeof ProfilePasswordChangeRequestSchema>;
 type ProfileUsernameChangeRequest = z.infer<typeof ProfileUsernameChangeRequestSchema>;
@@ -426,7 +426,9 @@ export function createDashboardClient(input: Readonly<{
       if (dashboardErrorReported(error)) throw error;
       if (!(error instanceof DashboardClientError) || error.kind === "schema" || error.kind === "protocol") {
         const failure = debugFailureOutcome({ state: "error", code: error instanceof DashboardClientError ? error.code : undefined });
-        if (failure !== undefined) reportFailure({ ...failure, route: `client:${method}` });
+        const reason = error instanceof z.ZodError || error instanceof DashboardClientError && error.kind === "schema" ? "response-schema-invalid"
+          : error instanceof DashboardClientError ? "response-protocol-invalid" : "client-exception";
+        if (failure !== undefined) reportFailure({ ...failure, reason, route: `client:${method}` });
       }
       throw error;
     };

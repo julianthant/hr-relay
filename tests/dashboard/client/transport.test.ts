@@ -131,6 +131,90 @@ describe("Settings read deadlines", () => {
   });
 });
 
+describe("run-start read retries", () => {
+  const readiness = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_MISSING", reason: "Preflight evidence is unavailable for this exact scope; re-check readiness." };
+  it("asks a checks read that got no answer in time again without reporting a failure", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: () => (calls += 1) === 1 ? new Promise<Response>(() => undefined) : Promise.resolve(Response.json(readiness)) });
+    try {
+      const reading = transport.requestJson("/api/v1/preflight?selection=%7B%7D");
+      await vi.advanceTimersByTimeAsync(10_250);
+      assert.deepEqual(await reading, readiness);
+      assert.equal(calls, 2); assert.deepEqual(failures, []);
+    } finally { vi.useRealTimers(); }
+  });
+  it("asks again on a retryable 503 and reports nothing once answered", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: async () => (calls += 1) === 1
+        ? Response.json({ state: "error", code: "STORAGE_SNAPSHOT_CHANGED", message: "busy", retryable: true }, { status: 503 })
+        : Response.json({ workbooks: [] }) });
+    try {
+      const reading = transport.requestJson("/api/v1/workbooks");
+      await vi.advanceTimersByTimeAsync(250);
+      assert.deepEqual(await reading, { workbooks: [] });
+      assert.equal(calls, 2); assert.deepEqual(failures, []);
+    } finally { vi.useRealTimers(); }
+  });
+  it("reports one read failure that names its cause after the last attempt", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: () => { calls += 1; return new Promise<Response>(() => undefined); } });
+    try {
+      const reading = transport.requestJson("/api/v1/workbooks/library/versions/version").then(() => undefined, (error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(3 * 10_000 + 2 * 250);
+      const failure = await reading;
+      assert.ok(failure instanceof DashboardClientError); assert.equal(failure.code, "DASHBOARD_READ_FAILED");
+      assert.equal(calls, 3);
+      assert.deepEqual(failures, [{ code: "DASHBOARD_READ_FAILED", reason: "read-deadline", route: "/api/v1/workbooks" }]);
+    } finally { vi.useRealTimers(); }
+  });
+  it("names a network failure as its cause", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const failures: unknown[] = [];
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: async () => { throw new TypeError("Failed to fetch"); } });
+    try {
+      const reading = transport.requestJson("/api/v1/preflight").then(() => undefined, (error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(500);
+      assert.ok(await reading instanceof DashboardClientError);
+      assert.deepEqual(failures, [{ code: "DASHBOARD_READ_FAILED", reason: "network-failed", route: "/api/v1/preflight" }]);
+    } finally { vi.useRealTimers(); }
+  });
+  it("asks again when the connection drops while the body arrives", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: async () => (calls += 1) === 1
+        ? new Response(new ReadableStream({ start(controller) { controller.error(new TypeError("network error")); } }))
+        : Response.json(readiness) });
+    try {
+      const reading = transport.requestJson("/api/v1/preflight");
+      await vi.advanceTimersByTimeAsync(250);
+      assert.deepEqual(await reading, readiness);
+      assert.equal(calls, 2); assert.deepEqual(failures, []);
+    } finally { vi.useRealTimers(); }
+  });
+  it("names a body that is not JSON once without asking again", async () => {
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: async () => { calls += 1; return new Response("<html>PRIVATE_PAGE</html>"); } });
+    const failure = await transport.requestJson("/api/v1/preflight").then(() => undefined, (error: unknown) => error);
+    assert.ok(failure instanceof DashboardClientError); assert.equal(failure.kind, "http");
+    assert.equal(calls, 1);
+    assert.deepEqual(failures, [{ code: "DASHBOARD_READ_FAILED", reason: "response-json-invalid", route: "/api/v1/preflight" }]);
+  });
+});
+
 it("keeps OAuth completion pending for its five-minute ceremony then bounds body delivery", async () => {
   const { vi } = await import("vitest"); vi.useFakeTimers();
   const transport = createDashboardTransport({ baseUrl: "http://bff.test", fetchImpl: async () => new Response(new ReadableStream({ start() {} })) });
