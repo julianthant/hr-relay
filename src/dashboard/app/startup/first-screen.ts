@@ -7,9 +7,9 @@ import { STARTUP_READ_DEADLINE_MS } from "../../state/use-bootstrap.js";
 
 export const SLOW_STARTUP_MS = 5_000;
 export { STARTUP_READ_DEADLINE_MS };
-// Reads a first screen can make. Writes are never expired: one may still land after its answer is dropped.
+// Reads a first screen can make, and the account check its next read repeats. Writes are never expired: one may still land after its answer is dropped.
 const FIRST_SCREEN_READS = new Set(["activityPopulation", "activityReport", "applicationLifecycle", "assistantActivity", "assistantConversation", "assistantHistory",
-  "assistantModelPreference", "assistantModels", "calendar", "chatGptAccount", "editableSettings", "intakeSession", "itemAttemptHistory", "notificationCollection",
+  "assistantModelPreference", "assistantModels", "calendar", "chatGptAccount", "checkChatGptAccount", "editableSettings", "intakeSession", "itemAttemptHistory", "notificationCollection",
   "notificationSnapshot", "notificationStatus", "preflightScopes", "readActivityPopulation", "readPreflight", "readiness", "runDetail", "runHistoryStatus", "runSection",
   "settingsFacts", "workbookCatalog", "workbookCompatibility", "workbookHistory", "workbookList", "workbookRevision", "workbookTypes", "workflowExplorer"]);
 const STILL_LOADING = '[data-slot="skeleton"], [data-loading-layout], [aria-busy="true"]:not(button)';
