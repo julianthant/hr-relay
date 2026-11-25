@@ -7,7 +7,6 @@ import ts from "typescript";
 import { describe,it } from "vitest";
 import inventory from "../../../docs/guard-inventory.json" with { type: "json" };
 import { projectOwnershipViolations } from "../../../scripts/test/project-policy.js";
-import { spreadsheetValueMatches } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js";
 import vitestConfig,{
 REBUILD_ARCHITECTURE_TEST_EXCLUDE,
 REBUILD_ARCHITECTURE_TEST_INCLUDE,
@@ -457,12 +456,6 @@ describe("reviewed architecture guard manifest", () => {
         rmSync(root, { recursive: true, force: true });
       }
     }
-  });
-
-  it("keeps reviewed spreadsheet validation failures distinct from missing field definitions", () => {
-    assert.equal(spreadsheetValueMatches("personalEmail", "invalid@"), false);
-    assert.equal(spreadsheetValueMatches("personalEmail", ""), true);
-    assert.throws(() => spreadsheetValueMatches("unregistered-field", "value"), /SPREADSHEET_FIELD_NOT_FOUND/u);
   });
 
   it("pins reviewed catch statements while permitting edits outside them", () => {

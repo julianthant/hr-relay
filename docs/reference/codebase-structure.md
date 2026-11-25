@@ -275,6 +275,9 @@ tests/
 `tests/architecture/test-layout.test.ts` checks canonical filenames and mirrors against existing tracked source.
 Architecture, performance, type, and support trees are exempt from source mirroring.
 Architecture fixtures and helpers stay beside their owning guard families.
+Module behaviour tests mirror their source owners. For example, worker loop and session
+tests live under `tests/backend/runtime/workers/`, and backup, doctor, and restore
+tests live under `tests/backend/storage/sqlite/`.
 Shared fixtures, fresh-authority builders, and child-process entrypoints live under `tests/support/`.
 `tests/support/helpers/dashboard/controls/` owns the UI control preview fixtures, loaded by
 fixture name from `tests/support/helpers/dashboard/mock-world/app-entry.tsx`.
