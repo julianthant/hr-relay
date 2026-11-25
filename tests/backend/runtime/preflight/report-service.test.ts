@@ -36,7 +36,7 @@ it("tags expired dashboard readiness while preserving its last report and a futu
   currentClock.setWall(new Date(Date.parse(report.checkedAt) - 1));
   const future = service.read();
   assert.equal(future.state, "unavailable");
-  assert.equal("code" in future, false);
+  assert.equal(future.state === "unavailable" ? future.code : undefined, "PREFLIGHT_EVIDENCE_STALE");
 });
 
 it("retains completed failed verdicts for the selected workflow while expiry and changed scope remain unavailable", async () => {

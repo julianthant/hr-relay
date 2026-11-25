@@ -6,7 +6,7 @@ import { DashboardReportDeliveryError } from "../../../src/dashboard/client/erro
 const active = { state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready" };
 
 describe("handled dashboard failure reports", () => {
-  it.each(["http", "network", "refused", "schema", "settings-network", "preflight-http"])("reports %s with metadata and preserves the original settlement", async kind => {
+  it.each(["http", "network", "refused", "schema", "workbook-schema", "settings-network", "preflight-http"])("reports %s with metadata and preserves the original settlement", async kind => {
     const reports: unknown[] = [];
     const requests: string[] = [];
     let activated = false;
@@ -16,13 +16,13 @@ describe("handled dashboard failure reports", () => {
         if (!activated && url.endsWith("/profile/state")) { activated = true; return Response.json(active); }
         if (url.endsWith("/debug/errors")) { const body = init?.body; assert.ok(typeof body === "string"); reports.push(JSON.parse(body)); return Response.json({ state: "recorded" }); }
         if (kind === "network" || kind === "settings-network") throw new Error("PRIVATE_NAME PRIVATE_EID PRIVATE_CREDENTIAL");
-        if (kind === "schema") return Response.json({ state: "PRIVATE_PAGE_TEXT" });
+        if (kind === "schema" || kind === "workbook-schema") return Response.json({ state: "PRIVATE_PAGE_TEXT" });
         if (kind === "refused") return Response.json({ state: "refused", code: "PROFILE_SESSION_STALE" });
         return Response.json({ state: "error", code: "PROFILE_SESSION_STALE", message: "PRIVATE_NAME", retryable: false }, { status: 503 });
       } });
     await client.readProfileSession();
     const operation = kind === "http" || kind === "settings-network" ? client.editableSettings()
-      : kind === "preflight-http" ? client.readPreflight() : client.readProfileSession();
+      : kind === "preflight-http" ? client.readPreflight() : kind === "workbook-schema" ? client.workbookCatalog() : client.readProfileSession();
     if (kind === "refused") assert.deepEqual(await operation, { state: "refused", code: "PROFILE_SESSION_STALE" });
     else await assert.rejects(operation);
     await vi.waitFor(() => assert.equal(reports.length, 1));
@@ -30,6 +30,8 @@ describe("handled dashboard failure reports", () => {
     assert.equal(serialized.includes("PRIVATE_"), false);
     assert.match(serialized, /settings/u);
     if (kind === "schema") assert.match(serialized, /client:readProfileSession/u);
+    if (kind === "workbook-schema") assert.match(serialized, /client:workbookCatalog/u);
+    if (kind === "schema" || kind === "workbook-schema") assert.match(serialized, /"reason":"response-schema-invalid"/u);
     assert.equal(requests.filter(url => url.endsWith("/debug/errors")).length, 1);
     assert.equal(Object.isFrozen(client), true);
   });
