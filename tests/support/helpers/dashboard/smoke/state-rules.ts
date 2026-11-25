@@ -54,7 +54,8 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
       const bottom = Math.max(...drawn.map(rect => (rect.top + rect.bottom) / 2 + ink));
       const label = `"${nodes.map(node => node.textContent ?? "").join("").trim().slice(0, 60)}"`;
       const cuts: string[] = [];
-      const text = nodes.map(node => node.textContent ?? "").join("").trim();
+      // The whole text of the element, including words set in child spans, is what the title or tooltip label must carry.
+      const text = (element.textContent ?? "").trim();
       // An ellipsis is accepted only where the full text is reachable: a title, or a hover/focus trigger named with it.
       const tooltipStates = ["closed", "delayed-open", "instant-open"];
       const reachable = () => { if (text === "") return false; for (let holder: HTMLElement | null = element; holder !== null; holder = holder.parentElement) {
@@ -420,6 +421,8 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const composite = '[role="radiogroup"], [role="tablist"], [role="menu"], [role="menubar"], [role="listbox"], [role="toolbar"], [role="grid"], [role="tree"]';
     for (const element of document.querySelectorAll<HTMLElement>(`body :is(${input.selector ?? "*"})`)) {
+      // A heading that only receives focus from the program (tabindex -1) is a landing place, not a control.
+      if (element.matches('[role="heading"][tabindex="-1"]')) continue;
       const box = element.getBoundingClientRect();
       if (box.width === 0 || box.height === 0 || getComputedStyle(element).visibility === "hidden") continue;
       const shown = stoodInFor(element).filter(part => { const partBox = part.getBoundingClientRect(); return partBox.width > 1 && partBox.height > 1; });
