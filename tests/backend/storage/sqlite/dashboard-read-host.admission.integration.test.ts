@@ -19,7 +19,7 @@ import { historyArchivePath } from "../../../../src/backend/storage/sqlite/isola
 import { admitReadLane, openReadLane, prepareReadLaneStart, READ_LANE_OPEN_MODE } from "../../../../src/backend/storage/sqlite/read-lane-admission.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { importProfileLibrary } from "../../../../scripts/profiles/profile-copy.js";
-import { LANE_READS_ENTRY, laneHistory, laneWrite } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { LANE_READS_ENTRY, laneHistory, laneRunPage, laneWrite } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createBoundProfileFixture, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -148,6 +148,46 @@ it("answers writes through both lane connections with a refusal", async () => {
     assert.match(result.history, /cannot run inside an authority read snapshot/u);
     assert.equal(fixture.database.authority.workerPools.get("person-lookup"), undefined);
   } finally { await lanes.close(); }
+});
+
+it("pages runs through TEMP tables without an archive while the lane's connection still refuses writes to main", async () => {
+  const { fixture } = await laneFixture();
+  const database = fixture.database;
+  if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  for (const seed of [8591, 8592, 8593]) database.authority.runs.enqueue(runRecordOf({ seed, enqueuedAt: systemClock.now().toISOString() }));
+  const expected = database.authority.runs.listPage({ offset: 0, limit: 10 }).map(run => run.envelope.runId);
+  assert.equal(expected.length, 3);
+  const lanes = createDashboardReadHost({ admission: fixture.profile.admission, database, clock: systemClock, lanes: ["navigation"], entry: LANE_READS_ENTRY });
+  try {
+    const PageSchema = z.strictObject({ archive: z.boolean(), runIds: z.array(z.string()) });
+    const page = (offset: number, limit: number) => lanes.read(laneRunPage, { offset, limit }).then(reply => PageSchema.parse(JSON.parse(reply.body)));
+    assert.deepEqual(await page(0, 10), { archive: false, runIds: expected });
+    assert.deepEqual(await page(1, 1), { archive: false, runIds: expected.slice(1, 2) });
+    const refused = z.strictObject({ native: z.string(), history: z.string() }).parse(JSON.parse((await lanes.read(laneWrite, {})).body));
+    assert.notEqual(refused.native, "written");
+    assert.notEqual(refused.history, "written");
+    assert.equal(database.authority.workerPools.get("person-lookup"), undefined);
+  } finally { await lanes.close(); }
+
+  // The lane's native connection: opened through its admission, TEMP writes allowed, trusted_schema off, main refused by the read-only open.
+  const lane = openReadLane(admitReadLane(prepareReadLaneStart(fixture.profile.admission, database, "navigation")), 250);
+  try {
+    assert.equal(lane.history, lane.native);
+    assert.deepEqual(lane.native.authority.runs.listPage({ offset: 0, limit: 10 }).map(run => run.envelope.runId), expected);
+    assert.throws(() => { lane.native.authority.workerPools.plan({ workflow: "person-lookup", desiredWorkers: 9, expectedVersion: 0,
+      requestedBy: "local-operator", now: systemClock.now().toISOString() }); }, /read-lane-write-refused/u);
+  } finally { lane.native.close(); }
+  const connection = new DatabaseSync(fixture.path, { readOnly: true });
+  try {
+    connection.exec("PRAGMA query_only=OFF; PRAGMA trusted_schema=OFF");
+    connection.exec("CREATE TEMP TABLE lane_probe_page(position INTEGER PRIMARY KEY,run_id TEXT NOT NULL UNIQUE); INSERT INTO lane_probe_page SELECT NULL,id FROM runs");
+    assert.equal(connection.prepare("SELECT count(*) AS n FROM lane_probe_page").get()?.n, 3);
+    assert.equal(connection.prepare("PRAGMA trusted_schema").get()?.trusted_schema, 0);
+    for (const sql of ["INSERT INTO main.commands DEFAULT VALUES", "DELETE FROM main.runs", "CREATE TABLE main.lane_probe_table(x)"]) {
+      assert.throws(() => connection.exec(sql), /readonly|read-only/u, sql);
+    }
+  } finally { connection.close(); }
+  assert.equal(database.authority.runs.listPage({ offset: 0, limit: 10 }).length, 3);
 });
 
 it("attaches a profile copy's history archive in the lane with the host's logical cursors, and the lane connection cannot write", async () => {

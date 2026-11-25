@@ -1547,8 +1547,6 @@ export class AuthorityDatabase implements Disposable {
     const reader = new AuthorityDatabase(owner, { path: this.#path, busyTimeoutMs: this.#busyTimeoutMs,
       migrationOwner: "dashboard-read-lane-history", openMode: "dashboard-read-worker-read-only-no-migrate" }, this.#clock);
     try {
-      // The native connection opened read-only. TEMP views over both histories need query_only off on this connection alone.
-      reader.#database.exec("PRAGMA query_only=OFF; PRAGMA trusted_schema=OFF");
       // A lane never writes the archive: one that is stale or missing an index is refused, not upgraded.
       reader.#historyCursorOffset = attachHistoryArchive(reader.#database, archive.path, owner.profileBinding, "validate");
       admitArchive();
@@ -3127,6 +3125,8 @@ export class AuthorityDatabase implements Disposable {
     this.#database.exec("PRAGMA foreign_keys = ON");
     this.#database.exec("PRAGMA query_only = ON");
     this.#database.exec(`PRAGMA busy_timeout = ${String(this.#busyTimeoutMs)}`);
+    // A read lane pages through TEMP tables and views. Its connection opened read-only, so main and any attachment still refuse writes.
+    if (this.#openMode === "dashboard-read-worker-read-only-no-migrate") this.#database.exec("PRAGMA query_only=OFF; PRAGMA trusted_schema=OFF");
   }
 
   #admitExistingSchema(): number {

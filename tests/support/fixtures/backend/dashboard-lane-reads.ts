@@ -79,6 +79,12 @@ export const laneWrite = defineLaneRead(import.meta.url, "lane-write", { lane: "
     return { native: attempt(plan(context.native)), history: attempt(plan(context.history)) };
   } });
 
+/** Pages the run list through the lane's TEMP paging tables. */
+export const laneRunPage = defineLaneRead(import.meta.url, "lane-run-page", { lane: "navigation", priority: "interactive",
+  args: z.strictObject({ offset: z.number().int().nonnegative(), limit: z.number().int().positive().max(1000) }),
+  run: (context, args) => ({ archive: context.start.historyArchive !== undefined,
+    runIds: context.history.authority.runs.listPage(args).map(run => run.envelope.runId) }) });
+
 /** A connection left inside a read transaction, as a failed rollback leaves it: the lane must exit and release its mark. */
 export const laneStuck = defineLaneRead(import.meta.url, "lane-stuck", { lane: "navigation", priority: "interactive", args: z.strictObject({}),
   run(context) {
