@@ -152,8 +152,8 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Lint root package
-        run: npm run lint
+      - name: Compare root ESLint and Oxlint
+        run: python3 tests/architecture/runtime/lint-shadow.py
       - run: npm ci
         working-directory: fast-duo
       - run: npm run lint

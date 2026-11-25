@@ -31,7 +31,7 @@ function typedRoots(directory: string): string[] {
   });
 }
 
-function lint(root: string): number {
+function lint(root: string, shadowJson?: string): number {
   const cacheDirectory = join(root, "node_modules", ".cache", "eslint");
   const baseConfigUrl = pathToFileURL(join(root, "eslint.config.js")).href;
   mkdirSync(cacheDirectory, { recursive: true });
@@ -59,7 +59,9 @@ export default createEslintConfig(${JSON.stringify(project)});
         "--max-old-space-size=6144", "node_modules/eslint/bin/eslint.js",
         "--config", config,
         "--cache", "--cache-strategy", "content", "--cache-location", join(cacheDirectory, name),
-        "--max-warnings", "0", "--", ...targets,
+        "--max-warnings", "0",
+        ...(shadowJson ? ["--format", "json", "--output-file", join(shadowJson, `${name}.json`)] : []),
+        "--", ...targets,
       ], { cwd: root, stdio: "inherit" });
       if (result.status !== 0) {
         const detail = result.error?.message ?? result.signal ?? `exit ${result.status}`;
@@ -74,5 +76,5 @@ export default createEslintConfig(${JSON.stringify(project)});
 }
 
 if (import.meta.main) {
-  process.exitCode = lint(resolve(import.meta.dirname, "../.."));
+  process.exitCode = lint(resolve(import.meta.dirname, "../.."), process.argv[2]);
 }
