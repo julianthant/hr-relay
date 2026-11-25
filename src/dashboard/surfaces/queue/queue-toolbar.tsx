@@ -105,6 +105,12 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
   </>;
 }
 
+/** Quitting leaves runs paused: the queue offers to resume them all from its top. */
+export function PausedRunsStrip({ count, onResumeAll }: { count: number; onResumeAll?: () => void }) {
+  if (count === 0) return null;
+  return <div role="status" className="queue-paused-strip"><span>{count} {count === 1 ? "run" : "runs"} paused ·</span><Button size="sm" variant="ghost" disabled={onResumeAll === undefined} onClick={onResumeAll}>Resume all</Button></div>;
+}
+
 /** Ctrl+Q asks here: it pauses every run and quits once the pauses are confirmed. */
 export function QuitDialog({ requested, canQuit, onDismiss, onQuit }: { requested: boolean; canQuit: boolean; onDismiss: () => void; onQuit: () => void }) {
   return <Dialog open={requested} onOpenChange={open => { if (!open) onDismiss(); }}><DialogContent size="sm" title="Pause all and quit?" description={PAUSE_ALL_EFFECT} onCloseAutoFocus={event => { event.preventDefault(); document.getElementById("dashboard-main-region")?.focus(); }}>

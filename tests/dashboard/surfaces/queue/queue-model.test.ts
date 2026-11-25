@@ -280,6 +280,17 @@ function settled(input: Record<string, unknown>) {
 
 describe_m4("sortQueueBand — `attention`", () => {
 
+  it_m4("applies the chosen order inside a rank while keeping the ranks", () => {
+    const rows = [
+      surface({ runId: runId(1), status: "running", startedAt: "2026-08-03T10:00:00Z" }),
+      surface({ runId: runId(2), status: "running", startedAt: "2026-08-03T11:00:00Z" }),
+      settled({ runId: runId(3), status: "failed", startedAt: "2026-08-03T12:00:00Z" }),
+    ];
+    const ids = (order: "newest" | "oldest") => sortQueueBand_m4(rows, "attention", NOW, order).map((row) => String(row.runId));
+    assert_m4.deepEqual(ids("oldest"), [runId(3), runId(1), runId(2)].map(String));
+    assert_m4.deepEqual(ids("newest"), [runId(3), runId(2), runId(1)].map(String));
+  });
+
   it_m4("ranks by status, in the demo's own order", () => {
     const rows = [
       settled({ runId: runId(1), status: "cancelled" }),

@@ -46,8 +46,9 @@ export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] 
   return facts;
 }
 
-/** Attention groups by status; the other orders sort the entire queue. */
+/** Attention groups by status; the other orders sort the entire queue, or each group while Attention first is on. */
 export type QueueSortKey = "attention" | "newest" | "oldest" | "longest";
+export type QueueOrder = Exclude<QueueSortKey, "attention">;
 
 export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: string }[] = [
   { key: "attention", label: "Attention first", note: "What needs you, then what broke, then everything else — the default." },
@@ -278,23 +279,23 @@ export function sortQueueBand<Row extends QueueSortRow>(
   rows: readonly Row[],
   key: QueueSortKey,
   nowIso: string,
+  order: QueueOrder = "newest",
 ): readonly Row[] {
   const born = (surface: Row): number => Date.parse(surface.startedAt);
   const rank = (surface: Row): number => SORT_STATUS_RANK[dsStatusOf(surface.status)];
-  return [...rows].sort((a, b) => {
-    if (key === "newest") return born(b) - born(a);
-    if (key === "oldest") return born(a) - born(b);
-    if (key === "longest") return elapsedMs(b, nowIso) - elapsedMs(a, nowIso);
-    // `attention` — rank, then newest first inside a rank, exactly as the demo
-    // composes it (`rank(a) - rank(b) || born(b) - born(a)`).
-    return rank(a) - rank(b) || born(b) - born(a);
-  });
+  const by = (chosen: QueueOrder, a: Row, b: Row): number => {
+    if (chosen === "newest") return born(b) - born(a);
+    if (chosen === "oldest") return born(a) - born(b);
+    return elapsedMs(b, nowIso) - elapsedMs(a, nowIso);
+  };
+  // `attention` ranks by status first; the chosen order applies inside a rank.
+  return [...rows].sort((a, b) => key === "attention" ? rank(a) - rank(b) || by(order, a, b) : by(key, a, b));
 }
 
 /** The view and keyboard navigation share the same row order. */
-export function queueDisplayGroups<Row extends QueueSortRow>(rows: readonly Row[], sort: QueueSortKey, nowIso: string): readonly { key: QueueBandKey | null; label: string; rows: readonly Row[] }[] {
+export function queueDisplayGroups<Row extends QueueSortRow>(rows: readonly Row[], sort: QueueSortKey, nowIso: string, order: QueueOrder = "newest"): readonly { key: QueueBandKey | null; label: string; rows: readonly Row[] }[] {
   if (sort !== "attention") return [{ key: null, label: "", rows: sortQueueBand(rows, sort, nowIso) }];
-  return BAND_ORDER.map(key => ({ key, label: BAND_LABEL[key], rows: sortQueueBand(rows.filter(row => bandOf(dsStatusOf(row.status)) === key), sort, nowIso) }));
+  return BAND_ORDER.map(key => ({ key, label: BAND_LABEL[key], rows: sortQueueBand(rows.filter(row => bandOf(dsStatusOf(row.status)) === key), sort, nowIso, order) }));
 }
 
 /* ── the attention transition ────────────────────────────────────────────── */
@@ -462,7 +463,7 @@ export function queueScopeWorkflow(selected: QueueSurfaceWire, surfaces: readonl
 
 /** Keyboard traversal follows drawn rows, including expanded members. */
 export function queueKeyboardEntries(
-  surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString(),
+  surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString(), order: QueueOrder = "newest",
 ): readonly QueueKeyboardEntry[] {
   const { top, membersOf } = partition(surfaces);
   const { displayTop, itemByRunId } = queueItemLayout(top);
@@ -476,7 +477,7 @@ export function queueKeyboardEntries(
       else entries.push({ kind: "record", key: line.key, member: line.member, status: line.member.status });
     }
   };
-  for (const group of queueDisplayGroups(displayTop, sort, nowIso)) for (const surface of group.rows) {
+  for (const group of queueDisplayGroups(displayTop, sort, nowIso, order)) for (const surface of group.rows) {
     if ("kind" in surface) {
       for (const line of queueMemberLines(surface, [])) if (line.kind === "run") append(line.item.representative, line.item);
       continue;
@@ -488,13 +489,13 @@ export function queueKeyboardEntries(
   return entries;
 }
 
-export function visibleQueueKeys(surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString()): readonly string[] {
-  return queueKeyboardEntries(surfaces, sort, nowIso).map(entry => entry.key);
+export function visibleQueueKeys(surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString(), order: QueueOrder = "newest"): readonly string[] {
+  return queueKeyboardEntries(surfaces, sort, nowIso, order).map(entry => entry.key);
 }
 
 /** Attention shortcuts use the same visible order and bands as the queue. */
-export function attentionQueueKeys(surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString()): readonly string[] {
-  return queueKeyboardEntries(surfaces, sort, nowIso).filter(entry => bandOf(dsStatusOf(entry.status)) === "attention").map(entry => entry.key);
+export function attentionQueueKeys(surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString(), order: QueueOrder = "newest"): readonly string[] {
+  return queueKeyboardEntries(surfaces, sort, nowIso, order).filter(entry => bandOf(dsStatusOf(entry.status)) === "attention").map(entry => entry.key);
 }
 
 export interface QueueBatch extends QueueSortRow {

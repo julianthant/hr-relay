@@ -36,7 +36,7 @@ export function RunListRow({ title, description, wrapNote, check, locked, lead, 
   const toggle = check
     ? <Switch hideLabel label={`Include ${name}`} checked={check.checked} disabled={check.disabled} onCheckedChange={check.onChange} className="!min-h-0 !w-auto !py-0" />
     : locked
-      ? <Switch hideLabel label={`${name} (required)`} checked disabled onCheckedChange={() => undefined} className="!min-h-0 !w-auto !py-0" />
+      ? <Switch hideLabel label={`${name} (required)`} checked disabled locked onCheckedChange={() => undefined} className="!min-h-0 !w-auto !py-0" />
       : null;
   return <div className={cn("ds-run-row flex flex-col justify-center gap-2 border-b border-ui-stroke last:border-b-0", description ? "min-h-[var(--ds-row-h-2)] py-[var(--ds-row-pad-y)]" : "min-h-[var(--ds-row-h-1)] py-[var(--ds-row-pad-y-1)]", dimmed && "opacity-50")}>
     <div className="flex items-center justify-between gap-4">

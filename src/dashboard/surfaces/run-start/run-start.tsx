@@ -330,6 +330,7 @@ export function RunStartDialog({
   const held = useRef({ sending, failed: sourceError !== null });
   held.current = { sending, failed: sourceError !== null };
   const fromRerun = useRef(false);
+  const keptPending = useRef(false);
   useEffect(() => { if (!open) { openedFor.current = undefined; setOpened(undefined); } }, [open]);
   /** Nothing is drawn while a one-click rerun goes on by itself. */
   const drawn = open && !hidden && view.unattended === undefined && !(rerunInOneClick && opened !== rerunSource);
@@ -344,6 +345,8 @@ export function RunStartDialog({
     const changed = restored !== undefined && !sameDefinition(restored, workflows.find(entry => entry.workflowId === restored.workflowId));
     if (reopened && (held.current.sending || !held.current.failed && !changed)) return;
     resetPdfs();
+    // Landing on another workflow clears the draft, so there is nothing kept to announce.
+    if (lastOpenedWorkflow.current !== (routed ? selectedWorkflowRef.current : defaultWorkflowId(workflows, panelWorkflowId))) keptPending.current = false;
     if (!routed && selectedWorkflowRef.current !== defaultWorkflowId(workflows, panelWorkflowId)) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId), true);
     // The Start run doors name the workflow, so an open can land on another one than the last: its draft starts clean.
     if (lastOpenedWorkflow.current !== selectedWorkflowRef.current) update(current => launchDraft.changeWorkflow(current, workflows.find(entry => entry.workflowId === selectedWorkflowRef.current), commandBindingRef.current?.authority.today));
@@ -374,7 +377,6 @@ export function RunStartDialog({
 
   /** Closing without starting keeps the draft; the next open says so for a few seconds. */
   const [draftKept, setDraftKept] = useState(false);
-  const keptPending = useRef(false);
   const closeAndReset = useCallback((next: boolean) => {
     if (!next && rerunSource === undefined) {
       keptPending.current = JSON.stringify(draftRef.current) !== JSON.stringify(launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === workflowId), commandBinding?.authority.today));

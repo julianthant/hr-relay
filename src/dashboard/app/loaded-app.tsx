@@ -29,7 +29,7 @@ import { RunLaunchHost } from "../surfaces/run-start/run-launch.js";
 import { launchWorkflows, useRunLaunch } from "../surfaces/run-start/run-launch-model.js";
 import { PanelRight } from "lucide-react";
 import {useCallback,useContext,useEffect,useLayoutEffect,useMemo,useRef,useState,type ReactNode } from "react";
-import { CommandRequestSchema, WorkflowBatchCommandRequestSchema, type BulkRunCommandResponse } from "../../rules/commands/commands.js";
+import { CommandRequestSchema, BulkRunCommandRequestSchema, WorkflowBatchCommandRequestSchema, type BulkRunCommandResponse } from "../../rules/commands/commands.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
 type FrontendBootstrapWire,
@@ -61,10 +61,12 @@ import type { QueueBatch, QueueSurfaceWire } from "../surfaces/queue/queue-model
 import {
   attentionQueueKeys,
 visibleQueueKeys,
+type QueueOrder,
 type QueueSortKey,
 } from "../surfaces/queue/queue-model.js";
 import {
 BulkCommandFeedback,
+PausedRunsStrip,
 QuitDialog,
 } from "../surfaces/queue/queue-toolbar.js";
 import { bulkResultNotice } from "../surfaces/queue/queue-toolbar-model.js";
@@ -148,7 +150,8 @@ interface LoadedAppProps {
   openWells: ReadonlySet<string>;
   onWells: (next: ReadonlySet<string>) => void;
   sort: QueueSortKey;
-  onSort: (sort: QueueSortKey) => void;
+  order: QueueOrder;
+  onSort: (sort: QueueSortKey, order: QueueOrder) => void;
 }
 
 
@@ -187,6 +190,7 @@ export function LoadedApp({
   openWells,
   onWells,
   sort,
+  order,
   onSort,
 }: LoadedAppProps) {
   /** THE clock. The server's instant is the authority; the browser contributes
@@ -540,6 +544,16 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     await execution;
   }, [commandScope, commandFeedback, executor, client, dayWire, workflowLabelOf, activeWorkflowId, clock, toast, setRoute]);
 
+  const pausedRuns = application?.targets.filter(target => target.pause?.state === "paused") ?? [];
+  const resumeAll = () => {
+    if (application === undefined || application.state !== "ready" || applicationBusy || quitting) return;
+    const envelope = { commandId: crypto.randomUUID(), requestedAt: clock.now(), requestedBy: boot.actor.id, source: "dashboard" };
+    const targets = pausedRuns.map(({ runId, expectedVersion }) => ({ runId, expectedVersion }));
+    const plan: BulkVerbPlan = { verb: "resume", label: "Resume", eligible: targets.map(target => ({ ...target,
+      title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? target.runId })), skipped: [], unavailable: [] };
+    void executeShell(BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: envelope.commandId, family: "run", type: "resume", targets, mode: "best-effort" }), "Resume all runs", plan).then(lifecycle.refresh);
+  };
+
   const quitApplication = () => {
     if (application === undefined || application.state !== "ready" || applicationBusy || quitting) return;
     const envelope = { commandId: crypto.randomUUID(), requestedAt: clock.now(), requestedBy: boot.actor.id, source: "dashboard" };
@@ -670,7 +684,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     setBatchGrouping, runQueueAction, renameTitle: renameQueueTitle,
   });
 
-  const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, sortNowIso).map(entry => [entry.key, entry])), [surfaces, sort, sortNowIso]);
+  const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, sortNowIso, order).map(entry => [entry.key, entry])), [surfaces, sort, sortNowIso, order]);
   const selectQueueKey = useCallback((key: string) => {
     const entry = keyboardEntries.get(key);
     if (entry === undefined) throw new Error("queue-keyboard-target-unavailable");
@@ -679,12 +693,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [keyboardEntries, openQueueMember, selectRun]);
   const selectedQueueKey = route.view?.queueMember === undefined ? route.run : queueMemberKey(route.view.queueMember);
   const keyboardOrder = useMemo(
-    () => visibleQueueKeys(surfaces, sort, sortNowIso),
-    [surfaces, sort, sortNowIso],
+    () => visibleQueueKeys(surfaces, sort, sortNowIso, order),
+    [surfaces, sort, sortNowIso, order],
   );
   const keyboardAttention = useMemo(
-    () => attentionQueueKeys(surfaces, sort, sortNowIso),
-    [surfaces, sort, sortNowIso],
+    () => attentionQueueKeys(surfaces, sort, sortNowIso, order),
+    [surfaces, sort, sortNowIso, order],
   );
   useGlobalKeys({
     queueVisible: activeTakeover(route) === "none" && dayWire !== undefined,
@@ -742,9 +756,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [client, toast]);
 
   const renderQueueBody = useCallback((body: ReactNode) => (
-    <FocusQueueHeader active={filter} counts={scopedStatusCounts} onFilter={onFilter}
-      >{body}</FocusQueueHeader>
-  ), [filter, scopedStatusCounts, onFilter]);
+    <FocusQueueHeader>{body}</FocusQueueHeader>
+  ), []);
 
   const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
   const settingsResolution = resolveSettingsSection(buildSettingsNav(), route.settings ?? "");
@@ -759,7 +772,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [shownDay, dataSources]);
   const setLaunchOpen = launch.setOpen;
   const onRailSelect = useCallback((id: string) => { selectWorkflow(id); }, [selectWorkflow]);
-  const railAccount = useMemo(() => accountPage === undefined ? undefined : { name: accountPage.values.name, initials: accountPage.values.initials, email: accountPage.values.username }, [accountPage]);
+  const railAccount = useMemo(() => accountPage === undefined ? undefined : { name: accountPage.values.name, initials: accountPage.values.initials, email: accountPage.values.ucpathUsername }, [accountPage]);
   const onRailSettings = useCallback(() => openSettings(), [openSettings]);
   const onRailLogout = useCallback(() => setLogoutOpen(true), []);
   const railSessionControls = useMemo(() => <SessionRailControls open={sessionsOpen} onOpenChange={setSessionsOpen} />, [sessionsOpen, setSessionsOpen]);
@@ -992,7 +1005,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 <h1 className="sr-only">{workflowLabelOf(activeWorkflowId)} queue</h1>
               <QueueHeader title={workflowLabelOf(activeWorkflowId)} ask={<AssistantLauncher />} startId={RUN_START_DOOR_ID} onStartRun={openStart}
                 day={day} today={today} onDay={next => setRoute({ ...route, day: next, run: undefined })} dayMark={keptDay !== undefined ? <KeptDayMark /> : undefined}
-                sort={sort} onSort={onSort} active={filter} counts={scopedStatusCounts} onFilter={onFilter} />
+                sort={sort} order={order} onSort={onSort} active={filter} counts={scopedStatusCounts} onFilter={onFilter} />
+              <PausedRunsStrip count={pausedRuns.length} onResumeAll={application?.state === "ready" && !applicationBusy && !quitting ? resumeAll : undefined} />
               {shownDay === undefined || !queueWorkflowAvailable ? (
                 dateError === undefined && dayResource.state !== "failed" && shownDay === undefined && !streamDown ? <QueueSkeleton /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   {dateError === undefined && dayResource.state === "failed" ? <FailureNotice sentence="Couldn't load the queue."
@@ -1012,6 +1026,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 isToday={day === today}
                 onStartRun={openStart}
                 sort={sort}
+                order={order}
                 renderBody={renderQueueBody}
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
               />}
@@ -1077,7 +1092,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       />
       </PanelBoundary>
 
-      <QuitDialog requested={quitRequested} canQuit={application?.state === "ready" && !applicationBusy && !quitting} onDismiss={() => setQuitRequested(false)} onQuit={quitApplication} />
+      <QuitDialog requested={quitRequested} canQuit={application?.state === "ready" && application.pause !== "pause-pending" && !applicationBusy && !quitting} onDismiss={() => setQuitRequested(false)} onQuit={quitApplication} />
 
       {/* Destructive commands use their served blast-radius confirmation before dispatch. */}
       <ConfirmCommandDialog
