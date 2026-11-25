@@ -93,7 +93,7 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
       })}</ul>
       {statusReadFailed && <p role="alert" className="setup-notice" data-tone="failure">{status}</p>}
       {!statusReadFailed && browserNotice !== undefined && <p role={canReopen ? "alert" : "status"} className="setup-notice" data-tone={canReopen ? "failure" : "info"}>{browserNotice}</p>}
-      {reopenFailure !== undefined && <p role="alert" className="setup-notice" data-tone="failure">{reopenFailure}</p>}
+      {reopenFailure !== undefined && reopenFailure !== browserNotice && <p role="alert" className="setup-notice" data-tone="failure">{reopenFailure}</p>}
       {!statusReadFailed && status !== undefined && browserNotice === undefined && <p role="status" className="setup-notice" data-tone="info">{status}</p>}
     </main>
     <footer className="setup-footer">{closeFailure !== undefined && <p role="alert" className="setup-notice" data-tone="failure">{closeFailure}</p>}
