@@ -301,7 +301,8 @@ export function validatedRowByRow(table: AuthorityTableName | "explorer_override
   return !(table.startsWith("workbook_") || table === "explorer_overrides" || table === RETIRED_ASSISTANT_GRANT_TABLE || isWorkerCustodyDroppedTable(table));
 }
 
-export function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, workbookPayloads = true): number {
+export function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION,
+  workbookPayloads = true, fingerprint?: Readonly<{ table(name: string): void; row(row: Record<string, unknown>): void }>): number {
   return withoutNativeRecordReadMemo(() => {
     const readers = storedRowContext(database, expectedSchemaVersion);
     // The full current-schema scan validates every command, including the binding between its request and outcome.
@@ -322,13 +323,15 @@ export function validateAuthorityRecordSchemas(database: DatabaseSync, validateS
     const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
     for (const table of migrationTableNames(expectedSchemaVersion)) {
       // The custody conversion validates the tables it drops.
-      if (!validatedRowByRow(table) || table === "assistant_actions" && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) continue;
-      if (table === "run_search" && (!validateSearch || !searchReady)) continue;
+      const validate = validatedRowByRow(table) && !(table === "assistant_actions" && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION)
+        && !(table === "run_search" && (!validateSearch || !searchReady));
+      if (!validate && fingerprint === undefined) continue;
+      fingerprint?.table(table);
       const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
         : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
       for (const raw of database.prepare(`SELECT * FROM ${table}${retained} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
-        validateStoredRow(context, table, raw);
-        validated++;
+        if (validate) { validateStoredRow(context, table, raw); validated++; }
+        fingerprint?.row(raw);
       }
     }
     return validated + validateAuthorityFamilies(context, workbookPayloads);

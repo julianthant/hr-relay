@@ -12,6 +12,8 @@ import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/l
 import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
+import { authorityContentFingerprint, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
+import { withReadonlyAuthoritySnapshot, withReusableReadonlyAuthoritySnapshots } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { readStartupFile } from "../../../../src/backend/storage/sqlite/startup-file-proof.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
@@ -185,6 +187,43 @@ it("carries the registered startup inspection through the second startup pass an
       expect(scansRuns(() => AuthorityDatabase.inspectExistingReadOnly(profile, f.profile.path))).toBe(true);
     } finally { profile.release(); }
   } finally { machine.release(); }
+});
+
+it("reuses a verified stopped image across a fresh copy of the same source bytes", async () => {
+  const f = await store();
+  const { profileId } = f.profile.admission.profileBinding;
+  await f.profile.closeController();
+  const lifetime = await RuntimeLifetimeLock.acquire(0);
+  cleanups.push(() => lifetime.close());
+  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.profile.workspace, lifetime);
+  try {
+    await AuthorityDatabase.withUpgradeInspections(() => withReusableReadonlyAuthoritySnapshots(async () => {
+      const first = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
+      const read = () => withReadonlyAuthoritySnapshot(f.profile.path, database => inspectNativeAuthority(database));
+      writeFileSync(f.profile.path, readFileSync(f.profile.path));
+      expect(scansRuns(() => expect(read()).toMatchObject({ authorityContentFingerprint: first.authorityContentFingerprint }))).toBe(false);
+
+      copyFileSync(f.profile.path, f.profile.path + ".copy");
+      renameSync(f.profile.path + ".copy", f.profile.path);
+      expect(scansRuns(() => expect(read()).toMatchObject({ authorityContentFingerprint: first.authorityContentFingerprint }))).toBe(true);
+
+      AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
+      f.edit("UPDATE runs SET id=id");
+      expect(scansRuns(read)).toBe(true);
+    }));
+  } finally { machine.release(); }
+});
+
+it("fingerprints all stored rows while inspecting a current authority snapshot", async () => {
+  const f = await store();
+  withReadonlyAuthoritySnapshot(f.profile.path, database => {
+    const fingerprint = authorityContentFingerprint(database);
+    const prepare = vi.spyOn(database, "prepare");
+    try {
+      expect(inspectNativeAuthority(database).authorityContentFingerprint).toBe(fingerprint);
+      expect(prepare.mock.calls.filter(([sql]) => sql === "SELECT * FROM runs ORDER BY id")).toHaveLength(1);
+    } finally { prepare.mockRestore(); }
+  });
 });
 
 it("keeps slow stopped recovery diagnostics without invalidating the verified Resume image", async () => {
