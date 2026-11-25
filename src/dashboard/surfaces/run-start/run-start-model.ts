@@ -574,7 +574,7 @@ export function planRefusalNotice(refused: StartPlanWire["refused"], sources?: R
   }
   if (rerun && entry.code === "input-invalid") return { sentence: formatErrorCatalogFailure(createErrorCatalogFailure("RERUN_SOURCE_INPUT_PROTECTED", {})).text, goesToQueue: false };
   if (entry.code === "input-invalid") return { sentence: `Relay could not use ${name}. Fix it, then try again.`, goesToQueue: false };
-  if (entry.code === "dry-run-unsupported") return { sentence: rerun ? "No dry run here. Use Start run." : "No dry run here. Turn Dry run off.", goesToQueue: false };
+  if (entry.code === "dry-run-unsupported") return { sentence: rerun ? "No dry run here; use Start run." : "No dry run here. Turn Dry run off.", goesToQueue: false };
   if (entry.code === "preflight-failed") return { sentence: "A check failed. Fix it in Checks.", goesToQueue: false };
   return { sentence: "Relay can't run this now. Try later.", goesToQueue: false };
 }

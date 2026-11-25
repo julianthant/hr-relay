@@ -20,7 +20,7 @@ const workflow: RunStartWorkflow = {
 const snapshot = RerunValuesSnapshotSchema.parse({
   sourceInput: { state: "available", value: { eid: "10812345" } },
   source: { runId: "10000000-0000-4000-8000-000000000001", version: 3, workflow: "rerun-proof",
-    descriptorVersion: 1, contractFingerprint: "a".repeat(64), outcome: "failed" },
+    descriptorVersion: 1, contractFingerprint: "a".repeat(64), outcome: "failed", dryRun: false, priority: "interactive" },
   steps: [{ key: "read", state: "completed", nodes: [{ nodeId: "read", state: "completed", reason: "checkpoint" }] },
     { key: "finish", state: "failed", nodes: [{ nodeId: "finish", state: "failed", reason: "failure" }] }],
   values: [], transactions: [],

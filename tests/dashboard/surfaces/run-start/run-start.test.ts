@@ -53,10 +53,9 @@ it("Enter advances and starts, Shift+Enter keeps its newline, buttons keep their
     submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
     executeCommand: async () => APPLIED,
   }), undefined, (workflowId) => revealed.push(workflowId));
-  assert.ok(!dialog.text().includes("Enter to continue"), "nothing typed: no hint");
   assert.equal(await dialog.enter(), false, "Enter does nothing while Continue is unavailable");
   await dialog.type(TYPED);
-  assert.ok(dialog.text().includes("Enter to continue"));
+  assert.doesNotMatch(dialog.text(), /Enter to/u, "the footer names no shortcut");
   assert.equal(await dialog.enter({ shift: true }), false, "Shift+Enter keeps its newline");
   assert.equal(dialog.stage(), "Input");
   const back = buttons().find(button => button.textContent?.trim() === "Cancel");
@@ -65,7 +64,7 @@ it("Enter advances and starts, Shift+Enter keeps its newline, buttons keep their
   assert.equal(await dialog.enter(), true);
   assert.equal(dialog.stage(), "Start");
   for (let wait = 0; wait < 6; wait += 1) await settle();
-  assert.ok(dialog.text().includes("Enter to start"));
+  assert.doesNotMatch(dialog.text(), /Enter to/u);
   assert.deepEqual(revealed, []);
   await dialog.enter({ on: document.body });
   assert.deepEqual(revealed, [WORKFLOW_ID]);

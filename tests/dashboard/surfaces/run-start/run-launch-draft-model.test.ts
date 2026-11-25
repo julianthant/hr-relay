@@ -12,7 +12,7 @@ import { startRowsOf, type StepRow } from "../../../../src/dashboard/surfaces/ru
 import { RerunValuesRequestSchema, RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
 
-const OMIT_FORM = { fields: [{ key: "reason", kind: "text" }, { key: "confirmed", kind: "boolean" }] } as unknown as Extract<RunStartWorkflow["steps"][number]["control"], { state: "omittable" }>["form"];
+const OMIT_FORM = { fields: [{ key: "reason", label: "Reason", kind: "text" }, { key: "confirmed", label: "Confirmed", kind: "boolean" }] } as unknown as Extract<RunStartWorkflow["steps"][number]["control"], { state: "omittable" }>["form"];
 const plain: RunStartWorkflow = {
   workflowId: "plain", version: 1, label: "Plain", categoryId: "operations", role: { kind: "standalone" }, icon: "Search",
   enqueue: "reject-active", spreadsheetIntake: false, requiredWorkbookFields: [], referenceSources: [],
@@ -37,7 +37,7 @@ const modal: RunStartWorkflow = { ...plain, workflowId: "onboarding", inputRun: 
 const snapshot = RerunValuesSnapshotSchema.parse({
   sourceInput: { state: "available", value: { eid: "10812345" } },
   source: { runId: "10000000-0000-4000-8000-000000000001", version: 3, workflow: "plain",
-    descriptorVersion: 1, contractFingerprint: "a".repeat(64), outcome: "failed" },
+    descriptorVersion: 1, contractFingerprint: "a".repeat(64), outcome: "failed", dryRun: false, priority: "interactive" },
   steps: [{ key: "read", state: "completed", nodes: [{ nodeId: "read", state: "completed", reason: "checkpoint" }] },
     { key: "write", state: "completed", nodes: [{ nodeId: "write", state: "completed", reason: "checkpoint" }] },
     { key: "finish", state: "failed", nodes: [{ nodeId: "finish", state: "failed", reason: "failure" }] }],
@@ -284,13 +284,41 @@ describe("reference spreadsheet", () => {
 });
 
 describe("rerun restore", () => {
-  it("restores the plain identity text, every step included and no value drafts", () => {
+  it("restores the plain identity text with no value drafts and picks up from the failed step", () => {
     const partial = RerunValuesSnapshotSchema.parse({ ...snapshot, sourceInput: { state: "partial", value: { eid: "10812345" }, identityCopied: true } });
     const ran = { ...plain, steps: plain.steps.slice(0, 3) };
     const next = restoreRerunDraft(used(freshLaunchDraft(ran)), partial, ran);
     assert.equal(next.text, "10812345");
-    assert.deepEqual(selectedStepKeys(next, ran), ["read", "write", "finish"]);
+    assert.deepEqual(selectedStepKeys(next, ran), ["read", "finish"], "read stays on: nobody recorded the values to type for it");
     assert.deepEqual(next.valueDrafts, {});
+  });
+  const typedRead = { read: { reason: "Earlier", confirmed: true } };
+  const withTyped = (extra: Record<string, unknown> = {}) => RerunValuesSnapshotSchema.parse({ ...snapshot,
+    typed: Object.entries(typedRead).map(([step, facts]) => ({ step, facts })), ...extra });
+  it("switches completed steps off with the values the source recorded", () => {
+    const ran = { ...plain, steps: plain.steps.slice(0, 3) };
+    const next = restoreRerunDraft(freshLaunchDraft(ran), withTyped(), ran);
+    assert.deepEqual(selectedStepKeys(next, ran), ["finish"]);
+    assert.deepEqual(next.stepDrafts.read, { reason: "Earlier", confirmed: true });
+  });
+  it("starts every step again when the source finished with nothing failed", () => {
+    const ran = { ...plain, steps: plain.steps.slice(0, 3) };
+    const done = withTyped({ source: { ...snapshot.source, outcome: "done" }, steps: snapshot.steps.map(step => ({ ...step, state: "completed",
+      nodes: step.nodes.map(node => ({ ...node, state: "completed", reason: "checkpoint" })) })) });
+    assert.deepEqual(selectedStepKeys(restoreRerunDraft(freshLaunchDraft(ran), done, ran), ran), ["read", "write", "finish"]);
+  });
+  it("keeps the source's mode, priority, browser and spreadsheets, and nothing of the draft before it", () => {
+    const reading: RunStartWorkflow = { ...plain, workbookReference: { id: "roster", keyFieldId: "eid", mode: "keys", writableFields: [] }, workbookCheck: { id: "check", keyFieldId: "eid" } };
+    const pick = (typeId: string, libraryId: string, sheetId: string) => ({ typeId, libraryId, versionId: "v1", sheetId });
+    const source = RerunValuesSnapshotSchema.parse({ ...snapshot, source: { ...snapshot.source, dryRun: true, priority: "bulk", browserMode: "headless" },
+      spreadsheets: [pick("roster", "people", "a"), pick("check", "extra", "b"), pick("check", "extra", "c")] });
+    const next = restoreRerunDraft({ ...used(freshLaunchDraft(reading)), dryRunRequested: false }, source, reading);
+    assert.deepEqual([next.dryRunRequested, next.priority, next.browserMode], [true, "bulk", "headless"]);
+    assert.deepEqual(next.referenceSelections, { roster: { libraryId: "people", versionId: "v1", sheetId: "a" } });
+    assert.deepEqual(next.referenceDrafts, { roster: { libraryId: "people", versionId: "v1" } });
+    assert.deepEqual(next.checkPicks, { extra: { versionId: "v1", sheetIds: ["b", "c"] } });
+    const live = restoreRerunDraft({ ...freshLaunchDraft(reading), dryRunRequested: true }, snapshot, reading);
+    assert.deepEqual([live.dryRunRequested, live.referenceSelections, live.checkPicks], [false, {}, {}]);
   });
   it("seeds copied values for the declared input fields", () => {
     const withValue = RerunValuesSnapshotSchema.parse({ ...snapshot, values: [
@@ -308,7 +336,7 @@ describe("rerun restore", () => {
   });
   it("refuses protected typed source input", () => {
     const protectedInput = RerunValuesSnapshotSchema.parse({ ...snapshot, source: { ...snapshot.source, workflow: "work-study" }, sourceInput: { state: "unavailable", reason: "protected" } });
-    assert.throws(() => restoreRerunDraft(freshLaunchDraft(undefined), protectedInput, workStudy), /This input is protected and cannot be copied/u);
+    assert.throws(() => restoreRerunDraft(freshLaunchDraft(undefined), protectedInput, workStudy), /The original input can't be reused; use Start run\./u);
   });
   it("starts from the given text with every step selected for a failed plain-input rerun", () => {
     const next = restoreRerunDraft(freshLaunchDraft(plain), snapshot, plain, "10812345");

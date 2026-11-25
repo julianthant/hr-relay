@@ -32,7 +32,7 @@ describe("served Work Study last stage", () => {
   it("restores a rerun's stored ISO effective date as MM/DD/YYYY and shows it before Start", async () => {
     const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
     const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion,
-      workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: "0".repeat(64), outcome: "done" },
+      workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: "0".repeat(64), outcome: "done", dryRun: false, priority: "interactive" },
       sourceInput: { state: "partial", value: { emplId: "10812345", effectiveDate: "2026-08-03" }, identityCopied: true },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })),
       values: [], transactions: [] });
@@ -41,7 +41,7 @@ describe("served Work Study last stage", () => {
       submitStartPlan: async options => { const parsed = StartPlanRequestSchema.parse(options); return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: descriptor.id, expectedVersion: workStudy.version,
         rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
     }), { workflows: [workStudy], panelWorkflowId: descriptor.id, rerunSource: source });
-    assert.equal(document.body.querySelector<HTMLInputElement>('input[aria-label="Effective date"]')?.value, "08/03/2026");
+    assert.equal(dialog.stage(), "Steps");
     for (let guard = 0; guard < 5 && dialog.stage() !== "Start"; guard += 1) await dialog.press("Continue");
     assert.equal(dialog.stage(), "Start");
     assert.match(dialog.text(), /Effective date08\/03\/2026/u);

@@ -150,22 +150,22 @@ it("retains the original issued envelope after an unknown result and later mode 
   assert.equal(commands.length, 1); assert.equal(dialog.disabled("Continue"), true);
 });
 
-it("keeps Rerun single-source with its restored mode and a fresh explicit reference, without roster leakage", async () => {
+it("reruns the original person, mode and saved spreadsheet, with its row and no roster", async () => {
   const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
   const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
-    descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "failed" }, sourceInput: { state: "available", value: { email: "source@example.test", mode: "rehire" } },
+    descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "failed", dryRun: false, priority: "interactive" }, sourceInput: { state: "available", value: { email: "source@example.test", mode: "rehire" } },
+    spreadsheets: [{ typeId: workflow.workbookReference?.id, libraryId: entry.libraryId, versionId: "version", sheetId: "first", selectedRow: { sheetId: "first", rowId: "row-2" } }],
     steps: descriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })), values: [], transactions: [] });
   let planned: StartPlanRequest | undefined;
   const dialog = await h.openDialog(h.stubClient({ ...libraryReads, rerunValues: async () => ({ state: "available", snapshot }),
     previewRerunWarnings: async input => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(input).source, warnings: [], warningDigest: h.HASH } }),
     submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return proposal(planned); },
   }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
-  assert.equal(checkboxRows().length, 0); assert.equal(dialog.typedInput().value, "source@example.test");
-  await chooseCurrent();
-  assert.equal(document.querySelector<HTMLInputElement>('input[value="rehire"]')?.checked, true);
+  await h.settle();
+  assert.equal(checkboxRows().length, 0); assert.equal(document.querySelector(".launch-dialog textarea"), null);
   await dialog.press("Continue"); await dialog.press("Start live run"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "source@example.test", mode: "rehire" }]);
-  assert.deepEqual(planned.workbookReferences, [{ entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "first", expectedVersion: 1 }]);
+  assert.deepEqual(planned.workbookReferences, [{ entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "first", expectedVersion: 1, selectedRow: { sheetId: "first", rowId: "row-2" } }]);
 });
 
 it("keeps earlier selected rows visible and disabled after a named-version change until explicitly cleared", async () => {

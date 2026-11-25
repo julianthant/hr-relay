@@ -9,6 +9,7 @@ import { useRoute, type PopstateRouteHandler } from "../../../../src/dashboard/a
 import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
+import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../src/models/dashboard/rerun-warning.js";
 import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
@@ -17,6 +18,7 @@ import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
 import { CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
 import { RUN_DIALOG_REFERENCE_READS } from "../../../support/fixtures/dashboard/run-dialog-reference-fixtures.js";
 import { RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_WORKFLOW, runDialogRerunSnapshot } from "../../../support/fixtures/dashboard/run-dialog-story-fixtures.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 
 const h = createRunStartDialogHarness();
@@ -34,14 +36,14 @@ const isRerun = (kind: Case) => kind === "rerun" || kind === "rerun values";
 const servedIn = (catalog: typeof RUN_DIALOG_PDF_CATALOG): RunStartWorkflow => {
   const found = catalog.find(entry => entry.id === RUN_DIALOG_WORKFLOW)?.served; assert.ok(found); return found;
 };
-/** Every dialog whose controls differ: typed input, PDFs, a spreadsheet, an optional spreadsheet list that failed to load, a rerun's input and a rerun's copied values. */
+/** Every dialog whose controls differ: typed input, PDFs, a spreadsheet, an optional spreadsheet list that failed to load, a rerun of a typed input and a rerun of copied values. */
 const WORKFLOW: Readonly<Record<Case, RunStartWorkflow>> = { typed, pdf: servedIn(RUN_DIALOG_PDF_CATALOG),
   spreadsheet: servedIn(RUN_DIALOG_REFERENCE_CATALOG), "failed spreadsheets": { ...typed, workbookCheck: { id: "reference-check", keyFieldId: "eid" } }, rerun: typed, "rerun values": servedIn(RUN_DIALOG_DRY_RUN_CATALOG) };
 
 const snapshot = RerunValuesSnapshotSchema.parse({
   sourceInput: { state: "available", value: { mode: "search", emplId: "10873698", crmCheck: true, keepNonHdh: false, includeCrmDates: true } },
   source: { runId: RUN_DIALOG_RERUN_SOURCE.runId, version: RUN_DIALOG_RERUN_SOURCE.expectedVersion, workflow: typed.workflowId,
-    descriptorVersion: typed.version, contractFingerprint: h.HASH, outcome: "failed" },
+    descriptorVersion: typed.version, contractFingerprint: h.HASH, outcome: "failed", dryRun: false, priority: "interactive" },
   steps: typed.steps.map(step => ({ key: step.key, state: "completed", nodes: [{ nodeId: step.key, state: "completed", reason: "checkpoint" }] })),
   values: [], transactions: [],
 });
@@ -50,7 +52,10 @@ const snapshot = RerunValuesSnapshotSchema.parse({
 const FAILED_READS: Partial<DashboardClient> = { workbookList: async () => [], workbookTypes: async () => [], workbookCompatibility: async () => projectWorkbookCompatibility([], []),
   workbookCatalog: async () => { throw new Error("unreachable"); } };
 
-/** The dialog on its Input stage, filled in so that Start is available as soon as it is reached. */
+/** The first page of a run or a rerun. */
+const firstStage = (kind: Case) => isRerun(kind) ? "Steps" : "Input";
+
+/** The dialog on its first page, filled in so that Start is available as soon as it is reached. */
 async function openFilled(kind: Case, served: Partial<DashboardClient>, wrap?: (dialog: ReactElement) => ReactElement) {
   const workflow = WORKFLOW[kind];
   const dialog = await h.openDialog(h.stubClient({ ...(kind === "spreadsheet" ? RUN_DIALOG_REFERENCE_READS : {}), ...(kind === "failed spreadsheets" ? FAILED_READS : {}),
@@ -91,7 +96,7 @@ async function toStart(dialog: Opened, kind: Case) {
 }
 const startLabel = (kind: Case) => kind === "spreadsheet" ? "Start run" : "Start live run";
 
-const PRIMARY = /^(Continue|Confirm|Start (live |dry )?run)$/u;
+const PRIMARY = /^(Continue|Start (live |dry )?run( again)?)$/u;
 const FOCUSABLE = 'a[href], button, input:not([type="hidden"]):not([hidden]), textarea, select, [tabindex]';
 /** Every control focus can rest on, except the primary button. The dialog's own surface and anything switched off are not controls. */
 function controls(): HTMLElement[] {
@@ -108,9 +113,9 @@ describe("Enter on a focused control", () => {
       executeCommand: async () => { calls.push("command"); return h.APPLIED; },
     });
     const walked: string[] = [];
-    for (const stage of ["Input", "Start"] as const) {
+    for (const stage of [firstStage(kind), "Start"] as const) {
       if (stage === "Start") await toStart(dialog, kind);
-      assert.equal(dialog.disabled(stage === "Input" ? "Continue" : startLabel(kind)), false, `${stage} is ready to go on, so Enter could act`);
+      assert.equal(dialog.disabled(stage !== "Start" ? "Continue" : startLabel(kind)), false, `${stage} is ready to go on, so Enter could act: ${dialog.text()}`);
       for (let index = 0; index < controls().length; index += 1) {
         const node = controls()[index];
         const name = nameOf(node);
@@ -120,7 +125,7 @@ describe("Enter on a focused control", () => {
         assert.deepEqual(calls, [], `Enter on ${stage}: ${name} asked for a run`);
         // A text field's Enter continues, which starts nothing; go back and take the next control.
         if (dialog.stage() !== stage) {
-          assert.equal(stage, "Input");
+          assert.notEqual(stage, "Start");
           assert.match(name, /^(textarea|input)/u, `${name} continued`);
           assert.doesNotMatch(name, /radio|switch|checkbox/u);
           await dialog.press("Back");
@@ -170,14 +175,14 @@ function planFor(request: unknown) {
 }
 
 describe("a start whose command is held", () => {
-  it.each(CASES)("locks every control that could move the request, on Start and on Input, in the %s dialog, then settles", async kind => {
+  it.each(CASES)("locks every control that could move the request, on Start and on the first page, in the %s dialog, then settles", async kind => {
     const sent: unknown[] = [];
     const replies: PromiseWithResolvers<CommandResult>[] = [];
     const dialog = await openFilled(kind, {
       submitStartPlan: async request => { sent.push(request); return planFor(request); },
       executeCommand: () => { const reply = Promise.withResolvers<CommandResult>(); replies.push(reply); return reply.promise; },
     });
-    assert.ok(openControls().length > 0, "Input is open before the start");
+    assert.ok(openControls().length > 0, "the first page is open before the start");
     if (kind === "failed spreadsheets") assert.ok(openControls().some(name => /Retry/u.test(name)), "the failed read offers Retry before the start");
     await toStart(dialog, kind);
     assert.ok(openControls().some(name => /Back/u.test(name)) && openControls().some(name => /headless/u.test(name)), "Start is open before the start");
@@ -191,16 +196,16 @@ describe("a start whose command is held", () => {
     assert.equal(chosen("Browser mode"), "Hidden");
     if (kind === "pdf") assert.equal(chosen("Form"), "W-4");
 
-    // An unknown outcome gives the dialog back; its replay is a command held on Input.
+    // An unknown outcome gives the dialog back; its replay is a command held on the first page.
     await act(async () => { replies[0].reject(new Error("connection lost")); });
     await settleLong();
     await dialog.press("Back");
-    assert.equal(dialog.stage(), "Input");
+    assert.equal(dialog.stage(), firstStage(kind));
     await dialog.press("Replay exact submission");
     await settleAll();
     assert.equal(replies.length, 2, `the replay is out: ${dialog.text()}`);
-    assert.deepEqual(openControls(), [], "Input");
-    if (kind === "typed" || kind === "rerun") assert.ok(document.querySelector("[data-run-choice]"), "the Lookup mode shows its chosen value");
+    assert.deepEqual(openControls(), [], firstStage(kind));
+    if (kind === "typed") assert.ok(document.querySelector("[data-run-choice]"), "the Lookup mode shows its chosen value");
 
     assert.equal(sent.length, 1);
     await act(async () => { replies[1].resolve(h.APPLIED); await Promise.resolve(); });
@@ -227,6 +232,139 @@ describe("a start whose command is held", () => {
     await act(async () => { reply.resolve(h.APPLIED); await Promise.resolve(); });
     await settleLong();
     assert.deepEqual(h.closed, [false], "the applied reply closed the dialog");
+  });
+});
+
+/** A finished run reads as the fixture's failed one with every step completed. */
+const finished = RerunValuesSnapshotSchema.parse({ ...snapshot, source: { ...snapshot.source, outcome: "done" } });
+const drawn = () => document.querySelector(".launch-dialog") !== null;
+async function openOneClick(served: Partial<DashboardClient>, extra: Readonly<{ rerunInOneClick?: boolean; workflow?: RunStartWorkflow; source?: typeof snapshot; warns?: boolean }> = {}) {
+  const { rerunInOneClick = true, workflow = typed, source = finished, warns = false } = extra;
+  const plans: StartPlanRequest[] = [], commands: unknown[] = [], drawnAtCommand: boolean[] = [];
+  const dialog = await h.openDialog(h.stubClient({
+    submitStartPlan: async request => { plans.push(StartPlanRequestSchema.parse(request)); return planFor(request); },
+    executeCommand: async command => { commands.push(command); drawnAtCommand.push(drawn()); return h.APPLIED; },
+    rerunValues: async () => ({ state: "available", snapshot: source }),
+    previewRerunWarnings: async request => RerunWarningWireSchema.parse({ workflowId: workflow.workflowId, rerun: { source: RerunWarningRequestSchema.parse(request).source, warningDigest: h.HASH,
+      warnings: warns ? [{ nodeId: workflow.steps[0].key, taskId: "ucpath/save-row", system: "ucpath", businessKeyDigest: h.HASH, writeIntentId: "d1000000-0000-4000-8000-000000000001", evidenceDigest: h.HASH }] : [] } }),
+    ...served,
+  }), { workflows: [workflow], panelWorkflowId: workflow.workflowId, rerunSource: RUN_DIALOG_RERUN_SOURCE, rerunInOneClick });
+  return { dialog, plans, commands, drawnAtCommand };
+}
+
+describe("a one-click rerun", () => {
+  it("queues a finished run once, undrawn, and Enter meanwhile asks for nothing", async () => {
+    const ready = Promise.withResolvers<typeof h.READY>();
+    const { dialog, plans, commands, drawnAtCommand } = await openOneClick({ readPreflight: () => ready.promise });
+    await settleAll();
+    assert.equal(drawn(), false);
+    await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+    await dialog.rerender({ catalog: buildWorkflowCatalog([typed], servedFixtureSources([typed])) });
+    assert.deepEqual([plans.length, commands.length], [0, 0], "nothing starts before the checks are read");
+    await act(async () => { ready.resolve(h.READY); await Promise.resolve(); });
+    await settleLong();
+    assert.deepEqual([plans.length, commands.length, drawnAtCommand], [1, 1, [false]], "a catalog refresh while it waits neither stops nor repeats it");
+  });
+
+  it("presses Start by itself: the original input, once, then closes", async () => {
+    const { plans, commands, drawnAtCommand } = await openOneClick({});
+    await settleLong();
+    assert.deepEqual([plans.length, commands.length, drawnAtCommand], [1, 1, [false]]);
+    assert.deepEqual(plans[0].submissions, [{ mode: "search", emplId: "10873698", crmCheck: true, keepNonHdh: false, includeCrmDates: true }]);
+    assert.equal(plans[0].dryRun, false);
+    assert.deepEqual(h.closed, [false]);
+  });
+
+  it("opens Start with the repeat warning and queues only on the operator's press", async () => {
+    const { dialog, plans, commands } = await openOneClick({}, { warns: true });
+    await settleLong();
+    assert.equal(dialog.stage(), "Start");
+    assert.ok(document.querySelector('[aria-label="Repeat transaction warning"]'));
+    assert.deepEqual([plans.length, commands.length], [0, 0]);
+    await dialog.press("Start live run again");
+    await settleLong();
+    assert.deepEqual([plans.map(plan => plan.warningAcknowledgment), commands.length], [[h.HASH], 1]);
+    assert.deepEqual(h.closed, [false]);
+  });
+
+  it("opens Start when a check fails", async () => {
+    const { dialog, plans } = await openOneClick({ readPreflight: async () => h.readiness([{ check: "secrets.ucpath-sso", status: "fail" }]) });
+    await settleLong();
+    assert.equal(dialog.stage(), "Start");
+    assert.equal(dialog.disabled("Start live run"), true);
+    assert.deepEqual(plans, []);
+  });
+
+  it("opens Start when the plan is refused", async () => {
+    const { dialog, commands } = await openOneClick({ submitStartPlan: async request => StartPlanWireSchema.parse({ ...planFor(request), planned: [], refused: [{ entry: 1, code: "active-run-exists", message: "running" }] }) });
+    await settleLong();
+    assert.equal(dialog.stage(), "Start");
+    assert.match(dialog.text(), /already has a run in progress/u);
+    assert.deepEqual(commands, []);
+  });
+
+  it.each([["reloaded", { rerunInOneClick: false }], ["failed", { source: snapshot }]] as const)("opens the Steps page and queues nothing for a %s rerun", async (_name, extra) => {
+    const { dialog, plans } = await openOneClick({}, extra);
+    await settleLong();
+    assert.equal(dialog.stage(), "Steps");
+    assert.deepEqual(plans, []);
+  });
+});
+
+describe("what a rerun keeps of its source", () => {
+  const dry = RerunValuesSnapshotSchema.parse({ ...finished, source: { ...finished.source, dryRun: true } });
+  it("stays a dry run, with no switch to change it", async () => {
+    const { plans } = await openOneClick({}, { source: dry });
+    await settleLong();
+    assert.deepEqual(plans.map(plan => plan.dryRun), [true]);
+  });
+
+  it("never runs live when the workflow has no dry run any more", async () => {
+    assert.ok(descriptor?.surfaces.inputRun);
+    const { dialog, plans } = await openOneClick({}, { source: dry, workflow: { ...typed, inputRun: { state: "present", surface: { ...descriptor.surfaces.inputRun, supportsDryRun: false } } } });
+    await settleLong();
+    assert.match(dialog.text(), /No dry run here; use Start run\./u);
+    assert.equal(dialog.disabled("Start run"), true);
+    assert.deepEqual(plans, []);
+  });
+
+  it("offers no Dry run switch", async () => {
+    const { dialog } = await openOneClick({}, { source: dry, rerunInOneClick: false });
+    await settleAll();
+    await dialog.press("Continue");
+    assert.doesNotMatch(dialog.text(), /Dry run/u);
+    assert.equal(dialog.disabled("Start dry run"), false);
+  });
+
+  const pdf = servedIn(RUN_DIALOG_PDF_CATALOG);
+  const artifact = { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: 12, sha256: "b".repeat(64) };
+  const pdfSource = (value: unknown) => RerunValuesSnapshotSchema.parse({ ...finished, sourceInput: { state: "available", value },
+    source: { ...finished.source, workflow: pdf.workflowId, descriptorVersion: pdf.version }, steps: [] });
+  it("sends the original PDF and its choices again under a new reading", async () => {
+    const value = { document: artifact, fileName: "one.pdf", readingId: "00000000-0000-4000-8000-0000000000ff", extractWithOcr: false, form: "w4" };
+    const { plans } = await openOneClick({}, { workflow: pdf, source: pdfSource(value) });
+    await settleLong();
+    const { readingId, ...sent } = plans[0].submissions[0] as Record<string, unknown>;
+    assert.deepEqual(sent, { document: artifact, fileName: "one.pdf", extractWithOcr: false, form: "w4" });
+    assert.notEqual(readingId, value.readingId);
+  });
+
+  it("sends the operator to Start run when the original PDF is gone", async () => {
+    const { dialog, plans } = await openOneClick({}, { workflow: pdf, source: pdfSource({ fileName: "one.pdf" }) });
+    await settleLong();
+    assert.match(dialog.text(), /The original input can't be reused; use Start run\./u);
+    assert.deepEqual(plans, []);
+  });
+
+  it("sends the operator to Start run when the original spreadsheet is gone", async () => {
+    const workflow = servedIn(RUN_DIALOG_REFERENCE_CATALOG);
+    const value = RerunValuesSnapshotSchema.parse({ ...(runDialogRerunSnapshot() as { snapshot: typeof snapshot }).snapshot,
+      spreadsheets: [{ typeId: workflow.workbookReference?.id, libraryId: "gone", versionId: "v1", sheetId: "s1" }] });
+    const { dialog, plans } = await openOneClick(RUN_DIALOG_REFERENCE_READS, { workflow, source: value, rerunInOneClick: false });
+    await settleLong();
+    assert.match(dialog.text(), /The original input can't be reused; use Start run\./u);
+    assert.equal(dialog.disabled("Continue"), true);
+    assert.deepEqual(plans, []);
   });
 });
 

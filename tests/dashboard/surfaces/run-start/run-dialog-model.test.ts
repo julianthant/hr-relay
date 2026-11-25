@@ -6,7 +6,7 @@ import { describe, it } from "vitest";
 import type { CommandAttemptView } from "../../../../src/dashboard/app/commands/command-outcome.js";
 import type { CommandOutcome } from "../../../../src/dashboard/app/commands/command-executor.js";
 import {
-  heldFingerprint, initialRunDialogState, REFERENCES_UNAVAILABLE, runDialogControls, runDialogTransition, useRunDialogMachine, visibleRunDialog,
+  heldFingerprint, initialRunDialogState, REFERENCES_UNAVAILABLE, runDialogControls, runDialogTransition, shownRepeatWarning, useRunDialogMachine, visibleRunDialog,
   type LaunchGates, type RunDialogEffects, type RunDialogEvent, type RunDialogState, type RunDialogStep, type RunStartStage,
 } from "../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import { RerunValuesRequestSchema, RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
@@ -40,7 +40,7 @@ function command(startPlanId: string, commandId = "c1000000-0000-4000-8000-00000
     family: "start", type: "start-run", target: { workflowId: WORKFLOW, startPlanId, expectedVersion: 4 }, payload: FINGERPRINTS });
 }
 const SNAPSHOT = RerunValuesSnapshotSchema.parse({ source: { runId: RERUN.runId, version: RERUN.expectedVersion, workflow: WORKFLOW,
-  descriptorVersion: 1, contractFingerprint: HASH, outcome: "done" }, sourceInput: { state: "unavailable", reason: "protected" }, steps: [], values: [], transactions: [] });
+  descriptorVersion: 1, contractFingerprint: HASH, outcome: "done", dryRun: false, priority: "interactive" }, sourceInput: { state: "unavailable", reason: "protected" }, steps: [], values: [], transactions: [] });
 const RERUN_PLAN_SOURCE = { runId: RERUN.runId, expectedVersion: RERUN.expectedVersion, intent: "rerun", selectedStepKeys: ["save"] };
 const REPEAT = { nodeId: "save-row", taskId: "ucpath/save-row", system: "ucpath", businessKeyDigest: HASH, writeIntentId: "d1000000-0000-4000-8000-000000000001", evidenceDigest: HASH };
 const NO_WARNING = RerunWarningWireSchema.parse({ workflowId: WORKFLOW, rerun: { source: RERUN_PLAN_SOURCE, warnings: [], warningDigest: DIGEST } });
@@ -56,7 +56,7 @@ const authorityText = formatErrorCatalogFailure(createErrorCatalogFailure("DASHB
 const LAST: LaunchGates = { next: null, inputBlocked: false, stepsBlocked: false, optionsBlocked: false, rerunInputBlocked: false, checksBlocked: false, referencesUnavailable: false, omissionMismatch: false, plannedCount: 1 };
 const gates = (patch: Partial<LaunchGates> = {}): LaunchGates => ({ ...LAST, ...patch });
 const at = (patch: Partial<RunDialogState>): RunDialogState => ({ ...initialRunDialogState, ...patch });
-const rerunReady = (load: Partial<{ warning: typeof WARNING; acknowledgment: string }> = {}) =>
+const rerunReady = (load: Partial<{ warning: typeof WARNING; warningFor: string; acknowledgment: string }> = {}) =>
   ({ kind: "rerun", request: RERUN, load: { state: "ready", snapshot: SNAPSHOT, ...load } }) as const;
 const shownA = { for: FP, plan: plan(PLAN_A), request: REQUEST, expired: false };
 const startEvent = (patch: Partial<LaunchGates> = {}, authority: "ok" | "replaced" = "ok", prepared: string[] = []): RunDialogEvent => ({
@@ -98,9 +98,10 @@ describe("open, close, source and draft", () => {
     assert.deepEqual(result.effects, []);
   });
 
-  it("open (rerun) lands on Input and loads the source", () => {
+  it("open (rerun) lands on Steps and loads the source", () => {
     const result = moved(at({ nextRequest: 5 }), { type: "open", recovery: { state: "none" }, rerun: RERUN });
-    assert.equal(result.next.stage, "Input");
+    assert.equal(result.next.stage, "Steps");
+    assert.equal(result.next.unattended, undefined);
     assert.deepEqual(result.next.source, { kind: "rerun", request: RERUN, load: { state: "loading", request: 5 } });
     assert.deepEqual(result.effects, [{ kind: "load-source", request: 5 }]);
   });
@@ -174,19 +175,19 @@ describe("moving between stages", () => {
     }
   });
 
-  it("back goes to the previous stage, even while a read is out; not on Warning or the first stage", () => {
+  it("back goes to the previous stage, even while a read is out; not on the first stage", () => {
     assert.equal(moved(at({ stage: "Start", activity: { kind: "planning", request: 1, for: FP } }), { type: "go-to", stage: "Input", via: "back" }).next.stage, "Input");
-    assert.equal(moved(at({ stage: "Start", source: rerunReady() }), { type: "go-to", stage: "Input", via: "back" }).next.stage, "Input");
-    assert.equal(refusal(at({ stage: "Warning", source: rerunReady({ warning: WARNING }) }), { type: "go-to", stage: "Input", via: "back" }), "not-here");
+    assert.equal(moved(at({ stage: "Start", source: rerunReady() }), { type: "go-to", stage: "Steps", via: "back" }).next.stage, "Steps");
+    assert.equal(refusal(at({ stage: "Start", source: rerunReady() }), { type: "go-to", stage: "Input", via: "back" }), "not-here", "a rerun has no Input page");
     assert.equal(refusal(at({ stage: "Input" }), { type: "go-to", stage: "Input", via: "back" }), "not-here");
-    assert.equal(refusal(at({ stage: "Input", source: rerunReady() }), { type: "go-to", stage: "Input", via: "back" }), "not-here");
+    assert.equal(refusal(at({ stage: "Steps", source: rerunReady() }), { type: "go-to", stage: "Steps", via: "back" }), "not-here");
   });
 
   it("back from Start goes to Input and the controls name it", () => {
     const path = ["Input", "Start"] as const;
     assert.equal(moved(at({ stage: "Start" }), { type: "go-to", stage: "Input", via: "back", path }).next.stage, "Input");
-    assert.equal(runDialogControls(at({ stage: "Start" }), gates({ path })).back, "Input");
-    assert.equal(runDialogControls(at({ stage: "Start", source: rerunReady() }), gates({ path })).back, "Input");
+    assert.equal(runDialogControls(at({ stage: "Start" }), gates({ path }), FP).back, "Input");
+    assert.equal(runDialogControls(at({ stage: "Start", source: rerunReady() }), gates({ path: ["Steps", "Start"] }), FP).back, "Steps");
   });
 
   it("the stage bar goes to an earlier stage only, idle and without a saved submission", () => {
@@ -203,7 +204,7 @@ describe("moving between stages", () => {
   it("continue is blocked by a saved or unreadable submission, and for a rerun until the source is ready", () => {
     assert.equal(refusal(at({ recovery: { state: "unreadable", message: "bad" } }), { type: "continue", gates: gates({ next: "Start" }) }), "blocked");
     assert.equal(refusal(at({ recovery: { state: "retained", command: command(PLAN_A) } }), { type: "continue", gates: gates({ next: "Start" }) }), "blocked");
-    assert.equal(refusal(at({ stage: "Input", source: { kind: "rerun", request: RERUN, load: { state: "loading", request: 1 } } }), { type: "continue", gates: gates({ next: "Start" }) }), "blocked");
+    assert.equal(refusal(at({ stage: "Steps", source: { kind: "rerun", request: RERUN, load: { state: "loading", request: 1 } } }), { type: "continue", gates: gates({ next: "Start" }) }), "blocked");
   });
 
   it("Input continues to Start unless the input is blocked", () => {
@@ -211,15 +212,15 @@ describe("moving between stages", () => {
     assert.equal(refusal(at({ stage: "Input" }), { type: "continue", gates: gates({ next: "Start", inputBlocked: true }) }), "blocked");
   });
 
-  it("a rerun's Input is blocked by its own input gate, not the start input gate", () => {
-    const rerun = at({ stage: "Input", source: rerunReady({ acknowledgment: DIGEST }) });
+  it("a rerun's Steps is blocked by its own input gate and the steps gate, not the start input gate", () => {
+    const rerun = at({ stage: "Steps", source: rerunReady({ acknowledgment: DIGEST }) });
     assert.equal(refusal(rerun, { type: "continue", gates: gates({ next: "Start", rerunInputBlocked: true }) }), "blocked");
+    assert.equal(refusal(rerun, { type: "continue", gates: gates({ next: "Start", stepsBlocked: true }) }), "blocked");
     assert.equal(refusal(rerun, { type: "continue", gates: gates({ next: "Start", inputBlocked: true }) }), undefined);
   });
 
-  it("continue on the last stage or Warning is not a move", () => {
+  it("continue on the last stage is not a move", () => {
     assert.equal(refusal(at({ stage: "Start" }), { type: "continue", gates: LAST }), "not-here", "Start is the last stage");
-    assert.equal(refusal(at({ stage: "Warning", source: rerunReady({ warning: WARNING }) }), { type: "continue", gates: gates({ next: "Start" }) }), "not-here");
   });
 
   it("start's common admission: busy, unreadable, a saved submission for another plan, and only on the last stage", () => {
@@ -261,8 +262,8 @@ describe("moving between stages", () => {
 });
 
 describe("rerun warnings", () => {
-  it("rerun Input continue goes straight to the editable Start, with no warning read before the steps can be changed", () => {
-    const result = moved(at({ stage: "Input", nextRequest: 4, problem: "p", source: rerunReady({ acknowledgment: HASH }) }), { type: "continue", gates: gates({ next: "Start" }) });
+  it("rerun Steps continue goes straight to the editable Start, with no warning read before the steps can be changed", () => {
+    const result = moved(at({ stage: "Steps", nextRequest: 4, problem: "p", source: rerunReady({ acknowledgment: HASH }) }), { type: "continue", gates: gates({ next: "Start" }) });
     assert.equal(result.next.stage, "Start");
     assert.deepEqual(result.next.activity, { kind: "idle" });
     assert.deepEqual(result.effects, []);
@@ -276,11 +277,12 @@ describe("rerun warnings", () => {
     assert.deepEqual(result.effects, [{ kind: "check-warnings", request: 4 }]);
   });
 
-  it("warnings that differ from the acknowledgment at dispatch move to Warning", () => {
+  it("warnings that differ from the acknowledgment at dispatch show on Start, which waits for the press", () => {
     const state = at({ stage: "Start", source: rerunReady({ acknowledgment: DIGEST }), activity: { kind: "checking-warnings", request: 4, for: FP, acknowledgmentAtDispatch: HASH } });
     const result = moved(state, { type: "warnings-settled", request: 4, warning: WARNING });
-    assert.equal(result.next.stage, "Warning");
-    assert.deepEqual(result.next.source, rerunReady({ acknowledgment: DIGEST, warning: WARNING }));
+    assert.equal(result.next.stage, "Start");
+    assert.deepEqual(result.next.source, rerunReady({ acknowledgment: DIGEST, warning: WARNING, warningFor: FP }));
+    assert.deepEqual(result.effects, []);
     assert.deepEqual(result.next.activity, { kind: "idle" });
     assert.equal(result.next.warningsFor, undefined);
     assert.equal(refusal(state, { type: "warnings-settled", request: 5, warning: WARNING }), "superseded");
@@ -291,7 +293,7 @@ describe("rerun warnings", () => {
     const result = moved(state, { type: "warnings-settled", request: 4, warning: NO_WARNING });
     assert.equal(result.next.stage, "Start");
     assert.equal(result.next.warningsFor, FP);
-    assert.deepEqual(result.next.source, rerunReady({ warning: NO_WARNING, acknowledgment: DIGEST }));
+    assert.deepEqual(result.next.source, rerunReady({ warning: NO_WARNING, warningFor: FP, acknowledgment: DIGEST }));
     assert.deepEqual(result.effects, [{ kind: "auto-start" }]);
     const acknowledged = at({ stage: "Start", source: rerunReady(), activity: { kind: "checking-warnings", request: 4, for: FP, acknowledgmentAtDispatch: DIGEST } });
     assert.equal(moved(acknowledged, { type: "warnings-settled", request: 4, warning: WARNING }).next.warningsFor, FP);
@@ -308,46 +310,97 @@ describe("rerun warnings", () => {
     assert.deepEqual(result.next.activity, { kind: "idle" });
   });
 
-  it("cancelling a warning returns to the editable Start and reads again on the next Start", () => {
-    const state = at({ stage: "Warning", shown: shownA, source: rerunReady({ warning: WARNING }) });
-    const result = moved(state, { type: "cancel-warning" });
-    assert.equal(result.next.stage, "Start"); assert.equal(result.next.warningsFor, undefined);
+  const warned = (patch: Partial<RunDialogState> = {}) => at({ stage: "Start", source: rerunReady({ warning: WARNING, warningFor: FP }), ...patch });
+
+  it("shows a warning only for the request it was read for and until it is consented to", () => {
+    assert.equal(shownRepeatWarning(warned(), FP), WARNING);
+    assert.equal(shownRepeatWarning(warned(), OLD), undefined);
+    assert.equal(shownRepeatWarning(warned({ source: rerunReady({ warning: WARNING, warningFor: FP, acknowledgment: DIGEST }) }), FP), undefined);
+    assert.equal(shownRepeatWarning(warned({ source: rerunReady({ warning: NO_WARNING, warningFor: FP }) }), FP), undefined);
+    assert.equal(shownRepeatWarning(at({}), FP), undefined);
   });
 
-  it("acknowledging drops the plan and returns to Start", () => {
-    const state = at({ stage: "Warning", shown: shownA, source: rerunReady({ warning: WARNING }) });
-    const result = moved(state, { type: "acknowledge" });
-    assert.equal(result.next.stage, "Start");
-    assert.equal(result.next.shown, undefined);
-    assert.deepEqual(result.next.source, rerunReady({ warning: WARNING, acknowledgment: DIGEST }));
-    assert.equal(refusal(at({ stage: "Warning", source: rerunReady() }), { type: "acknowledge" }), "not-here");
+  it("Start under a shown warning is the consent: it plans with the digest and reads no warning again", () => {
+    const result = moved(warned({ nextRequest: 4, problem: "p" }), startEvent());
+    assert.deepEqual(result.next.source, rerunReady({ warning: WARNING, warningFor: FP, acknowledgment: DIGEST }));
+    assert.equal(result.next.warningsFor, FP);
+    assert.deepEqual(result.next.activity, { kind: "planning", request: 4, for: FP });
+    assert.deepEqual(result.effects, [{ kind: "request-plan", request: 4, planRequest: { ...REQUEST, warningAcknowledgment: DIGEST } }]);
+    assert.equal(refusal(warned(), { type: "attend" }), "not-here");
   });
 
-  it("acknowledges only when idle and without a saved submission", () => {
-    const state = at({ stage: "Warning", source: rerunReady({ warning: WARNING }) });
-    assert.equal(refusal({ ...state, activity: submitting() }, { type: "acknowledge" }), "busy");
-    assert.equal(refusal({ ...state, detached: [submitting()] }, { type: "acknowledge" }), "busy");
-    assert.equal(refusal({ ...state, recovery: { state: "retained", command: command(PLAN_A) } }, { type: "acknowledge" }), "blocked");
+  it("Start reads the warning again when the request changed under a shown one", () => {
+    assert.deepEqual(moved(warned({ nextRequest: 4 }), startEvent(), OLD).effects, [{ kind: "check-warnings", request: 4 }]);
   });
 
-  it("cancel-warning returns to Start", () => {
-    assert.equal(moved(at({ stage: "Warning", source: rerunReady({ warning: WARNING }) }), { type: "cancel-warning" }).next.stage, "Start");
-    assert.equal(refusal(at({ stage: "Start" }), { type: "cancel-warning" }), "not-here");
+  it("consents only when idle, without a saved submission and with every gate open", () => {
+    assert.equal(refusal(warned({ activity: submitting() }), startEvent()), "busy");
+    assert.equal(refusal(warned({ detached: [submitting()] }), startEvent()), "busy");
+    assert.equal(refusal(warned({ recovery: { state: "retained", command: command(PLAN_A) } }), startEvent()), "blocked");
+    assert.equal(refusal(warned(), startEvent({ checksBlocked: true })), "blocked");
+    assert.equal(refusal(warned(), startEvent({ rerunInputBlocked: true })), "blocked");
+  });
+});
+
+describe("a one-click rerun", () => {
+  const opened = moved(at({ nextRequest: 5 }), { type: "open", recovery: { state: "none" }, rerun: RERUN, unattended: true }).next;
+  const loaded = moved(opened, { type: "source-loaded", request: 5, snapshot: SNAPSHOT }).next;
+  const reading = moved(loaded, startEvent()).next;
+
+  it("waits on Start, then goes through the warning read, the plan and the submit without being drawn", () => {
+    assert.deepEqual([opened.stage, opened.unattended], ["Start", "waiting"]);
+    assert.deepEqual([loaded.stage, loaded.unattended], ["Start", "waiting"]);
+    assert.deepEqual([reading.unattended, reading.activity.kind], ["started", "checking-warnings"]);
+    const read = moved(reading, { type: "warnings-settled", request: 6, warning: NO_WARNING });
+    assert.deepEqual([read.next.unattended, read.effects], ["started", [{ kind: "auto-start" }]]);
+    const planned = moved(moved(read.next, startEvent()).next, { type: "plan-settled", request: 7, plan: plan(PLAN_A), planRequest: REQUEST });
+    assert.deepEqual([planned.next.unattended, planned.effects], ["started", [{ kind: "auto-start" }]]);
+    const submitted = moved(planned.next, startEvent()).next;
+    assert.deepEqual([submitted.unattended, submitted.activity.kind], ["started", "submitting"]);
+    assert.equal(refusal(submitted, { type: "attend" }), "busy");
+  });
+
+  it("is drawn on Start, idle and not consented, when a warning, a failed read or a refused plan stops it", () => {
+    const warned = moved(reading, { type: "warnings-settled", request: 6, warning: WARNING });
+    assert.deepEqual([warned.next.stage, warned.next.unattended, warned.next.activity, warned.effects], ["Start", undefined, { kind: "idle" }, []]);
+    assert.equal(shownRepeatWarning(warned.next, FP)?.rerun.warningDigest, DIGEST);
+    assert.equal(moved(reading, { type: "warnings-failed", request: 6, message: "down" }).next.unattended, undefined);
+    const planning = { ...reading, warningsFor: FP, activity: { kind: "planning", request: 6, for: FP } } as const;
+    const refused = plan(PLAN_A, { refused: [{ entry: 2, code: "input-invalid", message: "Bad row." }] });
+    const stopped = moved(planning, { type: "plan-settled", request: 6, plan: refused, planRequest: REQUEST });
+    assert.deepEqual([stopped.next.unattended, stopped.next.shown?.plan, stopped.effects], [undefined, refused, []]);
+    assert.equal(moved(loaded, { type: "attend" }).next.unattended, undefined, "a press that did nothing draws the dialog");
+  });
+
+  it("opens the Steps page when the source did not finish cleanly, changed or could not be read", () => {
+    const failed = RerunValuesSnapshotSchema.parse({ ...SNAPSHOT, source: { ...SNAPSHOT.source, outcome: "failed" } });
+    const failedMember = RerunValuesSnapshotSchema.parse({ ...SNAPSHOT, children: [{ workflow: WORKFLOW, steps: [{ key: "save", state: "failed", nodes: [{ nodeId: "save-row", state: "failed", reason: "failure" }] }] }] });
+    const changed = RerunValuesSnapshotSchema.parse({ ...SNAPSHOT, source: { ...SNAPSHOT.source, version: RERUN.expectedVersion + 1 } });
+    for (const snapshot of [failed, failedMember, changed]) {
+      const result = moved(opened, { type: "source-loaded", request: 5, snapshot }).next;
+      assert.deepEqual([result.stage, result.unattended], ["Steps", undefined]);
+    }
+    const unread = moved(opened, { type: "source-failed", request: 5, message: "down" }).next;
+    assert.deepEqual([unread.stage, unread.unattended], ["Steps", undefined]);
+  });
+
+  it("closing forgets it", () => {
+    assert.equal(moved(reading, { type: "close" }).next.unattended, undefined);
   });
 });
 
 describe("planning", () => {
   const planning = (patch: Partial<RunDialogState> = {}) => at({ stage: "Start", activity: { kind: "planning", request: 3, for: FP }, ...patch });
 
-  it("a plan whose rerun warnings are unacknowledged shows and moves to Warning", () => {
+  it("a plan whose rerun warnings are unacknowledged is dropped and its warning shows on Start", () => {
     const rerunPlan = plan(PLAN_A, { rerun: { source: RERUN_PLAN_SOURCE, warnings: [REPEAT], warningDigest: DIGEST } });
     const prepared = command(PLAN_A);
     const result = moved(planning({ source: rerunReady(), recovery: { state: "retained", command: prepared, answer: { reply: ANSWER, for: FP } } }),
       { type: "plan-settled", request: 3, plan: rerunPlan, planRequest: REQUEST });
-    assert.equal(result.next.stage, "Warning");
-    assert.deepEqual(result.next.shown, { for: FP, plan: rerunPlan, request: REQUEST, expired: false });
+    assert.equal(result.next.stage, "Start");
+    assert.equal(result.next.shown, undefined);
     assert.deepEqual(result.next.recovery, { state: "retained", command: prepared });
-    assert.deepEqual(result.next.source, rerunReady({ warning: { workflowId: rerunPlan.workflowId, rerun: rerunPlan.rerun! } }));
+    assert.deepEqual(result.next.source, rerunReady({ warning: { workflowId: rerunPlan.workflowId, rerun: rerunPlan.rerun! }, warningFor: FP }));
     assert.deepEqual(result.effects, []);
   });
 
@@ -505,14 +558,16 @@ describe("start, replay and the outcome", () => {
     }
   });
 
-  it("a re-plan shows the expired plan without starting it, or moves to Warning", () => {
+  it("a re-plan shows the expired plan without starting it, or shows its warning on Start", () => {
     const replanning = { kind: "replanning", request: 7, for: FP, planRequest: EXPIRY_REQUEST } as const;
     const result = moved(at({ stage: "Start", activity: replanning }), { type: "plan-settled", request: 7, plan: plan(PLAN_B), planRequest: EXPIRY_REQUEST });
     assert.deepEqual(result.next.shown, { for: FP, plan: plan(PLAN_B), request: EXPIRY_REQUEST, expired: true });
     assert.equal(result.next.stage, "Start");
     assert.deepEqual(result.effects, []);
     const rerunPlan = plan(PLAN_B, { rerun: { source: RERUN_PLAN_SOURCE, warnings: [REPEAT], warningDigest: DIGEST } });
-    assert.equal(moved(at({ stage: "Start", source: rerunReady(), activity: replanning }), { type: "plan-settled", request: 7, plan: rerunPlan, planRequest: EXPIRY_REQUEST }).next.stage, "Warning");
+    const warned = moved(at({ stage: "Start", source: rerunReady(), activity: replanning }), { type: "plan-settled", request: 7, plan: rerunPlan, planRequest: EXPIRY_REQUEST });
+    assert.deepEqual([warned.next.stage, warned.next.shown, warned.effects], ["Start", undefined, []]);
+    assert.equal(shownRepeatWarning(warned.next, FP)?.rerun.warningDigest, DIGEST);
   });
 
   it("a failed re-plan closes with the refusal toast", () => {
@@ -598,17 +653,16 @@ describe("visibleRunDialog", () => {
 
 describe("runDialogControls", () => {
   it("labels the primary button by stage and plan", () => {
-    assert.equal(runDialogControls(at({ stage: "Input" }), gates({ next: "Start" })).primary.label, "Continue");
-    assert.equal(runDialogControls(at({ stage: "Start" }), LAST).primary.label, "Start run");
-    assert.equal(runDialogControls(at({ stage: "Start" }), gates({ dryRun: true })).primary.label, "Start dry run");
-    assert.equal(runDialogControls(at({ stage: "Start" }), gates({ dryRun: false })).primary.label, "Start live run");
+    assert.equal(runDialogControls(at({ stage: "Input" }), gates({ next: "Start" }), FP).primary.label, "Continue");
+    assert.equal(runDialogControls(at({ stage: "Start" }), LAST, FP).primary.label, "Start run");
+    assert.equal(runDialogControls(at({ stage: "Start" }), gates({ dryRun: true }), FP).primary.label, "Start dry run");
+    assert.equal(runDialogControls(at({ stage: "Start" }), gates({ dryRun: false }), FP).primary.label, "Start live run");
     const two = { ...shownA, plan: plan(PLAN_A, { planned: [plan(PLAN_A).planned[0], { logicalKey: "entry:2", title: "Grace Hopper", matchKey: "eid:E2" }] }) };
-    assert.equal(runDialogControls(at({ stage: "Start", shown: two }), LAST).primary.label, "Start run");
-    assert.equal(runDialogControls(at({ stage: "Start", shown: shownA, source: rerunReady() }), LAST).primary.label, "Start run");
-    const warning = runDialogControls(at({ stage: "Warning", source: rerunReady({ warning: WARNING }) }), gates({ next: "Start" }));
-    assert.equal(warning.primary.label, "Confirm");
-    assert.deepEqual(warning.cancel, { type: "cancel-warning" });
-    assert.equal(warning.back, null);
+    assert.equal(runDialogControls(at({ stage: "Start", shown: two }), LAST, FP).primary.label, "Start run");
+    assert.equal(runDialogControls(at({ stage: "Start", shown: shownA, source: rerunReady() }), LAST, FP).primary.label, "Start run");
+    const warned = at({ stage: "Start", source: rerunReady({ warning: WARNING, warningFor: FP }) });
+    assert.equal(runDialogControls(warned, LAST, FP).primary.label, "Start run again");
+    assert.equal(runDialogControls(warned, gates({ dryRun: false }), FP).primary.label, "Start live run again");
   });
 
   it("offers the primary exactly when its transition is admitted, whatever the gates and the state", () => {
@@ -623,33 +677,30 @@ describe("runDialogControls", () => {
     const states: readonly Partial<RunDialogState>[] = [{}, { shown: shownA }, { shown: refusedEntry }, { shown: shown({ planned: [] }) },
       { activity: { kind: "planning", request: 1, for: FP } }, { activity: { kind: "checking-warnings", request: 1, for: FP } }, { activity: submitting() }, { activity: replanning },
       { detached: [submitting()] }, { detached: [replanning] }, { recovery: { state: "unreadable", message: "m" } }, { recovery: { state: "retained", command: command(PLAN_A) } },
-      { recovery: { state: "retained", command: command(PLAN_B) }, shown: shownA }, { source: rerunReady() }, { source: rerunReady({ warning: WARNING }) },
+      { recovery: { state: "retained", command: command(PLAN_B) }, shown: shownA }, { source: rerunReady() }, { source: rerunReady({ warning: WARNING }) }, { source: rerunReady({ warning: WARNING, warningFor: FP }) },
       { source: { kind: "rerun", request: RERUN, load: { state: "loading", request: 1 } } }, { source: { kind: "rerun", request: RERUN, load: { state: "failed", message: "m" } } }];
     let admitted = 0, refused = 0;
-    for (const gate of variants) for (const stage of ["Input", "Warning", "Start"] as const) for (const patch of states) {
+    for (const gate of variants) for (const stage of ["Input", "Steps", "Start"] as const) for (const patch of states) {
       const state = at({ stage, ...patch });
-      const controls = runDialogControls(state, gate);
+      const controls = runDialogControls(state, gate, FP);
       const step = runDialogTransition(state, controls.primary.event({ gates: gate, authority: { state: "ok" }, planRequest: () => REQUEST, prepare: () => command(PLAN_A) }), FP);
       assert.equal(controls.primary.enabled, !("refused" in step), JSON.stringify({ gate, stage, patch }));
-      assert.equal(controls.hint !== null, controls.primary.enabled, "the Enter hint shows only when Enter acts");
       if (patch.shown === refusedEntry && gate.next === null) assert.equal(controls.primary.enabled, false, "a refused entry stops the start");
       if (controls.primary.enabled) admitted += 1; else refused += 1;
     }
     assert.ok(admitted > 50 && refused > 50, `both outcomes are covered: ${String(admitted)} and ${String(refused)}`);
   });
 
-  it("shares the button and hint with the transition's admission", () => {
-    const busy = runDialogControls(at({ stage: "Start", activity: { kind: "planning", request: 1, for: FP } }), LAST);
+  it("shares the button with the transition's admission", () => {
+    const busy = runDialogControls(at({ stage: "Start", activity: { kind: "planning", request: 1, for: FP } }), LAST, FP);
     assert.equal(busy.primary.enabled, false);
     assert.equal(busy.primary.loading, true);
-    assert.equal(busy.hint, null);
-    const ready = runDialogControls(at({ stage: "Start" }), LAST);
+    const ready = runDialogControls(at({ stage: "Start" }), LAST, FP);
     assert.equal(ready.primary.enabled, true);
-    assert.equal(ready.hint, "Enter to start");
     assert.equal(ready.back, "Input");
     const input = { gates: LAST, authority: { state: "ok" }, planRequest: () => REQUEST, prepare: () => command(PLAN_A) } as const;
     assert.equal(ready.primary.event(input).type, "start");
-    assert.equal(runDialogControls(at({ stage: "Input" }), gates({ next: "Start", inputBlocked: true })).primary.enabled, false);
+    assert.equal(runDialogControls(at({ stage: "Input" }), gates({ next: "Start", inputBlocked: true }), FP).primary.enabled, false);
   });
 });
 

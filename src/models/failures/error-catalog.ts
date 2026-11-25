@@ -510,7 +510,7 @@ export const ERROR_CATALOG = Object.freeze({
     z.strictObject({ source: BoundarySourceSchema }),
   ),
   RERUN_SOURCE_INPUT_PROTECTED: catalogEntry(
-    "The original input can't be reused. Use Start run.",
+    "The original input can't be reused; use Start run.",
     EmptyParametersSchema,
   ),
   QUEUE_READ_UNAVAILABLE: catalogEntry(

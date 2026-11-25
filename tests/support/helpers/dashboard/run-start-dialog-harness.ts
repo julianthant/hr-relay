@@ -290,7 +290,7 @@ export function createRunStartDialogHarness() {
 
   async function openDialog(
     client: DashboardClient,
-    catalogue: Readonly<{ workflows: readonly RunStartWorkflow[]; panelWorkflowId: string; rerunSource?: RerunLaunchSource }> = {
+    catalogue: Readonly<{ workflows: readonly RunStartWorkflow[]; panelWorkflowId: string; rerunSource?: RerunLaunchSource; rerunInOneClick?: boolean }> = {
       workflows: WORKFLOWS,
       panelWorkflowId: WORKFLOW_ID,
     },
@@ -308,6 +308,7 @@ export function createRunStartDialogHarness() {
         panelWorkflowId: catalogue.panelWorkflowId,
         actorId: ACTOR_ID,
         rerunSource: catalogue.rerunSource,
+        rerunInOneClick: catalogue.rerunInOneClick,
         onApplied,
         onOpenIntake: (workflowId: string, intakeSessionId: string) => {
           intakeHandoffs.push({ workflowId, intakeSessionId });

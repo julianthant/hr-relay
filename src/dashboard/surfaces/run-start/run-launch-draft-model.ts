@@ -293,7 +293,8 @@ export function restoreRerunDraft(draft: LaunchDraft, snapshot: RerunValuesSnaps
   if (rerunInputText !== undefined) {
     if (workflow.inputRun.state !== "present" || workflow.inputRun.surface.typedInput !== undefined
       || snapshot.source.outcome !== "failed" || snapshot.transactions.length !== 0) throw refusal("COMMAND_REFUSED");
-    next = withSteps({ ...next, text: rerunInputText, valueDrafts: {} }, id, workflow.steps.map(step => step.key));
+    // A corrected input may be another person's, so no earlier result stands in for a step.
+    return withSteps({ ...next, text: rerunInputText, valueDrafts: {} }, id, workflow.steps.map(step => step.key));
   }
   if (workflow.inputRun.state === "present" && workflow.inputRun.surface.typedInput !== undefined) {
     if (snapshot.sourceInput.state === "unavailable") throw refusal("RERUN_SOURCE_INPUT_PROTECTED");
@@ -305,6 +306,6 @@ export function restoreRerunDraft(draft: LaunchDraft, snapshot: RerunValuesSnaps
       sourceInputUnchanged: partial === undefined || snapshot.sourceInput.state === "partial" && snapshot.sourceInput.identityCopied, valueDrafts: {} },
     id, workflow.steps.filter(step => step.control.state !== "selectable" || restored[step.control.inputField] === true).map(step => step.key)), snapshot, workflow);
   }
-  if (workflow.inputRun.state === "present" && rerunInputText === undefined) next = { ...next, text: plainRerunInputText(workflow.inputRun.surface, snapshot.sourceInput) };
+  if (workflow.inputRun.state === "present") next = { ...next, text: plainRerunInputText(workflow.inputRun.surface, snapshot.sourceInput) };
   return preselectRerunSteps(next, snapshot, workflow);
 }

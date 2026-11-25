@@ -118,13 +118,13 @@ const STEPS = ["searching", "cross-verify", "active-status"] as const;
 /** What a failed Person Lookup run offers a rerun: the typed input it ran on, each step's state, and one value to copy. */
 export function runDialogRerunSnapshot(): RerunValuesResponse {
   return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
-    sourceInput: { state: "available", value: { eid: RUN_DIALOG_TYPED } },
-    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome: "failed" },
+    sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED } },
+    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome: "failed", dryRun: false, priority: "interactive" },
     steps: STEPS.map((key, index) => ({ key, state: index < 2 ? "completed" : "failed",
       nodes: [{ nodeId: key, state: index < 2 ? "completed" : "failed", reason: index < 2 ? "checkpoint" : "failure" }] })),
-    values: [{ state: "available", sourceStepKey: "searching", nodeId: "searching", fieldPath: "eid", label: "Employee ID", targetFieldPath: "eid", value: RUN_DIALOG_TYPED,
+    values: [{ state: "available", sourceStepKey: "searching", nodeId: "searching", fieldPath: "emplId", label: "Employee ID", targetFieldPath: "emplId", value: RUN_DIALOG_TYPED,
       checkpoint: { attempt: 1, writtenAt: "2026-08-26T20:00:00.000Z" },
-      provenance: { path: "eid", source: "live", observedAt: "2026-08-26T20:00:00.000Z", originalObservedAt: "2026-08-26T20:00:00.000Z" } }],
+      provenance: { path: "emplId", source: "live", observedAt: "2026-08-26T20:00:00.000Z", originalObservedAt: "2026-08-26T20:00:00.000Z" } }],
     transactions: [],
   } });
 }

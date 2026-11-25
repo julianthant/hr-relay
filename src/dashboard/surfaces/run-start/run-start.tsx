@@ -694,7 +694,7 @@ export function RunStartDialog({
   const notice: { sentence: string; action?: { label: string; onClick: () => void; icon?: ReactNode } } | null = planRefusal !== null
     ? { sentence: planRefusal.sentence, ...(planRefusal.goesToQueue ? { action: { label: "Go to queue", icon: <ListChecks aria-hidden className={dsIcon.md} />, onClick: () => closeAndReset(false) } } : {}) }
     : rerunInputGone ? { sentence: RERUN_INPUT_GONE }
-    : dryRunGone ? { sentence: "No dry run here. Use Start run." }
+    : dryRunGone ? { sentence: "No dry run here; use Start run." }
     : spreadsheetsError ? { sentence: "Spreadsheets can't be checked.", ...(sending ? {} : { action: { label: "Retry", onClick: () => void library.adapter.refreshCatalog() } }) }
     : currentStage === "Input" && pdfSurface !== undefined && pdfInput.error !== null
     ? { sentence: pdfInput.error, ...(pdfInput.retryable && !sending ? { action: { label: "Retry", onClick: pdfInput.retry } } : {}) }
