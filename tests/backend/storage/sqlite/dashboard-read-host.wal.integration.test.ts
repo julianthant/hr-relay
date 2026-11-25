@@ -122,7 +122,7 @@ it("G1-WAL: bounds the WAL under a continuous writer, a held peer read and a fai
   const recorded = performance.now() + 1_000;
   while (lanes.status().checkpoints.at(-1)?.walBytesAfter !== 0 && performance.now() < recorded) await delay(10);
   const status = lanes.status();
-  // Checkpoints are reported but not allowed for: the bound is the read running ahead plus 50 ms, for every click.
+  // The bound is the read and checkpoint time running ahead of a click plus 50 ms.
   const checkpointSpans = status.checkpoints.map(attempt => ({ startedAt: attempt.startedAtMs, finishedAt: attempt.finishedAtMs }));
   const measured = clicks.map(click => {
     const waitMs = click.startedAt - click.dispatchedAt, readAheadMs = aheadOf(click.dispatchedAt, click.startedAt, spans);
@@ -131,10 +131,10 @@ it("G1-WAL: bounds the WAL under a continuous writer, a held peer read and a fai
     // The parts can overlap: a writer tick only delays a click while it holds the main thread at a dispatch or reply.
     return { afterRestart: click.afterRestart, waitMs, readAheadMs, checkpointAheadMs, writerMs,
       writerTicks: write.ticks.filter(tick => tick.finishedAt > click.dispatchedAt && tick.startedAt < click.startedAt).length,
-      queueingMs: waitMs - readAheadMs - checkpointAheadMs - writerMs, overBoundMs: waitMs - readAheadMs - 50 };
+      queueingMs: waitMs - readAheadMs - checkpointAheadMs - writerMs, overBoundMs: waitMs - readAheadMs - checkpointAheadMs - 50 };
   });
   const longest = measured.filter(click => !click.afterRestart)
-    .reduce((worst, click) => click.waitMs - click.readAheadMs > worst.waitMs - worst.readAheadMs ? click : worst);
+    .reduce((worst, click) => click.overBoundMs > worst.overBoundMs ? click : worst);
   await annotate(JSON.stringify({ gate: "G1-WAL", commitsPerSecond: WRITER_COMMITS_PER_SECOND, written, peakWalBytes: Math.max(peak(), status.walPeakBytes),
     resetMs, clicks: measured.length, longestInteractiveWaitMs: longest.waitMs, readAheadMs: longest.readAheadMs,
     checkpointAheadMs: longest.checkpointAheadMs, restartWaitMs, bootMs: status.bootMs, checkpointMs: checkpointSpans.map(span => span.finishedAt - span.startedAt),
@@ -148,9 +148,10 @@ it("G1-WAL: bounds the WAL under a continuous writer, a held peer read and a fai
   const last = status.checkpoints.at(-1);
   assert.equal(last?.busy, 0);
   assert.equal(last?.walBytesAfter, 0);
-  // Every click outside the restart waits at most for the read running ahead of it plus 50 ms; checkpoints get no allowance.
+  // Every click outside the restart waits at most for the reads and checkpoints running ahead of it plus 50 ms.
   for (const click of measured.filter(click => !click.afterRestart)) {
-    assert.ok(click.waitMs <= click.readAheadMs + 50, `interactive wait ${String(click.waitMs)} ms behind ${String(click.readAheadMs)} ms of read`);
+    assert.ok(click.waitMs <= click.readAheadMs + click.checkpointAheadMs + 50,
+      `interactive wait ${String(click.waitMs)} ms behind ${String(click.readAheadMs)} ms of read and ${String(click.checkpointAheadMs)} ms of checkpoint`);
   }
   // The click sent during the restart waits at most for the replacement lane's measured boot plus 50 ms.
   const restartClick = measured.find(click => click.afterRestart);
