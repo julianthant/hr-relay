@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+from resource import getrusage, RUSAGE_CHILDREN
 import shutil
 from statistics import median
 import subprocess
@@ -41,14 +42,18 @@ def ox_rule(diagnostic):
     if not match:
         return code
     plugin, name = match.groups()
-    return name if plugin == "eslint" else f"{plugin}/{name}"
+    if plugin == "eslint":
+        return name
+    if plugin == "react-hooks":
+        plugin = "react"
+    return f"{plugin}/{name}"
 
 
 def parity_probes(scratch):
     probes = json.loads(Path(__file__).with_name("lint-shadow-probes.json").read_text())
     with ExitStack() as stack:
         folders = {
-            name: Path(stack.enter_context(TemporaryDirectory(prefix=".lint-parity-", dir=name)))
+            name: Path(stack.enter_context(TemporaryDirectory(prefix="lint-parity-", dir=name)))
             for name in sorted({probe["directory"] for probe in probes})
         }
         paths = {}
@@ -56,10 +61,35 @@ def parity_probes(scratch):
             slug = probe["eslint"].rsplit("/", 1)[-1]
             path = folders[probe["directory"]] / f"{slug}.{probe['extension']}"
             assert path not in paths, path
-            path.write_text(probe["code"] + "\n")
+            code = probe["code"]
+            if probe["eslint"] in ("@typescript-eslint/no-unsafe-call", "@typescript-eslint/no-unsafe-member-access"):
+                code += "\nexport {};"
+            path.write_text(code + "\n")
             paths[path] = probe
         normal = [str(path) for path, probe in paths.items() if probe["eslint"] not in CLASSIC]
         classic = [str(path) for path, probe in paths.items() if probe["eslint"] in CLASSIC]
+        hook = next(probe["code"] for probe in probes if probe["eslint"] == "react-hooks/rules-of-hooks")
+        unused_parameter = "export function f(unused: number, keep: number) { return keep; }"
+        extra = [
+            ("scripts", "hook-outside-dashboard.tsx", hook, set(), set()),
+            ("scripts", "untyped.mjs", "Promise.resolve(1);", set(), set()),
+            ("scripts", "underscore.ts", "const _unused = 1; export function f(_arg: number) {}", set(), set()),
+            ("scripts", "legacy-disable.ts",
+             "// eslint-disable-next-line @typescript-eslint/no-floating-promises\nPromise.resolve(1);",
+             set(), set()),
+            ("scripts", "source-unused-parameter.ts", unused_parameter,
+             {"unused-imports/no-unused-vars"}, {"no-unused-vars"}),
+            ("tests", "test-unused-parameter.ts", unused_parameter, set(), set()),
+            ("scripts", "import-declaration.ts", "export const fetchAsync = () => Promise.resolve(1);",
+             set(), set()),
+            ("scripts", "imported-types.ts", 'import { fetchAsync } from "./import-declaration.js"; fetchAsync();',
+             {"@typescript-eslint/no-floating-promises"}, {"typescript/no-floating-promises"}),
+        ]
+        for directory, name, code, _, _ in extra:
+            path = folders[directory] / name
+            path.write_text(code + "\n")
+            normal.append(str(path))
+
         _, old = run_json([ESLINT, "-f", "json", *normal])
         classic_config = scratch / "eslint-classic.mjs"
         classic_config.write_text("export default " + json.dumps([{
@@ -72,6 +102,10 @@ def parity_probes(scratch):
             relative(result["filePath"]): {msg["ruleId"] for msg in result["messages"]}
             for result in [*old, *controls]
         }
+        baseline_messages = {
+            relative(result["filePath"]): [msg["message"] for msg in result["messages"] if msg["fatal"]]
+            for result in [*old, *controls] if any(msg.get("fatal") for msg in result["messages"])
+        }
         new_hits = defaultdict(set)
         for diagnostic in new["diagnostics"]:
             new_hits[relative(diagnostic["filename"])].add(ox_rule(diagnostic))
@@ -82,14 +116,21 @@ def parity_probes(scratch):
             path_key = relative(path)
             old_rule, new_rule = probe["eslint"], probe["oxlint"]
             if old_rule not in old_hits.get(path_key, ()):
-                failures.append(f"{old_rule}: ESLint fixture saw {old_hits.get(path_key)}")
+                failures.append(f"{old_rule}: ESLint fixture saw {old_hits.get(path_key)} "
+                                f"{baseline_messages.get(path_key, [])}")
             if new_rule and new_rule not in new_hits[path_key]:
                 failures.append(f"{new_rule}: Oxlint fixture saw {sorted(new_hits[path_key])}")
             if not new_rule:
                 exceptions.append(old_rule)
+        for directory, name, _, old_expected, new_expected in extra:
+            path = relative(folders[directory] / name)
+            if old_hits.get(path) != old_expected or new_hits[path] != new_expected:
+                failures.append(f"{name}: expected ESLint {sorted(old_expected)}, Oxlint {sorted(new_expected)}; "
+                                f"saw ESLint {old_hits.get(path)}, Oxlint {sorted(new_hits[path])}")
         if failures:
             report("\n".join(failures))
-        report(f"Planted rules: {len(probes)} cases, {len(failures)} unexpected misses. "
+        report(f"Planted rules: {len(probes)} cases; {len(extra)} scope and suppression controls; "
+               f"{len(failures)} discrepancies. "
                f"Classic-script exceptions: {', '.join(exceptions)}.")
 
         error = folders["scripts"] / "fatal-error.ts"
@@ -99,17 +140,17 @@ def parity_probes(scratch):
         error_exit, error_output = run_json([*OX, "-f", "json", str(error)])
         warning_exit, warning_output = run_json([*OX, "-f", "json", str(warning)])
         allowed_exit, _ = run_json([*OX[:-1], "1", "-f", "json", str(warning)])
-        assert error_exit == warning_exit == 1 and allowed_exit == 0, (
-            error_exit, warning_exit, allowed_exit, error_output, warning_output)
-        assert [(item["severity"], ox_rule(item)) for item in error_output["diagnostics"]] == [
-            ("error", "no-debugger"),
-        ], error_output
-        assert [(item["severity"], ox_rule(item)) for item in warning_output["diagnostics"]] == [
-            ("warning", "no-unused-vars"),
-        ], warning_output
-        report("Fatal thresholds: planted no-debugger error exits 1, planted no-unused-vars warning "
-               "exits 1 at threshold 0 and exits 0 at threshold 1.")
-    return not failures
+        def diagnostics(output):
+            return [(item["severity"], ox_rule(item)) for item in output["diagnostics"]]
+
+        thresholds_ok = (error_exit == warning_exit == 1 and allowed_exit == 0 and
+                         diagnostics(error_output) == [("error", "no-debugger")] and
+                         diagnostics(warning_output) == [("warning", "no-unused-vars")])
+        report(f"Fatal thresholds: error exit {error_exit} {diagnostics(error_output)}, "
+               f"warning exits {warning_exit} at threshold 0 and {allowed_exit} at threshold 1 "
+               f"{diagnostics(warning_output)}. {'Pass' if thresholds_ok else 'Fail'}.")
+
+    return not failures and thresholds_ok
 
 
 def process_tree_rss(root_pid):
@@ -132,12 +173,15 @@ def process_tree_rss(root_pid):
 def measure(command, output_path):
     with output_path.open("w") as output:
         start = monotonic()
+        start_cpu = getrusage(RUSAGE_CHILDREN)
         with subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT) as process:
             peak = 0
             while process.poll() is None:
                 peak = max(peak, process_tree_rss(process.pid))
                 sleep(0.2)
-            return process.returncode, monotonic() - start, peak
+            end_cpu = getrusage(RUSAGE_CHILDREN)
+            cpu = end_cpu.ru_utime + end_cpu.ru_stime - start_cpu.ru_utime - start_cpu.ru_stime
+            return process.returncode, monotonic() - start, peak, cpu
 
 
 def corpus(scratch, probes_ok):
@@ -156,8 +200,9 @@ def corpus(scratch, probes_ok):
         old_files = {relative(entry["filePath"]) for entry in entries}
         new_log = scratch / "oxlint-run.txt"
         new = measure(["npm", "run", "lint:oxlint"], new_log)
-        report(f"Trial {trial + 1}: ESLint {old[1]:.2f} s / {old[2]:,.0f} MiB / exit {old[0]}; "
-               f"Oxlint {new[1]:.2f} s / {new[2]:,.0f} MiB / exit {new[0]}.")
+        report(f"Trial {trial + 1}: ESLint {old[1]:.2f} s / {old[2]:,.0f} MiB / "
+               f"{old[3] / old[1]:.2f} avg CPU cores / exit {old[0]}; "
+               f"Oxlint {new[1]:.2f} s / {new[2]:,.0f} MiB / {new[3] / new[1]:.2f} avg CPU cores / exit {new[0]}.")
         if trial == 0 or old_files != new_files:
             digest = sha256("\n".join(sorted(new_files)).encode()).hexdigest()
             report(f"Corpus: ESLint {len(old_files)} files; Oxlint {len(new_files)} files; Oxlint paths SHA256 {digest}.")

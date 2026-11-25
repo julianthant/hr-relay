@@ -113,6 +113,7 @@ it("hands the quit-time backup of a stopping dashboard to one detached finisher 
     assert.equal(request.mock.calls.length, 0);
     assert.deepEqual(spawned.map(value => ({ command: value.command, args: value.args, unref: value.unref })),
       [{ command: "/synthetic/node", args: ["bootstrap.ts", "cli", "storage", "finish-shutdown-backup", f.workspace, profileId], unref: 1 }]);
+    // oxlint-disable-next-line no-unsafe-optional-chaining -- Missing spawn options must fail this assertion.
     assert.equal((spawned[0]?.options as { detached?: boolean }).detached, true);
     assert.equal(shutdownManifestCount(directory), 0);
   } finally { request.mockRestore(); await f.close(); }

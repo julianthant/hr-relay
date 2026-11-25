@@ -1,800 +1,116 @@
 [
-  {
-    "eslint": "@typescript-eslint/await-thenable",
-    "oxlint": "typescript/await-thenable",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export async function f() { await 12; }"
-  },
-  {
-    "eslint": "@typescript-eslint/ban-ts-comment",
-    "oxlint": "typescript/ban-ts-comment",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "// @ts-ignore\nexport const x = missing;"
-  },
-  {
-    "eslint": "@typescript-eslint/no-array-constructor",
-    "oxlint": "no-array-constructor",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = new Array(1, 2, 3);"
-  },
-  {
-    "eslint": "@typescript-eslint/no-array-delete",
-    "oxlint": "typescript/no-array-delete",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x: string[]) { delete x[0]; }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-base-to-string",
-    "oxlint": "typescript/no-base-to-string",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x: { key: number }) { return String(x); }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-duplicate-enum-values",
-    "oxlint": "typescript/no-duplicate-enum-values",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export enum E { A = 1, B = 1 }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-duplicate-type-constituents",
-    "oxlint": "typescript/no-duplicate-type-constituents",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export type T = string | string;"
-  },
-  {
-    "eslint": "@typescript-eslint/no-empty-object-type",
-    "oxlint": "typescript/no-empty-object-type",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export type T = {};"
-  },
-  {
-    "eslint": "@typescript-eslint/no-explicit-any",
-    "oxlint": "typescript/no-explicit-any",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export type T = any;"
-  },
-  {
-    "eslint": "@typescript-eslint/no-extra-non-null-assertion",
-    "oxlint": "typescript/no-extra-non-null-assertion",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x?: string) { return x!!; }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-floating-promises",
-    "oxlint": "typescript/no-floating-promises",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { Promise.resolve(1); }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-for-in-array",
-    "oxlint": "typescript/no-for-in-array",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x: string[]) { for (const k in x) console.log(k); }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-implied-eval",
-    "oxlint": "typescript/no-implied-eval",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "setTimeout(\"console.log(1)\", 1);"
-  },
-  {
-    "eslint": "@typescript-eslint/no-misused-new",
-    "oxlint": "typescript/no-misused-new",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export interface T { new(): T; }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-misused-promises",
-    "oxlint": "typescript/no-misused-promises",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export async function f() {} if (f()) console.log(1);"
-  },
-  {
-    "eslint": "@typescript-eslint/no-namespace",
-    "oxlint": "typescript/no-namespace",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export namespace X { export const y = 1; }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-non-null-asserted-optional-chain",
-    "oxlint": "typescript/no-non-null-asserted-optional-chain",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x?: { y: number }) { return x?.y!; }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-redundant-type-constituents",
-    "oxlint": "typescript/no-redundant-type-constituents",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export type T = string | \"abc\";"
-  },
-  {
-    "eslint": "@typescript-eslint/no-require-imports",
-    "oxlint": "typescript/no-require-imports",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = require(\"node:fs\");"
-  },
-  {
-    "eslint": "@typescript-eslint/no-this-alias",
-    "oxlint": "typescript/no-this-alias",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(this: object) { const self = this; return self; }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unnecessary-type-assertion",
-    "oxlint": "typescript/no-unnecessary-type-assertion",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x: number) { return x as number; }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unnecessary-type-constraint",
-    "oxlint": "typescript/no-unnecessary-type-constraint",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export type T<S extends any> = S;"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unsafe-argument",
-    "oxlint": "typescript/no-unsafe-argument",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "declare const x: any; export function f(y: number) { return y; } f(x);"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unsafe-assignment",
-    "oxlint": "typescript/no-unsafe-assignment",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "declare const x: any; export const y = x;"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unsafe-call",
-    "oxlint": "typescript/no-unsafe-call",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "declare const x: any; x();"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unsafe-declaration-merging",
-    "oxlint": "typescript/no-unsafe-declaration-merging",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export interface T { x: number; } export class T {}"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unsafe-enum-comparison",
-    "oxlint": "typescript/no-unsafe-enum-comparison",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export enum E { A = 1 } export function f(e: E) { return e === 1; }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unsafe-function-type",
-    "oxlint": "typescript/no-unsafe-function-type",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export type T = Function;"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unsafe-member-access",
-    "oxlint": "typescript/no-unsafe-member-access",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "declare const x: any; console.log(x.key);"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unsafe-return",
-    "oxlint": "typescript/no-unsafe-return",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "declare const x: any; export function f(): string { return x; }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unsafe-unary-minus",
-    "oxlint": "typescript/no-unsafe-unary-minus",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x: string) { return -x; }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unused-expressions",
-    "oxlint": "no-unused-expressions",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x: number) { x + 1; }"
-  },
-  {
-    "eslint": "@typescript-eslint/no-unused-vars",
-    "oxlint": "no-unused-vars",
-    "directory": "tests",
-    "extension": "ts",
-    "code": "const unusedThing = 1; export const usedThing = 2;"
-  },
-  {
-    "eslint": "@typescript-eslint/no-wrapper-object-types",
-    "oxlint": "typescript/no-wrapper-object-types",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export type T = String;"
-  },
-  {
-    "eslint": "@typescript-eslint/only-throw-error",
-    "oxlint": "typescript/only-throw-error",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { throw \"bad\"; }"
-  },
-  {
-    "eslint": "@typescript-eslint/prefer-as-const",
-    "oxlint": "typescript/prefer-as-const",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = \"abc\" as \"abc\";"
-  },
-  {
-    "eslint": "@typescript-eslint/prefer-namespace-keyword",
-    "oxlint": "typescript/prefer-namespace-keyword",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export module X { export const y = 1; }"
-  },
-  {
-    "eslint": "@typescript-eslint/prefer-promise-reject-errors",
-    "oxlint": "typescript/prefer-promise-reject-errors",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = Promise.reject(\"bad\");"
-  },
-  {
-    "eslint": "@typescript-eslint/restrict-plus-operands",
-    "oxlint": "typescript/restrict-plus-operands",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x: number, y: symbol) { return x + y; }"
-  },
-  {
-    "eslint": "@typescript-eslint/restrict-template-expressions",
-    "oxlint": "typescript/restrict-template-expressions",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x: { y: number }) { return `${x}`; }"
-  },
-  {
-    "eslint": "@typescript-eslint/triple-slash-reference",
-    "oxlint": "typescript/triple-slash-reference",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "/// <reference path=\"./missing.ts\" />\nexport const x = 1;"
-  },
-  {
-    "eslint": "@typescript-eslint/unbound-method",
-    "oxlint": "typescript/unbound-method",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export class C { x = 1; f() { return this.x; } } export const y = new C().f;"
-  },
-  {
-    "eslint": "constructor-super",
-    "oxlint": "constructor-super",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "export class C extends Object { constructor() {} }"
-  },
-  {
-    "eslint": "for-direction",
-    "oxlint": "for-direction",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { for (let i = 0; i < 10; i--) console.log(i); }"
-  },
-  {
-    "eslint": "getter-return",
-    "oxlint": "getter-return",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "export const x = { get y() { console.log(1); } };"
-  },
-  {
-    "eslint": "no-async-promise-executor",
-    "oxlint": "no-async-promise-executor",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = new Promise(async (resolve) => { resolve(await Promise.resolve(1)); });"
-  },
-  {
-    "eslint": "no-case-declarations",
-    "oxlint": "no-case-declarations",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { switch (x) { case 1: const y = 2; return y; } }"
-  },
-  {
-    "eslint": "no-class-assign",
-    "oxlint": "no-class-assign",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "class C {} C = 1; console.log(C);"
-  },
-  {
-    "eslint": "no-compare-neg-zero",
-    "oxlint": "no-compare-neg-zero",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { return x === -0; }"
-  },
-  {
-    "eslint": "no-cond-assign",
-    "oxlint": "no-cond-assign",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x,y) { if (x = y) return x; }"
-  },
-  {
-    "eslint": "no-const-assign",
-    "oxlint": "no-const-assign",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "const x = 1; x = 2; console.log(x);"
-  },
-  {
-    "eslint": "no-constant-binary-expression",
-    "oxlint": "no-constant-binary-expression",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = {} || 5;"
-  },
-  {
-    "eslint": "no-constant-condition",
-    "oxlint": "no-constant-condition",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "if (true) console.log(1);"
-  },
-  {
-    "eslint": "no-control-regex",
-    "oxlint": "no-control-regex",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = /\\x00/;"
-  },
-  {
-    "eslint": "no-debugger",
-    "oxlint": "no-debugger",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "debugger;"
-  },
-  {
-    "eslint": "no-delete-var",
-    "oxlint": "no-delete-var",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "var x = 1; delete x;"
-  },
-  {
-    "eslint": "no-dupe-args",
-    "oxlint": null,
-    "directory": "scripts",
-    "extension": "cjs",
-    "code": "function f(x, x) { return x; } module.exports = f;"
-  },
-  {
-    "eslint": "no-dupe-class-members",
-    "oxlint": "no-dupe-class-members",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "export class C { f() {} f() {} }"
-  },
-  {
-    "eslint": "no-dupe-else-if",
-    "oxlint": "no-dupe-else-if",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { if (x) return 1; else if (x) return 2; }"
-  },
-  {
-    "eslint": "no-dupe-keys",
-    "oxlint": "no-dupe-keys",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "export const x = { key: 1, key: 2 };"
-  },
-  {
-    "eslint": "no-duplicate-case",
-    "oxlint": "no-duplicate-case",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { switch (x) { case 1: return 1; case 1: return 2; } }"
-  },
-  {
-    "eslint": "no-empty",
-    "oxlint": "no-empty",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { if (x) {} }"
-  },
-  {
-    "eslint": "no-empty-character-class",
-    "oxlint": "no-empty-character-class",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = /[]/;"
-  },
-  {
-    "eslint": "no-empty-pattern",
-    "oxlint": "no-empty-pattern",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const {} = { x: 1 };"
-  },
-  {
-    "eslint": "no-empty-static-block",
-    "oxlint": "no-empty-static-block",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export class C { static {} }"
-  },
-  {
-    "eslint": "no-ex-assign",
-    "oxlint": "no-ex-assign",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "try { throw new Error(); } catch (e) { e = 1; console.log(e); }"
-  },
-  {
-    "eslint": "no-extra-boolean-cast",
-    "oxlint": "no-extra-boolean-cast",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { if (!!x) return 1; }"
-  },
-  {
-    "eslint": "no-fallthrough",
-    "oxlint": "no-fallthrough",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { switch (x) { case 1: console.log(x); case 2: return 2; } }"
-  },
-  {
-    "eslint": "no-func-assign",
-    "oxlint": "no-func-assign",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "function f() {} f = 1; console.log(f);"
-  },
-  {
-    "eslint": "no-global-assign",
-    "oxlint": "no-global-assign",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "Object = 1;"
-  },
-  {
-    "eslint": "no-import-assign",
-    "oxlint": "no-import-assign",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "import { readFile } from \"node:fs\"; readFile = 1; console.log(readFile);"
-  },
-  {
-    "eslint": "no-invalid-regexp",
-    "oxlint": "no-invalid-regexp",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = new RegExp(\"[\");"
-  },
-  {
-    "eslint": "no-irregular-whitespace",
-    "oxlint": "no-irregular-whitespace",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = 1;"
-  },
-  {
-    "eslint": "no-loss-of-precision",
-    "oxlint": "no-loss-of-precision",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = 9007199254740993;"
-  },
-  {
-    "eslint": "no-misleading-character-class",
-    "oxlint": "no-misleading-character-class",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = /[Á]/u;"
-  },
-  {
-    "eslint": "no-new-native-nonconstructor",
-    "oxlint": "no-new-native-nonconstructor",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "export const x = new Symbol();"
-  },
-  {
-    "eslint": "no-nonoctal-decimal-escape",
-    "oxlint": "no-nonoctal-decimal-escape",
-    "directory": "scripts",
-    "extension": "cjs",
-    "code": "const x = \"\\8\"; module.exports = x;"
-  },
-  {
-    "eslint": "no-obj-calls",
-    "oxlint": "no-obj-calls",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "export const x = Math();"
-  },
-  {
-    "eslint": "no-octal",
-    "oxlint": null,
-    "directory": "scripts",
-    "extension": "cjs",
-    "code": "module.exports = 071;"
-  },
-  {
-    "eslint": "no-prototype-builtins",
-    "oxlint": "no-prototype-builtins",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { return x.hasOwnProperty(\"k\"); }"
-  },
-  {
-    "eslint": "no-redeclare",
-    "oxlint": "no-redeclare",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "var x=1; var x=2; module.exports=x;"
-  },
-  {
-    "eslint": "no-regex-spaces",
-    "oxlint": "no-regex-spaces",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = /a   b/;"
-  },
-  {
-    "eslint": "no-self-assign",
-    "oxlint": "no-self-assign",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { x = x; return x; }"
-  },
-  {
-    "eslint": "no-setter-return",
-    "oxlint": "no-setter-return",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "export const x = { set y(z) { return z; } };"
-  },
-  {
-    "eslint": "no-shadow-restricted-names",
-    "oxlint": "no-shadow-restricted-names",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(undefined) { return undefined; }"
-  },
-  {
-    "eslint": "no-sparse-arrays",
-    "oxlint": "no-sparse-arrays",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = [1,,3];"
-  },
-  {
-    "eslint": "no-this-before-super",
-    "oxlint": "no-this-before-super",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "export class C extends Object { constructor() { console.log(this); super(); } }"
-  },
-  {
-    "eslint": "no-unassigned-vars",
-    "oxlint": "no-unassigned-vars",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { let x; return x; }"
-  },
-  {
-    "eslint": "no-undef",
-    "oxlint": "no-undef",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "missingVariable();"
-  },
-  {
-    "eslint": "no-unexpected-multiline",
-    "oxlint": "no-unexpected-multiline",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { const x = 1\n[1].forEach(console.log); return x; }"
-  },
-  {
-    "eslint": "no-unreachable",
-    "oxlint": "no-unreachable",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "export function f() { return; console.log(1); }"
-  },
-  {
-    "eslint": "no-unsafe-finally",
-    "oxlint": "no-unsafe-finally",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { try { return 1; } finally { return 2; } }"
-  },
-  {
-    "eslint": "no-unsafe-negation",
-    "oxlint": "no-unsafe-negation",
-    "directory": "scripts",
-    "extension": "mjs",
-    "code": "export function f(x, y) { return !x in y; }"
-  },
-  {
-    "eslint": "no-unsafe-optional-chaining",
-    "oxlint": "no-unsafe-optional-chaining",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { (x?.m)(); }"
-  },
-  {
-    "eslint": "no-unused-labels",
-    "oxlint": "no-unused-labels",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { unused: while (true) { break; } }"
-  },
-  {
-    "eslint": "no-unused-private-class-members",
-    "oxlint": "no-unused-private-class-members",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export class C { #x = 1; }"
-  },
-  {
-    "eslint": "no-useless-assignment",
-    "oxlint": "no-useless-assignment",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { let x = 1; x = 2; return x; }"
-  },
-  {
-    "eslint": "no-useless-backreference",
-    "oxlint": "no-useless-backreference",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = /\\1(a)/;"
-  },
-  {
-    "eslint": "no-useless-catch",
-    "oxlint": "no-useless-catch",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { try { console.log(1); } catch (e) { throw e; } }"
-  },
-  {
-    "eslint": "no-useless-escape",
-    "oxlint": "no-useless-escape",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export const x = \"\\#\";"
-  },
-  {
-    "eslint": "no-var",
-    "oxlint": "no-var",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export var x = 1;"
-  },
-  {
-    "eslint": "no-with",
-    "oxlint": "no-with",
-    "directory": "scripts",
-    "extension": "cjs",
-    "code": "with ({x: 1}) console.log(x);"
-  },
-  {
-    "eslint": "prefer-const",
-    "oxlint": "prefer-const",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { let x = 1; return x; }"
-  },
-  {
-    "eslint": "prefer-rest-params",
-    "oxlint": "prefer-rest-params",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { return arguments[0]; }"
-  },
-  {
-    "eslint": "prefer-spread",
-    "oxlint": "prefer-spread",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x, args) { return x.apply(null, args); }"
-  },
-  {
-    "eslint": "preserve-caught-error",
-    "oxlint": "preserve-caught-error",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f() { try { JSON.parse(\"\"); } catch (e) { throw new Error(\"bad\"); } }"
-  },
-  {
-    "eslint": "react-hooks/exhaustive-deps",
-    "oxlint": "react/exhaustive-deps",
-    "directory": "src/dashboard",
-    "extension": "ts",
-    "code": "import { useEffect } from \"react\"; export function Component({x}: {x: number}) { useEffect(() => console.log(x), []); return null; }"
-  },
-  {
-    "eslint": "react-hooks/rules-of-hooks",
-    "oxlint": "react/rules-of-hooks",
-    "directory": "src/dashboard",
-    "extension": "ts",
-    "code": "import { useEffect } from \"react\"; export function Component({x}: {x: boolean}) { if (x) useEffect(() => {}, []); return null; }"
-  },
-  {
-    "eslint": "require-yield",
-    "oxlint": "require-yield",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function* f() { return 1; }"
-  },
-  {
-    "eslint": "unused-imports/no-unused-imports",
-    "oxlint": "no-unused-vars",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "import { readFile } from \"node:fs\"; export const x = 1;"
-  },
-  {
-    "eslint": "unused-imports/no-unused-vars",
-    "oxlint": "no-unused-vars",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "const unusedThing = 1; export const usedThing = 2;"
-  },
-  {
-    "eslint": "use-isnan",
-    "oxlint": "use-isnan",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { return x === NaN; }"
-  },
-  {
-    "eslint": "valid-typeof",
-    "oxlint": "valid-typeof",
-    "directory": "scripts",
-    "extension": "ts",
-    "code": "export function f(x) { return typeof x === \"strng\"; }"
-  },
-  {
-    "eslint": "@typescript-eslint/require-await",
-    "oxlint": "typescript/require-await",
-    "directory": "scripts",
-    "extension": "mts",
-    "code": "export async function f() { return 1; }"
-  }
+  {"eslint": "@typescript-eslint/await-thenable", "oxlint": "typescript/await-thenable", "directory": "scripts", "extension": "ts", "code": "export async function f() { await 12; }"},
+  {"eslint": "@typescript-eslint/ban-ts-comment", "oxlint": "typescript/ban-ts-comment", "directory": "scripts", "extension": "ts", "code": "// @ts-ignore\nexport const x = missing;"},
+  {"eslint": "@typescript-eslint/no-array-constructor", "oxlint": "no-array-constructor", "directory": "scripts", "extension": "ts", "code": "export const x = new Array(1, 2, 3);"},
+  {"eslint": "@typescript-eslint/no-array-delete", "oxlint": "typescript/no-array-delete", "directory": "scripts", "extension": "ts", "code": "export function f(x: string[]) { delete x[0]; }"},
+  {"eslint": "@typescript-eslint/no-base-to-string", "oxlint": "typescript/no-base-to-string", "directory": "scripts", "extension": "ts", "code": "export function f(x: { key: number }) { return String(x); }"},
+  {"eslint": "@typescript-eslint/no-duplicate-enum-values", "oxlint": "typescript/no-duplicate-enum-values", "directory": "scripts", "extension": "ts", "code": "export enum E { A = 1, B = 1 }"},
+  {"eslint": "@typescript-eslint/no-duplicate-type-constituents", "oxlint": "typescript/no-duplicate-type-constituents", "directory": "scripts", "extension": "ts", "code": "export type T = string | string;"},
+  {"eslint": "@typescript-eslint/no-empty-object-type", "oxlint": "typescript/no-empty-object-type", "directory": "scripts", "extension": "ts", "code": "export type T = {};"},
+  {"eslint": "@typescript-eslint/no-explicit-any", "oxlint": "typescript/no-explicit-any", "directory": "scripts", "extension": "ts", "code": "export type T = any;"},
+  {"eslint": "@typescript-eslint/no-extra-non-null-assertion", "oxlint": "typescript/no-extra-non-null-assertion", "directory": "scripts", "extension": "ts", "code": "export function f(x?: string) { return x!!; }"},
+  {"eslint": "@typescript-eslint/no-floating-promises", "oxlint": "typescript/no-floating-promises", "directory": "scripts", "extension": "ts", "code": "export function f() { Promise.resolve(1); }"},
+  {"eslint": "@typescript-eslint/no-for-in-array", "oxlint": "typescript/no-for-in-array", "directory": "scripts", "extension": "ts", "code": "export function f(x: string[]) { for (const k in x) console.log(k); }"},
+  {"eslint": "@typescript-eslint/no-implied-eval", "oxlint": "typescript/no-implied-eval", "directory": "scripts", "extension": "ts", "code": "setTimeout(\"console.log(1)\", 1);"},
+  {"eslint": "@typescript-eslint/no-misused-new", "oxlint": "typescript/no-misused-new", "directory": "scripts", "extension": "ts", "code": "export interface T { new(): T; }"},
+  {"eslint": "@typescript-eslint/no-misused-promises", "oxlint": "typescript/no-misused-promises", "directory": "scripts", "extension": "ts", "code": "export async function f() {}\nif (f()) console.log(1);"},
+  {"eslint": "@typescript-eslint/no-namespace", "oxlint": "typescript/no-namespace", "directory": "scripts", "extension": "ts", "code": "export namespace X { export const y = 1; }"},
+  {"eslint": "@typescript-eslint/no-non-null-asserted-optional-chain", "oxlint": "typescript/no-non-null-asserted-optional-chain", "directory": "scripts", "extension": "ts", "code": "export function f(x?: { y: number }) { return x?.y!; }"},
+  {"eslint": "@typescript-eslint/no-redundant-type-constituents", "oxlint": "typescript/no-redundant-type-constituents", "directory": "scripts", "extension": "ts", "code": "export type T = string | \"abc\";"},
+  {"eslint": "@typescript-eslint/no-require-imports", "oxlint": "typescript/no-require-imports", "directory": "scripts", "extension": "ts", "code": "export const x = require(\"node:fs\");"},
+  {"eslint": "@typescript-eslint/no-this-alias", "oxlint": "typescript/no-this-alias", "directory": "scripts", "extension": "ts", "code": "export function f(this: object) { const self = this; return self; }"},
+  {"eslint": "@typescript-eslint/no-unnecessary-type-assertion", "oxlint": "typescript/no-unnecessary-type-assertion", "directory": "scripts", "extension": "ts", "code": "export function f(x: number) { return x as number; }"},
+  {"eslint": "@typescript-eslint/no-unnecessary-type-constraint", "oxlint": "typescript/no-unnecessary-type-constraint", "directory": "scripts", "extension": "ts", "code": "export type T<S extends any> = S;"},
+  {"eslint": "@typescript-eslint/no-unsafe-argument", "oxlint": "typescript/no-unsafe-argument", "directory": "scripts", "extension": "ts", "code": "declare const x: any;\nexport function f(y: number) { return y; }\nf(x);"},
+  {"eslint": "@typescript-eslint/no-unsafe-assignment", "oxlint": "typescript/no-unsafe-assignment", "directory": "scripts", "extension": "ts", "code": "declare const x: any;\nexport const y = x;"},
+  {"eslint": "@typescript-eslint/no-unsafe-call", "oxlint": "typescript/no-unsafe-call", "directory": "scripts", "extension": "ts", "code": "declare const x: any;\nx();"},
+  {"eslint": "@typescript-eslint/no-unsafe-declaration-merging", "oxlint": "typescript/no-unsafe-declaration-merging", "directory": "scripts", "extension": "ts", "code": "export interface T { x: number; }\nexport class T {}"},
+  {"eslint": "@typescript-eslint/no-unsafe-enum-comparison", "oxlint": "typescript/no-unsafe-enum-comparison", "directory": "scripts", "extension": "ts", "code": "export enum E { A = 1 }\nexport function f(e: E) { return e === 1; }"},
+  {"eslint": "@typescript-eslint/no-unsafe-function-type", "oxlint": "typescript/no-unsafe-function-type", "directory": "scripts", "extension": "ts", "code": "export type T = Function;"},
+  {"eslint": "@typescript-eslint/no-unsafe-member-access", "oxlint": "typescript/no-unsafe-member-access", "directory": "scripts", "extension": "ts", "code": "declare const x: any;\nconsole.log(x.key);"},
+  {"eslint": "@typescript-eslint/no-unsafe-return", "oxlint": "typescript/no-unsafe-return", "directory": "scripts", "extension": "ts", "code": "declare const x: any;\nexport function f(): string { return x; }"},
+  {"eslint": "@typescript-eslint/no-unsafe-unary-minus", "oxlint": "typescript/no-unsafe-unary-minus", "directory": "scripts", "extension": "ts", "code": "export function f(x: string) { return -x; }"},
+  {"eslint": "@typescript-eslint/no-unused-expressions", "oxlint": "no-unused-expressions", "directory": "scripts", "extension": "ts", "code": "export function f(x: number) { x + 1; }"},
+  {"eslint": "@typescript-eslint/no-unused-vars", "oxlint": "no-unused-vars", "directory": "tests", "extension": "ts", "code": "const unusedThing = 1;\nexport const usedThing = 2;"},
+  {"eslint": "@typescript-eslint/no-wrapper-object-types", "oxlint": "typescript/no-wrapper-object-types", "directory": "scripts", "extension": "ts", "code": "export type T = String;"},
+  {"eslint": "@typescript-eslint/only-throw-error", "oxlint": "typescript/only-throw-error", "directory": "scripts", "extension": "ts", "code": "export function f() { throw \"bad\"; }"},
+  {"eslint": "@typescript-eslint/prefer-as-const", "oxlint": "typescript/prefer-as-const", "directory": "scripts", "extension": "ts", "code": "export const x = \"abc\" as \"abc\";"},
+  {"eslint": "@typescript-eslint/prefer-namespace-keyword", "oxlint": "typescript/prefer-namespace-keyword", "directory": "scripts", "extension": "ts", "code": "export module X { export const y = 1; }"},
+  {"eslint": "@typescript-eslint/prefer-promise-reject-errors", "oxlint": "typescript/prefer-promise-reject-errors", "directory": "scripts", "extension": "ts", "code": "export const x = Promise.reject(\"bad\");"},
+  {"eslint": "@typescript-eslint/restrict-plus-operands", "oxlint": "typescript/restrict-plus-operands", "directory": "scripts", "extension": "ts", "code": "export function f(x: number, y: symbol) { return x + y; }"},
+  {"eslint": "@typescript-eslint/restrict-template-expressions", "oxlint": "typescript/restrict-template-expressions", "directory": "scripts", "extension": "ts", "code": "export function f(x: { y: number }) { return `${x}`; }"},
+  {"eslint": "@typescript-eslint/triple-slash-reference", "oxlint": "typescript/triple-slash-reference", "directory": "scripts", "extension": "ts", "code": "/// <reference path=\"./missing.ts\" />\nexport const x = 1;"},
+  {"eslint": "@typescript-eslint/unbound-method", "oxlint": "typescript/unbound-method", "directory": "scripts", "extension": "ts", "code": "export class C { x = 1; f() { return this.x; } }\nexport const y = new C().f;"},
+  {"eslint": "constructor-super", "oxlint": "constructor-super", "directory": "scripts", "extension": "mjs", "code": "export class C extends Object { constructor() {} }"},
+  {"eslint": "for-direction", "oxlint": "for-direction", "directory": "scripts", "extension": "mjs", "code": "export function f() { for (let i = 0; i < 10; i--) console.log(i); }"},
+  {"eslint": "getter-return", "oxlint": "getter-return", "directory": "scripts", "extension": "mjs", "code": "export const x = { get y() { console.log(1); } };"},
+  {"eslint": "no-async-promise-executor", "oxlint": "no-async-promise-executor", "directory": "scripts", "extension": "mjs", "code": "export const x = new Promise(async (resolve) => { resolve(await Promise.resolve(1)); });"},
+  {"eslint": "no-case-declarations", "oxlint": "no-case-declarations", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { switch (x) { case 1: const y = 2; return y; } }"},
+  {"eslint": "no-class-assign", "oxlint": "no-class-assign", "directory": "scripts", "extension": "mjs", "code": "class C {}\nC = 1;\nconsole.log(C);"},
+  {"eslint": "no-compare-neg-zero", "oxlint": "no-compare-neg-zero", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { return x === -0; }"},
+  {"eslint": "no-cond-assign", "oxlint": "no-cond-assign", "directory": "scripts", "extension": "mjs", "code": "export function f(x,y) { if (x = y) return x; }"},
+  {"eslint": "no-const-assign", "oxlint": "no-const-assign", "directory": "scripts", "extension": "mjs", "code": "const x = 1;\nx = 2;\nconsole.log(x);"},
+  {"eslint": "no-constant-binary-expression", "oxlint": "no-constant-binary-expression", "directory": "scripts", "extension": "mjs", "code": "export const x = {} || 5;"},
+  {"eslint": "no-constant-condition", "oxlint": "no-constant-condition", "directory": "scripts", "extension": "mjs", "code": "if (true) console.log(1);"},
+  {"eslint": "no-control-regex", "oxlint": "no-control-regex", "directory": "scripts", "extension": "mjs", "code": "export const x = /\\x00/;"},
+  {"eslint": "no-debugger", "oxlint": "no-debugger", "directory": "scripts", "extension": "mjs", "code": "debugger;"},
+  {"eslint": "no-delete-var", "oxlint": "no-delete-var", "directory": "scripts", "extension": "cjs", "code": "var x = 1;\ndelete x;"},
+  {"eslint": "no-dupe-args", "oxlint": null, "directory": "scripts", "extension": "cjs", "code": "function f(x, x) { return x; }\nmodule.exports = f;"},
+  {"eslint": "no-dupe-class-members", "oxlint": "no-dupe-class-members", "directory": "scripts", "extension": "mjs", "code": "export class C { f() {} f() {} }"},
+  {"eslint": "no-dupe-else-if", "oxlint": "no-dupe-else-if", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { if (x) return 1; else if (x) return 2; }"},
+  {"eslint": "no-dupe-keys", "oxlint": "no-dupe-keys", "directory": "scripts", "extension": "mjs", "code": "export const x = { key: 1, key: 2 };"},
+  {"eslint": "no-duplicate-case", "oxlint": "no-duplicate-case", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { switch (x) { case 1: return 1; case 1: return 2; } }"},
+  {"eslint": "no-empty", "oxlint": "no-empty", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { if (x) {} }"},
+  {"eslint": "no-empty-character-class", "oxlint": "no-empty-character-class", "directory": "scripts", "extension": "mjs", "code": "export const x = /[]/;"},
+  {"eslint": "no-empty-pattern", "oxlint": "no-empty-pattern", "directory": "scripts", "extension": "mjs", "code": "export const {} = { x: 1 };"},
+  {"eslint": "no-empty-static-block", "oxlint": "no-empty-static-block", "directory": "scripts", "extension": "mjs", "code": "export class C { static {} }"},
+  {"eslint": "no-ex-assign", "oxlint": "no-ex-assign", "directory": "scripts", "extension": "mjs", "code": "try { throw new Error(); } catch (e) { e = 1; console.log(e); }"},
+  {"eslint": "no-extra-boolean-cast", "oxlint": "no-extra-boolean-cast", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { if (!!x) return 1; }"},
+  {"eslint": "no-fallthrough", "oxlint": "no-fallthrough", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { switch (x) { case 1: console.log(x); case 2: return 2; } }"},
+  {"eslint": "no-func-assign", "oxlint": "no-func-assign", "directory": "scripts", "extension": "mjs", "code": "function f() {}\nf = 1;\nconsole.log(f);"},
+  {"eslint": "no-global-assign", "oxlint": "no-global-assign", "directory": "scripts", "extension": "mjs", "code": "Object = 1;"},
+  {"eslint": "no-import-assign", "oxlint": "no-import-assign", "directory": "scripts", "extension": "mjs", "code": "import { readFile } from \"node:fs\";\nreadFile = 1;\nconsole.log(readFile);"},
+  {"eslint": "no-invalid-regexp", "oxlint": "no-invalid-regexp", "directory": "scripts", "extension": "mjs", "code": "export const x = new RegExp(\"[\");"},
+  {"eslint": "no-irregular-whitespace", "oxlint": "no-irregular-whitespace", "directory": "scripts", "extension": "mjs", "code": "export const x = 1;"},
+  {"eslint": "no-loss-of-precision", "oxlint": "no-loss-of-precision", "directory": "scripts", "extension": "mjs", "code": "export const x = 9007199254740993;"},
+  {"eslint": "no-misleading-character-class", "oxlint": "no-misleading-character-class", "directory": "scripts", "extension": "mjs", "code": "export const x = /[Á]/u;"},
+  {"eslint": "no-new-native-nonconstructor", "oxlint": "no-new-native-nonconstructor", "directory": "scripts", "extension": "mjs", "code": "export const x = new Symbol();"},
+  {"eslint": "no-nonoctal-decimal-escape", "oxlint": "no-nonoctal-decimal-escape", "directory": "scripts", "extension": "cjs", "code": "const x = \"\\8\";\nmodule.exports = x;"},
+  {"eslint": "no-obj-calls", "oxlint": "no-obj-calls", "directory": "scripts", "extension": "mjs", "code": "export const x = Math();"},
+  {"eslint": "no-octal", "oxlint": null, "directory": "scripts", "extension": "cjs", "code": "module.exports = 071;"},
+  {"eslint": "no-prototype-builtins", "oxlint": "no-prototype-builtins", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { return x.hasOwnProperty(\"k\"); }"},
+  {"eslint": "no-redeclare", "oxlint": "no-redeclare", "directory": "scripts", "extension": "cjs", "code": "var x=1; var x=2;\nmodule.exports=x;"},
+  {"eslint": "no-regex-spaces", "oxlint": "no-regex-spaces", "directory": "scripts", "extension": "mjs", "code": "export const x = /a   b/;"},
+  {"eslint": "no-self-assign", "oxlint": "no-self-assign", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { x = x; return x; }"},
+  {"eslint": "no-setter-return", "oxlint": "no-setter-return", "directory": "scripts", "extension": "mjs", "code": "export const x = { set y(z) { return z; } };"},
+  {"eslint": "no-shadow-restricted-names", "oxlint": "no-shadow-restricted-names", "directory": "scripts", "extension": "mjs", "code": "export function f(undefined) { return undefined; }"},
+  {"eslint": "no-sparse-arrays", "oxlint": "no-sparse-arrays", "directory": "scripts", "extension": "mjs", "code": "export const x = [1,,3];"},
+  {"eslint": "no-this-before-super", "oxlint": "no-this-before-super", "directory": "scripts", "extension": "mjs", "code": "export class C extends Object { constructor() { console.log(this); super(); } }"},
+  {"eslint": "no-unassigned-vars", "oxlint": "no-unassigned-vars", "directory": "scripts", "extension": "mjs", "code": "export function f() { let x; return x; }"},
+  {"eslint": "no-undef", "oxlint": "no-undef", "directory": "scripts", "extension": "mjs", "code": "missingVariable();"},
+  {"eslint": "no-unexpected-multiline", "oxlint": "no-unexpected-multiline", "directory": "scripts", "extension": "mjs", "code": "export function f() { const x = 1\n[1].forEach(console.log); return x; }"},
+  {"eslint": "no-unreachable", "oxlint": "no-unreachable", "directory": "scripts", "extension": "mjs", "code": "export function f() { return; console.log(1); }"},
+  {"eslint": "no-unsafe-finally", "oxlint": "no-unsafe-finally", "directory": "scripts", "extension": "mjs", "code": "export function f() { try { return 1; } finally { return 2; } }"},
+  {"eslint": "no-unsafe-negation", "oxlint": "no-unsafe-negation", "directory": "scripts", "extension": "mjs", "code": "export function f(x, y) { return !x in y; }"},
+  {"eslint": "no-unsafe-optional-chaining", "oxlint": "no-unsafe-optional-chaining", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { (x?.m)(); }"},
+  {"eslint": "no-unused-labels", "oxlint": "no-unused-labels", "directory": "scripts", "extension": "mjs", "code": "export function f() { unused: while (true) { break; } }"},
+  {"eslint": "no-unused-private-class-members", "oxlint": "no-unused-private-class-members", "directory": "scripts", "extension": "mjs", "code": "export class C { #x = 1; }"},
+  {"eslint": "no-useless-assignment", "oxlint": "no-useless-assignment", "directory": "scripts", "extension": "mjs", "code": "export function f() { let x = 1; x = 2; return x; }"},
+  {"eslint": "no-useless-backreference", "oxlint": "no-useless-backreference", "directory": "scripts", "extension": "mjs", "code": "export const x = /\\1(a)/;"},
+  {"eslint": "no-useless-catch", "oxlint": "no-useless-catch", "directory": "scripts", "extension": "mjs", "code": "export function f() { try { console.log(1); } catch (e) { throw e; } }"},
+  {"eslint": "no-useless-escape", "oxlint": "no-useless-escape", "directory": "scripts", "extension": "mjs", "code": "export const x = \"\\#\";"},
+  {"eslint": "no-var", "oxlint": "no-var", "directory": "scripts", "extension": "ts", "code": "export var x = 1;"},
+  {"eslint": "no-with", "oxlint": "no-with", "directory": "scripts", "extension": "cjs", "code": "with ({x: 1}) console.log(x);"},
+  {"eslint": "prefer-const", "oxlint": "prefer-const", "directory": "scripts", "extension": "ts", "code": "export function f() { let x = 1; return x; }"},
+  {"eslint": "prefer-rest-params", "oxlint": "prefer-rest-params", "directory": "scripts", "extension": "ts", "code": "export function f() { return arguments[0]; }"},
+  {"eslint": "prefer-spread", "oxlint": "prefer-spread", "directory": "scripts", "extension": "ts", "code": "export function f(x, args) { return x.apply(null, args); }"},
+  {"eslint": "preserve-caught-error", "oxlint": "preserve-caught-error", "directory": "scripts", "extension": "ts", "code": "export function f() { try { JSON.parse(\"\"); } catch (e) { throw new Error(\"bad\"); } }"},
+  {"eslint": "react-hooks/exhaustive-deps", "oxlint": "react/exhaustive-deps", "directory": "src/dashboard", "extension": "tsx", "code": "import { useEffect } from \"react\";\nexport function Component({x}: {x: number}) { useEffect(() => console.log(x), []); return null; }"},
+  {"eslint": "react-hooks/rules-of-hooks", "oxlint": "react/rules-of-hooks", "directory": "src/dashboard", "extension": "tsx", "code": "import { useEffect } from \"react\";\nexport function Component({x}: {x: boolean}) { if (x) useEffect(() => {}, []); return null; }"},
+  {"eslint": "require-yield", "oxlint": "require-yield", "directory": "scripts", "extension": "mjs", "code": "export function* f() { return 1; }"},
+  {"eslint": "unused-imports/no-unused-imports", "oxlint": "no-unused-vars", "directory": "scripts", "extension": "ts", "code": "import { readFile } from \"node:fs\";\nexport const x = 1;"},
+  {"eslint": "unused-imports/no-unused-vars", "oxlint": "no-unused-vars", "directory": "scripts", "extension": "ts", "code": "const unusedThing = 1;\nexport const usedThing = 2;"},
+  {"eslint": "use-isnan", "oxlint": "use-isnan", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { return x === NaN; }"},
+  {"eslint": "valid-typeof", "oxlint": "valid-typeof", "directory": "scripts", "extension": "mjs", "code": "export function f(x) { return typeof x === \"strng\"; }"},
+  {"eslint": "@typescript-eslint/require-await", "oxlint": "typescript/require-await", "directory": "scripts", "extension": "mts", "code": "export async function f() { return 1; }"}
 ]
