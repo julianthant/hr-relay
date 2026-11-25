@@ -54,8 +54,23 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
       const bottom = Math.max(...drawn.map(rect => (rect.top + rect.bottom) / 2 + ink));
       const label = `"${nodes.map(node => node.textContent ?? "").join("").trim().slice(0, 60)}"`;
       const cuts: string[] = [];
+      const text = nodes.map(node => node.textContent ?? "").join("").trim();
+      // An ellipsis is accepted only where the full text is reachable: a title, or a hover/focus trigger named with it.
+      const tooltipStates = ["closed", "delayed-open", "instant-open"];
+      const reachable = () => { if (text === "") return false; for (let holder: HTMLElement | null = element; holder !== null; holder = holder.parentElement) {
+        if ((holder.getAttribute("title") ?? "").includes(text)) return true;
+        // A tooltip trigger opens on hover and focus; tabs and collapsibles also carry data-state, but not these.
+        const trigger = tooltipStates.includes(holder.getAttribute("data-state") ?? "") && !holder.hasAttribute("aria-expanded") && holder.getAttribute("role") !== "tab";
+        if (trigger && (holder.getAttribute("aria-label") ?? "").includes(text)) return true;
+      } return false; };
+      if (element.hasAttribute("data-one-line")) {
+        const lines = new Set(drawn.map(rect => Math.round(rect.top)));
+        if (lines.size > 1) found.push(`${label} takes ${String(lines.size)} lines; it must stay on one line`);
+      }
+      let ellipsed = false;
       let checkX = true;
       let checkY = true;
+      let inRow = false;
       let unseen = false;
       for (let frameElement: HTMLElement | null = element; frameElement !== null && frameElement !== document.body && (checkX || checkY); frameElement = frameElement.parentElement) {
         const frameStyle = getComputedStyle(frameElement);
@@ -66,14 +81,20 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
         const frameLeft = box.left + frameElement.clientLeft;
         const frameTop = box.top + frameElement.clientTop;
         const by = frameElement === element ? "" : " by its container";
-        if (checkX && clips(frameStyle.overflowX) && (right > frameLeft + frameElement.clientWidth + 1 || left < frameLeft - 1)) { cuts.push(`${label} is cut off sideways${by}`); checkX = false; }
+        if (checkX && clips(frameStyle.overflowX) && (right > frameLeft + frameElement.clientWidth + 1 || left < frameLeft - 1)) {
+          if (frameStyle.textOverflow === "ellipsis" && reachable()) ellipsed = true;
+          else cuts.push(`${label} is cut off sideways${by}`);
+          checkX = false;
+        }
         if (checkY && clips(frameStyle.overflowY) && (bottom > frameTop + frameElement.clientHeight + 1 || top < frameTop - 1)) { cuts.push(`${label} is cut off at the ${bottom > frameTop + frameElement.clientHeight + 1 ? "bottom" : "top"}${by}`); checkY = false; }
+        // A row that scrolls sideways, fits the window and takes the keyboard may run past its right edge.
+        if (scrolls(frameStyle.overflowX) && frameElement.tabIndex >= 0 && box.right <= window.innerWidth + 1) inRow = true;
         // Text past a scrolling container's edge is reachable by scrolling, not clipped.
         if (scrolls(frameStyle.overflowX)) checkX = false;
         if (scrolls(frameStyle.overflowY)) checkY = false;
       }
       if (unseen) continue;
-      if (right > window.innerWidth + 1) found.push(`${label} runs ${String(Math.round(right - window.innerWidth))}px past the right edge`);
+      if (!ellipsed && !inRow && right > window.innerWidth + 1) found.push(`${label} runs ${String(Math.round(right - window.innerWidth))}px past the right edge`);
       found.push(...cuts);
     }
     return found;
@@ -127,21 +148,37 @@ export function wordLimits({ page }: StateRuleContext): Promise<readonly string[
 export function toastTextOnly({ page }: StateRuleContext): Promise<readonly string[]> {
   return page.evaluate(() => {
     const found: string[] = [];
-    const drawn = (element: Element) => { const box = element.getBoundingClientRect(); return box.width > 1 && box.height > 1; };
-    const chrome = [...document.querySelectorAll('[role="toolbar"], [role="group"][aria-label], h1, h2, h3, [data-slot$="title"]')]
-      .filter(element => drawn(element) && element.closest('[data-ds-toast-state]') === null);
     for (const toast of document.querySelectorAll<HTMLElement>('[data-ds-toast-state]')) {
-      if (!drawn(toast)) continue;
-      const label = `the toast "${toast.innerText.trim().slice(0, 60)}"`;
-      const extras = toast.querySelectorAll("button, a[href], input, select, textarea, img, video");
-      if (extras.length > 0) found.push(`${label} holds ${String(extras.length)} control or image; a toast is text only`);
       const box = toast.getBoundingClientRect();
-      for (const element of chrome) {
-        const other = element.getBoundingClientRect();
-        if (box.left < other.right && other.left < box.right && box.top < other.bottom && other.top < box.bottom) {
-          found.push(`${label} covers ${element.matches('[role="toolbar"], [role="group"]') ? `the toolbar "${element.getAttribute("aria-label") ?? ""}"` : `the title "${(element.textContent ?? "").trim().slice(0, 40)}"`}`);
-        }
-      }
+      if (box.width <= 1 || box.height <= 1) continue;
+      const extras = toast.querySelectorAll("button, a[href], input, select, textarea, img, video");
+      if (extras.length > 0) found.push(`the toast "${toast.innerText.trim().slice(0, 60)}" holds ${String(extras.length)} control or image; a toast is text only`);
+    }
+    return found;
+  });
+}
+
+/** Toasts sit top centre, 12px from the top, inside the window and off the Sessions panel, whatever height the panel is. */
+export function toastPlacement({ page }: StateRuleContext): Promise<readonly string[]> {
+  return page.evaluate(() => {
+    const found: string[] = [];
+    const panel = document.querySelector('[aria-label="Session Panel"]')?.getBoundingClientRect();
+    const shown = [...document.querySelectorAll<HTMLElement>('[data-ds-toast-state]')].filter(toast => { const box = toast.getBoundingClientRect(); return box.width > 1 && box.height > 1; });
+    if (shown.length === 0) return found;
+    const viewport = document.querySelector('[data-slot="toast-viewport"]');
+    const front = shown.find(toast => getComputedStyle(toast).getPropertyValue("--toast-index").trim() === "0");
+    if (viewport === null || front === undefined) return ["a toast is shown without a viewport or a front toast"];
+    for (const [part, element] of [["toast viewport", viewport], ["front toast", front]] as const) {
+      const top = element.getBoundingClientRect().top;
+      if (Math.abs(top - 12) > 1) found.push(`the ${part} sits ${String(Math.round(top))}px from the window's top edge, not 12px`);
+    }
+    for (const toast of shown) {
+      const box = toast.getBoundingClientRect();
+      const label = `the toast "${toast.innerText.trim().slice(0, 60)}"`;
+      const offCentre = Math.abs((box.left + box.right) / 2 - window.innerWidth / 2);
+      if (offCentre > 2) found.push(`${label} is ${String(Math.round(offCentre))}px off the horizontal centre`);
+      if (panel !== undefined && box.bottom > panel.top && box.top < panel.bottom && box.left < panel.right && panel.left < box.right) found.push(`${label} overlaps the Sessions panel`);
+      if (box.top < 0 || box.left < 0 || box.right > window.innerWidth || box.bottom > window.innerHeight) found.push(`${label} runs outside the window`);
     }
     return found;
   });
@@ -300,6 +337,10 @@ export function noDeadDisabledControl({ page }: StateRuleContext): Promise<reado
     const name = (element: Element) => (element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 40);
     for (const control of document.querySelectorAll<HTMLElement>('body :is(select, [role="combobox"], [aria-haspopup])')) {
       if (!disabled(control) || control.getBoundingClientRect().width <= 1) continue;
+      // A control held off while its own request is in flight says so on itself: that is a lock, not a dead control.
+      if (control.matches('[aria-haspopup][aria-busy="true"]')) continue;
+      // A button that opens a dialog is not a picker; the approved mock keeps Add workers shown and switched off until it can act.
+      if (control.matches('button[aria-haspopup="dialog"]')) continue;
       if (control instanceof HTMLSelectElement && [...control.options].filter(option => !option.disabled).length > 1) continue;
       found.push(`the picker "${name(control)}" is shown switched off with nothing to choose`);
     }
@@ -489,7 +530,8 @@ export const STATE_RULES: Readonly<Record<StateRuleName, { readonly check: State
   "fits-viewport": { check: fitsViewport, failure: "sideways scroll or clipped text at this size" },
   "no-banned-text": { check: noBannedText, failure: "text an operator must never read" },
   "word-limits": { check: wordLimits, failure: "titles, descriptions or errors over their word limit" },
-  "toast-text-only": { check: toastTextOnly, failure: "a toast that holds more than text or covers a toolbar or title" },
+  "toast-text-only": { check: toastTextOnly, failure: "a toast that holds more than text" },
+  "toast-placement": { check: toastPlacement, failure: "a toast that is off top centre, outside the window or over the Sessions panel" },
   "skeleton-only-while-fetching": { check: skeletonOnlyWhileFetching, failure: "a skeleton outside a slow fetch or outside its fetching region" },
   "dialogs-share-shape": { check: dialogsShareShape, failure: "dialogs of one kind that differ in radius, border, title size or padding" },
   "primary-button-accent": { check: primaryButtonAccent, failure: "a primary button that is not the one accent" },

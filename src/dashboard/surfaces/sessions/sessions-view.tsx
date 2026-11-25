@@ -7,9 +7,9 @@ import { ChevronDown, ChevronUp, LogOut, Minus, Plus, Settings, UsersRound } fro
 import { BareButton, Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, dsFocus, Field, IconButton, Input, Select, Skeleton, Tooltip, useSkeletonWait } from "../../ds/ui.js";
 import { SETTINGS_GEAR_ID } from "../settings/settings-model.js";
 import { cn } from "../../lib/utils.js";
-import { isQuietIdle, SESSION_STATE_LABELS, sessionTallies, type SessionControl, type SessionsViewState } from "./sessions-view-model.js";
+import { SESSION_STATE_LABELS, sessionTallies, type SessionControl, type SessionsViewState } from "./sessions-view-model.js";
 import type { SessionPreviewOperation } from "./session-preview-command-model.js";
-import { IdleWorkerRow, WorkerCard } from "./worker-card.js";
+import { StartingCard, WorkerCard } from "./worker-card.js";
 import { LoadingRegion, SkeletonText } from "../shared/loading/loading.js";
 
 /** The bar's counts: one quiet summary line; only the running count is green, like the rail's running pill. */
@@ -59,8 +59,6 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   }, []);
   const actionable = data.state === "ready" && !data.stale;
   const workers = data.state === "ready" ? data.workers : [];
-  const idle = workers.filter(isQuietIdle);
-  const cards = workers.filter(worker => !isQuietIdle(worker));
   const onWorkerControl = (id: string, control: SessionControl) => { onControl(id, control); if (control === "remove") toggleRef.current?.focus(); };
   const addTriggerRef = useRef<HTMLButtonElement>(null);
   const addFocusOrigin = useRef<Element | null>(null);
@@ -70,6 +68,16 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   const [count, setCount] = useState("1");
   const validCount = Number.isSafeInteger(Number(count)) && Number(count) >= 1;
   const addLocked = operations.add?.state === "pending";
+  const pendingAdd = operations.add?.state === "pending" && operations.add.request.action === "add" ? operations.add.request : undefined;
+  const pendingAddLabel = pendingAdd && (workflows.find(item => item.id === pendingAdd.workflow)?.label ?? pendingAdd.workflow);
+  const adding = pendingAdd !== undefined;
+  const stripRef = useRef<HTMLDivElement>(null);
+  // The Starting card is first, so a strip scrolled away from it comes back.
+  useLayoutEffect(() => { if (adding && stripRef.current !== null) stripRef.current.scrollLeft = 0; }, [adding]);
+  const announcement = [
+    pendingAdd && `Starting ${pendingAdd.count > 1 ? `${String(pendingAdd.count)} workers` : "a worker"} for ${pendingAddLabel ?? ""}.`,
+    ...workers.filter(worker => operations[worker.id]?.state === "pending" && operations[worker.id]?.request.action === "remove").map(worker => `Removing ${worker.label}, ${worker.workflow}.`),
+  ].filter(Boolean).join(" ");
   const selectedWorkflow = workflows.find(item => item.id === workflow) ?? workflows[0];
   const selectedWorkflowId = selectedWorkflow?.id ?? "";
   const validWorkflow = selectedWorkflow !== undefined;
@@ -83,7 +91,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
     trigger.focus({ preventScroll: true });
   }, [addOpen, addLocked, data.state, validWorkflow]);
   const addControl = <Dialog open={addOpen && firstScreenRevealed} onOpenChange={setAddOpen}>
-          {actionable && workflows.length > 0 && <Tooltip side="top" content="Add workers"><DialogTrigger asChild><IconButton ref={addTriggerRef} variant="ghost" size="sm" label="Add workers" title="" disabled={addLocked} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger></Tooltip>}
+          <Tooltip side="top" content="Add workers"><DialogTrigger asChild><IconButton ref={addTriggerRef} variant="ghost" size="sm" label="Add workers" title="" disabled={!actionable || !workflows.length || addLocked} aria-busy={addLocked || undefined} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger></Tooltip>
           <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope overflow-visible bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
             <DialogBody><div className="grid gap-3">
               <Field label="Workflow"><Select value={selectedWorkflowId} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>
@@ -106,12 +114,13 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
         <Tooltip side="top" content="Log out"><IconButton className="hub-logout" variant="ghost" size="sm" label="Log out" title="" onClick={account.onLogout} icon={<LogOut aria-hidden className="size-4" />} /></Tooltip>
       </>}<AssistantLauncher /></span>
     </div>
+    <p role="status" className="sr-only">{announcement}</p>
     {open && <div id={contentId} role="region" aria-label="Sessions" className="session-body">
       <div className="session-body-cards">
-      {data.state === "ready" ? data.workers.length ? <>
-        {cards.length > 0 && <div data-session-strip className="flex flex-wrap items-stretch gap-3 pb-1">{cards.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} disabled={!actionable} onControl={onWorkerControl} />)}</div>}
-        {idle.length > 0 && <ul aria-label="Idle workers" className={cn("m-0 flex list-none flex-col gap-1 p-0", cards.length > 0 && "mt-2")}>{idle.map(worker => <IdleWorkerRow key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} disabled={!actionable} onControl={onWorkerControl} />)}</ul>}
-      </> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}
+      {data.state === "ready" ? data.workers.length || pendingAdd ? <div ref={stripRef} data-session-strip role="group" aria-label="Workers" tabIndex={0} className={cn("flex items-stretch gap-3 overflow-x-auto pb-1", dsFocus)}>
+        {pendingAdd && <StartingCard workflow={pendingAddLabel ?? pendingAdd.workflow} count={pendingAdd.count} />}
+        {workers.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} disabled={!actionable} onControl={onWorkerControl} />)}
+      </div> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}
       </div>
     </div>}
   </section>

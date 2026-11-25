@@ -28,7 +28,7 @@ let modelChoice: AssistantModelChoice | undefined;
 const choiceListeners = new Set<() => void>();
 const subscribeChoice = (listener: () => void) => { choiceListeners.add(listener); return () => { choiceListeners.delete(listener); }; };
 
-/** The shell publishes the served model, its catalog and the save command; Settings > General > Assistant reads them. */
+/** The shell publishes the served model, its catalog and the save command; the composer's model menu reads them. */
 export function publishAssistantModelChoice(next: AssistantModelChoice | undefined): void {
   modelChoice = next;
   for (const listener of choiceListeners) listener();

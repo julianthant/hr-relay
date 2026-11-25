@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -775,7 +776,6 @@ export interface DsToast {
   id: string;
   tone: DsToastTone;
   title: string;
-  /** a toast is one line: a description is joined to the title as "Title: description" */
   description?: string;
   /** ms before auto-dismiss; default 3000, `danger` 12000. */
   duration?: number;
@@ -812,7 +812,7 @@ export function ToastProvider({ children, hold = false }: { children: ReactNode;
       const earlier = byKey.current.get(key);
       if (earlier !== undefined) manager.close(earlier);
       byKey.current.set(key, id);
-      manager.add({ id, title: input.description === undefined ? input.title : `${input.title}: ${input.description}`,
+      manager.add({ id, title: input.title, description: input.description,
         type: input.tone === "danger" ? "error" : input.tone,
         timeout: input.sticky || hold ? 0 : input.duration ?? (input.tone === "danger" ? 12000 : 3000),
       });
@@ -841,7 +841,33 @@ export function Notice({ tone, title, description, sticky = false }: Pick<DsToas
 function ToastViewport() {
   const { toasts, close } = ToastPrimitive.useToastManager();
   const inert = useAnyOverlayOpen();
-  return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
+  // The stack's bottom edge (12px top; 8px gaps expanded, 14px peeks at rest), published so the open Sessions panel always ends below it.
+  // It grows at once when the stack expands and shrinks only after the 300ms collapse, so the panel never meets a moving toast.
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (viewport === null) return;
+    const observer = new MutationObserver(() => setExpanded(viewport.hasAttribute("data-expanded")));
+    observer.observe(viewport, { attributes: true, attributeFilter: ["data-expanded"] });
+    return () => observer.disconnect();
+  }, []);
+  const shown = toasts.filter(item => item.limited !== true);
+  const stackBottom = shown.length === 0 ? 0 : 12 + (expanded
+    ? shown.reduce((sum, item) => sum + (item.height ?? 0), 0) + 8 * (shown.length - 1)
+    : (shown[0]?.height ?? 0) + 14 * (shown.length - 1));
+  const [published, setPublished] = useState(stackBottom);
+  useEffect(() => {
+    if (stackBottom >= published) { setPublished(stackBottom); return; }
+    const timer = window.setTimeout(() => setPublished(stackBottom), 300);
+    return () => window.clearTimeout(timer);
+  }, [stackBottom, published]);
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--toast-stack-bottom", `${String(Math.max(stackBottom, published))}px`);
+    return () => { root.style.removeProperty("--toast-stack-bottom"); };
+  }, [stackBottom, published]);
+  return <BaseToastViewport ref={viewportRef} aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
     {toasts.map(item => {
       return <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" tabIndex={0} aria-label="Dismiss notification"
         onClick={() => close(item.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === "Escape" || event.key === " ") close(item.id); }}
