@@ -9,7 +9,7 @@ import {
 } from "../../../../src/dashboard/surfaces/run-start/run-launch-draft-model.js";
 import { initialRunDialogState, visibleRunDialog, type RunDialogState } from "../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import { startRowsOf, type StepRow } from "../../../../src/dashboard/surfaces/run-start/run-steps-model.js";
-import { RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
+import { RerunValuesRequestSchema, RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
 
 const OMIT_FORM = { fields: [{ key: "reason", kind: "text" }, { key: "confirmed", kind: "boolean" }] } as unknown as Extract<RunStartWorkflow["steps"][number]["control"], { state: "omittable" }>["form"];
@@ -74,7 +74,7 @@ describe("the launch request fingerprint", () => {
   } satisfies Required<LaunchDraft>;
   const INPUTS = {
     draft: Object.entries(DRAFT).map(([key, value]) => ({ ...REST.draft, [key]: value })),
-    rowIdentity: ["other"], customizeSteps: [true], typedValues: [{ mode: "match" }], rerunSource: [{ runId: "10000000-0000-4000-8000-000000000001", expectedVersion: 3 }],
+    rowIdentity: ["other"], customizeSteps: [true], typedValues: [{ mode: "match" }], rerunSource: [RerunValuesRequestSchema.parse({ runId: "10000000-0000-4000-8000-000000000001", expectedVersion: 3 })],
     pdf: [{ draft: { files: [], asOf: AT, reviewer: "r" }, picks: {} }, { draft: null, picks: { form: "w4" } }],
     workbookRows: [{ state: "loading", fresh: true }, { state: "ready", fresh: false }],
     library: [{ ...REST.library, loading: true }, { ...REST.library, refreshing: true }, { ...REST.library, error: "failed" }, { ...REST.library, compatibility: { libraries: [] } }],

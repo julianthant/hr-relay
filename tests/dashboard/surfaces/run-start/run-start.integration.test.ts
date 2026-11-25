@@ -107,7 +107,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await reachChecks("Start dry run"); await act(async () => button("Start dry run").click());
     assert.equal(button("Back").disabled, true);
     const finish = release; assert.ok(finish); await act(async () => finish());
-    await vi.waitFor(() => assert.equal(document.querySelector('[role="dialog"]'), null));
+    await vi.waitFor(() => assert.equal(document.querySelector('[role="dialog"]') === null, true));
     assert.equal(window.sessionStorage.length, 0); assert.equal(h.finalCommands.length, 1);
   });
   it("refuses a final submission without a command binding", async () => {
