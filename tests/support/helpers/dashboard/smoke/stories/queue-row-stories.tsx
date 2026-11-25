@@ -55,6 +55,10 @@ const ROW = {
     title: "A group listing its people, one open",
     render: () => <QueueStory surfaces={[QUEUE_STORY_GROUP, ...QUEUE_STORY_MEMBERS]} selectedRunId={QUEUE_STORY_MEMBERS[2]?.runId} />,
   },
-} satisfies Record<"group" | "member", Story>;
+  "long-title-dry-run": row("A long-titled dry run finished with warnings", queueStoryRow("partial", 14, {
+    title: "Alexandria Montgomery-Rivera — rehire eligibility and prior employment verification",
+    dryRun: true,
+  })),
+} satisfies Record<"group" | "member" | "long-title-dry-run", Story>;
 
 export const QUEUE_ROW_STORIES = defineSurface("queue", { status: STATUS, outcome: OUTCOME, row: ROW });
