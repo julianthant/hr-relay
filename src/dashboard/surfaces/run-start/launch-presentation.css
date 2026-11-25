@@ -26,9 +26,11 @@
 div.launch-dialog[data-size="lg"][data-band] > header { @apply border-b border-ui-stroke bg-ui-panel; }
 div.launch-dialog[data-size="lg"][data-band] > header > div { @apply gap-0; }
 div.launch-dialog[data-size="lg"][data-band] > header p { @apply text-ui-secondary; }
-div.launch-dialog[data-size="lg"][data-band] > footer { @apply border-t border-ui-stroke bg-ui-table; }
+/* The footer is the body's surface under a hairline, like the bell panel's status line. Its 12px top padding is the design system's; the 32px row sits on it with 12px below, so the buttons are centred. */
+div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start border-t border-ui-stroke bg-ui-panel; }
+.launch-dialog > footer > span { @apply flex h-8 items-center; }
 .launch-dialog > footer > span:first-child,
-.launch-dialog > footer > span:first-child > span { @apply font-ui; }
+.launch-dialog > footer > span:first-child span { @apply font-ui text-[12px] leading-4 text-ui-muted; }
 
 .launch-design .launch-workflow-rail { @apply w-48 bg-ui-table; }
 /* The stage buttons' own 8px inset lands their markers on the content's 20px edge. */
@@ -95,5 +97,5 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply border-t border-u
 
 .required-capture-row { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-loose); padding: var(--ds-space-cozy) var(--ds-space-loose); }
 
-.launch-hint { @apply text-body text-ui-secondary; }
+.launch-hint { @apply text-[13px] text-ui-secondary; }
 .launch-dialog section[aria-label="Repeat transaction warning"] > :first-child { border-radius: var(--ds-row-radius); }
