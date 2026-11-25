@@ -12,8 +12,8 @@ import { formatDuration } from "../../lib/date-format.js";
 import { useServedView } from "../../state/served-clock.js";
 
 type WorkerBrowser = SessionWorker["browsers"][number];
-const BROWSER_WORD: Record<WorkerBrowser["state"], string> = { ready: "Ready", active: "In use", starting: "Opening", unopened: "Not opened", closed: "Closed", unavailable: "Unavailable", failed: "Failed", "needs-duo": "Needs Duo", "signed-out": "Signed out" };
-const BROWSER_TONE: Record<WorkerBrowser["state"], string> = { ready: "text-ui-secondary", active: "text-ui-info", starting: "text-ui-warning", unopened: "text-ui-muted", closed: "text-ui-muted", unavailable: "text-ui-warning", failed: "text-ui-danger", "needs-duo": "text-ui-warning", "signed-out": "text-ui-warning" };
+const BROWSER_WORD: Record<WorkerBrowser["state"], string> = { ready: "Open", active: "In use", starting: "Opening", unopened: "Not opened", closed: "Closed", unavailable: "Unavailable", failed: "Failed", "needs-duo": "Needs Duo", "signed-out": "Signed out" };
+const BROWSER_TONE: Record<WorkerBrowser["state"], string> = { ready: "text-ui-positive", active: "text-ui-info", starting: "text-ui-warning", unopened: "text-ui-muted", closed: "text-ui-muted", unavailable: "text-ui-warning", failed: "text-ui-danger", "needs-duo": "text-ui-warning", "signed-out": "text-ui-warning" };
 const MAX_SYSTEMS = 4;
 
 /** Why a settled worker ended, a failed step, or a pending pause or stop: it rides on the status word, since the card has no progress block. */
@@ -27,8 +27,8 @@ function cardNote(worker: SessionWorker): string | undefined {
 function BrowserRow({ browser }: { browser: WorkerBrowser }) {
   const detail = [browser.name, browser.reason].filter(Boolean).join(" · ");
   const row = <>
-    <span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span className="break-words">{browser.label}</span></span>
-    <span className={cn("shrink-0", BROWSER_TONE[browser.state])}>{BROWSER_WORD[browser.state]}</span>
+    <span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span className="truncate font-medium text-ui-primary">{browser.label}</span></span>
+    <span className={cn("shrink-0 whitespace-nowrap", BROWSER_TONE[browser.state])}>{BROWSER_WORD[browser.state]}</span>
   </>;
   const name = [browser.name ?? browser.label, BROWSER_WORD[browser.state], browser.reason].filter(Boolean).join(". ");
   return <li className="flex min-h-8 min-w-0 items-center rounded-md bg-[var(--ds-worker-chip-bg)] text-caption">{detail === ""
@@ -46,7 +46,7 @@ function Browsers({ worker, wide }: { worker: SessionWorker; wide: boolean }) {
 function WorkerElapsed({ worker }: { worker: SessionWorker }) {
   const card = worker.authority;
   const elapsed = useServedView("", now => card === undefined || card.state === "idle" || now === "" ? worker.elapsed : formatDuration(workerElapsedSeconds(card, now)));
-  return <span className="flex h-7 items-center text-caption tabular-nums text-ui-muted">{elapsed ?? (worker.state === "idle" ? "Available" : worker.state === "unavailable" ? "" : "Not measured")}</span>;
+  return <span className="flex h-7 items-center text-caption tabular-nums text-ui-muted">{elapsed !== undefined && worker.state === "running" ? `Working · ${elapsed}` : elapsed ?? (worker.state === "idle" ? "Available" : worker.state === "unavailable" ? "" : "Not measured")}</span>;
 }
 
 export function WorkerCard({ worker, countdown, operation, disabled = false, onControl }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; disabled?: boolean; onControl: (id: string, control: SessionControl) => void }) {
@@ -56,8 +56,8 @@ export function WorkerCard({ worker, countdown, operation, disabled = false, onC
   const note = cardNote(worker);
   const wide = worker.browsers.length > MAX_SYSTEMS;
   const icon = (label: string, control: SessionControl, Glyph: typeof Pause) => <IconActionButton tone="muted" label={label} disabled={locked} icon={<Glyph aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, control)} />;
-  return <article aria-label={`${worker.label} · ${worker.workflow}`} className={cn("flex shrink-0 flex-col rounded-lg bg-[var(--ds-worker-card-bg)] px-4 py-3", wide ? "w-[32rem]" : "w-[22rem]")}>
-    <header className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 truncate text-control font-medium" title={worker.workflow}>{worker.workflow}</h3><span title={note} className={cn("inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-caption", sessionStateColor(worker.state))}>{removing ? <Loader2 aria-hidden className="size-3 animate-spin motion-reduce:animate-none" /> : worker.state === "idle" && countdown ? <IdleRefreshRing countdown={countdown} /> : <span aria-hidden className="size-1.5 rounded-full bg-current" />}{removing ? "Removing" : SESSION_STATE_LABELS[worker.state]}{note !== undefined && <span className="sr-only">. {note}</span>}</span></header>
+  return <article aria-label={`${worker.label} · ${worker.workflow}`} className={cn("flex shrink-0 flex-col rounded-xl border border-ui-stroke bg-[var(--ds-worker-card-bg)] px-3.5 pb-2.5 pt-3.5", wide ? "w-[32rem]" : "w-[25rem]")}>
+    <header className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 truncate text-control font-semibold" title={worker.workflow}>{worker.workflow}</h3><span title={note} className={cn("inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-caption", sessionStateColor(worker.state))}>{removing ? <Loader2 aria-hidden className="size-3 animate-spin motion-reduce:animate-none" /> : worker.state === "idle" && countdown ? <IdleRefreshRing countdown={countdown} /> : <span aria-hidden className="size-1.5 rounded-full bg-current" />}{removing ? "Removing" : SESSION_STATE_LABELS[worker.state]}{note !== undefined && <span className="sr-only">. {note}</span>}</span></header>
     <p className="mb-0 mt-1 truncate text-caption text-ui-secondary" title={worker.subject}>{worker.subject ?? "No run assigned"}</p>
     <Browsers worker={worker} wide={wide} />
     {!removing && <WorkerOperationNote operation={operation} />}
@@ -71,8 +71,8 @@ export function WorkerCard({ worker, countdown, operation, disabled = false, onC
 
 /** An add in flight: a card of the strip's own shape until the worker is served. */
 export function StartingCard({ workflow, count }: { workflow: string; count: number }) {
-  return <ul aria-label="Workers being added" className="m-0 flex shrink-0 list-none p-0"><li aria-busy className="flex w-[22rem] flex-col rounded-lg bg-[var(--ds-worker-card-bg)] px-4 py-3">
-    <header className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 truncate text-control font-medium" title={workflow}>{workflow}{count > 1 && <span className="text-ui-muted"> × {count}</span>}</h3><span className={cn("inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-caption", sessionStateColor("starting"))}><Loader2 aria-hidden className="size-3 animate-spin motion-reduce:animate-none" />{SESSION_STATE_LABELS.starting}</span></header>
+  return <ul aria-label="Workers being added" className="m-0 flex shrink-0 list-none p-0"><li aria-busy className="flex w-[25rem] flex-col rounded-xl border border-ui-stroke bg-[var(--ds-worker-card-bg)] px-3.5 pb-2.5 pt-3.5">
+    <header className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 truncate text-control font-semibold" title={workflow}>{workflow}{count > 1 && <span className="text-ui-muted"> × {count}</span>}</h3><span className={cn("inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-caption", sessionStateColor("starting"))}><Loader2 aria-hidden className="size-3 animate-spin motion-reduce:animate-none" />{SESSION_STATE_LABELS.starting}</span></header>
     <p className="mb-0 mt-1 truncate text-caption text-ui-secondary">No run assigned</p>
     <p className="m-0 min-h-[4.5rem] flex-1 py-3 text-caption text-ui-muted">No browser sessions open</p>
     <footer className="border-t border-ui-stroke pt-2"><span className="flex h-7" /></footer>

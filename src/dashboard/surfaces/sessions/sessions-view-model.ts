@@ -66,7 +66,7 @@ const TIMELINE_REASON: Readonly<Record<NonNullable<Extract<WorkerCardWire["timel
 };
 export function sessionStateColor(state: SessionWorkerState): string {
   return state === "failed" ? "text-ui-danger" : state === "waiting" || state === "starting" || state === "unavailable" ? "text-ui-warning"
-    : state === "running" ? "text-ui-positive" : "text-ui-muted";
+    : state === "running" ? "text-ui-info" : "text-ui-muted";
 }
 export function sessionTallies(workers: readonly SessionWorker[]): readonly { state: SessionWorkerState; count: number }[] {
   const order: readonly SessionWorkerState[] = ["running", "starting", "idle", "waiting", "paused", "stopped", "failed", "unavailable"];
