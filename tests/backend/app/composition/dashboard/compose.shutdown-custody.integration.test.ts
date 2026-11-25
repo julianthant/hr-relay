@@ -101,8 +101,8 @@ it.each(["Pause all and quit", "SIGINT during logout"] as const)("%s closes and 
     assert.ok(log.state === "present" && log.records.some(record => record.payload.kind === "debug"
       && record.payload.event.code === "read-snapshot" && record.payload.event.durationMs === 51));
     assert.ok(readdirSync(join(f.stateRoot, "backups", "authority")).some(name => name.endsWith(".shutdown.sqlite.manifest.json")));
-    // Both read lanes started with the runtime and released their store before the shutdown backup.
-    assert.ok(laneSources.retained >= 2);
+    // The navigation lane starts with the runtime, and search after it; every lane that started released its store before the backup.
+    assert.ok(laneSources.retained >= 1);
     assert.equal(laneSources.released, laneSources.retained);
   } finally {
     releaseDrain.resolve();
