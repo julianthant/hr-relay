@@ -11,7 +11,7 @@ import { runRecordColumns } from "../../../src/backend/storage/sqlite/run-record
 import { commandFromRow, insertNativeCommand, settleNativeCommand } from "../../../src/backend/storage/sqlite/command-record-row.js";
 import { createSettingsActivationRepositories } from "../../../src/backend/storage/sqlite/settings-activation.js";
 import { nativeOrdinaryRecordFromRow } from "../../../src/backend/storage/sqlite/native-record-row.js";
-import { inspectNativeAuthority } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../src/backend/storage/sqlite/authority-inspection.js";
 import { CanonicalDeleteRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../src/rules/commands/commands.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";

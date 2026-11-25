@@ -5,7 +5,7 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { delegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import type { RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 /** Configuration authorization is separate from worker ownership fencing. */
 export function runRuntimeMatches(repositories:Pick<AuthorityRepositories,"runtimeConfig"|"settingsCurrent">,token:RuntimeConfigClaimToken):boolean {
  return repositories.runtimeConfig.matchesClaim(token);

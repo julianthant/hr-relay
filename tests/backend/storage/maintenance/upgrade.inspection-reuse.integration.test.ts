@@ -9,7 +9,8 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/p
 import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { backupStoppedAuthority, upgradeReadyProfileStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
-import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";

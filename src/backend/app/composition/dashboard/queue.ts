@@ -4,7 +4,7 @@ import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js"
 
 import {
   AuthorityDatabase,
-} from "../../../storage/sqlite/index.js";
+} from "../../../storage/sqlite/authority-database.js";
 
 import { createRunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
 import { endedUnfinished, hostedOcrRun, offeredOcrReview, readQueueRecordMembers } from "../../../runs/queries/ocr-record-members.js";

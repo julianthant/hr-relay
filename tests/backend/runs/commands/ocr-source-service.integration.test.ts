@@ -5,7 +5,7 @@ import { createOcrSourceService, OCR_UPLOAD_MAX_BYTES, OcrSourceRefusedError } f
 import { randomUUID } from "node:crypto";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { ocrProofReadDatabase, replaceOcrAuditRead, replaceOcrCommandRead } from "../../../support/helpers/backend/ocr-proof-reads.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);

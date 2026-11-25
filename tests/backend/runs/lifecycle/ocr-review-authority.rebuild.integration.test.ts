@@ -6,7 +6,7 @@ import * as extraction from "../../../../src/models/ocr/extraction.js";
 import { afterEach, it, vi } from "vitest";
 import { publishOcrReview, readOcrReviewAuthority, requireCurrentOcrSnapshot } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
 import { OcrReviewRefusedError } from "../../../../src/backend/processing/ocr/review-authority.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import * as reviewRecords from "../../../../src/models/ocr/review.js";
 import { RunCheckpointRecordSchema, checkpointRecordKey, checkpointLookupKey, type RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
 import { timelineCheckpointReference, TimelineEventRecordSchema } from "../../../../src/models/events/timeline.js";

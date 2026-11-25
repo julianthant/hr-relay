@@ -29,7 +29,8 @@ import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/int
 import { seedInitialSettingsRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { NOW, UUID_4, COMMAND_FIXTURES } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { AuthorityDatabase, createCredentialStore, type AuthorityRepositories } from "../synthetic-storage-admission.js";
+import { AuthorityDatabase, createCredentialStore } from "../synthetic-storage-admission.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { planStart } from "../../../../src/backend/runs/start/plan.js";
 import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";

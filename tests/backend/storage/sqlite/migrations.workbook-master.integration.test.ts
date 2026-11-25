@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
-import { applyAuthorityMigrationsAfter } from '../../../../src/backend/storage/sqlite/authority-database.js';
+import { applyAuthorityMigrationsAfter } from '../../../../src/backend/storage/sqlite/authority-upgrades.js';
 import { SQLITE_MIGRATIONS } from '../../../../src/backend/storage/sqlite/migrations.js';
 import { createWorkbookLibraryRepository, WORKBOOK_MASTER_MIGRATION } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
 

@@ -4,7 +4,7 @@ import { isTerminalRunState, runClaim, type RunRecord } from "../../../models/ru
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting, workflowPlanning } from "../../../workflow-kit/workflow.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { assertDelegationRetryUnwritten, currentDelegationManifests, retainedDelegationManifests, selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
 import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { activeRunsForItem, requireApplied, runTarget, type TargetReference, type VersionChange } from "../lifecycle/run-fan-out.js";

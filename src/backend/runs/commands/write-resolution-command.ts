@@ -1,7 +1,7 @@
 import { type RunRecord, RunRecordSchema } from "../../../models/run/record.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { type WriteIntentRecord, WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { runTarget } from "../lifecycle/run-fan-out.js";
 import { applied, type CommandApplication } from "./command-application.js";
 import type { CommandKernelDependencies } from "./command-kernel.js";

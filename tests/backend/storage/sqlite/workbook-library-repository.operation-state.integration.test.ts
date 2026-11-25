@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it } from "vitest";
 import { z } from "zod";
-import { configureWritableConnection } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { configureWritableConnection } from "../../../../src/backend/storage/sqlite/authority-connection.js";
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, type WorkbookOperationState, WORKBOOK_PAYLOAD_TABLE, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-error.js";

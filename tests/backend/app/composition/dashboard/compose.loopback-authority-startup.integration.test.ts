@@ -3,7 +3,9 @@ import type { RuntimeLifetimeLock } from "../../../../../src/backend/storage/adm
 import { composeProfileClosureInventory } from "../../../../../src/backend/app/composition/profile-credential-inventory.js";
 import type { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
-import { AuthorityDatabase as CanonicalAuthorityDatabase, AuthorityDatabaseOptionsSchema, AuthoritySchemaVersionError } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase as CanonicalAuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabaseOptionsSchema } from "../../../../../src/backend/storage/sqlite/authority-connection.js";
+import { AuthoritySchemaVersionError } from "../../../../../src/backend/storage/sqlite/authority-errors.js";
 import type { Clock } from "../../../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { composeDashboardApplication, type DashboardComposeInput } from "../../../../../src/backend/app/composition/dashboard/compose.js";

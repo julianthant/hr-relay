@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
-import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
+import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";

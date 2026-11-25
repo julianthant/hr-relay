@@ -14,7 +14,7 @@ import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks
 import { RerunRefusedError, validateRerunSourcePlan } from "./rerun.js";
 import { RunRecoveryPlanSchema } from "../../../models/run/recovery-plan.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";

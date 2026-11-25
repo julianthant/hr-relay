@@ -16,7 +16,7 @@ import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run
 import type { ChildRunExecutor, RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { createGateSourceRuntime,type GateSourceDelivery,type GateSourceEnvelope } from "../../../../src/backend/runtime/gates/gate-source-runtime.js";
 import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";

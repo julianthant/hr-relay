@@ -9,7 +9,8 @@ import { composeProfileRuntime, initializeRegisteredPersonStores } from "../../.
 import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames, OPENABLE_AUTHORITY_SCHEMA_VERSIONS, SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS, UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS } from "../../../../src/backend/storage/sqlite/migrations.js";

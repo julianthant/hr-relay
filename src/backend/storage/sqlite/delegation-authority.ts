@@ -19,7 +19,7 @@ import { delegationInvocationCommandId } from "../../../rules/commands/lifecycle
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { delegationReadiness, type DelegationManifest, type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
 import { DelegationAdmissionRequestSchema, DelegationInvocationRequestSchema, DelegationScopeEvidenceSchema, DelegationRetryRequestSchema, DelegationSettlementRequestSchema } from "./delegation-contracts.js";
-import type { AuthorityRepositories } from "./authority-database.js";
+import type { AuthorityRepositories } from "./authority-repositories.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import type { QueueParent } from "../../../models/dashboard/queue-parent.js";
 import { CancellationSourceSchema, CanonicalCreateRunRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalRecoverRunRequestSchema, CanonicalRequeueRequestSchema, CanonicalPauseRequestSchema, CanonicalWorkerTransitionRequestSchema } from "./run-store-contracts.js";

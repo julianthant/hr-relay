@@ -17,7 +17,8 @@ import { readSettings } from "../../../../src/backend/runtime/settings/settings-
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createCredentialStore as createProfileCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { upgradeProfileAtStartup } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { AuthorityDatabase as ProfileAuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase as ProfileAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, isWorkerCustodyDroppedTable } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { DEBUG_EVENTS_MIGRATION } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { WORKBOOK_PAYLOAD_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";

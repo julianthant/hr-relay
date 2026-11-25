@@ -11,7 +11,7 @@ import {
 
 import {
   AuthorityDatabase,
-} from "../../../storage/sqlite/index.js";
+} from "../../../storage/sqlite/authority-database.js";
 import { createNotificationInbox } from "../../../runs/notifications/inbox.js";
 import { createBackfillGapNotifier } from "../../../runs/notifications/backfill-gap.js";
 import {

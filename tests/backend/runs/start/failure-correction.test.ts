@@ -6,7 +6,7 @@ import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { failureCorrectionSubmission } from "../../../../src/backend/runs/start/failure-correction.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { FailureDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { failureDecision, failureRecovery } from "../../../../src/backend/runs/queries/run-detail/receipts-failures.js";

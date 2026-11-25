@@ -614,7 +614,7 @@ async function runLogout(): Promise<void> {
     const { sha256Hex } = await import("../../../src/rules/validation/sha256.js");
     const { RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } = await import("../../../src/rules/commands/commands.js");
     const { withAuthorityDatabaseReadOnly } = await import("../../../src/backend/storage/sqlite/readonly-authority-snapshot.js");
-    const { inspectNativeAuthority } = await import("../../../src/backend/storage/sqlite/authority-database.js");
+    const { inspectNativeAuthority } = await import("../../../src/backend/storage/sqlite/authority-inspection.js");
     const source = z.object({ nonce: z.uuid(), operationId: z.uuid(), runId: z.uuid(), workerId: z.string(), processId: z.number().int().positive(),
       epoch: z.number().int().nonnegative(), version: z.number().int().positive(), claimGeneration: z.number().int().positive(),
       member: WorkerPoolMemberSchema })

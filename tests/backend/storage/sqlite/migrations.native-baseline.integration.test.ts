@@ -5,7 +5,8 @@ import { existsSync,lstatSync,readFileSync,readdirSync,symlinkSync,writeFileSync
 import { join } from "node:path";
 import { describe,it } from "vitest";
 import { credentialTrap,storageRecoveryFixture,storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { inspectAuthorityBackupReadOnly,upgradeStorage } from "../../../support/helpers/synthetic-storage-admission.js";

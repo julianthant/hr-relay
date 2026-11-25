@@ -3,7 +3,7 @@ import { type CommandRequest, type CommandResult, CommandResultSchema, deriveSet
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { readOcrReviewAuthority, readOcrSnapshotsAuthority } from "../lifecycle/ocr-review-authority.js";
 import type { CommandKernelDependencies } from "./command-kernel.js";
 import { z } from "zod";

@@ -13,7 +13,8 @@ import { createPrivateDirectory } from "../private-path.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { authoritySourceDatabaseIdentity } from "./database-identity.js";
 import { createReadonlyAuthoritySnapshot, openReadOnlyDatabase, readonlyAuthorityCopyPrefix, readonlyAuthorityImage, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
-import { applyAuthorityMigrationsAfter, inspectNativeAuthority, inspectNativeBackupCopy, inspectNormalAuthority } from "./authority-database.js";
+import { applyAuthorityMigrationsAfter } from "./authority-upgrades.js";
+import { inspectNativeAuthority, inspectNativeBackupCopy, inspectNormalAuthority } from "./authority-inspection.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 

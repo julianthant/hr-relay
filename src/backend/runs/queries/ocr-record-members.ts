@@ -24,7 +24,7 @@ import { LocalDateSchema } from "../../../rules/identity/ids.js";
 import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { childTerminalSettlement, readDelegationInvocationEvidence, readDelegationScopeEvidence } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateOcrOperator, readOcrReviewAuthority, readOcrReviewCheckpointSeed, readOcrSnapshotsAuthority } from "../lifecycle/ocr-review-authority.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";

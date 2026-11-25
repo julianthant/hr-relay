@@ -21,7 +21,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { authorizeWorkflowDelegationRefresh, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { authenticateDescendantHome,childTerminalSettlement,readDelegationEvidence } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import { RunContinuationRefusedError,readContinuationGate,validateRunContinuation } from "../../storage/sqlite/run-continuation.js";

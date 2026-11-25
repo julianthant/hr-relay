@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { previewRerunWarnings, RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";

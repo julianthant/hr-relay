@@ -1,5 +1,5 @@
 import { FailureResolutionCaptureSchema, type FailureResolutionCapture } from "../../../models/trust/failure-resolution.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 export function createFailureResolutionQuery(authority:Pick<AuthorityRepositories,"failures"|"failureResolution">){
  return Object.freeze({
   getFailure(failureId:string){

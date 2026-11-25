@@ -3,7 +3,7 @@ import type { RunRecordRefusal } from "../../../models/config/authority.js";
 import { CreateRunRequestSchema, lifecycleCommandId, requireLifecycleApplied, type RelatedRunChange, type RunRecordService } from "./run-record-service.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../models/config/runtime-generation.js";
 import type { RunEnvelope } from "../../../models/run/envelope.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape } from "../../../models/run/envelope.js";
 import type { StepOmissions } from "../../../models/workflow/step-omission.js";

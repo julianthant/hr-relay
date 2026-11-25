@@ -6,7 +6,7 @@ import type { CreateRunRequest, RunRecordService } from "../../../../src/backend
 import { buildRerunPlan, previewRerunWarnings, RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
 import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values.js";
 import { planStart } from "../../../../src/backend/runs/start/plan.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { evidenceLeaves } from "../../../../src/models/trust/evidence-classification.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { derivePlannedInputFingerprint, StartPlanRecordSchema } from "../../../../src/models/run/start-plan.js";

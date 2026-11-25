@@ -1,7 +1,8 @@
 import { retainAuthoritySourceClosure } from "../../../src/backend/storage/source-closure.js";
 import { createCredentialStore as productionCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import type { CredentialStore } from "../../../src/models/config/credential-store.js";
-import { AuthorityDatabase as RealAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase as RealAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabaseOptionsSchema } from "../../../src/backend/storage/sqlite/authority-connection.js";
 import { dirname, join, resolve, sep } from "node:path";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import type { Clock } from "../../../src/rules/time/clock.js";

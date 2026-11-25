@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
-import { createDashboardSnapshotQuery } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createDashboardSnapshotQuery } from "../../../../src/backend/storage/sqlite/authority-dashboard-snapshot.js";
 import { createDashboardBackgroundReader } from "../../../../src/backend/storage/sqlite/dashboard-background-read-worker.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { traceSqliteStatements } from "../../../perf/sqlite-statement-counter.js";

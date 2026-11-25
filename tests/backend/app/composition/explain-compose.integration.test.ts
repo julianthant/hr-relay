@@ -47,7 +47,7 @@ EXIT_TRACE_ID,
 seedPersonLookupExitRun,
 } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
-import { AuthorityDatabase as ProductionAuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
+import { AuthorityDatabase as ProductionAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 
 const profiles = createProfileFixtureSet();

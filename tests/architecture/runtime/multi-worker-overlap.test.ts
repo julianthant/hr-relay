@@ -6,7 +6,7 @@ import { createWorkerLoopHarness as workerHarness } from "../../support/helpers/
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
 import { runWorkerLoop } from "../../../src/backend/runtime/workers/worker-loop.js";
-import type { AuthorityDatabase } from "../../../src/backend/storage/sqlite/index.js";
+import type { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
 import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import {
