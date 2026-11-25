@@ -592,7 +592,7 @@ keep their constructor name and a well-formed own `code` (else `INTERNAL_FAILURE
 and frames keep only build-relative `src/`, `scripts/`, `node_modules/` or `assets/` positions.
 Unexpected inner API failures emit one event per cause row with one correlation id for that failure,
 after the request's outcome event. Each `request-cause` row's `code` names its cause: the error's own code,
-else its message's leading kebab token, else its closed reason or constructor name.
+else its closed reason, else its constructor name; message text never reaches it.
 On a copy that serves imported history, a dashboard read pins the native store first and reads history only at
 that same commit, starting over when a worker commits between the two; after five tries it answers 503 `STORAGE_SNAPSHOT_CHANGED`.
 Screenshot verification exceptions share `sessionId`. Worker supervisor and transfer faults emit one

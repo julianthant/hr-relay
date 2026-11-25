@@ -45,10 +45,11 @@ const debugReportCauseTokens = new Set([
   "timeline-event-owner-missing",
 ]);
 
-/** A row names its cause: the error's own code, else its message's leading kebab token, else its closed reason or class. */
-function causeCode(cause: ReturnType<typeof serializeTokenedErrorCauses>[number]): string {
-  if (cause.code !== "INTERNAL_FAILURE" && cause.code !== "ERR_SQLITE_ERROR") return cause.code;
-  return cause.token ?? (cause.reason === "cause-unavailable" ? cause.name : cause.reason);
+/** A row names its cause: its own code, else its closed reason, else its class. Message text never reaches a code. */
+function causeCode({ code, reason, name }: ReturnType<typeof serializeTokenedErrorCauses>[number]): string {
+  if (code !== "INTERNAL_FAILURE" && code !== "ERR_SQLITE_ERROR") return code;
+  if (reason !== "cause-unavailable") return reason;
+  return code === "INTERNAL_FAILURE" ? name : code;
 }
 
 export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {

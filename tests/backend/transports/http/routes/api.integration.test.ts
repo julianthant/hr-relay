@@ -34,6 +34,22 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(/Quillan|Petra|private record/u.test(JSON.stringify(diagnostics)), false);
   });
 
+  it.each([
+    { error: () => new Error("quillan-petra-123456789: fictional private record"), code: "Error" },
+    { error: () => new RangeError("quillan-petra-123456789"), code: "RangeError" },
+    { error: () => Object.assign(new Error("quillan-petra-123456789"), { code: "ERR_SQLITE_ERROR", errcode: 5 }), code: "sqlite-errcode-5" },
+    { error: () => Object.assign(new Error("quillan-petra-123456789"), { code: "ERR_SQLITE_ERROR" }), code: "ERR_SQLITE_ERROR" },
+  ])("names a request cause $code without its message's leading token", async ({ error, code }) => {
+    const h = await harness();
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_4 }));
+    vi.spyOn(h.projection, "runFold").mockImplementation(() => { throw error(); });
+    assert.equal((await h.app.request(`/api/v1/runs/${UUID_4}`)).status, 500);
+    const events = h.database.authority.timelineEvents.debugPage({ limit: 1000 })
+      .flatMap(record => record.payload.kind === "debug" ? [record.payload.event] : []);
+    assert.deepEqual(events.filter(event => event.reason === "request-cause").map(event => event.code), [code]);
+    assert.equal(/quillan|petra|123456789/iu.test(JSON.stringify(events)), false);
+  });
+
   it("answers a day read whose history snapshot moved with a retryable 503 and names the cause", async () => {
     const h = await harness();
     vi.spyOn(h.projection, "buildDashboardDayWire").mockImplementation(() => { throw new AuthoritySnapshotChangedError(); });
