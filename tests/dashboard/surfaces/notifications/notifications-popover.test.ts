@@ -104,6 +104,13 @@ it("says a deleted run was deleted on its own row, which opens nothing and has n
   assert.ok(document.querySelector('button[aria-label="Dismiss"]') === null);
 });
 
+it("opens with focus on the panel, so the All / Unread filter shows its selected option and no focus ring", async () => {
+  await draw({ state: "ready", items: ITEMS, pinned: [] });
+  assert.ok(document.activeElement === document.querySelector('[role="dialog"][aria-label="Notifications"]'), "the panel takes focus");
+  const options = [...document.querySelectorAll<HTMLInputElement>('.ds-segment input[type="radio"]')];
+  assert.deepEqual(options.map(option => [option.value, option.checked]), [["all", true], ["unread", false]]);
+});
+
 it("filters to unread and disables Mark all read when nothing is unread", async () => {
   const view = await draw({ state: "ready", items: ITEMS.map(entry => ({ ...entry, read: true })), pinned: [] }, "unread");
   assert.deepEqual(view.groups(), []);

@@ -97,7 +97,9 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
         icon={<><Bell aria-hidden className="size-3" strokeWidth={2.5} />
           {unread > 0 && <span aria-hidden className="notice-bell-status"><span className="notice-bell-dot" /><span className="notice-bell-count">{unread > 99 ? "99+" : unread}</span></span>}</>} />
     </PopoverTrigger></Tooltip>
-    <PopoverContent title="Notifications" hideTitle side="bottom" align="start" sideOffset={8} className="notice-popover font-ui">
+    {/* Opening focuses the panel itself; the filter would draw its focus ring before anyone has reached it. */}
+    <PopoverContent title="Notifications" hideTitle side="bottom" align="start" sideOffset={8} className="notice-popover font-ui outline-none"
+      onOpenAutoFocus={event => { event.preventDefault(); (event.currentTarget as HTMLElement).focus(); }}>
       <header ref={headRef} tabIndex={-1} className={cn("notice-popover-head", dsFocus)}>
         <p className="notice-popover-title">Notifications</p>
         <SegmentedChoice label="Show" hideLabel value={show} options={SHOW_OPTIONS} onChange={onShow} />
