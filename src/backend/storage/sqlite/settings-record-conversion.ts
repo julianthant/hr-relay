@@ -1,54 +1,57 @@
 import { z } from "zod";
-import { SettingsFileRecordSchema } from "../../../models/config/settings.js";
+import { derivePersistedSettingsFingerprint, SettingsFileRecordSchema } from "../../../models/config/settings.js";
+import { PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH,
+  PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH,
+  RETIRED_PANEL_MODE, RetiredPanelModeSchema, SettingsSchemaWithPanelMode } from "../../../models/config/settings-record-conversion.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { derivePersonPreferencesFingerprint } from "../../../models/config/person-preferences.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 
-/** The settings schema hash of stores written before person preferences existed. */
-export const PRE_PREFERENCES_SETTINGS_SCHEMA_HASH = "19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7";
-/** The settings schema hash of stores written before the Runs and Notifications settings existed. */
-export const PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH = "39fde8a538405f533301def527db504117799174867cc4d93beb55310382f29a";
-/** The settings schema hash of stores written before the assistant send shortcut existed. */
-export const PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH = "a8ebb3d571f77af72aafeb62477b0950bd3e050c29101d4d7e460c54dc918bdf";
 /** The newest schema whose migration converts settings records; a stopped store below it is read through the converter. */
-export const SETTINGS_RECORD_CONVERSION_VERSION = 35;
+export const SETTINGS_RECORD_CONVERSION_VERSION = 42;
 
 type SettingsRecordConversion = Readonly<{
   /** The settings schema hash a stored row carries before this conversion, and after it. */
   from: string; to: string;
-  /** The preference members this conversion adds, with the defaults every stored snapshot gains. */
   adds: Readonly<Record<string, unknown>>;
+  removes?: readonly string[];
   /** The migration statement after which the forward conversion runs. */
   marker: string;
 }>;
 
-function conversion(ordinal: number, name: string, from: string, to: string, adds: Record<string, unknown>): SettingsRecordConversion {
-  const id = sha256Hex(canonicalJsonStringify({ conversion: ordinal, from, to, preferences: adds }));
-  return { from, to, adds, marker: `SELECT '${name}-forward-conversion:${id}'` };
+function conversion(ordinal: number, name: string, from: string, to: string, adds: Record<string, unknown>, removes?: readonly string[]): SettingsRecordConversion {
+  const removal = removes === undefined ? {} : { removes };
+  const id = sha256Hex(canonicalJsonStringify({ conversion: ordinal, from, to, preferences: adds, ...removal }));
+  return { from, to, adds, ...removal, marker: `SELECT '${name}-forward-conversion:${id}'` };
 }
 
 const PERSON_PREFERENCES_CONVERSION = conversion(1, "person-preferences", PRE_PREFERENCES_SETTINGS_SCHEMA_HASH, PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, {
-  theme: "dark", animations: true, workflowPanelMode: "floating", selectedWorkflowId: "",
+  theme: "dark", animations: true, [RETIRED_PANEL_MODE]: "floating", selectedWorkflowId: "",
   shortcuts: { numberMode: "runs", bindings: { search: ["/"], start: ["r"], next: ["j", "ArrowDown"], previous: ["k", "ArrowUp"], attention: ["n"] } },
 });
 const RUNS_NOTIFICATIONS_CONVERSION = conversion(2, "runs-notifications-settings", PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH, {
   preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run",
   notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" },
 });
-const SEND_SHORTCUT_CONVERSION = conversion(3, "send-shortcut", PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH, "648527992928080cd6b9f458d2e09b636043c7f23304687406d30a558b986896", {
+const SEND_SHORTCUT_CONVERSION = conversion(3, "send-shortcut", PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH, PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH, {
   sendShortcut: "enter",
 });
+const PANEL_MODE_RETIREMENT_CONVERSION = conversion(4, "panel-mode-retirement", PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH,
+  "c449d9a78f44a4fcd3e0ff0b07746dd1157a325384321d409edb470a432394c5", {}, [RETIRED_PANEL_MODE]);
 /**
  * Every conversion of the stored settings record, oldest first; each entry starts at the hash the one before it ends on.
  * An entry is frozen: its hashes and defaults are literals, so the SQL of its migration never changes. A change to the
  * settings schema appends one entry, whose `to` is the new SETTINGS_SCHEMA_HASH, and one migration that runs its marker.
  */
-export const SETTINGS_RECORD_CONVERSIONS: readonly SettingsRecordConversion[] = deepFreeze([PERSON_PREFERENCES_CONVERSION, RUNS_NOTIFICATIONS_CONVERSION, SEND_SHORTCUT_CONVERSION]);
+export const SETTINGS_RECORD_CONVERSIONS: readonly SettingsRecordConversion[] = deepFreeze([
+  PERSON_PREFERENCES_CONVERSION, RUNS_NOTIFICATIONS_CONVERSION, SEND_SHORTCUT_CONVERSION, PANEL_MODE_RETIREMENT_CONVERSION,
+]);
 export const PERSON_PREFERENCES_CONVERSION_MARKER = PERSON_PREFERENCES_CONVERSION.marker;
 export const RUNS_NOTIFICATIONS_CONVERSION_MARKER = RUNS_NOTIFICATIONS_CONVERSION.marker;
 export const SEND_SHORTCUT_CONVERSION_MARKER = SEND_SHORTCUT_CONVERSION.marker;
+export const PANEL_MODE_RETIREMENT_CONVERSION_MARKER = PANEL_MODE_RETIREMENT_CONVERSION.marker;
 
 export function isSettingsRecordConversionMarker(statement: string): boolean {
   return SETTINGS_RECORD_CONVERSIONS.some(entry => entry.marker === statement);
@@ -80,6 +83,15 @@ function audit(input: unknown) {
   return { ...value, request: initialization(value.request).value };
 }
 
+function convertPreferences(stored: Record<string, unknown>, entries: readonly SettingsRecordConversion[]) {
+  const preferences = { ...stored };
+  for (const entry of entries) {
+    Object.assign(preferences, entry.adds);
+    for (const key of entry.removes ?? []) delete preferences[key];
+  }
+  return preferences;
+}
+
 function snapshotRow(row: Record<string, unknown>) {
   const value = json(row.payload_json);
   const stored = value.preferences === undefined ? undefined : ObjectSchema.parse(value.preferences);
@@ -87,23 +99,54 @@ function snapshotRow(row: Record<string, unknown>) {
     throw new Error("settings-record-predecessor-shape-invalid");
   }
   // A stored snapshot has no preferences, or exactly the members of the first conversions up to the one its build had.
-  const members = (count: number) => SETTINGS_RECORD_CONVERSIONS.slice(0, count).flatMap(entry => Object.keys(entry.adds)).sort().join();
-  const held = stored === undefined ? 0 : SETTINGS_RECORD_CONVERSIONS.findIndex((_entry, index) => members(index + 1) === Object.keys(stored).sort().join()) + 1;
+  const members = (preferences: Record<string, unknown>) => canonicalJsonStringify(Object.keys(preferences).sort());
+  const held = stored === undefined ? 0 : SETTINGS_RECORD_CONVERSIONS.findIndex((_entry, index) =>
+    members(convertPreferences({}, SETTINGS_RECORD_CONVERSIONS.slice(0, index + 1))) === members(stored)) + 1;
   if (stored !== undefined && held === 0) throw new Error("settings-record-predecessor-shape-invalid");
   if (held === SETTINGS_RECORD_CONVERSIONS.length) return row;
-  const preferences = SETTINGS_RECORD_CONVERSIONS.slice(held).reduce<Record<string, unknown>>((filled, entry) => ({ ...filled, ...entry.adds }), { ...stored });
+  if (stored !== undefined && !RetiredPanelModeSchema.safeParse(stored[RETIRED_PANEL_MODE]).success) {
+    throw new Error("settings-record-predecessor-shape-invalid");
+  }
+  const preferences = convertPreferences(stored ?? {}, SETTINGS_RECORD_CONVERSIONS.slice(held));
   return { ...row, payload_json: canonicalJsonStringify(ConfigSnapshotRecordSchema.parse({ ...value, preferences,
     preferencesFingerprint: derivePersonPreferencesFingerprint(preferences) })) };
 }
 
-function settingsRow(row: Record<string, unknown>) {
+function savedPanelModeRetirement(value: Record<string, unknown>) {
+  if (value.saved === null) return undefined;
+  const saved = ObjectSchema.parse(value.saved);
+  const settings = ObjectSchema.parse(saved.settings);
+  const preferences = ObjectSchema.parse(settings.preferences ?? {});
+  if (!Object.hasOwn(preferences, RETIRED_PANEL_MODE)) return undefined;
+  const source = ObjectSchema.parse(ObjectSchema.parse(value.initialization).settings);
+  const before = sha256Hex(`hrauto:persisted-settings:v1\0${canonicalJsonStringify(settings)}`);
+  if (saved.settingsFingerprint !== before || !SettingsSchemaWithPanelMode.safeParse(source.settingsSchemaHash).success
+    || !RetiredPanelModeSchema.safeParse(preferences[RETIRED_PANEL_MODE]).success) {
+    throw new Error("settings-record-predecessor-shape-invalid");
+  }
+  delete preferences[RETIRED_PANEL_MODE];
+  if (Object.keys(preferences).length === 0) delete settings.preferences;
+  else settings.preferences = preferences;
+  const after = derivePersistedSettingsFingerprint(settings);
+  return { before, after, commandId: z.string().parse(saved.commandId), auditId: z.string().parse(saved.auditId),
+    revision: z.number().parse(saved.revision), saved: { ...saved, settings, settingsFingerprint: after } };
+}
+
+type SavedPanelModeRetirement = NonNullable<ReturnType<typeof savedPanelModeRetirement>>;
+
+function settingsRow(row: Record<string, unknown>, retirement: SavedPanelModeRetirement | undefined) {
   const value = json(row.payload_json);
   const converted = initialization(value.initialization);
   if (converted.pending.length === 0) return row;
   const saved = value.saved === null ? {} : ObjectSchema.parse(ObjectSchema.parse(ObjectSchema.parse(value.saved).settings).preferences ?? {});
   // A store cannot have saved a preference its schema did not have yet.
   if (converted.pending.some(entry => Object.keys(entry.adds).some(key => Object.hasOwn(saved, key)))) throw new Error("settings-record-predecessor-shape-invalid");
-  return { ...row, payload_json: canonicalJsonStringify({ ...value, initialization: converted.value }) };
+  const active = value.active === null ? null : ObjectSchema.parse(value.active);
+  if (retirement !== undefined && active?.settingsRevision === retirement.revision) {
+    if (active.settingsFingerprint !== retirement.before) throw new Error("settings-record-predecessor-shape-invalid");
+    active.settingsFingerprint = retirement.after;
+  }
+  return { ...row, payload_json: canonicalJsonStringify({ ...value, initialization: converted.value, saved: retirement?.saved ?? value.saved, active }) };
 }
 
 function commandRow(row: Record<string, unknown>) {
@@ -124,16 +167,38 @@ function auditRow(row: Record<string, unknown>) {
   return { ...row, payload_json: canonicalJsonStringify(audit(value)) };
 }
 
+function retireSavedResult(input: unknown, retirement: SavedPanelModeRetirement) {
+  const outcome = ObjectSchema.parse(input);
+  const request = ObjectSchema.parse(outcome.request);
+  const result = ObjectSchema.parse(outcome.result);
+  if (outcome.auditId !== retirement.auditId || request.commandId !== retirement.commandId
+    || result.state !== "applied" || result.commandId !== retirement.commandId || result.settingsRevision !== retirement.revision
+    || result.settingsFingerprint !== retirement.before) throw new Error("settings-record-predecessor-shape-invalid");
+  return canonicalJsonStringify({ ...outcome, result: { ...result, settingsFingerprint: retirement.after } });
+}
+
 /**
  * Brings one stored row to this build's settings schema. A current row comes back unchanged, so the conversion may run
  * again over a store it has partly or wholly converted. Used by stopped inspection of an older store and by the
  * forward migrations; no reader of a current store calls it.
  */
-export function convertSettingsRecordRow(table: string, input: unknown): Record<string, unknown> {
+export function convertSettingsRecordRow(table: string, input: unknown, retirement?: SavedPanelModeRetirement): Record<string, unknown> {
   const row = ObjectSchema.parse(input);
   if (table === "settings_snapshots") return snapshotRow(row);
-  if (table === "settings") return settingsRow(row);
+  if (table === "settings") return settingsRow(row, retirement ?? savedPanelModeRetirement(json(row.payload_json)));
+  if (retirement !== undefined && table === "commands" && row.id === retirement.commandId) {
+    return { ...row, outcome_json: retireSavedResult(json(row.outcome_json), retirement) };
+  }
+  if (retirement !== undefined && table === "command_audits" && row.id === retirement.auditId) {
+    return { ...row, payload_json: retireSavedResult(json(row.payload_json), retirement) };
+  }
   if (table === "commands" && row.family === "settings-initialization") return commandRow(row);
   if (table === "command_audits") return auditRow(row);
   return row;
+}
+
+/** Captures the binding before any row changes so the saved row and both settlement copies advance together. */
+export function createSettingsRecordConversion(payloadJson: unknown) {
+  const retirement = payloadJson === undefined ? undefined : savedPanelModeRetirement(json(payloadJson));
+  return (table: string, input: unknown) => convertSettingsRecordRow(table, input, retirement);
 }

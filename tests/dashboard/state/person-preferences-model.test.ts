@@ -68,14 +68,14 @@ function ready(owner: ReturnType<typeof createPersonPreferences>): Promise<void>
 it("isolates A/B, restores saved settings after renderer restart and keeps signed-out state neutral", async () => {
   const w = world();
   const a = w.select("A"); await ready(a.owner);
-  assert.equal(await a.owner.change({ "preferences.theme": { set: "light" }, "preferences.animations": { set: false }, "preferences.workflowPanelMode": { set: "sidebar" } }), true);
+  assert.equal(await a.owner.change({ "preferences.theme": { set: "light" }, "preferences.animations": { set: false } }), true);
   assert.equal(a.owner.snapshot().value.theme, "light"); a.close(); a.owner.clear();
   const b = w.select("B"); await ready(b.owner);
   assert.deepEqual(b.owner.snapshot().value, NEUTRAL_PERSON_PREFERENCES);
   assert.equal(await b.owner.change({ "preferences.selectedWorkflowId": { set: "separations" } }), true); b.close();
   const restarted = w.select("A"); await ready(restarted.owner);
   assert.equal(restarted.owner.snapshot().value.theme, "light"); assert.equal(restarted.owner.snapshot().value.animations, false);
-  assert.equal(restarted.owner.snapshot().value.workflowPanelMode, "sidebar"); assert.equal(restarted.owner.snapshot().value.selectedWorkflowId, ""); restarted.close();
+  assert.equal(restarted.owner.snapshot().value.selectedWorkflowId, ""); restarted.close();
   const signedOut = createPersonPreferences("signed-out");
   assert.deepEqual(signedOut.snapshot().value, NEUTRAL_PERSON_PREFERENCES);
   assert.equal(await signedOut.change({ "preferences.theme": { set: "light" } }), false);
