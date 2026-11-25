@@ -135,7 +135,8 @@ type AdmissionScope = "profile-layout" | "profile-maintenance" | "flat-backup" |
 
 /** The only members a dashboard read lane answers; every other member, present or future, refuses. */
 const READ_LANE_MEMBERS: ReadonlySet<string> = new Set(["assertLive", "assertReadable", "assertProfileRuntime", "assertAuthorityDatabase",
-  "assertReadOnlyAuthorityDatabase", "assertAuthorityOpenMode", "assertStorageRootsSafe", "profileBinding", "stateRoot", "retainSourceClosure", "release"]);
+  "assertReadOnlyAuthorityDatabase", "assertCheckpointOnlyDatabase", "assertAuthorityOpenMode", "assertStorageRootsSafe", "profileBinding", "stateRoot",
+  "retainSourceClosure", "release"]);
 
 export class ReadLaneWriteRefusedError extends Error {
   readonly code = "read-lane-write-refused";
@@ -167,6 +168,7 @@ export class RuntimeAdmission {
   readonly #sourceFailures = new Set<unknown>();
   #stoppedControlInventory: Readonly<{ claim: StoppedControlProfileInventory; source: ReturnType<typeof requireStoppedControlProfileInventory> }> | undefined;
   #layoutClaim: FixedLayoutProfileClaim | undefined;
+  #readLaneCheckpoint = false;
   #stoppedLogout: { operation: LogoutOperation; restore: OfflineMaintenanceOperation; witness: ReturnType<InstallationLease["capturePendingProfileLogout"]> } | undefined;
   readonly #profileBinding: ProfileDatabaseBinding | undefined;
   readonly #profileParent: RuntimeAdmission | undefined;
@@ -207,10 +209,18 @@ export class RuntimeAdmission {
   }
 
   /** A worker thread's read-only authority over one profile store, issued from a start record its host already admitted. */
-  static forReadLane(input: Readonly<{ stateRoot: string; path: string; binding: ProfileDatabaseBinding; assertSource: () => void }>): RuntimeAdmission {
+  static forReadLane(input: Readonly<{ stateRoot: string; path: string; binding: ProfileDatabaseBinding; assertSource: () => void; checkpoint: boolean }>): RuntimeAdmission {
     if (!isAbsolute(input.stateRoot) || resolve(input.path) !== join(resolve(input.stateRoot), "state.db")) throw new Error("read-lane-path-refused");
     const authority: AdmissionAuthority = { assertHeld: input.assertSource, assertProfileRuntime: input.assertSource, release() {} };
-    return new RuntimeAdmission(issuanceToken, authority, input.stateRoot, input.stateRoot, [resolve(input.path)], "read-lane", "shared", undefined, input.binding);
+    const admission = new RuntimeAdmission(issuanceToken, authority, input.stateRoot, input.stateRoot, [resolve(input.path)], "read-lane", "shared", undefined, input.binding);
+    admission.#readLaneCheckpoint = input.checkpoint;
+    return admission;
+  }
+  /** The checkpoint-only connection: only the read lane its host designated may open the store read-write, and only to checkpoint. */
+  assertCheckpointOnlyDatabase(path: string): void {
+    if (this.#scope !== "read-lane") throw new Error("read-lane-checkpoint-admission-required");
+    if (!this.#readLaneCheckpoint) throw new ReadLaneWriteRefusedError("checkpoint-only");
+    this.#assertReadLanePath(path);
   }
   /** Only a read lane opens the dashboard read-worker mode, and a read lane opens nothing else. */
   assertAuthorityOpenMode(openMode: string): void {

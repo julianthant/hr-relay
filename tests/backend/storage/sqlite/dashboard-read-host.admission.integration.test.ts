@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { chmodSync, linkSync, renameSync, unlinkSync } from "node:fs";
+import { chmodSync, linkSync, readFileSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
@@ -29,7 +29,7 @@ const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 /** The members a read lane answers; everything else on the admission must refuse. */
-const READ_MEMBERS = ["assertLive", "assertReadable", "assertProfileRuntime", "assertAuthorityDatabase", "assertReadOnlyAuthorityDatabase",
+const READ_MEMBERS = ["assertLive", "assertReadable", "assertProfileRuntime", "assertAuthorityDatabase", "assertReadOnlyAuthorityDatabase", "assertCheckpointOnlyDatabase",
   "assertAuthorityOpenMode", "assertStorageRootsSafe", "profileBinding", "stateRoot", "retainSourceClosure", "release"];
 
 async function laneFixture() {
@@ -88,6 +88,22 @@ it("refuses a group-writable source, a hard-linked source and a missing write-ah
   try { assert.throws(() => admitReadLane(start), /read-lane-wal-source-missing/u); }
   finally { renameSync(`${wal}.held`, wal); }
   admitReadLane(start).admission.release();
+});
+
+it("grants the checkpoint-only connection to the navigation lane alone", async () => {
+  const { fixture, start } = await laneFixture();
+  assert.throws(() => { fixture.profile.admission.assertCheckpointOnlyDatabase(fixture.path); }, /read-lane-checkpoint-admission-required/u);
+  const search = prepareReadLaneStart(fixture.profile.admission, fixture.database, "search");
+  assert.equal(search.checkpoint, false);
+  assert.throws(() => admitReadLane({ ...search, checkpoint: true }), /read-lane-checkpoint-refused/u);
+  assert.throws(() => admitReadLane({ ...start, checkpoint: false }), /read-lane-checkpoint-refused/u);
+  const lanes = [admitReadLane(start), admitReadLane(search)];
+  try {
+    lanes[0].admission.assertCheckpointOnlyDatabase(fixture.path);
+    assert.throws(() => { lanes[0].admission.assertCheckpointOnlyDatabase(`${fixture.stateRoot}/other.db`); }, /read-lane-path-refused/u);
+    assert.throws(() => { lanes[1].admission.assertCheckpointOnlyDatabase(fixture.path); },
+      (error: unknown) => error instanceof ReadLaneWriteRefusedError && error.member === "checkpoint-only");
+  } finally { for (const lane of lanes) lane.admission.release(); }
 });
 
 it("refuses a read-write open and every assertion a read lane does not answer", async () => {
@@ -197,6 +213,27 @@ it("attaches a profile copy's history archive in the lane with the host's logica
       assert.throws(() => connection.exec(sql), /readonly|read-only/u, sql);
     }
   } finally { connection.close(); }
+
+  // A lane only validates the archive: an outdated one, or one missing a native index, is refused and left unchanged.
+  const onArchive = <T>(use: (edit: DatabaseSync) => T) => { const edit = new DatabaseSync(archive); try { return use(edit); } finally { edit.close(); } };
+  const stale = (sql: string) => { onArchive(edit => { edit.exec(sql); }); };
+  const nativeIndexes = new DatabaseSync(destination.path, { readOnly: true });
+  const required = (() => { try {
+    return nativeIndexes.prepare("SELECT name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL").all()
+      .map(row => z.object({ name: z.string() }).parse(row).name);
+  } finally { nativeIndexes.close(); } })();
+  // One native index the archive carries; without it the archive needs an upgrade.
+  const index = onArchive(edit => z.object({ name: z.string(), sql: z.string() }).parse(edit.prepare(
+    "SELECT name,sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL AND name IN (SELECT value FROM json_each(?)) ORDER BY name LIMIT 1")
+    .get(JSON.stringify(required))));
+  for (const [damage, repair] of [[`DROP INDEX ${index.name}`, index.sql],
+    ["UPDATE history_header SET schema_version=schema_version-1", "UPDATE history_header SET schema_version=schema_version+1"]] as const) {
+    stale(damage);
+    const before = { bytes: readFileSync(archive), mtimeMs: statSync(archive).mtimeMs };
+    assert.throws(() => openReadLane(admitReadLane(start), 250), /isolated-history-upgrade-required/u, damage);
+    assert.deepEqual({ bytes: readFileSync(archive), mtimeMs: statSync(archive).mtimeMs }, before, damage);
+    stale(repair);
+  }
 });
 
 it("joins an already started lane before a partial start failure lets the store close", async () => {

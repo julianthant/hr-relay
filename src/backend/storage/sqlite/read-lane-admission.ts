@@ -24,7 +24,7 @@ export const ReadLaneStartSchema = z.strictObject({
   identity: FileIdentitySchema,
   historyArchive: z.strictObject({ path: z.string().min(1), identity: FileIdentitySchema }).optional(),
   cursorOffset: z.number().int().nonnegative(),
-  /** The navigation lane also owns the checkpoint-only connection. */
+  /** The navigation lane, and only it, owns the checkpoint-only connection. */
   checkpoint: z.boolean(),
 });
 export type ReadLaneStart = z.infer<typeof ReadLaneStartSchema>;
@@ -64,11 +64,12 @@ export function admitReadLane(input: unknown): Readonly<{ start: ReadLaneStart; 
   if (!z.object({ protocol: z.literal(READ_LANE_PROTOCOL) }).safeParse(input).success) throw new Error("read-lane-protocol-mismatch");
   const start = ReadLaneStartSchema.parse(input);
   if (start.historyArchive === undefined && start.cursorOffset !== 0) throw new Error("read-lane-history-cursor-mismatch");
+  if (start.checkpoint !== (start.lane === "navigation")) throw new Error("read-lane-checkpoint-refused");
   const assertSource = () => {
     if (!sameDirectory(readLaneSourceIdentity(start.path, true), start.identity)) throw new Error("profile-database-open-source-changed");
   };
   assertSource();
-  const admission = RuntimeAdmission.forReadLane({ stateRoot: start.stateRoot, path: start.path, binding: start.binding, assertSource });
+  const admission = RuntimeAdmission.forReadLane({ stateRoot: start.stateRoot, path: start.path, binding: start.binding, assertSource, checkpoint: start.checkpoint });
   return Object.freeze({ start, admission, assertSource });
 }
 

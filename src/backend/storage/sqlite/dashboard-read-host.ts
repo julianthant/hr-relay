@@ -584,7 +584,7 @@ function runReadLane(port: MessagePort, data: unknown) {
   try {
     if (start.checkpoint) {
       // Checkpoint-only: read-write so it may checkpoint, query_only so it never writes, and it never begins a transaction.
-      lane.admission.assertReadOnlyAuthorityDatabase(start.path);
+      lane.admission.assertCheckpointOnlyDatabase(start.path);
       checkpoint = new DatabaseSync(existingDatabaseLocation(start.path), { timeout: 0, allowExtension: false, defensive: true,
         enableDoubleQuotedStringLiterals: false, readBigInts: false, returnArrays: false });
       checkpoint.exec("PRAGMA query_only=ON; PRAGMA busy_timeout=0");
