@@ -106,7 +106,7 @@ export function decodeStoredArtifact(input: unknown, expectedDigest: string): Re
 
 const STORED_REF_KEY = Buffer.from("{\"ref\":"), STORED_PAYLOAD_KEY = Buffer.from(",\"payloadBase64\":\""), STORED_PAYLOAD_END = Buffer.from("\"}");
 // A multiple of 4 so every payload chunk but the last decodes as whole Base64 groups.
-const DELETION_PROOF_CHUNK_BYTES = 1024 * 1024, DELETION_PROOF_SETTLED_NS = 2_000_000_000n, JSON_WHITESPACE = [0x20, 0x09, 0x0a, 0x0d];
+const BASE64_PADDING = 0x3d, DELETION_PROOF_CHUNK_BYTES = 1024 * 1024, DELETION_PROOF_SETTLED_NS = 2_000_000_000n, JSON_WHITESPACE = [0x20, 0x09, 0x0a, 0x0d];
 type DeletionProofIdentity = Readonly<{ device: bigint; inode: bigint; size: bigint; modified: bigint; changed: bigint }>;
 // shortcut: one entry per proved artifact path until it is removed, so it grows with the store; bound it if stores reach hundreds of thousands of files.
 const deletionProofs = new Map<string, Readonly<{ identity: DeletionProofIdentity; stored: ArtifactRef; storedSha256: string; storedBytes: number }>>();
@@ -118,37 +118,57 @@ function deletionProofIdentity(handle: number): DeletionProofIdentity {
 const sameDeletionProofIdentity = (left: DeletionProofIdentity, right: DeletionProofIdentity) => left.device === right.device
   && left.inode === right.inode && left.size === right.size && left.modified === right.modified && left.changed === right.changed;
 
-// Streams the stored bytes once: one hash of the file and a canonical Base64 decode hashed against the ref, without buffering or parsing the payload.
+// Writer-framed files stream once: one hash of the file and a canonical Base64 decode hashed against the ref, with only the ref parsed.
+// Anything else JSON.parse accepted, and every rejection, takes the whole-file decode so the envelope grammar and its verdicts stay unchanged.
 function proveStoredArtifact(handle: number, size: number, digest: string) {
+  return streamWriterFramedArtifact(handle, size, digest) ?? decodeWholeStoredArtifact(handle, size, digest);
+}
+
+function streamWriterFramedArtifact(handle: number, size: number, digest: string) {
   const chunk = Buffer.allocUnsafe(Math.min(Math.max(size, 1), DELETION_PROOF_CHUNK_BYTES));
   const header = Buffer.from(chunk.subarray(0, readSync(handle, chunk, 0, chunk.byteLength, 0)));
-  // JSON.parse accepted trailing whitespace, so the proof does too.
   const window = Math.min(size, chunk.byteLength), tail = chunk.subarray(0, readSync(handle, chunk, 0, window, size - window));
   let end = tail.byteLength;
   while (end > 0 && JSON_WHITESPACE.includes(tail[end - 1] ?? 0)) end--;
   const payloadEnd = size - (tail.byteLength - end) - STORED_PAYLOAD_END.byteLength, payloadStart = header.indexOf(STORED_PAYLOAD_KEY);
   if (payloadStart < STORED_REF_KEY.byteLength || !header.subarray(0, STORED_REF_KEY.byteLength).equals(STORED_REF_KEY)
-    || end < STORED_PAYLOAD_END.byteLength || !tail.subarray(end - STORED_PAYLOAD_END.byteLength, end).equals(STORED_PAYLOAD_END)) throw new Error("artifact-deletion-stored-shape-invalid");
-  const stored = ArtifactRefSchema.parse(JSON.parse(header.subarray(STORED_REF_KEY.byteLength, payloadStart).toString("utf8")) as unknown);
+    || end < STORED_PAYLOAD_END.byteLength || !tail.subarray(end - STORED_PAYLOAD_END.byteLength, end).equals(STORED_PAYLOAD_END)) return undefined;
+  let stored: ArtifactRef;
+  try { stored = ArtifactRefSchema.parse(JSON.parse(header.subarray(STORED_REF_KEY.byteLength, payloadStart).toString("utf8")) as unknown); }
+  catch { return undefined; }
   const payloadFrom = payloadStart + STORED_PAYLOAD_KEY.byteLength;
-  if (payloadEnd - payloadFrom !== Math.ceil(stored.bytes / 3) * 4) throw new Error(`artifact ${stored.id} byte length does not match stored content`);
+  if (stored.sha256 !== digest || payloadEnd - payloadFrom !== Math.ceil(stored.bytes / 3) * 4) return undefined;
   const storedHash = createHash("sha256").update(header.subarray(0, payloadFrom)), payloadHash = createHash("sha256");
   let position = payloadFrom, decodedBytes = 0;
   for (let read = readSync(handle, chunk, 0, chunk.byteLength, position); read > 0; read = readSync(handle, chunk, 0, chunk.byteLength, position)) {
     const bytes = chunk.subarray(0, read);
     storedHash.update(bytes);
     if (position < payloadEnd) {
-      const text = bytes.subarray(0, Math.min(read, payloadEnd - position)).toString("latin1"), decoded = Buffer.from(text, "base64");
-      if (decoded.toString("base64") !== text) throw new Error(`artifact ${stored.id} has invalid base64 payload`);
+      const encoded = bytes.subarray(0, Math.min(read, payloadEnd - position));
+      // Padding is canonical only in the payload's last group, so an earlier chunk holding "=" is not canonical Base64.
+      if (position + encoded.byteLength < payloadEnd && encoded.includes(BASE64_PADDING)) return undefined;
+      const text = encoded.toString("latin1"), decoded = Buffer.from(text, "base64");
+      if (decoded.toString("base64") !== text) return undefined;
       payloadHash.update(decoded);
       decodedBytes += decoded.byteLength;
     }
     position += read;
   }
-  if (position !== size) throw new Error("artifact-deletion-custody-changed");
-  if (payloadHash.digest("hex") !== digest || stored.sha256 !== digest) throw new Error(`artifact ${stored.id} content digest does not match ${digest}`);
-  if (decodedBytes !== stored.bytes) throw new Error(`artifact ${stored.id} byte length does not match stored content`);
+  if (position !== size || decodedBytes !== stored.bytes || payloadHash.digest("hex") !== digest) return undefined;
   return { stored, storedSha256: storedHash.digest("hex"), storedBytes: size };
+}
+
+function decodeWholeStoredArtifact(handle: number, size: number, digest: string) {
+  const bytes = Buffer.allocUnsafe(size);
+  let length = 0;
+  while (length < size) {
+    const read = readSync(handle, bytes, length, size - length, length);
+    if (read === 0) break;
+    length += read;
+  }
+  if (length !== size) throw new Error("artifact-deletion-custody-changed");
+  const decoded = decodeStoredArtifact(JSON.parse(bytes.toString("utf8")) as unknown, digest);
+  return { stored: decoded.ref, storedSha256: createHash("sha256").update(bytes).digest("hex"), storedBytes: size };
 }
 
 function inspectDeletionFile(admission: RuntimeAdmission, input: ArtifactRef) {
