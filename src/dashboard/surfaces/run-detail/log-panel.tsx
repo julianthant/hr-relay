@@ -28,7 +28,7 @@ function LogHeader({ title, status, middle, searching, layoutKey, children }: { 
   useLayoutEffect(() => {
     const node = row.current;
     if (node !== null && level < 2 && node.scrollWidth > node.clientWidth) setLevel(level + 1);
-  });
+  }, [level, seen]);
   useEffect(() => {
     const node = row.current;
     if (node === null) return;
