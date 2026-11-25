@@ -16,13 +16,16 @@ import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 
+const PAUSED_AT = "2026-08-03T00:00:00.000Z";
+
 async function mount(pause: "running" | "pause-pending" | "paused" = "running", day: typeof FIXTURE_DAY_WIRE = FIXTURE_DAY_WIRE,
   bulkReply: () => Promise<BulkRunCommandResponse> = () => new Promise<never>(() => undefined)) {
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   let lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 17, state: "ready", pause, update: "installer-unavailable",
     targets: [{ runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, expectedVersion: 7 },
-      { runId: "00000000-0000-4000-8000-000000000099", expectedVersion: 11 }] });
+      { runId: "00000000-0000-4000-8000-000000000099", expectedVersion: 11 }].map(target => pause !== "paused" ? target : { ...target,
+        pause: { state: "paused", requestedAt: PAUSED_AT, pausedAt: PAUSED_AT, commandId: "00000000-0000-4000-8000-0000000000aa" } }) });
   const reply = Promise.withResolvers<CommandResult>();
   const sent: Array<CommandRequest | BulkRunCommandRequest> = [];
   const client = { ...transport, applicationLifecycle: async () => lifecycle,
@@ -83,5 +86,50 @@ it("a pause-pending run shows an enabled Resume from the served command and pres
     assert.equal(request.type, "resume");
     assert.equal(request.target.runId, world.row.runId);
     assert.equal(request.target.expectedVersion, world.row.rowRevision);
+  } finally { await f.close(); }
+});
+
+it("paused runs offer Resume all above the queue, and it sends one resume for exactly those runs", async () => {
+  const running = await mount();
+  try { assert.doesNotMatch(running.host.textContent ?? "", /runs? paused/u); } finally { await running.close(); }
+  const f = await mount("paused");
+  try {
+    assert.match(f.host.textContent ?? "", /2 runs paused ·/u);
+    await act(async () => f.button("Resume all").click());
+    assert.equal(f.sent.length, 1);
+    const request = f.sent[0]; assert.ok("targets" in request && request.type === "resume");
+    assert.deepEqual(request.targets, f.lifecycle.targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion })));
+  } finally { await f.close(); }
+});
+
+it("quit stays disabled while a pause is pending", async () => {
+  const f = await mount("pause-pending");
+  try {
+    await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "q", metaKey: true, cancelable: true })));
+    assert.equal(f.button("Pause all and quit").disabled, true);
+  } finally { await f.close(); }
+});
+
+it("clearing one batch's result notice leaves a later batch's failure listed", async () => {
+  const f = await mount("paused", FIXTURE_DAY_WIRE, async () => ({ state: "refused", code: "policy-refused", message: "Relay is pausing work to quit." }));
+  const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  const toggleBell = async () => {
+    const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert.ok(bell);
+    await act(async () => bell.click()); await settle();
+  };
+  const results = () => [...document.querySelectorAll<HTMLElement>("li.notice-row")].filter(row => row.querySelector(".notice-title")?.textContent === "Resume: nothing was sent");
+  try {
+    await act(async () => f.button("Resume all").click()); await settle();
+    await toggleBell();
+    assert.equal(results().length, 1);
+    const first = results()[0].dataset.id;
+    await act(async () => results()[0].querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]')?.click()); await settle();
+    assert.equal(results().length, 0);
+    await toggleBell();
+    await act(async () => f.button("Resume all").click()); await settle();
+    assert.equal(f.sent.length, 2);
+    await toggleBell();
+    assert.equal(results().length, 1, "another batch's failure is its own notice");
+    assert.notEqual(results()[0].dataset.id, first);
   } finally { await f.close(); }
 });

@@ -15,7 +15,7 @@ export const ViewRouteCoordinatesSchema = z.object({
   launchRerun: RerunValuesRequestSchema.extend({ label: identity.optional(), traceId: identity.optional() }).optional(), launchServed: identity.optional(), launchWorkflow: identity.optional(), launchSource: identity.optional(), launchStage: stage.optional(), launchCustomize: z.boolean().optional(),
   reviewPages: z.record(identity, z.number().int().min(0).max(10000)).refine(value => Object.keys(value).length <= 200).optional(),
   queueOpen: z.array(identity).max(200).optional(),
-  queueFilter: z.array(z.enum(["all", "needsYou", "queued", "running", "cancelling", "blocked", "awaiting-approval", "done", "failed", "cancelled", "partial"])).max(12).optional(), queueSort: z.enum(["attention", "newest", "oldest", "longest"]).optional(),
+  queueFilter: z.array(z.enum(["all", "needsYou", "queued", "running", "cancelling", "blocked", "awaiting-approval", "done", "failed", "cancelled", "partial"])).max(12).optional(), queueSort: z.enum(["attention", "newest", "oldest", "longest"]).optional(), queueOrder: z.enum(["newest", "oldest", "longest"]).optional(),
 
   workerWorkflow: identity.optional(), sessions: z.boolean().optional(), addWorkers: z.boolean().optional(),
   search: z.boolean().optional(), searchQuery: z.string().max(500).optional(), settingsQuery: z.string().max(500).optional(),
