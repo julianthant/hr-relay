@@ -3,7 +3,7 @@ import { TimelineEventRecordSchema, TimelinePageRequestSchema } from "../../../m
 import { BrowserSystemIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunSessionIdSchema,
   WorkerIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 import type { AuthorityDatabase } from "./authority-database.js";
-import { createDashboardSnapshotQuery } from "./authority-dashboard-snapshot.js";
+import { createDashboardSnapshotQuery, type DashboardSnapshotPosition } from "./authority-dashboard-snapshot.js";
 import { defineLaneRead, ReadLaneRestartedError, type DashboardReadLanes } from "./dashboard-read-host.js";
 import { openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
 
@@ -39,8 +39,10 @@ const dashboardTimelinePage = defineLaneRead(import.meta.url, "dashboard-timelin
       query = createDashboardSnapshotQuery(connection, context.start.binding);
       snapshotQueries.set(context.native, query);
     }
+    // The reply's position is the native snapshot's, the one the native rows and worker facts were read in.
+    const snapshotAt = (position: DashboardSnapshotPosition) => { context.snapshotAt(position); };
     const offset = context.start.cursorOffset;
-    if (offset === 0) return query(request);
+    if (offset === 0) return query(request, snapshotAt);
     const nativeCursor = (cursor: number) => Math.max(0, cursor - offset);
     if (request.through !== undefined && request.after > request.through) throw new Error("timeline-cursor-reset-required");
     const archive = request.after < offset ? context.history.authority.timelineEvents.page({ after: request.after,
@@ -48,7 +50,7 @@ const dashboardTimelinePage = defineLaneRead(import.meta.url, "dashboard-timelin
     const throughNative = request.through === undefined ? undefined : nativeCursor(request.through);
     // A full archive page needs worker facts and a valid high water, but no native rows.
     const page = query({ ...request, through: throughNative,
-      after: archive.length === request.limit && throughNative !== undefined ? throughNative : nativeCursor(request.after) });
+      after: archive.length === request.limit && throughNative !== undefined ? throughNative : nativeCursor(request.after) }, snapshotAt);
     const through = request.through ?? page.through + offset;
     const records = [...archive, ...page.records.slice(0, request.limit - archive.length)
       .map(record => ({ ...record, cursor: PositiveIntSchema.parse(record.cursor + offset) }))];

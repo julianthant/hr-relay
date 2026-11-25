@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { chmodSync, linkSync, renameSync, unlinkSync } from "node:fs";
+import { once } from "node:events";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
+import { Worker } from "node:worker_threads";
 import { afterEach, it } from "vitest";
 import { z } from "zod";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { acquireRuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { ReadLaneWriteRefusedError, RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { workerBootstrapEnvironment } from "../../../../src/models/config/secrets.js";
+import { workerExecArgv } from "../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { createDashboardReadHost } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
@@ -34,6 +38,15 @@ async function laneFixture() {
   cleanups.push(() => fixture.close());
   return { fixture, start: prepareReadLaneStart(fixture.profile.admission, fixture.database, "navigation") };
 }
+
+it("refuses a wrong protocol by name in a worker started on Relay's lane entry", async () => {
+  const { start } = await laneFixture();
+  const worker = new Worker(new URL("../../../../src/backend/storage/sqlite/dashboard-read-lane.js", import.meta.url), {
+    workerData: { ...start, protocol: "relay.dashboard-read-lane.v0" }, execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
+  const [failure]: unknown[] = await once(worker, "error");
+  assert.ok(failure instanceof Error);
+  assert.match(failure.message, /read-lane-protocol-mismatch/u);
+});
 
 it("refuses a protocol mismatch, a binding mismatch and an inode change between admission and open", async () => {
   const { fixture, start } = await laneFixture();

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import { z } from "zod";
-import { createDashboardReadHost, ReadSupersededError, type DashboardReadLanes } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
+import { createDashboardReadHost, ReadLaneRestartedError, ReadSupersededError, type DashboardReadLanes } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { LANE_READS_ENTRY, laneFacts, laneSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { LANE_READS_ENTRY, laneFacts, laneMismatchedReply, laneOwnSnapshot, laneSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -63,21 +63,26 @@ it("detaches an aborted waiter alone and keeps the joined waiter's read", async 
 
 it("joins only an equal read key dispatched no later than the running read began, with an equal process revision", async () => {
   const lanes = await host();
-  const running = lanes.read(laneSleep, { tag: "join", ms: 250 });
+  // Every "join" read has the complete key of the running one, so only the begin-position guard keeps them apart.
+  const join = { tag: "join", ms: 250 };
+  const running = lanes.read(laneSleep, join);
   await new Promise(resolve => setTimeout(resolve, 50));
   // Dispatched after the running read began: it must not share that read's begin position.
-  const late = lanes.read(laneSleep, { tag: "join", ms: 0 });
+  const late = lanes.read(laneSleep, { ...join });
   const otherKey = lanes.read(laneSleep, { tag: "other", ms: 0 });
-  const lateTwin = lanes.read(laneSleep, { tag: "join", ms: 0 });
+  const lateTwin = lanes.read(laneSleep, { ...join });
   assert.deepEqual(await run(running), { tag: "join", run: 1 });
   const [lateRun, otherRun, twinRun] = await Promise.all([run(late), run(otherKey), run(lateTwin)]);
   assert.equal(lateRun.run, 2);
   assert.equal(otherRun.run, 3);
   assert.equal(twinRun.run, lateRun.run, "an equal key still queued joins the queued read");
 
-  const factsA = lanes.read(laneFacts, { tag: "facts", ms: 100 }, { processFacts: { revision: 1, facts: { revision: 1 } } });
+  // All three queue behind a blocker with equal arguments, so only the process revision keeps A apart from B and C.
+  const blocker = lanes.read(laneSleep, { tag: "facts-blocker", ms: 100 });
+  const factsA = lanes.read(laneFacts, { tag: "facts", ms: 0 }, { processFacts: { revision: 1, facts: { revision: 1 } } });
   const factsB = lanes.read(laneFacts, { tag: "facts", ms: 0 }, { processFacts: { revision: 2, facts: { revision: 2 } } });
   const factsC = lanes.read(laneFacts, { tag: "facts", ms: 0 }, { processFacts: { revision: 2, facts: { revision: 2 } } });
+  await blocker;
   const FactsSchema = RunSchema.extend({ facts: z.strictObject({ revision: z.number() }) });
   const [a, b, c] = (await Promise.all([factsA, factsB, factsC])).map(reply => FactsSchema.parse(JSON.parse(reply.body)));
   assert.deepEqual(a.facts, { revision: 1 });
@@ -86,4 +91,18 @@ it("joins only an equal read key dispatched no later than the running read began
   assert.equal(b.run, c.run);
   assert.equal((await Promise.all([factsB, factsC]))[0].position.processRevision, 2);
   await assert.rejects(lanes.read(laneFacts, { tag: "facts", ms: 0 }), /read-lane-process-facts-required/u);
+});
+
+it("restarts the lane on a reply for a read it never sent and settles the running waiter", async () => {
+  const lanes = await host();
+  await assert.rejects(lanes.read(laneMismatchedReply, {}), (error: unknown) => error instanceof ReadLaneRestartedError);
+  assert.equal(lanes.status().restarts, 1);
+  assert.deepEqual(await run(lanes.read(laneSleep, { tag: "after", ms: 0 })), { tag: "after", run: 1 });
+});
+
+it("carries the position a read reports from its own snapshot", async () => {
+  const lanes = await host();
+  const reply = await lanes.read(laneOwnSnapshot, { authorityGeneration: 424_242, changeLogSeq: 4_242 });
+  assert.equal(reply.position.authorityGeneration, 424_242);
+  assert.equal(reply.position.changeLogSeq, 4_242);
 });

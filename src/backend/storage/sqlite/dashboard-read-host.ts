@@ -11,7 +11,7 @@ import { fileStatus, sameDirectory } from "../file-identity.js";
 import { existingDatabaseLocation } from "./authority-connection.js";
 import type { AuthorityDatabase } from "./authority-database.js";
 import { workerExecArgv } from "./backup-inspection-worker.js";
-import { admitReadLane, openReadLane, prepareReadLaneStart, READ_LANE_PROTOCOL, ReadLaneNameSchema, readLaneSourceIdentity, type ReadLaneName, type ReadLaneStart } from "./read-lane-admission.js";
+import { admitReadLane, openReadLane, prepareReadLaneStart, ReadLaneNameSchema, readLaneSourceIdentity, type ReadLaneName, type ReadLaneStart } from "./read-lane-admission.js";
 
 
 const LANE_BUSY_TIMEOUT_MS = 250;
@@ -41,6 +41,8 @@ export interface LaneReadContext {
   readonly history: AuthorityDatabase;
   readonly nowMs: number;
   readonly processFacts: unknown;
+  /** A read that builds its body in its own snapshot reports that snapshot's position, which the reply then carries. */
+  snapshotAt(position: Readonly<Pick<ReadPosition, "schemaVersion" | "schemaCookie" | "authorityGeneration" | "changeLogSeq">>): void;
   /** Lane-local resources a read keeps between messages: closed with the lane, and checked after every read for an open transaction. */
   retain(resource: Readonly<{ close(): void; inTransaction(): boolean }>): void;
 }
@@ -200,6 +202,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   let checkpointState: "idle" | "draining" | "running" = "idle";
   let retryTimer: ReturnType<typeof setTimeout> | undefined, retryDelayMs = policy.minRetryMs;
   const readyWaits: Promise<void>[] = [];
+  let releaseCustody: (() => void) | undefined, walWatch: ReturnType<typeof setInterval> | undefined;
 
   const admit = (start: ReadLaneStart) => {
     owner.assertProfileRuntime();
@@ -294,20 +297,37 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     else retryDelayMs = policy.minRetryMs;
   };
 
+  /** The navigation lane checkpoints for the writer; with no automatic checkpoints, a watch checks the WAL between reads. */
+  const takeCheckpointCustody = () => {
+    if (releaseCustody !== undefined || closing) return;
+    releaseCustody = database.holdCheckpointCustody();
+    walWatch = setInterval(observeWal, policy.minRetryMs);
+    walWatch.unref();
+  };
+  const returnCheckpointCustody = () => {
+    if (walWatch !== undefined) clearInterval(walWatch);
+    walWatch = undefined;
+    releaseCustody?.();
+    releaseCustody = undefined;
+  };
+
   const onReply = (lane: Lane, start: ReadLaneStart, message: unknown) => {
     const reply: LaneReply = ReplySchema.parse(message);
     if (reply.kind === "ready") {
       lane.ready = true;
+      if (lane.name === "navigation") takeCheckpointCustody();
       pumpAll();
       return;
     }
+    // A mismatched reply leaves lane.running set, so the restart its exit triggers settles the in-flight waiters.
     const running = lane.running;
-    lane.running = undefined;
     if (reply.kind === "checkpoint" || reply.kind === "checkpoint-failed") {
       if (running !== "checkpoint") throw new Error("read-lane-reply-unexpected");
+      lane.running = undefined;
       finishCheckpoint(reply.kind === "checkpoint" ? { busy: reply.busy, log: reply.log, checkpointed: reply.checkpointed } : undefined);
     } else {
       if (running === undefined || running === "checkpoint" || running.id !== reply.id) throw new Error("read-lane-reply-unexpected");
+      lane.running = undefined;
       lane.consecutiveFailures = 0;
       let outcome: { reply: DashboardReadReply } | { error: Error };
       try {
@@ -324,6 +344,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
 
   const failLane = (lane: Lane, failure: Error) => {
     lane.failure = failure;
+    if (lane.name === "navigation") returnCheckpointCustody();
     for (const read of [...lane.interactive.splice(0), ...lane.background.splice(0)]) {
       for (const waiter of [...read.waiters]) settleWaiter(waiter, { error: failure });
     }
@@ -344,6 +365,8 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     const ready = Promise.withResolvers<void>();
     let failure: Error | undefined;
     worker.on("message", (message: unknown) => {
+      // A lane that sent one invalid reply is terminating; nothing it sends after that settles a waiter.
+      if (failure !== undefined) return;
       try {
         onReply(lane, start, message);
         if (lane.ready) ready.resolve();
@@ -445,6 +468,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     async close(): Promise<void> {
       if (!closing) {
         closing = true;
+        returnCheckpointCustody();
         if (retryTimer !== undefined) clearTimeout(retryTimer);
         retryTimer = undefined;
         for (const lane of lanes.values()) {
@@ -526,10 +550,13 @@ function runReadLane(port: MessagePort, data: unknown) {
           return { body: cached.body, position: cached.position, cached: true };
         }
       }
+      let own: Parameters<LaneReadContext["snapshotAt"]>[0] | undefined;
       const context: LaneReadContext = { start, native, history, nowMs: message.nowMs, processFacts: message.processFacts,
+        snapshotAt: position => { own = { schemaVersion: position.schemaVersion, schemaCookie: position.schemaCookie,
+          authorityGeneration: position.authorityGeneration, changeLogSeq: position.changeLogSeq }; },
         retain: resource => { resources.push(resource); } };
       const body = JSON.stringify(definition.run(context, args));
-      const position: ReadPosition = { ...base, changeLogSeq: change.changeLogSeq, timelineThrough,
+      const position: ReadPosition = { ...base, changeLogSeq: change.changeLogSeq, ...own, timelineThrough,
         processRevision: message.processRevision, validUntil: definition.cacheMs === undefined ? null : message.nowMs + definition.cacheMs };
       if (definition.tables.length > 0) cache.set(message.key, { body, position, beginSeq: message.beginSeq });
       return { body, position, cached: false };
@@ -564,9 +591,8 @@ function runReadLane(port: MessagePort, data: unknown) {
   port.postMessage(ready);
 }
 
-/** A lane entry calls this after importing its read modules; outside a lane worker it does nothing. */
+/** A lane entry calls this after importing its read modules; on the main thread it does nothing. */
 export function runReadLaneWorker(): void {
-  if (!isMainThread && parentPort !== null && z.object({ protocol: z.literal(READ_LANE_PROTOCOL) }).safeParse(workerData).success) {
-    runReadLane(parentPort, workerData);
-  }
+  // Admission, not this guard, refuses a start record with the wrong protocol, so the worker fails by name.
+  if (!isMainThread && parentPort !== null) runReadLane(parentPort, workerData);
 }

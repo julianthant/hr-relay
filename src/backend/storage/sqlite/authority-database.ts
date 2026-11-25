@@ -229,6 +229,8 @@ function changeLogIntervalClear(database: DatabaseSync, cursor: number, through:
     && database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name IN (SELECT value FROM json_each(?)) LIMIT 1`).get(cursor, selected) === undefined;
 }
 
+const SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES = 1000;
+
 export class AuthorityDatabase implements Disposable {
   static async withUpgradeInspections<T>(work: () => Promise<T>): Promise<T> {
     if (upgradeInspections.getStore()?.active) return work();
@@ -248,6 +250,7 @@ export class AuthorityDatabase implements Disposable {
   #optimizeOnClose: boolean;
   #closed = false;
   #historyReader?: AuthorityDatabase;
+  #checkpointCustodians = 0;
   #historyOwner?: AuthorityDatabase;
   #historyCursorOffset = 0;
   readonly #dashboardReadSources = new Set<symbol>();
@@ -1560,6 +1563,29 @@ export class AuthorityDatabase implements Disposable {
     if (this.#transactionMode !== "read") throw new Error("change-interval-read-snapshot-required");
     const through = changeLogHighWater(this.#database);
     return Object.freeze({ through, clear: changeLogIntervalClear(this.#database, since, through, JSON.stringify(z.array(AuthorityTableNameSchema).min(1).parse(tables))) });
+  }
+
+  /**
+   * A dashboard read host's checkpoint lane takes WAL checkpoints from this writer: its commits stop checkpointing
+   * automatically until the returned release restores SQLite's default.
+   */
+  holdCheckpointCustody(): () => void {
+    this.#assertOpen();
+    if (this.#checkpointCustodians++ === 0) this.#database.exec("PRAGMA wal_autocheckpoint=0");
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      if (--this.#checkpointCustodians === 0 && this.#database.isOpen) {
+        this.#database.exec(`PRAGMA wal_autocheckpoint=${String(SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES)}`);
+      }
+    };
+  }
+
+  /** The writer's automatic checkpoint interval in pages; 0 while a read host holds checkpoint custody. */
+  autoCheckpointPages(): number {
+    this.#assertOpen();
+    return readIntPragma(this.#database, "wal_autocheckpoint");
   }
 
   /** A read lane exits rather than read again from a connection a failed rollback left inside a transaction. */

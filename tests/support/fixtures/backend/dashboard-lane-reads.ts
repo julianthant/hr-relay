@@ -1,3 +1,5 @@
+import { DatabaseSync } from "node:sqlite";
+import { parentPort } from "node:worker_threads";
 import { z } from "zod";
 import "../../../../src/backend/storage/sqlite/dashboard-background-read-worker.js";
 import { defineLaneRead, runReadLaneWorker } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
@@ -21,6 +23,21 @@ export const laneSleep = defineLaneRead(import.meta.url, "lane-sleep", { lane: "
 /** Background navigation read that blocks the lane for `ms`. */
 export const laneBackground = defineLaneRead(import.meta.url, "lane-background", { lane: "navigation", priority: "background", args: SleepSchema,
   run: (_context, args) => sleep(args) });
+
+/** The lane's wall clock, comparable across the host and lane threads. */
+const wallMs = () => performance.timeOrigin + performance.now();
+const timed = (args: z.infer<typeof SleepSchema>) => {
+  const startedAt = wallMs();
+  return { ...sleep(args), startedAt, finishedAt: wallMs() };
+};
+
+/** laneSleep that also reports when the lane started and finished it. */
+export const laneTimedSleep = defineLaneRead(import.meta.url, "lane-timed-sleep", { lane: "navigation", priority: "interactive", args: SleepSchema,
+  run: (_context, args) => timed(args) });
+
+/** laneBackground that also reports when the lane started and finished it. */
+export const laneTimedBackground = defineLaneRead(import.meta.url, "lane-timed-background", { lane: "navigation", priority: "background",
+  args: SleepSchema, run: (_context, args) => timed(args) });
 
 /** Search-lane read; shape A routes it to the navigation worker. */
 export const laneSearch = defineLaneRead(import.meta.url, "lane-search", { lane: "search", priority: "interactive", args: SleepSchema,
@@ -70,6 +87,38 @@ export const laneStuck = defineLaneRead(import.meta.url, "lane-stuck", { lane: "
     connection.exec("BEGIN; SELECT count(*) FROM sqlite_schema;");
     context.retain({ close: () => { connection.close(); }, inTransaction: () => connection.isOpen && connection.isTransaction });
     return { stuck: true };
+  } });
+
+/**
+ * A read whose rollback fails on the lane's own connection: the next ROLLBACK in this lane isolate throws without running,
+ * so the failed read leaves that connection inside its read transaction.
+ */
+export const laneRollbackFails = defineLaneRead(import.meta.url, "lane-rollback-fails", { lane: "navigation", priority: "interactive",
+  args: z.strictObject({}), run() {
+    const exec: unknown = Reflect.get(DatabaseSync.prototype, "exec");
+    if (typeof exec !== "function") throw new Error("fixture DatabaseSync exec missing");
+    Reflect.set(DatabaseSync.prototype, "exec", function (this: DatabaseSync, sql: string) {
+      if (sql !== "ROLLBACK") { Reflect.apply(exec, this, [sql]); return; }
+      Reflect.set(DatabaseSync.prototype, "exec", exec);
+      throw new Error("injected-rollback-failure");
+    });
+    throw new Error("injected-read-failure");
+  } });
+
+/** Posts a reply for a read the host never sent before its real reply: the host must restart the lane. */
+export const laneMismatchedReply = defineLaneRead(import.meta.url, "lane-mismatched-reply", { lane: "navigation", priority: "interactive",
+  args: z.strictObject({}), run() {
+    parentPort?.postMessage({ kind: "read-failed", id: 2 ** 30, message: "forged-reply" });
+    return { forged: true };
+  } });
+
+/** A read that reports a position from its own snapshot; the reply must carry it. */
+export const laneOwnSnapshot = defineLaneRead(import.meta.url, "lane-own-snapshot", { lane: "navigation", priority: "interactive",
+  args: z.strictObject({ authorityGeneration: z.number().int().nonnegative(), changeLogSeq: z.number().int().nonnegative() }),
+  run(context, args) {
+    const meta = context.native.getMeta();
+    context.snapshotAt({ schemaVersion: meta.schemaVersion, schemaCookie: context.native.capturedChangeKey().schemaCookie, ...args });
+    return {};
   } });
 
 /** The lane entry for hosts that serve these reads alongside Relay's own. */

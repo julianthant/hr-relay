@@ -218,3 +218,20 @@ it("reads only changed run facts after its first snapshot", async () => {
     assert.equal(traceSqliteStatements(() => query(request)).statements.some(({ sql }) => fullRunRead(sql)), false);
   } finally { native.close(); await fixture.close(); }
 });
+
+it("reports the store position of the transaction its page and worker facts were read in", async () => {
+  const fixture = await openBoundDatabaseFixture("background-snapshot-position");
+  const native = new DatabaseSync(fixture.path, { readOnly: true });
+  try {
+    fixture.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    fixture.database.authority.runs.enqueue(runRecordOf({ seed: 1 }));
+    native.exec("PRAGMA query_only=ON");
+    const positions: unknown[] = [];
+    createDashboardSnapshotQuery(native, fixture.profile.admission.profileBinding)({ after: 0, limit: 1, nowMs: systemClock.nowMs() },
+      position => { positions.push(position); });
+    const meta = fixture.database.getMeta();
+    const seq = native.prepare("SELECT seq FROM sqlite_sequence WHERE name='authority_changes'").get()?.seq;
+    assert.deepEqual(positions, [{ schemaVersion: meta.schemaVersion, schemaCookie: native.prepare("PRAGMA schema_version").get()?.schema_version,
+      authorityGeneration: meta.authorityGeneration, changeLogSeq: seq }]);
+  } finally { native.close(); await fixture.close(); }
+});
