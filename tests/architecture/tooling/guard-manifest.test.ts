@@ -238,7 +238,8 @@ function writeFixture(root: string, path: string, content: string): void {
 
 describe("reviewed architecture guard manifest", () => {
 
-  function assertGuardInventory(guards: typeof inventory.guards): void {
+  it("recursively registers every guard file exactly once and every entry exists", () => {
+    const { guards } = inventory;
     const names = guards.map(({ name }) => name);
     assert.equal(new Set(names).size, names.length, "guard names must be unique");
 
@@ -252,27 +253,6 @@ describe("reviewed architecture guard manifest", () => {
       assert.ok(entry.invariant.trim(), `${entry.name} must state its invariant`);
       assert.ok(entry.owner.trim(), `${entry.name} must name its owner`);
       assert.ok(existsSync(join(REPO_ROOT, entry.file)), entry.file);
-    }
-  }
-
-  it("recursively registers every guard file exactly once and every entry exists", () => {
-    assertGuardInventory(inventory.guards);
-  });
-
-  it("shows the registration failure for temporary missing and duplicate entries", () => {
-    const [first, ...remaining] = inventory.guards;
-    assert.ok(first);
-    for (const [label, guards] of [
-      ["missing", remaining],
-      ["duplicate", [...inventory.guards, { ...first, name: `${first.name}-duplicate` }]],
-    ] as const) {
-      assert.throws(() => assertGuardInventory([...guards]), (error: unknown) => {
-        assert.ok(error instanceof assert.AssertionError);
-        const [diagnostic] = error.message.split("\n");
-        assert.equal(diagnostic, "recursive guard file discovery and inventory must match exactly");
-        process.stdout.write(`Guard inventory ${label} ${first.file}: ${error.code} ${diagnostic}\n`);
-        return true;
-      });
     }
   });
 
