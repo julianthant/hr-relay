@@ -27,6 +27,7 @@ const PRIVATE_SQLITE_ADAPTERS = [
   "src/backend/storage/sqlite/authority-upgrades.ts",
   "src/backend/storage/sqlite/backup-inspection.ts",
   "src/backend/storage/sqlite/command-record-row.ts",
+  "src/backend/storage/sqlite/dashboard-read-host.ts",
   "src/backend/storage/sqlite/exclusive-session-leases.ts",
   "src/backend/storage/sqlite/failure-note-removal-migration.ts",
   "src/backend/storage/sqlite/failure-resolution.ts",
