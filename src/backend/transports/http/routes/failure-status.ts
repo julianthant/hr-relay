@@ -13,6 +13,7 @@ import { ActivitySnapshotError } from "../../../runs/queries/activity-selection.
 import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protected-input.js";
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
 import { CommandBrowserClosureError,CommandBrowserError } from "../../../runtime/browser/command-browser.js";
+import { AuthoritySnapshotChangedError } from "../../../storage/sqlite/authority-errors.js";
 import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
 import { browserLoginFailure } from "../../../systems/browser-shared/login-contract.js";
 import { SharePointDownloadError } from "../../../systems/sharepoint/driver/interpreter.js";
@@ -33,7 +34,7 @@ export function wireError(code: string, message: string, retryable: boolean): Wi
 // Map status by typed refusal kind, never by substrings in an error message.
 export function failureStatus(
   error: unknown,
-): { status: 400 | 403 | 404 | 409 | 500; body: Record<string, unknown> } {
+): { status: 400 | 403 | 404 | 409 | 500 | 503; body: Record<string, unknown> } {
   if (error instanceof CredentialMaintenanceHold) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof OcrSourceRefusedError || error instanceof OcrReviewRefusedError) return { status: 409,
     body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
@@ -51,6 +52,7 @@ export function failureStatus(
   if (error instanceof ProfileRuntimeStartFailedError) return { status: 500, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof ReadSupersededError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof ReadLaneRestartedError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, true) };
+  if (error instanceof AuthoritySnapshotChangedError) return { status: 503, body: wireError(error.code, ERROR_CATALOG[error.code].text, true) };
   if (error instanceof DashboardReadFailedError) return { status: 500, body: wireError("DASHBOARD_READ_FAILED", ERROR_CATALOG.DASHBOARD_READ_FAILED.text, false) };
   if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, message, false) };

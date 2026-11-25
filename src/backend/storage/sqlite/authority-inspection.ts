@@ -21,20 +21,31 @@ import { readIntPragma, CountRowSchema, readTextPragma, inspectionTableNames, re
 import { AuthorityFormatUnsupportedError, authorityIntegrityError, inspectStoredData, AuthoritySchemaVersionError } from "./authority-errors.js";
 import { inspectionRunReader } from "./authority-run-evidence.js";
 import { nativeTableKey, validateAuthorityRecordSchemas, assertRunReferences, invariantViolations } from "./authority-stored-rows.js";
+import { readStartupFile, type StartupFile } from "./startup-file-proof.js";
 
 export const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
 
-export function authorityContentFingerprint(database: DatabaseSync, excludedUpgradeRecord?: string): string {
+const FingerprintRowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null(), z.instanceof(Uint8Array)]));
+
+function createAuthorityFingerprint() {
   const hash = createHash("sha256");
-  const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null(), z.instanceof(Uint8Array)]));
+  return {
+    table: (name: string) => { hash.update(canonicalJsonStringify(name)); },
+    row: (row: Record<string, unknown>) => { hash.update(canonicalJsonStringify(byteAwareRow(FingerprintRowSchema.parse(row)))); },
+    finish: () => hash.digest("hex"),
+  };
+}
+
+export function authorityContentFingerprint(database: DatabaseSync, excludedUpgradeRecord?: string): string {
+  const fingerprint = createAuthorityFingerprint();
   for (const table of migrationTableNames(readIntPragma(database, "user_version"))) {
-    hash.update(canonicalJsonStringify(table));
+    fingerprint.table(table);
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
       if (table === "database_upgrades" && row.id === excludedUpgradeRecord) continue;
-      hash.update(canonicalJsonStringify(byteAwareRow(rowSchema.parse(row))));
+      fingerprint.row(row);
     }
   }
-  return hash.digest("hex");
+  return fingerprint.finish();
 }
 
 function pendingCounts(database: DatabaseSync) {
@@ -106,7 +117,7 @@ export function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUT
 
 export type NativeInspection = ReturnType<typeof verifyNativeAuthority>;
 export type VerifiedUpgradeImage =
-  | { kind: "snapshot"; marker: string; digest: string | undefined; inspection: NativeInspection }
+  | { kind: "snapshot"; marker: string; digest: string | undefined; source?: StartupFile; inspection: NativeInspection }
   | { kind: "committed"; digest: string; inspection: NativeInspection };
 export const upgradeInspections = new AsyncLocalStorage<{
   active: boolean;
@@ -147,9 +158,20 @@ function inspectNativeAuthorityImage(database: DatabaseSync, expectedSchemaVersi
     return verifyNativeAuthority(database, expectedSchemaVersion, requireOperationalPragmas, missingRunSearch, workbookPayloads);
   }
   const previous = scope.images.get(image.path);
-  if (previous?.kind === "snapshot" && previous.marker === image.marker && previous.inspection.schemaVersion === expectedSchemaVersion) {
-    checkInspectionPragmas(database, false);
-    return structuredClone(previous.inspection);
+  if (previous?.kind === "snapshot" && previous.inspection.schemaVersion === expectedSchemaVersion) {
+    if (previous.marker === image.marker) {
+      checkInspectionPragmas(database, false);
+      return structuredClone(previous.inspection);
+    }
+    if (previous.source !== undefined && previous.digest !== undefined) {
+      const observed = observeReadonlyStartupFile(database, image.path);
+      if (observed.state === "observed" && sameStartupFile(previous.source, observed.file)
+        && upgradeImageDigest(database) === previous.digest) {
+        checkInspectionPragmas(database, false);
+        scope.images.set(image.path, { ...previous, marker: image.marker });
+        return structuredClone(previous.inspection);
+      }
+    }
   }
   const digest = backupCopy || basename(image.path) === "state.db" ? upgradeImageDigest(database) : undefined;
   const backupInspection = backupCopy && digest !== undefined ? scope.backupCopies.get(digest) : undefined;
@@ -210,7 +232,9 @@ function verifyNativeAuthority(database: DatabaseSync, expectedSchemaVersion: nu
   if (meta.schema_version !== schemaVersion) {
     throw authorityIntegrityError(`authority schema metadata ${String(meta.schema_version)} disagrees with user_version ${String(schemaVersion)}`);
   }
-  inspectStoredData(() => validateAuthorityRecordSchemas(database, !missingRunSearch, expectedSchemaVersion, workbookPayloads));
+  const fingerprint = database.isTransaction && expectedSchemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION && !missingRunSearch
+    ? createAuthorityFingerprint() : undefined;
+  inspectStoredData(() => validateAuthorityRecordSchemas(database, !missingRunSearch, expectedSchemaVersion, workbookPayloads, fingerprint));
   if (schemaVersion >= CHANGE_LOG_SCHEMA_VERSION) assertRunReferences(database);
   inspectStoredData(() => validateNotificationMetadata(database));
   const violations = invariantViolations(database);
@@ -232,7 +256,7 @@ function verifyNativeAuthority(database: DatabaseSync, expectedSchemaVersion: nu
     pageCount: PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count,
     authorityGeneration: meta.authority_generation,
     // Without run_search the full fingerprint cannot be read; only startup classification asks for this shape.
-    authorityContentFingerprint: missingRunSearch ? nonProjectionFingerprint(database) : authorityContentFingerprint(database),
+    authorityContentFingerprint: missingRunSearch ? nonProjectionFingerprint(database) : fingerprint?.finish() ?? authorityContentFingerprint(database),
     quickCheck: "ok",
     foreignKeyViolations: 0,
     invariants: { state: "valid", violations: [] },
@@ -248,6 +272,22 @@ export function inspectOpenDatabase(database: DatabaseSync, requireOperationalPr
 }
 
 const startupCopyDigests = new WeakMap<object, string>();
+const startupCopySources = new WeakMap<object, StartupFile>();
+
+export function sameStartupFile(left: StartupFile, right: StartupFile): boolean {
+  return left.identity === right.identity && left.main === right.main && left.wal === right.wal;
+}
+
+/** The guarded reader rechecks the source files at both ends of every borrow. */
+export function observeReadonlyStartupFile(database: DatabaseSync, path: string): ReturnType<typeof readStartupFile> {
+  const image = readonlyAuthorityImage(database);
+  const copy = database.isTransaction && image?.path === path ? image.copy : undefined;
+  const prior = copy === undefined ? undefined : startupCopySources.get(copy);
+  if (prior !== undefined) return { state: "observed", file: prior };
+  const result = readStartupFile(path);
+  if (copy !== undefined && result.state === "observed") startupCopySources.set(copy, result.file);
+  return result;
+}
 
 export function startupImageDigest(database: DatabaseSync): { state: "observed"; digest: string } | { state: "unavailable" } {
   // Readers of the same guarded private copy see the same main file and WAL.

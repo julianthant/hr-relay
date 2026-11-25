@@ -166,9 +166,14 @@ async function measure(workspace: string, bootOnly: boolean): Promise<void> {
   const inspectEvidence = AuthorityDatabase.inspectEvidenceSchemaUpgrade.bind(AuthorityDatabase);
   const open = AuthorityDatabase.open.bind(AuthorityDatabase);
   const probeBrowsers = profileBrowserClosure.probeClosed.bind(profileBrowserClosure);
+  let recoveryOpens = 0;
   AuthorityDatabase.inspectRegisteredPersonAtStartup = (...args) => timed("registered inspection", () => inspect(...args));
   AuthorityDatabase.inspectEvidenceSchemaUpgrade = (...args) => timed("evidence upgrade inspection", () => inspectEvidence(...args));
-  AuthorityDatabase.openStoppedStartupRecovery = (...args) => timed("recovery authority open", () => recoverOpen(...args));
+  AuthorityDatabase.openStoppedStartupRecovery = (...args) => timed("recovery authority open", () => {
+    const database = recoverOpen(...args);
+    recoveryOpens++;
+    return database;
+  });
   profileBrowserClosure.probeClosed = (...args) => timedAsync("retained browser closure", () => probeBrowsers(...args));
   AuthorityDatabase.open = (...args) => {
     const database = timed("profile authority open", () => open(...args));
@@ -183,6 +188,7 @@ async function measure(workspace: string, bootOnly: boolean): Promise<void> {
     firstPasses.set(phase, outcome);
   };
   startupObservations.subscribe(observe);
+  record("launch to startup admission", performance.now());
   const lifetime = await RuntimeLifetimeLock.acquire(0);
   try {
     const host = hostConfigFacts({});
@@ -190,6 +196,7 @@ async function measure(workspace: string, bootOnly: boolean): Promise<void> {
     if (existsSync(unboundSource)) throw new Error("profile-startup-unbound-source-required");
     await timedAsync("fixed layout admission", () => storage.prepareApplicationDataWorkspace(unboundSource, workspace, lifetime, host));
     await timedAsync("person-store startup", () => storage.initializeRegisteredPersonStores(workspace, lifetime, host));
+    if (fixtureKeys && recoveryOpens !== 1) throw new Error("profile-startup-fixture-recovery-unproved");
     await timedAsync("pending backup closure", () => completePendingShutdownBackup({
       read: () => storage.readPendingShutdownBackup(workspace), remove: () => storage.removePendingShutdownBackup(workspace),
       write: remaining => storage.writePendingShutdownBackup(workspace, remaining),
@@ -199,6 +206,7 @@ async function measure(workspace: string, bootOnly: boolean): Promise<void> {
     let app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
     let authorityReady = false;
     try {
+      if (fixtureKeys && admission.readProfileRegistry().activeProfileId === null) throw new Error("profile-startup-fixture-selection-lost");
       app = await composeDashboardApplication({ admission, isolation: rebuildRuntimeIsolation, repoRoot, lifetimeLock: lifetime,
         backendPortOverride: 0, frontendPortOverride: 0, loopDelay: false, env: {}, shutdownBackup: async () => {},
         onInitialPreflight: report => { authorityReady = report.results.some(result => result.check === "authority.health" && result.status === "pass"); },

@@ -173,6 +173,7 @@ describe("Person Lookup Search for person typed by hand", () => {
     // The CRM search still ran under the typed Employee ID and found its record.
     assert.equal(activeStatus.details.crm, "Found");
     const identity = typed.checkpoint("search-identity");
+    // oxlint-disable-next-line no-unsafe-optional-chaining -- A missing checkpoint must fail this assertion.
     assert.deepEqual((identity?.output.value as { selected: unknown }).selected,
       { ...PERSON, startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" });
     const leaves = typedLeaves(identity);
@@ -211,6 +212,7 @@ describe("Person Lookup Search for person typed by hand", () => {
     assert.deepEqual(rows("searching"), []);
     assert.deepEqual(rows("matching").at(-1)?.output.value, { hits: [{ emplId: PERSON.emplId, name: PERSON.name }], confirmed: [{ emplId: PERSON.emplId, name: PERSON.name }], dropped: [] });
     const identity = rows("search-identity").at(-1);
+    // oxlint-disable-next-line no-unsafe-optional-chaining -- A missing checkpoint must fail this assertion.
     assert.equal((identity?.output.value as { selected: { name: string } }).selected.name, PERSON.name);
     assert.equal(typedLeaves(identity).step, "searching");
   });
@@ -222,6 +224,7 @@ describe("Person Lookup Search for person typed by hand", () => {
     assert.deepEqual(f.database.authority.failures.listByRun(settled.run.envelope.runId).map(failure => `${failure.code}: ${failure.summary}`), []);
     const crmIdentity = f.database.authority.runCheckpoints.listByAttempt(settled.run.envelope.workflow, settled.run.envelope.itemId, "crm-identity", settled.run.envelope.attempt)
       .filter(row => row.runId === settled.run.envelope.runId).at(-1);
+    // oxlint-disable-next-line no-unsafe-optional-chaining -- A missing checkpoint must fail this assertion.
     assert.deepEqual((crmIdentity?.output.value as { selected: unknown }).selected,
       { ...PERSON, startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" });
     const stored = f.database.authority.runResults.get(settled.run.envelope.runId);

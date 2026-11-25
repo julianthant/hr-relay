@@ -501,11 +501,14 @@ helpers or imports outside the span can still change meaning and need ordinary c
 ### 5.2 Gate and scope guards
 
 `tests/architecture/runtime/gate-coverage.test.ts` pins the exact `typecheck`, `lint`, `test`,
-`test:coverage`, and `test:perf` scripts, the single TypeScript program, all authored `src`, `tests`,
-and `scripts` roots,
-and the three root configs `vitest.config.ts`, `vite.dashboard.config.ts`, and
-`vite.mocks.config.ts`. Both lint CLI targets and typed ESLint blocks must cover those inputs.
-Warnings and unmatched patterns fail. An inert wrapper containing the expected words fails.
+`test:coverage`, and `test:perf` scripts and rejects inert wrappers. It checks the single TypeScript
+program and compares Oxlint's file listing with the authored `src`, `tests`, and `scripts` roots
+and the root configs `vitest.config.ts`, `vite.dashboard.config.ts`, and `vite.mocks.config.ts`.
+
+Root lint uses Oxlint with its type-aware sidecar. `.oxlintrc.json` scopes typed rules to TypeScript
+and React hooks rules to the dashboard. It sets separate unused-binding rules for source and tests. Warnings,
+including unused disable directives, and unmatched patterns fail the gate. Oxlint has no equivalent
+for the classic-script rules `no-dupe-args` and `no-octal`. Fast Duo runs its own ESLint check.
 
 `guard-manifest.test.ts` also pins Vitest topology, reporter selection, exclusion-list digest,
 minimum floors, and executable scanners. Registration proves a command remains wired; only its
