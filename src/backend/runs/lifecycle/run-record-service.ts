@@ -1284,8 +1284,9 @@ export class RunRecordService {
 
   historyStatus(): RunHistoryStatus {
     return this.dependencies.database.withAuthorityReadSnapshot(() => {
-      const { finished, active } = this.dependencies.database.authority.runs.countByTerminal();
-      return { state: "available", finishedRuns: finished, activeRuns: active };
+      const runs = this.dependencies.database.authority.runs.listWorkflows().flatMap(workflow => this.dependencies.database.authority.runs.listByWorkflow(workflow));
+      return { state: "available", finishedRuns: runs.filter(run => run.lifecycle.state === "terminal").length,
+        activeRuns: runs.filter(run => run.lifecycle.state !== "terminal").length };
     });
   }
 

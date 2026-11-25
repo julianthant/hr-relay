@@ -60,6 +60,24 @@ describe("canonical run-record service", () => {
     assert.deepEqual(statements.filter(({ sql }) => /SELECT \* FROM runs/u.test(sql)), []);
   });
 
+  it("counts a row whose state column and lifecycle JSON disagree as active", async () => {
+    const { service, request, database } = await fixture();
+    const make = (matchKey: string) => created(service, { ...request, matchKey,
+      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint });
+    const columnOnly = make("drift-column"), jsonOnly = make("drift-json"), finished = make("drift-finished");
+    for (const run of [jsonOnly, finished]) {
+      const outcome = service.transition({ commandId: lifecycleCommandId("drift-terminal", { runId: run.envelope.runId }),
+        runId: run.envelope.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+      assert.equal(outcome.state, "applied");
+    }
+    const raw = new DatabaseSync(syntheticDatabasePath(database));
+    try {
+      raw.prepare("UPDATE runs SET state='terminal' WHERE id=?").run(columnOnly.envelope.runId);
+      raw.prepare("UPDATE runs SET state='queued' WHERE id=?").run(jsonOnly.envelope.runId);
+    } finally { raw.close(); }
+    assert.deepEqual(service.historyStatus(), { state: "available", finishedRuns: 1, activeRuns: 2 });
+  });
+
   it("table-class coverage drives every public service method and generation class", async () => {
     const { service, request, runtimeConfig, database, lifetime } = await fixture();
     const covered = new Set<string>();
