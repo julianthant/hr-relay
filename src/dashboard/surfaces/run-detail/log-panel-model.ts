@@ -12,15 +12,6 @@ export type PanelTab = "review" | "people" | "logs" | "receipt";
 /** Display only advertised operator tabs; historical receipt selections fall back to Logs. */
 export const TAB_ORDER: readonly PanelTab[] = ["review", "people", "logs"];
 
-/** The tab's WORD, in the one place both readers of it can see.
- * `log-panel.tsx`'s `TAB_META` pairs each label with its glyph and the row/panel */
-export const PANEL_TAB_LABEL: Record<PanelTab, string> = {
-  review: "Review",
-  people: "People",
-  logs: "Logs",
-  receipt: "Receipt",
-};
-
 export function tabsFor(detail: Pick<RunDetailWire, "availableSections">): PanelTab[] {
   const advertised = new Set<RunDetailSection>(detail.availableSections);
   return TAB_ORDER.filter((tab) => advertised.has(tab));

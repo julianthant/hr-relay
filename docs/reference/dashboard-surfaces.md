@@ -3,8 +3,10 @@
 The dashboard is a browser app for one local operator. `src/dashboard/app/main.tsx` mounts
 `DashboardApp`; `app/dashboard-app.tsx` boots it and `app/loaded-app.tsx` composes the workspace, Queue, Logs, launcher, Settings,
 and Sessions. `app/dashboard-takeovers.tsx` mounts Settings, Analytics, Explorer, and intake.
-The workflow policy serves Person Lookup, Separations, Onboarding, Work-Study and the public I-9 Check PDF parent. OCR and I-9 Lookup are hidden children; the other configured workflows use mocks. Bootstrap, Settings,
-Preflight, storage, and the served intake workspace use the typed client. Retained backend
+The product workflow policy declares each configured source as `served` or `hidden` in
+[`config/dashboard-workflow-sources.json`](../../config/dashboard-workflow-sources.json).
+The design harness supplies its own fixtures. Bootstrap, Settings, Preflight, storage, and the
+served intake workspace use the typed client. Retained backend
 capabilities do not imply that the corresponding product producer is mounted.
 
 ## Surface map
@@ -63,26 +65,26 @@ It keeps stable ID, label, category, start capability, availability, and source 
 Preview capability does not establish executable registration. An unknown workflow source throws
 rather than picking a default.
 
-`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check are `served`. OCR, I-9 Lookup and OnBase are `hidden`; no other workflow is declared. Emergency Contact members start OnBase to file each person's page. The I-9 Check person child has no source entry. Workflow
+`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`. Person Lookup,
+Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check are `served`. OCR, I-9 Lookup,
+OnBase and CRM Doc Download are `hidden`. Emergency Contact members start OnBase to file each
+person's page. The I-9 Check person child has no source entry. Workflow
 selection determines Queue heading, visible rows, launcher target, and Logs context. Exact run
 selection may identify its own workflow. Counts come from the producer corresponding to the
 rows rather than a second browser status authority.
 
-The public catalog contains Separations, Onboarding, Person Lookup, Work-Study,
-Kronos Pay Rule, Oath Signature, Oath Upload, Emergency Contact, I-9 Check,
-CRM Doc Download, SharePoint Download, and Old Kronos Reports. SharePoint Download is parent-only.
-Hidden children have no public catalog choice. Explicit fixtures retain their mock definitions.
+The public catalog includes only registered workflows marked `served`. Explicit fixtures retain
+their mock definitions.
 I-9 Check launches through its served PDF input and awaits operator acceptance. Its read-only graph
 does not support transaction dry runs; ordinary execution publishes local results and a tracker.
-The remaining preview entries have their declared launch methods and options.
 A catalog label is presentation; backend admission still requires registered capability.
 
 ## Search, dates, and navigation
 
-Search uses loaded run records and exact destination objects. Results carry workflow, subject,
-status, and run identity. Missing destinations refuse with a message. A result opens its exact
-run/day rather than a generic workflow page. A complete cross-day backend index is a separate
-wiring requirement; searching the loaded day is not proof of historical completeness.
+[`state/search-wiring-adapter.ts`](../../src/dashboard/state/search-wiring-adapter.ts) pages
+`searchRuns` across the served search corpus and checks snapshot consistency and result count
+before displaying results. Each result carries workflow, subject, status, and an exact run/day
+destination. Missing destinations refuse with a message.
 
 The action panel provides sort, status filters, Start Run, and Dashboard date. The date picker
 shows `MM/DD/YYYY`, includes Today, and is capped at the served local Today. A future or invalid
