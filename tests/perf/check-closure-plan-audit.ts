@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { readAuthorityChanges, readSingletonImage, validateAuthorityChanges, validateAuthorityStore, type AuthorityChangeRoute } from "../../src/backend/storage/sqlite/authority-database.js";
+import { readAuthorityChanges, readSingletonImage, validateAuthorityChanges, validateAuthorityStore, type AuthorityChangeRoute } from "../../src/backend/storage/sqlite/authority-change-admission.js";
 import { currentRowKey, singletonChangeKeys } from "../../src/backend/storage/sqlite/authority-change-log.js";
 import { AuthorityTableNameSchema } from "../../src/models/config/authority.js";
 import { systemClock } from "../../src/rules/time/clock.js";

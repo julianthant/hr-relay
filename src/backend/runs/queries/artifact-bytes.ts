@@ -9,7 +9,7 @@ import {
   VerifiedArtifactOperationalError,
   VerifiedArtifactSourceMissingError,
 } from "../../storage/artifacts/server-verified-artifact-reader.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../storage/sqlite/storage-records.js";
 import { DiagnosticBundleCorruptError, TargetNotFoundError } from "../commands/refusals.js";
 

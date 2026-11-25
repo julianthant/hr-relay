@@ -15,7 +15,7 @@ import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-r
 import { ExecutorSpanEventSchema } from "../../../../src/backend/logs/span-emitter.js";
 import { type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { type WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { type RunRecord } from "../../../../src/models/run/record.js";
 import { SearchPersonOrg, SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";

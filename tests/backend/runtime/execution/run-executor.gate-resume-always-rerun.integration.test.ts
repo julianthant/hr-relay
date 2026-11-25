@@ -9,7 +9,7 @@ import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/gate-command.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
-import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
+import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CrmReadOnboardingRecord } from "../../../../src/models/systems/crm/read-onboarding-record.js";
 import { SearchPersonOrg } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";

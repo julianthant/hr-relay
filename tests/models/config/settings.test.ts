@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { readBootSettings,readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
-import type { AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-repositories.js";
 import { ordinaryReadbackState } from "../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { SettingsCurrentRecordSchema } from "../../../src/models/config/settings-current.js";
 import { SETTINGS_SCHEMA_HASH,derivePersistedSettingsFingerprint,deriveSettingsPatchFingerprint,initialSettingsFileRecord } from "../../../src/models/config/settings.js";

@@ -5,7 +5,7 @@ import { it } from "vitest";
 import { planRunRecovery } from "../../../../src/backend/runs/start/recovery-plan.js";
 import { RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
 import { continuationEvidenceDigest } from "../../../../src/backend/storage/sqlite/run-continuation.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";

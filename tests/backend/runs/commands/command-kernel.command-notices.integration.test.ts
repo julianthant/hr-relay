@@ -5,7 +5,7 @@ import { createNotificationInbox, type NotificationInbox } from "../../../../src
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { NOW, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import type { NotificationRecord } from "../../../../src/models/notifications/notifications.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

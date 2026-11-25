@@ -12,7 +12,7 @@ import {
   type RunResultRecord,
 } from "../../../../src/models/run/result.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
+import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { SeparationsResultSchema } from "../../../../src/workflows/separations/workflow.js";
 import {
   COMPOSITION_ACTION_ID,

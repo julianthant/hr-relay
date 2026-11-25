@@ -7,7 +7,7 @@ import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
-import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { NativeCommandRequestSchema } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
 

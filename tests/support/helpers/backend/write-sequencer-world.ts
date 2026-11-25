@@ -15,7 +15,8 @@ import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflo
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_EID, WRITE_FIXTURE_KEY, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessionManager, writeFixtureSessions, writeFixtureTransactionNode, type WriteFixtureWorld, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_OBSERVATION, WRITE_FIXTURE_STAGED_STATE } from "../../fixtures/write-sequencer-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../phase1f-executor-harness.js";
-import { AuthorityDatabase, type AuthorityWriteCommitHooks } from "../synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import type { AuthorityWriteCommitHooks } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 

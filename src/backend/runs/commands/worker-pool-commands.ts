@@ -7,7 +7,7 @@ import { type CommandRequest, type CommandResult, CommandResultSchema, type Park
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateDescendantHome } from "../../storage/sqlite/delegation-authority.js";
 import { applyWorkerPoolPlan, WorkerPoolPlanVersionConflict } from "../../storage/sqlite/worker-slots.js";

@@ -21,7 +21,7 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../rules/write-safety/write-safety.js";
 import { taskSpanPath } from "../../logs/span-emitter.js";
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { projectStartSteps } from "./step-selection.js";
 
 export class RerunRefusedError extends Error {

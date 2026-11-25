@@ -423,11 +423,11 @@ results describe their observation time, rather than current external readiness.
 
 ## 5. Guard registration and removal
 
-`docs/guard-inventory.json` is the machine-readable guard inventory. Every active entry
-names a unique guard, file, owner, invariant, and `replacementRequired: true`.
-`tests/architecture/tooling/guard-manifest.test.ts` compares active files to recursive discovery of
-`tests/architecture/` in both directions. An unregistered file or missing active file fails. A
-planned or retired file cannot appear as an unclaimed architecture test.
+`docs/guard-inventory.json` lists each guard on one line with `name`, `file`, `owner`, and
+`invariant`. Write the invariant as one sentence that starts with the reason for the guard.
+`tests/architecture/tooling/guard-manifest.test.ts` checks unique guard names and compares registered
+files with recursive discovery of `tests/architecture/`. Missing or duplicate registrations and
+entries for missing files fail the check.
 
 A new guard accompanies a real recurring mistake. Its production target, violating fixture,
 inventory row, and owning documentation land together. A positive control establishes the valid
@@ -457,8 +457,7 @@ removing a label reruns the metadata check on development PRs.
 Removal names where the invariant goes and updates its inventory entry and consumers in the same
 change. The manifest protects against accidental removal or glob orphaning. It cannot prevent a
 coordinated edit to both a guard and its inventory row. Review and operator authorization remain
-the boundary for deliberate loss of protection. The inventory still uses machine-owned retirement
-and activation fields; this prose does not alter their schema or statuses.
+the boundary for deliberate loss of protection.
 
 The workflow-ID guard (`no-workflow-id-branches`) admits registered ids in generic code only at the
 files listed with a reason for named ids; a new branch elsewhere, a stale entry or a missing reason fails.
@@ -530,10 +529,11 @@ maintenance. Its broad patterns include `src/**/*write-sequencer*.ts`,
 `coverage.thresholds` contains no branch threshold. Those constants do not create a branch gate.
 The global configured floor is 60, not 80.
 
-The coverage exclusion list is empty. The manifest verifies its serialized SHA-256 from
-`guard-inventory.json` and audits exclusion activation with independent fixtures. A planned owner
-must not exist or match files. An active owner must exist and match files. Owners must be exact, independent paths,
-with nonempty reasons. An exclusion cannot silently grow into a parent scope.
+The coverage exclusion list is empty. The manifest verifies its serialized SHA-256 against the
+top-level `coveragePolicy` in `guard-inventory.json` and audits exclusion activation with independent
+fixtures. A planned owner must not exist or match files. An active owner must exist and match files.
+Owners must be exact, independent paths with nonempty reasons. An exclusion cannot silently grow
+into a parent scope.
 
 ## 7. State gallery
 

@@ -8,7 +8,9 @@ import { gitVisibleFiles, REPO_ROOT, repoRelative } from "../support/helpers/gua
 import { scaledMs } from "../../support/time-scale.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 
-const ALLOWLIST = ["src/backend/storage/sqlite/authority-database.ts", "src/backend/runs/lifecycle/run-record-service.ts"];
+const AUTHORITY_DATABASE = "src/backend/storage/sqlite/authority-database.ts";
+const AUTHORITY_REPOSITORIES = "src/backend/storage/sqlite/authority-repositories.ts";
+const ALLOWLIST = [AUTHORITY_DATABASE, "src/backend/runs/lifecycle/run-record-service.ts"];
 const RUN_MUTATORS = new Set(["enqueue", "claimNext", "claimEligible", "renewClaim", "transition", "resume", "requeue",
   "requestCancellation", "advanceRevision", "bumpPriority", "updatePresentation", "injectCheckpointPatches",
   "delete", "terminalizeFailure", "terminalizeSuccess"]);
@@ -19,13 +21,13 @@ function owner(node: ts.Node, name: string): boolean {
   return false;
 }
 function mutator(declaration: ts.Declaration | undefined): boolean {
-  if (declaration === undefined || repoRelative(declaration.getSourceFile().fileName) !== ALLOWLIST[0]
-    || !(ts.isMethodSignature(declaration) || ts.isMethodDeclaration(declaration))) return false;
+  if (declaration === undefined || !(ts.isMethodSignature(declaration) || ts.isMethodDeclaration(declaration))) return false;
+  const file = repoRelative(declaration.getSourceFile().fileName);
   const name = declaration.name.getText();
-  return owner(declaration, "RunRepository") && RUN_MUTATORS.has(name)
-    || owner(declaration, "AuthorityDatabase") && ["terminalizeFailure", "terminalizeSuccess"].includes(name)
-    || owner(declaration, "ArchivedRunRepository") && name === "insert"
-    || owner(declaration, "DiagnosticBundleRepository") && name === "purge";
+  return file === AUTHORITY_REPOSITORIES && (owner(declaration, "RunRepository") && RUN_MUTATORS.has(name)
+    || owner(declaration, "DiagnosticBundleRepository") && name === "purge")
+    || file === AUTHORITY_DATABASE && (owner(declaration, "AuthorityDatabase") && ["terminalizeFailure", "terminalizeSuccess"].includes(name)
+      || owner(declaration, "ArchivedRunRepository") && name === "insert");
 }
 
 const ARCHIVE_SECTION_SQL = "UPDATE archived_runs SET transactions_json=?, transactions_digest=? WHERE record_key=? AND transactions_json IS NULL";
@@ -50,6 +52,14 @@ function allowedNativeDeletionSql(relative: string, node: ts.Node): boolean {
     || node.text !== "INSERT INTO deleted_runs VALUES(?,?,?,?,?,?,?,?,?,?,?)") return false;
   for (let parent = node.parent; parent !== undefined; parent = parent.parent) {
     if (ts.isFunctionDeclaration(parent)) return parent.name?.text === "executeNativeRunDeletion";
+  }
+  return false;
+}
+function allowedPredecessorEvidenceSql(relative: string, node: ts.Node): boolean {
+  if (relative !== "src/backend/storage/sqlite/authority-upgrades.ts" || !ts.isTemplateExpression(node)
+    || node.getText() !== '`INSERT INTO run_results (${Object.keys(columns).join(",")}) VALUES (${Object.keys(columns).map(() => "?").join(",")})`') return false;
+  for (let parent = node.parent; parent !== undefined; parent = parent.parent) {
+    if (ts.isFunctionDeclaration(parent)) return parent.name?.text === "settlePredecessorRunEvidence";
   }
   return false;
 }
@@ -124,7 +134,7 @@ function collectAudit(): readonly string[] {
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node))
         && /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s+["`[]?(?:workflow_runs|tasks|workflow_workers|leases|archived_runs|deleted_runs|run_results|archive_relaunches)\b/iu.test(node.getText())
         && !allowedArchiveSectionSql(relative, node) && !allowedCompletionSql(relative, node) && !allowedNativeDeletionSql(relative, node)
-        && !allowedSettlementMigrationSql(relative,node)) report("sql");
+        && !allowedSettlementMigrationSql(relative,node) && !allowedPredecessorEvidenceSql(relative, node)) report("sql");
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) && /\bFROM\s+["`[]?runs_view\b/iu.test(node.getText())) report("runs-view");
       const signature = ts.isCallExpression(node) && mayCallMutator(node.expression)
         ? checker.getResolvedSignature(node)?.declaration : undefined;

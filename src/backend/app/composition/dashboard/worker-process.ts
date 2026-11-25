@@ -23,7 +23,7 @@ import { createWorkerPool, WorkerPoolError, type WorkerMemberView, type WorkerPo
 import { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { assertPrivateProfilePath, createBrowserRoots } from "../../../storage/browser-roots.js";
-import { AuthorityDatabase } from "../../../storage/sqlite/index.js";
+import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 
 /** Refresh, reopen, parked-write checks and close-for-removal each get this long to reply. */
 export const WORKER_REQUEST_DEADLINE_MS = 120_000;

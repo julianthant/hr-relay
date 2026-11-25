@@ -5,7 +5,7 @@ import { stepProofModuleOf } from "../../registries/step-proof-modules.js";
 
 import {
   AuthorityDatabase,
-} from "../../../storage/sqlite/index.js";
+} from "../../../storage/sqlite/authority-database.js";
 
 import type {
   RunDetailQueryDeps,

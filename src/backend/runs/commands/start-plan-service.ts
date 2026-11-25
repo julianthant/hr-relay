@@ -14,7 +14,7 @@ import { StartPlanIngressSchema, StartPlanWireSchema, type StartPlanWire } from 
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { buildRerunPlan, previewRerunWarnings, validateRerunSourcePlan, RerunRefusedError } from "../start/rerun.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema, type RerunWarningWire } from "../../../models/dashboard/rerun-warning.js";
 import { projectRerunPlanForOperator } from "../../../models/run/rerun.js";

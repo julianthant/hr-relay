@@ -1,4 +1,5 @@
-import type { AuthorityDatabase, AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 
 export function replaceOcrCommandRead(repositories: AuthorityRepositories, commandId: string,
   command: ReturnType<AuthorityRepositories["commands"]["get"]>): AuthorityRepositories {

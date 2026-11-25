@@ -23,7 +23,7 @@ import {
   type CrossDateSearchResult,
 } from "../../../models/dashboard/search.js";
 import { ActivityReportWireSchema } from "../../../models/dashboard/activity.js";
-import type { OperatorXlsxExportRepository } from "../../storage/sqlite/authority-database.js";
+import type { OperatorXlsxExportRepository } from "../../storage/sqlite/authority-repositories.js";
 import type { CrossDateSearchQueryService } from "../queries/search.js";
 import { composeOperatorXlsxWorkbook } from "./operator-xlsx-workbook.js";
 

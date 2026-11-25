@@ -10,7 +10,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-ceremony-lease.js";
 import { duoCeremonyGatesOver, FIXTURE_DUO_CREDENTIAL_KEY, FIXTURE_DUO_LEASE_GRACE_MS, FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
-import type { DuoCeremonyLeaseRepository } from "../../../support/helpers/synthetic-storage-admission.js";
+import type { DuoCeremonyLeaseRepository } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { workerSessionDiagnostics } from "../../../../src/backend/app/composition/worker-compose.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";

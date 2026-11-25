@@ -9,7 +9,7 @@ import { canonicalChildExecution } from "./canonical-child-execution.js";
 import { healthyCrmDriver, healthyUcpathDriver, ManualScheduler, recordingLogger, recordingTimelineEmitter, sessionFactoryHarness, sessionManagerFor } from "../phase1f-executor-harness.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import type { I9LookupInput } from "../../../../src/models/systems/i9/read-section2-signer.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";

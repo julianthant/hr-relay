@@ -24,7 +24,8 @@ import { FlatStartCleanIntentSchema,assertFlatStartCleanCredentials,flatStartCle
 import type { StoppedBackupClosure } from "../maintenance/profile-inventory.js";
 import { createPrivateDirectory,fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError,assertSourceClosuresProved,hasUnprovedSourceClosure,rememberUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
-import { AuthorityDatabase,type StartupLogoutConversion } from "../sqlite/authority-database.js";
+import { AuthorityDatabase } from "../sqlite/authority-database.js";
+import type { StartupLogoutConversion } from "../sqlite/authority-upgrades.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
 import { AuthorityBackupService,verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { assertCanonicalProfileBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";

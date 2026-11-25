@@ -68,6 +68,8 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   const [count, setCount] = useState("1");
   const validCount = Number.isSafeInteger(Number(count)) && Number(count) >= 1;
   const addLocked = operations.add?.state === "pending";
+  // Why Add workers cannot act now; the dimmed button keeps its place and says so.
+  const addOff = data.state === "loading" ? "Sessions are loading" : data.state === "unavailable" ? "Sessions are unavailable" : data.stale ? "Sessions are out of date" : !workflows.length ? "No workflow can start workers" : undefined;
   const pendingAdd = operations.add?.state === "pending" && operations.add.request.action === "add" ? operations.add.request : undefined;
   const pendingAddLabel = pendingAdd && (workflows.find(item => item.id === pendingAdd.workflow)?.label ?? pendingAdd.workflow);
   const adding = pendingAdd !== undefined;
@@ -91,7 +93,9 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
     trigger.focus({ preventScroll: true });
   }, [addOpen, addLocked, data.state, validWorkflow]);
   const addControl = <Dialog open={addOpen && firstScreenRevealed} onOpenChange={setAddOpen}>
-          <Tooltip side="top" content="Add workers"><DialogTrigger asChild><IconButton ref={addTriggerRef} variant="ghost" size="sm" label="Add workers" title="" disabled={!actionable || !workflows.length || addLocked} aria-busy={addLocked || undefined} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger></Tooltip>
+          {addOff === undefined
+            ? <Tooltip side="top" content="Add workers"><DialogTrigger asChild><IconButton ref={addTriggerRef} variant="ghost" size="sm" label="Add workers" title="" disabled={addLocked} aria-busy={addLocked || undefined} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger></Tooltip>
+            : <Tooltip side="top" content={addOff}><span role="group" tabIndex={0} aria-label={addOff} className="inline-flex rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ui-info"><DialogTrigger asChild><IconButton ref={addTriggerRef} variant="ghost" size="sm" label="Add workers" title="" disabled icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger></span></Tooltip>}
           <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope overflow-visible bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
             <DialogBody><div className="grid gap-3">
               <Field label="Workflow"><Select value={selectedWorkflowId} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>

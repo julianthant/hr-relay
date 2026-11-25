@@ -158,7 +158,7 @@ const sharedConfig = defineConfig({
         "src/backend/runtime/writes/write-resolution-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/writes/write-sequencer.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/workflow-kit/mutation-capability.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/storage/sqlite/authority-database.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/storage/sqlite/authority-{change-admission,connection,dashboard-snapshot,database,errors,inspection,repositories,run-evidence,stopped-reads,stored-rows,upgrades}.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/**/*recovery*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/**/*projection*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
       },

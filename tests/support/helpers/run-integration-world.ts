@@ -12,7 +12,8 @@ import { HASH_B, HASH_C, LATER, NOW, UUID_6 } from "../fixtures/phase1c-contract
 import { QUEUED_RUN, RUN_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "./registered-workflows.js";
-import { type AuthorityTerminalizationHooks, AuthorityDatabase } from "./synthetic-storage-admission.js";
+import type { AuthorityTerminalizationHooks } from "../../../src/backend/storage/sqlite/authority-repositories.js";
+import { AuthorityDatabase } from "./synthetic-storage-admission.js";
 
 
 

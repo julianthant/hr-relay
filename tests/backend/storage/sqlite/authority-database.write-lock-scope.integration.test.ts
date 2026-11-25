@@ -5,7 +5,8 @@ import { createNoteTimelineWriter } from "../../../../src/backend/storage/events
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
-import { AuthorityDatabase, AuthorityWriterBusyError } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityWriterBusyError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRerunPlan, RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { launchDescriptor, launchHarness } from "../../../support/fixtures/run-launch-fixtures.js";
 

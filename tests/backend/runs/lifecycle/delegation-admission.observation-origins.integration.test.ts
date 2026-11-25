@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach,it,vi } from "vitest";
 import * as admission from "../../../../src/backend/runs/lifecycle/delegation-admission.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { observationLeafPaths, readObservationPath, resolveObservationOrigin } from "../../../../src/models/events/data-observation-origin.js";

@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { QUERY_INDEXES, SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
 import { DatabaseSync, StatementSync } from "node:sqlite";
-import { CHANGE_LOG_PAGE_ENTRIES, readAuthorityChanges, validateAuthorityChanges } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { CHANGE_LOG_PAGE_ENTRIES, readAuthorityChanges, validateAuthorityChanges } from "../../../src/backend/storage/sqlite/authority-change-admission.js";
 import { seedCheckClosureStore } from "../../support/fixtures/storage/check-closure-store.js";
 import { logCursor } from "../../support/fixtures/storage/raw-authority-writer.js";
 import { seedStorageReadFixture } from "../../perf/storage-read-fixture.js";

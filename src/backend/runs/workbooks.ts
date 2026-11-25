@@ -5,7 +5,8 @@ import { validateNativeLifecycleRequest } from "../storage/sqlite/native-lifecyc
 import { CanonicalWorkerTransitionRequestSchema } from "../storage/sqlite/run-store-contracts.js";
 import { parseCanonicalInputSnapshot } from "../../models/workflow/canonical-input.js";
 import { z } from "zod";
-import type { AuthorityDatabase, AuthorityRepositories } from "../storage/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../storage/sqlite/authority-repositories.js";
 import { RunWorkbookSnapshotReferenceSchema, RunWorkbookNamedReferenceSchema, CapturedWorkbookWriteSourceSchema, parseRunWorkbookReference, encodeSavedWorkbook, type WorkbookOperationReceipt, type WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import type { RunDecisionWire } from "../../models/dashboard/run-decision.js";

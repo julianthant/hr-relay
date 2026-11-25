@@ -1,6 +1,7 @@
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { AuthorityDatabase as CanonicalAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase as CanonicalAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-connection.js";
 import type { Clock } from "../../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";

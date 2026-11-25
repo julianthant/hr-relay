@@ -4,7 +4,7 @@ import { SettingsApplyRefusalSchema, type SettingsFileRecord } from "../../../mo
 import { CommandIdentityConflictError, type CommandRequest, CommandRequestSchema, type CommandResult, CommandResultSchema, deriveSettingsCommandFingerprint, markSettingsCommand } from "../../../rules/commands/commands.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { applied, type CommandApplication } from "./command-application.js";
 import type { CommandKernelDependencies } from "./command-kernel.js";
 import { CommandRefusal, conflict, reject } from "./command-refusal.js";

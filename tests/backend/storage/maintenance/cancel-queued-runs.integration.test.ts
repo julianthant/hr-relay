@@ -19,7 +19,7 @@ import { RunCheckpointRecordSchema, checkpointRecordKey } from "../../../../src/
 import { deriveCheckpointOutputDigest } from "../../../../src/models/run/result.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { PredecessorRunRecordSchema } from "../../../../src/models/run/record.js";
-import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 
 beforeEach(() => {

@@ -22,7 +22,7 @@ import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.
 import { failure,HASH,NOW } from "../../../support/helpers/database-foundation/fixtures.js";
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
-import { CHANGE_LOG_PAGE_ENTRIES } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { CHANGE_LOG_PAGE_ENTRIES } from "../../../../src/backend/storage/sqlite/authority-change-admission.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());

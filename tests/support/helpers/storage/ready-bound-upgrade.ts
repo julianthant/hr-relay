@@ -21,7 +21,8 @@ import { selectActiveRunSettings, selectRunRuntime } from "../../../../src/backe
 import { readBootSettings, readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { SQLITE_MIGRATIONS, isWorkerCustodyDroppedTable, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js";

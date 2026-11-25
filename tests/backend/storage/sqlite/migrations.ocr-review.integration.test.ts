@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { removeEmptySchema17OcrReview } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { NOW, UUID_1, UUID_2 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 

@@ -3,7 +3,7 @@ import { DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { DelegationTerminalEvidenceSchema } from "../../../models/run/result.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { RunContinuationRefusedError, validateRunContinuation, readContinuationGate, retainedCheckpoint } from "./run-continuation.js";
-import type { AuthorityRepositories } from "./authority-database.js";
+import type { AuthorityRepositories } from "./authority-repositories.js";
 import type { RunEnvelope } from "../../../models/run/envelope.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import type { TerminalDependencyEvidence } from "../../../models/run/result.js";

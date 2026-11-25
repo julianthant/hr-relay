@@ -10,7 +10,7 @@ import { browserSessionSpanPath,workerSpanPath } from "../../../../../src/backen
 import { buildRunResult } from "../../../../../src/backend/runs/lifecycle/run-result.js";
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
-import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/index.js";
+import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import type { RunRecord } from "../../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../../../src/models/workflow/checkpoint.js";

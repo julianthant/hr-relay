@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { z } from "zod";
-import { readAuthorityChanges, readSingletonImage, validateAuthorityChanges, validateAuthorityStore } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { readAuthorityChanges, readSingletonImage, validateAuthorityChanges, validateAuthorityStore } from "../../../../src/backend/storage/sqlite/authority-change-admission.js";
 import { singletonChangeKeys } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import { dropGuardTriggers, logCursor } from "../../../support/fixtures/storage/raw-authority-writer.js";
 import { AuthorityTableNameSchema, type AuthorityTableName } from "../../../../src/models/config/authority.js";

@@ -2,7 +2,7 @@ import type { CommandKernel } from "./command-kernel.js";
 import { type CapacityRequest, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { lifecycleCommandId } from "../../../rules/commands/lifecycle-command-id.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 
 export interface RunWorkerCapacity {
   workflowOf(request: CapacityRequest): string | undefined;

@@ -7,7 +7,7 @@ import { type CommandRequest, CommandResultSchema } from "../../../rules/command
 import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { runtimeBuildIsCurrent } from "../../runtime/build-id.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { createWorkbookReferenceCapture } from "../../workbooks/workbook-library-service.js";
 import { fanOutQueuedRuns, type TargetReference, type VersionChange } from "../lifecycle/run-fan-out.js";

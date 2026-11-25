@@ -870,7 +870,7 @@ function ManifestRows({ manifestId, rows }: { manifestId: string; rows: readonly
                 <TD numeric>{row.inputHash === undefined ? "—" : row.inputHash.slice(0, 10)}</TD>
                 <TD className="max-w-[var(--ds-w-member-detail)]">
                   <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
-                    <span className="min-w-0 flex-1 break-words">{row.parsedInput}</span>
+                    <span className="min-w-0 flex-1 truncate" title={row.parsedInput}>{row.parsedInput}</span>
                     <IdentifierPopover
                       label={`Show full evidence for source row ${String(row.sourceRow)}`}
                       title={`Source row ${String(row.sourceRow)} evidence`}

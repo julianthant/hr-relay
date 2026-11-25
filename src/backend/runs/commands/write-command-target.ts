@@ -4,7 +4,7 @@ import type { z } from "zod";
 import { CommandRequestSchema, type CommandRequest } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { rejectCommandRequest } from "./command-refusal.js";
 
 type OccurrenceTarget = Pick<z.input<typeof ActionWriteTargetSchema>, "writeIntentId" | "intentGeneration" | "writeAttemptId" | "occurrenceKeyDigest">;

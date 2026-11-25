@@ -7,7 +7,8 @@ import { composeProfileRuntime, composeSelectedProfileStorage, initializeRegiste
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
 import { readStartupFile } from "../../../../src/backend/storage/sqlite/startup-file-proof.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { testProcessImport } from "../../../support/compiled-process.js";

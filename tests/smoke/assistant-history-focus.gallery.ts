@@ -15,3 +15,16 @@ test("History opened with Enter then one Tab focuses an Assistant control", asyn
   });
   expect(inPanel, "focus left the Assistant panel after Enter then Tab").toBe(true);
 });
+
+for (const leave of ["toggle", "Escape"] as const) {
+  test(`leaving History by ${leave} focuses the History trigger while the composer is disabled`, async ({ mount, page }) => {
+    await mount("assistant/chats/listed");
+    await page.locator('#hub-shell-assistant [aria-label="History"]').focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".hub-slot-title", { hasText: "History" })).toBeVisible();
+    if (leave === "toggle") await page.locator('.hub-slot-header [aria-label="History"]').press("Enter");
+    else await page.keyboard.press("Escape");
+    await expect(page.locator(".hub-slot-title")).toHaveCount(0);
+    await expect(page.locator('#hub-shell-assistant .hub-panel-header [aria-label="History"]')).toBeFocused();
+  });
+}

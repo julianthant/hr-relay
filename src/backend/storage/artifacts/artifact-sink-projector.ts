@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../source-closure.js";
 import type { ArtifactOutboxStorageRecord } from "../sqlite/storage-records.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import type { AuthorityRepositories } from "../sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../sqlite/authority-repositories.js";
 import { ArtifactSinkConflictError, type ArtifactSink } from "./artifact-sink.js";
 
 

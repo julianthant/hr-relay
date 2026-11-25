@@ -81,7 +81,7 @@ import {
   type WriteBindingProof,
   type WriteIntentRecord,
 } from "../../../rules/write-safety/write-safety.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import type { RunClaimToken } from "../../../models/run/worker.js";
 import {
   SequencedWriteCommitInputSchema,
