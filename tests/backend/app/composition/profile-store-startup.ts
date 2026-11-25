@@ -3,9 +3,10 @@
  * RELAY_RUNTIME_PROFILE=development node --import tsx tests/backend/app/composition/profile-store-startup.ts WORKSPACE
  * Set RELAY_RUNTIME_PROFILE to the copy's profile. The copy's workspace and active settings must already be rebound.
  * Use --seed with an empty workspace for synthetic data, or --boot-only with a copy that has no retained selection.
+ * Booting the synthetic fixture exercises a retained browser root and requires the installed Chromium runtime.
  * Use a fresh copy of the same source for every run. Each run changes its own copy.
  */
-import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { registerHooks } from "node:module";
 import { tmpdir } from "node:os";
@@ -51,6 +52,9 @@ async function seed(workspace: string): Promise<void> {
   const { manualClock, systemClock } = await import("../../../../src/rules/time/clock.js");
   const { requireLifecycleApplied, RunRecordService } = await import("../../../../src/backend/runs/lifecycle/run-record-service.js");
   const { enqueueRun } = await import("../../../perf/dashboard-fixture.js");
+  const { unexpectedWorkbookSync } = await import("../../../support/helpers/backend/workbook-sync.js");
+  const { createWorkbookLibraryService } = await import("../../../../src/backend/workbooks/workbook-library-service.js");
+  const { admitCommandBrowser, commandProfileDirectory, createBrowserRoots } = await import("../../../../src/backend/storage/browser-roots.js");
   const { backupRegisteredPeopleAtCleanShutdown, composeSelectedProfileStorage } = await import("../../../../src/backend/app/composition/storage-compose.js");
   const profile = await createBoundProfileFixture({ workspace });
   const clock = manualClock(systemClock.now());
@@ -70,23 +74,57 @@ async function seed(workspace: string): Promise<void> {
           const day = new Date(now - (17 - Math.floor(index / 12)) * 86_400_000).toISOString().slice(0, 10);
           const run = enqueueRun(context, { seed: index + 1, day, title: "Synthetic startup run", separations: index % 5 === 0 });
           const { runId, workflow, traceId } = run.envelope;
-          for (let attempt = 1; attempt <= 4; attempt++) {
+          for (let attempt = 1; attempt <= (index < 111 ? 7 : 6); attempt++) {
             const address = { ts: clock.now().toISOString(), workflow, runId, attempt: 1, traceId,
               spanPath: traceId + "/lookup#" + String(attempt), parentSpanPath: traceId };
             spans.emit({ ...address, t: "span.started", kind: "task", name: "lookup" });
             spans.emit({ ...address, t: "span.ended", kind: "task", outcome: "done" });
           }
-          for (let note = 0; note < 10; note++) {
-            notes.emitNote({ workflow, address: { runId, attempt: 1, traceId, spanPath: traceId }, level: "step", message: "Synthetic startup note" });
+          for (let note = 0; note < (index < 38 ? 10 : 9); note++) {
+            notes.emitNote({ workflow, address: { runId, attempt: 1, traceId, spanPath: traceId }, level: "step",
+              message: "Synthetic startup note ".repeat(9).trim() });
           }
           let previous = requireLifecycleApplied(lifecycle.transition({ commandId: randomUUID(), runId, expectedVersion: run.version,
             lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() } }));
-          for (let revision = 1; revision <= 23; revision++) {
+          for (let revision = 1; revision <= (index < 56 ? 25 : 24); revision++) {
             previous = requireLifecycleApplied(lifecycle.transition({ commandId: randomUUID(), runId, expectedVersion: previous.version,
               displayName: "Synthetic startup run " + String(revision) }));
           }
         }
       });
+      // The real source's legacy timeline combined diagnostics with workflow events. Schema 42 keeps diagnostics separately.
+      const timeline = database.authority.timelineEvents;
+      const at = clock.now().toISOString();
+      const retentionDate = at.slice(0, 10);
+      database.withAuthorityTransaction(() => {
+        for (let index = 0; index < 52_042; index++) {
+          timeline.append({ schemaVersion: 1, eventId: randomUUID(), scope: { kind: "transport", connectionId: "startup-profile" },
+            occurredAt: at, recordedAt: at, retentionDate, source: { kind: "native" },
+            payload: { kind: "debug", event: { category: "http", phase: "settled", area: "storage",
+              reason: "synthetic-startup-profile", message: "Synthetic diagnostic entry ".repeat(5).trim(), correlationId: randomUUID(),
+              build: "0.1.0", pid: 4242, pinned: false } },
+          });
+        }
+      });
+      const workbooks = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
+      const width = 32;
+      for (let index = 0; index < 5; index++) {
+        workbooks.create({ name: `Synthetic workbook ${String(index + 1)}`, hasFormulas: false, themes: [],
+          sheets: [{ id: "sheet", name: "Synthetic rows", width, hidden: [],
+            rows: Array.from({ length: 1_200 }, (_, row) => ({
+              id: `row-${String(row + 1)}`,
+              cells: Array.from({ length: width }, (_, column) => ({ value: `Sample row ${String(row + 1).padStart(4, "0")} cell ${String(column + 1).padStart(2, "0")}` })),
+            })),
+          }],
+        });
+      }
+      const profileRoot = join(profile.admission.stateRoot, "browsers"), profileDirectory = commandProfileDirectory(profileRoot);
+      const capability = admitCommandBrowser(profile.admission, { profileRoot, commandId: randomUUID(), requestDigest: "a".repeat(64) });
+      const launch = createBrowserRoots(profile.admission).beginLaunch({ profileId: profile.admission.profileBinding.profileId,
+        profileRoot, profileDirectory, owner: { kind: "command", capability }, credentialFingerprint: null });
+      mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
+      launch.closing();
+      launch.closed();
     } finally { await selected.account.close(); database.close(); }
   } finally { await profile.closeController(); }
   const { RuntimeLifetimeLock } = await import("../../../../src/backend/storage/admission/lifetime-lock.js");
@@ -97,7 +135,7 @@ async function seed(workspace: string): Promise<void> {
       await backupRegisteredPeopleAtCleanShutdown(workspace, lifetime, clock);
     }
   } finally { await lifetime.close(); }
-  process.stdout.write("Seeded current-schema authority with 191 runs, 4,584 lifecycle commands and three verified backups.\n");
+  process.stdout.write("Seeded current-schema authority with 191 runs, 4,831 lifecycle commands, 56,695 timeline and diagnostic events, five workbooks, one retained browser root and three verified backups.\n");
 }
 
 async function measure(workspace: string, bootOnly: boolean): Promise<void> {
@@ -127,9 +165,11 @@ async function measure(workspace: string, bootOnly: boolean): Promise<void> {
   const recoverOpen = AuthorityDatabase.openStoppedStartupRecovery.bind(AuthorityDatabase);
   const inspectEvidence = AuthorityDatabase.inspectEvidenceSchemaUpgrade.bind(AuthorityDatabase);
   const open = AuthorityDatabase.open.bind(AuthorityDatabase);
+  const probeBrowsers = profileBrowserClosure.probeClosed.bind(profileBrowserClosure);
   AuthorityDatabase.inspectRegisteredPersonAtStartup = (...args) => timed("registered inspection", () => inspect(...args));
   AuthorityDatabase.inspectEvidenceSchemaUpgrade = (...args) => timed("evidence upgrade inspection", () => inspectEvidence(...args));
   AuthorityDatabase.openStoppedStartupRecovery = (...args) => timed("recovery authority open", () => recoverOpen(...args));
+  profileBrowserClosure.probeClosed = (...args) => timedAsync("retained browser closure", () => probeBrowsers(...args));
   AuthorityDatabase.open = (...args) => {
     const database = timed("profile authority open", () => open(...args));
     const history = database.dashboardHistory.bind(database);
