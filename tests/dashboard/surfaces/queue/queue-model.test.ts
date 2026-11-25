@@ -56,6 +56,14 @@ import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m5 } from "../../../support/helper
 
 
 describe_m0('Relay presentation models', () => {
+  it_m0('orders a drawn Attention band by the chosen order alone, whatever the statuses in it', () => {
+    const [base] = FIXTURE_DAY_WIRE_m0.queueSurfaces;
+    const waiting = { ...base, status: 'awaiting-approval' as const, startedAt: '2026-08-03T10:00:00Z' } as typeof base;
+    const failed = { ...base, status: 'failed' as const, startedAt: '2026-08-03T12:00:00Z' } as typeof base;
+    const band = (order: 'newest' | 'oldest') => queueDisplayGroups_m0([waiting, failed], 'attention', '2026-08-03T18:00:00Z', order)[0].rows.map(row => row.status);
+    assert_m0.deepEqual(band('newest'), ['failed', 'awaiting-approval']);
+    assert_m0.deepEqual(band('oldest'), ['awaiting-approval', 'failed']);
+  });
   it_m0('groups only Attention mode and shares flat sorting with keyboard navigation', () => {
     const rows = FIXTURE_DAY_WIRE_m0.queueSurfaces.filter(row => isQueueTopLevel(row));
     assert_m0.equal(queueDisplayGroups_m0(rows, 'attention', '2026-08-03T18:00:00Z').length, 4);
@@ -181,8 +189,8 @@ describe_m2("attentionQueueKeys — the band and the key cannot disagree", () =>
       surface({ runId: runId(4), status: "blocked" }),
       surface({ runId: runId(5), status: "failed", endedAt: { state: "present", value: NOW } }),
     ];
-    // Waiting, then failed, then parked: failed sits in Needs you with them.
-    assert_m2.deepEqual(attentionQueueKeys_m2(rows, "attention", NOW), [runId(2), runId(5), runId(4)]);
+    // Failed sits in Needs you with waiting and parked; equal start times keep the served order.
+    assert_m2.deepEqual(attentionQueueKeys_m2(rows, "attention", NOW), [runId(2), runId(4), runId(5)]);
   });
 
   it_m2("sends a changed name, clears with an empty draft, and skips an unchanged title", () => {
@@ -278,39 +286,10 @@ function settled(input: Record<string, unknown>) {
   return surface({ endedAt: { state: "present", value: NOW }, ...input });
 }
 
-describe_m4("sortQueueBand — `attention`", () => {
-
-  it_m4("ranks by status, in the demo's own order", () => {
-    const rows = [
-      settled({ runId: runId(1), status: "cancelled" }),
-      settled({ runId: runId(2), status: "done" }),
-      settled({ runId: runId(3), status: "partial" }),
-      surface({ runId: runId(4), status: "queued" }),
-      surface({ runId: runId(5), status: "running" }),
-      surface({ runId: runId(6), status: "blocked" }),
-      settled({ runId: runId(7), status: "failed" }),
-      surface({ runId: runId(8), status: "awaiting-approval" }),
-    ];
-    assert_m4.deepEqual(
-      sortQueueBand_m4(rows, "attention", NOW).map((row) => row.status),
-      ["awaiting-approval", "failed", "blocked", "running", "queued", "partial", "done", "cancelled"],
-    );
-  });
-
-  it_m4("breaks a rank tie with the NEWEST first", () => {
-    const older = surface({ runId: runId(1), status: "running", startedAt: "2026-08-14T09:00:00.000Z" });
-    const newer = surface({ runId: runId(2), status: "running", startedAt: "2026-08-14T16:00:00.000Z" });
-    assert_m4.deepEqual(
-      sortQueueBand_m4([older, newer], "attention", NOW).map((row) => String(row.runId)),
-      [String(newer.runId), String(older.runId)],
-    );
-  });
-
-  it_m4("leaves the three named orders alone", () => {
+describe_m4("sortQueueBand", () => {
+  it_m4("orders by start time alone, never by status", () => {
     const older = surface({ runId: runId(1), status: "running", startedAt: "2026-08-14T09:00:00.000Z" });
     const newer = surface({ runId: runId(2), status: "awaiting-approval", startedAt: "2026-08-14T16:00:00.000Z" });
-    // `oldest` must not be re-ranked by status — the waiting row is newer and
-    // still sorts last, which is the whole point of a named order.
     assert_m4.deepEqual(
       sortQueueBand_m4([newer, older], "oldest", NOW).map((row) => String(row.runId)),
       [String(older.runId), String(newer.runId)],
@@ -454,10 +433,10 @@ describe_m4("logical item attempt grouping", () => {
 it_m4("keeps Cancelling in the active band ahead of queued and completed work", () => {
   const cancelling = surface({ runId: runId(1), status: "cancelling" });
   assert_m4.equal(bandOf_m4("cancelling"), "active");
-  assert_m4.deepEqual(sortQueueBand_m4([
+  assert_m4.deepEqual(queueDisplayGroups_m0([
     settled({ runId: runId(2), status: "done" }),
     surface({ runId: runId(3), status: "queued" }), cancelling,
-  ], "attention", NOW).map(({ status }) => status), ["cancelling", "queued", "done"]);
+  ], "attention", NOW).flatMap(group => group.rows).map(({ status }) => status), ["cancelling", "queued", "done"]);
 });
 }
 

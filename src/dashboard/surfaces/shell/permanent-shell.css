@@ -12,9 +12,6 @@
 .settings-nav-group a { display: flex; min-width: 0; height: 36px; align-items: center; gap: 10px; padding: 0 12px; border-radius: 10px; font-size: 14px; }
 .settings-nav-group a svg { width: 16px; height: 16px; }
 .dashboard-shell .settings-content { padding: 32px; }
-/* The Sessions bar (its height + 12px edge gap) sits under the main area; Settings has no bar, so its sidebar and content run to the 12px edge gap. */
-.dashboard-workspace > main { padding-bottom: calc(var(--session-dock-h, 46px) + 12px); }
-.dashboard-shell[data-settings-takeover="true"] .dashboard-workspace > main { padding-bottom: 0; }
 .dashboard-shell .settings-content { margin-bottom: 12px; }
 .dashboard-shell .settings-content { opacity: 1; transition: opacity var(--ds-dur-enter) var(--ds-ease-out); }
 .dashboard-shell .settings-takeover[data-demo-enter="from"] > .settings-content { opacity: 0; }
@@ -62,49 +59,15 @@
 .dashboard-queue-column, .dashboard-log-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .dashboard-queue-column { container-type: inline-size; container-name: queue; }
 .dashboard-queue-column > section { flex: 1; min-height: 0; }
-.dashboard-action-panel { display: flex; flex-shrink: 0; align-items: center; gap: var(--ds-space-base); min-width: 0; height: 46px; padding-right: 12px; border: 1px solid var(--ui-stroke); border-radius: var(--ds-radius-lg); background: var(--ui-panel); container-type: inline-size; container-name: actions; }
-.dashboard-action-panel > .operations-toolbar { flex: 1; min-width: 0; height: 44px; min-height: 44px; margin: 0; border: 0; border-radius: 0; background: transparent; }
-.dashboard-log-column { gap: var(--ds-space-cozy); }
-.dashboard-log-column > section:not(.dashboard-action-panel) { flex: 1; min-height: 0; }
-.dashboard-log-date { display: flex; flex-shrink: 0; align-items: center; }
-
-.dashboard-action-panel .operations-toolbar > [aria-label="Action panel controls"] { min-height: 44px; height: 44px; padding: 8px 12px; gap: 6px; }
-.queue-status-trigger[data-filtered="true"] { border-color: var(--ui-info); color: var(--ui-info); }
-.queue-status-trigger svg { width: 14px; height: 14px; flex-shrink: 0; }
-
-@container actions (max-width: 600px) {
-  .dashboard-log-date > .ds-date-picker { width: 144px; }
-}
-
-@container actions (max-width: 540px) {
-  .queue-sort.ds-select-control { width: 28px; padding-inline: 6px; justify-content: center; }
-  .queue-sort [data-slot="select-value"], .queue-sort > svg:last-child { display: none; }
-  .queue-status-label { display: none; }
-  .queue-status-trigger { width: 28px; min-width: 28px; padding-inline: 6px; justify-content: center; }
-  .queue-status-trigger > svg:last-child { display: none; }
-}
-
-@container actions (max-width: 400px) {
-  .dashboard-action-panel .operations-toolbar > [aria-label="Action panel controls"] { padding-inline: 8px; }
-}
-
-@container actions (max-width: 450px) {
-  .queue-start-trigger { width: 28px; min-width: 28px; padding-inline: 0; }
-  .queue-start-label { display: none; }
-}
+.dashboard-log-column > section { flex: 1; min-height: 0; }
 
 .queue-filter-content { display: flex; flex: 1; min-height: 0; padding: 0; outline-offset: -3px; }
-
-.dashboard-action-panel .queue-status-trigger, .dashboard-action-panel .queue-sort.ds-select-control { box-shadow: none; color: var(--ui-primary); font-weight: 400; }
-.dashboard-action-panel .queue-status-trigger[data-filtered="true"], .dashboard-action-panel .queue-status-trigger[data-popup-open], .dashboard-action-panel .queue-sort.ds-select-control[data-popup-open] { background: color-mix(in srgb,var(--ui-info) 10%,transparent); color: var(--ui-info); }
 
 @media (max-width: 1100px) { .dashboard-shell .settings-content { padding: 20px; } }
 
 .settings-takeover .ds-path-control > button { border: 0; box-shadow: none; background: var(--ui-hover); border-radius: var(--ds-radius-md); font-weight: 400; }
 .settings-takeover .ds-path-control > button:hover { background: var(--ui-table); }
 
-.queue-attention-toggle { width: 28px; min-width: 28px; height: 28px; border: 1px solid var(--ui-stroke); border-radius: 8px; background: var(--ui-panel); color: var(--ui-secondary); }
-.queue-attention-toggle[data-selected] { background: color-mix(in srgb,var(--ui-info) 15%,var(--ui-panel)); border-color: color-mix(in srgb,var(--ui-info) 45%,var(--ui-stroke)); color: var(--ui-info); }
 
 .settings-search-results { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
 .settings-search-result { display: flex; align-items: flex-start; min-height: 52px; gap: 8px; padding: 8px 12px; border-radius: 8px; color: var(--ui-primary); font-size: 14px; }
@@ -121,3 +84,38 @@
 .settings-content [data-settings-path]:focus { outline: none; }
 .settings-content [data-settings-path]:focus-visible { box-shadow: inset 0 0 0 1px var(--ui-stroke-control); }
 /* Settings and Log out sit at the bottom of the sidebar as 28px icon buttons. */
+
+/* The sidebar is flush: full window height, square, one divider on the right. Its list scrolls between the fixed header and footer. */
+.workspace-rail-footer { display: flex; flex-shrink: 0; flex-direction: column; gap: 8px; border-top: 1px solid var(--ui-stroke); padding: 10px; pointer-events: auto; }
+.workspace-rail-profile { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--ui-stroke); border-radius: 12px; background: var(--ds-surface-2, var(--ui-panel)); }
+.workspace-rail-avatar { display: inline-flex; width: 28px; height: 28px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 9999px; background: color-mix(in srgb, var(--ui-info) 25%, var(--ds-surface-1)); font-size: 11px; font-weight: 600; }
+.workspace-rail-profile-text { display: flex; min-width: 0; flex-direction: column; }
+.workspace-rail-profile-text strong, .workspace-rail-profile-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-rail-profile-text strong { font-size: 13px; font-weight: 600; }
+.workspace-rail-profile-text small { color: var(--ui-secondary); font-size: 12px; }
+.workspace-rail-icons { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--ui-stroke); padding-top: 8px; margin: 0 -10px; padding-inline: 10px; }
+.workspace-rail-icon-group { display: flex; align-items: center; gap: 2px; }
+.workspace-rail[data-collapsed] .workspace-rail-profile-text { display: none; }
+.workspace-rail[data-collapsed] .workspace-rail-profile { justify-content: center; padding: 6px 0; border: 0; background: transparent; }
+.workspace-rail[data-collapsed] .workspace-rail-icons { flex-direction: column; gap: 4px; }
+.workspace-rail[data-collapsed] .workspace-rail-icon-group { flex-direction: column; gap: 4px; }
+/* Start run beside a workflow: a sibling of the row, so Tab reaches it; it shows on hover and on keyboard focus. */
+.workflow-rail-item { position: relative; }
+.workflow-rail .workflow-rail-start { position: absolute; top: 50%; right: 4px; display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ui-primary); opacity: 0; transform: translateY(-50%); cursor: pointer; }
+.workflow-rail-item:hover .workflow-rail-start, .workflow-rail .workflow-rail-item:focus-within .workflow-rail-start { opacity: 1; }
+.workflow-rail .workflow-rail-start:hover { background: var(--ds-surface-3); }
+.workflow-rail-item:hover .workflow-rail-running, .workflow-rail-item:focus-within .workflow-rail-running { margin-right: 24px; }
+.workflow-rail[data-collapsed] .workflow-rail .workflow-rail-start { display: none; }
+
+/* The queue header card: the workflow's title, then icon buttons with no button background. */
+.queue-header { display: flex; flex-shrink: 0; align-items: center; gap: 8px; height: 56px; padding: 0 12px 0 16px; border: 1px solid var(--ui-stroke); border-radius: var(--ds-radius-lg); background: var(--ui-panel); margin-bottom: var(--ds-space-cozy); }
+.queue-header-title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; }
+.queue-paused-strip { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px 4px 16px; border: 1px solid var(--ui-stroke); border-radius: var(--ds-radius-lg); background: var(--ui-panel); margin-bottom: var(--ds-space-cozy); color: var(--ui-secondary); font-size: 13px; }
+.queue-header-actions { display: flex; flex-shrink: 0; align-items: center; gap: 4px; }
+.queue-header-actions button { background: transparent; box-shadow: none; }
+.queue-header-actions button:hover, .queue-header-actions button[data-popup-open], .queue-header-actions button[aria-expanded="true"] { background: var(--ui-hover); }
+.queue-options-badge { position: absolute; top: -7px; right: -8px; display: inline-flex; min-width: 14px; height: 14px; align-items: center; justify-content: center; padding: 0 4px; border-radius: 9999px; background: var(--ds-switch-on); color: var(--ds-on-signal); font-size: 10px; font-weight: 600; line-height: 1; }
+.queue-options-value { margin-left: auto; padding-right: 8px; color: var(--ui-secondary); }
+.queue-options-note { margin: 0; padding: 6px 10px 8px; max-width: 240px; color: var(--ui-secondary); font-size: 12px; line-height: 1.4; }
+.queue-date-footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--ui-stroke); padding: 8px 8px 4px; color: var(--ui-secondary); font-size: 12px; }
+.queue-date-today { padding: 0; border: 0; background: transparent; color: var(--ds-fg-link); cursor: pointer; font-size: 13px; }

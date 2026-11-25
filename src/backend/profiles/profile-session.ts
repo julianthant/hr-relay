@@ -193,6 +193,10 @@ export function createProfileSession(input: {
     return store;
   }
 
+  function accountOf(row: ProfileRegistryRow): ProfileAccount {
+    return profileAccount(row, verifiers.identify, storeFor(row.profileId).read().entries.ucpathUserId?.value);
+  }
+
   function releaseOrdinary(profileId: string): void {
     const entry = storageAdmissions.get(profileId), capability = entry?.ordinary;
     if (entry === undefined || capability === undefined) return;
@@ -1204,6 +1208,7 @@ export function createProfileSession(input: {
     changeUsername(token: string, fields: { readonly currentPassword: string; readonly newUsername: string; readonly at: string }) {
       return changeLogin(token, { currentPassword: fields.currentPassword, change: { kind: "username", email: fields.newUsername }, at: fields.at });
     },
+    account: accountOf,
     /** Change the signed-in person's Name, Initials or Timekeeper name; runs already started keep the timekeeper name they captured. */
     changeDetails(token: string, change: ProfileDetailsChange): { readonly state: "changed"; readonly account: ProfileAccount } | ProfileRefusal {
       admission.assertWritable();
@@ -1215,7 +1220,7 @@ export function createProfileSession(input: {
         if ("state" in session) return session;
         const row = registry.read().profiles.find(entry => entry.profileId === session.profileId);
         if (row === undefined) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
-        const account = profileAccount({ ...row, ...checked.patch }, verifiers.identify);
+        const account = accountOf({ ...row, ...checked.patch });
         registry.update(session.profileId, checked.patch);
         return { state: "changed", account };
       });

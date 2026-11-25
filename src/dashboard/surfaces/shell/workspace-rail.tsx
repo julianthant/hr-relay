@@ -1,6 +1,6 @@
 import { inboxMessage, type InboxWiring } from "../../state/inbox-wiring-adapter.js";
-import { memo, useState } from "react";
-import { PanelLeft } from "lucide-react";
+import { memo, useState, type ReactNode } from "react";
+import { LogOut, PanelLeft, Settings } from "lucide-react";
 import { IconButton, Tooltip, useToasts } from "../../ds/ui.js";
 import type { NavbarData, NavbarSearchResult } from "./search/navbar-view-model.js";
 import type { PaletteAction } from "./search/search-palette-model.js";
@@ -13,8 +13,11 @@ import type { WorkflowCountWire } from "./shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { WorkflowRail } from "./workflow-rail.js";
 import { useRailCollapsed } from "./workflow-rail-model.js";
+import { SETTINGS_GEAR_ID } from "../settings/settings-model.js";
 
-export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, active, onSelect, settingsOpen, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
+export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, active, onSelect, settingsOpen, inbox, onOpenNotification, searchData, onSearch, onSearchAction, account, onSettings, onLogout, sessionControls, onStartRun, canStartRun }: {
+  account?: { name: string; initials: string; email?: string | undefined } | undefined; onSettings: () => void; onLogout: () => void; sessionControls: ReactNode;
+  onStartRun: (id: string) => void; canStartRun: (id: string) => boolean;
   workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; active: string;
   onSelect: (id: string) => void;
   settingsOpen: boolean;
@@ -47,7 +50,18 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, ac
       </div>
     </header>
     <div className="workspace-rail-body">
-      <WorkflowRail workflows={workflows} counts={counts} active={active} onSelect={onSelect} collapsed={collapsed} />
+      <WorkflowRail workflows={workflows} counts={counts} active={active} onSelect={onSelect} collapsed={collapsed} onStart={onStartRun} canStart={canStartRun} />
     </div>
+    <footer className="workspace-rail-footer">
+      {account && <div className="workspace-rail-profile" title={collapsed ? [account.name, account.email].filter(Boolean).join(" · ") : account.email}><span aria-hidden className="workspace-rail-avatar">{account.initials}</span>
+        <span className="workspace-rail-profile-text"><strong>{account.name}</strong>{account.email !== undefined && <small>{account.email}</small>}</span></div>}
+      <div className="workspace-rail-icons">
+        <span className="workspace-rail-icon-group">
+          <Tooltip side="right" content="Settings"><IconButton id={SETTINGS_GEAR_ID} variant="ghost" size="sm" label="Settings" title="" onClick={onSettings} icon={<Settings aria-hidden className="size-4" />} /></Tooltip>
+          <Tooltip side="right" content="Log out"><IconButton className="hub-logout" variant="ghost" size="sm" label="Log out" title="" onClick={onLogout} icon={<LogOut aria-hidden className="size-4" />} /></Tooltip>
+        </span>
+        <span className="workspace-rail-icon-group">{sessionControls}</span>
+      </div>
+    </footer>
   </aside>;
 });

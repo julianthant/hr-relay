@@ -6,7 +6,7 @@ import { afterEach, it } from "vitest";
 import { CommandExecutor, type CommandExecutionScope } from "../../../../src/dashboard/app/commands/command-executor.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
-import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
+import { SessionPanel } from "../../../support/helpers/dashboard/sessions-host.js";
 import type { SessionCommandBinding } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";

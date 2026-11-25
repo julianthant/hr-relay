@@ -5,7 +5,8 @@ import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.j
 import { WorkflowNavigation } from "./workflow-navigation.js";
 
 /** Each workflow shows one number: its runs running now, as a pill at the row's far right (a corner badge on the minimized tile); nothing at 0. */
-export function WorkflowRail({ workflows, counts, active, onSelect, collapsed }: {
+export function WorkflowRail({ workflows, counts, active, onSelect, collapsed, onStart, canStart }: {
+  onStart?: (id: string) => void; canStart?: (id: string) => boolean;
   collapsed?: boolean;
   workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; active: string;
   onSelect: (id: string) => void;
@@ -21,5 +22,5 @@ export function WorkflowRail({ workflows, counts, active, onSelect, collapsed }:
       <span aria-hidden className="size-1.5 rounded-full bg-current motion-safe:animate-pulse" />{count}</span>}</span>;
   }, [running]);
   const description = useCallback((id: string) => { const count = running(id); return count > 0 ? `${count} running` : undefined; }, [running]);
-  return <WorkflowNavigation label="Workflows" groups={groups} active={active} onSelect={onSelect} metadata={metadata} description={description} collapsed={collapsed} />;
+  return <WorkflowNavigation label="Workflows" groups={groups} active={active} onSelect={onSelect} metadata={metadata} description={description} collapsed={collapsed} onStart={onStart} canStart={canStart} />;
 }

@@ -5,7 +5,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe,expect,it } from "vitest";
 import { PRODUCT_WORKFLOW_COMPOSITION,WORKFLOW_SOURCES,workflowComposition,workflowSource } from "../../../../src/dashboard/app/workflow-sources.js";
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
-import { RunWorkflowPicker } from "../../../../src/dashboard/surfaces/run-start/run-start-picker.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { WorkflowRail } from "../../../../src/dashboard/surfaces/shell/workflow-rail.js";
 import { buildWorkflowCatalog,servedLaunchWorkflows } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
@@ -99,13 +98,9 @@ describe("frontend workflow catalog", () => {
 
   it("supplies matching registration membership and labels to navigation, Run and Explorer", () => {
     const rail = renderToStaticMarkup(createElement(WorkflowRail, { workflows: catalog, active: "", onSelect: noop }));
-    const picker = renderToStaticMarkup(createElement(RunWorkflowPicker, { catalog, value: "", query: "", onQuery: noop, onChange: noop }));
-    for (const entry of catalog) {
-      expect(rail).toContain(`aria-label="${entry.label}"`);
-      expect(picker).toContain(`aria-label="${entry.label}"`);
-    }
-    expect(picker.match(/disabled=""/gu) ?? []).toHaveLength(0);
-    expect(picker).not.toContain("Started by a parent workflow.");
+    for (const entry of catalog) expect(rail).toContain(`aria-label="${entry.label}"`);
+    expect(rail.match(/disabled=""/gu) ?? []).toHaveLength(0);
+    expect(rail).not.toContain("Started by a parent workflow.");
   });
 
   it("keeps hidden OCR out of the catalog and limits parent-only launches to I-9 Lookup and SharePoint Download", () => {
@@ -132,8 +127,7 @@ describe("frontend workflow catalog", () => {
   it("keeps hidden OnBase out of the catalog and Run picker while Emergency Contact members still start it", () => {
     expect(WORKFLOW_SOURCES.onbase).toBe("hidden");
     expect(catalog.find(entry => entry.id === "onbase")).toBeUndefined();
-    const picker = renderToStaticMarkup(createElement(RunWorkflowPicker, { catalog, value: "", query: "", onQuery: noop, onChange: noop }));
-    expect(picker).not.toContain("OnBase");
+    expect(renderToStaticMarkup(createElement(WorkflowRail, { workflows: catalog, active: "", onSelect: noop }))).not.toContain("OnBase");
     expect(childWorkflowModuleOf("emergency-contact-member", "onbase").descriptor.id).toBe("onbase");
   });
 
