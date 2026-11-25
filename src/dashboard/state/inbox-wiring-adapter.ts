@@ -230,8 +230,9 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   const consistent = rows !== undefined && rows.every(row => row.actorId === request.scope.actorId) && new Set(rows.map(row => row.notificationId)).size === rows.length;
   // Controls act only on rows read with a status the stream has delivered as available.
   const usable = enabled && consistent && status !== undefined && !status.unavailable;
-  // A clear also needs the stream live: rows held through a reload or a reconnect may be behind the server's.
-  const clearsNow = usable && day.state === "loaded" && dayState.connection.state === "live";
+  // A clear also needs the stream live with a status it delivered itself: rows held through a reload or a reconnect may be behind
+  // the server's, and a resumed stream reports itself live before the changes it missed and its status row.
+  const clearsNow = usable && status?.stale !== true && day.state === "loaded" && dayState.connection.state === "live";
   const current = useRef({ request, binding, usable, clearsNow }); current.current = { request, binding, usable, clearsNow };
   const rowsRef = useRef(rows); rowsRef.current = rows;
   const dayRowsRef = useRef(dayRows); dayRowsRef.current = dayRows;

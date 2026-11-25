@@ -180,6 +180,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     const generation = baseline.authority?.generation;
     const lastProjectionGeneration = lastEventId === undefined || generation === undefined ? undefined : generation;
     const identity = ++nextIdentity;
+    deps.rows?.reopened();
     const stream = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}${run === undefined ? "" : `,run:${run}`}`, {
       ...(lastEventId === undefined ? {} : { lastEventId }),
       ...(lastProjectionGeneration === undefined ? {} : { lastProjectionGeneration }),

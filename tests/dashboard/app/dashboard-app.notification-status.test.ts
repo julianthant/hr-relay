@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
+import type { BulkBatchOutcome } from "../../../src/dashboard/app/commands/bulk-dispatch.js";
 import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { subscribeDashboardDay } from "../../../src/dashboard/client/subscriptions/subscription.js";
@@ -30,9 +31,9 @@ const statusRow = (value: typeof READY | typeof UNAVAILABLE) => ({ model: "notif
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
 
 /** The app on `?day=`, its day stream answered by envelopes the test pushes; every other read is the fixture BFF's. */
-async function mount(day: string = FIXTURE_DAY_WIRE.day) {
+async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatchOutcome) {
   const { app } = createFixtureBff();
-  const opened: { day: string; push: (envelope: unknown) => void }[] = [];
+  const opened: { day: string; lastEventId: string | undefined; push: (envelope: unknown) => void; end: () => void }[] = [];
   const commands: string[] = [];
   const requested: string[] = [];
   /** The row the server lists; an accepted mark-read moves it to read at the next revision, as the readback reads it. */
@@ -52,17 +53,19 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day) {
   } });
   const subscribeDay: typeof client.subscribeDay = input => {
     const transport = {
-      openStream(_path: string, options: Readonly<{ onMessage: (message: SseMessage) => void }>): StreamHandle {
-        opened.push({ day: input.day, push: envelope => options.onMessage({ data: JSON.stringify(envelope) }) });
-        return Object.freeze({ done: new Promise<void>(() => undefined), close: () => undefined });
+      openStream(_path: string, options: Readonly<{ lastEventId?: string; onMessage: (message: SseMessage) => void }>): StreamHandle {
+        let end = () => {};
+        const done = new Promise<void>(resolve => { end = resolve; });
+        opened.push({ day: input.day, lastEventId: options.lastEventId, push: envelope => options.onMessage({ data: JSON.stringify(envelope) }), end });
+        return Object.freeze({ done, close: () => undefined });
       },
     } as unknown as DashboardTransport;
-    return subscribeDashboardDay({ ...input, transport });
+    return subscribeDashboardDay({ ...input, transport, reconnectDelayMs: 0 });
   };
   window.history.replaceState(null, "", `/?day=${day}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client: { ...client, subscribeDay },
-    children: createElement(DashboardApp, { workflowComposition: () => PRODUCT_WORKFLOW_COMPOSITION }) })); });
+    children: createElement(DashboardApp, { workflowComposition: () => bulkOutcome === undefined ? PRODUCT_WORKFLOW_COMPOSITION : { ...PRODUCT_WORKFLOW_COMPOSITION, harness: { bulkOutcome } } }) })); });
   await settle();
   const stream = () => { const last = opened.at(-1); assert(last, "the app opened no day stream"); return last; };
   /** hello, the snapshot with the status row the server read, then `health: live`. */
@@ -73,6 +76,19 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day) {
       push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", position: 0, rows: [statusRow(status)],
         payload: { ...FIXTURE_DAY_WIRE, day: streamed, snapshotCursor: "pc:1", notifications: [NOTIFICATION] } });
       push({ type: "health", state: "live" });
+    });
+    await settle();
+  };
+  /** The stream ends and one resumes from the held cursor: hello then live, with its handoff change still waiting on a panel read. */
+  const resume = async () => {
+    const before = opened.length;
+    await act(async () => { stream().end(); });
+    await settle();
+    assert.equal(opened.length, before + 1, "the stream reopens");
+    assert.equal(stream().lastEventId, `pc:${cursor}`);
+    await act(async () => {
+      stream().push({ type: "hello", wireVersion: 1, descriptorHash: FIXTURE_DAY_WIRE.descriptorHash, projectionGeneration: FIXTURE_DAY_WIRE.projectionGeneration, cursor: `pc:${cursor}` });
+      stream().push({ type: "health", state: "live" });
     });
     await settle();
   };
@@ -105,7 +121,7 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day) {
   const listed = () => [...document.querySelectorAll(".notice-title")].map(title => title.textContent);
   const notice = () => document.querySelector(".notice-status")?.textContent ?? "";
   const targetReads = () => requested.filter(path => path.endsWith("/target")).length;
-  return { host, opened, commands, greet, change, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
+  return { host, opened, commands, greet, change, resume, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
 }
 
 it("shows a first snapshot whose status could not be read as display-only rows, then restores the controls when a change delivers it", async () => {
@@ -154,6 +170,35 @@ it("turns the controls off when a status update cannot be read, and back on when
   assert.equal(m.open().disabled, false);
   await act(async () => m.open().click()); await settle();
   assert.equal(m.targetReads(), 1, "Open reads the row's target once the status is back");
+});
+
+it("keeps served clears off when a resumed stream is live before its status row, while a local result still clears", async () => {
+  const m = await mount(FIXTURE_DAY_WIRE.day, { commandId: "0f3b6d5a-2e5a-4b8f-9a4e-1c2d3e4f5a6b", plan: { verb: "resume", label: "Resume", eligible: [], skipped: [], unavailable: [] },
+    subjects: new Map(), response: { state: "refused", code: "policy-refused", message: "Relay is pausing work to quit." } });
+  await m.greet(READY);
+  await m.openBell();
+  const clearAll = () => { const found = document.querySelector<HTMLButtonElement>('button[aria-label="Clear all"]'); assert(found, "clear all"); return found; };
+  const clearOf = (title: string) => {
+    const rows = [...document.querySelectorAll<HTMLElement>("li.notice-row")].filter(row => row.querySelector(".notice-title")?.textContent === title);
+    const found = rows[0]?.querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]'); assert(found, title); return found;
+  };
+  assert.deepEqual([...m.listed()].sort(), ["Resume: nothing was sent", "Run completed"]);
+  assert.equal(clearOf("Run completed").disabled, false);
+
+  await m.resume();
+
+  assert.equal(clearOf("Run completed").disabled, true);
+  assert.equal(clearOf("Resume: nothing was sent").disabled, false);
+  assert.equal(clearAll().disabled, false, "Clear all still takes the local result");
+  await act(async () => clearAll().click()); await settle();
+  assert.deepEqual(m.listed(), ["Run completed"], "only the local result is cleared");
+  assert.equal(clearAll().disabled, true);
+  assert.deepEqual(m.commands, []);
+
+  await m.change(READY);
+
+  assert.equal(clearOf("Run completed").disabled, false);
+  assert.equal(clearAll().disabled, false);
 });
 
 it("keeps a publication that arrives in the same delivery as the snapshot before it", async () => {
