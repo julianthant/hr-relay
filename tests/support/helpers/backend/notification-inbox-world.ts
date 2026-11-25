@@ -46,15 +46,18 @@ export function createNotificationInboxTestWorld(profileFixture: () => Promise<B
     });
   }
 
-  async function harness(mapRepositories: (repositories: AuthorityRepositories) => AuthorityRepositories = repositories => repositories): Promise<{ database: AuthorityDatabase; kernel: CommandKernel }> {
+  async function harness(mapRepositories: (repositories: AuthorityRepositories) => AuthorityRepositories = repositories => repositories): Promise<{ database: AuthorityDatabase; kernel: CommandKernel; reopen: () => AuthorityDatabase }> {
     const clock = manualClock(new Date(LATER));
     const profile = await profileFixture();
     const opened: { database?: AuthorityDatabase } = {};
     disposers.push(async () => { opened.database?.close(); await profile.close(); });
-    const database = AuthorityDatabase.open(profile.admission,
+    const open = () => AuthorityDatabase.open(profile.admission,
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "inbox-test" }, clock,
       undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+    const database = open();
     opened.database = database;
+    /** Closes the store and opens it again, as a restart does. */
+    const reopen = () => { opened.database?.close(); opened.database = open(); return opened.database; };
     seedSyntheticRuntimeConfig(database);
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
     const kernel = createCommandKernel({
@@ -77,7 +80,7 @@ export function createNotificationInboxTestWorld(profileFixture: () => Promise<B
       },
       workerRuntime: { pool: unusedWorkerPool() },
     });
-    return { database, kernel };
+    return { database, kernel, reopen };
   }
 
   let sequence = 0;

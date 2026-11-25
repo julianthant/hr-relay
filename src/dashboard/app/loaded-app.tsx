@@ -283,6 +283,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const [bulkReview, setBulkReview] = useState(false);
   const [openedBulk, setOpenedBulk] = useState<BulkBatchOutcome | null>(null);
   const [noticeRead, setNoticeRead] = useState<ReadonlySet<string>>(() => new Set());
+  const [noticeCleared, setNoticeCleared] = useState<ReadonlySet<string>>(() => new Set());
   const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(() => workflowComposition.harness?.bulkOutcome ?? null);
   const [, refreshCommandRecovery] = useState(0);
   const [pendingRecovery, setPendingRecovery] = useState<string | null>(null);
@@ -490,7 +491,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         refreshCommandRecovery(value => value + 1);
         commandFeedback(outcome);
         if ("targets" in request && plan !== undefined && outcome.reply !== undefined && "state" in outcome.reply && outcome.reply.state === "refused") {
-          setBulkOutcome({ plan, subjects: bulkSubjectsOf(plan), response: { state: "refused", code: outcome.reply.code, message: outcome.kind === "confirmed" ? "Command confirmed." : outcome.feedback.text } });
+          setBulkOutcome({ commandId: request.commandId, plan, subjects: bulkSubjectsOf(plan), response: { state: "refused", code: outcome.reply.code, message: outcome.kind === "confirmed" ? "Command confirmed." : outcome.feedback.text } });
         }
         if ("targets" in request && plan !== undefined && outcome.reply !== undefined && "bulkCommandId" in outcome.reply && "results" in outcome.reply) {
           const reply = outcome.reply;
@@ -502,7 +503,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             return { ...child, detail: verified === undefined ? formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text
               : commandAttemptView(verified).view === "unknown" ? "Not confirmed yet." : verified.feedback.text };
           }) };
-          setBulkOutcome({ plan, subjects: bulkSubjectsOf(plan), response });
+          setBulkOutcome({ commandId: request.commandId, plan, subjects: bulkSubjectsOf(plan), response });
           const bulkWarning = unconfirmedBulkWorkerToast(request, reply, outcome.kind === "confirmed");
           if (bulkWarning !== undefined) toast(bulkWarning);
         }
@@ -775,24 +776,36 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const inbox = harnessInbox ?? servedInbox;
   const shownRecovery: readonly CommandRecoveryEntry[] = workflowComposition.harness?.unknownCommand ? [...recoveryEntries, workflowComposition.harness.unknownCommand] : recoveryEntries;
   const commandNotices: readonly NotificationItem[] = [
-    ...shownRecovery.map((entry): NotificationItem => ({ id: `command:${entry.inFlightKey}`, kind: "command", priority: true, title: recoveryTitle(entry), subject: "", workflow: "",
+    // A command whose outcome is unknown still waits on the operator, so it cannot be cleared.
+    ...shownRecovery.map((entry): NotificationItem => ({ id: `command:${entry.inFlightKey}`, kind: "command", priority: true, standing: true, title: recoveryTitle(entry), subject: "", workflow: "",
       detail: `${recoveryDetail(entry)}. Review the original request to recover its result.`, tone: "warning", age: "Just now", read: false, action: "Review", destination: { kind: "local-recovery", key: entry.inFlightKey } })),
     ...commandResults.map((entry): NotificationItem => ({ id: `command-result:${entry.id}`, kind: "command", priority: true, title: commandResultTitle(entry), subject: "", workflow: "",
       detail: commandResultDetail(entry), tone: entry.settlement.reason === "conflict" ? "warning" : "danger", age: entry.clock, read: false,
       action: entry.settlement.reason === "conflict" ? "Refresh row" : "Open run", destination: { kind: "local-command-result", id: entry.id } })),
     ...(bulkOutcome === null ? [] : [bulkResultNotice(bulkOutcome)]),
-  ];
+  ].filter(notice => !noticeCleared.has(notice.id));
   // Local command notices are not server rows: their read state lives here, never in the served inbox.
   const localNoticeIds = new Set(commandNotices.map(notice => notice.id));
   const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => localNoticeIds.has(item.id) ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
-  const railInbox = { ...inbox, open: openInbox, canAct: (id: string) => localNoticeIds.has(id) || inbox.canAct(id),
+  const railInbox = { ...inbox, open: openInbox, canAct: (id: string) => localNoticeIds.has(id) || inbox.canAct(id), canClear: (id: string) => localNoticeIds.has(id) || inbox.canClear(id),
     state: withCommandNotices(inbox.state, commandNotices.map(notice => noticeRead.has(notice.id) ? { ...notice, read: true } : notice)),
     control: async (id: string, action: Parameters<InboxWiring["control"]>[1]) => {
       if (!localNoticeIds.has(id)) return inbox.control(id, action);
       if (action === "read" || action === "unread") setNoticeRead(previous => { const next = new Set(previous); if (action === "read") next.add(id); else next.delete(id); return next; });
       return true;
     },
-    readAll: async () => { setNoticeRead(previous => new Set([...previous, ...localNoticeIds])); await inbox.readAll(); } };
+    readAll: async () => { setNoticeRead(previous => new Set([...previous, ...localNoticeIds])); await inbox.readAll(); },
+    clear: async (id: string) => {
+      if (!localNoticeIds.has(id)) return inbox.clear(id);
+      if (commandNotices.some(notice => notice.id === id && notice.standing === true)) return false;
+      setNoticeCleared(previous => new Set([...previous, id]));
+      return true;
+    },
+    clearAll: async (show: "all" | "unread") => {
+      const local = commandNotices.filter(notice => notice.standing !== true && (show === "all" || !(notice.read || noticeRead.has(notice.id)))).map(notice => notice.id);
+      setNoticeCleared(previous => new Set([...previous, ...local]));
+      return inbox.clearAll(show);
+    } };
   const servedNeedsYou = railInbox?.state.state === "ready" ? railInbox.state.items.filter(item => !item.read && item.priority === true).length : 0;
   useEffect(() => { assistantNeeds.report(servedNeedsYou); }, [servedNeedsYou]);
   const canOpenRegisteredWorkflow = useCallback((id: string) => workflows.some(flow => flow.id === id), [workflows]);
@@ -818,7 +831,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       const response = BulkRunCommandResponseSchema.safeParse({ state: "vector", bulkCommandId: destination.bulkCommandId, type: destination.type, requestedCount: destination.requestedCount, results: destination.results });
       if (!response.success) { refused(notificationTargetUnavailable()); return; }
       const ids = [...destination.results.map(result => result.runId), ...destination.notAttempted];
-      setOpenedBulk({ plan: { verb: destination.type, label: BULK_VERB_LABEL[destination.type], eligible: [], skipped: destination.notAttempted.map(runId => ({ runId, title: title(runId) })), skippedReason: "Not attempted", unavailable: [] },
+      setOpenedBulk({ commandId: destination.bulkCommandId, plan: { verb: destination.type, label: BULK_VERB_LABEL[destination.type], eligible: [], skipped: destination.notAttempted.map(runId => ({ runId, title: title(runId) })), skippedReason: "Not attempted", unavailable: [] },
         days: new Map(Object.entries(destination.days)),
         subjects: new Map(ids.map(runId => [runId, title(runId)])), response: response.data });
       setBulkReview(true); opened();

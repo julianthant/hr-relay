@@ -7,8 +7,9 @@ import type { EditableSettingsWire } from "../../../models/dashboard/settings-ed
 
 type NotificationObservationStatus = z.infer<typeof NotificationObservationStatusSchema>;
 
-/** The observer status the stream last delivered. A failed read keeps the last good status and marks it unavailable. */
-export type HeldNotificationStatus = Readonly<{ status?: NotificationObservationStatus; unavailable: boolean }>;
+/** The observer status the stream last delivered. A failed read keeps the last good status and marks it unavailable.
+ * `stale` holds from a stream's reopening until that stream delivers its own status row. */
+export type HeldNotificationStatus = Readonly<{ status?: NotificationObservationStatus; unavailable: boolean; stale?: true }>;
 
 /** The settings document the stream last delivered. A failed read keeps the last good document and marks it unavailable. */
 export type HeldSettings = Readonly<{ document?: EditableSettingsWire; unavailable: boolean }>;
@@ -31,6 +32,8 @@ export interface RowStoreWriter extends RowStore {
   apply(rows: readonly StreamRow[], rowRevision?: (runId: string) => number | undefined): void;
   /** Drops every held panel, the status and the settings, keeping the open run: the stream they came from ended, so none may answer a decision. */
   reset(): void;
+  /** Marks the held status stale: a new stream was opened, and it may report itself live before it delivers the status. */
+  reopened(): void;
   /** Names the open run; the panel of every other run is dropped. */
   open(runId: string | undefined): void;
 }
@@ -80,6 +83,11 @@ export function createRowStore(): RowStoreWriter {
       panels.clear();
       status = undefined;
       settings = undefined;
+      notify();
+    },
+    reopened: () => {
+      if (status === undefined || status.stale === true) return;
+      status = { ...status, stale: true };
       notify();
     },
     open: (runId) => {
