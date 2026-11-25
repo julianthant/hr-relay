@@ -188,6 +188,31 @@ describe("run-start read retries", () => {
       assert.deepEqual(failures, [{ code: "DASHBOARD_READ_FAILED", reason: "network-failed", route: "/api/v1/preflight" }]);
     } finally { vi.useRealTimers(); }
   });
+  it("asks again when the connection drops while the body arrives", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: async () => (calls += 1) === 1
+        ? new Response(new ReadableStream({ start(controller) { controller.error(new TypeError("network error")); } }))
+        : Response.json(readiness) });
+    try {
+      const reading = transport.requestJson("/api/v1/preflight");
+      await vi.advanceTimersByTimeAsync(250);
+      assert.deepEqual(await reading, readiness);
+      assert.equal(calls, 2); assert.deepEqual(failures, []);
+    } finally { vi.useRealTimers(); }
+  });
+  it("names a body that is not JSON once without asking again", async () => {
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: async () => { calls += 1; return new Response("<html>PRIVATE_PAGE</html>"); } });
+    const failure = await transport.requestJson("/api/v1/preflight").then(() => undefined, (error: unknown) => error);
+    assert.ok(failure instanceof DashboardClientError); assert.equal(failure.kind, "http");
+    assert.equal(calls, 1);
+    assert.deepEqual(failures, [{ code: "DASHBOARD_READ_FAILED", reason: "response-json-invalid", route: "/api/v1/preflight" }]);
+  });
 });
 
 it("keeps OAuth completion pending for its five-minute ceremony then bounds body delivery", async () => {

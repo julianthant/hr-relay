@@ -18,14 +18,19 @@ describe("metadata-only failure reports", () => {
       assert.equal(debugFailureOutcomes(body, 200, route).length, 0);
       assert.equal(debugFailureOutcome(body, 200, "/api/v1/settings")?.reason, "operation-failed");
     }
+    assert.equal(debugFailureOutcome(missing, 200, "/api/v1/preflight/rerun")?.reason, "operation-failed");
+    assert.equal(debugFailureOutcome(missing, 200)?.reason, "operation-failed");
     const expiredWithoutReport = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_EXPIRED", reason: "Readiness expired." };
-    assert.deepEqual(debugFailureOutcome(expiredWithoutReport, 200, route), { code: "PREFLIGHT_EVIDENCE_EXPIRED", reason: "operation-failed" });
+    assert.deepEqual(debugFailureOutcome(expiredWithoutReport, 200, route), { code: "PREFLIGHT_EVIDENCE_EXPIRED", reason: "readiness-report-missing" });
     assert.deepEqual(debugFailureOutcome({ state: "unavailable", code: "PREFLIGHT_READ_FAILED", reason: "Preflight report reader is unavailable." }, 200, route),
       { code: "PREFLIGHT_READ_FAILED", reason: "operation-failed" });
-    for (const [body, status] of [[expired, 503], [{ ...expired, lastCompleted: {} }, 200],
-      [{ state: "unavailable", reason: "Storage could not be read." }, 200], [{ ...expired, code: "PRIVATE_CODE" }, 200]] as const) {
-      assert.equal(debugFailureOutcome(body, status, route)?.reason, "operation-failed");
+    assert.deepEqual(debugFailureOutcome({ state: "unavailable", reason: "Storage could not be read." }, 200, route),
+      { code: "DASHBOARD_READ_FAILED", reason: "readiness-code-missing" });
+    for (const body of [{ ...expired, lastCompleted: {} }, { ...expired, code: "PRIVATE_CODE" }, { state: "error" }, "PRIVATE_BODY"]) {
+      assert.deepEqual(debugFailureOutcome(body, 200, route), { code: "DASHBOARD_READ_FAILED", reason: "response-contract-invalid" });
     }
+    assert.equal(debugFailureOutcome({ state: "present", report }, 200, route), undefined);
+    assert.equal(debugFailureOutcome(expired, 503, route)?.reason, "operation-failed");
   });
   it("recognizes refusals and unknown results even on HTTP 200", () => {
     assert.deepEqual(debugFailureOutcome({ state: "refused", code: "PROFILE_SESSION_STALE", name: "PRIVATE_NAME" }),
