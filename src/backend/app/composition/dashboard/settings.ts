@@ -1,3 +1,4 @@
+import type { DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
 import { createSettingsApplicationExecutor } from "../../../runs/commands/settings-service.js";
 import { selectActiveRunSettings } from "../../../runs/settings/run-settings.js";
 import { activeSettingsConfig,createProtectedSettingsRuntimeReader,createSettingsRuntimeReader } from "../../../runtime/settings/settings-runtime.js";
@@ -22,6 +23,8 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   environment: Readonly<Record<string, string | undefined>>; credentials: ReturnType<typeof createCredentialStore>;
   assertCurrent?: () => void;
   resolveSettings?: Parameters<typeof createSettingsApplicationExecutor>[0];
+  /** Seam for the settings store-part lane read and the stream row. */
+  readLanes?: DashboardReadLanes;
 }) {
   const { database, clock, hostFacts } = input;
   const reader = createSettingsRuntimeReader(input);
