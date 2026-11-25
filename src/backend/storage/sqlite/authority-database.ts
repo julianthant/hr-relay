@@ -1058,11 +1058,12 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  static inspectStoppedUpgrade(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock) {
-    return withOperationProof(() => {
+  static inspectStoppedUpgrade(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock,
+    snapshotLifetime: "operation" | "reader" = "operation") {
+    return withDirectReaderAdmission(admission, () => withOperationProof(() => {
       requireStoppedUpgradeSource(admission, path, processLockRoot, clock, true);
-      return withReadonlyAuthoritySnapshot(path, database => inspectNativeAuthority(database, readIntPragma(database, "user_version")));
-    });
+      return withReadonlyAuthoritySnapshot(path, database => inspectNativeAuthority(database, readIntPragma(database, "user_version")), undefined, snapshotLifetime);
+    }));
   }
 
   static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string) => VerifiedBackup) {

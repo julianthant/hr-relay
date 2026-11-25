@@ -5,8 +5,6 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { syncBuiltinESMExports } from 'node:module';
 import { AuthorityDatabase } from '../../../../src/backend/storage/sqlite/authority-database.js';
-import { AuthoritySourceClosureUnprovedError } from '../../../../src/backend/storage/source-closure.js';
-import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { composeStorageCommand } from '../../../../src/backend/app/composition/storage-compose.js';
 import { rebuildRuntimeIsolation } from '../../../../src/backend/app/config/runtime-isolation.js';
 import { systemClock, capturedInstantClock } from "../../../../src/rules/time/clock.js";
@@ -16,6 +14,7 @@ import { join } from "node:path";
 import { afterEach,describe,expect,it,vi } from "vitest";
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { runCredentialSourceRetentionCase } from "../../../support/helpers/credential-source-retention.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -35,57 +34,7 @@ describe("native authority backup", () => {
 });
 
 for (const entry of ['service', 'command'] as const) it(`retains actual stopped source custody through ${entry} upgrade failure`, async () => {
-  const f = await createBoundProfileFixture({ pending: "storage" });
-  AuthorityDatabase.initializeProfile(f.admission, systemClock);
-  const root = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), before = fs.readFileSync(f.path);
-  const actualRemove = fs.rmSync, actualCreate = fs.mkdtempSync;
-  const snapshotPrefix = join(fs.realpathSync(tmpdir()), `relay-readonly-authority-pid${String(process.pid)}-`);
-  const injected = new Error('upgrade-snapshot-remove-refused');
-  let snapshots = 0, directory: string | undefined, removals = 0;
-  let restore: OfflineMaintenanceOperation | undefined = entry === "service" ? f.admission.acquireOfflineMaintenance() : undefined, proved = false;
-  const created = vi.spyOn(fs, 'mkdtempSync').mockImplementation((...args) => {
-    const value = actualCreate(...args);
-    if (args[0] === snapshotPrefix && ++snapshots === (entry === 'service' ? 2 : 1)) { assert.equal(directory, undefined); assert.ok(typeof value === 'string'); directory = value; }
-    return value;
-  });
-  const removed = vi.spyOn(fs, 'rmSync').mockImplementation((...args) => {
-    if (directory !== undefined && args[0] === directory) { removals++; throw injected; }
-    actualRemove(...args);
-  });
-  syncBuiltinESMExports();
-  try {
-    let failure: unknown;
-    try {
-      if (entry === 'command') await composeStorageCommand(rebuildRuntimeIsolation, ['upgrade', '--json'], systemClock, f.workspace, f.admission);
-      else { assert.ok(restore); await upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.stateRoot, processLockRoot: root, plan: false }, systemClock, restore); }
-    } catch (error) { failure = error; }
-    assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
-    const inspected = entry === 'service' ? failure.cause : failure;
-    assert.ok(inspected instanceof AuthoritySourceClosureUnprovedError);
-    assert.equal(inspected.errors.length, 1); assert.equal(inspected.errors[0], inspected.cause);
-    let sourceFailure: unknown = inspected;
-    const wrappers = new Set<AuthoritySourceClosureUnprovedError>();
-    while (sourceFailure instanceof AuthoritySourceClosureUnprovedError && sourceFailure.cause instanceof AuthoritySourceClosureUnprovedError) {
-      assert.equal(wrappers.has(sourceFailure), false);
-      wrappers.add(sourceFailure);
-      assert.deepEqual(sourceFailure.errors, [sourceFailure.cause]);
-      sourceFailure = sourceFailure.cause;
-    }
-    assert.ok(sourceFailure instanceof AuthoritySourceClosureUnprovedError);
-    assert.deepEqual(sourceFailure.errors, [injected]); assert.equal(sourceFailure.cause, injected);
-    if (entry === 'service') {
-      assert.equal(failure.errors.length, 1); assert.equal(failure.errors[0], inspected);
-      assert.ok(restore); f.admission.assertOfflineMaintenance(restore);
-    } else { restore = f.admission.maintenanceOperation(); restore.assertHeld(); }
-    assert.ok(directory); assert.equal(removals, 1); assert.equal(fs.existsSync(directory), true);
-    assert.deepEqual(fs.readFileSync(f.path), before); f.admission.assertLive(); f.machine.assertLive();
-    created.mockRestore(); removed.mockRestore(); syncBuiltinESMExports();
-    actualRemove(directory, { recursive: true }); assert.equal(fs.existsSync(directory), false);
-    restore?.release(); proved = true;
-  } finally {
-    created.mockRestore(); removed.mockRestore(); syncBuiltinESMExports();
-    if (proved) await f.close();
-  }
+  await runCredentialSourceRetentionCase(`stopped-upgrade-${entry}`);
 });
 
 for (const entry of ['service', 'command'] as const) it(`releases proved upgrade owners after an ordinary ${entry} snapshot creation refusal`, async () => {
