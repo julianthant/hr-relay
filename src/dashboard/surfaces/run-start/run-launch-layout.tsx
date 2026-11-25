@@ -7,7 +7,7 @@ import { cn } from "../../lib/utils.js";
 export function RunChoice<T extends string>({ locked, label, value, options, onChange }: {
   locked: boolean; label: string; value: T; options: readonly { value: T; label: string }[]; onChange: (value: T) => void;
 }) {
-  return <div className="w-[var(--ds-w-body-control)]">{locked
+  return <div className="flex w-[var(--ds-w-body-control)] justify-end">{locked
     ? <span data-run-choice={label} className={cn("flex h-[var(--ds-h-md)] items-center justify-end", dsText.body, dsFg.base)}>{options.find(option => option.value === value)?.label}</span>
     : <SegmentedChoice hideLabel label={label} value={value} onChange={onChange} options={options} />}</div>;
 }

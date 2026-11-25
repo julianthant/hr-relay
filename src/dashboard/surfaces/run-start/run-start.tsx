@@ -816,7 +816,7 @@ export function RunStartDialog({
               <Banner tone="danger" title="The request did not complete">{error}</Banner>
             )}
 
-            <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
+            <div className="launch-sections">
               {!isRerun && currentStage === "Input" && compatibilityMissing && <FailureNotice sentence="Spreadsheets can't be checked." {...(sending ? {} : { action: { label: "Retry", onClick: () => void library.adapter.refreshCatalog() } })} />}
               {!isRerun && currentStage === "Input" && !compatibilityMissing && (
                 <section aria-label="Input" className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
@@ -868,17 +868,15 @@ export function RunStartDialog({
               )}
 
               {onLastStage && warning !== null && (
-                <section aria-label="Repeat transaction warning" className="flex flex-col gap-[var(--ds-space-cozy)]">
+                <section aria-label="Repeat transaction warning" className="launch-section">
                   <Banner tone="warning" title="These transactions were already submitted">
                     Running them again may create duplicates.
                   </Banner>
-                  {warning.rerun.warnings.map((entry) => {
+                  <RunList label="Already submitted">{warning.rerun.warnings.map((entry) => {
                     const step = snapshot?.steps.find((candidate) => candidate.nodes.some((node) => node.nodeId === entry.nodeId));
                     if (step === undefined) throw new Error("RERUN_WARNING_STEP_UNAVAILABLE");
-                    return <Well key={`${entry.nodeId}:${entry.writeIntentId}`}>
-                      <KeyValueList items={[{ key: "Step", value: <span className="font-[family-name:var(--ds-font-body)]">{stepLabel(step.key)}</span> }, { key: "System", value: <span className="font-[family-name:var(--ds-font-body)]">{SYSTEM_NAME[entry.system]}</span> }]} />
-                    </Well>;
-                  })}
+                    return <RunListRow key={`${entry.nodeId}:${entry.writeIntentId}`} title={stepLabel(step.key)}><span className="text-[13px] text-ui-secondary">{SYSTEM_NAME[entry.system]}</span></RunListRow>;
+                  })}</RunList>
                 </section>
               )}
 
@@ -894,12 +892,11 @@ export function RunStartDialog({
               )}
 
               {stepsShown && workflow !== undefined && (
-                <section aria-labelledby="run-start-steps" className="flex flex-col gap-[var(--ds-space-cozy)]">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <h4 id="run-start-steps" className="m-0 text-[length:var(--ds-row-heading)] font-normal leading-[var(--ds-row-heading-lh)] text-[color:var(--ds-fg)]">Steps</h4>
-                    <span className="text-caption text-ui-muted">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>
+                <section aria-labelledby="run-start-steps" className="launch-section">
+                  <div className="launch-section-head">
+                    <div><h4 id="run-start-steps">Steps</h4><span>{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span></div>
+                    <p>{isRerun ? "Choose steps. Status shows the earlier result." : "Replace reading steps with manual values. Form actions stay included."}</p>
                   </div>
-                  <p className="m-0 text-caption text-ui-secondary">{isRerun ? "Choose steps. Status shows the earlier result." : "Replace reading steps with manual values. Form actions stay included."}</p>
                   <RunList label="Steps">
                     {rows.map((row) => {
                       const included = rowIncluded(row, selectedStepKeys, manualRows);

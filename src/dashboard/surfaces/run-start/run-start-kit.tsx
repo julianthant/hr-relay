@@ -247,13 +247,7 @@ export function StepOmissionFactsForm({
   /** Field keys still holding a value copied unedited from the earlier run. */
   copied?: ReadonlySet<string>;
 }) {
-  if (form.fields.length === 0) {
-    return (
-      <p className={cn(dsText.meta, dsFg.muted)}>
-        This step asks for nothing.
-      </p>
-    );
-  }
+  if (form.fields.length === 0) return null;
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-[var(--ds-space-cozy)] @md:grid-cols-2">
       {/* The legend names the group, so a screen reader landing inside it knows which step these boxes belong to. */}

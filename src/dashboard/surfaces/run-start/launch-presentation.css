@@ -31,11 +31,12 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply border-t border-u
 .launch-dialog > footer > span:first-child > span { @apply font-ui; }
 
 .launch-design .launch-workflow-rail { @apply w-48 bg-ui-table; }
+/* The stage buttons' own 8px inset lands their markers on the content's 20px edge. */
 .launch-design .launch-stagebar {
-  @apply flex h-14 shrink-0 items-center gap-1 border-b border-ui-stroke px-5 py-3;
+  @apply flex h-12 shrink-0 items-center gap-1 border-b border-ui-stroke px-3;
 }
 .launch-design .launch-stagebar > li { @apply p-0; }
-.launch-design .launch-stagebar button { @apply flex items-center gap-2 rounded-lg px-2 py-1 text-body; }
+.launch-design .launch-stagebar button { @apply flex h-8 items-center gap-2 rounded-lg px-2 text-body; }
 .launch-design .launch-stagebar button:disabled { @apply opacity-100; }
 .launch-design .launch-stagebar button:not(:disabled):hover { @apply bg-ui-hover; }
 .launch-design .launch-stage-marker {
@@ -43,7 +44,15 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply border-t border-u
 }
 .launch-design .launch-stage-marker[data-current] { @apply border-transparent bg-ui-info text-ui-canvas; }
 .launch-design .launch-stage-marker[data-completed] { @apply text-ui-positive; }
-.launch-design .launch-content { @apply flex flex-col gap-3; }
+.launch-design .launch-content { @apply flex flex-col gap-3 pt-5 pb-6; }
+/* One rhythm for every page: 24px between sections, 12px from a heading to its card, 2px from a heading to its grey line. */
+.launch-dialog .launch-sections { @apply flex min-w-0 flex-col gap-6; }
+.launch-dialog .launch-section { @apply flex min-w-0 flex-col gap-3; }
+.launch-dialog .launch-section-head { @apply flex flex-col gap-0.5; }
+.launch-dialog .launch-section-head > div { @apply flex items-baseline justify-between gap-3; }
+.launch-dialog .launch-section-head :is(h3, h4) { @apply m-0 text-[length:var(--ds-row-heading)] font-normal leading-[var(--ds-row-heading-lh)] text-ui-primary; }
+.launch-dialog .launch-section-head > div > span { @apply text-[13px] text-ui-muted; }
+.launch-dialog .launch-section-head > p { @apply m-0 text-[13px] leading-4 text-ui-secondary; }
 .launch-dialog .launch-content > section { @apply gap-1; }
 /* Cards fill the content width and never shrink: the scope's own width cap left them short, and an overflow-hidden card shrank behind the footer. */
 .launch-dialog .launch-content .ds-body-scope { max-width: none; flex-shrink: 0; }
@@ -52,7 +61,8 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply border-t border-u
 .launch-dialog .launch-content [data-slot="input"] { @apply bg-ui-field; }
 .launch-dialog .launch-content textarea { @apply h-24 min-h-24 bg-ui-field px-2 py-2; }
 
-.launch-design .launch-step-status { @apply h-5 rounded-lg border-ui-stroke bg-ui-table px-2 py-0 text-caption font-normal; }
+/* The earlier result is quiet text beside the switch, in one column so every row's switch lines up. */
+.launch-design .launch-step-status { @apply h-5 min-w-20 justify-end rounded-none border-0 bg-transparent px-0 py-0 text-[13px] font-normal; }
 .launch-design .launch-step-status[data-status="completed"] { @apply text-ui-positive; }
 .launch-design .launch-step-status[data-status="failed"] { @apply text-ui-danger; }
 .launch-design .launch-step-status[data-status="unfinished"] { @apply text-ui-muted; }
@@ -79,9 +89,10 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply border-t border-u
 .launch-dialog .launch-picker-search { @apply shrink-0 p-3; }
 .launch-dialog .launch-picker .workflow-rail { @apply p-2 pt-0; }
 .launch-dialog .launch-picker .workflow-rail-groups { @apply gap-4 pb-2; }
-.launch-dialog .launch-picker .workflow-rail h3 { @apply text-body; }
+.launch-dialog .launch-picker .workflow-rail h3 { @apply text-caption font-medium text-ui-muted; }
 .launch-dialog .launch-picker .workflow-rail button { @apply h-8 rounded-lg pl-[30px] font-normal; }
 
 .required-capture-row { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-loose); padding: var(--ds-space-cozy) var(--ds-space-loose); }
 
 .launch-hint { @apply text-body text-ui-secondary; }
+.launch-dialog section[aria-label="Repeat transaction warning"] > :first-child { border-radius: var(--ds-row-radius); }

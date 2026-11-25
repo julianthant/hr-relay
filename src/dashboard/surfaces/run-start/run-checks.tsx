@@ -20,17 +20,17 @@ export function RunChecksStage({ checks, onFix, onRecheck }: { checks: RunChecks
   const rows = checks.state === "ready" ? checks.rows : [];
   const problems = rows.filter(row => row.verdict !== "pass");
   const failed = problems.filter(row => row.verdict === "fail").length;
-  return <section aria-label="Checks" className="flex flex-col gap-3">
-    <div className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="m-0 text-control font-medium text-ui-primary">Checks</h3>
+  return <section aria-label="Checks" className="launch-section">
+    <div className="launch-section-head">
+      <div>
+        <h3>Checks</h3>
         {/* One live region across checking and ready, so the result is announced when the checks finish. */}
         <span role="status" className={checks.state === "checking" ? STATUS : "sr-only"}>
           {checks.state === "checking" && <><Spinner label="Checking" className={dsIcon.md} />Checking</>}
           {checks.state === "ready" && (problems.length === 0 ? "" : failed > 0 ? `${failed} ${failed === 1 ? "check needs" : "checks need"} fixing` : `${problems.length} ${problems.length === 1 ? "warning" : "warnings"}`)}
         </span>
       </div>
-      <p className="m-0 text-body text-ui-secondary">What this run needs. Problems come first.</p>
+      <p>What this run needs. Problems come first.</p>
     </div>
     {checks.state === "unavailable" && <FailureNotice sentence={checks.message} action={{ label: "Check again", onClick: onRecheck }} />}
     {checks.state === "checking" && <RunList label="Checking"><RunListSkeleton rows={CHECK_COUNT} /></RunList>}

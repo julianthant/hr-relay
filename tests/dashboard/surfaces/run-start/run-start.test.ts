@@ -516,13 +516,12 @@ describe("an omittable step draws its own form when it is left out", () => {
     assert.ok(dialog.text().includes("6 of 7 included"));
   });
 
-  it("says so when the omitted step asks for nothing at all", async () => {
+  it("draws nothing under an omitted step that asks for nothing at all", async () => {
     const dialog = await openSteps(stubClient({}), DOCUMENT, SEPARATIONS_OMITTABLE_WRITES);
     await dialog.press("Kuali finalization");
-    assert.ok(
-      dialog.text().includes("This step asks for nothing"),
-      "a form with no fields drew an empty box instead of saying it is empty",
-    );
+    const row = [...document.body.querySelectorAll(".ds-run-row")].find(candidate => candidate.textContent?.includes("Kuali finalization"));
+    assert.ok(row !== undefined, "the step's row is drawn");
+    assert.equal(row.children.length, 1, "a form with no fields drew something under its row");
   });
 
   it("draws an enum as a choice with NO pre-selected value", async () => {
