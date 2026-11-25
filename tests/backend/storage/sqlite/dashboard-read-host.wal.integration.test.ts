@@ -17,6 +17,8 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) awai
 const POLICY = { thresholdBytes: 64 * 1024, minRetryMs: 250, maxRetryMs: 1_000 };
 const WAL_PEAK_LIMIT_BYTES = 16 * 1024 * 1024;
 const INTERACTIVE_MS = 10, BACKGROUND_MS = 60;
+/** The gate's peer write rate; the 16 MiB peak is defined against it. */
+const WRITER_COMMITS_PER_SECOND = 100;
 
 async function walHost() {
   const fixture = await openBoundDatabaseFixture("read-lane-wal");
@@ -29,14 +31,21 @@ async function walHost() {
   const walBytes = () => { try { return statSync(wal).size; } catch { return 0; } };
   let peak = 0;
   const notes = createNoteTimelineWriter({ repository: fixture.database.authority.timelineEvents, clock: systemClock });
-  /** A continuous peer writer on the main connection, sampling the WAL after each commit. */
+  /**
+   * A continuous peer writer on the main connection at WRITER_COMMITS_PER_SECOND, catching up after a late tick, sampling
+   * the WAL after each commit. A held read keeps the WAL from resetting, so its size follows the commit count.
+   */
   const writer = () => {
     let written = 0;
+    const began = performance.now();
     const timer = setInterval(() => {
-      notes.emitNote({ workflow: "person-lookup", address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step",
-        message: `peer write ${String(++written)} ${"x".repeat(512)}` });
-      peak = Math.max(peak, walBytes());
-    }, 5);
+      const due = Math.floor((performance.now() - began) * WRITER_COMMITS_PER_SECOND / 1_000);
+      while (written < due) {
+        notes.emitNote({ workflow: "person-lookup", address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step",
+          message: `peer write ${String(++written)} ${"x".repeat(512)}` });
+        peak = Math.max(peak, walBytes());
+      }
+    }, 1_000 / WRITER_COMMITS_PER_SECOND);
     return { stop: () => { clearInterval(timer); return written; } };
   };
   return { fixture, lanes, walBytes, writer, peak: () => peak };
@@ -90,7 +99,7 @@ it("G1-WAL: bounds the WAL under a continuous writer and a held peer read, keeps
   const resetMs = await walResetWithin(walBytes, 2 * POLICY.maxRetryMs);
   const status = lanes.status();
   const longestRead = Math.max(...waits);
-  await annotate(JSON.stringify({ gate: "G1-WAL", written, peakWalBytes: Math.max(peak(), status.walPeakBytes), resetMs, longestInteractiveWaitMs: longestRead,
+  await annotate(JSON.stringify({ gate: "G1-WAL", commitsPerSecond: WRITER_COMMITS_PER_SECOND, written, peakWalBytes: Math.max(peak(), status.walPeakBytes), resetMs, longestInteractiveWaitMs: longestRead,
     checkpoints: frames(lanes) }));
   assert.ok(resetMs !== undefined, "the WAL is empty within two windows of the release");
   assert.ok(Math.max(peak(), status.walPeakBytes) < WAL_PEAK_LIMIT_BYTES);
