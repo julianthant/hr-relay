@@ -568,16 +568,20 @@ it("keeps headed evidence independent of native window size and gives resizing b
     await matchesBaseline();
     await expect.poll(dimensions).toEqual(large);
 
-    const screenshot = page.screenshot.bind(page);
+    const connect = context.newCDPSession.bind(context);
     let resized = false;
-    page.screenshot = async options => {
-      if (!resized) {
-        await resize(650, 500);
-        await expect.poll(async () => (await cdp.send("Browser.getWindowBounds", { windowId })).bounds.width).toBeLessThan(700);
-        assert.deepEqual(await dimensions(), { width: 1280, height: 1200 });
-        resized = true;
-      }
-      return screenshot(options);
+    context.newCDPSession = async target => {
+      const session = await connect(target), send = session.send.bind(session);
+      session.send = async (method, params) => {
+        if (method === "Page.captureScreenshot" && !resized) {
+          await resize(650, 500);
+          await expect.poll(async () => (await cdp.send("Browser.getWindowBounds", { windowId })).bounds.width).toBeLessThan(700);
+          assert.deepEqual(await dimensions(), { width: 1280, height: 1200 });
+          resized = true;
+        }
+        return send(method, params);
+      };
+      return session;
     };
     await matchesBaseline();
     assert.equal(resized, true);
