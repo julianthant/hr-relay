@@ -1,13 +1,14 @@
 import { channel } from "node:diagnostics_channel";
+import { z } from "zod";
 import { systemClock } from "../../../../rules/time/clock.js";
 
-export const startupObservations = channel<Readonly<{
-  phase: "timeline-fold" | "timeline-observer" | "notification-observer";
-  elapsedMs: number;
-  outcome: "completed" | "superseded" | "failed";
-}>>("relay.dashboard.startup");
-
-type Observation = Parameters<typeof startupObservations.publish>[0];
+export const StartupObservationSchema = z.strictObject({
+  phase: z.enum(["timeline-fold", "timeline-observer", "notification-observer"]),
+  elapsedMs: z.number().nonnegative(),
+  outcome: z.enum(["completed", "superseded", "failed"]),
+});
+type Observation = z.infer<typeof StartupObservationSchema>;
+export const startupObservations = channel("relay.dashboard.startup");
 
 export function startStartupObservation(phase: Observation["phase"]) {
   if (!startupObservations.hasSubscribers) return;

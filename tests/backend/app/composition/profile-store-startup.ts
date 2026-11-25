@@ -119,7 +119,7 @@ async function measure(workspace: string, bootOnly: boolean): Promise<void> {
   const { createProfileVerifiers } = await import("../../../../src/backend/storage/configuration/verifier-store.js");
   const { AuthorityDatabase } = await import("../../../../src/backend/storage/sqlite/authority-database.js");
   const { composeDashboardApplication } = await import("../../../../src/backend/app/composition/dashboard/compose.js");
-  const { startupObservations } = await import("../../../../src/backend/app/composition/dashboard/startup-observation.js");
+  const { StartupObservationSchema, startupObservations } = await import("../../../../src/backend/app/composition/dashboard/startup-observation.js");
   const { completePendingShutdownBackup } = await import("../../../../src/backend/app/bootstrap/secure-env-bootstrap.js");
   const storage = await import("../../../../src/backend/app/composition/storage-compose.js");
   const { systemClock } = await import("../../../../src/rules/time/clock.js");
@@ -132,7 +132,8 @@ async function measure(workspace: string, bootOnly: boolean): Promise<void> {
   AuthorityDatabase.open = (...args) => timed("profile authority open", () => open(...args));
   AuthorityDatabase.prototype.dashboardHistory = function () { return timed("history admission", () => history.call(this)); };
   const firstPasses = new Map<string, string>();
-  const observe: Parameters<typeof startupObservations.subscribe>[0] = ({ phase, elapsedMs, outcome }) => {
+  const observe = (message: unknown): void => {
+    const { phase, elapsedMs, outcome } = StartupObservationSchema.parse(message);
     record(phase, elapsedMs);
     firstPasses.set(phase, outcome);
   };
