@@ -217,6 +217,14 @@
       "replacementRequired": true
     },
     {
+      "name": "store-reading-timers",
+      "file": "tests/architecture/runtime/store-reading-timers.test.ts",
+      "status": "active",
+      "owner": "docs/ARCHITECTURE.md",
+      "invariant": "Reason: independent timer-driven store reads kept the idle dashboard request thread busy. Backend intervals and timeouts repeated by a loop, callback rearm, handle refresh or recursive continuation require an individually reviewed file and symbol. The guard checks direct registrations, local callback-forwarding wrappers and the deadline scheduler. Remove a reviewed entry with its timer. A scratch source overlay proves the guard reports new store-reading interval and timeout registrations.",
+      "replacementRequired": true
+    },
+    {
       "name": "failure-code-catalog",
       "file": "tests/architecture/runtime/failure-code-catalog.test.ts",
       "status": "active",
