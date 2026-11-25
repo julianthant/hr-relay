@@ -54,8 +54,7 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
       const bottom = Math.max(...drawn.map(rect => (rect.top + rect.bottom) / 2 + ink));
       const label = `"${nodes.map(node => node.textContent ?? "").join("").trim().slice(0, 60)}"`;
       const cuts: string[] = [];
-      // The whole text of the element, including words set in child spans, is what the title or tooltip label must carry.
-      const text = (element.textContent ?? "").trim();
+      const text = nodes.map(node => node.textContent ?? "").join("").trim();
       // An ellipsis is accepted only where the full text is reachable: a title, or a hover/focus trigger named with it.
       const tooltipStates = ["closed", "delayed-open", "instant-open"];
       const reachable = () => { if (text === "") return false; for (let holder: HTMLElement | null = element; holder !== null; holder = holder.parentElement) {
@@ -341,20 +340,22 @@ export function noDeadDisabledControl({ page }: StateRuleContext): Promise<reado
       // A control held off while its own request is in flight says so on itself: that is a lock, not a dead control.
       if (control.matches('[aria-haspopup][aria-busy="true"]')) continue;
       // A dimmed control that keeps its place and gives its reason in a tooltip (the trigger's label) is explained, not dead.
+      // The trigger is a wrapper around it; tabs and disclosure triggers carry the same data-state but are not tooltips.
       let explained = false;
-      for (let holder: HTMLElement | null = control; holder !== null; holder = holder.parentElement) {
-        const open = ["closed", "delayed-open", "instant-open"].includes(holder.getAttribute("data-state") ?? "");
+      for (let holder = control.parentElement; holder !== null; holder = holder.parentElement) {
+        const tooltip = ["closed", "delayed-open", "instant-open"].includes(holder.getAttribute("data-state") ?? "") && !holder.hasAttribute("aria-expanded") && holder.getAttribute("role") !== "tab";
         const reason = (holder.getAttribute("aria-label") ?? "").trim();
-        if (open && reason !== "" && reason !== name(control)) { explained = true; break; }
+        const own = (control.getAttribute("aria-label") ?? control.textContent ?? "").trim();
+        if (tooltip && reason !== "" && reason !== own) { explained = true; break; }
       }
       if (explained) continue;
       if (control instanceof HTMLSelectElement && [...control.options].filter(option => !option.disabled).length > 1) continue;
       found.push(`the picker "${name(control)}" is shown switched off with nothing to choose`);
     }
     for (const group of document.querySelectorAll('body :is([role="radiogroup"], [role="group"], fieldset)')) {
-      // A switched-off, checked box is a settled value on show, not a choice left to make.
+      // A switched-off, checked box on a card marked settled is a value on show, not a choice left to make.
       const choices = [...group.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], [role="switch"]')]
-        .filter(choice => !(disabled(choice) && ((choice as HTMLInputElement).checked || choice.getAttribute("aria-checked") === "true")));
+        .filter(choice => !(disabled(choice) && choice.closest("[data-settled]") !== null && ((choice as HTMLInputElement).checked || choice.getAttribute("aria-checked") === "true")));
       if (choices.length > 0 && choices.every(disabled)) found.push(`every choice in "${name(group)}" is switched off`);
     }
     return found;
@@ -421,8 +422,6 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const composite = '[role="radiogroup"], [role="tablist"], [role="menu"], [role="menubar"], [role="listbox"], [role="toolbar"], [role="grid"], [role="tree"]';
     for (const element of document.querySelectorAll<HTMLElement>(`body :is(${input.selector ?? "*"})`)) {
-      // A heading that only receives focus from the program (tabindex -1) is a landing place, not a control.
-      if (element.matches('[role="heading"][tabindex="-1"]')) continue;
       const box = element.getBoundingClientRect();
       if (box.width === 0 || box.height === 0 || getComputedStyle(element).visibility === "hidden") continue;
       const shown = stoodInFor(element).filter(part => { const partBox = part.getBoundingClientRect(); return partBox.width > 1 && partBox.height > 1; });

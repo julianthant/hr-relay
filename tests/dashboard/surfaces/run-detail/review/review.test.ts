@@ -36,6 +36,16 @@ it("keeps an unknown boolean distinct from an observed No in editable and read-o
   expect(readOnly).toContain('—');
 });
 
+it("keeps the include box on a settled card, checked and not editable, and marks only approved cards settled", () => {
+  const view: RecordReviewProps = { runId: "synthetic-run", subject: "Synthetic document", readOnly: true, discarded: false, selectedCount: 1,
+    cards: [{ name: "Example, Avery", pages: [], record: { id: "synthetic-record", page: 1, kind: "oath", selected: true, warnings: [], fields: [] } }] };
+  const approved = renderToStaticMarkup(createElement(RecordReview, view));
+  expect(approved).toContain("data-settled");
+  expect(approved).toMatch(/role="checkbox"[^>]*aria-checked="true"[^>]*disabled|role="checkbox"[^>]*disabled[^>]*aria-checked="true"/u);
+  const discarded = renderToStaticMarkup(createElement(RecordReview, { ...view, discarded: true }));
+  expect(discarded).not.toContain("data-settled");
+});
+
 it("marks an unconfirmed card and names each blocking record beside the disabled Approve", () => {
   const view: RecordReviewProps = { runId: "synthetic-run", subject: "Synthetic document", readOnly: false, discarded: false, selectedCount: 0,
     onApprove: () => {}, approvalError: "Resolve the selected records before approval.",

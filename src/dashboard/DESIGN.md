@@ -182,7 +182,7 @@ Every manual choice or input is one `DecisionCard` (`run-detail/logs/decision-ca
 - The card never carries assistant suggestions or "use for all" choices. The recommended option is preselected, the assistant talks in its own panel, and a batch of the same fix goes through the assistant's Proposal card, which names each person.
 - Picking one of several records has no card box. The step's own page card that lists them ("Search results") switches to mode Pick:
   - The icon column becomes the selection mark (an empty circle; a checked circle in the info colour when chosen), and the chosen row takes the selected surface.
-  - Columns never wrap. The column with the longest values truncates and shows the full value on hover.
+  - Columns wrap; no value is cut off (operator decision on #795).
   - A status that needs attention (On leave) takes the warning colour.
   - Under the card comes the question as a step line, then Confirm (primary) and Cancel run, the same buttons as every decision. Confirm stays disabled until a row is chosen.
 - The last row of every pick is a fill row for the operator's own value ("Enter employee ID", 8 digits; "Enter row number"), after any extra option such as "Add a new row". There is no "None of these" row: typing a value selects the fill row and clears any picked row, and picking a row clears the typed value. Confirm stays disabled until a typed value is valid. A typed employee ID is asked for only here, when Relay cannot find the person. A typed employee ID is never matched against the rows: Relay looks that ID up in a run that replaces this one, and the operator confirms the person it finds.
