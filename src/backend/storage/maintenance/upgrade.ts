@@ -235,7 +235,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   const path = join(owner.stateRoot, "state.db");
   const inspect = () => AuthorityDatabase.inspectStoppedUpgrade(owner, path, processLockRoot, clock);
   const inspectInventory = () => readStoppedProfileUpgradeInventory({ machine, admission: owner, hostFacts: input.hostFacts, clock, browserClosure });
-  const initial = AuthorityDatabase.inspectStoppedUpgrade(owner, path, processLockRoot, clock, "reader");
+  const initial = inspect();
   let closure: StoppedBackupClosure | undefined;
   if (!input.plan && isUpgradeableAuthoritySchemaVersion(initial.schemaVersion)) {
     onStage?.("backup-closure");

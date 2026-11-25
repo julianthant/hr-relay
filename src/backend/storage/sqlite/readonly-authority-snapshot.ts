@@ -117,7 +117,7 @@ export interface AuthorityImageOwner {
 
 /** pointInTime: an owner image; later changes to the live files do not make it stale. */
 type SnapshotMarkers = Readonly<{ files: string; authority: string; copiedBytes: bigint }>;
-type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: (mode?: "discard") => void; pointInTime?: true; markers?: SnapshotMarkers }>;
+type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void; pointInTime?: true; markers?: SnapshotMarkers }>;
 type ReadonlyAuthorityImage = Readonly<{ path: string; marker: string; copy: SnapshotMarkers }>;
 const readerImages = new WeakMap<DatabaseSync, ReadonlyAuthorityImage>();
 
@@ -164,7 +164,7 @@ function retireSnapshot(copy: ReusableSnapshot): void {
   if (copy.readers === 0) copy.snapshot.dispose();
 }
 
-function borrowSnapshot(copy: ReusableSnapshot, discard: () => void): ReadonlySnapshot {
+function borrowSnapshot(copy: ReusableSnapshot): ReadonlySnapshot {
   copy.readers++;
   let released = false;
   return Object.freeze({
@@ -173,10 +173,9 @@ function borrowSnapshot(copy: ReusableSnapshot, discard: () => void): ReadonlySn
       if (released) throw new Error("authority-readonly-snapshot-closed");
       copy.snapshot.assertUnchanged();
     },
-    dispose(mode?: "discard") {
+    dispose() {
       if (!released) { released = true; copy.readers--; }
-      if (mode === "discard") discard();
-      else if (copy.retired && copy.readers === 0) copy.snapshot.dispose();
+      if (copy.retired && copy.readers === 0) copy.snapshot.dispose();
     },
   });
 }
@@ -225,17 +224,10 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySna
   const reuse = reusableSnapshots.getStore();
   if (reuse?.active) {
     const { copies } = reuse;
-    const borrow = (copy: ReusableSnapshot) => borrowSnapshot(copy, () => {
-      if (copies.get(sourcePath) === copy) {
-        copies.delete(sourcePath);
-        reuse.bytes -= copy.bytes;
-      }
-      retireSnapshot(copy);
-    });
     const cached = copies.get(sourcePath);
     if (cached?.marker === marker) {
       cached.snapshot.assertUnchanged();
-      return borrow(cached);
+      return borrowSnapshot(cached);
     }
     if (cached !== undefined) {
       copies.delete(sourcePath);
@@ -255,7 +247,7 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySna
       reuse.bytes -= prior.bytes;
       retireSnapshot(prior);
     }
-    return borrow(copy);
+    return borrowSnapshot(copy);
   }
   const proof = outermostOperationProof();
   const key = `readonly-snapshot:${sourcePath}`;
@@ -447,8 +439,7 @@ export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (
    catch (error) { throw retainAuthoritySourceClosure([...failures, error], { snapshot, database }); }
  }
  try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
- // A failed reader must account for disposal before its admission can release.
- try { snapshot.dispose(failures.length === 0 ? undefined : "discard"); }
+ try { snapshot.dispose(); }
  catch (cleanup) {
    const error = failures.length === 0 ? cleanup
      : new AggregateError([...failures, cleanup], "authority-read-and-snapshot-disposal-failed", { cause: cleanup });

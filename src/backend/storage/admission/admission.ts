@@ -301,7 +301,8 @@ export class RuntimeAdmission {
     try {
       const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
       assertUnpublishedSource();
-      const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
+      // Close the first inspection copy before the browser and backup inventory stages.
+      const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock, "reader");
       const { readStoppedProfileUpgradeInventory, readStoppedProfileLayoutInventory, probeStoppedProfileBrowsersClosed } = await import("../maintenance/profile-inventory.js");
       assertUnpublishedSource();
       await probeStoppedProfileBrowsersClosed(admission, clock, browserClosure);
