@@ -30,7 +30,7 @@ export interface RerunValuesDependencies {
   readonly reader: { read(runId: string): RunExistence };
   readonly database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot"> & Partial<Pick<AuthorityDatabase, "evidenceSchemaHash">>;
   readonly descriptors: { resolve(workflow: string): AnyWorkflowDescriptor | undefined };
-  /** Source-owned task observations only; never the fold's run lifecycle. */
+  /** Source-owned task spans and opened gates; never the fold's run lifecycle. */
   readonly executions?: (runId: string) => readonly Readonly<{
     nodeId: string; attempt: number; startedAt?: string; endedAt?: string;
     outcome?: "done" | "failed" | "cancelled" | "discarded" | "skipped" | "interrupted" | "superseded";
@@ -284,7 +284,8 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         else if (failure?.nodeId === node.id || (observed?.outcome === "failed"
           && (checkpoint === undefined || observed.attempt > checkpoint.attempt
             || (observed.attempt === checkpoint.attempt && (observed.endedAt === undefined || observed.endedAt >= checkpoint.writtenAt))))) fact = { nodeId: node.id, state: "failed", reason: "failure" };
-        else if (observed !== undefined && observed.outcome !== "done"
+        else if (observed?.outcome === "skipped" && checkpoint === undefined) fact = { nodeId: node.id, state: "completed", reason: "condition-skipped" };
+        else if (observed !== undefined && observed.outcome !== "done" && observed.outcome !== "skipped"
           && (checkpoint === undefined || observed.attempt > checkpoint.attempt
             || (observed.attempt === checkpoint.attempt && observed.startedAt !== undefined && observed.startedAt > checkpoint.writtenAt))) {
           fact = { nodeId: node.id, state: "unfinished", reason: "incomplete-execution" };

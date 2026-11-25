@@ -16,7 +16,7 @@ const NodeCompletionSchema = z.strictObject({
   phase: z.enum(["prepare", "commit"]).optional(),
   state: CompletionStateSchema,
   reason: z.enum(["checkpoint", "gate-result", "settled-transaction", "delegation-settled", "previewed", "prepared", "already-present",
-    "failure", "incomplete-execution", "operator-asserted", "step-omitted", "not-recorded"]),
+    "condition-skipped", "failure", "incomplete-execution", "operator-asserted", "step-omitted", "not-recorded"]),
 });
 const StepCompletionSchema = z.strictObject({ key: z.string().min(1), state: CompletionStateSchema, nodes: z.array(NodeCompletionSchema).min(1) });
 const CandidateCoordinatesSchema = RerunValueMappingSchema.extend({
