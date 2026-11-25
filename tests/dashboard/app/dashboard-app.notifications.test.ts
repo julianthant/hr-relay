@@ -8,9 +8,10 @@ import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { parseRoute } from "../../../src/dashboard/app/navigation/url-state.js";
 import { PRODUCT_WORKFLOW_COMPOSITION, workflowComposition, type WorkflowSourcePolicy } from "../../../src/dashboard/app/workflow-sources.js";
-import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
+import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { FIXTURE_IDS } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../support/fixtures/dashboard/run-detail/receipts-failures.js";
+import { serveReadyNotificationStatus, streamingRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { LocalDateSchema } from "../../../src/rules/identity/ids.js";
@@ -24,16 +25,16 @@ import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../..
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
 import { notificationTargetUnavailable } from "../../../src/dashboard/app/navigation/run-navigation.js";
 
-const requested = vi.hoisted(() => ({ target: undefined as NotificationDestination | undefined }));
+const requested = vi.hoisted(() => ({ target: undefined as NotificationDestination | undefined, linkRunId: undefined as string | undefined }));
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 Reflect.set(globalThis, "requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0));
 Reflect.set(globalThis, "cancelAnimationFrame", clearTimeout);
 let root: Root | undefined;
 Element.prototype.scrollIntoView = () => {}; // jsdom lacks it; the search palette list needs it
-afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); localStorage.clear(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
-function rowAction(host: HTMLElement, title: string, label: string): HTMLButtonElement {
-  const row = [...host.querySelectorAll<HTMLElement>("li.notification-row")].find(item => item.querySelector(".notification-item-title")?.textContent === title); assert(row, title);
+afterEach(async () => { requested.linkRunId = undefined; await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); localStorage.clear(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
+function rowAction(title: string, label: string): HTMLButtonElement {
+  const row = [...document.querySelectorAll<HTMLElement>("li.notice-row")].find(item => item.querySelector(".notice-title")?.textContent === title); assert(row, title);
   const found = row.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`); assert(found, label); return found;
 }
 
@@ -49,22 +50,22 @@ async function mount(missing = false, mixed = false, view?: Readonly<Record<stri
     ? { ...common, kind: "command", priority: true, severity: "warning", title: "Retry: partial result", summary: "1 applied", context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "bulk-incomplete" }, link: { kind: "bulk-result", bulkCommandId: target.bulkCommandId } }
     : target.kind === "command-result"
     ? { ...common, kind: "command", priority: true, severity: "error", title: "Cancel run: rejected", summary: "The run already finished.", context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "command-refused" }, link: { kind: "command-result", commandId: target.commandId } }
-    : { ...common, kind: "notification", trigger: "failed", severity: "error", title: "Run failed", context: { state: "available", subject: "Canonical history", workflow: mixed ? "Separations" : "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: target.kind === "failure" ? { kind: "failure", runId: target.runId, failureId: target.failureId } : { kind: "run", runId: target.runId } });
+    : { ...common, kind: "notification", trigger: "failed", severity: "error", title: "Run failed", context: { state: "available", subject: "Canonical history", workflow: mixed ? "Separations" : "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: target.kind === "failure" ? { kind: "failure", runId: target.runId, failureId: target.failureId } : { kind: "run", runId: requested.linkRunId ?? target.runId } });
   const client = { ...transport,
-    notificationSnapshot: async () => [notification], notificationStatus: async () => ({ state: "ready" as const, pending: 0 }), notificationTarget: async () => target,
+    notificationTarget: async () => requested.linkRunId !== undefined && target.kind === "run" ? { ...target, linkedRunId: RunIdSchema.parse(requested.linkRunId) } : target,
     bootstrap: async () => { const boot = await transport.bootstrap(); return mixed ? { ...boot, workflows: [...boot.workflows, { ...WorkflowBootstrapPrimitiveSchema.parse(boot.workflows[0]), id: "separations", code: "sep", label: "Separations" }] } : boot; },
     runDetail: async (id: string) => { const detail = await transport.runDetail(id); return mixed && id === FIXTURE_IDS.failedRun ? RunDetailWireSchema.parse({ ...detail, header: { ...detail.header, workflowId: "separations" } }) : detail; },
-    dashboardDay: async (day: string) => { reads.push(day); return { ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), queueSurfaces: missing ? [] : dayRows }; },
+    dashboardDay: async (day: string) => { reads.push(day); return { ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), queueSurfaces: missing ? [] : dayRows, notifications: [notification] }; },
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
-      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), queueSurfaces: dayRows }); input.onState({ state: "live" }); return { close() {} };
+      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), queueSurfaces: dayRows, notifications: [notification] }); input.onState({ state: "live" }); return streamingRunPanel(input, client);
     },
   };
-  window.history.replaceState(null, "", `/?day=2026-08-04${view ? `&view=${encodeURIComponent(JSON.stringify(view))}` : ""}`);
+  window.history.replaceState(null, "", `/?day=2026-08-02${view ? `&view=${encodeURIComponent(JSON.stringify(view))}` : ""}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(sources) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell);
   await act(async () => { bell.click(); await new Promise(resolve => setTimeout(resolve, 10)); });
-  const targetButton = document.querySelector<HTMLButtonElement>("button.notification-item"); assert(targetButton);
+  const targetButton = document.querySelector<HTMLButtonElement>("button.notice-main"); assert(targetButton);
   await act(async () => { targetButton.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
   return { host, reads, sources };
@@ -148,11 +149,21 @@ it("opens the exact failure step through the existing Logs initial focus input",
   assert.equal(step.closest<HTMLElement>(".overflow-y-auto")?.scrollTop, 1200);
   assert.equal(host.textContent?.includes(notificationTargetUnavailable()), false);
 });
-it("keeps a missing canonical target in the inbox and shows its catalog refusal", async () => {
+it("keeps the list open on a run that could not be opened and says so in a toast, not as a dead target", async () => {
   requested.target = { kind: "run", runId: RunIdSchema.parse(FIXTURE_IDS.failedRun), day: FIXTURE_DAY_WIRE.day };
-  const { host } = await mount(true);
+  await mount(true);
   assert.equal(new URLSearchParams(location.search).get("run"), null);
-  assert(host.textContent?.includes(notificationTargetUnavailable()));
+  assert([...document.querySelectorAll('[data-slot="toast"]')].some(toast => toast.textContent?.includes("Couldn't open this run")));
+  assert.equal(document.body.textContent?.includes(notificationTargetUnavailable()), false);
+  assert(document.querySelector("li.notice-row"), "the list stays open");
+});
+it("opens a delegated run's notice on its host run and closes the list", async () => {
+  // The notice links the failed run by another id than the target: the server resolved the host run.
+  requested.target = { kind: "run", runId: RunIdSchema.parse(FIXTURE_IDS.failedRun), day: FIXTURE_DAY_WIRE.day };
+  requested.linkRunId = "00000000-0000-4000-8000-00000000c41d";
+  await mount();
+  assert.equal(new URLSearchParams(location.search).get("run"), FIXTURE_IDS.failedRun);
+  assert.ok(document.querySelector("li.notice-row") === null, "opening an item closes the list");
 });
 it("mounts served inbox controls and reports only the served search authority total", async () => {
   const { app } = createFixtureBff();
@@ -162,6 +173,7 @@ it("mounts served inbox controls and reports only the served search authority to
     const path = new URL(url).pathname;
     if (path === "/api/v1/notifications") return Response.json(rows);
     if (path === "/api/v1/notifications/status") return Response.json({ state: "ready", pending: 0 });
+    if (path.endsWith("/target")) return Response.json({ kind: "storage" });
     if (path === "/api/v1/commands") {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); writes.push(command);
@@ -172,15 +184,15 @@ it("mounts served inbox controls and reports only the served search authority to
   } });
   const client = { ...transport,
     searchRuns: async (query: CrossDateSearchQueryInput) => { queries.push(query.q); return CrossDateSearchPageSchema.parse({ ...zeroMatchSearchPage(), totalMatches: 1, results: [{ runId: FIXTURE_IDS.failedRun, traceId: "pl-120000-0099", workflowId: "person-lookup", partitionDay: FIXTURE_DAY_WIRE.day, registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "people" }, state: "done", shape: "single", dryRun: true, priority: "bulk", systems: [], runNumber: { state: "absent", reason: "not recorded" }, retryOf: { state: "absent", reason: "first" }, enqueuedAt: "2026-08-03T12:00:00Z", endedAt: { state: "absent", reason: "not recorded" }, match: { field: "actor", strength: "exact" }, metadata: { subject: { state: "available", value: "Exact served subject" }, actor: { state: "available", value: "local-operator" }, version: 1, failureCode: null, evidence: { receipt: false, failure: false, diagnostic: false } } }] }); },
-    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day) }); input.onState({ state: "live" }); return { close() {} }; },
+    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: rows }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} }; },
   };
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => PRODUCT_WORKFLOW_COMPOSITION }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
   await act(async () => bell.click());
-  assert(host.textContent?.includes("Storage degraded")); assert.equal(host.textContent?.includes("Canonical history"), false);
-  const read = rowAction(host, "Storage degraded", "Mark as read");
+  assert(document.body.textContent?.includes("Storage degraded")); assert.equal(document.body.textContent?.includes("Canonical history"), false);
+  const read = rowAction("Storage degraded", "Mark as read");
   await act(async () => { read.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
   assert.equal(writes.length, 1); assert(host.querySelector('button[aria-label="Notifications, 0 unread"]'));
   assert.equal(queries.length, 0);
@@ -195,6 +207,33 @@ it("mounts served inbox controls and reports only the served search authority to
   });
   await vi.waitFor(() => assert(queries.includes("local-operator")));
   await vi.waitFor(() => assert(document.body.textContent?.includes("Exact served subject")));
+});
+it("opens a storage notice in Settings > General instead of refusing it", async () => {
+  const { app } = createFixtureBff();
+  const rows = NotificationWireSchema.array().parse([{ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 213, publicationId: "a".repeat(64), trigger: "storage", readState: "read", state: "read", severity: "warning", title: "Storage needs attention", occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "storage-degraded" }, link: { kind: "storage" } }]);
+  const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
+    const path = new URL(url).pathname;
+    if (path === "/api/v1/notifications") return Response.json(rows);
+    if (path === "/api/v1/notifications/status") return Response.json({ state: "ready", pending: 0 });
+    if (path.endsWith("/target")) return Response.json({ kind: "storage" });
+    return app.request(url, init);
+  } });
+  const client = { ...transport,
+    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: rows }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} }; },
+  };
+  window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
+  const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => PRODUCT_WORKFLOW_COMPOSITION }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 0 unread"]'); assert(bell);
+  await act(async () => bell.click());
+  const row = document.querySelector<HTMLElement>("li.notice-row"); assert(row);
+  assert.equal(row.querySelector(".notice-count")?.textContent, "213 times213", "the count is a badge beside a one-line title");
+  assert.ok(row.querySelector(".notice-context") === null, "a storage notice has no source line");
+  const open = row.querySelector<HTMLButtonElement>("button.notice-main"); assert(open);
+  await act(async () => { open.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
+  assert.equal(new URLSearchParams(location.search).get("settings"), "general");
+  assert.equal(document.body.textContent?.includes(notificationTargetUnavailable()), false);
+  assert.ok(document.querySelector("li.notice-row") === null);
 });
 
 it("admits a canonical Separations historical target while Person Lookup and Separations are both served", async () => {
@@ -214,11 +253,11 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   let rows = NotificationWireSchema.array().parse([{ kind: "notification", notificationId, actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title: "Delayed read", occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Historical subject", workflow: "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId } }]);
   let commit = () => {};
   const delayed = new Promise<void>(resolve => { commit = resolve; });
-  let writes = 0, inboxReads = 0;
+  let writes = 0;
   const days: string[] = [];
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
-    if (path === "/api/v1/notifications") { inboxReads++; return Response.json(rows); }
+    if (path === "/api/v1/notifications") return Response.json(rows);
     if (path === "/api/v1/notifications/status") return Response.json({ state: "ready", pending: 0 });
     if (path.endsWith("/target")) return Response.json({ kind: "run", runId, day: FIXTURE_DAY_WIRE.day });
     if (path === "/api/v1/commands") {
@@ -233,7 +272,7 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   const client = { ...transport,
     dashboardDay: async (day: string) => ({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), notifications: rows }),
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
-      days.push(input.day); input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: rows }); input.onState({ state: "live" }); return { close() {} };
+      days.push(input.day); input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: rows }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} };
     },
   };
   window.history.replaceState(null, "", "/?day=2026-08-02");
@@ -241,15 +280,16 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => PRODUCT_WORKFLOW_COMPOSITION }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
   await act(async () => bell.click());
-  const open = host.querySelector<HTMLButtonElement>("button.notification-item"); assert(open);
+  const open = document.querySelector<HTMLButtonElement>("button.notice-main"); assert(open);
   await act(async () => { open.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
   assert.equal(new URLSearchParams(location.search).get("day"), FIXTURE_DAY_WIRE.day);
   assert.equal(writes, 1); assert.deepEqual(days, ["2026-08-02", FIXTURE_DAY_WIRE.day]);
   assert(host.querySelector('button[aria-label="Notifications, 1 unread"]'));
-  const before = inboxReads;
+  const before = days.length;
   await act(async () => { commit(); await new Promise(resolve => setTimeout(resolve, 30)); });
-  assert(inboxReads > before, "settlement must read current destination authority");
-  assert(host.querySelector('button[aria-label="Notifications, 0 unread"]'));
-  assert(rowAction(host, "Delayed read", "Mark as unread"));
+  assert(days.length > before, "settlement must read current destination authority");
+  const read = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 0 unread"]'); assert(read, "the bell count follows the read");
+  await act(async () => read.click());
+  assert(rowAction("Delayed read", "Mark as unread"));
   assert.equal(writes, 1);
 });

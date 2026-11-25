@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from '../../../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_PAYLOAD_TABLE, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from '../../../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService, projectWorkbookCompatibilityFromRepository } from '../../../../../src/backend/workbooks/workbook-library-service.js';
 import { manualClock } from '../../../../../src/rules/time/clock.js';
 import { unexpectedWorkbookSync } from '../../../../support/helpers/backend/workbook-sync.js';
@@ -74,7 +74,7 @@ it('refreshes summaries after content and type changes and omits a removed workb
 it('lists the workbook revision and type from the same authority snapshot', async () => {
   const database = new DatabaseSync(':memory:');
   try {
-    for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION]) {
+    for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_TABLE]) {
       for (const statement of migration.statements) database.exec(statement);
     }
     function transaction<Result>(work: () => Result): Result {
@@ -312,7 +312,7 @@ it('serves clone as a new import result and refuses an existing name without cre
 it('dispatches a SharePoint import to the authenticated download boundary and serves its linked, tagged result', async () => {
   const database = new DatabaseSync(':memory:');
   try {
-    for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements]) database.exec(sql);
+    for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(sql);
     const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => work().result });
     let downloads = 0;
     const library = createWorkbookLibraryService({ repository, clock: manualClock(new Date('2026-11-02T00:00:00.000Z')),
@@ -352,7 +352,7 @@ it.each(['new-merge', 'merge'])('rejects retired merge %s before service or repl
 it('serves a closed retired status without merge payload and rejects its exact completed POST', async () => {
   const database = new DatabaseSync(':memory:');
   try {
-    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements]) database.exec(statement);
+    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(statement);
     const record = installRetainedMergeFixture(database);
     const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => work().result });
     const library = createWorkbookLibraryService({ repository, clock: manualClock(new Date(record.at)), sync: unexpectedWorkbookSync });

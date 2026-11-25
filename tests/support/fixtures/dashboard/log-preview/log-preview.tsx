@@ -66,7 +66,7 @@ function PreviewMemberControls({ selection, onAction }: { selection: LogSelectio
   const target = { runId: row.runId, expectedVersion: row.rowRevision };
   const pause = row.actions.find(action => action.kind === "command" && action.command === "pause");
   const stop = row.actions.find(action => action.kind === "command" && action.command === "cancel");
-  const run = (action: typeof pause) => { if (action !== undefined) onAction?.(action, target); };
+  const run = (action: typeof pause) => { if (action !== undefined) void onAction?.(action, target); };
   return <>
     <LogFooterButton label={`Pause ${title}`} icon={<Pause aria-hidden className="size-4" />} onClick={() => run(pause)} />
     <LogFooterButton label={`Stop ${title}`} icon={<Square aria-hidden className="size-4" />} onClick={() => setConfirming(true)} />

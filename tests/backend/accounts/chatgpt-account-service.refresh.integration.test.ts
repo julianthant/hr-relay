@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { createChatGptAccountService } from "../../../src/backend/accounts/chatgpt-account-service.js";
+import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { runtimeProfiles } from "../../../src/models/config/define-runtime-isolation.js";
 import { chatGptFixture, completedOcrStream } from "../../support/helpers/chatgpt-account-fixtures.js";
 
 for (const state of ["near-expiry", "expired", "restart"] as const) it(`renews ${state} account reads through the stored rotating refresh token`, async () => {
@@ -21,6 +23,23 @@ for (const state of ["near-expiry", "expired", "restart"] as const) it(`renews $
     assert.equal(f.calls.filter(call => call.url.endsWith("/responses") || call.url.endsWith("/models")).length, 0);
     await service.refreshAccount(); assert.equal(f.repository.read()?.session?.refreshToken, "synthetic-refresh-2");
   } finally { await restarted?.close(); await f.cleanup(); }
+});
+
+it.each(["staging", "development"] as const)("refuses credential renewal in the %s copy", async profile => {
+  const f = await chatGptFixture();
+  try {
+    await f.connected();
+    f.clock.advanceWall(3_600_000);
+    const before = f.repository.read(), requestCount = f.calls.length;
+    const lifetime = f.admission.lifetime;
+    assert.ok(lifetime instanceof RuntimeLifetimeLock);
+    const port = vi.spyOn(lifetime, "port", "get").mockReturnValue(runtimeProfiles[profile].lockPort);
+    try {
+      await assert.rejects(f.service.refreshAccount(), { code: "CHATGPT_AUTH_UNAVAILABLE" });
+      assert.equal(f.calls.length, requestCount);
+      assert.deepEqual(f.repository.read(), before);
+    } finally { port.mockRestore(); }
+  } finally { await f.cleanup(); }
 });
 
 it("coalesces concurrent account reads into one locked rotation", async () => {

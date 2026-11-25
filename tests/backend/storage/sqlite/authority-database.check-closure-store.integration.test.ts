@@ -49,6 +49,7 @@ const POPULATED_TABLES = [
   "workbook_library_snapshots",
   "workbook_library_state",
   "workbook_operations",
+  "workbook_payloads",
   "workbook_types",
   "worker_pools",
   "worker_slots",

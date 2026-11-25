@@ -10,7 +10,6 @@ import { IntakeCommandResultWireSchema } from "../../../src/models/dashboard/wor
 import { IntakeCommandRequestSchema, CommandResultSchema } from "../../../src/rules/commands/commands.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { FIXTURE_INTAKE_VALIDATED } from "../../support/fixtures/dashboard/fixture-intake.js";
 import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
 import { createIntakeAuthority } from "../../support/fixtures/dashboard/fixture-intake-authority.js";
@@ -39,7 +38,7 @@ async function mount(wire = FIXTURE_INTAKE_VALIDATED, options: {
   return { host, button, calls, bodies, readUrls, get enqueued() { return enqueued; } };
 }
 it("acknowledging rejection history cannot enable unresolved rows", async () => {
-  const h = await mount(); const checkbox = h.host.querySelector<HTMLButtonElement>('[role="checkbox"]'); assert.ok(checkbox);
+  const h = await mount(); const checkbox = [...h.host.querySelectorAll<HTMLElement>('[role="switch"]')].find(node => node.closest("label")?.textContent?.includes("I have read")); assert.ok(checkbox);
   await flush(() => checkbox.click()); assert.equal(h.button(`Start ${String(FIXTURE_INTAKE_VALIDATED.validation.state === "validated" ? FIXTURE_INTAKE_VALIDATED.validation.validRows : 0)} runs`).disabled, true);
   assert.match(h.host.textContent ?? "", /unresolved/);
 });
@@ -79,7 +78,7 @@ async function readyAuthority() {
   return { authority, wire: await authority.intake.read(session.intakeSessionId) };
 }
 async function confirm(h: Awaited<ReturnType<typeof mount>>) {
-  const checkbox = h.host.querySelector<HTMLButtonElement>('[role="checkbox"]'); assert.ok(checkbox); await flush(() => checkbox.click());
+  const checkbox = [...h.host.querySelectorAll<HTMLElement>('[role="switch"]')].find(node => node.closest("label")?.textContent?.includes("I confirm")); assert.ok(checkbox); await flush(() => checkbox.click());
 }
 it("requires explicit confirmation, then guards duplicate clicks and reads the exact receipt after a lost reply", async () => {
   const { authority, wire } = await readyAuthority();
@@ -93,9 +92,9 @@ it("requires explicit confirmation, then guards duplicate clicks and reads the e
   assert.equal(h.calls.length, 1); assert.equal(h.button("Start 2 runs").disabled, true);
   const minted = authority.mintedIds;
   authority.clock.advanceWall(5_000);
-  await flush(() => h.button("Recover exact command").click()); assert.equal(h.calls.length, 1);
+  await flush(() => h.button("Retry the last step").click()); assert.equal(h.calls.length, 1);
   assert.equal(h.bodies.length, 1); assert.deepEqual(authority.mintedIds, minted);
-  assert.equal(h.host.textContent?.includes("Recover exact command"), false);
+  assert.equal(h.host.textContent?.includes("Retry the last step"), false);
   assert.equal(h.enqueued, 0); await flush(() => h.button("Show the runs").click()); assert.equal(h.enqueued, 1);
 });
 it("after an applied response, recovery reads the exact journaled command and rereads its session and day without duplicate effects", async () => {
@@ -106,11 +105,12 @@ it("after an applied response, recovery reads the exact journaled command and re
   }, read: async (count, url) => count === 2 ? Promise.reject(new Error("readback failed")) : authority.app.request(url) });
   await confirm(h); await flush(() => h.button("Start 2 runs").click()); assert.equal(h.calls.length, 1);
   assert.equal(CommandResultSchema.parse(replies[0]).state, "applied");
-  assert.ok(h.host.textContent?.includes(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})).text));
-  assert.equal(h.button("Recover exact command").disabled, false); assert.equal(h.enqueued, 0);
+  assert.ok(h.host.textContent?.includes("Not confirmed yet."));
+  assert.doesNotMatch(h.host.textContent ?? "", /outcome is uncertain/u);
+  assert.equal(h.button("Retry the last step").disabled, false); assert.equal(h.enqueued, 0);
   const committed = await authority.intake.read(wire.intakeSessionId); const minted = authority.mintedIds;
   assert.ok(committed.manifest); assert.equal(committed.expectedVersion, wire.expectedVersion + 1);
-  await flush(() => h.button("Recover exact command").click()); assert.equal(h.calls.length, 1);
+  await flush(() => h.button("Retry the last step").click()); assert.equal(h.calls.length, 1);
   assert.equal(h.bodies.length, 1);
   const receiptUrl = h.readUrls.find(url => url.includes("/commands/")); assert.ok(receiptUrl);
   const receipt = IntakeCommandResultWireSchema.parse(await (await authority.app.request(receiptUrl)).json());
@@ -135,7 +135,7 @@ it("after an applied response, recovery reads the exact journaled command and re
     assert.deepEqual(row.session.origin, { kind: "intake-manifest", intakeManifestId: committed.manifest.manifestId, actorId: "local-operator" });
   }
   assert.equal(new Set(day.queueSurfaces.flatMap(row => row.session.state === "present" ? [row.session.sessionId] : [])).size, 1);
-  assert.equal(h.host.textContent?.includes("Recover exact command"), false);
+  assert.equal(h.host.textContent?.includes("Retry the last step"), false);
   assert.equal(h.enqueued, 0); await flush(() => h.button("Show the runs").click()); assert.equal(h.enqueued, 1);
 });
 it("a served required target without a binding stays visible and blocks Start", async () => {

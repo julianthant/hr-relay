@@ -6,7 +6,7 @@ import { createTaskProvenanceCollector } from "../../../../src/backend/runs/prov
 import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
@@ -25,7 +25,7 @@ const {executorHarness, enqueueAndClaim, SIGNAL, readPersistedNotes, cleanup } =
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
-import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
+import { queuedRunFixture } from "../../../support/fixtures/backend/queued-run.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { NoteWireSchema } from "../../../../src/models/events/types.js";
@@ -109,7 +109,7 @@ it("runs local, protected, replay and operator-corrected attempts in one genuine
   let number = 0;
   const createRun = (compiled: typeof plan1Parent, value: unknown, parent?: RunParent, itemId?: string) => {
     const sequence = ++number;
-    return buildQueuedRun({ descriptor: compiled.descriptor, appVersion: "0.1.0", runId: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
+    return queuedRunFixture({ descriptor: compiled.descriptor, appVersion: "0.1.0", runId: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
       itemId: itemId ?? `00000000-0000-4000-8001-${String(sequence).padStart(12, "0")}`, traceId: `fp-170000-${String(sequence).padStart(4, "0")}`,
       rawInput: JsonValueSchema.parse(value), canonicalInput: { protectedBindings: [], schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value) }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
       configFingerprint: fingerprint, configSnapshotId, resolvedInstance: {}, shape: parent === undefined ? "single" : "operation-member", priority: "bulk", dryRun: false,

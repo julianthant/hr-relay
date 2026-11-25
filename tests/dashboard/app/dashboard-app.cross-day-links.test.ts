@@ -1,5 +1,4 @@
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
-import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
 import { act, createElement } from 'react';
@@ -13,8 +12,8 @@ import { RunDetailWireSchema, NotePageSchema } from '../../../src/models/dashboa
 import { queueParentFixture } from '../../support/helpers/dashboard/queue-parent-fixture.js';
 import { FrontendBootstrapWireSchema } from '../../../src/models/dashboard/bootstrap.js';
 import { FIXTURE_NOW } from '../../support/fixtures/dashboard/fixture-identity.js';
-import { FIXTURE_DAY_WIRE } from '../../mocks/helpers/fixture-queue.js';
-import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../mocks/helpers/workflow-composition.js';
+import { FIXTURE_DAY_WIRE } from '../../support/helpers/dashboard/mock-world/fixture-queue.js';
+import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../support/helpers/dashboard/mock-world/workflow-composition.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
@@ -36,10 +35,10 @@ it('opens a linked child using its own partition day and exact run identity', as
   const client = { ...transport, subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
     requestedDays.push(input.day);
     input.onDay(input.day === childDay ? childWire : parentWire); input.onState({ state: 'live' });
-    return { close: () => undefined };
+    return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, '', `/?day=${parentWire.day}`);
-  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const preview = createPersonPreferences("preview");
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
@@ -82,7 +81,7 @@ for (const failure of ['missing','wrong-parent','owner-trace','read-failed','wro
   await vi.waitFor(() => assert.ok(f.host.textContent?.includes('Workflow unavailable')));
   assert.equal(window.location.search,before);
   assert.equal(f.preferences.snapshot().value.selectedWorkflowId,preference);
-  assert.equal(f.host.textContent?.includes('Discard unsaved settings?'),false);
+  assert.equal(f.host.textContent?.includes('Discard changes?'),false);
 });
 
 it('drops an old owner revision while exact related-run reads are pending',async () => {
@@ -107,7 +106,7 @@ it.each(['ready','read-failed'] as const)('leaves a new dirty Settings draft unt
   await vi.waitFor(() => assert.ok(f.reads.includes(`day:${f.childDay}`)));
   const settings = f.host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]');assert.ok(settings);
   await act(async () => settings.click());
-  await vi.waitFor(() => assert.ok(f.host.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')));
+  await vi.waitFor(() => assert.ok(f.host.querySelector('[data-settings-path="annualDates.FY2027.jobEndDate"] input[type="date"]')));
   const date = () => f.host.querySelector<HTMLInputElement>('[data-settings-path="annualDates.FY2027.jobEndDate"] input[type="date"]');assert.ok(date());
   const edited = date()!.value === '2027-06-29' ? '2027-06-28' : '2027-06-29';
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(date()!, edited); date()!.dispatchEvent(new Event('input', { bubbles: true })); });
@@ -118,7 +117,7 @@ it.each(['ready','read-failed'] as const)('leaves a new dirty Settings draft unt
   assert.equal(window.location.search,before);
   assert.equal(f.preferences.snapshot().value.selectedWorkflowId,preference);
   assert.equal(date()?.value,edited);
-  assert.equal(f.host.textContent?.includes('Discard unsaved settings?'),false);
+  assert.equal(f.host.textContent?.includes('Discard changes?'),false);
   assert.equal(f.host.textContent?.includes('Workflow unavailable'),false);
 });
 
@@ -169,9 +168,9 @@ async function relatedFixture(options: Readonly<{ failure?: 'missing' | 'wrong-p
   let subscription: Parameters<typeof transport.subscribeDay>[0] | undefined;
   const client = { ...transport,bootstrap: async () => { const boot = await transport.bootstrap();const first = boot.workflows[0];assert.ok(first);
     return FrontendBootstrapWireSchema.parse({ ...boot,workflows: [{ ...first,id: 'emergency-contact',code: 'ec',label: 'Emergency Contact' }] }); },
-    subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) { subscription = input;input.onDay(input.day === parentDay ? parentWire : childWire);input.onState({ state: 'live' });return { close() {} }; } };
+    subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) { subscription = input;input.onDay(input.day === parentDay ? parentWire : childWire);input.onState({ state: 'live' });return { select() {}, close() {} }; } };
   window.history.replaceState(null,'',`/?day=${parentDay}`);
-  const preferences = createPersonPreferences('preview',{ ...NEUTRAL_PERSON_PREFERENCES,workflowPanelMode: 'sidebar' });
+  const preferences = createPersonPreferences('preview');
   const host = document.createElement('div');document.body.append(host);root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider,{ client,children: createElement(DashboardApp,{ workflowComposition: workflows => servedLogsComposition(workflows),
     previewPreferences: preferences }) })));

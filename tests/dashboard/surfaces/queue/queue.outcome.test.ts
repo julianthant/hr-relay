@@ -6,8 +6,8 @@ import { it } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { QueuePanel, QueueRow } from '../../../../src/dashboard/surfaces/queue/queue.js';
 import { StatusBadge } from '../../../../src/dashboard/surfaces/shared/status/status.js';
-import { seedMockRuns } from '../../../mocks/workflows/workflow-mock-model.js';
-import { mockQueueSurface } from '../../../mocks/workflows/workflow-queue-model.js';
+import { seedMockRuns } from '../../../support/fixtures/dashboard/workflow-mocks/workflow-mock-model.js';
+import { mockQueueSurface } from '../../../support/fixtures/dashboard/workflow-mocks/workflow-queue-model.js';
 import { QueueSurfaceWireSchema } from '../../../../src/models/dashboard/projection.js';
 import { DS_STATUS, DS_STATUS_ORDER } from '../../../../src/dashboard/ds/ui.js';
 it('renders all eight mounted seed Search and Match outcomes in completed Queue rows', () => {
@@ -41,7 +41,7 @@ it('describes the lifecycle done count as completed without claiming receipt ver
   const selected: string[] = [];
   try {
     await act(async () => root.render(createElement(QueuePanel, { surfaces: [surface], state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect(id) { selected.push(id); } }, workflowLabelOf: () => 'Person Lookup', panelLabel: 'Person Lookup', day: '2026-08-03', isToday: true })));
-    assert.match(host.textContent ?? '', /Finished today\s*1\s*1 completed/u);
+    assert.match(host.textContent ?? '', /Finished today\s*1\s*Today:\s*1 completed/u);
     assert.doesNotMatch(host.textContent ?? '', /1 verified/u);
     assert.equal(host.querySelectorAll('[data-demo-row-id]').length, 1);
     await act(async () => host.querySelector<HTMLElement>('[data-demo-row-id]')?.click());
@@ -77,11 +77,13 @@ it('says one thing on an empty day: a title and a Start run button, with no fini
     assert.equal(started, 1);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
-it('draws the title alone and the status once on a plain run card', () => {
+it('omits the member table and member count on a plain run card', () => {
   const run = seedMockRuns().find(run => run.workflowId === 'person-lookup'); assert(run);
   const surface = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
   const host = document.createElement('div');
   host.innerHTML = renderToStaticMarkup(createElement(QueueRow, { surface, state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect() {} }, workflowLabelOf: () => 'Person Lookup' }));
   assert.equal(host.querySelectorAll('table').length, 0);
-  assert.equal(host.querySelector('[data-demo-row-title]')?.parentElement?.querySelectorAll('[data-queue-member-count]').length, 0);
+  const body = host.querySelector('[data-queue-body]');
+  assert(body);
+  assert.equal(body.querySelectorAll('[data-queue-member-count]').length, 0);
 });

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { runtimeProfiles } from "../../../src/models/config/define-runtime-isolation.js";
 import isolationJson from "../../../config/runtime-isolation.json" with { type: "json" };
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import {
@@ -33,7 +34,10 @@ function seedValidRuntime(root: string): void {
   assert.ok(config);
   write(root, "src/models/config/define-runtime-isolation.ts",
     "export function defineRuntimeIsolation<T>(value: T): T { return value; }\n");
+  write(root, "src/models/config/secrets.ts", 'export function readRuntimeProfile() { return "production"; }');
   write(root, config.module, [
+    'import { readRuntimeProfile } from "../../../models/config/secrets.js";',
+    "export const runtimeProfile = readRuntimeProfile();",
     `import { ${config.factory} } from "../../../models/config/define-runtime-isolation.js";`,
     `export const ${config.exportName} = ${config.factory}({`,
     `  stateRoot: ${JSON.stringify(side.stateRoot)},`,
@@ -45,7 +49,7 @@ function seedValidRuntime(root: string): void {
     `  processLockRoot: ${JSON.stringify(side.processLockRoot)},`,
     `  browserProfileRoot: ${JSON.stringify(side.browserProfileRoot)},`,
     `  browserSessionNamespace: ${JSON.stringify(side.browserSessionNamespace)},`,
-    "});",
+    "}, runtimeProfile);",
     "",
   ].join("\n"));
   write(root, "src/backend/app/composition/runtime-composition.ts",
@@ -78,6 +82,9 @@ function fixtureViolations(root: string): string[] {
 describe("operational isolation", () => {
   it("pins two runtimes that share no resource on this machine", () => {
     assert.equal(isolation.schemaVersion, 3);
+    assert.deepEqual(runtimeProfiles, isolationJson.profiles);
+    const ports = Object.values(runtimeProfiles).flatMap(profile => [profile.backendPort, profile.frontendPort, profile.lockPort]);
+    assert.equal(new Set([...ports, isolation.legacy.backendPort, isolation.legacy.frontendPort]).size, ports.length + 2);
     for (const key of DISTINCT_RESOURCE_KEYS) {
       assert.notEqual(isolation.legacy[key], isolation.rebuild[key], `${key} must differ`);
     }
@@ -112,6 +119,11 @@ describe("operational isolation", () => {
       // A drifted literal is not the declared runtime.
       write(root, config.module, readFileSync(join(root, config.module), "utf8")
         .replace(JSON.stringify(isolation.rebuild.stateRoot), JSON.stringify(".tracker-drift")));
+      assert.match(fixtureViolations(root).join("\n"), /exact isolated values/);
+      seedValidRuntime(root);
+
+      write(root, config.module, readFileSync(join(root, config.module), "utf8")
+        .replace("runtimeProfile = readRuntimeProfile()", 'runtimeProfile = "production"'));
       assert.match(fixtureViolations(root).join("\n"), /exact isolated values/);
       seedValidRuntime(root);
 

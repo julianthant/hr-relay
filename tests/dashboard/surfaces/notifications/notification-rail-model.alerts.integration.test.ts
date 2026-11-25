@@ -24,7 +24,7 @@ const item = (id: string, title: string, tone: NotificationItem["tone"], read = 
 });
 const ready = (...items: NotificationItem[]): NotificationsState => ({ state: "ready", items, pinned: [] });
 type Arrival = Parameters<Parameters<InboxWiring["onPublication"]>[0]>[0];
-const served = (state: NotificationsState, listeners: Set<(arrival: Arrival) => void>): InboxWiring => ({ state, notice: "", control: async () => true, readAll: async () => undefined, open: () => undefined,
+const served = (state: NotificationsState, listeners: Set<(arrival: Arrival) => void>): InboxWiring => ({ state, notice: "", control: async () => true, canAct: () => true, canClear: () => true, readAll: async () => undefined, clear: async () => true, clearAll: async () => undefined, open: () => undefined,
   onPublication: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; } });
 const preferencesPort = (notifications: Partial<PersonPreferences["notifications"]>): PersonPreferencesPort => {
   const snapshot = { value: resolvePersonPreferences({ notifications }), state: "ready" as const };
@@ -43,7 +43,7 @@ async function mount(initial: NotificationsState, notifications: Partial<PersonP
     const [state, set] = useState(initial); setState = set;
     const [open, setOpen] = useState(false);
     const deliver = useNotificationAlert(() => { probe.sounds += 1; });
-    const model = useNotificationRailModel({ open, setOpen, setNotice: () => undefined, onOpenNotification: () => undefined, served: served(state, listeners),
+    const model = useNotificationRailModel({ open, setOpen, onRefused: () => undefined, onOpenNotification: () => undefined, served: served(state, listeners),
       onAlert: (arrived, sound) => { probe.alerts.push({ id: arrived.id, sound }); deliver(arrived, sound); } });
     probe.unread = model.unread; probe.open = model.changeOpen;
     probe.listed = model.state.state === "ready" ? model.state.items.map(entry => entry.id) : [];

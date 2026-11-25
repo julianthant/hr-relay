@@ -23,7 +23,7 @@ import { composeDataQueries } from "../../../app/composition/dashboard/data.js";
 
 import { withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
 import { createDebugEventWriter } from "../../../logs/debug-events.js";
-import { serializeErrorCauses } from "../../../../models/failures/error-origins.js";
+import { serializeTokenedErrorCauses } from "../../../../models/failures/error-origins.js";
 import { randomUUID } from "node:crypto";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { dashboardReportAccepted, DashboardErrorReportSchema } from "../../../../models/events/debug-report.js";
@@ -35,22 +35,38 @@ import { type RequestIdentityCheckpoint } from "../request-identity.js";
 import { failureStatus, wireError } from "./failure-status.js";
 import { preflightRunnerTimeout } from "../../../../models/preflight/preflight.js";
 
+// Only fixed recorder failure tokens may travel from exception messages to the log.
+const debugReportCauseTokens = new Set([
+  "debug-event-size-exceeded",
+  "debug-identity-contains-credential-material",
+  "debug-report-identity-conflict",
+  "timeline-diagnostic-cap-exceeded",
+  "timeline-event-owner-mismatch",
+  "timeline-event-owner-missing",
+]);
+
 export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   const app = new Hono<{ Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> } }>();
   const debugEvents = deps.debugEvents ?? createDebugEventWriter({ repository: withEmergencyTimelineWriter(deps.runDetail.timeline, { stateRoot: deps.runDetail.stateRoot, clock: deps.bootstrap.clock, build: deps.bootstrap.appVersion }), clock: deps.bootstrap.clock, build: deps.bootstrap.appVersion });
+  const debugReportRunReader = deps.debugReportRunReader ?? deps.runDetail.runReader;
   registerDebugResponses(app, debugEvents);
   let reportWindow = 0, reportCount = 0;
   app.onError((error, c) => {
     const { status, body } = failureStatus(error);
     if (status >= 500) {
       try {
-        const causes = serializeErrorCauses(error);
+        const causes = serializeTokenedErrorCauses(error);
         const disconnected = causes.some(cause => cause.reason === "request-disconnected");
+        const debugReportFailed = c.req.method === "POST" && c.req.path === "/api/v1/debug/errors";
         const correlationId = randomUUID();
         afterRequestOutcome(c.req.raw, () => {
-          for (const cause of causes) debugEvents.emit({ category: "http", phase: "failed",
-            correlationId, area: "request", reason: "request-cause", ...(disconnected ? {} : { status }),
-            code: cause.code, message: cause.name, stack: cause.stack });
+          for (const cause of causes) {
+            const reportCause = cause.token !== undefined && debugReportCauseTokens.has(cause.token) ? cause.token : cause.reason;
+            const reason = debugReportFailed ? reportCause : "request-cause";
+            debugEvents.emit({ category: "http", phase: "failed", correlationId, area: "request", reason,
+              ...(debugReportFailed ? { method: "POST", route: "/api/v1/debug/errors" } : {}),
+              ...(disconnected ? {} : { status }), code: cause.code, message: cause.name, stack: cause.stack });
+          }
         });
       } catch {
         return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
@@ -119,9 +135,8 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     const parsed = DashboardErrorReportSchema.safeParse(input);
     if (!parsed.success || !dashboardReportAccepted(parsed.data)) return c.json(wireError("DEBUG_REPORT_INVALID", "Dashboard error report fields are invalid.", false), 400);
     const report = parsed.data;
-    const runReader = deps.runDetail.runReader;
-    if (report.runId !== undefined && runReader === undefined) throw new Error("TRUST_RUN_READER_NOT_CONFIGURED");
-    const existence = report.runId === undefined ? undefined : runReader?.read(report.runId);
+    if (report.runId !== undefined && debugReportRunReader === undefined) throw new Error("TRUST_RUN_READER_NOT_CONFIGURED");
+    const existence = report.runId === undefined ? undefined : debugReportRunReader?.read(report.runId);
     const run = existence?.state === "present" ? existence.run : undefined;
     debugEvents.emit({ category: "client", phase: "failed", correlationId: report.reportId,
       area: "dashboard", reason: report.reason,

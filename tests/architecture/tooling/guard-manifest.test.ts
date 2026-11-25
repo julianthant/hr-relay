@@ -138,11 +138,10 @@ export function architectureProjectViolations({
   if (JSON.stringify(unitExclude) !== JSON.stringify([
     "tests/**/*.integration.test.ts",
     "tests/architecture/**",
-    "tests/mocks/**",
     "tests/perf/**",
     ...nativeRunExcludes(process.env.RELAY_TEST_NATIVE),
   ])) {
-    violations.push("unit project must exclude integration suffixes, architecture, mocks, perf, and local native files unless RELAY_TEST_NATIVE=1");
+    violations.push("unit project must exclude integration suffixes, architecture, perf, and local native files unless RELAY_TEST_NATIVE=1");
   }
   if (JSON.stringify(integrationInclude) !== JSON.stringify(["tests/**/*.integration.test.ts"])) {
     violations.push("integration project must include every recursive tests/**/*.integration.test.ts file");
@@ -187,20 +186,11 @@ export function testProjectTopologyViolations(
     const collected = collect(include).filter((path) => !excluded.has(path));
     return { name, files: collected };
   });
-  const mocks = all.filter((path) => path.startsWith("tests/mocks/"));
-  const runtime = all.filter((path) => !path.startsWith("tests/mocks/"));
   const optedOut = new Set(nativeRunExcludes(process.env.RELAY_TEST_NATIVE));
   const violations = projectOwnershipViolations(
-    runtime.filter((path) => !optedOut.has(path)),
-    projects.map((project) => ({
-      ...project,
-      files: project.files.filter((path) => !path.startsWith("tests/mocks/")),
-    })),
+    all.filter((path) => !optedOut.has(path)),
+    projects,
   );
-  for (const path of mocks) {
-    const owners = projects.filter(({ files }) => files.includes(path)).map(({ name }) => name);
-    if (owners.length > 0) violations.push(`${path}: expected no Vitest projects, found ${owners.join(", ")}`);
-  }
   return violations;
 }
 
@@ -313,7 +303,6 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root, "tests/architecture/guard.test.ts", "export {};\n");
       writeFixture(root, "tests/models/real.integration.test.ts", "export {};\n");
       writeFixture(root, "tests/perf/shape.integration.test.ts", "export {};\n");
-      writeFixture(root, "tests/mocks/scene.test.ts", "export {};\n");
       assert.deepEqual(testProjectTopologyViolations(root), []);
       const missingPerf = REBUILD_TEST_PROJECTS.filter(({ name }) => name !== "perf");
       assert.match(testProjectTopologyViolations(root, missingPerf).join("\n"),
@@ -323,12 +312,6 @@ describe("reviewed architecture guard manifest", () => {
         : project);
       assert.match(testProjectTopologyViolations(root, integrationPerfLeak).join("\n"),
         /tests\/perf\/shape\.integration\.test\.ts: expected exactly one Vitest project, found integration, perf/u);
-      const mockLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
-        ? { ...project, exclude: project.exclude.filter((pattern) => pattern !== "tests/mocks/**") }
-        : project);
-      assert.deepEqual(testProjectTopologyViolations(root, mockLeak), [
-        "tests/mocks/scene.test.ts: expected no Vitest projects, found unit",
-      ]);
       writeFixture(root, "tests/support/helpers/helper.test.ts", "export {};\n");
       writeFixture(root, "tests/types/input.integration.test.ts", "export {};\n");
       assert.deepEqual(testProjectTopologyViolations(root), []);
@@ -402,6 +385,17 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runs/commands/command-application.ts",
       "src/backend/runs/commands/command-kernel.ts",
       "src/backend/runs/commands/command-refusal.ts",
+      "src/backend/runs/commands/command-arms.ts",
+      "src/backend/runs/commands/command-replay.ts",
+      "src/backend/runs/commands/gate-command.ts",
+      "src/backend/runs/commands/intake-commands.ts",
+      "src/backend/runs/commands/notification-commands.ts",
+      "src/backend/runs/commands/run-command-context.ts",
+      "src/backend/runs/commands/run-lifecycle-commands.ts",
+      "src/backend/runs/commands/settings-command.ts",
+      "src/backend/runs/commands/start-command.ts",
+      "src/backend/runs/commands/worker-pool-commands.ts",
+      "src/backend/runs/commands/write-resolution-command.ts",
       "src/backend/runs/provenance/evidence-receipt.ts",
       "src/backend/runs/lifecycle/failure-resolution.ts",
       "src/backend/processing/providers/provider-client.ts",
@@ -422,6 +416,11 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runtime/gates/repeat-proof.ts",
       "src/backend/storage/sqlite/run-continuation.ts",
       "src/backend/runtime/execution/run-executor.ts",
+      "src/backend/runtime/execution/run-execution-outcome.ts",
+      "src/backend/runtime/execution/run-execution-plan.ts",
+      "src/backend/runtime/execution/run-execution-task.ts",
+      "src/backend/runtime/execution/run-execution-walk.ts",
+      "src/backend/runtime/execution/run-execution-write.ts",
       "src/backend/runtime/execution/run-failure.ts",
       "src/backend/runtime/workers/worker-loop.ts",
       "src/backend/runtime/workers/worker-sessions.ts",

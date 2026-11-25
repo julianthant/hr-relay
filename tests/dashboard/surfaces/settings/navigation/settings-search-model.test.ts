@@ -3,7 +3,7 @@ import { describe,it } from "vitest";
 import { GENERAL_RUN_PATHS } from "../../../../../src/dashboard/surfaces/settings/general/general-groups-model.js";
 import { searchSettings,settingsSearchIndex } from "../../../../../src/dashboard/surfaces/settings/navigation/settings-search-model.js";
 import { buildSettingsNav } from "../../../../../src/dashboard/surfaces/settings/settings-model.js";
-import { fixtureSettingsDocument } from "../../../../mocks/helpers/fixture-settings.js";
+import { fixtureSettingsDocument } from "../../../../support/helpers/dashboard/mock-world/fixture-settings.js";
 
 const document = fixtureSettingsDocument();
 const groups = buildSettingsNav(document);
@@ -12,7 +12,7 @@ const index = settingsSearchIndex(groups, document);
 describe("Settings field search", () => {
   it("finds pages and the displayed field names with their canonical parent page", () => {
     assert.equal(searchSettings(index, "general")[0]?.target, undefined);
-    assert.deepEqual(searchSettings(index, 'analytics'), []);
+    assert.deepEqual(searchSettings(index, 'analytics').map(result => [result.label, result.entry.id]), [['Analytics', 'activity']]);
     assert.deepEqual(searchSettings(index, "archive"), []);
     assert.deepEqual(searchSettings(index, "backoff").map(result => [result.label, result.entry.id, result.target]), [
       ["Backoff base", "performance", "ocr.backoffBaseMs"], ["Backoff cap", "performance", "ocr.backoffCapMs"],
@@ -39,7 +39,7 @@ describe("Settings field search", () => {
     assert.equal(searchSettings(index, "  DARK  THEME ")[0]?.target, "appearance.theme");
     assert.deepEqual(searchSettings(index, "capture diagnostic"), []);
     assert.equal(searchSettings(index, "animations")[0]?.target, "appearance.animations");
-    assert.equal(searchSettings(index, "browser window")[0]?.target, "browser.window");
+    assert.equal(searchSettings(index, "browser window").some(result => result.target === "browser.window"), false, "the browser window setting is gone from Settings");
     assert.deepEqual(searchSettings(index, "   "), []);
     assert.deepEqual(searchSettings(index, "this setting does not exist"), []);
   });

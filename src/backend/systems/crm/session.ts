@@ -1,7 +1,7 @@
 // CRM uses a security-key Duo ceremony; enroll its security-key credential for this system.
 import { resolveSystemLoginUrl } from "../../../models/config/instance.js";
 import { recordBrowserAction } from "../browser-shared/action-notes.js";
-import type { DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
+import { assertDuoCeremonyLeaseToken, type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,
@@ -11,11 +11,14 @@ import { BrowserLoginError } from "../browser-shared/login-contract.js";
 import type {
   AuthenticatedApplicationVerifier,
   AuthenticationProbe,
+  BrowserLoginStep,
   SystemLoginContext,
 } from "../browser-shared/login-contract.js";
+import { NEW_KRONOS_SSO_PATH } from "../browser-shared/ucsd-sso-guard.js";
 import {
   abortIfCancelled,
   raceCancellation,
+  submitPinnedUcsdSsoCredentials,
   submitSsoForm,
   verifyUcsdAuthenticatedApplication,
   waitForAuthenticatedLanding,
@@ -25,6 +28,7 @@ import {
 const SYSTEM = "crm" as const;
 
 const CRM_APP_HOST = "act-crm.my.site.com";
+const CRM_POST_SSO_ENTRY = "https://crm.ucsd.edu/hr";
 
 const ACTIVE_DIRECTORY_OPTION = "Active Directory";
 // The login-type control returns its option value, never the visible option label.
@@ -111,6 +115,34 @@ async function ensureActiveDirectorySelected(context: SystemLoginContext, token:
   }
 }
 
+async function submitCrmSsoForm(context: SystemLoginContext, token: DuoCeremonyLeaseToken): Promise<void> {
+  context.assertCurrent();
+  const { page, config } = context;
+  // The ACT CRM entry was observed using the same POST route as New Kronos.
+  if (config.urls.crm.prod.entry !== CRM_POST_SSO_ENTRY || URL.parse(page.url())?.pathname !== NEW_KRONOS_SSO_PATH) {
+    return submitSsoForm(SYSTEM, context, token);
+  }
+
+  let step: BrowserLoginStep = "credential-fill";
+  const assertCurrent = () => {
+    abortIfCancelled(SYSTEM, step, context);
+    assertDuoCeremonyLeaseToken(token, { system: SYSTEM });
+  };
+  try {
+    await submitPinnedUcsdSsoCredentials(page, async () => context.credentials, assertCurrent,
+      config.timeouts.navigationMs, NEW_KRONOS_SSO_PATH, (kind, targetId) => {
+        if (targetId === "ucsd.sso.password") step = "sso-submit";
+        recordBrowserAction(kind, targetId);
+      });
+  } catch (error) {
+    if (error instanceof AggregateError) throw error;
+    assertCurrent();
+    throw new BrowserLoginError(
+      SYSTEM, step, "the pinned UCSD SSO form could not be proved or submitted", page.url(), { cause: error },
+    );
+  }
+}
+
 export const crmLoginRecipe = defineVerifiedLoginRecipe({
   system: SYSTEM,
   verify: verifyCrmAuthenticatedApplication,
@@ -153,7 +185,7 @@ export const crmLoginRecipe = defineVerifiedLoginRecipe({
     context.assertCurrent();
     await ensureActiveDirectorySelected(context, token);
     context.assertCurrent();
-    await submitSsoForm(SYSTEM, context, token);
+    await submitCrmSsoForm(context, token);
     context.assertCurrent();
     await waitForAuthenticatedLanding(
       SYSTEM,

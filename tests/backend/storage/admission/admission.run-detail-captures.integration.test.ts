@@ -25,7 +25,7 @@ import { createServerVerifiedArtifactReader } from "../../../../src/backend/stor
 import { ArtifactRefSchema,type ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
 import { deriveDiagnosticContentDigest } from "../../../../src/models/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../../src/models/trust/diagnostic.js";
-import { DiagnosticBundleIdSchema,FailureIdSchema,LOCAL_OPERATOR_ACTOR_ID,RunIdSchema } from "../../../../src/rules/identity/ids.js";
+import { DiagnosticBundleIdSchema,FailureIdSchema,IsoInstantSchema,LOCAL_OPERATOR_ACTOR_ID,RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { RGBA_PNG_BASE64 } from "../../../support/fixtures/diagnostic-image-fixtures.js";
 import { HASH_A,HASH_B,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -39,6 +39,7 @@ const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 const BYTES = Buffer.from("[]");
+const PURGED_AT = IsoInstantSchema.parse(NOW);
 const ATTACHMENT = {
   kind: "console-summary" as const, artifactId: uuidOf(31), mediaType: "application/json" as const,
   byteLength: BYTES.byteLength, digest: createHash("sha256").update(BYTES).digest("hex"),
@@ -199,6 +200,67 @@ describe("run capture authority", () => {
     const retained = await prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId); await retained.lease.dispose();
     assert.equal(h.database.authority.diagnosticBundles.get(first.bundleId), undefined);
     await h.artifactReader.verify(refOf(ATTACHMENT));
+  });
+
+  it("refuses generic bytes whose only membership was purged by retention", async () => {
+    const h = await harness(); recordFailure(h.database);
+    h.database.authority.diagnosticBundles.insert({ ...bundleOf(70, { kind: "operator-request", requestedBy: "local-operator" }),
+      availability: { state: "purged", at: NOW, reason: "retention" } });
+    await assert.rejects(prepareLiveDiagnosticArtifactLease({ ...h.captures, runReader: h.deps.runReader }, ATTACHMENT.artifactId),
+      (error: unknown) => error instanceof SectionUnavailableError && /purged by retention/.test(error.message));
+  });
+
+  it("lists the remaining captures of a run with one purged bundle", async () => {
+    const h = await harness(); recordFailure(h.database);
+    const bytes = Buffer.from("{}");
+    const kept = { ...ATTACHMENT, artifactId: uuidOf(32), byteLength: bytes.byteLength,
+      digest: createHash("sha256").update(bytes).digest("hex") };
+    h.writeArtifact(refOf(kept), bytes);
+    h.database.authority.diagnosticBundles.insert({ ...bundleOf(70, { kind: "operator-request", requestedBy: "local-operator" }),
+      availability: { state: "purged", at: NOW, reason: "retention" } });
+    h.database.authority.diagnosticBundles.insert(bundleOf(71, { kind: "operator-request", requestedBy: "local-operator" }, { attachments: [kept] }));
+    const section = await readRunSection(h.deps, uuidOf(1), "captures");
+    if (section.section !== "captures") throw new Error("captures section missing");
+    assert.deepEqual(section.payload.artifacts.map(capture => capture.artifact.artifactId), [kept.artifactId]);
+  });
+
+  it("keeps verified captures when retention marks a later bundle after the run index is listed", async () => {
+    const h = await harness(); recordFailure(h.database);
+    const bytes = Buffer.from("{}");
+    const later = { ...ATTACHMENT, artifactId: uuidOf(32), byteLength: bytes.byteLength,
+      digest: createHash("sha256").update(bytes).digest("hex") };
+    h.writeArtifact(refOf(later), bytes);
+    h.database.authority.diagnosticBundles.insert(bundleOf(70, { kind: "operator-request", requestedBy: "local-operator" }));
+    const marked = bundleOf(71, { kind: "operator-request", requestedBy: "local-operator" }, { attachments: [later] });
+    h.database.authority.diagnosticBundles.insert(marked);
+    const authority = h.captures.authority;
+    let listed = false;
+    const captures = { ...h.captures, authority: { ...authority,
+      listByRun: (runId: string) => { const bundles = authority.listByRun(runId); listed = true; return bundles; },
+      get: (bundleId: string) => listed && bundleId === marked.bundleId
+        ? { ...marked, availability: { state: "purged" as const, at: PURGED_AT, reason: "retention" as const } } : authority.get(bundleId) } };
+    const section = await readRunSection({ ...h.deps, captures }, uuidOf(1), "captures");
+    if (section.section !== "captures") throw new Error("captures section missing");
+    assert.deepEqual(section.payload.artifacts.map(capture => capture.artifact.artifactId), [ATTACHMENT.artifactId]);
+  });
+
+  it("keeps verified captures when retention marks a later bundle during its exact verification", async () => {
+    const h = await harness(); recordFailure(h.database);
+    const bytes = Buffer.from("{}");
+    const later = { ...ATTACHMENT, artifactId: uuidOf(32), byteLength: bytes.byteLength,
+      digest: createHash("sha256").update(bytes).digest("hex") };
+    h.writeArtifact(refOf(later), bytes);
+    h.database.authority.diagnosticBundles.insert(bundleOf(70, { kind: "operator-request", requestedBy: "local-operator" }));
+    const marked = bundleOf(71, { kind: "operator-request", requestedBy: "local-operator" }, { attachments: [later] });
+    h.database.authority.diagnosticBundles.insert(marked);
+    const authority = h.captures.authority;
+    let reads = 0;
+    const captures = { ...h.captures, authority: { ...authority,
+      get: (bundleId: string) => bundleId === marked.bundleId && ++reads > 1
+        ? { ...marked, availability: { state: "purged" as const, at: PURGED_AT, reason: "retention" as const } } : authority.get(bundleId) } };
+    const section = await readRunSection({ ...h.deps, captures }, uuidOf(1), "captures");
+    if (section.section !== "captures") throw new Error("captures section missing");
+    assert.deepEqual(section.payload.artifacts.map(capture => capture.artifact.artifactId), [ATTACHMENT.artifactId]);
   });
 
   it("serves captures, failure and receipt without a fold, then refuses foreign failure identity", async () => {
@@ -410,24 +472,39 @@ describe("run capture authority", () => {
     assert.equal(h.sourceReads.length, 1);
   });
 
-  it.each(["missing", "digest", "size"] as const)("keeps %s bytes visibly corrupt on both public reads", async (fault) => {
+  it.each(["missing", "digest", "size", "missing with an unreadable retention marker"] as const)("keeps %s bytes visibly corrupt on both public reads", async (fault) => {
     const h = await harness();
     h.database.authority.diagnosticBundles.insert(bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" }));
     const ref = refOf(ATTACHMENT);
-    if (fault === "missing") h.removeArtifact(ref);
+    const unreadableMarker = fault === "missing with an unreadable retention marker";
+    const missing = fault === "missing" || unreadableMarker;
+    if (missing) h.removeArtifact(ref);
     else h.writeArtifact(ref, Buffer.from(fault === "digest" ? "{}" : "[bad]"));
+    let deps = h.deps;
+    const failMarkerRead = vi.fn(() => { throw new Error("PRIVATE_PATH"); });
+    if (unreadableMarker) {
+      const authority = h.captures.authority;
+      const get = (bundleId: string) => authority.get(bundleId);
+      const readBundle = vi.fn(get)
+        .mockImplementationOnce(get)
+        .mockImplementationOnce(failMarkerRead)
+        .mockImplementationOnce(get)
+        .mockImplementationOnce(failMarkerRead);
+      deps = { ...deps, captures: { ...h.captures, authority: { ...authority, get: readBundle } } };
+    }
 
-    const detail = await readRunDetail(h.deps, uuidOf(1));
+    const detail = await readRunDetail(deps, uuidOf(1));
     assert.equal(detail.captures?.state, "error");
     if (detail.captures?.state !== "error") throw new Error("expected capture error");
     assert.equal(
       detail.captures.code,
-      fault === "missing" ? "DIAGNOSTIC_BUNDLE_BYTES_MISSING" : "DIAGNOSTIC_BUNDLE_CORRUPT",
+      missing ? "DIAGNOSTIC_BUNDLE_BYTES_MISSING" : "DIAGNOSTIC_BUNDLE_CORRUPT",
     );
     assert.equal(detail.captures.retryable, false);
     assert.doesNotMatch(detail.captures.message, /PRIVATE_PATH|\[bad\]/u);
     assert.equal(detail.availableSections.includes("captures"), false);
-    await assert.rejects(() => readRunSection(h.deps, uuidOf(1), "captures"), DiagnosticBundleCorruptError);
+    await assert.rejects(() => readRunSection(deps, uuidOf(1), "captures"), DiagnosticBundleCorruptError);
+    if (unreadableMarker) assert.equal(failMarkerRead.mock.calls.length, 2);
   });
 
   it.each(["foreign", "duplicate", "conflicting-origin", "malformed", "missing-origin"] as const)(

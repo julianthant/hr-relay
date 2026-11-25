@@ -378,7 +378,7 @@ describe("CRM onboarding selector-backed driver", () => {
     const driver = createCrmOnboardingDriver(() => undefined, fixturePage({ searches: {}, records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/2/2026" } } }));
     assert.equal((await driver.verifyOnboardingRecord(selected)).firstDayOfService, "7/2/2026");
     for (const eid of [OTHER_EID]) {
-      await assert.rejects(createCrmOnboardingDriver(() => undefined, fixturePage({ searches: {}, records: { exact: { eid, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/2/2026" } } })).verifyOnboardingRecord(selected), /identity changed/);
+      await assert.rejects(createCrmOnboardingDriver(() => undefined, fixturePage({ searches: {}, records: { exact: { eid, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/2/2026" } } })).verifyOnboardingRecord(selected), /The selected CRM record changed\./u);
     }
   });
 

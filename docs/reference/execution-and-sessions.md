@@ -68,7 +68,7 @@ attempts survive window recovery without an automatic enrollment retry.
 
 ### 2.1 Gates and parks
 
-`src/backend/runtime/execution/run-executor.ts` closes sessions through `closeAll("parked")`
+`src/backend/runtime/execution/run-execution-walk.ts` closes sessions through `closeAll("parked")`
 before returning a parked outcome.
 
 `WorkerSessionManager.closeAll` in `src/backend/runtime/workers/worker-sessions.ts` rejects new
@@ -342,8 +342,9 @@ condition, not evidence that an operation succeeded.
 
 ### 5.5 Task deadline
 
-`src/backend/runtime/execution/run-executor.ts` requires an injected `taskDeadlineMs` and races
-task invocations against the monotonic scheduler. `src/backend/runtime/writes/write-sequencer.ts`
+`src/backend/runtime/execution/run-executor.ts` validates the injected `taskDeadlineMs` before
+execution. `src/backend/runtime/execution/run-execution-task.ts` races task invocations against the
+monotonic scheduler. `src/backend/runtime/writes/write-sequencer.ts`
 owns the corresponding transaction invocation deadline. Both propagate cancellation and preserve
 failure evidence. The transaction resource remains owned after the fence until its callback
 settles, even when the task deadline has expired.
@@ -577,7 +578,7 @@ During shutdown, final exit observation is bounded by `WORKER_EXIT_OBSERVATION_T
 
 ### 11.2 Durable worker and browser controls
 
-`src/backend/runs/commands/command-kernel.ts` admits `plan-worker-count`, `spawn-worker`,
+`src/backend/runs/commands/worker-pool-commands.ts` admits `plan-worker-count`, `spawn-worker`,
 `pause-worker`, `resume-worker`, `refresh-browser`, and `reopen-browser` into
 `worker_controls` before asynchronous effects. `src/models/run/worker-control.ts`
 defines worker browser observations and the control refusal error. Fresh ordinary targeted

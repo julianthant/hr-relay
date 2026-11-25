@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { EVENT_STREAM_RETENTION_DAYS } from "../../../../models/events/retention.js";
+import { DEBUG_EVENT_RETENTION_DAYS, EVENT_STREAM_RETENTION_DAYS } from "../../../../models/events/retention.js";
 import { ArtifactRefSchema } from "../../../../models/artifacts/artifacts.js";
 import { localDatePart } from "../../../../rules/time/clock.js";
 import type { createOperatorProjection } from "./queue.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { createNoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
+import { createDashboardBackgroundReader } from "../../../storage/sqlite/dashboard-background-read-worker.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/index.js";
 import { type StartupCleanup } from "./runtime-contracts.js";
 import { createDiagnosticRetentionSweep, type DiagnosticRetentionSweepDependencies } from "../../../logs/diagnostics/diagnostic-retention.js";
@@ -15,21 +16,19 @@ import { inspectArtifactDeletionFile } from "../../../storage/artifacts/content-
 const TIMELINE_POLL_MS = 250;
 const RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000;
 
-// Notification polling has its own cadence; leases can change without spans.
-export const GATE_PARK_WATCH_MS = 5_000;
-
-
+export const GATE_PARK_WATCH_MS = 1_000;
 
 export function composeDashboardTimeline(input: { database: AuthorityDatabase; clock: Clock; loggingRepository: Parameters<typeof createNoteTimelineWriter>[0]["repository"]; projection: ReturnType<typeof createOperatorProjection>; startupCleanups: StartupCleanup[]; admission: RuntimeAdmission; lifecycle: DiagnosticRetentionSweepDependencies["lifecycle"]; debugEvents: Pick<ReturnType<typeof createDebugEventWriter>, "emit"> }) {
   const { database, clock, loggingRepository, projection, startupCleanups, admission, lifecycle, debugEvents } = input;
   const noteWriter = createNoteTimelineWriter({ repository: loggingRepository, clock });
 
-  // Ordinary timeline and notes retain their 30-day append-day window.
+  // Ordinary timeline and notes retain their 30-day append-day window, unpinned debug entries their shorter one.
   // Confirmed operation events remain until explicit owner deletion.
-  const pruneTimeline = () => database.authority.timelineEvents.pruneBefore(localDatePart(new Date(
-    clock.nowMs() - EVENT_STREAM_RETENTION_DAYS * 24 * 60 * 60 * 1000,
-  )));
+  const cutoff = (days: number) => localDatePart(new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000));
+  const pruneTimeline = () => database.authority.timelineEvents.pruneBefore(cutoff(EVENT_STREAM_RETENTION_DAYS));
+  const pruneDebug = () => database.authority.timelineEvents.pruneDebugBefore(cutoff(DEBUG_EVENT_RETENTION_DAYS));
   pruneTimeline();
+  pruneDebug();
 
   const reportRetentionFailure = (area: string, error: unknown) => debugEvents.emit({
     category: "boot", phase: "failed", correlationId: randomUUID(), area, reason: "purge-failed",
@@ -67,10 +66,23 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
     } catch (error) {
       reportRetentionFailure("timeline-retention", error);
     }
+    try { pruneDebug(); } catch (error) { reportRetentionFailure("debug-retention", error); }
     sweepDiagnostics();
   }, RETENTION_SWEEP_MS);
   diagnosticRetentionTimer.unref();
   startupCleanups.push(() => clearInterval(diagnosticRetentionTimer));
+
+  // Capture positions before the initial fold so a peer commit during startup remains visible.
+  const workerTables = ["runs", "deleted_runs", "worker_slots", "worker_pools", "run_batches", "auth_leases", "write_intents"] as const;
+  const revision = database.trackAuthorityTables(["timeline_events", ...workerTables], "poll-hint");
+  const workerRevision = database.trackAuthorityTables(workerTables, "poll-hint");
+  const startupTimelineRevision = database.trackAuthorityTables(["timeline_events"], "poll-hint");
+  let key: string | { state: "retry" } = JSON.stringify(database.capturedChangeKey());
+  const startupWorkers = workerRevision();
+  let startupTimeline = startupTimelineRevision();
+  let observed = revision();
+  let lastWall = clock.nowMs(), leaseExpiry = Infinity;
+  let safetyAt = clock.monotonicMs() + 60_000;
 
   // Fold whatever span history already exists before serving a single count.
   projection.rebuildFromTimeline();
@@ -78,14 +90,76 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   if (initialHealth.state === "degraded") {
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
-  // Read the shared SQLite cursor; process-local notifications cannot guarantee event delivery.
-  const timelineTimer = setInterval(() => {
-    projection.ingestFromTimeline();
-    projection.reconcileWorkerAuthority();
-  }, TIMELINE_POLL_MS);
+  const reader = createDashboardBackgroundReader(admission, database);
+  let pending: Promise<void> | undefined, stopped = false, checkAfterRead = false, initialRead = true;
+  const startRead = (now: number, workersAtStart: number | undefined) => {
+    const workerRevisionState = () => {
+      const current = workerRevision();
+      return { readUnchanged: current !== undefined && current === workersAtStart,
+        startupUnchanged: current !== undefined && current === startupWorkers };
+    };
+    pending = projection.pollBackground(request => reader.read(request), now, workerRevisionState).then(expiry => {
+      if (expiry === undefined) {
+        key = { state: "retry" };
+        checkAfterRead = true;
+      } else leaseExpiry = expiry;
+    }).catch((error: unknown) => {
+      if (stopped) return;
+      // A normal commit can supersede paged worker facts while the admitted timeline remains live.
+      if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") key = { state: "retry" };
+      else projection.backgroundReadFailed(error);
+    }).finally(() => {
+      pending = undefined;
+      initialRead = false;
+      if (checkAfterRead && !stopped) {
+        checkAfterRead = false;
+        check();
+      }
+    });
+    return pending;
+  };
+  function check() {
+    if (stopped) return;
+    try {
+      const current = JSON.stringify(database.capturedChangeKey());
+      const now = clock.nowMs(), elapsed = clock.monotonicMs();
+      const safety = elapsed >= safetyAt;
+      const leaseDue = now >= leaseExpiry || now < lastWall;
+      const degraded = projection.health().state === "degraded";
+      if (current === key && !safety && !leaseDue && !degraded) {
+        lastWall = now;
+        return;
+      }
+      if (pending !== undefined) {
+        checkAfterRead = true;
+        // Initial worker validation can take longer than the timeline's publication deadline.
+        if (initialRead && !degraded && current !== key) {
+          const nextTimeline = startupTimelineRevision();
+          if (nextTimeline === undefined || nextTimeline !== startupTimeline) projection.ingestFromTimeline();
+          startupTimeline = nextTimeline;
+        }
+        return;
+      }
+      lastWall = now;
+      const next = revision();
+      if (safety || leaseDue || degraded || typeof key !== "string" || next === undefined || next !== observed) void startRead(now, workerRevision());
+      key = current;
+      observed = next;
+      if (safety) safetyAt = elapsed + 60_000;
+    } catch (error) {
+      projection.backgroundReadFailed(error);
+    }
+  }
+  void startRead(lastWall, startupWorkers);
+  const timelineTimer = setInterval(check, TIMELINE_POLL_MS);
   timelineTimer.unref();
-  startupCleanups.push(() => clearInterval(timelineTimer));
-
-
-  return { noteWriter, timelineTimer, diagnosticRetentionTimer };
+  const settled = async () => { while (pending !== undefined) await pending; };
+  const stopTimeline = async () => {
+    stopped = true;
+    clearInterval(timelineTimer);
+    await reader.close({ cancelPending: true });
+    await settled();
+  };
+  startupCleanups.push(stopTimeline);
+  return { noteWriter, timelineTimer, diagnosticRetentionTimer, settled, stopTimeline };
 }

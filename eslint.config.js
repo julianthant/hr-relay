@@ -36,7 +36,7 @@ const typeAwareTuning = {
   "preserve-caught-error": "error",
 };
 
-export default ts.config(
+export const createEslintConfig = (lintProject = false) => ts.config(
   { ignores: ["dist", "node_modules", "coverage", ".work"] },
   js.configs.recommended,
   ...ts.configs.recommended,
@@ -45,7 +45,8 @@ export default ts.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        project: lintProject,
+        projectService: !lintProject,
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -110,3 +111,5 @@ export default ts.config(
     ...ts.configs.disableTypeChecked,
   },
 );
+
+export default createEslintConfig();

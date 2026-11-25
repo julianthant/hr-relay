@@ -4,11 +4,11 @@ import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
-import { createDeterministicProviderHarness } from "../../../../src/backend/processing/providers/deterministic-provider.js";
+import { createDeterministicProviderHarness } from "../../../support/fixtures/backend/deterministic-provider.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { FingerprintSchema, IsoInstantSchema, TraceIdSchema } from "../../../../src/rules/identity/ids.js";
-import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/gate-command.js";
 import { captureRunContinuation } from "../../../../src/backend/storage/sqlite/run-continuation.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";

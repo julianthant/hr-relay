@@ -1,60 +1,59 @@
-# Mock scene runner
+# Gallery guide
 
-`npm run mocks` runs Playwright with `playwright.mocks.config.ts` to render `/ui-mock` scenes from the
-mock dashboard build. It is not a test gate and CI never runs it. Dashboard behaviour is proven by
-Vitest unit/integration tests and `/verify` browser checks.
+The state gallery is the one place every dashboard state is drawn. It replaced the Playwright mock scenes
+(`npm run mocks`, `tests/mocks/`), which CI never ran and which had drifted from the UI.
 
-## Scenes
+## Where a state lives
 
-One row per scene file in `tests/mocks/`. Run one file alone: `npm run mocks -- --workers=1 <file>`. A frame folder is the
-file's output variable, or `.work/mocks-output/<folder>` in the repo when the variable is unset.
+- `tests/support/helpers/dashboard/smoke/stories/` holds one file per surface. Each keys its stories by the state
+  type it renders, typed `satisfies Record<StateType, Story>`, so a state without a story fails typecheck.
+- `tests/smoke/dashboard-states.gallery.ts` runs every state rule on every story at both desktop sizes and saves a
+  frame of each under `tests/smoke/.output/states/`. Run one surface with `--grep @<surface>` and `--project=gallery`.
+- `tests/smoke/gallery/` is the page that renders a story; the rules live in
+  `tests/support/helpers/dashboard/smoke/state-rules.ts`.
+- Add a new state as a story in its surface's file. Add behaviour (keyboard flow, live updates, focus) as a
+  `tests/smoke/*.smoke.ts` test or a Vitest test, never as a frame.
 
-| Surface | File | Scenes | Output variable |
-| --- | --- | --- | --- |
-| Log in, sign-up, Duo step, ready, Duo setup window | `onboarding-mock.test.ts` | `onboarding frames @ <theme> <width>`: 13 states (`ONBOARDING_SCENES` in `helpers/onboarding-scenes.tsx`) | `ONBOARDING_MOCK_OUT` |
-| Spreadsheets detail with cell fills | `spreadsheets-fills-mock.test.ts` | `spreadsheet detail with cell fills @ <theme> <width>` | `SPREADSHEET_MOCK_OUT` |
-| Spreadsheets library, sync states | `sweep-fixtures-workbooks.test.ts` | `served workbook library, General workbook and sync states` | `SWEEP_FIXTURES_OUT` |
-| Analytics (done, failed, waiting runs) | `zz-status-mock.test.ts` | `analytics states @ <theme>` | `STATUS_MOCK_OUT` |
-| Analytics read failure, account lost | `sweep-fixtures-account-analytics.test.ts` | `served Analytics read failure`, `account lost while a served Assistant proposal waits` | `SWEEP_FIXTURES_OUT` |
-| Queue, run input, run dialog, Settings pages, Logs, toasts, kit | `zz-status-mock.test.ts` | `status mock`, `run input every workflow`, `settings pages`, `logs footer states`, `logs cards`, `sidebar collapse widens logs`, `command result toasts`, `command unknown toast`, `kit …`, `run dialog …`, `customize steps every workflow` | `STATUS_MOCK_OUT` |
-| Needs Duo | `needs-duo-mock.test.ts` | `needs duo frames`, `served needs duo before/after` | `NEEDS_DUO_MOCK_OUT` |
-| Failure notice | `failure-notice-mock.test.ts` | `failure notice frames` | `FAILURE_NOTICE_MOCK_OUT` |
-| Notification centre, search palette | `notifications-mock.test.ts` | `notification centre`, `search palette`, `served notifications priority` | `NOTIFICATIONS_MOCK_OUT` |
-| Run detail Logs, timeline strip, failure card | `notifications-sweep.test.ts` | `sweep` | `NOTIFICATIONS_MOCK_OUT` |
-| Decision card | `notifications-sweep-decisions.test.ts` | `decision card ucpath-found` | `NOTIFICATIONS_MOCK_OUT` |
-| Settings General, ChatGPT | `settings-general-chatgpt-mock.test.ts` | `general top frames` | `SETTINGS_GENERAL_CHATGPT_MOCK_OUT` |
-| Check Fix destinations | `check-fix-destinations.test.ts` | `every Fix lands on its focused row…` | `CHECK_FIX_OUT` |
-| Run dialog reference gate | `run-dialog-reference-gate.test.ts` | `Emergency Contact holds Continue until the roster is added` | `REFERENCE_GATE_OUT` |
-| OCR review, member retry | `sweep-fixtures-ocr.test.ts` | `served OCR review`, `served OCR member-retry`, `served OCR parent Records opens the review` | `SWEEP_FIXTURES_OUT` |
-| Run detail, dry-run preview, Logs over SSE | `sweep-fixtures-run-detail.test.ts` | four scenes plus `finished dry run shows its full preview region` (expected to fail until dry-run-preview-01 lands) | `SWEEP_FIXTURES_OUT` |
-| Work Study queue, run input sentences, Sessions Needs Duo | `sweep-fixtures-shell.test.ts` | `served empty Work Study queue and page`, `served <workflow> input sentences`, `served Sessions Needs Duo` | `SWEEP_FIXTURES_OUT` |
-| Assistant, Explorer | `zz-assistant-explorer-mock.test.ts` | `assistant explorer mock`, `assistant panel header, History and composer`, `assistant full access and Ask mark`, `Ask mark states video` | `AX_MOCK_OUT` |
-| Entry harness, sessions bar, switches | `app-entry.test.ts`, `sessions-bar-hover.test.ts`, `switch-pointer-click.test.ts` | assertions only, no frames | none |
+## Shared fixtures
 
-## Run
+The data the scenes used lives in `tests/support/`:
 
-```sh
-npm run mocks -- zz-status-mock.test.ts -g "<title>"
-```
+- `tests/support/helpers/dashboard/mock-world/` holds the fixture BFF routes, the seeded services, the sample
+  workflow composition and the mock bundle proof (`bundle.ts`, `dist/mock-dashboard`). `app-entry.tsx` is the
+  mock build entry named by `vite.mocks.config.ts`; it sets the harness flag that `mockParam` in
+  `src/dashboard/app/mock-surfaces.ts` reads, so a served dashboard never shows a mock.
+- `tests/support/fixtures/dashboard/workflow-mocks/` holds the mock workflow runs, queue, review and Records
+  models. Nothing under `src/` imports either folder.
 
-Each scene spec writes PNGs to the folder its environment variable names (for example
-`STATUS_MOCK_OUT`). Run one scene at a time, serially, with one worker.
+## Retired scenes
 
-## Configuration and isolation
+Each former scene file, what replaced it, and why. "Story" names the gallery file under
+`tests/support/helpers/dashboard/smoke/stories/`.
 
-Headless Chromium, 1280×720, device scale factor 1, no touch, and no mobile emulation. Default scenes
-use the `graphite-warm` theme with `data-demo-theme="dark"`. Fixture processes and browsers use
-`America/Los_Angeles`.
+| Scene file (deleted) | Disposition |
+| --- | --- |
+| `onboarding-mock` | Story: `sign-in-stories.tsx` (login, signup, duo, ready and the session states). |
+| `settings-general-chatgpt-mock` | Story: `settings-stories.tsx` (General, ChatGPT connect states, plan usage). |
+| `spreadsheets-fills-mock`, `spreadsheets-library-mock`, `sweep-fixtures-workbooks` | Story: `spreadsheets-stories.tsx` (library, empty, versions, row menu, sync, import dialog, grid). |
+| `needs-duo-mock`, `sweep-fixtures-shell` (Sessions Needs Duo) | Story: `sessions-stories.tsx` (`needs-duo` browser card, bar states). |
+| `sweep-fixtures-shell` (Work Study queue, run input sentences) | Story: `shell-stories.tsx` and `run-dialog-stories.tsx`; input wording is held by `run-start.wording.integration.test.ts`. |
+| `failure-notice-mock` | Story: `run-panel-stories.tsx` (failed, retryable and after-write failure cards). |
+| `notifications-mock`, `notifications-sweep-decisions` | Story: `notifications-stories.tsx` and `shell-stories.tsx` (search palette); decision cards are `run-panel-stories.tsx` decision stories. |
+| `notifications-sweep` | Deleted. Its `notificationsPreview=centre` address no longer exists, so it never reached the run it asserted on; the Logs, failure card and timeline it framed are `run-panel-stories.tsx` stories, and its exact 53px/49px header/footer heights asserted an older Logs layout. No product fault. |
+| `sweep-fixtures-run-detail` | Live Logs over the event stream: `dashboard-live-updates.smoke.ts` already proves the run view re-reads on each event and stream envelopes. Run detail states are `run-panel-stories.tsx`. The dry-run preview region test was a known product fault; it is held on the finding for dry-run-preview-01 and was never a passing check. |
+| `sweep-fixtures-ocr` | Story: `run-panel-stories.tsx` review stories (ready, unconfirmed, needs-review, approved, empty). |
+| `sweep-fixtures-account-analytics` | Story: `analytics-stories.tsx` (`unavailable`) and `assistant-stories.tsx` (account states). |
+| `zz-assistant-explorer-mock` | Story: `assistant-stories.tsx`, `explorer-stories.tsx`, `settings-stories.tsx`. The Ask-mark video was an animation recording and asserted nothing. |
+| `zz-status-mock` (queue, kit, settings pages, Logs footer and cards, toasts, run input) | Story: `queue-row-stories.tsx`, `shell-stories.tsx`, `settings-stories.tsx`, `run-panel-stories.tsx`, `run-dialog-stories.tsx`. Kit specimens stay at `/kit.html`. Run dialog keys (Enter to continue, Shift+Enter): `run-start.test.ts`. |
+| `zz-status-mock` (`analytics states`) | Story: `analytics-stories.tsx` (`loaded`, `range-30d`, `one-workflow`, `workflow-details`). Unexplained timeout: a 240-second chain of about twenty steps that hovers bars by day label against a sample clock. It was not reproduced here and no product fault was seen; the states it passed through are individual stories. |
+| `command-readback-mock`, `toasts-text-only-mock` | Story: `settings-stories.tsx` (`unconfirmed`, `applied`) and `sessions-stories.tsx` (`pending`, `confirmed`, `refused`); the text-only toast rule is `toast-text-only` in the state rules. |
+| `check-fix-destinations` | Fix then Escape moved to `dashboard-app.integration.test.ts` (Escape from Settings opened by Fix returns to the dialog, beside the Close settings case); Fix destinations are held by `run-start.checks.integration.test.ts`; the focused row is the `opened-for-check` story. |
+| `run-dialog-reference-gate` | Story: `run-dialog-stories.tsx` reference stories. Unexplained timeout: after choosing the roster it clicks the text "Do not file", which no longer exists anywhere in the dashboard, so the click waited out the 120-second test timeout. A stale selector, not a product fault. |
+| `sessions-bar-hover`, `switch-pointer-click`, `app-entry` | Deleted. They asserted a hover tint, a switch click and a harness entry that `sessions-stories.tsx`, the run dialog stories and the smoke suite now cover. |
 
-`tests/mocks/helpers/global-setup.ts` builds or verifies the bundle once before workers start.
-`helpers/bundle.ts` owns `dist/mock-dashboard` and its input stamp. Fixture/seeded BFF servers use
-ephemeral ports and owned temporary state rather than dashboard runtime ports or live HR state.
-`helpers/workflow-composition.ts` selects the test composition explicitly. `tests/mocks/app-entry.tsx`
-sets the harness flag that `mockParam` in `src/dashboard/app/mock-surfaces.ts` reads, and
-`helpers/workflow-composition.ts` hands the app its sample Analytics, Sessions, notifications, search and status frames through `WorkflowComposition.harness`, so a served
-dashboard never shows a mock.
-
-Playwright writes failure artifacts under `tests/mocks/.output/`.
+The 25 failures of 2026-11-19 came mostly from stale assertions (a 256px sidebar now 208, a removed Permissions
+heading, one Start run button where an empty queue shows two). The scenes were deleted rather than repaired, so
+those failures were not each re-run; the dry-run preview region failure stays a product finding.
 
 ## Current presentation choices
 
@@ -71,12 +70,12 @@ presentation.
 - The run header stays compact and omits a separate Data rail and Receipt tab.
 - OCR Records is the document review body, with its floating control outside the document text.
 - Standalone OCR has no downstream approval; delegated OCR holds downstream outcomes until approval.
-- The launcher shares Input/Values, Options, Steps, and Confirm layouts without adding empty stages.
+- The launcher shares Input/Values, Options, and Checks layouts without adding empty stages.
 - Run and Rerun Options use card rows; Dry run starts off, browser mode is Headed, and Screenshots is locked Always on.
-- Required reference types add spreadsheet and named-version rows. Confirm frames Plan, Input and declared Output groups; each stage starts at the top, and body scrolling keeps the header and footer in place.
+- Required reference types add spreadsheet and named-version rows. Checks frame Plan, Input and declared Output groups; each stage starts at the top, and body scrolling keeps the header and footer in place.
 - Reading steps allow typed manual values while form actions and required sign-in steps remain included.
 - Settings uses a stationary rail/Navbar and body-scoped content, search, guarded exit, and child breadcrumbs.
-- Settings places General/Account under Personal and Paths/Routes under Advanced; Performance remains reachable through Settings search.
+- Settings places General/Account under Personal, Spreadsheets/Explorer/Analytics under Data and Keyboard under Help; Paths, Routes and Performance are groups inside General.
 - General shows the ChatGPT account port; provider budget/model, API-key, viewport, and version-bump controls are absent.
 - Save feedback requires matching acknowledgment/readback and uses a value-free toast with retained inline recovery state.
 - Sessions remains a strip with worker cards and controls behind its add-workers entry.
@@ -96,8 +95,7 @@ presentation.
 Julian approved the HUB-R4 composer over HUB-R3 on October 19, 2026 at 2:41 PM PT
 (`relay-plan/briefs/HUB-WIRE-1.md`). The approved combined presentation inventory is 107 TSX files,
 22 stylesheets and two theme modules (131 paths). The inventory test and exact path fixture own
-that freeze. Legacy mock drivers follow the current visible controls; removed presentation
-contracts are replaced with inclusion/exclusion, geometry, keyboard and interaction assertions.
+that freeze. Removed presentation contracts are replaced with inclusion/exclusion, geometry, keyboard and interaction assertions.
 
 See [DESIGN.md](DESIGN.md) for composition rules and
 [the wiring contract](../../docs/reference/frontend-backend-integration.md) for producer acceptance.

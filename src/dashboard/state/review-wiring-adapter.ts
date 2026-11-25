@@ -12,6 +12,7 @@ import { OcrApprovalReferenceSchema } from "../../models/workflows/ocr/result.js
 import { deriveSchemaHash } from "../../models/validation/schema-bound-value.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { correctedOcrRecord } from "../surfaces/run-detail/review/review-model.js";
+import { createRowWait } from "./run-wiring-adapter.js";
 import { checkedCommandResult } from "../client/commands/shared-commands.js";
 
 type ReviewState = Readonly<{ state: "loading" | "loaded" | "failed"; page?: ReviewPage; error?: string }>;
@@ -94,7 +95,8 @@ export async function verifyOcrReviewEffect(client: DashboardClient, request: Da
 
 type ReviewDraftFields = Record<string, Record<string, string>>;
 type ReviewDraft = { revision: number; fields: ReviewDraftFields; includes: Record<string, boolean> };
-type ReviewAttempt = { request?: CommandRequest; captured?: Pick<ReviewDraft, "fields" | "includes">;
+/** `actedOn` is the run row version the command was first sent against; a check of its result keeps it. */
+type ReviewAttempt = { actedOn?: number; request?: CommandRequest; captured?: Pick<ReviewDraft, "fields" | "includes">;
   state: "pending" | "uncertain" | "conflict" | "refused"; text: string };
 interface ReviewMemory {
   draft?: ReviewDraft;
@@ -102,6 +104,7 @@ interface ReviewMemory {
   confirmed?: { revision: number; approved: boolean };
   discardedRecords?: readonly string[];
   binding?: DashboardCommandBinding;
+  rowWait?: ReturnType<typeof createRowWait>;
   version: number;
   listeners: Set<() => void>;
 }
@@ -139,6 +142,10 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
   const snapshot = useCallback(() => memory.version, [memory]);
   useSyncExternalStore(subscribe, snapshot, snapshot);
   useEffect(() => { memory.binding = binding; }, [memory, binding]);
+  const heldRevision = useRef(selection.row.rowRevision);
+  heldRevision.current = selection.row.rowRevision;
+  useEffect(() => { memory.rowWait?.observe(selection.row.rowRevision); }, [memory, selection.row.rowRevision]);
+  useEffect(() => () => memory.rowWait?.stop(), [memory, binding?.scope]);
   const { attempt, draft } = memory;
   const page = resource.page, review = page?.ocr;
   const fresh = resource.state === "loaded" && binding?.scope.client === client && binding.authority.dayState.day.state === "loaded"
@@ -151,7 +158,8 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
   const send = useCallback(async (request: CommandRequest, captured?: Pick<ReviewDraft, "fields" | "includes">, check = false) => {
     const start = memory.binding;
     if (start === undefined || start.scope.client !== client || memory.attempt?.state === "pending") return;
-    memory.attempt = { request, captured, state: "pending", text: "Pending" };
+    const actedOn = check ? memory.attempt?.actedOn ?? heldRevision.current : heldRevision.current;
+    memory.attempt = { actedOn, request, captured, state: "pending", text: "Pending" };
     publishReview(memory);
     const options = { scope: start.scope, readback: (input: DashboardCommandRequest) => verifyOcrReviewEffect(client, input) };
     let outcome = check ? await start.executor.check(request.commandId, { ...options, observe: async input => {
@@ -180,11 +188,14 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
         memory.attempt = undefined;
       }
     }
-    if (outcome.kind !== "confirmed") memory.attempt = { request, captured, state: reviewAttemptState(outcome), text: outcome.feedback.text };
+    if (outcome.kind !== "confirmed") memory.attempt = { actedOn, request, captured, state: reviewAttemptState(outcome), text: outcome.feedback.text };
     publishReview(memory);
     if (memory.listeners.size > 0) {
       memory.binding?.feedback(outcome);
-      if (confirmed) memory.binding?.authority.dayState.refresh();
+      // The run row the command acted on is the one this editor held when it was sent; the OCR revision is another counter.
+      if (confirmed) (memory.rowWait ??= createRowWait()).wait(actedOn, heldRevision.current, () => {
+        if (memory.binding?.scope === start.scope) start.authority.dayState.refresh();
+      });
     }
   }, [client, memory]);
   const save = useCallback(() => {
@@ -196,7 +207,7 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
       const mutation = first === undefined ? { type: include[1] ? "restore-ocr-record" : "discard-ocr-record", payload: { recordId: include[0] } }
         : { type: "correct-ocr-record", payload: correctedOcrRecord(page, first[0], first[1]) };
       request = CommandRequestSchema.parse({ family: "ocr-review", ...mutation, commandId: crypto.randomUUID(), requestedBy: binding.scope.actorId,
-        requestedAt: binding.authority.nowIso, source: "dashboard", target: { runId: page.runId, expectedRevision: review.revision.revision } });
+        requestedAt: binding.authority.now(), source: "dashboard", target: { runId: page.runId, expectedRevision: review.revision.revision } });
     } catch {
       memory.attempt = { state: "refused", text: formatErrorCatalogFailure(createErrorCatalogFailure("OCR_REVIEW_REFUSED", {})).text };
       publishReview(memory);
@@ -233,7 +244,7 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
   };
   const approve = () => {
     if (!fresh || dirty || blocked || review?.approval === undefined || binding === undefined || page === undefined) return;
-    const commandId = crypto.randomUUID(), requestedAt = binding.authority.nowIso;
+    const commandId = crypto.randomUUID(), requestedAt = binding.authority.now();
     const selected = review.revision.records.filter(record => !record.discarded);
     const snapshot = OcrApprovedSnapshotSchema.parse({ snapshotId: commandId, sourceRunId: page.runId, revision: review.revision.revision,
       reviewDigest: review.digest, selectedRecordIds: selected.map(record => record.recordId), records: selected,

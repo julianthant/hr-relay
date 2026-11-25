@@ -13,13 +13,14 @@ import { existsSync,mkdirSync,readFileSync,readdirSync,rmSync,writeFileSync } fr
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it,vi } from "vitest";
+import { z } from "zod";
 import { backupStoppedAuthority,upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { verifyStoppedBackupManifestAtPath, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION, isWorkerCustodyDroppedTable } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { insertNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { WorkerPoolRecordSchema } from "../../../../src/models/run/worker-pool.js";
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
-import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
+import { debugTimelineFixture } from "../../../support/helpers/backend/debug-timeline-fixture.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -66,12 +67,24 @@ function initialize(f:Awaited<ReturnType<typeof liveFixture>>){const database=Au
    const resolved=resolveConfigWithProvenance({}, {primaryDisplay:null}, clock, {stateRoot:f.root,artifactRoot:f.admission.artifactRoot});
    settings.runtimeConfig.initialize({...CONFIG_SNAPSHOT,...resolved});
    restorePrePreferencesSettingsRows(raw);
-   const repository=createTimelineRepository({database:raw,mutate,read:work=>work(),assertOwner:()=>{}});
-   createDebugEventWriter({repository,clock,build:"test"}).emit({category:"http",phase:"failed",correlationId:"retained-history"});
+   // A predecessor store holds its debug rows in the timeline; the current writer appends to the schema-39 debug table.
+   const {cursor:_cursor,...debug}=createDebugEventWriter({repository:debugTimelineFixture().repository,clock,build:"test"})
+    .emit({category:"http",phase:"failed",correlationId:"retained-history"}).record;
+   raw.prepare(`INSERT INTO timeline_events(id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
+    VALUES(?,NULL,NULL,NULL,'debug',?,?,?,'ordinary',json_set(?,'$.cursor',COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0)+1))`)
+    .run(debug.eventId,debug.occurredAt,debug.recordedAt,debug.retentionDate,canonicalJsonStringify({...debug,cursor:0}));
    assert.equal(inspectNativeAuthority(raw,version).schemaVersion,version);
   } finally {raw.close();}
   return f;
  }
+
+// Migration 39 moves predecessor debug rows from the timeline to the debug table with their cursor, identity and payload.
+function assertRetained(database:DatabaseSync,table:string,rows:Record<string,unknown>[],where=""){
+ if(table!=="timeline_events"){assert.deepEqual(database.prepare(`SELECT * FROM ${table}${where} ORDER BY rowid`).all().map(row=>prePreferencesSettingsRow(table,row)),rows.map(row=>({...row})));return;}
+ assert.deepEqual(database.prepare("SELECT * FROM timeline_events ORDER BY rowid").all().map(row=>({...row})),rows.filter(row=>row.kind!=="debug").map(row=>({...row})));
+ assert.deepEqual(database.prepare("SELECT cursor,id,payload_json FROM debug_events ORDER BY cursor").all().map(row=>({...row})),
+  rows.filter(row=>row.kind==="debug").map(row=>({cursor:row.cursor,id:row.id,payload_json:row.payload_json})));
+}
 
 describe("stopped native upgrade admission",()=>{
  it("upgrades schema 5 retained plans by removing only workers through stopped backup admission",async()=>{
@@ -154,7 +167,11 @@ describe("stopped native upgrade admission",()=>{
   try {
    for(const [table,rows] of Object.entries(f.workbookRows)) {
      const columns = table === 'workbook_library' ? 'id,version,created_at,saved_at,payload_json' : 'workbook_id,version,created_at,saved_at,payload_json';
-     assert.deepEqual(stored.prepare(`SELECT ${columns} FROM ${table} ORDER BY rowid`).all(),rows);
+     const resolved = stored.prepare(`SELECT ${columns},(SELECT payload_json FROM workbook_payloads WHERE digest=json_extract(${table}.payload_json,'$.workbookDigest')) AS workbook_json FROM ${table} ORDER BY rowid`).all()
+      .map(raw => { const { payload_json, workbook_json, ...row } = z.looseObject({ payload_json: z.string(), workbook_json: z.string() }).parse(raw);
+        const { workbookDigest: _digest, ...envelope } = z.looseObject({ workbookDigest: z.string() }).parse(JSON.parse(payload_json));
+        return { ...row, payload: { ...envelope, workbook: z.json().parse(JSON.parse(workbook_json)) } }; });
+     assert.deepEqual(resolved,rows.map(raw => { const { payload_json, ...row } = z.looseObject({ payload_json: z.string() }).parse(raw); return { ...row, payload: z.json().parse(JSON.parse(payload_json)) }; }));
     }
    const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
    const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");
@@ -235,7 +252,7 @@ describe("stopped native upgrade admission",()=>{
    assert.equal(current.prepare("SELECT COUNT(*) AS count FROM workbook_library").get()?.count,0);
   }finally{current.close();}
   const upgraded=new DatabaseSync(f.path,{readOnly:true});
-  try {for(const [table,rows] of Object.entries(retained))assert.deepEqual(upgraded.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(row=>prePreferencesSettingsRow(table,row)),rows.map(row=>({...row})));
+  try {for(const [table,rows] of Object.entries(retained))assertRetained(upgraded,table,rows);
    assert.equal(upgraded.prepare("SELECT name FROM sqlite_schema WHERE name='explorer_overrides'").get(),undefined);
    assert.deepEqual(upgraded.prepare("PRAGMA foreign_key_check").all(),[]);
   }finally{upgraded.close();}
@@ -402,7 +419,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{current.close();}
   const stored=new DatabaseSync(f.path,{readOnly:true});
   try {
-   for(const [table,rows] of Object.entries(retained))assert.deepEqual(stored.prepare(`SELECT * FROM ${table}${table==="database_upgrades"?" WHERE phase='baseline'":""}`).all().map(row=>prePreferencesSettingsRow(table,row)),rows.map(row=>({...row})));
+   for(const [table,rows] of Object.entries(retained))assertRetained(stored,table,rows,table==="database_upgrades"?" WHERE phase='baseline'":"");
    assert.ok(stored.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get());
   }finally{stored.close();}
   assert.equal((await f.run()).state,"already-upgraded");

@@ -42,21 +42,20 @@ export function commandSaveState(outcome: CommandOutcome | undefined): SettingsS
 export function settingsScopeRecoveryState(): SettingsSaveState {
   return { state: "unconfirmed", code: "DASHBOARD_AUTHORITY_REPLACED", message: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text };
 }
+/** An unconfirmed save has no problem to show: its model reads it back and settles it. */
 export function settingsSaveProblem(save: SettingsSaveState, protectedStore = false): SettingsSaveProblem | undefined {
   const name = protectedStore ? "Credentials" : "Settings";
-  if (save.state === "unconfirmed") return { tone: "warning", title: `${name} save unconfirmed`, description: "Your draft is retained. Retry the exact attempt to confirm the result." };
-  if (save.state === "conflict") return { tone: "warning", title: `${name} changed`, description: "Your draft is retained. Review the current values before retrying." };
-  if (save.state === "refused") return { tone: "danger", title: `${name} weren't saved`, description: "Your draft is retained. Review the save details before retrying." };
+  if (save.state === "conflict") return { tone: "warning", title: `${name} changed. Your draft is kept.` };
+  if (save.state === "refused") return { tone: "danger", title: `${name} weren't saved. Your draft is kept.` };
   return undefined;
 }
 /** One toast key so a later success replaces an earlier failure. */
 const SETTINGS_TOAST_KEY = "settings-save";
 export function settingsSaveFailure(): SettingsSaveProblem {
-  return { tone: "danger", title: "Settings weren't saved", description: "The previous value is back.", key: SETTINGS_TOAST_KEY };
+  return { tone: "danger", title: "Settings weren't saved. The previous value is back.", key: SETTINGS_TOAST_KEY };
 }
 export function settingsSaveNotice(labels: readonly string[], replayed: boolean, restartRequired = false): SettingsSaveNotice {
-  return { key: SETTINGS_TOAST_KEY, title: `${replayed ? "Already saved" : "Saved"} ${labels.length === 1 ? labels[0] : "settings"}`,
-    ...(restartRequired ? { description: "Restart required to use these changes." } : {}) };
+  return { key: SETTINGS_TOAST_KEY, title: `${replayed ? "Already saved" : "Saved"} ${labels.length === 1 ? labels[0] : "settings"}${restartRequired ? ". Restart to use them." : ""}` };
 }
 export function checkedSettingsResult(command: SettingsAttempt, input: unknown): CommandResult {
   const result = CommandResultSchema.safeParse(input);
@@ -68,6 +67,12 @@ export function checkedSettingsResult(command: SettingsAttempt, input: unknown):
     if (command.type === "apply-protected-settings" && !ProtectedSettingsReadbackSchema.safeParse({ revision: result.data.revision, entries: result.data.entries }).success) throw new Error("settings-result-unconfirmed");
   }
   return result.data;
+}
+/** `document`, keeping the shown protected snapshot when it is newer: protected settings keep their own reads. */
+export function keepNewerProtected(document: EditableSettingsWire, shown: EditableSettingsWire | undefined): EditableSettingsWire {
+  const held = shown?.protectedSettings;
+  return held?.state === "available" && document.protectedSettings.state === "available" && held.readback.revision > document.protectedSettings.readback.revision
+    ? { ...document, protectedSettings: held } : document;
 }
 export function protectedReadbackConfirms(command: ProtectedSettingsAttempt, result: CommandResult, document: EditableSettingsWire): boolean {
   if ((result.state !== "applied" && result.state !== "already-applied") || document.protectedSettings.state !== "available") return false;

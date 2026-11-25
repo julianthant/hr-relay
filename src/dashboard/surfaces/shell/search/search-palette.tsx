@@ -51,13 +51,11 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
   return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className={cn("search-palette-scrim", dsLayer.modal)} />
-      <DialogPrimitive.Content aria-describedby={undefined} className={cn("search-palette ds-menu-surface font-ui", dsLayer.modal)} onCloseAutoFocus={onCloseAutoFocus}>
+      <DialogPrimitive.Content aria-describedby={undefined} className={cn("search-palette ds-menu-surface font-ui", dsLayer.modal)} onCloseAutoFocus={onCloseAutoFocus}
+        onEscapeKeyDown={event => { if (query !== "") { event.preventDefault(); onQuery(""); } }}>
         <DialogPrimitive.Title className="sr-only">Search Relay</DialogPrimitive.Title>
         <Command ref={watchSelection} shouldFilter={false} loop label="Search Relay" className="flex min-h-0 flex-1 flex-col">
           <Command.Input autoFocus aria-label="Search Relay" placeholder="Search Relay" value={query} onValueChange={onQuery} className="search-palette-input" />
-          <div className="search-palette-chips" role="group" aria-label="Filter results">
-            {PALETTE_FILTERS.map(chip => <button key={chip.id} type="button" aria-pressed={filter === chip.id} onClick={() => setFilter(chip.id)}>{chip.label}</button>)}
-          </div>
           <Command.List label="Results" className="search-palette-list">
             {sections.length === 0 && !loading && <p role="status" className="search-palette-empty">No matches</p>}
             {sections.map(section => <Command.Group key={section.id} aria-label={section.label}>
@@ -73,6 +71,9 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
               {[0, 1, 2].map(index => <div key={index} aria-hidden className="search-palette-row search-palette-skeleton-row"><Skeleton className="size-4 shrink-0 rounded-full" /><Skeleton className="h-3 flex-1" /><Skeleton className="h-3 w-16" /></div>)}
             </div>}
           </Command.List>
+          <div className="search-palette-chips" role="group" aria-label="Filter results">
+            {PALETTE_FILTERS.map(chip => <button key={chip.id} type="button" aria-pressed={filter === chip.id} onClick={() => setFilter(chip.id)}>{chip.label}</button>)}
+          </div>
         </Command>
         {notice && <p role="status" className="search-palette-notice">{notice}</p>}
       </DialogPrimitive.Content>

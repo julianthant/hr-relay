@@ -30,6 +30,7 @@ import { createOcrSourceService } from "../../../runs/commands/ocr-source-servic
 import { createRunWorkerCapacity } from "../../../runs/commands/run-worker-capacity.js";
 import { createStartPlanService } from "../../../runs/commands/start-plan-service.js";
 import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
+import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import { createApplicationLifecycle } from "../../../runs/lifecycle/application-lifecycle.js";
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
 import { createWorkerCommandResultQuery } from "../../../runs/queries/worker-command-result.js";
@@ -59,7 +60,7 @@ import { composeDataQueries } from "./data.js";
 import { composeExplorer } from "./explorer.js";
 import { composeFailureResolution } from "./failure-resolution.js";
 import { composeIntake } from "./intake.js";
-import { composeNotificationPublications,composeNotificationRoutes } from "./notification-wiring.js";
+import { composeNotificationPublications,composeNotificationReads,composeNotificationRoutes } from "./notification-wiring.js";
 import { composeQueueSummaries } from "./queue-summaries.js";
 import { createOperatorProjection } from "./queue.js";
 import type { DashboardRuntime } from "./runtime-contracts.js";
@@ -68,9 +69,11 @@ import { prepareDashboardEnvironment,prepareDashboardRuntime } from "./runtime-r
 import { composeShell } from "./shell.js";
 import { composeDashboardShutdown } from "./shutdown-custody.js";
 import { composeStorage } from "./storage.js";
-import { GATE_PARK_WATCH_MS,composeDashboardTimeline } from "./timeline.js";
+import { startNotificationPolling } from "./notifications.js";
+import { composeDashboardTimeline } from "./timeline.js";
 import { composeWorkerPool,productionWorkerLaunch,realWorkerProcessSpawner } from "./worker-process.js";
 import { composeWriteSafety,prepareWriteSafety } from "./write-safety.js";
+import { readRunPanel } from "../../../runs/queries/run-detail.js";
 
 
 const DASHBOARD_WORKFLOW_SOURCES = ["served", "hidden"] as const;
@@ -105,7 +108,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
   const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle);
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority } = resources;
-  const ledger = createTransactionHistory(database.authority);
+  const history = database.dashboardHistory();
+  const notificationReads = composeNotificationReads(database, history);
+  const reader = history === database ? lifecycle : new RunRecordService({ database: history, clock, ids,
+    publishQueued: () => { throw new Error("isolated-history-read-only"); }, resolveDescriptor: descriptors.resolve });
+  const ledger = createTransactionHistory(history.authority);
   const runHistory = createRunHistoryService({ database, lifecycle, afterClear: () => { assertCurrent(); projection.rebuildFromTimeline(); } });
   const confirmedHistoryCommand = (request: ClearRunHistoryRequest) => {
     if (request.target.profileId !== admission.profileBinding.profileId || request.target.epoch !== context.profileEpoch) {
@@ -117,15 +124,15 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     return { commandId: request.commandId };
   };
 
-  const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger });
-  const summaries: ServedSummaryQueries = { ...composeQueueSummaries(database), activity: (from, to) => activity.read(from, to) };
-  const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), withRunTreeSnapshot: lifecycle.withRunTreeSnapshot.bind(lifecycle), summaries };
+  const { activity, activityPopulation } = composeActivity({ database: history, clock, descriptors, ledger });
+  const summaries: ServedSummaryQueries = { ...composeQueueSummaries(history), activity: (from, to) => activity.read(from, to) };
+  const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries };
   let snapshotWorkers: () => readonly WorkerMemberView[] = () => [];
   const workerMembers = (): readonly WorkerMemberView[] => snapshotWorkers();
   let startupPending: (workflowId: string) => boolean = () => false;
-  const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader });
+  const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database: history, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader, listNotifications: notificationReads.list });
 
-  const { noteWriter, timelineTimer, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, lifecycle, debugEvents });
+  const { noteWriter, stopTimeline, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, lifecycle, debugEvents });
 
   const reportSupervisorFault = (error: Error, origin?: Readonly<{ workerId: string; pid?: number }>): void => {
     const detail = error instanceof WorkerPoolError ? error.detail : {}, pid = origin?.pid ?? detail.pid;
@@ -175,7 +182,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     admission,
   });
   await artifactReader.ready;
-  const { intakeParser, intakeProjections, trustReads, runDetailDeps } = composeWriteSafety({ database, lifecycle, stateRoot, projection, workerMembers, artifacts, artifactReader,
+  const { intakeParser, intakeProjections, trustReads, runDetailDeps } = composeWriteSafety({ database, lifecycle, history, reader, stateRoot, projection, workerMembers, artifacts, artifactReader,
     operatorName: () => { assertCurrent(); return readAdmittedProfileIdentity(machineAdmission, admission).displayName; } });
 
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
@@ -194,6 +201,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     onFailure: reportSupervisorFault,
   });
   startupCleanups.push(() => applicationLifecycle.dispose());
+  // The kernel is made before the hub, so its ordinary settings commits reach the hub through this source.
+  const settingsChanges = new Set<() => void>();
   const kernel = createCommandKernel({
     commandNotices: notificationInbox,
     ensureReceipt: runId => trustReads.trust.ensureReceipt(runId),
@@ -207,7 +216,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     assistantFactsSha256: () => factsSha256,
     failureResolution: composeFailureResolution(database.authority).commands,
     lifecycle,
-    authority: { evidenceSchemaHash: database.evidenceSchemaHash.bind(database), withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },
+    authority: { evidenceSchemaHash: database.evidenceSchemaHash.bind(database), withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }),
+      afterAuthorityCommit: publish => database.afterAuthorityCommit(publish) },
     clock,
     ids,
 
@@ -220,6 +230,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     settings: settingsBoundary.executor,
+    settingsCommitted: () => { for (const listener of [...settingsChanges]) listener(); },
     authorityProfileId: admission.profileBinding.profileId,
     authorityInstallationId: admission.profileBinding.installationId,
     prepareAssistantModelPreference: async request => {
@@ -275,11 +286,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
 
-  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
-    host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)),
-    command: commandId => database.authority.commands.readForNotice(commandId),
-    bulk: bulkCommandId => { const acceptance = database.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: database.authority.commands.listBulkChildren(bulkCommandId) }; } });
-  const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget });
+  const notificationTarget = createNotificationTargetQuery({ get: history.authority.notifications.get, read: id => reader.read(id), failure: history.authority.failures.get,
+    host: run => history.withAuthorityReadSnapshot(() => ocrHostRun(history.authority, run)),
+    command: commandId => history.authority.commands.readForNotice(commandId),
+    bulk: bulkCommandId => { const acceptance = history.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: history.authority.commands.listBulkChildren(bulkCommandId) }; } });
+  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads });
   const dataQueries = composeDataQueries(runDetailDeps);
   const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });
   const assistantProposals = createAssistantProposals({ ocrSources: () => ocrSources, database, authorization: assistantAuthorization, plans: startPlans, commands, runs: lifecycle, descriptors,
@@ -343,7 +354,10 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       return `${person.firstName} ${person.lastName}`;
     },
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
-    notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox }),
+    notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox, target: notifications.target }),
+    notificationStatus: { read: () => notifications.status(), onChange: listener => notificationObserver.onStatusChange(listener) },
+    runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
+    settings: { read: settingsBoundary.editable, onChange: listener => { settingsChanges.add(listener); return () => { settingsChanges.delete(listener); }; } },
     preflightReport: () => preflightAuthority.readLatest(),
   });
   const { hub } = shell;
@@ -364,6 +378,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   } });
   const app = createDashboardApp({
     debugEvents,
+    debugReportRunReader: lifecycle,
     assistant,
     chatGptOcrTest,
     chatGptAccount: {
@@ -374,7 +389,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     notifications,
     ...(staticBundle === undefined ? {} : { staticBundle }),
-    requestIdentity: { identify: request => { assertCurrent(); return createSoloRequestIdentityCheckpoint(resolved.config.actor).identify(request); } },
+    requestIdentity: { identify: request => {
+      if (input.applicationTransport === undefined) assertCurrent();
+      else input.applicationTransport.consumeAdmission(request);
+      return createSoloRequestIdentityCheckpoint(resolved.config.actor).identify(request);
+    } },
     preflight: createPreflightReportService({ dashboard: preflightAuthority, runtime: runtimePreflight, clock }),
     ...shell,
     projection,
@@ -425,9 +444,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
   }));
   dashboardPreflightRunners.markBackendOwned(server.port);
-  void notificationObserver.observe();
-  const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
-  gateParkTimer.unref();
+  const gateParkTimer = startNotificationPolling(database, clock, notificationObserver);
   startupCleanups.push(() => clearInterval(gateParkTimer));
   const historyTimer = startAssistantHistoryCleanup(() => { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); }, error => {
     const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "assistant-history-cleanup", code: "ASSISTANT_HISTORY_CLEANUP_FAILED",
@@ -437,5 +454,5 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   startupCleanups.push(() => clearInterval(historyTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, takeWorkerStopFailures: workers.pool.takeShutdownStopFailures, server, gateParkTimer, historyTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, assistantAuthorization, shutdownRequested, noteWriter, stopTimeline, diagnosticRetentionTimer, hub, stopWorkerControl, takeWorkerStopFailures: workers.pool.takeShutdownStopFailures, server, gateParkTimer, historyTimer, custody });
 }

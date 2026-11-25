@@ -1,8 +1,7 @@
 # Relay enrollment interface
 
 The provider opens `src/options.html` in the owned enrollment browser. It shows
-the Security key and Touch ID methods. Touch ID uses Relay's protected emulated
-platform authenticator on macOS and Windows. The panel shows one title, one
+the Security key, the only method. The panel shows one title, one
 instruction and one primary action for the selected method. Return to Relay
 activates the originating app window; Close tab closes only this tab. Both sit in
 the top bar. Cancel setup appears only while a method is pending.

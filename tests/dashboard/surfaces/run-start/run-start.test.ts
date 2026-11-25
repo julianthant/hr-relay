@@ -9,7 +9,7 @@ import { type DashboardClient } from "../../../../src/dashboard/client/index.js"
 import { START_DOOR_ABSENCE } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-day.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-day.js";
 
 {
 const { cleanup, openDialog, stubClient, WORKFLOW_ID, TYPED, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName } = createRunStartDialogHarness();
@@ -238,7 +238,7 @@ describe("browser presentation is an immutable Run Options choice", () => {
     assert.deepEqual(modes.map(mode => mode.value), ["headed", "headless"]);
     assert.equal(modes.find(mode => mode.value === "headed")?.checked, true);
     const screenshotControl = buttons().find(button => buttonName(button) === "Capture screenshots");
-    assert.equal(screenshotControl, undefined, "Required screenshots must not have an off control");
+    assert.equal(screenshotControl === undefined, true, "Required screenshots must not have an off control");
     assert.ok(dialog.text().includes("Always on"));
     await dialog.chooseBrowserMode("headless");
     await dialog.press("Start run");
@@ -624,7 +624,7 @@ describe("typed facts describe ONE subject", () => {
       true,
       "a multi-subject box still offered to omit a step",
     );
-    assert.ok(dialog.text().includes("this run would create 2"), dialog.text());
+    assert.ok(dialog.text().includes("One person only."), dialog.text());
   });
 });
 

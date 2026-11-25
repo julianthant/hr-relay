@@ -10,24 +10,22 @@ import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admi
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { DuoCredentialRecordSchema, DuoReenrolCommitIntentSchema, type DuoReenrolCommitIntent } from "../../../../src/models/config/duo-credential-store.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { createBoundProfileFixture, signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, rewriteAuthenticatedCredentialFixture, signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
-type Transport = "usb" | "internal";
 type Fixture = Awaited<ReturnType<typeof createBoundProfileFixture>>;
 const ARMED_AT = "2026-11-01T12:00:00.000Z", EXPIRES_AT = "2026-11-01T12:10:00.000Z";
 
-function material(accountId: string, transport: Transport, tabId = 1) {
+function material(accountId: string, tabId = 1) {
   const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   return { credentialId: randomBytes(32).toString("base64url"),
     scope: { armId: randomUUID(), contextId: "c".repeat(32), tabId, accountId, origin: "https://reenrol-fixture.duosecurity.com",
       rpId: "duosecurity.com", armedAt: ARMED_AT, expiresAt: EXPIRES_AT },
     privateKeyPkcs8: pair.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
     publicKeySpki: pair.publicKey.export({ format: "der", type: "spki" }).toString("base64"),
-    authenticator: { transport, isResidentCredential: true } };
+    authenticator: { transport: "usb" as const, isResidentCredential: true } };
 }
 type Material = ReturnType<typeof material>;
-function enrollInput(row: Material) { return { ...row, ...(row.authenticator.transport === "internal" ? { initialSignCount: 1 } : {}) }; }
 function signRequest(row: Material) {
   return { credentialId: row.credentialId, requestId: randomUUID(), rpId: "duosecurity.com" as const, origin: row.scope.origin, challenge: "AQID" };
 }
@@ -37,12 +35,12 @@ async function activeProfile(f?: Fixture) {
   const clock = manualClock(new Date("2026-11-01T12:00:01.000Z"));
   const store = createDuoCredentialStore(fixture.admission, clock), profileId = fixture.admission.profileBinding.profileId;
   const signUpAccount = randomUUID(), reenrolAccount = randomUUID();
-  const old = [material(signUpAccount, "usb"), material(signUpAccount, "internal")] as const;
-  for (const row of old) { store.enroll(enrollInput(row)); store.confirm(row.credentialId, row.scope); }
+  const old = [material(signUpAccount), material(signUpAccount)] as const;
+  for (const row of old) { store.enroll(row); store.confirm(row.credentialId, row.scope); }
   const active = store.read().credentials.filter(row => row.state === "ready").map(row => row.credentialId);
   assert.deepEqual(active.slice(-2), old.map(row => row.credentialId));
-  const fresh = [material(reenrolAccount, "usb", 2), material(reenrolAccount, "internal", 2)] as const;
-  for (const row of fresh) store.enroll({ ...enrollInput(row), reenrol: true });
+  const fresh = [material(reenrolAccount, 2), material(reenrolAccount, 2)] as const;
+  for (const row of fresh) store.enroll({ ...row, reenrol: true });
   const machineRoot = join(fixture.machine.stateRoot, "machine");
   return { f: fixture, clock, store, profileId, signUpAccount, reenrolAccount, old, active, fresh,
     headPath: join(machineRoot, "credential-keys", `${profileId}.json`), keyDirectory: join(machineRoot, "credential-keys"),
@@ -89,17 +87,67 @@ function assertCommitted(w: Active, intent: DuoReenrolCommitIntent, kept: Readon
   assert.deepEqual(reenrolStages(w), []);
 }
 
-it("keeps staged rows out of credentials, identity, platform material, signing and counter reservation", async () => {
+it("renames one key across a restart and recovers removal of only the selected key", async () => {
+  const fixture = await createBoundProfileFixture();
+  const clock = manualClock(new Date("2026-11-01T12:00:01.000Z"));
+  const profileId = fixture.admission.profileBinding.profileId, machineRoot = fixture.machine.stateRoot;
+  const rowsFor = (admission: typeof fixture.admission) => DuoCredentialRecordSchema.parse(createCanonicalCredentials(admission).readRecord("duo")?.value).credentials;
+  try {
+    const store = createDuoCredentialStore(fixture.admission, clock);
+    const added = material(randomUUID());
+    store.enroll(added);
+    store.recordEnrollmentName(added.credentialId, added.scope, "Duo Work Key (Laptop)");
+    store.confirm(added.credentialId, added.scope);
+    assert.equal(store.readSettings().keys[1].lastUsedAt, undefined);
+    await store.sign(signRequest(added));
+    const before = store.readSettings(), rows = rowsFor(fixture.admission), identity = store.identity();
+    const [old, work] = before.keys;
+    assert.deepEqual(Object.keys(old).sort(), ["addedAt", "id", "shortId"]);
+    assert.equal(work.name, "Duo Work Key (Laptop)");
+    assert.equal(work.lastUsedAt, clock.now().toISOString());
+
+    const rename = { kind: "rename" as const, commandId: randomUUID(), keyId: old.id, expectedRevision: before.revision };
+    assert.equal(store.changeKey({ ...rename, name: "  duo work key (laptop)  " }), "name-in-use");
+    assert.deepEqual(store.readSettings(), before);
+    assert.equal(store.changeKey({ ...rename, name: "  Duo Backup Key  " }), "changed");
+    const renamed = { revision: before.revision + 1, keys: [{ ...old, name: "Duo Backup Key" }, work] };
+    assert.deepEqual(store.readSettings(), renamed);
+    assert.equal(store.identity(), identity);
+    assert.deepEqual(rowsFor(fixture.admission), [{ ...rows[0], name: "Duo Backup Key" }, rows[1]]);
+
+    const remove = { kind: "remove" as const, commandId: randomUUID().toUpperCase(), keyId: work.id, expectedRevision: renamed.revision };
+    crashBeforeRename(join(machineRoot, "machine", "duo-credentials", `${profileId}.json`), () => store.changeKey(remove));
+    assert.throws(() => store.readSettings(), { code: "DUO_CREDENTIAL_UNAVAILABLE" });
+    await fixture.closeController();
+    const lifetime = await RuntimeLifetimeLock.acquire(0);
+    try {
+      const machine = acquireEntrypointAdmission(fixture.workspace, "exclusive", lifetime);
+      try {
+        signInBoundProfileFixture(machine);
+        const admission = machine.admitProfile(profileId);
+        try {
+          const reopened = createDuoCredentialStore(admission, clock);
+          const removed = { revision: renamed.revision + 1, keys: [renamed.keys[0]] };
+          assert.deepEqual(reopened.readSettings(), removed);
+          assert.equal(reopened.changeKey(remove), "changed");
+          assert.deepEqual(rowsFor(admission), [{ ...rows[0], name: "Duo Backup Key" }]);
+          await assert.rejects(reopened.sign(signRequest(added)));
+        } finally { admission.release(); }
+      } finally { machine.release(); }
+    } finally { await lifetime.close(); }
+  } finally { await fixture.close(); }
+});
+
+it("keeps staged rows out of credentials, identity, signing and counter reservation", async () => {
   const w = await activeProfile();
   try {
-    const identity = w.store.identity(), credentials = w.store.credentials(), platform = w.store.platformCredentials().map(row => row.credentialId);
+    const identity = w.store.identity(), credentials = w.store.credentials();
     w.clock.advanceWall(1000);
     for (const row of w.fresh) w.store.stage(row.credentialId, row.scope);
     assert.deepEqual(w.fresh.map(row => states(w)[row.credentialId]), ["staged", "staged"]);
     assert.deepEqual(w.store.readForScope(w.fresh[0].scope), [{ credentialId: w.fresh[0].credentialId, state: "staged" }]);
     assert.equal(w.store.identity(), identity);
     assert.deepEqual(w.store.credentials(), credentials);
-    assert.deepEqual(w.store.platformCredentials().map(row => row.credentialId), platform);
     const owner = createCanonicalCredentials(w.f.admission);
     for (const row of w.fresh) {
       await assert.rejects(w.store.sign(signRequest(row)), /duo-ready-credential-required/u);
@@ -113,21 +161,21 @@ it("keeps staged rows out of credentials, identity, platform material, signing a
 it("stages only a fresh account's own pending row on its exact scope inside the arm window", async () => {
   const w = await activeProfile();
   try {
-    const [key, touch] = w.fresh;
+    const [key, second] = w.fresh;
     w.clock.advanceWall(1000);
     assert.throws(() => w.store.stage(key.credentialId, { ...key.scope, tabId: 3 }), { code: "DUO_CREDENTIAL_CONFLICT" });
     assert.throws(() => w.store.stage(w.old[0].credentialId, w.old[0].scope), { code: "DUO_CREDENTIAL_CONFLICT" });
-    const signUpPending = material(w.signUpAccount, "usb", 4);
+    const signUpPending = material(w.signUpAccount, 4);
     w.store.enroll(signUpPending);
     assert.throws(() => w.store.stage(signUpPending.credentialId, signUpPending.scope), { code: "DUO_CREDENTIAL_CONFLICT" });
-    const unmarked = material(w.reenrolAccount, "usb", 7);
+    const unmarked = material(w.reenrolAccount, 7);
     w.store.enroll(unmarked);
     assert.throws(() => w.store.stage(unmarked.credentialId, unmarked.scope), { code: "DUO_CREDENTIAL_CONFLICT" });
     w.store.stage(key.credentialId, key.scope);
     assert.throws(() => w.store.stage(key.credentialId, key.scope), { code: "DUO_CREDENTIAL_CONFLICT" });
     w.clock.advanceWall(600_000);
-    assert.throws(() => w.store.stage(touch.credentialId, touch.scope), /duo-arm-expired/u);
-    assert.equal(states(w)[touch.credentialId], "pending");
+    assert.throws(() => w.store.stage(second.credentialId, second.scope), /duo-arm-expired/u);
+    assert.equal(states(w)[second.credentialId], "pending");
   } finally { await w.f.close(); }
 });
 
@@ -135,7 +183,7 @@ it("refuses staging, staged counters and discard for a sign-up draft that holds 
   const f = await createBoundProfileFixture({ pending: "onboarding" });
   try {
     const clock = manualClock(new Date("2026-11-01T12:00:01.000Z")), store = createDuoCredentialStore(f.admission, clock);
-    const account = randomUUID(), row = material(account, "usb");
+    const account = randomUUID(), row = material(account);
     store.enroll(row);
     const before = storageTree(f.workspace);
     assert.throws(() => store.stage(row.credentialId, row.scope), { code: "DUO_CREDENTIAL_CONFLICT" });
@@ -162,15 +210,15 @@ it("refuses the ordinary confirm for a re-enrolment row so it can become ready o
 it("reserves a staged counter only for its exact staged scope and never for a ready or pending row", async () => {
   const w = await activeProfile();
   try {
-    const [key, touch] = w.fresh, owner = createCanonicalCredentials(w.f.admission);
+    const [key, second] = w.fresh, owner = createCanonicalCredentials(w.f.admission);
     w.clock.advanceWall(1000);
     assert.throws(() => owner.reserveStagedDuoCounter(key.credentialId, randomUUID(), key.scope), { code: "CREDENTIAL_UNAVAILABLE" });
-    w.store.stage(key.credentialId, key.scope); w.store.stage(touch.credentialId, touch.scope);
+    w.store.stage(key.credentialId, key.scope); w.store.stage(second.credentialId, second.scope);
     const first = await w.store.signStagedForScope(signRequest(key), key.scope);
     assert.equal((await w.store.signStagedForScope(signRequest(key), key.scope)).signCount, first.signCount + 1);
-    assert.equal((await w.store.signStagedForScope(signRequest(touch), touch.scope)).signCount, 2);
+    assert.equal((await w.store.signStagedForScope(signRequest(second), second.scope)).signCount, 1);
     assert.throws(() => owner.reserveStagedDuoCounter(key.credentialId, randomUUID(), { ...key.scope, tabId: 9 }), { code: "CREDENTIAL_UNAVAILABLE" });
-    assert.throws(() => owner.reserveStagedDuoCounter(key.credentialId, randomUUID(), touch.scope), { code: "CREDENTIAL_UNAVAILABLE" });
+    assert.throws(() => owner.reserveStagedDuoCounter(key.credentialId, randomUUID(), second.scope), { code: "CREDENTIAL_UNAVAILABLE" });
     assert.throws(() => owner.reserveStagedDuoCounter(w.old[0].credentialId, randomUUID(), w.old[0].scope), { code: "CREDENTIAL_UNAVAILABLE" });
     const request = randomUUID();
     owner.reserveStagedDuoCounter(key.credentialId, request, key.scope);
@@ -187,7 +235,7 @@ it("keeps the generic replace refusing removal and leaves staged rows unchangeab
     const stagedRow = record.credentials.find(row => row.credentialId === w.fresh[0].credentialId);
     assert.ok(stagedRow?.state === "staged");
     const { provedAt, reenrol: _reenrol, ...fields } = stagedRow;
-    const added = { ...material(w.reenrolAccount, "usb", 5), state: "staged" as const, reenrol: true as const, createdAt: provedAt, provedAt };
+    const added = { ...material(w.reenrolAccount, 5), state: "staged" as const, reenrol: true as const, createdAt: provedAt, provedAt };
     const { authenticator: _authenticator, ...addedRow } = added;
     for (const credentials of [
       record.credentials.filter(row => row.credentialId !== w.old[0].credentialId),
@@ -203,7 +251,7 @@ it("keeps the generic replace refusing removal and leaves staged rows unchangeab
 it("discards only the re-enrolment account's draft rows and retires their ids and counters", async () => {
   const w = await activeProfile();
   try {
-    const [key, touch] = w.fresh, identity = w.store.identity();
+    const [key, second] = w.fresh, identity = w.store.identity();
     w.clock.advanceWall(1000); w.store.stage(key.credentialId, key.scope);
     assert.throws(() => w.store.discardDraft(w.signUpAccount), { code: "DUO_CREDENTIAL_CONFLICT" });
     const unrelated = w.store.read();
@@ -216,9 +264,9 @@ it("discards only the re-enrolment account's draft rows and retires their ids an
       assert.ok(current.retired.includes(row.credentialId));
       assert.equal(current.counters.some(counter => counter.credentialId === row.credentialId), false);
     }
-    assert.ok(current.counters.some(counter => counter.credentialId === w.old[1].credentialId));
+    assert.equal(w.old.some(row => current.retired.includes(row.credentialId)), false);
     assert.equal(w.store.identity(), identity);
-    assert.throws(() => w.store.enroll(enrollInput({ ...touch, scope: { ...touch.scope, armId: randomUUID() } })), { code: "DUO_CREDENTIAL_CONFLICT" });
+    assert.throws(() => w.store.enroll({ ...second, scope: { ...second.scope, armId: randomUUID() } }), { code: "DUO_CREDENTIAL_CONFLICT" });
     const revision = w.store.read().revision;
     w.store.discardDraft(w.reenrolAccount);
     assert.equal(w.store.read().revision, revision);
@@ -246,8 +294,7 @@ it("refuses to commit a draft whose ids an interrupted discard retired, before t
 });
 
 const draftCrashes: readonly Readonly<{ name: string; target: "head" | "duo"; write(w: Active): unknown }>[] = [
-  { name: "a marked enrolment's record", target: "duo", write: w => w.store.enroll({ ...material(w.reenrolAccount, "usb", 9), reenrol: true }) },
-  { name: "a marked enrolment's pending counter", target: "head", write: w => w.store.enroll({ ...enrollInput(material(w.reenrolAccount, "internal", 9)), reenrol: true }) },
+  { name: "a marked enrolment's record", target: "duo", write: w => w.store.enroll({ ...material(w.reenrolAccount, 9), reenrol: true }) },
   { name: "a staging record", target: "duo", write: w => { w.clock.advanceWall(1000); return w.store.stage(w.fresh[0].credentialId, w.fresh[0].scope); } },
   { name: "a staged counter reservation", target: "head", write: w => {
     w.clock.advanceWall(1000); w.store.stage(w.fresh[0].credentialId, w.fresh[0].scope);
@@ -311,8 +358,8 @@ it("converges a discard interrupted between its head and record publications", a
 it("commits staged rows as ready after their arm window has passed and retires the active set", async () => {
   const w = await stagedProfile();
   try {
-    const stray = material(randomUUID(), "internal", 8);
-    w.store.enroll(enrollInput(stray));
+    const stray = material(randomUUID(), 8);
+    w.store.enroll(stray);
     const before = w.store.identity(), provedAt = w.clock.now().toISOString();
     w.clock.advanceWall(3_600_000);
     const intent = w.store.prepareReenrolCommit(w.reenrolAccount);
@@ -333,7 +380,6 @@ it("commits staged rows as ready after their arm window has passed and retires t
     assert.ok(rows.every(row => row.state === "ready" && row.confirmedAt === provedAt));
     assert.notEqual(w.store.identity(), before);
     assert.deepEqual(w.store.credentials().map(row => row.credentialId), w.fresh.map(row => row.credentialId));
-    assert.deepEqual(w.store.platformCredentials().map(row => row.credentialId), [w.fresh[1].credentialId]);
     assert.equal((await w.store.sign(signRequest(w.fresh[0]))).signCount, 1);
     for (const row of w.old) await assert.rejects(w.store.sign(signRequest(row)), /duo-credential-scope-mismatch/u);
     assert.throws(() => w.store.discardDraft(w.reenrolAccount), { code: "DUO_CREDENTIAL_CONFLICT" });
@@ -431,7 +477,7 @@ it("classifies a foreign record, a tampered intent and an unreadable record as u
       assert.throws(() => w.store.commitReenrol(candidate), { code: "DUO_CREDENTIAL_UNCERTAIN" });
       assert.deepEqual(storageTree(w.f.workspace), before);
     }
-    w.store.enroll(material(w.reenrolAccount, "usb", 6));
+    w.store.enroll(material(w.reenrolAccount, 6));
     const foreign = storageTree(w.f.workspace);
     assert.deepEqual(w.store.inspectReenrolCommit(intent), { head: "not-applied", record: "unprovable" });
     assert.throws(() => w.store.commitReenrol(intent), { code: "DUO_CREDENTIAL_UNCERTAIN" });
@@ -462,5 +508,22 @@ it("holds an unreadable record or head unprovable and keeps a discard refused on
     writeFileSync(w.headPath, headBytes);
     w.store.commitReenrol(intent);
     assertCommitted(w, intent);
+  } finally { await w.f.close(); }
+});
+
+it("discards a re-enrolment draft from a record that still holds a platform row by dropping that row first", async () => {
+  const w = await activeProfile();
+  try {
+    const [kept, platform] = w.old;
+    rewriteAuthenticatedCredentialFixture(w.f.machine.stateRoot, w.profileId, value => ({ credentials: DuoCredentialRecordSchema.parse(value).credentials
+      .map(row => row.credentialId === platform.credentialId ? { ...row, authenticator: { ...row.authenticator, transport: "internal" } } : row) }), "duo");
+    const store = createDuoCredentialStore(w.f.admission, w.clock);
+    store.discardDraft(w.reenrolAccount);
+    assert.deepEqual(Object.keys(Object.fromEntries(store.read().credentials.map(row => [row.credentialId, row.state]))),
+      w.active.filter(id => id !== platform.credentialId));
+    const current = head(w);
+    for (const id of [platform.credentialId, ...w.fresh.map(row => row.credentialId)]) assert.ok(current.retired.includes(id));
+    assert.equal(current.retired.includes(kept.credentialId), false);
+    assert.equal((await store.sign(signRequest(kept))).transport, "usb");
   } finally { await w.f.close(); }
 });

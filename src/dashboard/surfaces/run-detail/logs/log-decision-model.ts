@@ -2,11 +2,16 @@ import type { CandidateTableWire, DecisionAnswerWire, DecisionOptionWire, RunDec
 import type { FailureDisplaySchema } from "../../../../models/dashboard/failure-display.js";
 import type { LogScreenshot } from "./log-feed-model.js";
 import type { z } from "zod";
+import { createContext } from "react";
 
 type FailureDisplayWire = z.infer<typeof FailureDisplaySchema>;
 
 /** What the operator entered for one served option: a picked row, a typed value, a date or text. */
 export type LogDecisionAnswer = Readonly<{ candidate?: string; typed?: string; date?: string; text?: string }>;
+
+type ServedDraft = Readonly<{ selected: string | undefined; answers: Readonly<Record<string, LogDecisionAnswer>> }>;
+/** A windowed log unmounts steps scrolled away; the feed keeps each served decision's draft so it comes back as the operator left it. */
+export const ServedDraftsContext = createContext<Map<string, ServedDraft> | undefined>(undefined);
 export type LogDecision = Readonly<{
   title: string;
   state: "parked" | "failed" | "review" | "held" | "unconfirmed" | "loading" | "recorded" | "resolved";
@@ -93,7 +98,7 @@ export function answeredOutcome(decision: Pick<LogDecision, "answered" | "answer
   if (id.startsWith("approve")) return { outcome: `${noun} approved`, kind: "done" };
   if (id.startsWith("reject")) return { outcome: `${noun} rejected`, kind: "rejected" };
   if (/^(retry|check-again$|reopen-browser$|sign-in-again$|recover$|resume$)/u.test(id)) return { outcome: "Retried", kind: "retry" };
-  return { outcome: "Resolved", kind: "done" };
+  return { outcome: decision.answered?.label ?? "Resolved", kind: "done" };
 }
 
 /** The failure card's served facts: the action it was attempting, the last completed step and the value row. A fact the backend did not serve stays absent. */

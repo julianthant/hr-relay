@@ -7,7 +7,7 @@ import { FAILURE_NOTE_REMOVAL_SCHEMA_VERSION } from "../../../../src/backend/sto
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { dropSchema36WorkbookSyncStatusColumn, regressSchema34FailureNotes, regressSchema35SendShortcut, removeSchema36WorkbookSyncStatus } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { regressSchema34FailureNotes, regressSchema35SendShortcut, removeSchema36WorkbookSyncStatus } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { LATER, NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -58,9 +58,9 @@ function schema33(): DatabaseSync {
 }
 
 describe("failure note removal migration 34", () => {
-  it("is schema version 34, under the workbook sync status's current 36, and changes no table", () => {
+  it("is schema version 34, under the current schema 42, and changes no table", () => {
     assert.equal(FAILURE_NOTE_REMOVAL_SCHEMA_VERSION, 34);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 36);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 42);
     assert.deepEqual(migrationTableNames(34), migrationTableNames(33));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
@@ -70,13 +70,11 @@ describe("failure note removal migration 34", () => {
     try {
       seed(database);
       assert.throws(() => commandFromRow(row(database, "commands", UUID_1)), /unrecognized_keys|Unrecognized key/u);
-      const prior = schemaObjects(database);
       const unchanged = [row(database, "commands", UUID_4), row(database, "commands", UUID_6), row(database, "command_audits", UUID_7)];
       const others = migrationTableNames(33).filter(table => table !== "commands" && table !== "command_audits")
         .map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() }));
       database.exec("BEGIN");
       applyAuthorityMigrationsAfter(database, 33, CAPTURE);
-      dropSchema36WorkbookSyncStatusColumn(database);
       database.exec("COMMIT");
       const command = row(database, "commands", UUID_1);
       assert.equal(command?.request_json, canonicalJsonStringify(stripped));
@@ -90,7 +88,11 @@ describe("failure note removal migration 34", () => {
       assert.deepEqual([row(database, "commands", UUID_4), row(database, "commands", UUID_6), row(database, "command_audits", UUID_7)], unchanged);
       assert.deepEqual(migrationTableNames(33).filter(table => table !== "commands" && table !== "command_audits")
         .map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), others);
-      assert.deepEqual(schemaObjects(database), prior);
+      const current = new DatabaseSync(":memory:");
+      try {
+        for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) current.exec(statement);
+        assert.deepEqual(schemaObjects(database), schemaObjects(current));
+      } finally { current.close(); }
       assert.throws(() => database.exec(`UPDATE command_audits SET created_at='later' WHERE id='${UUID_5}'`), /retained-evidence-immutable/u);
       assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
     } finally { database.close(); }

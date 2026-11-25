@@ -7,7 +7,7 @@ import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
 import { createServedOnboardingPort } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
-import { flatWorkflowGroup, workflowNavigationGroups } from "../../../../src/dashboard/surfaces/shell/workflow-rail-model.js";
+import { workflowInitials, workflowNavigationGroups } from "../../../../src/dashboard/surfaces/shell/workflow-rail-model.js";
 import { WorkflowNavigation } from "../../../../src/dashboard/surfaces/shell/workflow-navigation.js";
 import { SessionsView } from "../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import type { SessionWorker } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
@@ -32,24 +32,25 @@ it("names the lookup category Lookup, not Search", () => {
   assert.ok(labels.includes("Lookup")); assert.ok(!labels.includes("Search"));
 });
 
-it("renders the collapsed rail as an icon per workflow with the full name as accessible name, no letters, keyboard-focusable", async () => {
-  const groups = flatWorkflowGroup(entries);
+it("renders the collapsed rail as the initials of each workflow with the full name as accessible name, keyboard-focusable", async () => {
+  const groups = workflowNavigationGroups(entries);
   const host = await mount(createElement(TooltipProvider, null, createElement(WorkflowNavigation, { groups, active: "ocr", onSelect: () => undefined, label: "Workflows", collapsed: true })));
   for (const entry of entries) {
     const tile = host.querySelector<HTMLButtonElement>(`button[aria-label="${entry.label}"]`); assert.ok(tile, entry.label);
-    assert.equal(tile.textContent, ""); assert.ok(tile.querySelector("svg")); assert.ok(tile.tabIndex >= 0);
+    assert.equal(tile.textContent, workflowInitials(entry.label)); assert.ok(!tile.querySelector("svg")); assert.ok(tile.tabIndex >= 0);
   }
   assert.equal(host.querySelector<HTMLButtonElement>('button[aria-current="page"]')?.getAttribute("aria-label"), "OCR");
 });
 
-it("renders the expanded rail flat: one icon row per workflow, no category headings, selected row announced", async () => {
-  const groups = flatWorkflowGroup(entries);
+it("renders the expanded rail under category headings: one plain text row per workflow, an icon on each category heading, selected row announced", async () => {
+  const groups = workflowNavigationGroups(entries);
   const host = await mount(createElement(TooltipProvider, null, createElement(WorkflowNavigation, { groups, active: "ocr", onSelect: () => undefined, label: "Workflows" })));
-  assert.equal(host.querySelectorAll("h3").length, 0);
+  assert.deepEqual([...host.querySelectorAll("h3")].map(heading => heading.textContent), groups.map(group => group.label));
   const rows = [...host.querySelectorAll<HTMLButtonElement>("li > button")];
   assert.equal(rows.length, entries.length);
-  for (const row of rows) assert.ok(row.querySelector("svg"));
-  assert.equal(host.querySelector('button[aria-current="page"]')?.textContent, "OCR");
+  for (const row of rows) { assert.ok(!row.querySelector("svg")); assert.ok(!row.querySelector(".workflow-rail-initials")); }
+  for (const heading of host.querySelectorAll("h3")) assert.ok(heading.querySelector("svg"));
+  assert.equal(host.querySelector('button[aria-current="page"] .truncate')?.textContent, "OCR");
 });
 
 it("offers the details step from the deep-link page that asks for the details", async () => {
@@ -61,11 +62,18 @@ it("offers the details step from the deep-link page that asks for the details", 
   await act(async () => button.click()); assert.equal(step, "signup");
 });
 
-it("wraps three worker cards instead of clipping them", async () => {
+it("keeps three worker cards in one row that scrolls sideways from the keyboard", async () => {
   const worker = (id: string, workflow: string) => ({ id, label: id, workflow, state: "running", action: "Working", browsers: [] }) as unknown as SessionWorker;
   const host = await mount(createElement(TooltipProvider, null, createElement(SessionsView, { data: { state: "ready", workers: [worker("w1", "Separations"), worker("w2", "Person Lookup"), worker("w3", "OnBase")] },
     open: true, onOpenChange: () => undefined, workflows: [], onControl: () => undefined, onAdd: () => undefined })));
   const strip = host.querySelector("[data-session-strip]"); assert.ok(strip);
-  assert.ok(strip.classList.contains("flex-wrap")); assert.ok(!strip.classList.contains("overflow-x-auto"));
+  assert.ok(strip.classList.contains("overflow-x-auto")); assert.ok(!strip.classList.contains("flex-wrap"));
+  assert.equal(strip.getAttribute("tabindex"), "0"); assert.equal(strip.getAttribute("aria-label"), "Workers");
   assert.equal(strip.querySelectorAll("article").length, 3);
+});
+
+it("takes initials from the first two words, or the first two letters of one word", () => {
+  assert.equal(workflowInitials("Person Lookup"), "PL");
+  assert.equal(workflowInitials("Work-Study Intake Form"), "WS");
+  assert.equal(workflowInitials("OnBase"), "ON");
 });

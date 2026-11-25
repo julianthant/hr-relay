@@ -1,4 +1,3 @@
-import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { useContext, useEffect, useRef, useState } from "react";
 import { ExternalLink, TriangleAlert } from "lucide-react";
 import { cn } from "../../../lib/utils.js";
@@ -80,7 +79,6 @@ export function ChatGptAccountSettings({ port: override, grouped = false }: { po
       }
     }
   };
-  const show = useDelayedLoading(account.state === "loading");
   const displayed = account.state === "unavailable" ? account.account ?? account : account;
   const signingIn = displayed.state === "signing-in";
   const signInExpired = displayed.state === "sign-in-expired";
@@ -103,20 +101,20 @@ export function ChatGptAccountSettings({ port: override, grouped = false }: { po
   const row = checkFailed && failure !== undefined ? <ResultRow className={FIT} controlWidth="wide" label={label}
           description={status}
           value={<Button variant="secondary" disabled={pending !== undefined} onClick={failure.onClick}>{failure.label}</Button>} />
-        : account.state === "loading" ? show && <LoadingRegion label="Loading ChatGPT account"><ResultRow className={FIT} controlWidth="wide" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} value={<Skeleton className="h-[var(--ds-h-body-control)] w-48 rounded-[var(--ds-radius-body-control)]" />} /></LoadingRegion>
+        : account.state === "loading" ? <LoadingRegion label="Loading ChatGPT account"><ResultRow className={FIT} controlWidth="wide" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} value={<Skeleton className="h-[var(--ds-h-body-control)] w-48 rounded-[var(--ds-radius-body-control)]" />} /></LoadingRegion>
         : <ResultRow className={FIT} controlWidth="wide" label={label} description={status === undefined ? description : <span className="flex min-w-0 flex-col gap-1">{description}{status}</span>}
           value={<div className="flex min-w-0 max-w-full items-center justify-end gap-3">
             {held && failure !== undefined && <Button variant="secondary" onClick={failure.onClick}>{failure.label}</Button>}
             {signingIn && <>
               {"authorizationUrl" in displayed && displayed.authorizationUrl !== undefined && <ButtonLink variant="secondary" href={displayed.authorizationUrl} target="_blank" rel="noopener noreferrer">Reopen sign-in page</ButtonLink>}
-              <Button variant="ghost" disabled={pending !== undefined} loading={pending === "cancel"} onClick={() => { void perform("cancel"); }}>Cancel</Button>
+              <Button variant="secondary" disabled={pending !== undefined} loading={pending === "cancel"} onClick={() => { void perform("cancel"); }}>Cancel</Button>
             </>}
             {connected && plan !== "disabled" && <ButtonLink variant="secondary" href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink>}
             {connected && account.state === "connected" && <Button variant="secondary" data-destructive disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => setConfirming(true)}>Disconnect</Button>}
             {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : "Connect"}</Button>}
           </div>} />;
   const dialog = confirming && <Dialog open onOpenChange={next => { if (!next) setConfirming(false); }}>
-      <DialogContent size="sm" title="Disconnect ChatGPT?" description="Relay forgets this account; the assistant and OCR stop until you connect again.">
+      <DialogContent size="sm" title="Disconnect ChatGPT?" description="The assistant and OCR stop until you sign in again.">
         <DialogFooter>
           <Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>Cancel</Button>
           <Button variant="danger" onClick={() => { void disconnect(); }}>Disconnect</Button>

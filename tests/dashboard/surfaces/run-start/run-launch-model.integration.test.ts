@@ -30,7 +30,7 @@ const OTHER_RUN = "c0000000-0000-4000-8000-000000009999";
 const planIdentityError = (error: unknown) => {
   assert.ok(error instanceof Error);
   assert.equal(error.name, "RUN_LAUNCH_PLAN_IDENTITY_MISMATCH");
-  assert.equal(error.message, "The supplied data does not match the expected contract.");
+  assert.equal(error.message, "The data sent was not in the expected form.");
   return true;
 };
 

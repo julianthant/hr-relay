@@ -23,8 +23,8 @@ it("explains how to start again when retained source input is protected without 
   });
   const dialog = await h.openDialog(h.stubClient({ rerunValues: async () => ({ state: "available", snapshot }) }),
     { workflows: [workflow], panelWorkflowId: workflow.workflowId, rerunSource: source });
-  assert.match(dialog.text(), /source input is protected/u);
-  assert.match(dialog.text(), /Start a new run and enter the values again/u);
+  assert.match(dialog.text(), /This input is protected and cannot be copied/u);
+  assert.match(dialog.text(), /Start a new run\./u);
   assert.equal(dialog.disabled("Continue"), true);
-  assert.equal(document.querySelector("textarea"), null);
+  assert.equal(document.querySelector("textarea") === null, true);
 });

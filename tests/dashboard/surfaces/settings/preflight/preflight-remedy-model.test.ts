@@ -1,24 +1,23 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { CURRENT_FISCAL_TARGET,preflightRemedy,preflightRemedyLabel,RUN_CHECK_FIXES,runCheckFix,runCheckForTarget } from '../../../../../src/dashboard/surfaces/settings/preflight/preflight-remedy-model.js';
+import { CURRENT_FISCAL_TARGET,preflightRemedy,RUN_CHECK_FIXES,runCheckFix,runCheckForTarget } from '../../../../../src/dashboard/surfaces/settings/preflight/preflight-remedy-model.js';
 import { CHECK_COPY } from '../../../../../src/dashboard/surfaces/settings/preflight/preflight-check-copy.js';
 import { buildSettingsNav,resolveSettingsSection } from '../../../../../src/dashboard/surfaces/settings/settings-model.js';
 import { settingsSearchIndex } from '../../../../../src/dashboard/surfaces/settings/navigation/settings-search-model.js';
-import { fixtureSettingsDocument } from '../../../../mocks/helpers/fixture-settings.js';
+import { fixtureSettingsDocument } from '../../../../support/helpers/dashboard/mock-world/fixture-settings.js';
 import { PREFLIGHT_CHECKS } from '../../../../../src/models/runtime/runtime-dependencies.js';
 
 it('maps known checks to available Settings sections and preserves a general destination for new checks', () => {
-  for (const [id, destination, label] of [
-    ['secrets.ucpath-sso', 'credentials', 'Configure credentials'],
-    ['profile.identity', 'settings', 'Open Settings'],
-    ['secrets.sharepoint-roster', 'routes', 'Configure SharePoint route'],
-    ['authority.health', 'storage', 'Open Storage'],
-    ['filesystem.health', 'storage', 'Open Storage'],
-    ['fiscal.current', 'settings', 'Open Settings'],
-    ['new.check', 'settings', 'Open Settings'],
+  for (const [id, destination] of [
+    ['secrets.ucpath-sso', 'credentials'],
+    ['profile.identity', 'settings'],
+    ['secrets.sharepoint-roster', 'routes'],
+    ['authority.health', 'storage'],
+    ['filesystem.health', 'storage'],
+    ['fiscal.current', 'settings'],
+    ['new.check', 'settings'],
   ] as const) {
     assert.equal(preflightRemedy(id), destination);
-    assert.equal(preflightRemedyLabel(preflightRemedy(id)), label);
   }
 });
 

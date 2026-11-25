@@ -18,7 +18,7 @@ import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, it, vi } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { delegatedCandidateEligible } from "../../../../src/backend/runs/lifecycle/run-claim-admission.js";
@@ -34,6 +34,7 @@ import { RunResultRecordSchema, terminalEvidenceResult } from "../../../../src/m
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 import { childContinuationModules, childContinuationRoot, childExecutionModules, childExecutionRoot, childPolicyModules, childUnawaitedModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores, plan1Contract, plan1TransientFailureStores } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { testAdmittedWorker, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
@@ -48,9 +49,10 @@ function terminal(run: RunRecord, outcome: "cancelled" | "done" | "failed"): voi
   assert.equal(run.lifecycle.outcome, outcome);
 }
 
-async function fixture(policy: "cascade" | "independent", unawaited = false, continuation = false, stores = plan1Stores, observeExecution?: (run: RunRecord) => void, nested = false) {
-  const { root: compiled, modules } = nested ? { root: childExecutionRoot, modules: childExecutionModules } : continuation ? { root: childContinuationRoot, modules: childContinuationModules }
-    : unawaited ? childUnawaitedModules(policy) : childPolicyModules(policy);
+async function fixture(policy: "cascade" | "independent", unawaited = false, continuation = false, stores = plan1Stores, observeExecution?: (run: RunRecord) => void, nested = false,
+  protectedChild?: ReturnType<typeof childPolicyModules>) {
+  const { root: compiled, modules } = protectedChild ?? (nested ? { root: childExecutionRoot, modules: childExecutionModules } : continuation ? { root: childContinuationRoot, modules: childContinuationModules }
+    : unawaited ? childUnawaitedModules(policy) : childPolicyModules(policy));
   bindWorkflowDelegationTargets(modules.map(module => module.descriptor));
   assert.equal(plan1Contract.effect, "read");
   for (const module of modules) {
@@ -86,7 +88,9 @@ async function fixture(policy: "cascade" | "independent", unawaited = false, con
   };
   const execution = canonicalChildExecution(h.deps, database, path, id => modules.find(module => module.descriptor.id === id)?.descriptor,
     undefined, { resources: (_reader, run) => { observeExecution?.(run); return {}; } });
-  const root = execution.start(compiled.descriptor, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
+  const root = execution.start(compiled.descriptor, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false,
+    ...(protectedChild === undefined ? {} : { protectedSubmissionBindings: [{ kind: "test-data-local", sourceId: UUID_4,
+      inputPath: "emplId", name: "personLookupCanaryEid" }] }) });
   const currentRoot = () => { const run = database.authority.runs.get(root.envelope.runId); assert.ok(run); return run; };
   const child = () => { const children = database.authority.runs.listChildren(root.envelope.runId); assert.equal(children.length, 1); assert.ok(children[0]); return children[0]; };
   const cancel = () => CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard",
@@ -223,6 +227,55 @@ it("refuses missing, tampered and mismatched retained config without publishing 
     JSON.stringify(f.database.authority.failures.listByRun(f.root.envelope.runId)));
   assert.equal(refusals, 3);
   assert.equal(f.database.authority.runs.listChildren(f.root.envelope.runId).length, 1);
+});
+
+it("refuses copying a protected value to another field during delegation admission", async () => {
+  let admitting = false;
+  const workflow = childPolicyModules("cascade", "inline", input => admitting ? { ...input, text: input.emplId } : input);
+  const f = await fixture("cascade", false, false, plan1Stores, undefined, false, workflow);
+  const runId = f.root.envelope.runId;
+  const admit = f.execution.lifecycle.admitDelegation.bind(f.execution.lifecycle);
+  const refusal = vi.spyOn(f.execution.lifecycle, "admitDelegation").mockImplementationOnce((batch, plans) => {
+    // Let the executor plan normally so the invalid mapping reaches admission.
+    admitting = true;
+    return admit(batch, plans);
+  });
+
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "failed");
+  assert.equal(refusal.mock.calls.length, 1);
+  const result = refusal.mock.results[0];
+  assert.ok(result?.type === "throw");
+  const cause: unknown = result.value;
+  assert.ok(cause instanceof Error);
+  assert.equal(cause.message, "delegation-protected-input-mapping-unavailable");
+  assert.deepEqual(f.database.authority.runs.listChildren(runId), []);
+  assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(runId), []);
+  assert.deepEqual(f.database.authority.lifecycleJournal.listDelegationInvocations(runId), []);
+  assert.deepEqual(f.database.authority.dependencies.listByParentRun(runId), []);
+});
+
+it("refuses replacing a protected value in the same field during delegation admission", async () => {
+  let admitting = false;
+  const workflow = childPolicyModules("cascade", "inline", input => admitting ? { ...input, emplId: "10800001" } : input);
+  const f = await fixture("cascade", false, false, plan1Stores, undefined, false, workflow);
+  const runId = f.root.envelope.runId;
+  const admit = f.execution.lifecycle.admitDelegation.bind(f.execution.lifecycle);
+  const refusal = vi.spyOn(f.execution.lifecycle, "admitDelegation").mockImplementationOnce((batch, plans) => {
+    admitting = true;
+    return admit(batch, plans);
+  });
+
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "failed");
+  assert.equal(refusal.mock.calls.length, 1);
+  const result = refusal.mock.results[0];
+  assert.ok(result?.type === "throw");
+  const cause: unknown = result.value;
+  assert.ok(cause instanceof Error);
+  assert.equal(cause.message, "delegation-protected-input-mismatch");
+  assert.deepEqual(f.database.authority.runs.listChildren(runId), []);
+  assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(runId), []);
+  assert.deepEqual(f.database.authority.lifecycleJournal.listDelegationInvocations(runId), []);
+  assert.deepEqual(f.database.authority.dependencies.listByParentRun(runId), []);
 });
 
 it("refuses attempting and UNKNOWN parked parent writes at delegation admission without partial publication", async () => {

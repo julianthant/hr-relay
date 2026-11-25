@@ -68,7 +68,7 @@ it("shows skeleton title, model chip and transcript while history loads, never t
     release(); await settle(); await settle();
     const loaded = shell.host.querySelector("#hub-panel-assistant"); assert.ok(loaded);
     assert.equal(loaded.querySelector(".hub-chat-title")?.textContent, "Filed forms");
-    assert.equal(loaded.querySelector("[data-slot='skeleton']"), null);
+    assert.equal(loaded.querySelector("[data-slot='skeleton']") === null, true);
   } finally { release(); await shell.close(); }
 });
 
@@ -82,7 +82,7 @@ it("renders a served reply's bullets and bold as a list and strong text, and lea
     assert.equal(log.querySelector("strong")?.textContent, "Next steps:");
     assert.doesNotMatch(log.textContent ?? "", /\*\*|^- /mu);
     assert.match(log.textContent ?? "", /\{\{link\}\} ~~gone~~/u);
-    assert.equal(log.querySelector("button"), null, "no link buttons in served replies");
+    assert.equal(log.querySelector("button") === null, true, "no link buttons in served replies");
   } finally { await shell.close(); }
 });
 
@@ -90,7 +90,7 @@ it("shows the typing row with Cancel while a reply is prepared, and Cancel cance
   const actions: unknown[] = [];
   const served = { state: { draft: "", messages: [{ id: "m1", role: "operator" as const, text: "Hello" }], sequence: 1, turn: { state: "waiting" as const } }, canCompose: true, accountAvailable: true,
     accountAction: "settings" as const, accountNotice: "", accountRetry() {}, accountHeading: "", models: undefined, chooseModel() {}, onAction: (action: unknown) => { actions.push(action); }, revision: "",
-    confirmRefusal: undefined, forgetSession() {}, authorityKey: "", launcherBottom: 0, stageAttachment: async () => { throw new Error("unused"); }, statusText: "", footnote: "" };
+    confirmRefusal: undefined, forgetSession() {}, authorityKey: "", stageAttachment: async () => { throw new Error("unused"); }, statusText: "", footnote: "" };
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(AssistantPanel, {

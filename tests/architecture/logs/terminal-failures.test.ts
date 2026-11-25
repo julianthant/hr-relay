@@ -67,7 +67,7 @@ describe("terminal failures remain observable", () => {
       ["src/backend/app/composition/worker-compose.ts", /debugEvents,\s*taskNotes/u],
       ["src/backend/runtime/workers/worker-loop.ts", /debugEvents: deps.debugEvents/u],
       ["src/backend/runtime/workers/worker-loop.ts", /onFailure: failure => deps.debugEvents\?\.emit/u],
-      ["src/backend/runtime/execution/run-executor.ts", /observe: event => \{[\s\S]*?deps.debugEvents\?\.emit/u],
+      ["src/backend/runtime/execution/run-execution-task.ts", /observe: event => \{[\s\S]*?deps.debugEvents\?\.emit/u],
       ["src/backend/processing/providers/provider-client.ts", /return publish\(await Promise.race/u],
       ["src/backend/transports/http/routes/chatgpt-account.ts", /\.catch\(error => \{[\s\S]*?deps.debugEvents\?\.emit/u],
     ] as const;

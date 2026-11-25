@@ -66,7 +66,7 @@ it("refuses every Duo re-enrolment route without the session credential or the m
     }
     assert.equal((await post("/api/v1/profile/duo/reenrol/begin", { extra: true }, credential)).status, 400);
     const begun = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, credential)).json());
-    assert.deepEqual([begun.state, begun.profileId, begun.step, begun.methods.key.state, begun.methods.touch.state], ["duo-reenrol", state.profileId, "duo", "idle", "idle"]);
+    assert.deepEqual([begun.state, begun.profileId, begun.step, begun.methods.key.state], ["duo-reenrol", state.profileId, "duo", "idle"]);
     const read = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/read", { operationId: begun.operationId }, credential)).json());
     assert.deepEqual(read, begun);
     assert.equal((await post("/api/v1/profile/duo/reenrol/read", { operationId: "nope" }, credential)).status, 400);
@@ -86,9 +86,7 @@ it("refuses every Duo re-enrolment route without the session credential or the m
     const startedKey = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/start", { operationId: fresh.operationId, method: "key" }, credential)).json());
     const confirmed = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/confirm", {
       operationId: fresh.operationId, method: "key", attemptId: startedKey.methods.key.attemptId, operatorConfirmed: true }, credential)).json());
-    assert.equal(confirmed.methods.key.state, "complete");
-    const touch = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/start", { operationId: fresh.operationId, method: "touch" }, credential)).json());
-    assert.equal(touch.step, "ready");
+    assert.deepEqual([confirmed.methods.key.state, confirmed.step], ["complete", "ready"]);
     const committed = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/commit", { operationId: fresh.operationId }, credential)).json());
     assert.equal(committed.state, "active", JSON.stringify(committed));
     if (committed.state !== "active") throw new Error("committed re-enrolment required");

@@ -73,8 +73,22 @@ judging a visual difference.
 ## Checks
 
 - Follow the [root test path](../../AGENTS.md#checks) for runner placement and slots.
-- Prove dashboard behaviour with Vitest unit/integration tests and `/verify` browser checks; there
-  is no Playwright behaviour suite. `tests/mocks/` holds only `/ui-mock` scenes.
+- Prove dashboard behaviour with Vitest unit/integration tests, the `tests/smoke/` browser suite
+  and `/verify` browser checks.
+- Add browser coverage as `tests/smoke/*.smoke.ts` on the seeded backend, through the fixtures and
+  page object in `tests/support/helpers/dashboard/smoke/`. Assert behaviour and layout, never
+  screenshots. CI runs it in the `smoke` job; run it locally only when assigned.
+- A new state ships with its story. Each surface keys its stories by the state type it renders in
+  `tests/support/helpers/dashboard/smoke/stories/`, typed `satisfies Record<StateType, Story>`, so a
+  member without a story fails typecheck. `tests/smoke/dashboard-states.gallery.ts` runs every state
+  rule on every story at both desktop sizes and saves a frame of each under `tests/smoke/.output/states/`;
+  run one surface with `--grep @<surface>`. Word limits and banned text live in `state-rule-limits.ts`.
+  Record a rule the dashboard breaks today in the story's `knownFailures` with its ticket id.
+  A story that is not ready at first paint names its `ready` selector, and one whose requests start
+  later names `settled`. A new or changed rule ships with a planted violation in
+  `stories/rule-probe-stories.tsx`, which `tests/smoke/state-rules.gallery.ts` proves it reports.
+  The shared `smoke` job runs the gallery whenever the CI plan selects smoke. For assigned local runs,
+  select `--project=gallery`.
 - Assigned local mock renders and browser verification run serially with one worker under the
   local slot's containment rules. Stop at the first unexpected RED; this authorizes no full suite.
 - A declared workflow scenario ID alone proves no execution.

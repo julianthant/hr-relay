@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
-import { DashboardPageBoundary } from "../../../src/dashboard/app/dashboard-app.js";
+import { PanelBoundary } from "../../../src/dashboard/surfaces/shared/panel-boundary.js";
+import { DashboardPageBoundary } from "../../../src/dashboard/app/dashboard-page-boundary.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -34,5 +35,20 @@ it("retains shell controls after a page crash and recovers on navigation", async
     await render(false, "dashboard");
     assert.equal(host.querySelector("main")?.textContent, "Recovered page");
     assert.doesNotMatch(host.textContent ?? "", /Page unavailable/);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("Retry re-renders the panel", async () => {
+  vi.stubGlobal("reportError", () => {});
+  const host = document.createElement("div"), root = createRoot(host, { onCaughtError() {} });
+  document.body.append(host);
+  let broken = true;
+  function Flaky() { if (broken) throw new Error("Synthetic panel crash"); return createElement("p", null, "Panel ok"); }
+  try {
+    await act(async () => root.render(createElement(PanelBoundary, { resetKey: "a", sentence: "x", children: createElement(Flaky) })));
+    broken = false;
+    const retry = host.querySelector("button"); assert.ok(retry);
+    await act(async () => retry.click());
+    assert.equal(host.querySelector("p")?.textContent, "Panel ok");
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });

@@ -17,8 +17,8 @@ import { boundProfileCredentials, createBoundProfileFixture, withOfflineMaintena
 import type { Clock } from "../../../../src/rules/time/clock.js";
 
 export function createBackupFixtures(cleanups: (() => void | Promise<void>)[], CLOCK: Clock) {
-  async function openCurrentWorld() {
-    const profile = await createBoundProfileFixture();
+  async function openCurrentWorld(options?: Parameters<typeof createBoundProfileFixture>[0]) {
+    const profile = await createBoundProfileFixture(options);
     let database: AuthorityDatabase | undefined = undefined;
     let openingFailure: AuthoritySourceClosureUnprovedError | undefined = undefined;
     let cleanupFailure: { error: unknown } | undefined = undefined;

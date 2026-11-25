@@ -11,6 +11,7 @@ import { RunReview } from "../../../../../src/dashboard/surfaces/run-detail/revi
 import { Banner } from "../../../../../src/dashboard/ds/ui.js";
 import { serverLocalDay } from "../../../../../src/dashboard/surfaces/shell/date-navigation-model.js";
 import { LogsSurface } from "./control-surfaces.js";
+import { createRowStore } from "../../../../../src/dashboard/client/index.js";
 
 export function ControlPreview() {
   const [client] = useState(() => createDashboardClient({ baseUrl: location.origin }));
@@ -41,8 +42,8 @@ export function ControlPreview() {
   const scope = useMemo(() => epoch === undefined || request === undefined ? undefined : { actorId: epoch.bootstrap.actor.id, client, authority: epoch, dayRequest: request }, [client, epoch, request]);
   scopeRef.current = scope;
   const binding = useMemo<DashboardCommandBinding | undefined>(() => data === undefined || epoch === undefined || request === undefined || scope === undefined ? undefined : {
-    executor, scope, feedback: () => undefined, authority: { epoch, catalog: [], nowIso: data.bootstrap.serverClock.now, today: data.day.day, day: data.day.day,
-      dayState: { request, day: { state: "loaded", value: data.day }, connection: { state: "connecting" }, refresh, subscribePublications: () => () => undefined },
+    executor, scope, feedback: () => undefined, authority: { epoch, catalog: [], now: () => data.bootstrap.serverClock.now, today: data.day.day, day: data.day.day,
+      dayState: { rows: createRowStore(), request, day: { state: "loaded", value: data.day }, connection: { state: "connecting" }, refresh, subscribePublications: () => () => undefined },
       selection: { route: { start: false }, workflowId: "ocr" } },
   }, [data, epoch, request, scope, executor, refresh]);
   if (error) return <Banner tone="danger" title="Review unavailable">The fixture data could not be read.</Banner>;

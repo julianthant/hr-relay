@@ -5,13 +5,13 @@ import { createRoot } from "react-dom/client";
 import { it } from "vitest";
 import { QueuePanel } from "../../../../src/dashboard/surfaces/queue/queue.js";
 import { queueMemberPresentation } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
-import { mockQueueSurface } from "../../../mocks/workflows/workflow-queue-model.js";
-import { initialMockDraft } from "../../../mocks/workflows/workflow-mock-model.js";
+import { mockQueueSurface } from "../../../support/fixtures/dashboard/workflow-mocks/workflow-queue-model.js";
+import { initialMockDraft } from "../../../support/fixtures/dashboard/workflow-mocks/workflow-mock-model.js";
 import { QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 
 const base = mockQueueSurface({ id: "00000000-0000-4000-8000-000000000041", workflowId: "onboarding", title: "Morrow, Bea", subject: "Morrow, Bea", draft: initialMockDraft("onboarding"), approved: true, seeded: true }, "2026-08-03T10:57:54.000Z");
-const SENTENCE = "The system did not show the expected page. Review the current page before continuing.";
+const SENTENCE = "The expected page did not appear. Review the current page.";
 const failed = () => QueueSurfaceWireSchema.parse({ ...base, runId: RunIdSchema.parse("00000000-0000-4000-8000-000000000041"), status: "failed",
   endedAt: { state: "present", value: "2026-08-03T10:58:45.000Z" }, liveMessage: { state: "present", value: SENTENCE },
   warnings: { state: "present", count: 1, first: "[ucpath/read-paypath-position] UNEXPECTED_PAGE_STATE: raw detail — write state at failure: not-attempted" } });

@@ -68,13 +68,13 @@ describe("the Steps stage draws the served rows", () => {
   it("opens the fields of a switch under its row when it is off, closes them when it is on, and keeps what was typed", async () => {
     const dialog = await openSteps(served("person-lookup"), h.TYPED);
     assert.match(dialog.text(), /4 of 4 included/u);
-    assert.equal(document.querySelector('[aria-label="Employment date"]'), null);
+    assert.equal(document.querySelector('[aria-label="Employment date"]') === null, true);
     await dialog.press("Read CRM dates");
     assert.match(dialog.text(), /3 of 4 included/u);
     assert.ok(rowNamed("Read CRM dates").querySelector('input[aria-label="Employment date"]'), "the fields are not under their row");
     await typeDate("Employment date", "01/15/2020");
     await dialog.press("Read CRM dates");
-    assert.equal(document.querySelector('[aria-label="Employment date"]'), null);
+    assert.equal(document.querySelector('[aria-label="Employment date"]') === null, true);
     assert.match(dialog.text(), /4 of 4 included/u);
     await dialog.press("Read CRM dates");
     assert.equal(control("Employment date").value, "01/15/2020");
@@ -141,7 +141,7 @@ describe("the Steps stage draws the served rows", () => {
     await dialog.type(`${h.TYPED}; 10000001`);
     await dialog.press("Continue"); await dialog.press("Continue");
     assert.equal(dialog.stage(), "Steps");
-    assert.deepEqual(alerts(), ["Typed values describe one person, and 2 people are entered. Enter one person, or turn every step back on."]);
+    assert.deepEqual(alerts(), ["Typed values fit one person; 2 are entered."]);
     assert.equal(dialog.disabled("Continue"), true);
   });
 
@@ -152,7 +152,7 @@ describe("the Steps stage draws the served rows", () => {
       h.stubClient({ submitStartPlan: async input => { requests.push(input); return planOmitting(["kronos-timecard"]); } }));
     assert.match(rowNamed("Read timecard").textContent ?? "", /Form action · required/u);
     assert.match(dialog.text(), /7 of 7 included/u);
-    assert.equal(document.querySelector('[aria-label="Last day worked"]'), null);
+    assert.equal(document.querySelector('[aria-label="Last day worked"]') === null, true);
     await dialog.press("Enter manually for Read timecard");
     assert.match(dialog.text(), /7 of 7 included/u);
     assert.deepEqual(alerts(), ["Enter last day worked for read timecard."]);

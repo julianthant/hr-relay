@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { z } from "zod";
 import { isDirectExecution } from "./scope-files.js";
 
@@ -77,12 +77,12 @@ export const SERIAL_STORAGE_FILES: readonly string[] = [
   "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
   "tests/backend/storage/maintenance/profile-inventory.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
 ];
 
 // Native files that passed on Linux (ci-pipeline-07 report): Ubuntu shards run them too; the macOS native shards still run them.
 export const LINUX_NATIVE_FILES: readonly string[] = [
   "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
-  "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts",
   "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
   "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
@@ -111,12 +111,18 @@ export const LINUX_NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/maintenance/fixed-layout.test.ts",
 ];
 
-export type CiProject = "unit" | "integration" | "architecture";
-export type CiRunner = "ubuntu" | "native" | "serial" | "storage";
+const ciProjectSchema = z.enum(["unit", "integration", "architecture"]);
+const ciRunnerSchema = z.enum(["ubuntu", "native", "serial", "storage"]);
+export type CiProject = z.infer<typeof ciProjectSchema>;
+export type CiRunner = z.infer<typeof ciRunnerSchema>;
 export type CiDurations = Readonly<Record<string, number>>;
 
 const DURATIONS_PATH = "scripts/test/ci-durations.json";
 const ciDurationsSchema = z.record(z.string().startsWith("tests/"), z.number().nonnegative());
+const vitestListingSchema = z.array(z.strictObject({
+  file: z.string().refine(file => isAbsolute(file) && !file.includes("\0")),
+  projectName: z.string().min(1).optional(),
+}));
 const projectOf = (file: string): CiProject => file.endsWith(".integration.test.ts") ? "integration" : "unit";
 const isSingleWorker = (file: string) => SERIAL_FILES.includes(file) || SERIAL_STORAGE_FILES.includes(file);
 
@@ -133,6 +139,9 @@ export function balance(files: readonly string[], jobs: number, weight: (file: s
 }
 
 export function selectCiFiles(listing: readonly string[], project: CiProject, runner: CiRunner, job: number, jobs: number, durations: CiDurations): string[] {
+  if (!Number.isSafeInteger(job) || !Number.isSafeInteger(jobs) || job < 1 || job > jobs) {
+    throw new Error(`Invalid CI slice: ${job}/${jobs}`);
+  }
   const listed = listing.map(file => file.replaceAll("\\", "/"));
   const native = [...NATIVE_FILES, ...SERIAL_FILES];
   const missing = native.filter(file => projectOf(file) === project && !listed.includes(file));
@@ -145,6 +154,18 @@ export function selectCiFiles(listing: readonly string[], project: CiProject, ru
   const selected = runner === "serial" ? SERIAL_FILES : runner === "storage" ? SERIAL_STORAGE_FILES
     : NATIVE_FILES.filter(file => !SERIAL_STORAGE_FILES.includes(file));
   return bin.filter(file => projectOf(file) === project && selected.includes(file));
+}
+
+export function readVitestListing(listing: string, root: string): string[] {
+  try {
+    return vitestListingSchema.parse(JSON.parse(readFileSync(listing, "utf8"))).map(({ file }) => {
+      const path = relative(root, file).replaceAll("\\", "/");
+      if (!path.startsWith("tests/")) throw new Error(`File outside tests/: ${file}`);
+      return path;
+    });
+  } catch (cause) {
+    throw new Error(`Invalid Vitest listing: ${listing}`, { cause });
+  }
 }
 
 const vitestReportSchema = z.object({ testResults: z.array(z.object({
@@ -174,12 +195,15 @@ if (isDirectExecution(import.meta.url)) {
     writeFileSync(DURATIONS_PATH, JSON.stringify(Object.fromEntries(Object.entries(merged)
       .filter(([file]) => statSync(file, { throwIfNoEntry: false })?.isFile())
       .sort(([a], [b]) => a.localeCompare(b))), null, 2) + "\n");
-  } else {
-    const [project, runner, listing, slice] = args as [CiProject, CiRunner, string, string];
-    const [job, jobs] = slice.split("/").map(Number) as [number, number];
-    const listed = (JSON.parse(readFileSync(listing, "utf8")) as { file: string }[]).map(({ file }) => relative(process.cwd(), file));
+  } else if (command === "select") {
+    const [project, runner, listing, slice] = z.tuple([ciProjectSchema, ciRunnerSchema, z.string().min(1), z.string()]).parse(args);
+    if (!/^\d+\/\d+$/u.test(slice)) throw new Error(`Invalid CI slice: ${slice}`);
+    const [job, jobs] = slice.split("/").map(Number);
+    const listed = readVitestListing(listing, process.cwd());
     const durations = ciDurationsSchema.parse(JSON.parse(readFileSync(DURATIONS_PATH, "utf8")));
     const files = selectCiFiles(listed, project, runner, job, jobs, durations);
     process.stdout.write(files.map(file => file + "\0").join(""));
+  } else {
+    throw new Error(`Unknown CI file command: ${command}`);
   }
 }

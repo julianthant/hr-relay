@@ -31,7 +31,6 @@ import { checkParkedWrite } from "../../runtime/writes/write-recovery.js";
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 import { selectRunRuntime } from "../../runs/settings/run-settings.js";
 import { createRunResourcesFactory, type BrowserProfileAuthority } from "./worker/run-resources.js";
-import { bindFailureCapture } from "../../runs/lifecycle/failure-resolution.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { captureSelectedProfileStorage, createSlowOperationEvents, RuntimeCustodyUncertainError } from "./storage-compose.js";
 import { withOperationProof } from "../../storage/configuration/credential-safe-file.js";
@@ -476,7 +475,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     clock,
     ids,
   });
-  const diagnostics = bindFailureCapture(createRunDiagnosticCapture({ service: diagnosticService }));
+  const diagnostics = createRunDiagnosticCapture({ service: diagnosticService });
   const browserScreenshotCapture = createRunBrowserScreenshotCapture({ service: diagnosticService });
 
   ocrAccount = createChatGptAccountService({ admission, stateRoot, clock });
@@ -707,7 +706,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       channel?.failed(error);
       throw error;
     } finally {
-      await stopGateSources();
+      try { await stopGateSources(); } catch (error) { cleanupErrors.push(error); }
       router?.close();
     }
     if (channelFailure !== undefined) throw channelFailure instanceof Error ? channelFailure : new Error("worker-ipc-channel-failed", { cause: channelFailure });
@@ -758,14 +757,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     const errors = [...(runtimeError === undefined ? [] : [runtimeError]), ...(closureFailure === undefined ? [] : [closureFailure]), ...cleanupErrors];
     if (launchUncertain) throw new WorkerLaunchUncertainError(workerId, workflowId, errors);
     throw new RuntimeCustodyUncertainError(errors);
-  }
-  if (cleanupErrors.length === 1 && runtimeError === undefined) throw cleanupErrors[0];
-  if (cleanupErrors.length > 0) {
-    throw new AggregateError(
-      runtimeError === undefined ? cleanupErrors : [runtimeError, ...cleanupErrors],
-      `worker ${workerId} failed while releasing composed resources`,
-      { cause: cleanupErrors.at(-1) },
-    );
   }
   if (runtimeError !== undefined) {
     if (runtimeError instanceof Error) throw runtimeError;

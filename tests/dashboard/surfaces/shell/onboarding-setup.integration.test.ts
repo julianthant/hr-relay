@@ -10,7 +10,7 @@ import { OnboardingSetup } from "../../../../src/dashboard/surfaces/shell/onboar
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
 const draft = (browser: object) => ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
-  profileId: "00000000-0000-4000-8000-000000000003", step: "duo", methods: { key: idle, touch: idle }, browser });
+  profileId: "00000000-0000-4000-8000-000000000003", step: "duo", methods: { key: idle }, browser });
 
 async function mount(onboarding: ReturnType<typeof draft>, over: Partial<ServedOnboardingPort> = {}) {
   const never = () => Promise.reject(new Error("unused"));
@@ -22,9 +22,9 @@ async function mount(onboarding: ReturnType<typeof draft>, over: Partial<ServedO
 }
 
 it.each([
-  ["DUO_SETUP_OPEN_FAILED", /could not start the setup browser\. Select Reopen to try again/u],
-  ["DUO_SETUP_STOP_FAILED", /could not stop the previous setup browser\. Select Reopen to try again/u],
-  ["DUO_SETUP_FILES_BUSY", /files are still in use\. Select Reopen to check again/u],
+  ["DUO_SETUP_OPEN_FAILED", /The setup browser did not start\. Select Reopen to try again/u],
+  ["DUO_SETUP_STOP_FAILED", /The previous setup browser did not stop\. Select Reopen to try again/u],
+  ["DUO_SETUP_FILES_BUSY", /The setup browser’s files are in use\. Select Reopen to check again/u],
 ] as const)("shows %s with its sentence and a Reopen action that dispatches the reopen command", async (code, sentence) => {
   const calls: string[] = [];
   const f = await mount(draft({ state: "failed", generation: 2, code }), { reopenBrowser: async () => { calls.push("reopen"); return draft({ state: "open", generation: 3 }); } });
@@ -43,7 +43,7 @@ it("tells the operator the setup browser was closed and offers Reopen; a healthy
     assert.ok(closed.button("Reopen"));
   } finally { await closed.close(); }
   const open = await mount(draft({ state: "open", generation: 1 }));
-  try { assert.equal(open.button("Reopen"), undefined); } finally { await open.close(); }
+  try { assert.equal(open.button("Reopen") === undefined, true); } finally { await open.close(); }
 });
 
 it("shows one plain failure and disables Add this device when the status read fails, with re-enrolment wording", async () => {

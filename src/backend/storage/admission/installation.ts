@@ -13,7 +13,7 @@ import { basename,dirname,isAbsolute,join,relative,resolve } from "node:path";
 import { z } from "zod";
 import { ConfigSchema } from "../../../models/config/schema.js";
 import { profileInitials } from "../../../models/profiles/profile-identity.js";
-import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOperationSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason } from "../../../models/profiles/profile.js";
+import { DuoReenrolOperationSchema,LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOperationSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpDuoAttemptSchema,SignUpOnboardingSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason } from "../../../models/profiles/profile.js";
 import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,canonicalCredentialHeadReading,CanonicalCredentialOperationSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
 import { sameDirectory, fileIdentityObservation, capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,removeExactPath,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
@@ -73,14 +73,47 @@ const StoppedPriorProfileContinuitySchema = z.discriminatedUnion("schemaVersion"
 const StoppedCurrentProfileContinuitySchema = PriorProfileContinuitySchema.extend({ schemaVersion: z.literal(3), duo: z.array(DuoContinuityRowSchema).max(10_000),
   completedRestores: z.array(CompletedRestoreCustodySchema).max(10_000).refine(rows => new Set(rows.map(row => row.operationId)).size === rows.length) })
   .refine(value => value.completedRestores.every(row => row.profile.installationId === value.installationId));
+const StoppedProfileRegistryRowV4Schema = ProfileRegistryRowSchema.omit({ relayEmail: true }).extend({ registration: ProfileRegistryRowSchema.shape.registration.extend({
+  onboardingCompletion: ProfileOnboardingCompletionSchema.extend({ touch: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u),
+    softwareInterceptionDisabled: z.literal(true), operatorConfirmedAt: ProfileOnboardingCompletionSchema.shape.finishedAt.optional() }).optional() }).optional() }) });
+const StoppedProfileRegistryDocumentV4Schema = ProfileRegistryDocumentSchema.extend({ schemaVersion: z.literal(4), profiles: z.array(StoppedProfileRegistryRowV4Schema) });
+type StoppedProfileRegistryDocumentV4 = z.infer<typeof StoppedProfileRegistryDocumentV4Schema>;
 const StoppedProfileRegistryDocumentV3Schema = ProfileRegistryDocumentSchema.extend({ schemaVersion: z.literal(3),
-  profiles: z.array(ProfileRegistryRowSchema.omit({ timekeeperInitials: true })) });
+  profiles: z.array(StoppedProfileRegistryRowV4Schema.omit({ timekeeperInitials: true })) });
 type StoppedProfileRegistryDocumentV3 = z.infer<typeof StoppedProfileRegistryDocumentV3Schema>;
 const StoppedProfileRegistryDocumentSchema = z.union([StoppedProfileRegistryDocumentV3Schema.omit({ installationId: true, revision: true }).extend({ schemaVersion: z.literal(2) }), StoppedProfileRegistryDocumentV3Schema]);
 /** The version 4 registry for a version 3 one: each row's timekeeper initials are seeded from its timekeeper name and nothing else changes. */
-function seededTimekeeperInitials(prior: StoppedProfileRegistryDocumentV3): ProfileRegistryDocument {
-  return ProfileRegistryDocumentSchema.parse({ ...prior, schemaVersion: 4,
+function seededTimekeeperInitials(prior: StoppedProfileRegistryDocumentV3): StoppedProfileRegistryDocumentV4 {
+  return StoppedProfileRegistryDocumentV4Schema.parse({ ...prior, schemaVersion: 4,
     profiles: prior.profiles.map(row => ({ ...row, timekeeperInitials: profileInitials(row.timekeeperName) })) });
+}
+/** The version 5 registry for a version 4 one: each onboarding completion loses its retired `touch` receipt and nothing else changes. */
+function securityKeyOnlyRegistry(prior: StoppedProfileRegistryDocumentV4): ProfileRegistryDocument {
+  return ProfileRegistryDocumentSchema.parse({ ...prior, schemaVersion: 5, profiles: prior.profiles.map(({ registration: { onboardingCompletion, ...registration }, ...row }) => {
+    if (onboardingCompletion === undefined) return { ...row, registration };
+    const { touch: _touch, ...completion } = onboardingCompletion;
+    return { ...row, registration: { ...registration, onboardingCompletion: completion } };
+  }) });
+}
+const StoppedSignUpDuoAttemptSchema = SignUpDuoAttemptSchema.extend({ method: z.enum(["key", "touch"]),
+  ceremony: z.strictObject({ credentialId: z.string().min(1), requestId: z.string().min(1),
+    mechanism: z.enum(["fast-duo", "native-platform", "chromium-platform"]), softwareInterceptionDisabled: z.boolean() }).optional() });
+const StoppedProfileOperationSchema = z.union([
+  SignUpOperationSchema.extend({ onboarding: SignUpOnboardingSchema.extend({ attempts: z.array(StoppedSignUpDuoAttemptSchema) }).optional() }),
+  LogoutOperationSchema,
+  z.strictObject({ ...DuoReenrolOperationSchema.shape, draft: DuoReenrolOperationSchema.shape.draft.extend({ attempts: z.array(StoppedSignUpDuoAttemptSchema) }) })]);
+/** Keeps the security-key attempts without their retired ceremony fields; an open operation still holding a live `touch` attempt refuses. */
+function securityKeyOnlyAttempts(attempts: readonly z.infer<typeof StoppedSignUpDuoAttemptSchema>[], open: boolean) {
+  if (open && attempts.some(row => row.method === "touch" && (row.state !== "closed" || row.ceremony !== undefined))) fail("security-key-upgrade-touch-attempt-in-flight");
+  return attempts.flatMap(({ ceremony, ...row }) => row.method === "touch" ? []
+    : [{ ...row, method: "key" as const, ...(ceremony === undefined ? {} : { ceremony: { credentialId: ceremony.credentialId, requestId: ceremony.requestId } }) }]);
+}
+function securityKeyOnlyOperation(operation: z.infer<typeof StoppedProfileOperationSchema>): ProfileOperation {
+  if (operation.kind === "logout") return operation;
+  if (operation.kind === "sign-up") return ProfileOperationSchema.parse(operation.onboarding === undefined ? operation
+    : { ...operation, onboarding: { ...operation.onboarding, attempts: securityKeyOnlyAttempts(operation.onboarding.attempts, operation.onboarding.abort === undefined) } });
+  if (operation.commit !== undefined && operation.draft.attempts.some(row => row.method === "touch")) fail("security-key-upgrade-touch-attempt-in-flight");
+  return ProfileOperationSchema.parse({ ...operation, draft: { ...operation.draft, attempts: securityKeyOnlyAttempts(operation.draft.attempts, operation.abort === undefined) } });
 }
 const StoppedLogicalProfileContinuitySchema = z.strictObject({ schemaVersion: z.literal(4), installationId: z.uuid(),
   digest: z.string().regex(/^[0-9a-f]{64}$/u), revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
@@ -765,24 +798,25 @@ function readProfileEvidence<T>(path: string, schema: z.ZodType<T>): T {
   if (file === undefined) fail("profile-registry-evidence-missing");
   return schema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
 }
-function profileOperationInventory(machineRoot: string) {
+function profileOperationInventory(machineRoot: string, schema: z.ZodType<{ operationId: string }> = ProfileOperationSchema) {
   const directory = join(machineRoot, "machine", "operations");
   if (!lstatMaybe(directory)) return [];
   privateDirectory(directory);
   return readdirSync(directory).filter(name => name.endsWith(".json")).sort().map(name => {
     const path = join(directory, name);
-    const operation = readProfileEvidence(path, ProfileOperationSchema);
+    const operation = readProfileEvidence(path, schema);
     if (name !== `${operation.operationId}.json`) fail("profile-operation-identity-mismatch");
     return { operationId: operation.operationId, digest: createHash("sha256").update(canonicalJsonStringify(operation)).digest("hex") };
   });
 }
 
-function profileRegistryWitness(installationId: string, path: string, document: ProfileRegistryDocument | StoppedProfileRegistryDocumentV3) {
+function profileRegistryWitness(installationId: string, path: string, document: ProfileRegistryDocument | StoppedProfileRegistryDocumentV4 | StoppedProfileRegistryDocumentV3,
+  operationSchema?: z.ZodType<{ operationId: string }>) {
   privateFile(path);
   if (document.installationId !== installationId) fail("profile-registry-installation-mismatch");
   return ProfileContinuitySchema.parse({ schemaVersion: 7, installationId, revision: document.revision,
     digest: createHash("sha256").update(canonicalJsonStringify(document)).digest("hex"),
-    generation: document.sessionGeneration, operations: profileOperationInventory(dirname(dirname(path))) });
+    generation: document.sessionGeneration, operations: profileOperationInventory(dirname(dirname(path)), operationSchema) });
 }
 
 function assertProfileCredentialKeyMembership(locator: RuntimeLocator, heads: readonly z.infer<typeof ProfileErasureHeadSchema>[]): void {
@@ -816,7 +850,7 @@ function readProfilePublicationSource(control: string, locator: RuntimeLocator) 
   const path = join(locator.stateRoot, "machine", "profiles.json");
   if (lstatMaybe(join(control, "profile-control-upgrade.json"))) fail("profile-control-upgrade-pending");
   assertNoSymlinkComponents(path);
-  readProfileEvidence(join(locator.stateRoot, "machine", "profile-registry-version.json"), z.strictObject({ schemaVersion: z.literal(9) }));
+  readProfileEvidence(join(locator.stateRoot, "machine", "profile-registry-version.json"), z.strictObject({ schemaVersion: z.literal(10) }));
   const document = readProfileEvidence(path, ProfileRegistryDocumentSchema);
   readProfileEvidence(join(locator.stateRoot, "machine", "profile-verifiers.json"), ProfileVerifierDocumentSchema);
   const pepperPath = join(locator.stateRoot, "machine", "profile-pepper");
@@ -942,14 +976,18 @@ function profileOnboardingCompletion(operation: z.infer<typeof SignUpOperationSc
   assertFinishedProfileOnboarding(operation);
   const draft = operation.onboarding;
   if (draft?.finish === undefined) fail("profile-onboarding-incomplete");
-  const key = draft.attempts.findLast(entry => entry.method === "key" && entry.generation === draft.generation);
-  const touch = draft.attempts.findLast(entry => entry.method === "touch" && entry.generation === draft.generation);
-  if (key === undefined || touch === undefined) fail("profile-onboarding-incomplete");
+  const key = draft.attempts.findLast(entry => entry.generation === draft.generation);
+  if (key === undefined) fail("profile-onboarding-incomplete");
   return ProfileOnboardingCompletionSchema.parse({ generation: draft.generation, ...draft.finish,
     key: { receiptDigest: createHash("sha256").update(canonicalJsonStringify(key)).digest("hex"),
-      confirmation: key.operatorConfirmedAt === undefined ? key.portal?.acceptance : "operator" },
-    touch: { receiptDigest: createHash("sha256").update(canonicalJsonStringify(touch)).digest("hex"),
-      softwareInterceptionDisabled: true, ...(touch.operatorConfirmedAt === undefined ? {} : { operatorConfirmedAt: touch.operatorConfirmedAt }) } });
+      confirmation: key.operatorConfirmedAt === undefined ? key.portal?.acceptance : "operator" } });
+}
+
+type OnboardingVerifierRow = z.infer<typeof ProfileVerifierDocumentSchema>["profiles"][number];
+
+function matchesOnboardingRelay(relay: NonNullable<z.infer<typeof SignUpOperationSchema>["relay"]>, verifier: OnboardingVerifierRow): boolean {
+  return verifier.salt === relay.salt && verifier.passwordVerifier === relay.passwordVerifier
+    && verifier.consecutiveFailures === 0 && verifier.lockedUntilMs === undefined;
 }
 
 function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
@@ -960,6 +998,7 @@ function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
   if (intent.installationId !== locator.installationId || operation.phase !== "publishing" || operation.credentials.phase !== "ready"
     || added.length !== 1 || verifier.length !== 1 || added[0]?.profileId !== operation.profileId || verifier[0]?.profileId !== operation.profileId
     || verifier[0].emailKey !== operation.emailKey || priorVerifiers.profiles.some(row => row.emailKey === operation.emailKey)
+    || added[0].relayEmail !== operation.relay?.email || operation.relay !== undefined && !matchesOnboardingRelay(operation.relay, verifier[0])
     || priorDocument.installationId !== locator.installationId || document.installationId !== locator.installationId
     || priorDocument.activeProfileId !== null || priorDocument.revision !== prior.revision || priorDocument.sessionGeneration !== prior.generation
     || createHash("sha256").update(canonicalJsonStringify(priorDocument)).digest("hex") !== prior.digest
@@ -976,6 +1015,7 @@ function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
   const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
   if (pepper === undefined || pepper.bytes.length !== 32 || !sameDirectory(pepper.identity, intent.pepper)
     || createHash("sha256").update(pepper.bytes).digest("hex") !== intent.pepper.digest) fail("profile-onboarding-finish-pepper-changed");
+  if (operation.relay !== undefined && emailKey(pepper.bytes, operation.relay.email) !== operation.emailKey) fail("profile-onboarding-finish-verifier-changed");
 }
 
 function prepareProfileOnboardingFinish(control: string, locator: RuntimeLocator,
@@ -1254,9 +1294,9 @@ function initializeMachineRegistry(control: string, locator: RuntimeLocator, fla
     if (!lstatMaybe(path)) atomicJson(path, value);
     else if (canonicalJsonStringify(readStrict(path, z.unknown())) !== canonicalJsonStringify(value)) fail("profile-machine-initialization-changed");
   };
-  const document = ProfileRegistryDocumentSchema.parse({ schemaVersion: 4, installationId: locator.installationId, revision: 0, profiles: [], activeProfileId: null, sessionGeneration: 0 });
+  const document = ProfileRegistryDocumentSchema.parse({ schemaVersion: 5, installationId: locator.installationId, revision: 0, profiles: [], activeProfileId: null, sessionGeneration: 0 });
   publish(join(directory, "browser-roots.json"), BrowserRootsSchema.parse({ schemaVersion: 3, installationId: locator.installationId, revision: 0, nextHandle: 1, nextGeneration: 1, roots: [] }));
-  publish(join(directory, "profile-registry-version.json"), { schemaVersion: 9 });
+  publish(join(directory, "profile-registry-version.json"), { schemaVersion: 10 });
   publish(join(directory, "profiles.json"), document);
   publish(join(directory, "profile-verifiers.json"), { schemaVersion: 1, profiles: [] });
   const pepperPath = join(directory, "profile-pepper");
@@ -1349,11 +1389,11 @@ function upgradeRestoreControl(control: string, locator: RuntimeLocator): void {
     const prior = readStrict(path, StoppedRestoreProfileContinuitySchema), document = readStrict(registryPath, StoppedProfileRegistryDocumentV3Schema);
     assertPriorRegistryLogicalBinding(locator, prior, document);
     for (const row of prior.completedRestores) assertCompletedRestoreCustody(locator, row);
-    intent = schema.parse({ schemaVersion: 1, prior, current: profileRegistryWitness(locator.installationId, registryPath, document) });
+    intent = schema.parse({ schemaVersion: 1, prior, current: profileRegistryWitness(locator.installationId, registryPath, document, StoppedProfileOperationSchema) });
     atomicJson(intentPath, intent);
   }
   const document = readStrict(registryPath, StoppedProfileRegistryDocumentV3Schema), actual = readStrict(path, z.union([StoppedRestoreProfileContinuitySchema, ProfileContinuitySchema]));
-  if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, document)) !== canonicalJsonStringify(intent.current)
+  if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, document, StoppedProfileOperationSchema)) !== canonicalJsonStringify(intent.current)
     || canonicalJsonStringify(actual) !== canonicalJsonStringify(intent.prior) && canonicalJsonStringify(actual) !== canonicalJsonStringify(intent.current)) fail("restore-control-upgrade-source-changed");
   const marker = readStrict(markerPath, z.strictObject({ schemaVersion: z.union([z.literal(7), z.literal(8)]) }));
   if (marker.schemaVersion === 8 && actual.schemaVersion !== 7) fail("restore-control-upgrade-prefix-invalid");
@@ -1361,7 +1401,7 @@ function upgradeRestoreControl(control: string, locator: RuntimeLocator): void {
   unlinkSync(intentPath); fsyncPath(control);
 }
 const RegistryInitialsUpgradeIntentSchema = z.strictObject({ schemaVersion: z.literal(1), priorDocument: StoppedProfileRegistryDocumentV3Schema,
-  document: ProfileRegistryDocumentSchema, prior: ProfileContinuitySchema, current: ProfileContinuitySchema });
+  document: StoppedProfileRegistryDocumentV4Schema, prior: ProfileContinuitySchema, current: ProfileContinuitySchema });
 /** Registry version 3 to 4 (marker 8 to 9). The intent fixes both documents first, so a stop at any later step finishes the same upgrade. */
 function upgradeRegistryTimekeeperInitials(control: string, locator: RuntimeLocator): void {
   if ((installationAdmissions.get(control)?.size ?? 0) !== 0) fail("registry-initials-upgrade-admission-busy");
@@ -1372,19 +1412,57 @@ function upgradeRegistryTimekeeperInitials(control: string, locator: RuntimeLoca
     if (readStrict(versionPath, z.strictObject({ schemaVersion: z.number().int() })).schemaVersion !== 8) return;
     for (const name of ["journal.json", "profile-publication.json", "profile-control-upgrade.json", "account-deletion.json"]) if (lstatMaybe(join(control, name))) fail("registry-initials-upgrade-pending-unsupported");
     const priorDocument = readStrict(registryPath, StoppedProfileRegistryDocumentV3Schema), prior = readStrict(witnessPath, ProfileContinuitySchema);
-    if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, priorDocument)) !== canonicalJsonStringify(prior)) fail("profile-registry-continuity-mismatch");
+    if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, priorDocument, StoppedProfileOperationSchema)) !== canonicalJsonStringify(prior)) fail("profile-registry-continuity-mismatch");
     const document = seededTimekeeperInitials(priorDocument);
-    intent = RegistryInitialsUpgradeIntentSchema.parse({ schemaVersion: 1, priorDocument, document, prior, current: profileRegistryWitness(locator.installationId, registryPath, document) });
+    intent = RegistryInitialsUpgradeIntentSchema.parse({ schemaVersion: 1, priorDocument, document, prior, current: profileRegistryWitness(locator.installationId, registryPath, document, StoppedProfileOperationSchema) });
     atomicJson(intentPath, intent);
   }
   const step = (value: unknown, before: unknown, after: unknown): number => canonicalJsonStringify(value) === canonicalJsonStringify(before) ? 0
     : canonicalJsonStringify(value) === canonicalJsonStringify(after) ? 1 : fail("registry-initials-upgrade-source-changed");
-  const steps = [step(readStrict(registryPath, z.union([StoppedProfileRegistryDocumentV3Schema, ProfileRegistryDocumentSchema])), intent.priorDocument, intent.document),
+  const steps = [step(readStrict(registryPath, z.union([StoppedProfileRegistryDocumentV3Schema, StoppedProfileRegistryDocumentV4Schema])), intent.priorDocument, intent.document),
     step(readStrict(witnessPath, ProfileContinuitySchema), intent.prior, intent.current),
     readStrict(versionPath, z.strictObject({ schemaVersion: z.union([z.literal(8), z.literal(9)]) })).schemaVersion === 9 ? 1 : 0];
   if (steps.some((done, index) => index > 0 && done > (steps[index - 1] ?? 0))) fail("registry-initials-upgrade-prefix-invalid");
-  if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, intent.document)) !== canonicalJsonStringify(intent.current)) fail("registry-initials-upgrade-source-changed");
+  if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, intent.document, StoppedProfileOperationSchema)) !== canonicalJsonStringify(intent.current)) fail("registry-initials-upgrade-source-changed");
   atomicJson(registryPath, intent.document); atomicJson(witnessPath, intent.current); atomicJson(versionPath, { schemaVersion: 9 });
+  unlinkSync(intentPath); fsyncPath(control);
+}
+const SecurityKeyOnlyUpgradeIntentSchema = z.strictObject({ schemaVersion: z.literal(1), priorDocument: StoppedProfileRegistryDocumentV4Schema,
+  document: ProfileRegistryDocumentSchema, prior: ProfileContinuitySchema, current: ProfileContinuitySchema,
+  operations: z.array(z.strictObject({ operationId: z.uuid(), prior: StoppedProfileOperationSchema, next: ProfileOperationSchema })).max(10_000) });
+/** Registry version 4 to 5 (marker 9 to 10): Duo is security-key only. Stored operations lose their `touch` attempts, then the registry its retired `touch` receipts. */
+function upgradeSecurityKeyOnly(control: string, locator: RuntimeLocator): void {
+  if ((installationAdmissions.get(control)?.size ?? 0) !== 0) fail("security-key-upgrade-admission-busy");
+  const machine = join(locator.stateRoot, "machine"), registryPath = join(machine, "profiles.json"), witnessPath = join(control, "profile-registry.json"),
+    versionPath = join(machine, "profile-registry-version.json"), intentPath = join(control, "security-key-only-upgrade.json");
+  const operationPath = (operationId: string) => join(machine, "operations", `${operationId}.json`);
+  const digest = (value: unknown) => createHash("sha256").update(canonicalJsonStringify(value)).digest("hex");
+  let intent = lstatMaybe(intentPath) ? readStrict(intentPath, SecurityKeyOnlyUpgradeIntentSchema) : undefined;
+  if (intent === undefined) {
+    if (readStrict(versionPath, z.strictObject({ schemaVersion: z.number().int() })).schemaVersion !== 9) return;
+    for (const name of ["journal.json", "profile-publication.json", "profile-control-upgrade.json", "account-deletion.json"]) if (lstatMaybe(join(control, name))) fail("security-key-upgrade-pending-unsupported");
+    const priorDocument = readStrict(registryPath, StoppedProfileRegistryDocumentV4Schema), prior = readStrict(witnessPath, ProfileContinuitySchema);
+    if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, priorDocument, StoppedProfileOperationSchema)) !== canonicalJsonStringify(prior)) fail("profile-registry-continuity-mismatch");
+    const operations = prior.operations.map(({ operationId }) => {
+      const before = readStrict(operationPath(operationId), StoppedProfileOperationSchema);
+      return { operationId, prior: before, next: securityKeyOnlyOperation(before) };
+    }).filter(row => digest(row.prior) !== digest(row.next));
+    const document = securityKeyOnlyRegistry(priorDocument), changed = new Map(operations.map(row => [row.operationId, digest(row.next)]));
+    intent = SecurityKeyOnlyUpgradeIntentSchema.parse({ schemaVersion: 1, priorDocument, document, prior, operations,
+      current: { ...prior, digest: digest(document), operations: prior.operations.map(row => ({ ...row, digest: changed.get(row.operationId) ?? row.digest })) } });
+    atomicJson(intentPath, intent);
+  }
+  const step = (value: unknown, before: unknown, after: unknown): number => canonicalJsonStringify(value) === canonicalJsonStringify(before) ? 0
+    : canonicalJsonStringify(value) === canonicalJsonStringify(after) ? 1 : fail("security-key-upgrade-source-changed");
+  const steps = [...intent.operations.map(row => step(readStrict(operationPath(row.operationId), z.union([StoppedProfileOperationSchema, ProfileOperationSchema])), row.prior, row.next)),
+    step(readStrict(registryPath, z.union([StoppedProfileRegistryDocumentV4Schema, ProfileRegistryDocumentSchema])), intent.priorDocument, intent.document),
+    step(readStrict(witnessPath, ProfileContinuitySchema), intent.prior, intent.current),
+    readStrict(versionPath, z.strictObject({ schemaVersion: z.union([z.literal(9), z.literal(10)]) })).schemaVersion === 10 ? 1 : 0];
+  if (steps.some((done, index) => index > 0 && done > (steps[index - 1] ?? 0))) fail("security-key-upgrade-prefix-invalid");
+  for (const row of intent.operations) atomicJson(operationPath(row.operationId), row.next);
+  atomicJson(registryPath, intent.document);
+  if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, intent.document)) !== canonicalJsonStringify(intent.current)) fail("security-key-upgrade-source-changed");
+  atomicJson(witnessPath, intent.current); atomicJson(versionPath, { schemaVersion: 10 });
   unlinkSync(intentPath); fsyncPath(control);
 }
 
@@ -1421,9 +1499,9 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
     const pending = readProfileEvidence(join(control, "journal.json"), JournalSchema);
     if (pending.phase !== "restoring" || pending.restore.operationId !== restoreOperationId || pending.installationId !== locator.installationId) fail("profile-restore-context-unavailable");
   }
-  if (stoppedForward) { upgradeRestoreControl(control, locator); upgradeRegistryTimekeeperInitials(control, locator); }
+  if (stoppedForward) { upgradeRestoreControl(control, locator); upgradeRegistryTimekeeperInitials(control, locator); upgradeSecurityKeyOnly(control, locator); }
   const marker = readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
-  if (marker.schemaVersion === 9) {
+  if (marker.schemaVersion === 10) {
     if (!stoppedForward && lstatMaybe(join(control, "browser-root-upgrade.json"))) fail("browser-root-upgrade-pending");
     const browsers = stoppedForward || restoreOperationId !== undefined ? parseStoppedBrowserRootUpgradeSource(readProfileEvidence(join(machine, "browser-roots.json"), z.unknown()))
       : readProfileEvidence(join(machine, "browser-roots.json"), BrowserRootsSchema);
@@ -1437,7 +1515,7 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
     validateStoppedControlUpgrade(control, locator, readControlUpgradeReceipt(pending));
     return;
   }
-  if (marker.schemaVersion === 9) {
+  if (marker.schemaVersion === 10) {
     const document = readProfileEvidence(join(machine, "profiles.json"), ProfileRegistryDocumentSchema);
     const continuity = readProfileEvidence(join(control, "profile-registry.json"), ProfileContinuitySchema);
     if (document.installationId !== locator.installationId || continuity.installationId !== locator.installationId) fail("profile-registry-installation-mismatch");
@@ -1521,7 +1599,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       assertNoSymlinkComponents(machine);
       const marker = lstatMaybe(join(machine, "profile-registry-version.json")) === undefined ? undefined
         : readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
-      if (marker?.schemaVersion === 9 && !lstatMaybe(join(control, "profile-control-upgrade.json"))) {
+      if (marker?.schemaVersion === 10 && !lstatMaybe(join(control, "profile-control-upgrade.json"))) {
         if (lstatMaybe(join(control, "account-deletion.json"))) {
           finishAccountDeletion(control, priorLocator, () => {
             lifetime.assertStartupWorkspace(workspace);
@@ -1677,6 +1755,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
             const stable = (operation: z.infer<typeof SignUpOperationSchema>) => ({ operationId: operation.operationId, profileId: operation.profileId,
               commandId: operation.commandId, writeId: operation.writeId, emailKey: operation.emailKey, firstName: operation.firstName,
               lastName: operation.lastName, createdAt: operation.createdAt, commandFingerprint: operation.commandFingerprint,
+              relay: operation.relay ?? null,
               credentials: { operationId: operation.credentials.operationId, keyId: operation.credentials.keyId, generation: operation.credentials.generation } });
             if (canonicalJsonStringify(stable(before)) !== canonicalJsonStringify(stable(input))
               || before.expectedRevision !== undefined && before.expectedRevision !== input.expectedRevision
@@ -1718,16 +1797,21 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         try {
           const inspect = () => { current(); return requireRuntimeAdmission(registration.profile, scope).readProfileRegistration(registration.lease, operation, scope, registration.proof); };
           const captured = inspect();
+          const assertVerifier = ({ login }: typeof captured, verifier: OnboardingVerifierRow | undefined) => {
+            const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
+            if (pepper === undefined || verifier === undefined || verifier.emailKey !== operation.emailKey
+              || emailKey(pepper.bytes, login.email) !== operation.emailKey
+              || (login.kind === "relay" ? !matchesOnboardingRelay(login, verifier) : !passwordMatches(login.password, verifier))) {
+              fail("profile-onboarding-finish-verifier-changed");
+            }
+          };
           if (lstatMaybe(intentPath)) {
             const pending = readStrict(intentPath, ProfilePublicationSchema);
             if (pending.kind !== "onboarding-finish" || canonicalJsonStringify(pending.operation) !== canonicalJsonStringify(operation)) fail("profile-onboarding-finish-pending");
             const revalidate = () => {
               const next = inspect();
               if (next.revision !== captured.revision || canonicalJsonStringify(next.credentials) !== canonicalJsonStringify(pending.credentials)) fail("profile-onboarding-finish-source-changed");
-              const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 }),
-                verifier = pending.verifiers.profiles.find(row => row.profileId === operation.profileId);
-              if (pepper === undefined || verifier === undefined || emailKey(pepper.bytes, next.email) !== operation.emailKey
-                || !passwordMatches(next.password, verifier)) fail("profile-onboarding-finish-verifier-changed");
+              assertVerifier(next, pending.verifiers.profiles.find(row => row.profileId === operation.profileId));
             };
             revalidate(); prepareProfileOnboardingFinish(control, locator, pending, revalidate)(); return;
           }
@@ -1735,18 +1819,23 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
             const row = before.profiles.find(row => row.profileId === operation.profileId);
             if (row?.registration.operationId !== operation.operationId || row.registration.commandId !== operation.commandId
               || row.registration.writeId !== operation.writeId || row.registration.credentialRevision !== captured.revision
+              || operation.relay !== undefined && row.relayEmail !== operation.relay.email
               || canonicalJsonStringify(row.registration.onboardingCompletion) !== canonicalJsonStringify(profileOnboardingCompletion(operation))) fail("profile-signup-intent-mismatch");
             return;
           }
           assertCanonicalProfileBinding(join(locator.stateRoot, "profiles", operation.profileId, "state.db"),
             { installationId: locator.installationId, profileId: operation.profileId });
-          const verifierOwner = createProfileVerifiers(locator.stateRoot), prepared = verifierOwner.prepare(operation.profileId, captured.email, captured.password),
+          const verifierOwner = createProfileVerifiers(locator.stateRoot), { login } = captured,
+            prepared = login.kind === "relay"
+              ? verifierOwner.prepareFromRow(operation.profileId, { emailKey: operation.emailKey, salt: login.salt, passwordVerifier: login.passwordVerifier })
+              : verifierOwner.prepare(operation.profileId, login.email, login.password),
             verifier = verifyPreparedProfileVerifier(prepared, locator.stateRoot, operation.profileId, operation.emailKey),
             verifierPath = join(locator.stateRoot, "machine", "profile-verifiers.json"), priorVerifiers = readStrict(verifierPath, ProfileVerifierDocumentSchema);
           if (priorVerifiers.profiles.some(row => row.profileId === operation.profileId || row.emailKey === operation.emailKey)) fail("profile-onboarding-verifier-binding-invalid");
           const row = ProfileRegistryRowSchema.parse({ profileId: operation.profileId, ...deriveProfileNames(operation.firstName, operation.lastName),
             registration: { operationId: operation.operationId, commandId: operation.commandId, writeId: operation.writeId,
               credentialRevision: captured.revision, onboardingCompletion: profileOnboardingCompletion(operation) },
+            ...(operation.relay === undefined ? {} : { relayEmail: operation.relay.email }),
             createdAt: operation.createdAt, lastSignedInAt: operation.createdAt, credentialState: "saved", duoState: "ready", lifecycle: "ready" }),
             next = advanceProfileRegistryDocument(before, { profiles: [...before.profiles, row] }),
             prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema), root = join(locator.stateRoot, "profiles", operation.profileId);
@@ -1757,8 +1846,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           const revalidate = () => {
             const next = inspect();
             if (next.revision !== captured.revision || canonicalJsonStringify(next.credentials) !== canonicalJsonStringify(captured.credentials)) fail("profile-onboarding-finish-source-changed");
-            const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
-            if (pepper === undefined || emailKey(pepper.bytes, next.email) !== operation.emailKey || !passwordMatches(next.password, verifier)) fail("profile-onboarding-finish-verifier-changed");
+            assertVerifier(next, verifier);
           };
           revalidate(); verifyPreparedProfileVerifier(prepared, locator.stateRoot, operation.profileId, operation.emailKey);
           current(); atomicJson(intentPath, intent);
@@ -1770,9 +1858,13 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const next = ProfileRegistryDocumentSchema.parse(document);
       if (next.profiles.length !== before.profiles.length || next.profiles.some(row => {
         const original = before.profiles.find(prior => prior.profileId === row.profileId);
-        return original === undefined || canonicalJsonStringify({ ...row, lifecycle: original.lifecycle, lastSignedInAt: original.lastSignedInAt,
-          firstName: original.firstName, lastName: original.lastName, initials: original.initials, timekeeperName: original.timekeeperName,
-          timekeeperInitials: original.timekeeperInitials }) !== canonicalJsonStringify(original);
+        if (original === undefined) return true;
+        const { relayEmail: priorEmail, ...prior } = original;
+        const { relayEmail: nextEmail, ...next } = row;
+        return priorEmail !== nextEmail && nextEmail === undefined
+          || canonicalJsonStringify({ ...next, lifecycle: prior.lifecycle, lastSignedInAt: prior.lastSignedInAt,
+            firstName: prior.firstName, lastName: prior.lastName, initials: prior.initials, timekeeperName: prior.timekeeperName,
+            timekeeperInitials: prior.timekeeperInitials }) !== canonicalJsonStringify(prior);
       })) fail("profile-registry-registration-required");
       if (expected !== undefined && canonicalJsonStringify(before) !== canonicalJsonStringify(expected)
         || next.installationId !== before.installationId || next.revision !== before.revision + 1 || next.sessionGeneration < before.sessionGeneration) fail("profile-registry-publication-conflict");
@@ -1942,7 +2034,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         priorControlUpgradeEvidence(locator, prior, document);
         assertHeld();
         if (before !== profileObservation(control, locator)) fail("profile-registry-observation-changed");
-        return seededTimekeeperInitials(document);
+        return securityKeyOnlyRegistry(seededTimekeeperInitials(document));
       }
       if (lstatMaybe(join(control, "profile-publication.json"))) {
         if (options?.readonlyControl === true) return readMachineRegistry(control, locator, false);
@@ -2507,7 +2599,7 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
   const machine = join(locator.stateRoot, "machine");
   if (document.profiles.some(row => row.lifecycle !== "ready" || row.credentialState !== "saved")) fail("profile-control-upgrade-pending-conversion-unsupported");
   assertPriorRegistryLogicalBinding(locator, prior, document);
-  const currentDocument = seededTimekeeperInitials(StoppedProfileRegistryDocumentV3Schema.parse({ ...document, schemaVersion: 3, installationId: locator.installationId, revision: 1 }));
+  const currentDocument = securityKeyOnlyRegistry(seededTimekeeperInitials(StoppedProfileRegistryDocumentV3Schema.parse({ ...document, schemaVersion: 3, installationId: locator.installationId, revision: 1 })));
   if (plans.length !== 0 && (plans.length !== document.profiles.length || new Set(plans.map(row => row.profileId)).size !== plans.length
     || plans.some(row => !document.profiles.some(profile => profile.profileId === row.profileId)))) fail("profile-control-upgrade-plan-membership");
   if (plans.length === 0 && prior.schemaVersion === 1 && lstatMaybe(join(machine, "duo-credentials"))) fail("profile-control-upgrade-duo-material-present");
@@ -2615,9 +2707,9 @@ export function assertStoppedMachineMaintenance(lease: InstallationLease, restor
 function convertedProfileRegistry(locator: RuntimeLocator, prior: z.infer<typeof StoppedProfileRegistryDocumentSchema>): ProfileRegistryDocument {
   if (prior.schemaVersion === 3) {
     if (prior.installationId !== locator.installationId) fail("profile-registry-installation-mismatch");
-    return seededTimekeeperInitials(prior);
+    return securityKeyOnlyRegistry(seededTimekeeperInitials(prior));
   }
-  return seededTimekeeperInitials(StoppedProfileRegistryDocumentV3Schema.parse({ ...prior, schemaVersion: 3, installationId: locator.installationId, revision: 1 }));
+  return securityKeyOnlyRegistry(seededTimekeeperInitials(StoppedProfileRegistryDocumentV3Schema.parse({ ...prior, schemaVersion: 3, installationId: locator.installationId, revision: 1 })));
 }
 function convertedProfileControl(locator: RuntimeLocator, _prior: z.infer<typeof StoppedProfileContinuitySchema>, document: ProfileRegistryDocument) {
   return profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document);
@@ -2692,7 +2784,7 @@ function validateStoppedControlUpgrade(control: string, locator: RuntimeLocator,
   const staged = (role: string, path: string) => lstatMaybe(`${prefix}.${role}.stage`) ? `${prefix}.${role}.stage` : path;
   if (canonicalJsonStringify(readProfileEvidence(staged("registry", registryPath), ProfileRegistryDocumentSchema)) !== canonicalJsonStringify(receipt.document)
     || canonicalJsonStringify(readProfileEvidence(staged("control", controlPath), ProfileContinuitySchema)) !== canonicalJsonStringify(receipt.current)) fail("profile-control-upgrade-stage-diverged");
-  readProfileEvidence(staged("marker", markerPath), z.strictObject({ schemaVersion: z.literal(9) }));
+  readProfileEvidence(staged("marker", markerPath), z.strictObject({ schemaVersion: z.literal(10) }));
   return stages;
 }
 
@@ -2716,7 +2808,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
   const intentPath = join(control, "profile-control-upgrade.json"), backupDirectory = join(control, "profile-control-upgrades");
   try {
     const marker = readProfileEvidence(markerPath, z.strictObject({ schemaVersion: z.number().int() }));
-    if (marker.schemaVersion !== 9 || lstatMaybe(intentPath)) assertMaintenanceCustodyAvailable("schema-upgrade");
+    if (marker.schemaVersion !== 10 || lstatMaybe(intentPath)) assertMaintenanceCustodyAvailable("schema-upgrade");
   } catch (error) {
     if (ownsLease) {
       try { restore.release(); lease.release(); }
@@ -2854,7 +2946,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
               }
               writePrivateStage(`${prefix}.registry.stage`, Buffer.from(JSON.stringify(document)));
               writePrivateStage(`${prefix}.control.stage`, Buffer.from(JSON.stringify(current)));
-              writePrivateStage(`${prefix}.marker.stage`, Buffer.from(JSON.stringify({ schemaVersion: 9 })));
+              writePrivateStage(`${prefix}.marker.stage`, Buffer.from(JSON.stringify({ schemaVersion: 10 })));
               fsyncPath(backupDirectory);
               const receipt = ControlUpgradeReceiptSchema.parse({ schemaVersion: 3, operationId, installationId: locator.installationId,
                 phase: "preparing", credentials: [], backups: [], browsers, prior, current, priorDocument, document, retained,
@@ -2881,8 +2973,8 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     machineControlCurrent(): boolean {
       held();
       const observedMarker = readProfileEvidence(markerPath, z.strictObject({ schemaVersion: z.number().int() }));
-      if (![2, 3, 4, 5, 6, 7, 8, 9].includes(observedMarker.schemaVersion)) fail("profile-control-upgrade-pending-conversion-unsupported");
-      return observedMarker.schemaVersion === 9;
+      if (![2, 3, 4, 5, 6, 7, 8, 9, 10].includes(observedMarker.schemaVersion)) fail("profile-control-upgrade-pending-conversion-unsupported");
+      return observedMarker.schemaVersion === 10;
     },
     upgradeIntentPresent(): boolean {
       held();

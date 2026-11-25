@@ -254,6 +254,7 @@ function receiptAbsenceReason(authority: RunRecord, trust?: RunDetailTrustDeps):
   if (lifecycle.state !== "terminal") {
     return `run is ${lifecycle.state}; a receipt states a settled verdict and this run has none yet`;
   }
+  if (trust.receiptAvailable?.(authority.envelope.runId) === false) return "The imported backup has no receipt for this run.";
   return "run was interrupted; ref write-safety recovery will requeue or settle it before a receipt can name a verdict";
 }
 

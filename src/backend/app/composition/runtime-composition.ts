@@ -37,6 +37,8 @@ export interface RebuildRuntimeStart {
   readonly storage?: StorageComposer;
   /** Explicit seam override for tests; production registers via `registerTestDataComposer`. */
   readonly testData?: TestDataComposer;
+  /** Explicit seam override for tests; production registers via `registerDashboardStopSignal`. */
+  readonly stopSignal?: AbortSignal;
 
   /** Explicit seam override for tests; production subscribes to the real process signals. */
   readonly signals?: RuntimeShutdownSignals;
@@ -81,6 +83,13 @@ export function registerDashboardComposer(composer: DashboardComposer): void {
     throw new Error("a dashboard composer is already registered; two compositions cannot own one runtime");
   }
   registeredDashboardComposer = composer;
+}
+
+// A stop the secure bootstrap latched while the dashboard booted; the default shutdown signals honour it.
+let registeredDashboardStopSignal: AbortSignal | undefined;
+
+export function registerDashboardStopSignal(signal: AbortSignal): void {
+  registeredDashboardStopSignal = signal;
 }
 
 let registeredOcrComposer: OcrComposer | undefined;
@@ -132,7 +141,7 @@ export function registerTestDataComposer(composer: TestDataComposer): void {
 const COMPLETED_THROUGH = "2j";
 const ACTIVE_ITEM = "3-workflow-migration";
 
-export function runtimeHelp(isolation: RuntimeIsolation): string {
+function runtimeHelp(isolation: RuntimeIsolation): string {
   return [
     `Relay foundation (complete through ${COMPLETED_THROUGH}; active ${ACTIVE_ITEM})`,
     "Commands:",
@@ -152,7 +161,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
 }
 
 
-function processShutdownSignals(): RuntimeShutdownSignals {
+function processShutdownSignals(stopSignal: AbortSignal | undefined): RuntimeShutdownSignals {
   return {
     subscribe(handler): () => void {
       const onInterrupt = (): void => {
@@ -168,8 +177,10 @@ function processShutdownSignals(): RuntimeShutdownSignals {
       process.on("SIGTERM", onTerminate);
       process.on("message", onMessage);
       process.on("disconnect", onTerminate);
-      if (process.send !== undefined && !process.connected) onTerminate();
+      stopSignal?.addEventListener("abort", onTerminate);
+      if (process.send !== undefined && !process.connected || stopSignal?.aborted === true) onTerminate();
       return (): void => {
+        stopSignal?.removeEventListener("abort", onTerminate);
         process.removeListener("SIGINT", onInterrupt);
         process.removeListener("SIGTERM", onTerminate);
         process.removeListener("message", onMessage);
@@ -181,30 +192,33 @@ function processShutdownSignals(): RuntimeShutdownSignals {
 
 
 async function ownDashboardUntilShutdown(
-  running: RunningDashboard,
+  compose: () => Promise<RunningDashboard>,
   signals: RuntimeShutdownSignals,
-  ready?: () => void | Promise<void>,
+  started: (running: RunningDashboard) => () => void | Promise<void>,
 ): Promise<void> {
-  let requestShutdown: (() => void) | undefined;
-  const shutdownRequested = new Promise<void>((resolve) => {
-    requestShutdown = resolve;
-  });
-  let dispose: (() => void) | undefined;
+  let stopRequested = false;
+  let resolveShutdown!: () => void;
+  const shutdownRequested = new Promise<void>((resolve) => { resolveShutdown = resolve; });
+  // Owned before composition so a stop during startup is latched instead of killing open owners.
+  const dispose = signals.subscribe(() => { stopRequested = true; resolveShutdown(); });
   const failures: unknown[] = [];
+  let running: RunningDashboard | undefined;
   try {
-    dispose = signals.subscribe(() => {
-      if (requestShutdown === undefined) throw new Error("a shutdown signal arrived before the dashboard registered its handler");
-      requestShutdown();
-    });
-    await ready?.();
-    await Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
+    running = await compose();
+    const ready = started(running);
+    const stopped = Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
+    // A stop never waits for readiness publication; a readiness failure after the stop has nothing left to report to.
+    if (!stopRequested) await Promise.race([Promise.resolve().then(ready), stopped]);
+    await stopped;
   } catch (error) { failures.push(error); }
-  try { await running.stop(); }
-  catch (error) {
-    if (error instanceof DashboardShutdownCompletedWithErrors) process.exitCode = 1;
-    else if (!failures.includes(error)) failures.push(error);
+  if (running !== undefined) {
+    try { await running.stop(); }
+    catch (error) {
+      if (error instanceof DashboardShutdownCompletedWithErrors) process.exitCode = 1;
+      else if (!failures.includes(error)) failures.push(error);
+    }
   }
-  try { dispose?.(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
+  try { dispose(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) throw new AggregateError(failures, "dashboard lifetime and closure failed", { cause: failures[0] });
 }
@@ -240,14 +254,20 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     }
 
     const options = parseDashboardCommandOptions(args.slice(1));
-    const running = await compose(input.isolation, options);
-    write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`);
-    await ownDashboardUntilShutdown(running, input.signals ?? processShutdownSignals(), input.dashboardReady
-      ?? (() => new Promise<void>((resolve, reject) => {
-        const send = process.send?.bind(process);
-        if (send === undefined || !process.connected) { resolve(); return; }
-        send({ type: "hrauto-dashboard-ready" }, (error: Error | null) => { if (error) reject(error); else resolve(); });
-      })));
+    const stopSignal = input.stopSignal ?? registeredDashboardStopSignal;
+    // A boot-latched stop composes nothing; a parent already gone still composes so the dashboard drains.
+    if (stopSignal?.aborted === true) return;
+    await ownDashboardUntilShutdown(
+      () => compose(input.isolation, options),
+      input.signals ?? processShutdownSignals(stopSignal),
+      (running) => {
+        write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`);
+        return input.dashboardReady ?? (() => new Promise<void>((resolve, reject) => {
+          const send = process.send?.bind(process);
+          if (send === undefined || !process.connected) { resolve(); return; }
+          send({ type: "hrauto-dashboard-ready" }, (error: Error | null) => { if (error) reject(error); else resolve(); });
+        }));
+      });
     return;
   }
   if (command === "explain") {

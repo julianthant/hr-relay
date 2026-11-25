@@ -4,6 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { ToastProvider } from "../../../../../src/dashboard/ds/ui.js";
+import { sameSessionAccount } from "../../../../../src/dashboard/surfaces/settings/account/account-session.js";
 import { AccountSettings, type AccountPage, type ProfileDetailsChangeRequest, type ProfileDetailsChangeResult } from "../../../../../src/dashboard/surfaces/settings/account/account-settings.js";
 import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
@@ -16,16 +17,16 @@ afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; 
 
 const values = { name: "Jordan Lee", initials: "JL", timekeeper: "Casey Morgan Park", timekeeperInitials: "CMP", lastSignedInAt: IsoInstantSchema.parse("2026-11-01T10:00:00.000Z") };
 const account = (over: Partial<typeof values> = {}) => ({ ...values, ...over });
-function page(details: AccountPage["details"], shown: typeof values = values): AccountPage {
-  return { values: shown, onSignOut: () => {}, details,
+function page(details: AccountPage["details"], shown: typeof values = values, readAccount?: AccountPage["readAccount"]): AccountPage {
+  return { values: shown, details, ...(readAccount === undefined ? {} : { readAccount }),
     login: { changePassword: async () => ({ state: "changed" }), changeUsername: async () => ({ state: "changed" }) } };
 }
 const render = (value: AccountPage) => act(async () => root?.render(createElement(ToastProvider, { children: createElement(AccountSettings, { page: value, username: "jordan.lee@ucsd.edu", ucpath: null, deleteAccount: null }) })));
-async function mount(details: AccountPage["details"]): Promise<void> {
+async function mount(details: AccountPage["details"], readAccount?: AccountPage["readAccount"]): Promise<void> {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await render(page(details));
+  await render(page(details, values, readAccount));
 }
 const pencil = (label: string): HTMLButtonElement | null => document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 const dialog = (): HTMLElement | null => document.body.querySelector<HTMLElement>('[role="dialog"]');
@@ -61,7 +62,7 @@ const FIELDS = [
 describe("Settings > Account details rows", () => {
   for (const field of FIELDS) it(`${field.pencil} opens the ${field.title} dialog with the served value, Cancel and Save, and no inline field`, async () => {
     await mount(async () => ({ state: "changed", account: account() }));
-    assert.equal(document.body.querySelector("input"), null);
+    assert.equal(document.body.querySelector("input") === null, true);
     await click(field.pencil);
     assert.ok(dialog()?.textContent?.startsWith(field.title), field.title);
     assert.equal(input(field.row).value, field.value);
@@ -77,7 +78,7 @@ describe("Settings > Account details rows", () => {
     await press("Save");
     await settle();
     assert.deepEqual(sent, [{ name: { firstName: "Sam", lastName: "Rivera" } }]);
-    assert.equal(dialog(), null);
+    assert.equal(dialog() === null, true);
     assert.match(text(), /NameSam Rivera/u);
     assert.match(text(), /InitialsSR/u);
   });
@@ -94,17 +95,21 @@ describe("Settings > Account details rows", () => {
     assert.deepEqual(sent, [{ initials: "JXL" }, { timekeeperName: "Alex Kim" }, { timekeeperInitials: "CP" }]);
   });
 
-  it("keeps Save off while the field is empty and sends nothing for an unchanged value", async () => {
+  it("keeps Save off until the value is non-empty and changed, and sends nothing while it is off", async () => {
     const sent: unknown[] = [];
     await mount(async request => { sent.push(request); return { state: "changed", account: account() }; });
     await click("Edit initials");
-    await typeInto("Initials", "  ");
     assert.equal(dialogButton("Save").disabled, true);
-    await typeInto("Initials", "JL");
+    for (const value of ["  ", "JL", " JL "]) {
+      await typeInto("Initials", value);
+      assert.equal(dialogButton("Save").disabled, true, `Save with "${value}"`);
+    }
     await press("Save");
     await settle();
     assert.deepEqual(sent, []);
-    assert.equal(dialog(), null);
+    assert.ok(dialog());
+    await typeInto("Initials", "JQ");
+    assert.equal(dialogButton("Save").disabled, false);
   });
 
   for (const field of FIELDS.filter(item => item.row.includes("nitials"))) it(`keeps the ${field.row} dialog open with the typed value and the reason under the field when a change is refused`, async () => {
@@ -118,7 +123,7 @@ describe("Settings > Account details rows", () => {
     assert.equal(dialog()?.querySelector('[role="alert"]')?.textContent, ERROR_CATALOG.PROFILE_INITIALS_REFUSED.text);
     assert.equal(dialogButton("Save").disabled, false);
     await typeInto(field.row, "AB");
-    assert.equal(dialog()?.querySelector('[role="alert"]'), null);
+    assert.equal(dialog()?.querySelector('[role="alert"]') === null, true);
   });
 
   it("closes the dialog once a retried value is saved", async () => {
@@ -132,19 +137,34 @@ describe("Settings > Account details rows", () => {
     await typeInto("Initials", "AB");
     await press("Save");
     await settle();
-    assert.equal(dialog(), null);
+    assert.equal(dialog() === null, true);
     assert.match(text(), /InitialsAB/u);
   });
 
-  it("reports a failed request as an unconfirmed change with the details sentence and keeps the old value", async () => {
-    await mount(async () => { throw new Error("offline"); });
+  it("reads a lost reply back and shows the saved name with no message", async () => {
+    const reads: string[] = [];
+    await mount(async () => { throw new Error("offline"); }, async () => { reads.push("read"); return account({ name: "Sam Rivera" }); });
+    await settle();
+    reads.length = 0; // the page's own read when it opens is not the read-back
     await click("Edit name");
     await typeInto("Name", "Sam Rivera");
     await press("Save");
-    await settle();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    assert.equal(reads.length, 1);
+    assert.equal(dialog() === null, true);
+    assert.match(text(), /NameSam Rivera/u);
+    assert.doesNotMatch(text(), /not saved|not confirmed/u);
+  });
+
+  it("reads a lost reply back and keeps the old name with one failure toast when the change did not land", async () => {
+    await mount(async () => { throw new Error("offline"); }, async () => account());
+    await click("Edit name");
+    await typeInto("Name", "Sam Rivera");
+    await press("Save");
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 2700)); });
     assert.match(text(), /NameJordan Lee/u);
-    assert.match(text(), /Name not confirmed/u);
-    assert.match(text(), new RegExp(ERROR_CATALOG.PROFILE_DETAILS_CHANGE_UNKNOWN.text.slice(0, 30), "u"));
+    assert.equal(text().match(/Name not saved/gu)?.length, 1);
+    assert.doesNotMatch(text(), new RegExp(ERROR_CATALOG.COMMAND_OUTCOME_UNCERTAIN.text.slice(0, 30), "u"));
   });
 
   for (const how of ["Cancel", "Escape"] as const) it(`${how} sends no write and returns focus to the pencil`, async () => {
@@ -155,8 +175,17 @@ describe("Settings > Account details rows", () => {
     if (how === "Cancel") await press("Cancel"); else await escape();
     await settle();
     assert.deepEqual(sent, []);
-    assert.equal(dialog(), null);
+    assert.equal(dialog() === null, true);
     assert.match(text(), /Timekeeper nameCasey Morgan Park/u);
-    assert.equal(document.activeElement, pencil("Edit timekeeper name"));
+    assert.equal(document.activeElement === pencil("Edit timekeeper name"), true);
+  });
+
+  it("takes a details read-back only from the profile and sign-in that made the change", () => {
+    const owner = { profileId: "11111111-1111-4111-8111-111111111111", epoch: 3 };
+    const active = (over: object) => ({ state: "active", duoState: "ready", ...owner, account: values, ...over }) as Parameters<typeof sameSessionAccount>[0];
+    assert.deepEqual(sameSessionAccount(active({}), owner), values);
+    assert.equal(sameSessionAccount(active({ profileId: "22222222-2222-4222-8222-222222222222" }), owner), undefined, "a replacement profile is no proof");
+    assert.equal(sameSessionAccount(active({ epoch: 4 }), owner), undefined, "a later sign-in is no proof");
+    assert.equal(sameSessionAccount({ state: "signed-out" }, owner), undefined);
   });
 });

@@ -119,6 +119,11 @@ afterAll(() => profiles.close());
       assert.deepEqual(database.authority.workbooks.revision(saved.libraryId, 1), saved);
       assert.deepEqual(database.authority.workbooks.history(saved.libraryId), []);
     } },
+    { table: "workbook_payloads", prepare: database => { accountingLibrary(database); }, mutate: database => {
+      const saved = createAccountingWorkbook(database);
+      assert.deepEqual(database.authority.workbooks.read(saved.libraryId), saved);
+      assert.deepEqual(database.authority.workbooks.libraryVersion(saved.libraryId).workbook, encodeEditableWorkbook(saved.workbook));
+    } },
     { table: "workbook_types", mutate: database => {
       const type = { id: 'accounting', name: 'Accounting type', keyFieldId: null, fields: ['roster.accounting'], defaultWorkbookId: null };
       assert.deepEqual(database.authority.workbooks.putType(type), type);
@@ -180,7 +185,8 @@ afterAll(() => profiles.close());
   it("accounts for every authority table", () => {
     assert.deepEqual([...new Set(cases.map(({ table }) => table))].sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority"
-        && !["database_states", "database_upgrades"].includes(name))
+        // Debug rows are diagnostics: their append bumps no authority generation.
+        && !["database_states", "database_upgrades", "debug_events"].includes(name))
       .map(({ name }) => name)
       .sort());
   });

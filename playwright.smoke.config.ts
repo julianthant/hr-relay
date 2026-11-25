@@ -1,15 +1,27 @@
-/** Dashboard smoke: every sidebar page renders on the seeded backend with a clean console. */
+/** Browser smoke checks for the built dashboard on the seeded backend and the state gallery's check loop. */
+import "./tests/support/helpers/credential-keychain-process-preload.mjs";
+import { availableParallelism } from "node:os";
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "tests/smoke",
-  testMatch: "**/*.smoke.ts",
   outputDir: "tests/smoke/.output",
   fullyParallel: false,
-  workers: 1,
+  globalTeardown: "./tests/support/helpers/dashboard/smoke/gallery-teardown.ts",
+  workers: Math.min(3, availableParallelism()),
   retries: 0,
   timeout: 120_000,
   expect: { timeout: 10_000 },
-  use: { browserName: "chromium", headless: true, viewport: { width: 1280, height: 720 } },
-  reporter: [["list"]],
+  use: {
+    browserName: "chromium",
+    headless: true,
+    timezoneId: "America/Los_Angeles",
+    viewport: { width: 1280, height: 720 },
+  },
+  projects: [
+    // Each viewport keeps its ordered story references on one worker.
+    { name: "gallery", testMatch: "**/*.gallery.ts", workers: 2 },
+    { name: "smoke", testMatch: "**/*.smoke.ts", workers: 2 },
+  ],
+  reporter: [["list"], ["json", { outputFile: "tests/smoke/.output/results.json" }]],
 });

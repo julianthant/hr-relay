@@ -5,9 +5,9 @@ import { operatorFailureSentence } from "../../../models/failures/error-catalog.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type OnboardingStep = "login" | "signup" | "duo" | "ready";
-export type OnboardingDetails = { firstName: string; lastName: string; email: string; password: string };
+export type OnboardingDetails = { firstName: string; lastName: string; email: string; password: string; ucpathUsername?: string; ucpathPassword?: string };
 export type OnboardingErrors = Partial<Record<keyof OnboardingDetails, string>>;
-export type DuoMethods = { key: boolean; touch: boolean };
+export type DuoMethods = { key: boolean };
 export type DuoConfirmationScope = Readonly<Pick<ConfirmProfileOnboardingDuoRequest, "operationId" | "method" | "attemptId"> & {
   profileId: ProfileOnboardingState["profileId"]; generation: number; authorityScope: object | undefined;
 }>;
@@ -15,7 +15,7 @@ export type DuoConfirmationScope = Readonly<Pick<ConfirmProfileOnboardingDuoRequ
 export interface ServedOnboardingPort {
   readonly onboarding?: ProfileOnboardingState;
   readonly unavailable?: boolean;
-  /** Set when the draft is a re-enrolment of the signed-in profile: `complete` switches to the new devices and `cancel` keeps the old ones. */
+  /** Set when the draft is a re-enrolment of the signed-in profile: `complete` switches to the new key and `cancel` keeps the old ones. */
   readonly reenrol?: true;
   readonly authorityScope?: object;
   readonly readRevision?: number;
@@ -39,6 +39,8 @@ export function validateOnboarding(step: "login" | "signup", details: Onboarding
     if (step === "signup") {
       if (!details.firstName.trim()) errors.firstName = "Enter your first name.";
       if (!details.lastName.trim()) errors.lastName = "Enter your last name.";
+      if (!details.ucpathUsername?.trim()) errors.ucpathUsername = "Enter your UCPath username.";
+      if (!details.ucpathPassword) errors.ucpathPassword = "Enter your UCPath password.";
     }
     if (!details.email.trim()) errors.email = "Enter your work email.";
     else if (!/^[^\s@]+@ucsd\.edu$/iu.test(details.email.trim())) errors.email = "Use your @ucsd.edu email.";
@@ -69,7 +71,7 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
     },
     async resume() { return accept(await client.resumeProfile(), true); },
     async submit(step, details) {
-      const result = step === "signup" ? await client.signUpProfile(details) : await client.signInProfile({ email: details.email, password: details.password });
+      const result = step === "signup" ? await client.signUpProfile({ ...details, ucpathUsername: details.ucpathUsername ?? "", ucpathPassword: details.ucpathPassword ?? "" }) : await client.signInProfile({ email: details.email, password: details.password });
       if (step === "signup" && result.state !== PROFILE_ONBOARDING_STATE && result.state !== "refused" && result.state !== "error") throw new Error("ONBOARDING_DRAFT_REQUIRED");
       return accept(result, step === "login");
     },
@@ -77,14 +79,14 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
 }
 
 export const duoMethodLabels = Object.freeze({ idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Not confirmed", unavailable: "Unavailable" });
-export function duoMethodPresentation(method: keyof DuoMethods, state: keyof typeof duoMethodLabels) {
+export function duoMethodPresentation(state: keyof typeof duoMethodLabels) {
   const failed = state === "unknown" || state === "unavailable";
   return {
     note: state === "complete" ? "This sign-in method is verified. No further enrollment is needed."
       : state === "unknown" ? "Relay could not confirm this attempt. In Duo, open Manage devices and remove any device you do not recognize, then start over."
       : failed ? "Relay cannot set up this method from here. Return to Relay to check setup."
-      : state === "pending" ? method === "key" ? "Waiting for Duo security key enrollment." : "Waiting for Duo to add Touch ID."
-      : method === "key" ? "Fast Duo creates the software key only when Duo requests it." : "Choose Touch ID or Windows Hello in Duo.",
+      : state === "pending" ? "Waiting for Duo security key enrollment."
+      : "Fast Duo creates the software key only when Duo requests it.",
     track: [
       { label: "Started", tone: state === "idle" ? "off" : "complete" },
       { label: failed ? "Not confirmed" : "Added in Duo", tone: failed ? "failed" : state === "idle" ? "off" : state },
@@ -94,11 +96,45 @@ export function duoMethodPresentation(method: keyof DuoMethods, state: keyof typ
 }
 
 export function duoSummary(methods: DuoMethods, draft?: ProfileOnboardingState): string {
-  if (draft) return `Security key: ${duoMethodLabels[draft.methods.key.state]} · Touch ID: ${duoMethodLabels[draft.methods.touch.state]}`;
-  if (methods.key && methods.touch) return "Security key and Touch ID ready";
-  if (methods.key) return "Security key ready · Touch ID not added";
-  if (methods.touch) return "Touch ID ready · Security key not added";
-  return "Security key and Touch ID not added";
+  if (draft) return `Security key: ${duoMethodLabels[draft.methods.key.state]}`;
+  return methods.key ? "Security key ready" : "Security key not added";
+}
+
+const SIGN_IN_SENTENCES: Readonly<Record<string, string>> = Object.freeze({
+  PROFILE_SIGN_IN_REFUSED: "Wrong email or password",
+  COMMAND_OUTCOME_UNCERTAIN: "No reply from Relay. Reload the page to check.",
+});
+/** Plain lines for sign-in and Duo setup; every other code keeps its catalog sentence. */
+export const signInSentence = (code: string): string => SIGN_IN_SENTENCES[code] ?? operatorFailureSentence(code);
+
+/** Log out is still settling: sign-in waits for the session to change. */
+const awaitingLogout = (state: PublicProfileState | undefined): boolean => state?.state === "cancelling" || state?.state === "refused" && state.code === "PROFILE_LOGOUT_BLOCKED";
+/** The last browser was not proved closed: sign-in stays blocked until a session read settles it. */
+const closureUncertain = (state: PublicProfileState | undefined): boolean => (state?.state === "refused" || state?.state === "error") && state.code === "BROWSER_CLOSURE_UNPROVED";
+
+/**
+ * Splits what the session says into `problem`, which still applies until the session changes (authority, log out, browser closure),
+ * and `signInProblem`, the answer to the last sign-in, which the form clears on typing, resubmit and switching between Log in and Sign up.
+ */
+export function signInProblems(state: PublicProfileState | undefined, authorityUnavailable: boolean): { problem: string | undefined; signInProblem: string | undefined } {
+  if (authorityUnavailable) return { problem: operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE"), signInProblem: undefined };
+  if (awaitingLogout(state)) return { problem: operatorFailureSentence("PROFILE_LOGOUT_BLOCKED"), signInProblem: undefined };
+  if ((state?.state === "refused" || state?.state === "error") && closureUncertain(state)) return { problem: signInSentence(state.code), signInProblem: undefined };
+  if (state?.state === "signed-out" && state.logoutIncomplete) return { problem: operatorFailureSentence("PROFILE_LOGOUT_INCOMPLETE"), signInProblem: undefined };
+  if (state?.state === "refused" || state?.state === "error") return { problem: undefined, signInProblem: signInSentence(state.code) };
+  return { problem: undefined, signInProblem: undefined };
+}
+
+export const DUO_STILL_WAITING_MS = 10_000;
+/** "still" once Relay has waited ten seconds on the same `key`; resets when `key` changes, idle when it is undefined. */
+export function useWaitStage(key: string | undefined): "waiting" | "still" {
+  const [still, setStill] = useState<string>();
+  useEffect(() => {
+    if (key === undefined) return;
+    const timer = setTimeout(() => setStill(key), DUO_STILL_WAITING_MS);
+    return () => clearTimeout(timer);
+  }, [key]);
+  return key !== undefined && still === key ? "still" : "waiting";
 }
 
 export type DuoBrowserStatus = "launching" | "waiting" | "error";
@@ -200,10 +236,10 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
     }, 1000);
     return () => window.clearInterval(timer);
   }, [client, enabled, onboarding, settle, settleRead]);
-  const awaitingLogout = state?.state === "cancelling" || state?.state === "refused" && state.code === "PROFILE_LOGOUT_BLOCKED";
-  const closureUncertain = (state?.state === "refused" || state?.state === "error") && state.code === "BROWSER_CLOSURE_UNPROVED";
-  const recovering = Boolean(failure) && state === undefined || closureUncertain;
-  const awaitingSession = recovering || awaitingLogout || state?.state === "refused" || state?.state === "error" || state?.state === "signed-out" && state.resumable === true;
+  const loggingOut = awaitingLogout(state);
+  const closureUnproved = closureUncertain(state);
+  const recovering = Boolean(failure) && state === undefined || closureUnproved;
+  const awaitingSession = recovering || loggingOut || state?.state === "refused" || state?.state === "error" || state?.state === "signed-out" && state.resumable === true;
   useEffect(() => {
     if (!enabled || !awaitingSession) return;
     let reading = false;
@@ -212,12 +248,12 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       reading = true;
       const request = generation.current;
       void client.readProfileSession().then(value => {
-        if (live.current && generation.current === request && (value.state === "active" || recovering && (value.state === PROFILE_ONBOARDING_STATE || value.state === "signed-out") || awaitingLogout && value.state !== "cancelling")) settle(value);
+        if (live.current && generation.current === request && (value.state === "active" || recovering && (value.state === PROFILE_ONBOARDING_STATE || value.state === "signed-out") || loggingOut && value.state !== "cancelling")) settle(value);
       }, () => {}).finally(() => { reading = false; });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [client, enabled, awaitingSession, awaitingLogout, recovering, settle]);
-  const unavailable = Boolean(failure) || closureUncertain;
+  }, [client, enabled, awaitingSession, loggingOut, recovering, settle]);
+  const unavailable = Boolean(failure) || closureUnproved;
   const scope = useMemo(() => ({ client, unavailable, operationId: onboarding?.operationId, profileId: onboarding?.profileId, failure }), [client, onboarding?.operationId, onboarding?.profileId, failure, unavailable]);
   const currentScope = useRef(scope); currentScope.current = scope;
   const port = useMemo<ServedOnboardingPort>(() => {
@@ -308,7 +344,7 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
     catch { if (request === generation.current) setUnavailable(true); }
     finally { if (request === generation.current) setPending(false); }
   };
-  return { methods: { key: draft?.methods.key.state === "complete", touch: draft?.methods.touch.state === "complete" },
+  return { methods: { key: draft?.methods.key.state === "complete" },
     connected: draft !== undefined && !port?.unavailable, unavailable: unavailable || port?.unavailable || draft?.methods[method].state === "unknown" || draft?.methods[method].state === "unavailable", listening: pending || draft?.methods[method].state === "pending", method, setMethod(next: ProfileOnboardingMethod) { if (next !== current.current.method) generation.current++; setMethod(next); }, matchesConfirmation,
     dismissConfirmation(scope: DuoConfirmationScope) { if (scope.generation === generation.current) generation.current++; },
     returnToParent() { const opener = window.opener as WindowProxy | null; opener?.focus(); },

@@ -36,6 +36,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.j
 import { deriveTraceId } from "../../../../../src/rules/identity/identifiers.js";
 import { createWorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 import { unexpectedWorkbookSync } from "../../../../support/helpers/backend/workbook-sync.js";
+import { StorageHealthConcernSchema } from "../../../../../src/rules/notifications/notification-triggers.js";
 
 vi.mock("../../../../../src/backend/runs/commands/run-worker-capacity.js", async importOriginal => {
   const actual = await importOriginal<typeof workerCapacity>();
@@ -129,6 +130,9 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     };
 
     ready = true;
+    // The startup storage-health pass writes its rows on its own schedule; settle it so no checked span contains it.
+    await vi.waitFor(() => assert.ok(StorageHealthConcernSchema.options.every(concern => concern === "outbox-stalled"
+      || context.database.authority.notificationHealth.get(concern) !== undefined)), { timeout: 30_000, interval: 50 });
     await body({ profile: f, context, transport, clock, originalFetch, origin, post });
   } catch (error) { primary = { error }; owner.primary = primary; }
   if (!ready) {
@@ -298,7 +302,8 @@ it('serves preference CAS and replay', async () => {
       const changed = AssistantModelPreferenceViewSchema.parse(await (await originalFetch(`${origin}/api/v1/assistant/model-preference`)).json());
       assert.equal(changed.revision, view.revision + 1);
       assert.deepEqual(changed.preference, command.payload);
-      const beforeReplay = { generation: context.database.getMeta().authorityGeneration, timeline: context.database.authority.timelineEvents.page({ limit: 500 }) };
+      const beforeReplay = { generation: context.database.getMeta().authorityGeneration, timeline: context.database.authority.timelineEvents.page({ limit: 500 }),
+        debug: context.database.authority.timelineEvents.debugPage({ limit: 500 }) };
       assert.equal(CommandResultSchema.parse(await post('commands', command)).state, 'already-applied');
       assertOnlyLoopStallWrites(context.database, beforeReplay);
       const beforeForeign = transport.calls.length, beforeForeignFault = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
@@ -315,7 +320,7 @@ it('serves preference CAS and replay', async () => {
 function assertAssistantProposalFaults(owner: Parameters<typeof faultAuthoritySnapshot>[0], before: ReturnType<typeof faultAuthoritySnapshot>,
   reason: "canonical-completion-required" | "action-decision") {
   assertHttpFaultOnly(owner, before, 3);
-  const added = owner.database.authority.timelineEvents.page({ limit: 500 }).slice(before.timeline.length);
+  const added = owner.database.authority.timelineEvents.debugPage({ limit: 500 }).slice(before.debug.length);
   const [proposal, cause, http] = added; assert.ok(proposal && cause && http);
   assert.ok(proposal.cursor < cause.cursor && cause.cursor < http.cursor);
   assert.equal(new Set(added.map(record => record.eventId)).size, 3);

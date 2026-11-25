@@ -45,7 +45,7 @@ describe("General ChatGPT account", () => {
   it("renders loading, unavailable and usage-limit states distinctly", () => {
     const render = (snapshot: ChatGptAccountSnapshot) => renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
     const loading = render({ state: "loading" });
-    assert.doesNotMatch(loading, /aria-busy="true"/u);
+    assert.match(loading, /aria-label="Loading ChatGPT account" aria-busy="true"[^>]* class="invisible"/u, "the row keeps its place, unseen until the read is slow");
     assert.doesNotMatch(loading, />Connect</u);
     const failed = render({ state: "unavailable", message: "Account read failed" });
     assert.match(failed, /Couldn&#x27;t check ChatGPT\./u);
@@ -67,8 +67,8 @@ it("shows a rejected account port action in the card with its original failure c
   assert.ok(action); await act(async () => action.click());
   const banner = [...host.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes(ERROR_CATALOG.CHATGPT_CONNECT_FAILED.text));
   assert.ok(banner); assert.ok(banner.closest(".ds-form-group"));
-  assert.match(banner.textContent ?? "", /Relay could not connect ChatGPT\. Try connecting again\./);
-  assert.deepEqual([...banner.querySelectorAll("button")], []);
+  assert.match(banner.textContent ?? "", /ChatGPT did not connect\. Try again\./);
+  assert.equal(banner.querySelectorAll("button").length, 0);
   assert.ok([...host.querySelectorAll("button")].some(button => button.textContent === "Connect"));
 });
 
@@ -149,12 +149,12 @@ describe("Disconnecting the ChatGPT account", () => {
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: live })));
     await act(async () => button("Disconnect")?.click());
-    assert.match(document.body.textContent ?? "", /Disconnect ChatGPT\?.*Relay forgets this account; the assistant and OCR stop until you connect again\./u);
+    assert.match(document.body.textContent ?? "", /Disconnect ChatGPT\?.*The assistant and OCR stop until you sign in again\./u);
     assert.equal(calls, 0);
     const confirm = [...document.body.querySelectorAll("button")].filter(node => node.textContent === "Disconnect").at(-1);
     assert.ok(confirm); await act(async () => confirm.click());
     assert.equal(calls, 1);
-    assert.ok(button("Connect")); assert.equal(button("Disconnect"), undefined);
+    assert.ok(button("Connect")); assert.equal(button("Disconnect") === undefined, true);
   });
 
   it("cancelling the question leaves the account connected", async () => {
@@ -173,7 +173,7 @@ describe("Disconnecting the ChatGPT account", () => {
     const confirm = [...document.body.querySelectorAll("button")].filter(node => node.textContent === "Disconnect").at(-1);
     assert.ok(confirm); await act(async () => confirm.click());
     assert.ok(document.body.textContent?.includes(ERROR_CATALOG.CHATGPT_CREDENTIAL_CONFLICT.text));
-    assert.ok(button("Disconnect")); assert.equal(button("Connect"), undefined);
+    assert.ok(button("Disconnect")); assert.equal(button("Connect") === undefined, true);
   });
 });
 

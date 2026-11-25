@@ -5,8 +5,8 @@ import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-st
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { WORKFLOW_SOURCES } from "../../../../src/dashboard/app/workflow-sources.js";
 
 const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
@@ -14,10 +14,10 @@ const catalog = buildWorkflowCatalog(served, WORKFLOW_SOURCES);
 const ids = (query = "") => runPickerGroups(catalog, query).flatMap(group => group.entries.flatMap(node => [node.entry.id, ...node.members.map(child => child.entry.id)]));
 
 describe("shared run catalog", () => {
-  it("refuses a missing compatibility projection for a workflow that requires a workbook", () => {
+  it("keeps a workflow that requires a workbook when its compatibility projection is missing", () => {
     const required = parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows).find(entry => entry.start.workbookReference !== undefined);
     expect(required).toBeDefined();
-    expect(() => launchWorkflows([required!], { workflows: [], libraries: [] })).toThrow(/WORKBOOK_COMPATIBILITY_UNAVAILABLE/u);
+    expect(launchWorkflows([required!], { workflows: [], libraries: [] }).map(entry => entry.workflowId)).toEqual([String(required!.id)]);
   });
   it("keeps hidden children and removed workflows out of the picker and catalog", () => {
     const visible = ["emergency-contact", "i9-check-start", "onboarding", "person-lookup", "separations", "work-study"];

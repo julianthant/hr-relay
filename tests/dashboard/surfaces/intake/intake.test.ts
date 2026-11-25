@@ -57,7 +57,7 @@ function takeFirstTab(frame: HTMLElement): HTMLElement {
   );
   assert.ok(first instanceof HTMLElement, "the takeover has no first Tab target");
   first.focus();
-  assert.equal(document.activeElement, first);
+  assert.equal(document.activeElement === first, true);
   return first;
 }
 
@@ -77,9 +77,9 @@ describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", 
     }));
 
     const frame = frameOf("Spreadsheet intake");
-    assert.equal(document.activeElement, frame);
+    assert.equal(document.activeElement === frame, true);
     const first = takeFirstTab(frame);
-    assert.equal(first.textContent?.trim(), "Close");
+    assert.equal(first.getAttribute("aria-label"), "Close");
   });
 });
 

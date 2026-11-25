@@ -1,11 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
-const CLOSED_TICKET = new Set(["complete", "closed"]);
 
 const KEBAB = "[a-z0-9]+(?:-[a-z0-9]+)*";
 const CONVENTIONAL_AREA = /^(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test|wip)(?:\([^)]*\))?$/u;
@@ -16,11 +12,10 @@ interface Request {
   base?: string;
   title?: string;
   titleSet: boolean;
+  closingLine: boolean;
   worktree?: string;
   originBranches: string[];
   originSet: boolean;
-  ledger?: string;
-  ledgerSet: boolean;
 }
 
 function report(name: string, reason: string): string {
@@ -59,154 +54,12 @@ function localBranchNames(): string[] {
   return gitLines(["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
 }
 
-interface LinkedWorktree {
-  path: string;
-  branch?: string;
-}
-
-function linkedWorktrees(): LinkedWorktree[] {
-  const records: LinkedWorktree[] = [];
-  let current: LinkedWorktree | undefined;
-  for (const line of gitLines(["worktree", "list", "--porcelain"])) {
-    if (line.startsWith("worktree ")) {
-      if (current !== undefined) records.push(current);
-      current = { path: line.slice("worktree ".length) };
-      continue;
-    }
-    if (current !== undefined && line.startsWith("branch refs/heads/")) {
-      current.branch = line.slice("branch refs/heads/".length);
-    }
-  }
-  if (current !== undefined) records.push(current);
-  // The first porcelain record is the main checkout, not a .worktrees folder.
-  return records.slice(1);
-}
-
-function branchToken(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  const name = value.trim();
-  if (name === "" || name === "none" || /\s/u.test(name)) return undefined;
-  return name;
-}
-
-function branchFromNotes(notes: string | null): string | undefined {
-  if (notes === null) return undefined;
-  return branchToken(/^Branch:\s*`([^`]+)`/mu.exec(notes)?.[1]);
-}
-
-function textColumn(value: unknown, ledger: string, column: string): string | null {
-  if (value === null) return null;
-  if (typeof value !== "string") throw new Error(`ticket ledger is unreadable (${ledger}): tasks.${column} is not text`);
-  return value;
-}
-
-export interface TicketOwner {
-  status: string;
-  branch?: string;
-  worktree?: string;
-}
-
-function repoRoot(): string {
-  return resolve(gitText(["rev-parse", "--path-format=absolute", "--git-common-dir"]), "..");
-}
-
-function canonicalIdentity(path: string): string {
-  const lexical = resolve(path);
-  try {
-    return realpathSync(lexical);
-  } catch (error) {
-    if (!existsSync(lexical)) return lexical;
-    const message = error instanceof Error ? error.message : "unreadable";
-    throw new Error(`worktree path is unreadable (${lexical}): ${message}`, { cause: error });
-  }
-}
-
-function canonicalWorktree(path: string, root: string): string {
-  const slash = path.replaceAll("\\", "/").replace(/\/+$/u, "");
-  const absolute = slash.startsWith("/") || /^[A-Za-z]:\//u.test(slash) ? slash : join(root, slash);
-  return canonicalIdentity(absolute);
-}
-
-function sameWorktree(left: string, right: string): boolean {
-  const normalize = (value: string): string => value.replaceAll("\\", "/").replace(/\/+$/u, "");
-  return canonicalIdentity(normalize(left)) === canonicalIdentity(normalize(right));
-}
-
-function ticketRows(ledger: string, root: string): TicketOwner[] {
-  let database: DatabaseSync;
-  try {
-    database = new DatabaseSync(ledger, { readOnly: true, timeout: 2000 });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "unreadable";
-    throw new Error(`ticket ledger is unreadable (${ledger}): ${message}`, { cause: error });
-  }
-  try {
-    const rows = database.prepare("SELECT branch, worktree, status, notes FROM tasks").all();
-    const owners: TicketOwner[] = [];
-    for (const row of rows) {
-      const status = textColumn(row.status ?? null, ledger, "status");
-      if (status === null || status === "") throw new Error(`ticket ledger is unreadable (${ledger}): tasks.status is missing`);
-      const column = textColumn(row.branch ?? null, ledger, "branch");
-      const notes = textColumn(row.notes ?? null, ledger, "notes");
-      const worktree = textColumn(row.worktree ?? null, ledger, "worktree");
-      const named = branchToken(column ?? undefined) ?? branchFromNotes(notes);
-      const path = worktree === null || worktree.trim() === "" ? undefined : canonicalWorktree(worktree.trim(), root);
-      const owner: TicketOwner = { status };
-      if (named !== undefined) owner.branch = named;
-      if (path !== undefined) owner.worktree = path;
-      owners.push(owner);
-    }
-    return owners;
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("ticket ledger is unreadable")) throw error;
-    const message = error instanceof Error ? error.message : "unreadable";
-    throw new Error(`ticket ledger is unreadable (${ledger}): ${message}`, { cause: error });
-  } finally {
-    database.close();
-  }
-}
-
-function closedBranch(branch: string, rows: readonly TicketOwner[]): boolean {
-  const owners = rows.filter((row) => row.branch === branch);
-  return owners.length > 0 && owners.every((row) => CLOSED_TICKET.has(row.status));
-}
-
-export function closedWorktreeLine(path: string, checkoutBranch: string | undefined, rows: readonly TicketOwner[]): string | undefined {
-  const pathOwners = rows.filter((row) => {
-    const owned = row.worktree?.trim() ?? "";
-    return owned !== "" && sameWorktree(owned, path);
-  });
-  if (pathOwners.some((row) => !CLOSED_TICKET.has(row.status))) return undefined;
-  const branchOwners = checkoutBranch === undefined ? [] : rows.filter((row) => row.branch === checkoutBranch);
-  if (branchOwners.some((row) => !CLOSED_TICKET.has(row.status))) return undefined;
-  const associated = pathOwners.flatMap((row) => row.branch === undefined ? [] : [row.branch]);
-  const associatedOpen = associated.some((branch) => rows.some((row) => row.branch === branch && !CLOSED_TICKET.has(row.status)));
-  if (associatedOpen) return undefined;
-  const owners = checkoutBranch === undefined ? pathOwners : [...pathOwners, ...branchOwners];
-  if (!owners.some((row) => CLOSED_TICKET.has(row.status))) return undefined;
-  return report(path, "ticket is closed");
-}
-
-function discoveredLedger(): string | undefined {
-  const top = gitText(["rev-parse", "--show-toplevel"]);
-  const manifest = join(top, "package.json");
-  if (!existsSync(manifest)) return undefined;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(manifest, "utf8"));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "unreadable";
-    throw new Error(`package.json is unreadable: ${message}`, { cause: error });
-  }
-  if (typeof parsed !== "object" || parsed === null || !("name" in parsed)) {
-    throw new Error("package.json name is not a single path segment");
-  }
-  const name = parsed.name;
-  if (typeof name !== "string" || !/^[A-Za-z0-9._-]+$/u.test(name)) {
-    throw new Error("package.json name is not a single path segment");
-  }
-  const path = join(homedir(), ".concord-ledger", name, ".concord", "concord.db");
-  return existsSync(path) ? path : undefined;
+function linkedWorktreePaths(): string[] {
+  // The first porcelain record is the main checkout.
+  return gitLines(["worktree", "list", "--porcelain"])
+    .filter((line) => line.startsWith("worktree "))
+    .slice(1)
+    .map((line) => line.slice("worktree ".length));
 }
 
 function currentBranch(): string {
@@ -218,7 +71,6 @@ function currentBranch(): string {
 function branchProblem(branch: string, origin: readonly string[]): string | undefined {
   if (branch === "main" || branch === "staging" || branch === "development") return undefined;
   if (matches("dependabot/.+", branch) && !branch.endsWith("/") && !/[\s]/u.test(branch)) return undefined;
-  if (matches(`feature/${KEBAB}`, branch)) return undefined;
   if (matches(`design/${KEBAB}`, branch)) return undefined;
   if (matches(`fix/${KEBAB}-${KEBAB}`, branch)) return undefined;
   if (matches(`chore/${KEBAB}-${KEBAB}`, branch)) return undefined;
@@ -227,14 +79,14 @@ function branchProblem(branch: string, origin: readonly string[]): string | unde
   // An origin task branch keeps an older lane segment. A new lane stays kebab-case.
   const legacy = new RegExp(`^task/(${KEBAB})/([A-Za-z0-9][A-Za-z0-9._-]*)$`, "u").exec(branch);
   if (legacy && origin.includes(branch)) return undefined;
-  return report(branch, "branch name is outside main, staging, development, dependabot/*, feature/<kebab>, task/<kebab>/<kebab>, fix/<kebab>-<kebab>, chore/<kebab>-<kebab>, hotfix/<kebab>-<kebab>, and design/<kebab>");
+  return report(branch, "branch name is outside main, staging, development, dependabot/*, task/<kebab>/<kebab>, fix/<kebab>-<kebab>, chore/<kebab>-<kebab>, hotfix/<kebab>-<kebab>, and design/<kebab>");
 }
 
 function developmentHeadProblem(branch: string): string | undefined {
-  if (branchProblem(branch, []) === undefined && (branch.startsWith("dependabot/") || branch.startsWith("feature/") || branch.startsWith("fix/") || branch.startsWith("chore/"))) {
+  if (branchProblem(branch, []) === undefined && (branch.startsWith("dependabot/") || branch.startsWith("fix/") || branch.startsWith("chore/") || branch.startsWith("task/"))) {
     return undefined;
   }
-  return report(branch, "a development pull request head must be feature/*, fix/*, chore/*, or dependabot/*");
+  return report(branch, "a development pull request head must be fix/*, chore/*, dependabot/*, or task/<kebab>/<kebab>");
 }
 
 function titleProblem(title: string): string | undefined {
@@ -267,11 +119,15 @@ function worktreeProblem(path: string): string | undefined {
 }
 
 function parse(argv: readonly string[]): Request {
-  const request: Request = { all: false, titleSet: false, originBranches: [], originSet: false, ledgerSet: false };
+  const request: Request = { all: false, titleSet: false, closingLine: false, originBranches: [], originSet: false };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
     if (token === "--all") {
       request.all = true;
+      continue;
+    }
+    if (token === "--closing-line") {
+      request.closingLine = true;
       continue;
     }
     const value = argv[index + 1];
@@ -295,10 +151,6 @@ function parse(argv: readonly string[]): Request {
         request.originBranches.push(value);
         request.originSet = true;
         break;
-      case "--ledger":
-        request.ledger = value;
-        request.ledgerSet = true;
-        break;
       default:
         reject(report(token, "names:check does not recognize this argument"));
     }
@@ -306,21 +158,16 @@ function parse(argv: readonly string[]): Request {
   return request;
 }
 
-function listOffPattern(extraOrigin: readonly string[], ledger: string | undefined): string[] {
+function listOffPattern(extraOrigin: readonly string[]): string[] {
   const origin = [...new Set([...originBranchNames(), ...extraOrigin])];
-  const root = repoRoot();
-  const rows = ledger === undefined ? [] : ticketRows(ledger, root);
   const lines: string[] = [];
   for (const branch of localBranchNames()) {
     const problem = branchProblem(branch, origin);
     if (problem) lines.push(problem);
-    else if (closedBranch(branch, rows)) lines.push(report(branch, "ticket is closed"));
   }
-  for (const worktree of linkedWorktrees()) {
-    const problem = worktreeProblem(worktree.path);
+  for (const path of linkedWorktreePaths()) {
+    const problem = worktreeProblem(path);
     if (problem) lines.push(problem);
-    const line = closedWorktreeLine(canonicalWorktree(worktree.path, root), worktree.branch, rows);
-    if (line !== undefined) lines.push(line);
   }
   return lines.sort((left, right) => left.localeCompare(right));
 }
@@ -328,11 +175,7 @@ function listOffPattern(extraOrigin: readonly string[], ledger: string | undefin
 function main(): void {
   const request = parse(process.argv.slice(2));
   if (request.all) {
-    const ledger = request.ledgerSet ? request.ledger : discoveredLedger();
-    if (request.ledgerSet && (ledger === undefined || !existsSync(ledger))) {
-      reject(report(ledger ?? "--ledger", "ticket ledger was not found"));
-    }
-    const lines = listOffPattern(request.originBranches, ledger);
+    const lines = listOffPattern(request.originBranches);
     if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);
     return;
   }
@@ -347,13 +190,16 @@ function main(): void {
       const head = developmentHeadProblem(branch);
       if (head) reject(head);
     }
-    if (request.base === "staging" && branch !== "development") {
-      reject(report(branch, "a staging pull request head must be development"));
+    if (request.base === "staging" && branch !== "main" && branch !== "development") {
+      reject(report(branch, "a staging pull request head must be development or main"));
     }
   }
   if (request.titleSet) {
     const problem = titleProblem(request.title ?? "");
     if (problem) reject(problem);
+  }
+  if (request.closingLine && !/^Closes #[1-9][0-9]*[ \t]*\r?$/mu.test(readFileSync(0, "utf8"))) {
+    reject(report("PR_BODY", 'pull request body must include "Closes #<issue>" on its own line'));
   }
   if (request.worktree !== undefined) {
     const problem = worktreeProblem(request.worktree);

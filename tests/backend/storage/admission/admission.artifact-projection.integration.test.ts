@@ -13,10 +13,8 @@ import { join } from "node:path";
 import readXlsxFile from "read-excel-file/node";
 import { afterEach,describe,it } from "vitest";
 import { z } from "zod";
-import {
-executeClaimedRun,
-type RunExecutorDependencies,
-} from "../../../../src/backend/runtime/execution/run-executor.js";
+import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import {
 ArtifactSinkBusyError,
 createArtifactSinkProjector,

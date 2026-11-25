@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
+import { requireSecret } from "../../../../src/models/config/secrets.js";
 import { ProtectedSettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { HASH_A, NOW, UUID_4, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -135,6 +136,26 @@ describe("apply-protected-settings authority", () => {
     if (reusedResult.state === "rejected") assert.equal(reusedResult.code, "command-divergent");
     assert.equal(harness.database.authority.commands.get(reusedWrite.commandId), undefined);
     assert.deepEqual(readFileSync(protectedPath), committedBytes);
+  });
+
+  it("saves UCPath credentials without changing the Relay verifier", async () => {
+    const harness = await createHarness();
+    const profile = profiles.find(candidate => candidate.stateRoot === harness.stateRoot);
+    assert.ok(profile);
+    const path = join(profile.machine.stateRoot, "machine", "profile-verifiers.json");
+    const before = readFileSync(path);
+    const revision = harness.credentials.read().revision;
+    const command = ProtectedSettingsCommandRequestSchema.parse({
+      commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
+      family: "settings", type: "apply-protected-settings", target: { expectedRevision: revision },
+      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: UUID_7,
+        entries: { ucpathUserId: { set: "workflow-user" }, ucpathPassword: { set: "workflow-secret" } } },
+    });
+    assert.equal(harness.kernel.execute(command).state, "applied");
+    assert.equal(harness.credentials.read().revision, revision + 1);
+    assert.equal(requireSecret("ucpathUserId", harness.credentials), "workflow-user");
+    assert.equal(requireSecret("ucpathPassword", harness.credentials), "workflow-secret");
+    assert.deepEqual(readFileSync(path), before);
   });
 
   it("journals only marked operations while the independent store owns credential values", async () => {

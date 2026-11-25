@@ -24,6 +24,6 @@ describe("Analytics population signing", () => {
     const error = new ActivityPopulationError("ACTIVITY_POPULATION_CONTENT_MISMATCH");
     expect(error.name).toBe("ActivityPopulationError");
     expect(error.code).toBe("ACTIVITY_POPULATION_CONTENT_MISMATCH");
-    expect(error.message).toBe("The selected Analytics population has changed. Select the period again.");
+    expect(error.message).toBe("The Analytics results changed. Select the period again.");
   });
 });

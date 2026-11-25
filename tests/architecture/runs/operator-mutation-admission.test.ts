@@ -85,7 +85,7 @@ describe("operator mutation admission", () => {
 
   it("admits the public profile routes before request-body effects", () => {
     const table = Object.fromEntries(["sign-in", "resume", "sign-up", "logout", "delete-account", "onboarding/duo/browser", "onboarding/duo/reopen", "onboarding/duo/portal", "onboarding/duo/start", "onboarding/duo/confirm",
-      "onboarding/duo/cancel", "onboarding/cancel", "onboarding/complete", "account/password", "account/username", "account/details",
+      "onboarding/duo/cancel", "onboarding/cancel", "onboarding/complete", "account/password", "account/username", "account/details", "account/duo-keys",
       "duo/reenrol/begin", "duo/reenrol/read", "duo/reenrol/browser", "duo/reenrol/reopen", "duo/reenrol/portal", "duo/reenrol/start", "duo/reenrol/confirm",
       "duo/reenrol/cancel-attempt", "duo/reenrol/cancel", "duo/reenrol/commit"].map(path => [`/api/v1/profile/${path}`, "operatorMutationIngressGuard"] as const));
     const audit = auditOperatorMutationAdmission(publicProfileRouteRegistrations(), table);

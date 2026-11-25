@@ -11,6 +11,7 @@ import { afterEach, beforeEach, it, vi } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
 import { readRunReview } from "../../../src/dashboard/state/review-wiring-adapter.js";
+import { ROW_REVISION_WAIT_MS } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { RunReview } from "../../../src/dashboard/surfaces/run-detail/review/review.js";
 import { correctedOcrRecord } from "../../../src/dashboard/surfaces/run-detail/review/review-model.js";
 import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../src/models/dashboard/projection.js";
@@ -19,6 +20,7 @@ import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue
 import { ocrReviewPageFixture } from "../../support/fixtures/dashboard/ocr-review.js";
 import { SOURCE_RUN_ID } from "../../support/fixtures/ocr/source-pages.js";
 import { RunIdSchema } from "../../../src/rules/identity/ids.js";
+import { createRowStore } from "../../../src/dashboard/client/index.js";
 
 let root: Root | undefined;
 beforeEach(() => {
@@ -73,7 +75,7 @@ it("opens the exact stable record, retains operator focus on refresh, and retrie
     const target = new URL(source);
     return target.pathname.startsWith(`/api/v1/runs/${SOURCE_RUN_ID}/ocr/pages/`) && target.searchParams.get("revision") === "2";
   }));
-  assert.equal(document.activeElement, firstHeading);
+  assert.equal(document.activeElement === firstHeading, true);
   assert.equal(host.querySelectorAll('input:not([disabled])').length, 0);
   assert.doesNotMatch(host.textContent ?? "", /Approved/u);
 });
@@ -203,6 +205,8 @@ function editorWorld(unknownOnce = false, delegated = true) {
         const { approval: _approval, ...review } = page.ocr;
         page = ReviewPageSchema.parse({ ...page, ocr: { ...review, approvedSnapshots: [snapshot], editing: { state: "unavailable", reason: "approved" } } });
       }
+      // The stream carries the row the command moved; the editor waits for it instead of reopening the day.
+      setTimeout(() => { if (!refreshPaused) refresh(); }, 0);
       const result = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [request.family === "gate" ? { family: "gate", runId: page.runId, gateId: request.target.gateId } : { family: "ocr-review", runId: page.runId }, { family: "run", runId: page.runId }] });
       recorded.set(request.commandId, { request, result });
       if (loseReply) { loseReply = false; throw new TypeError("Synthetic lost response after commit"); }
@@ -222,17 +226,18 @@ function editorWorld(unknownOnce = false, delegated = true) {
   const scope = { actorId: "local-operator", client, authority: epoch, dayRequest };
   let refresh: () => void = () => undefined;
   let refreshPaused = false;
+  let dayRefreshes = 0;
   const binding: DashboardCommandBinding = { scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
-    authority: { epoch, catalog: [], nowIso: FIXTURE_BOOTSTRAP.serverClock.now, today: day, day,
-      dayState: { request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" },
-        refresh: () => { if (!refreshPaused) refresh(); }, subscribePublications: () => () => undefined }, selection: { route: { start: false }, workflowId: "ocr" } } };
+    authority: { epoch, catalog: [], now: () => FIXTURE_BOOTSTRAP.serverClock.now, today: day, day,
+      dayState: { rows: createRowStore(), request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" },
+        refresh: () => { dayRefreshes++; if (!refreshPaused) refresh(); }, subscribePublications: () => () => undefined }, selection: { route: { start: false }, workflowId: "ocr" } } };
   function Harness() {
     const [revision, setRevision] = useState(runVersion);
     refresh = () => setRevision(runVersion);
     return createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(RunReview, { selection: selection(revision) }) }) });
   }
-  return { client, binding, commands, Harness, page: () => page, pauseRefresh: () => { refreshPaused = true; },
+  return { client, binding, commands, Harness, dayRefreshes: () => dayRefreshes, page: () => page, pauseRefresh: () => { refreshPaused = true; },
     recordedLookup: (mode: typeof recordedLookup) => { recordedLookup = mode; },
     resumeRefresh: () => { refreshPaused = false; refresh(); }, externalChange: (values: Readonly<Record<string, string>> = {}) => {
     assert.ok(page.ocr);
@@ -260,7 +265,7 @@ function changeInput(host: HTMLElement, key: string, value: string) {
   descriptor.set.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
-async function saveEdits() { await act(async () => { await vi.advanceTimersByTimeAsync(450); }); }
+async function saveEdits() { await act(async () => { await vi.advanceTimersByTimeAsync(450); await vi.advanceTimersByTimeAsync(10); }); }
 function button(host: HTMLElement, label: string) {
   const target = [...host.querySelectorAll("button")].find(button => button.textContent === label); assert.ok(target); return target;
 }
@@ -313,6 +318,9 @@ it("retains an uncertain save across remount and checks its original command wit
   await act(async () => button(host, "Check result").click());
   assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.disabled, false);
   assert.equal(h.commands.length, 1);
+  // The row the lost reply moved has already arrived; checking the result waits on no newer row and reopens no day.
+  await act(async () => { await vi.advanceTimersByTimeAsync(ROW_REVISION_WAIT_MS * 2); });
+  assert.equal(h.dayRefreshes(), 0);
   assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.value, "Retained Edit");
 });
 

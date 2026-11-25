@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { OcrReviewRecordSchema, OcrOperatorPagesSchema } from "../../models/ocr/review-record.js";
 import { AssistantModelPreferenceSchema } from "../../models/config/assistant-model-preference.js";
-import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
+import { NotificationClearTargetSchema, NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
 import { RunContinuationSchema } from "../../models/run/continuation.js";
 import { RunDisplayNameSchema } from "../../models/run/display-name.js";
 import { FailureResolutionActionSchema,FailureResolutionTargetSchema } from "../../models/trust/failure-resolution.js";
@@ -10,6 +10,7 @@ export { RunDisplayNameSchema } from "../../models/run/display-name.js";
 
 import { MarkedProtectedSettingsPatchSchema,ProtectedSettingsPatchSchema,ProtectedSettingsReceiptEntriesSchema,markProtectedSettingsPatch } from "../../models/config/protected-settings.js";
 import { SettingsLeafOperationSchema,SettingsPatchSchema } from "../../models/config/settings.js";
+import { RETIRED_PANEL_MODE, RetiredPanelModeSchema, SettingsSchemaWithPanelMode } from "../../models/config/settings-record-conversion.js";
 import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
 import { ActorIdSchema,BrowserSessionIdSchema,CommandAuditIdSchema,CommandIdSchema,DependencyIdSchema,FingerprintSchema,GateIdSchema,IntakeManifestIdSchema,IntakeSessionIdSchema,IntakeTargetFieldIdSchema,IsoInstantSchema,ItemIdSchema,LOCAL_OPERATOR_ACTOR_ID,NodeIdSchema,NonNegativeIntSchema,NotificationIdSchema,PositiveIntSchema,RunIdSchema,RunSessionIdSchema,SourceColumnIdSchema,SourceSurfaceIdSchema,StartPlanIdSchema,TaskIdSchema,TraceIdSchema,WorkerIdSchema,WorkflowIdSchema,WriteAttemptIdSchema,WriteIntentIdSchema } from "../identity/ids.js";
 import { JsonValueSchema,canonicalJsonStringify } from "../validation/canonical-json.js";
@@ -92,6 +93,7 @@ export const CommandActionSchema = z.enum([
   "notification-snooze",
   "notification-unsnooze",
   "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all",
+  "notification-clear",
 ]);
 
 export const OperatorReasonSchema = z.string().min(1).max(500).refine(
@@ -227,7 +229,16 @@ export const SettingsCommandRequestSchema = z.strictObject({
     patchFingerprint: FingerprintSchema,
     patch: z.record(z.string().min(1), SettingsLeafOperationSchema),
   }).superRefine((payload, context) => {
-    const ordinary = SettingsPatchSchema.safeParse(payload.patch);
+    const path = `preferences.${RETIRED_PANEL_MODE}`;
+    const { [path]: retired, ...current } = payload.patch;
+    const historical = retired !== undefined && SettingsSchemaWithPanelMode.safeParse(payload.settingsSchemaHash).success;
+    if (historical) {
+      if ("set" in retired && !RetiredPanelModeSchema.safeParse(retired.set).success) {
+        context.addIssue({ code: "custom", path: ["patch", path], message: `settings path ${path} has an invalid historical value` });
+      }
+      if (Object.keys(current).length === 0) return;
+    }
+    const ordinary = SettingsPatchSchema.safeParse(historical ? current : payload.patch);
     if (!ordinary.success) for (const issue of ordinary.error.issues) context.addIssue({ ...issue, path: ["patch", ...issue.path] });
   }),
 });
@@ -367,6 +378,8 @@ export const OcrReviewCommandRequestSchema = z.discriminatedUnion("type", [
 export const NotificationCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.enum(["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"]), target: z.strictObject({ notificationId: NotificationIdSchema, actorId: ActorIdSchema, expectedVersion: PositiveIntSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.enum(["notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"]), target: NotificationCollectionTargetSchema }),
+  // Clear names exactly the rows it hides, so one transaction clears all of them or none.
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.literal("notification-clear"), target: NotificationClearTargetSchema }),
 ]);
 
 
@@ -863,6 +876,7 @@ export const COMMAND_EFFECT_BY_ACTION = {
   "notification-snooze": "local-write",
   "notification-unsnooze": "local-write",
   "notification-read-all": "local-write", "notification-unread-all": "local-write", "notification-snooze-all": "local-write", "notification-unsnooze-all": "local-write",
+  "notification-clear": "local-write",
 } as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>;
 
 export const COMMAND_ASSISTANT_METADATA = {
@@ -912,6 +926,7 @@ export const COMMAND_ASSISTANT_METADATA = {
   "notification-unread-all": "Mark current read notifications unread",
   "notification-snooze-all": "Snooze current notifications",
   "notification-unsnooze-all": "Unsnooze current notifications",
+  "notification-clear": "Clear notifications",
 } as const satisfies Record<z.infer<typeof CommandActionSchema>, string>;
 
 export const CommandFamilySpecSchema = z.strictObject({
@@ -936,7 +951,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   settings: ["apply-settings", "apply-protected-settings"],
   run: ["retry", "recover-run", "pause", "resume", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent", "resolve-workbook-row", "resolve-workbook-reference-row"],
   gate: ["resolve-gate"],
-  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
+  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all", "notification-clear"],
 } as const satisfies Record<z.infer<typeof CommandFamilySchema>, readonly z.infer<typeof CommandActionSchema>[]>;
 
 export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).superRefine((entries, context) => {
@@ -979,7 +994,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
   { family: "run", actions: ["retry", "recover-run", "pause", "resume", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent", "resolve-workbook-row", "resolve-workbook-reference-row"] },
   { family: "gate", actions: ["resolve-gate"] },
-  { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"] },
+  { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all", "notification-clear"] },
 ].map((entry) => ({
   ...entry,
   effects: entry.actions.map((action) => COMMAND_EFFECT_BY_ACTION[CommandActionSchema.parse(action)]),

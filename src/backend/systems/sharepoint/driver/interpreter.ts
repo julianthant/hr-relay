@@ -1,5 +1,6 @@
 import type { SharePointBrowserTransport } from "../../../../models/systems/sharepoint/workbook-download.js";
 import type { JSHandle } from "playwright";
+import { z } from "zod";
 import { resolveSystemLoginUrl } from "../../../../models/config/instance.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { assertDuoCeremonyLeaseToken } from "../../../../workflow-kit/duo-ceremony-lease.js";
@@ -26,6 +27,17 @@ const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_JSON_BYTES = 64 * 1024;
 const LOGIN_CONTROLS = 'input[type="password"], input[name="loginfmt"], #ssousername, input[name="urn:mace:ucsd.edu:sso:username"], input[name="username"], #i0116, #idSIButton9';
 const SSO_PATHS = new Set(["/tritON/profile/SAML2/Redirect/SSO", "/idp/profile/SAML2/Redirect/SSO"]);
+/** The transport asks for odata=nometadata, so a record is exactly its selected fields, bare or under `d`. */
+const odataRecord = <Shape extends z.ZodRawShape>(shape: Shape) => {
+  const record = z.strictObject(shape);
+  return z.union([record, z.strictObject({ d: record }).transform(envelope => envelope.d)]);
+};
+const CurrentUserSchema = odataRecord({ Id: z.int().positive(), LoginName: z.string() });
+const FileMetadataSchema = odataRecord({
+  UniqueId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu),
+  Name: z.string(),
+  Length: z.union([z.string(), z.number()]),
+});
 const extension = (name: string): "xlsx" | "csv" | undefined => /\.xlsx$/iu.test(name) ? "xlsx" : /\.csv$/iu.test(name) ? "csv" : undefined;
 
 function cleanUrl(raw: string): URL {
@@ -131,10 +143,9 @@ async function verify(context: SystemLoginContext, target: SharePointWorkbookTar
   try {
     if (await context.page.locator(LOGIN_CONTROLS).count() !== 0) return { authenticated: false, observedUrl, reason: "Sign-in controls are present", check: "sign-in-form-absent" };
     const bytes = await transfer(context, target, `${target.siteUrl}/_api/web/currentuser?$select=Id,LoginName`, "json", transport);
-    const value: unknown = JSON.parse(bytes.toString("utf8"));
-    const record = typeof value === "object" && value !== null && "d" in value ? value.d : value;
-    if (typeof record !== "object" || record === null || !("Id" in record) || !("LoginName" in record)
-      || typeof record.Id !== "number" || !Number.isSafeInteger(record.Id) || record.Id <= 0 || typeof record.LoginName !== "string") throw signInFailed();
+    const user = CurrentUserSchema.safeParse(JSON.parse(bytes.toString("utf8")));
+    if (!user.success) throw signInFailed({ cause: user.error });
+    const record = user.data;
     const login = record.LoginName.toLowerCase();
     if (login !== expected && login !== `i:0#.f|membership|${expected}`) throw signInFailed();
     current(context);
@@ -211,13 +222,13 @@ export async function downloadSharePointWorkbook(context: SystemLoginContext, ta
     throw signInFailed({ cause: error });
   }
   const metadataBytes = await transfer(context, target, target.metadataUrl, "json", transport);
-  let metadata: unknown;
-  try { metadata = JSON.parse(metadataBytes.toString("utf8")); } catch { throw new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED"); }
-  if (typeof metadata === "object" && metadata !== null && "d" in metadata) metadata = metadata.d;
-  if (typeof metadata !== "object" || metadata === null || !("UniqueId" in metadata) || !("Name" in metadata) || !("Length" in metadata)
-    || typeof metadata.UniqueId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(metadata.UniqueId)
-    || typeof metadata.Name !== "string" || metadata.Name !== target.serverRelativePath.split("/").at(-1) || !extension(metadata.Name)
-    || (typeof metadata.Length !== "string" && typeof metadata.Length !== "number") || !/^\d+$/u.test(String(metadata.Length))) throw new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED");
+  let value: unknown;
+  try { value = JSON.parse(metadataBytes.toString("utf8")); } catch { throw new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED"); }
+  const parsed = FileMetadataSchema.safeParse(value);
+  if (!parsed.success) throw new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED");
+  const metadata = parsed.data;
+  if (metadata.Name !== target.serverRelativePath.split("/").at(-1) || !extension(metadata.Name)
+    || !/^\d+$/u.test(String(metadata.Length))) throw new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED");
   const length = Number(metadata.Length);
   if (!Number.isSafeInteger(length) || length <= 0) throw new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED");
   if (length > MAX_FILE_BYTES) throw new SharePointDownloadError("SHAREPOINT_DOWNLOAD_TOO_LARGE");

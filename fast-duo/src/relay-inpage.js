@@ -17,7 +17,7 @@
     if (event.data.success) pending.resolve(event.data.result);
     else pending.reject(new DOMException('Duo setup could not complete.', 'NotAllowedError'));
   });
-  function request(type, data, signal, nativeOptions) {
+  function request(type, data, signal, timeoutMs) {
     if (signal?.aborted) return Promise.reject(new DOMException('Request aborted', 'AbortError'));
     return new Promise((resolve, reject) => {
       const id = crypto.randomUUID();
@@ -34,15 +34,14 @@
         reject: error => { cleanup(); reject(error); },
       });
       signal?.addEventListener('abort', abort, { once: true });
-      if (Number.isFinite(nativeOptions?.timeout) && nativeOptions.timeout > 0) timer = setTimeout(() => cancel('timed-out'), nativeOptions.timeout);
-      window.postMessage({ type: 'RELAY_DUO_REQUEST', id, operation: type, request: { ...data, origin: location.origin }, nativeOptions }, location.origin);
+      const timeout = type === 'DUO_AUTOPILOT_SIGN' ? 15000 : timeoutMs;
+      if (Number.isFinite(timeout) && timeout > 0) timer = setTimeout(() => cancel('timed-out'), timeout);
+      window.postMessage({ type: 'RELAY_DUO_REQUEST', id, operation: type, request: { ...data, origin: location.origin } }, location.origin);
     });
   }
   if (globalThis.PublicKeyCredential) {
-    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => {
-      const result = await request('RELAY_CAPABILITIES', { rpId: 'duosecurity.com' });
-      return result.platformAvailable;
-    };
+    // Relay's Duo is security-key only, so Duo never offers a platform method.
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => false;
     const originalSupport = PublicKeyCredential.isExternalCTAP2SecurityKeySupported?.bind(PublicKeyCredential);
     PublicKeyCredential.isExternalCTAP2SecurityKeySupported = async () => {
       const result = await request('RELAY_CAPABILITIES', { rpId: 'duosecurity.com' });
@@ -64,7 +63,7 @@
     }));
     return Object.create(PublicKeyCredential.prototype, Object.getOwnPropertyDescriptors({
       id: urlId(result.credentialId), rawId: decode(result.credentialId), type: 'public-key',
-      authenticatorAttachment: result.transport === 'usb' ? 'cross-platform' : 'platform', response,
+      authenticatorAttachment: 'cross-platform', response,
       getClientExtensionResults: () => ({}),
     }));
   };
@@ -78,16 +77,16 @@
       pubKeyCredParams: key.pubKeyCredParams,
       authenticatorAttachment: key.authenticatorSelection?.authenticatorAttachment || null,
       residentKey: key.authenticatorSelection?.residentKey === 'required' || key.authenticatorSelection?.requireResidentKey === true,
-    }, options.signal, key);
+    }, options.signal, key.timeout);
     if (!result.ok) throw new DOMException('Duo setup refused enrollment.', 'NotAllowedError');
     const response = Object.create(AuthenticatorAttestationResponse.prototype, Object.getOwnPropertyDescriptors({
       clientDataJSON: decode(result.clientDataJSON), attestationObject: decode(result.attestationObject),
-      getTransports: () => result.native ? result.transports : [result.transport], getAuthenticatorData: () => decode(result.authData),
-      getPublicKey: () => result.publicKeySpki === null ? null : decode(result.publicKeySpki), getPublicKeyAlgorithm: () => result.native ? result.publicKeyAlgorithm : -7,
+      getTransports: () => [result.transport], getAuthenticatorData: () => decode(result.authData),
+      getPublicKey: () => result.publicKeySpki === null ? null : decode(result.publicKeySpki), getPublicKeyAlgorithm: () => -7,
     }));
     return Object.create(PublicKeyCredential.prototype, Object.getOwnPropertyDescriptors({
       id: urlId(result.credentialId), rawId: decode(result.credentialId), type: 'public-key',
-      authenticatorAttachment: result.native ? 'platform' : 'cross-platform', response, getClientExtensionResults: () => ({}),
+      authenticatorAttachment: 'cross-platform', response, getClientExtensionResults: () => ({}),
     }));
   };
 })();

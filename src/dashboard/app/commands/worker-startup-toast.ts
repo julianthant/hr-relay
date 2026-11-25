@@ -8,7 +8,6 @@ const QUEUEING_BULK = new Set(["resume", "retry"]);
 export interface WorkerStartupToast {
   readonly tone: "warning";
   readonly title: string;
-  readonly description?: string;
 }
 
 type StartupRequest = {
@@ -30,23 +29,18 @@ type StartupReply = {
 
 function queuedWorkerTitle(state: "refused" | "unknown", count?: number): string {
   const subject = count === undefined ? "Run" : `${String(count)} ${count === 1 ? "run" : "runs"}`;
-  return `${subject} queued; ${state === "refused" ? "worker unavailable" : "worker status unknown"}`;
+  return state === "refused" ? `${subject} queued, but no worker is available.` : `${subject} queued; worker not confirmed yet.`;
 }
 
 function workerStartupToast(startup: RunWorkerStartupFailure): WorkerStartupToast {
-  return { tone: "warning", title: queuedWorkerTitle(startup.state), description: startup.message };
+  return { tone: "warning", title: queuedWorkerTitle(startup.state) };
 }
 
 function bulkWorkerStartupToast(results: NonNullable<StartupReply["results"]>): WorkerStartupToast | undefined {
   const missing = results.flatMap(result => result.outcome === "applied" && result.workerStartup !== undefined ? [result.workerStartup] : []);
   if (missing.length === 0) return undefined;
   const state = missing.some(startup => startup.state === "unknown") ? "unknown" : "refused";
-  const message = new Set(missing.map(startup => startup.message)).size === 1 ? missing[0]?.message : undefined;
-  return {
-    tone: "warning",
-    title: queuedWorkerTitle(state, missing.length),
-    ...(message === undefined ? {} : { description: message }),
-  };
+  return { tone: "warning", title: queuedWorkerTitle(state, missing.length) };
 }
 
 export function appliedWorkerStartupToast(request: StartupRequest, reply: StartupReply | undefined): WorkerStartupToast | undefined {
@@ -77,8 +71,7 @@ export function stoppedWorkerToasts(day: DashboardDayWire, workflowLabel: (workf
     const none = workers.length === 0 && day.workerAuthority.state === "present" && !day.workerAuthority.members.some(member => member.workflow === workflowId);
     const runs = waiting.filter(row => row.workflowId === workflowId && (!none || row.surfaceKind !== "preview")).length;
     if (runs === 0 || (stopped === undefined && !none)) return [];
-    return [{ tone: "warning" as const, title: queuedWorkerTitle("refused", runs === 1 ? undefined : runs),
-      description: stopped === undefined ? `${workflowLabel(workflowId)} has no worker. Add one in Sessions.`
-        : `${workflowLabel(workflowId)} worker ${WORKER_STOP_REASON_LABEL[stopped]}. Retry it in Sessions.` }];
+    return [{ tone: "warning" as const, title: stopped === undefined ? `${workflowLabel(workflowId)} has no worker. Open Sessions.`
+      : `${workflowLabel(workflowId)} worker ${WORKER_STOP_REASON_LABEL[stopped]}. Retry it in Sessions.` }];
   });
 }

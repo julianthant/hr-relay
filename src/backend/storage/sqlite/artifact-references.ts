@@ -34,9 +34,6 @@ export function deletionArtifactReferenceMatcher(candidates: Iterable<ArtifactRe
   };
 }
 
-export function containsDeletionArtifactReference(value: unknown, ref: ArtifactRef): boolean {
-  return deletionArtifactReferenceMatcher([ref])(value).size !== 0;
-}
 
 export function artifactReferencesIn(input: unknown): readonly ArtifactRef[] {
   const references = new Map<string, ArtifactRef>();

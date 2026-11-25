@@ -4,7 +4,7 @@ import { authenticateSavedSettings } from "../../storage/sqlite/settings-storage
 import { selectActiveRunSettings } from "../../runs/settings/run-settings.js";
 import { StoredConfigSchema } from "../../../models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { resolveConfigWithProvenance, type AdmittedRuntimeStoragePair } from "../../app/config/resolve.js";
@@ -13,8 +13,6 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback, type Protect
 import type { AuthorityDatabase, AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { randomUUID } from "node:crypto";
 import { resolvePersonPreferences } from "../../../models/config/person-preferences.js";
-import type { RunRecordService } from "../../runs/lifecycle/run-record-service.js";
-import { listCanonicalRuns } from "../../runs/queries/canonical-runs.js";
 import { createKeepAwake, type KeepAwakeOptions } from "./keep-awake.js";
 
 /** SQLite is the sole ordinary authority. Revision one exists only before durable settings history. */
@@ -153,24 +151,39 @@ export function activeSettingsConfig(repositories: AuthorityRepositories) {
 /** The profile cancellation registry drains this observer before closing its authority. */
 export function startSettingsKeepAwake(input: KeepAwakeOptions & Readonly<{
   database: AuthorityDatabase;
-  reader: Pick<RunRecordService, "list">;
 }>) {
+  const { database } = input;
   const holder = createKeepAwake(input);
   let closing: Promise<void> | undefined, closed = false;
+  let lastObservation: { key: string; needed: boolean } | undefined;
   const observe = async (): Promise<void> => {
     if (closing !== undefined) return;
-    const needed = input.database.withAuthorityReadSnapshot(() => {
-      const settings = readSettings(input.database.authority);
-      return resolvePersonPreferences(settings.settings.preferences).preventSleepWhileRunning
-        && listCanonicalRuns(input.reader, "live").some(run => run.lifecycle.state !== "terminal");
-    });
-    await holder.update(needed);
+    // A peer commit during the snapshot leaves this key stale, so the next tick reads again.
+    const key = JSON.stringify(database.changeKey());
+    if (lastObservation?.key !== key) {
+      const needed = database.withAuthorityReadSnapshot(() => {
+        const settings = readSettings(database.authority);
+        return resolvePersonPreferences(settings.settings.preferences).preventSleepWhileRunning
+          && database.readApplicationActivity("non-terminal-runs").length > 0;
+      });
+      lastObservation = { key, needed };
+    }
+    await holder.update(lastObservation.needed);
   };
   const report = () => input.debugEvents.emit({ category: "boot", phase: "failed", area: "keep-awake",
     reason: "keep-awake-observation-failed", correlationId: randomUUID() });
-  const timer = setInterval(() => { void observe().catch(report); }, 1000);
+  const revision = database.trackAuthorityTables(["settings", "settings_snapshots", "commands", "command_audits", "runs"], "poll-hint");
+  let observed: number | undefined, safetyAt = -Infinity;
+  const poll = async () => {
+    const current = revision(), now = systemClock.monotonicMs();
+    if (current !== undefined && current === observed && now < safetyAt) return;
+    await observe();
+    observed = current;
+    safetyAt = now + 60_000;
+  };
+  const timer = setInterval(() => { void poll().catch(report); }, 1000);
   timer.unref();
-  void observe().catch(report);
+  void poll().catch(report);
   const stop = (): Promise<void> => {
     if (closing !== undefined) return closing;
     clearInterval(timer);

@@ -1,5 +1,6 @@
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { measuredSearchService } from "../../../support/helpers/backend/cross-date-search-harness.js";
+import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -173,11 +174,21 @@ describe("cross-date search service", () => {
       const runs = [15, 14, 13].map((hour, index) => insertMeasuredSearchRun(database, {
         authorityPath: profile.path, seed: 21 + index, enqueuedAt: `2026-08-28T${String(hour)}:00:00.000Z`,
       }));
-      const search = measuredSearchService(database, {
+      let sourceReads = 0;
+      const search = createCrossDateSearchService({
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
+        authority: {
+          readSnapshot: read => database.withAuthorityReadSnapshot(() => read({
+            authorityGeneration: database.getMeta().authorityGeneration,
+            searchRuns: input => {
+              sourceReads++;
+              return database.authority.runs.search(input);
+            },
+          })),
+        },
       });
       const query = { q: "separations", scope: "all", facets: { day: "2026-08-28" }, limit: 1 };
       const toggleWorkerPause = () => {
@@ -197,6 +208,7 @@ describe("cross-date search service", () => {
       }
 
       assert.deepEqual(pages.flatMap(page => page.results.map(row => row.runId)), runs.map(run => run.envelope.runId));
+      assert.equal(sourceReads, pages.length, "each request can read its served prefix and next page together");
       for (const page of pages) {
         assert.deepEqual(page.snapshot, pages[0]?.snapshot);
         assert.equal(page.totalMatches, 3);

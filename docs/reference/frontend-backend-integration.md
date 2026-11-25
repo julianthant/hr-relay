@@ -187,7 +187,7 @@ field membership and discriminated states. The client checks identity as well as
 | Intake | `queries/intake-queries.ts` | `intake.ts`: `POST /api/v1/intake/files`, `GET /api/v1/intake/:sessionId` |
 | Workbook revisions | `queries/workbook-library-queries.ts` | `workbooks.ts`: read-only `GET /api/v1/workbooks/:libraryId/revisions/:version`; exact CAS revision for attachment open/download, independent of named-version history |
 | Commands | `commands/shared-commands.ts`, `index.ts` (`workerCommandResult`) | `commands.ts`: `POST /api/v1/commands`, `/api/v1/commands/bulk`; read-only `GET /api/v1/worker-commands/:commandId` |
-| Day events | `subscriptions/subscription.ts` | `shell.ts`: `GET /events/v1?topics=dashboard-day:<day>` |
+| Day events | `subscriptions/subscription.ts` | `shell.ts`: `GET /events/v1?topics=dashboard-day:<day>[,run:<runId>]` |
 
 `FrontendBootstrapWire` carries actor, server clock, descriptor/config identity, workflows,
 Settings sections, storage, and readiness. `DashboardDayWire` carries the selected day's queue,
@@ -362,14 +362,32 @@ reports keep their identity and migration authority.
 
 `useDashboardDay` opens one day subscription only when its composition needs served data. The
 subscription states are `connecting`, `live`, `reconnecting`, `degraded`, and `stopped`.
-`DashboardStreamEnvelopeSchema` names `hello`, `snapshot`, `patch`, `reset-required`, `health`,
+`DashboardStreamEnvelopeSchema` names `hello`, `snapshot`, `change`, `reset-required`, `health`,
 and `notification-publication`.
 The client holds projection generation and `pc:<number>` cursor. A generation change resets both
 snapshot and cursor. A snapshot behind the held cursor is stale; a same-cursor snapshot replaces
-the day. A patch at or below the cursor is ignored. Missing baseline, cursor gaps, and invalid
-patch application trigger a resnapshot. Malformed envelopes or non-network stream failures stop
+the day. Every `snapshot` and `change` has its own cursor and names `position`, the timeline
+position the projection had folded. A `change` names `after`, the cursor of the previous `snapshot`
+or `change` sent on that connection, and may carry one queue-row replacement or removal as `day`.
+A change at or below the held cursor is ignored. A change whose `after` is above the held cursor is
+a gap. Missing baseline, gaps, and invalid row application trigger a resnapshot. A reconnect is
+resumable while every retained change above the presented cursor is still held; the server then
+replays them and closes with a `change` that carries no day part. Malformed envelopes or non-network stream failures stop
 with visible error. Network loss resumes using `lastEventId` and `lastProjectionGeneration`.
 Superseded stream completions cannot reconnect the new stream.
+
+Every `snapshot` and `change` also carries `rows`: whole read-model values for the connection's
+topics, never patched. A `run:<runId>` topic adds that run's `run-panel` row: the run detail, the
+whole log as one page, and the available captures, identity-gate, parked-write, failure and
+workbook-writes sections, read by the same queries the run routes serve, or `refused` with the wire
+error the route would have answered. The row rides every envelope that carries the run's queue row,
+the handoff, and a rows-only `change` whenever the projection folds any timeline record of the run,
+notes included. Rows are never retained or replayed. The hub reads each run's panel one read at a
+time in envelope order, and each connection's outbox hands envelopes out in cursor order once its
+own rows are in, so one connection's slow read holds no other connection. A read is cut off after
+5 s and sent as a retryable refusal; a timed-out or failed read is read again every 5 s while a
+connection still has the run open. A refusal the read returned is not retried. Overflow, close and
+generation change empty the outbox and abort reads nobody else is owed.
 
 Notification subjects use the registered title projection and the matching retained evidence receipt when a workflow declares one, through the same canonical title resolver as Queue. Unavailable or refused title authority withholds the subject without falling back to a checkpoint or guessed name; a readable linked run and descriptor still serve the workflow-only context. Other declared subject projections retain their checkpoint identity checks. Workflow-only previews omit the subject and retain the reason. A retained failed-row summary can supply that reason when the source publication is unavailable only if it exactly matches a current error-catalog sentence; other retained summaries leave the reason unavailable. Toast eligibility still requires the source-event policy. Run rows show the unavailable notice when their context or display reason cannot be read. This display context belongs only to the served inbox; durable notification summaries and OS delivery are unchanged.
 
@@ -452,7 +470,8 @@ lockout, profile, generation and original logout operation or completion receipt
 to signed-out after closure. Account deletion requires its explicit confirmation, profile and epoch.
 Successful sign-out clears the tab's continuation credential and the origin's resume proof.
 
-The Relay login is the work email and password saved as the profile's UCPath sign-in.
+Relay password sign-in checks the Relay email and password against the profile's verifier. The
+profile's UCPath login is saved separately in protected Settings.
 `POST /api/v1/profile/account/password` `{currentPassword, newPassword}` and
 `POST /api/v1/profile/account/username` `{currentPassword, newUsername}` change it for the current
 session authenticated by `x-relay-session`. They return `{state: "changed"}`, `{state: "unknown", code}` or
@@ -461,22 +480,14 @@ username must be a plain `@ucsd.edu` address the sign-in form accepts, must chan
 and must not be taken; a new username or password longer than the form's 160 characters, or a
 password with a line break the form's single-line input would remove, is refused. Refusals leave the saved login unchanged.
 
-The change saves both UCPath entries in one marked write, then swaps that profile's verifier row as
-its commit point, and only once the entries are proved durable. If it stops between them, it
-answers `PROFILE_LOGIN_CHANGE_UNSETTLED` and the session stays signed in: its next change writes the
-proved old login back first, and after a restart resume is refused until a sign-in with the old
-login writes it back. Recovery reads the credential store's own history (`lastEntryWriters`) and
-writes back only while a marked login write was the last to set both entries, so it survives
-unrelated protected saves and never overwrites a later Settings set, clear or erase. Neither path
-needs a logout, so parked writes stay held. A swap that landed is never undone: if only its flush
-or directory close failed, the result is `{state: "changed", durability: "unconfirmed"}`, the
-failure is logged and an unclosed descriptor stays held by its owner. If the verifier cannot be read
-back after a failed swap, the result is `PROFILE_LOGIN_CHANGE_UNKNOWN`, nothing is undone and
-neither login is promised. A change that settled keeps its result when only the profile lock's
-release fails; that failure is logged and any unclosed descriptor stays held. A changed or unknown
-result whose fault cannot be written still answers its outcome, marked `diagnostics: "unrecorded"`. An old-login restore
-that cannot prove its write durable fails the sign-in or change that ran it, which may then be
-retried. The epoch, Duo material and other profiles are unchanged.
+The verifier swap commits the Relay login change. A username change then updates the Relay email
+in the profile registry. The session stays signed in with the same epoch, and its parked writes
+stay held. If a swap lands but its flush or directory close fails, the result is
+`{state: "changed", durability: "unconfirmed"}`. If readback cannot establish whether the swap
+landed, the result is `{state: "unknown", code: "PROFILE_LOGIN_CHANGE_UNKNOWN"}`. Failures in the
+registry update or profile lock release preserve the settled result. The backend logs these
+failures and retains custody of any descriptor whose closure it cannot prove. If recording the
+failure also fails, the response retains its outcome and includes `diagnostics: "unrecorded"`.
 
 `POST /api/v1/profile/account/details`
 `{name?: {firstName, lastName}, initials?, timekeeperName?, timekeeperInitials?}` changes the current
@@ -504,7 +515,7 @@ preserves the draft. Whole-draft cancellation returns signed-out only after cano
 erasure proof. Neither Details, Duo completion nor entering Ready publishes a saved account.
 
 The Ready Finish callback invokes `completeProfileOnboarding({operationId})`. Backend receipts for
-both software FastDuo and native Mac Touch ID, proved provider closure and explicit Finish precede
+the security key, proved provider closure and explicit Finish precede
 registry/verifier/active-session publication. The active `x-relay-session` credential returned by
 Finish authorizes bootstrap, Queue, Run and HR data requests. Failed or unknown publication remains
 a defined HOLD; public error codes never expose private causes or credential values.
@@ -585,7 +596,7 @@ request values and private file paths are omitted. HTTP responses retain the cat
 A request whose client disconnected records `request-disconnected` and its cause rows without an
 HTTP status, so a cancelled transfer is never logged as a delivered 500.
 
-`logs/debug-events.ts` is the debug timeline writer. Severity is derived from the persisted phase, reason and HTTP status for terminal output and diagnostics reads; no level is stored. Events retain redacted text, per-category size caps and the existing timeline retention. Development backend and worker launches mirror inserted events to stderr with time, level, category, phase, code, area, reason and structural IDs. HTTP events also retain method, registered route template and status in that mirror. Client routes, messages, stacks and request values stay out of the mirror. Production builds do not mirror.
+`logs/debug-events.ts` is the debug event writer. Debug events live in their own `debug_events` table with their own cursor, outside the timeline and the change log, so a debug write wakes no timeline or run reader. Severity is derived from the persisted phase, reason and HTTP status for terminal output and diagnostics reads; no level is stored. Events retain redacted text and per-category size caps, and expire after 7 days (`DEBUG_EVENT_RETENTION_DAYS`) unless pinned or scoped to a run that is not terminal. Development backend and worker launches mirror inserted events to stderr with time, level, category, phase, code, area, reason and structural IDs. HTTP events also retain method, registered route template and status in that mirror. Client routes, messages, stacks and request values stay out of the mirror. Production builds do not mirror.
 
 The shared HTTP response observer records returned refusals, failures and uncertain outcomes, including HTTP 200 envelopes, and failures mapped by the thrown-error handler. It records the registered route template and approved codes, never body values. Asynchronous ChatGPT authorization, worker process/transfer faults and provider failures use the same writer at their terminal owner. A logging failure remains a named unavailable response or retained runtime failure. Asynchronous authorization retains its original completion separately from a diagnostic fault; completion readback shows the catalogued `LOGGING_UNAVAILABLE` error without an unobserved rejection or authorization retry.
 

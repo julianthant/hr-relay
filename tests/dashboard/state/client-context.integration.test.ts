@@ -11,6 +11,7 @@ import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
+import { createRowStore } from "../../../src/dashboard/client/index.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 it("retains an unknown envelope across loaded-tree unmount and client replacement, then explicitly replays it", async () => {
@@ -33,8 +34,8 @@ it("retains an unknown envelope across loaded-tree unmount and client replacemen
     const executor = useDashboardCommandExecutor();
     const value = useMemo<DashboardCommandBinding>(() => {
       const epoch = { client: current, bootstrap: FIXTURE_BOOTSTRAP }, dayRequest = {};
-      const authority = { epoch, catalog: [], nowIso: FIXTURE_BOOTSTRAP.serverClock.now, today: FIXTURE_DAY_WIRE.day, day: FIXTURE_DAY_WIRE.day,
-        dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request: dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" as const }, refresh: () => undefined }, selection: { route: { start: false }, workflowId: "" } };
+      const authority = { epoch, catalog: [], now: () => FIXTURE_BOOTSTRAP.serverClock.now, today: FIXTURE_DAY_WIRE.day, day: FIXTURE_DAY_WIRE.day,
+        dayState: { rows: createRowStore(), subscribePublications: () => { throw new Error("fixture publications are not served"); }, request: dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" as const }, refresh: () => undefined }, selection: { route: { start: false }, workflowId: "" } };
       return { authority, executor, scope: { actorId: "local-operator", client: current, authority: epoch, dayRequest }, feedback: outcome => feedback.push(outcome) };
     }, [current, executor]);
     return createElement(DashboardCommandBindingProvider, { binding: value, children });

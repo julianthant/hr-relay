@@ -3,7 +3,7 @@ import { OperatorXlsxExportRequestSchema } from "../../../../models/dashboard/xl
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { CalendarQuerySchema } from "../../../../models/dashboard/calendar.js";
 import { z } from "zod";
-import { DateOnlySchema, PositiveIntSchema, ProjectionCursorSchema } from "../../../../rules/identity/ids.js";
+import { DateOnlySchema, PositiveIntSchema, ProjectionCursorSchema, RunIdSchema } from "../../../../rules/identity/ids.js";
 import { buildBootstrap } from "../../../runs/queries/bootstrap.js";
 import { emitOptionalDiagnostic } from "../../../logs/debug-events.js";
 import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
@@ -14,9 +14,13 @@ import { PositiveIntegerTextSchema, rawRouteQuery } from "./request-parameters.j
 import type { DashboardApp } from "./api-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
 
+// One day, and at most one open run whose panel rides the stream.
 const StreamQuerySchema = z.strictObject({
-  topics: z.string().regex(/^dashboard-day:\d{4}-\d{2}-\d{2}$/u, "events-topics-invalid")
-    .transform(topic => topic.slice("dashboard-day:".length)).pipe(DateOnlySchema),
+  topics: z.string().regex(/^dashboard-day:\d{4}-\d{2}-\d{2}(?:,run:[^,]+)?$/u, "events-topics-invalid")
+    .transform(topics => {
+      const [day, run] = topics.split(",run:");
+      return { day: day?.slice("dashboard-day:".length), ...(run === undefined ? {} : { run }) };
+    }).pipe(z.strictObject({ day: DateOnlySchema, run: RunIdSchema.optional() })),
   cursor: ProjectionCursorSchema.optional(),
   projectionGeneration: PositiveIntegerTextSchema.pipe(PositiveIntSchema).optional(),
 });
@@ -89,7 +93,7 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
       lastEventId: c.req.header("Last-Event-ID") ?? query.cursor,
       lastProjectionGeneration: rawGeneration === undefined ? query.projectionGeneration : Number(rawGeneration),
     });
-    const connection = await deps.hub.connect({ day: query.topics, ...resume });
+    const connection = await deps.hub.connect({ ...query.topics, ...resume });
     const stream = dashboardEventStreamBody(connection, lifecycle);
     return new Response(stream, {
       status: 200,

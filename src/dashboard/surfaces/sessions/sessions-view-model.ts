@@ -32,7 +32,8 @@ export type SessionWorker = Readonly<{
   /** `name` is the full system name when `label` is a nickname. */
   browsers: readonly Readonly<{ id: string; label: string; name?: string; state: SessionBrowserState; reason?: string }>[];
 }>;
-export type SessionsViewState = Readonly<{ state: "ready"; workers: readonly SessionWorker[] }>
+/** `stale` marks workers held from the last loaded day while another day loads: shown, but no command or idle refresh may use them. */
+export type SessionsViewState = Readonly<{ state: "ready"; workers: readonly SessionWorker[]; stale?: true }>
   | Readonly<{ state: "loading" }> | Readonly<{ state: "unavailable"; reason: string; diagnostic?: unknown }>;
 export function sessionsUnavailable(diagnostic?: unknown): SessionsViewState {
   return { state: "unavailable", reason: formatErrorCatalogFailure(createErrorCatalogFailure("SESSIONS_UNAVAILABLE", {})).text,
@@ -67,11 +68,6 @@ export function sessionStateColor(state: SessionWorkerState): string {
   return state === "failed" ? "text-ui-danger" : state === "waiting" || state === "starting" || state === "unavailable" ? "text-ui-warning"
     : state === "running" ? "text-ui-positive" : "text-ui-muted";
 }
-/** An idle worker with no run, no reason and nothing to sign in to is a tally row, not a card. */
-export function isQuietIdle(worker: SessionWorker): boolean {
-  return worker.state === "idle" && worker.subject === undefined && worker.problem === undefined && worker.note === undefined;
-}
-
 export function sessionTallies(workers: readonly SessionWorker[]): readonly { state: SessionWorkerState; count: number }[] {
   const order: readonly SessionWorkerState[] = ["running", "starting", "idle", "waiting", "paused", "stopped", "failed", "unavailable"];
   return order.map(state => ({ state, count: workers.filter(worker => worker.state === state).length }))

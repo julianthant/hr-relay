@@ -6,11 +6,14 @@ import { it, vi } from "vitest";
 import { AssistantLauncher } from "../../../../src/dashboard/surfaces/shell/assistant-launcher.js";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { HubShell } from "../../../../src/dashboard/surfaces/shell/hub-shell.js";
+import { assistantOpen } from "../../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
 import type { HubChat, HubChatsPort } from "../../../../src/dashboard/surfaces/shell/hub-shell-model.js";
 import { MeasurementFreeResizeObserver } from "../../../support/helpers/settings-storage-doctor-fixtures.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { createFixtureBff } from "../../../support/helpers/dashboard/fixture-bff.js";
+import { ChatGptAccountContext, createPreviewChatGptAccountPort } from "../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
+import { ASSISTANT_DEFAULT_MODEL } from "../../../../src/models/dashboard/assistant.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -26,15 +29,46 @@ it("keeps the served assistant closed until requested and preserves its close an
       settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
     })) })));
     const launcher = host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]'); assert.ok(launcher);
-    const panel = host.querySelector<HTMLElement>("#hub-shell-assistant"); assert.ok(panel);
+    let panel = host.querySelector<HTMLElement>("#hub-shell-assistant"); assert.ok(panel);
     assert.equal(panel.hidden, true); assert.equal(panel.hasAttribute("inert"), true);
     assert.equal(launcher.getAttribute("aria-expanded"), "false");
     await act(async () => launcher.click());
+    // History loads with the shell, so its body can be replaced while the first open settles.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    panel = host.querySelector<HTMLElement>("#hub-shell-assistant"); assert.ok(panel);
     assert.equal(panel.hidden, false); assert.equal(launcher.getAttribute("aria-expanded"), "true");
     await act(async () => panel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    assert.equal(panel.hidden, true); assert.equal(document.activeElement, launcher);
+    assert.equal(panel.hidden, true); assert.equal(document.activeElement === launcher, true);
     await act(async () => launcher.click());
     assert.equal(panel.hidden, false);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("reads an existing chat history and the model preference at load, and the model catalog only on the first open", async () => {
+  const { app } = createFixtureBff();
+  const paths: string[] = [];
+  assistantOpen.set(false);
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
+    const path = new URL(url).pathname;
+    paths.push(`${init?.method ?? "GET"} ${path}`);
+    return path === "/api/v1/assistant/models" ? Response.json({ models: [{ slug: ASSISTANT_DEFAULT_MODEL, displayName: "Sol" }] }) : app.request(url, init);
+  } });
+  const seed = client.assistantHistoryWrite?.bind(client); assert.ok(seed);
+  await seed({ operation: "create", conversationId: "00000000-0000-4000-8000-0000000000c1", title: "Earlier chat" });
+  paths.splice(0);
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  const count = (request: string) => paths.filter(path => path === request).length;
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  try {
+    await act(async () => root.render(createElement(ChatGptAccountContext.Provider, { value: { ...preview, mode: "live" as const },
+      children: createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {
+        settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
+      })) }) })));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    assert.deepEqual([count("GET /api/v1/assistant/history"), count("GET /api/v1/assistant/model-preference"), count("GET /api/v1/assistant/models")], [1, 1, 0]);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]')?.click());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    assert.deepEqual([count("GET /api/v1/assistant/history"), count("GET /api/v1/assistant/model-preference"), count("GET /api/v1/assistant/models")], [1, 1, 1]);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
@@ -61,6 +95,7 @@ it("announces rename and delete only after the chat port acknowledges them and k
       chatsPort: port, settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
     })) })));
     await act(async () => button("History").click());
+    assert.equal(document.activeElement === host.querySelector('.hub-slot-title'), true, "opening History keeps the focus in the panel");
     await act(async () => button("Delete chat Kept chat").click());
     await act(async () => submit().click());
     assert.equal(status(), "", "no success before the acknowledgment");
@@ -78,7 +113,7 @@ it("announces rename and delete only after the chat port acknowledges them and k
     await act(async () => button("Delete chat Other chat").click());
     await act(async () => submit().click());
     await act(async () => { held[2]?.settle(); await held[2]?.done; });
-    assert.equal(status(), "Chat deleted."); assert.equal(host.querySelector('[aria-label="Delete chat Other chat"]'), null);
+    assert.equal(status(), "Chat deleted."); assert.equal(host.querySelector('[aria-label="Delete chat Other chat"]') === null, true);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
 
@@ -122,6 +157,6 @@ it("announces rename and delete only after the chat port acknowledges them and k
     await act(async () => button("Delete chat Other chat").click());
     await act(async () => submit().click());
     await act(async () => { held[2]?.settle(); await held[2]?.done; });
-    assert.equal(status(), "Chat deleted."); assert.equal(host.querySelector('[aria-label="Delete chat Other chat"]'), null);
+    assert.equal(status(), "Chat deleted."); assert.equal(host.querySelector('[aria-label="Delete chat Other chat"]') === null, true);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });

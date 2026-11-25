@@ -1,18 +1,21 @@
+import { setImmediate as yieldTurn } from "node:timers/promises";
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
-import { activityTypicalTime, successfulActivityTiming } from "../queries/activity-timing.js";
-import { createActivityAnalytics, failureStepOfTaskSpans } from "../queries/activity-analytics.js";
+import { buildActivityReport, failureStepOfTaskSpans, type ActivityReportRow } from "../queries/activity-analytics.js";
 import { isQueueMember, isQueueTopLevel, type QueueParent } from "../../../models/dashboard/queue-parent.js";
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { displayScalar } from "../queries/data.js";
 import type { WorkerMemberView } from "../../runtime/workers/worker-pool.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
-import { notificationListProjection } from "./notification-list.js";
+import { notificationListProjection, type ServedNotificationRecord } from "./notification-list.js";
+import { lifecyclePark, NotificationTriggerEventSchema, publicationPark } from "../../../rules/notifications/notification-triggers.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -29,14 +32,9 @@ import {
   type QueueRecordMembers,
 } from "../../../models/dashboard/projection.js";
 import {
-  ACTIVITY_MEDIAN_ABSENT_REASON,
-  ACTIVITY_SAMPLE_LIMIT,
-  ActivityReportWireSchema,
-  activityMedian,
   type ActivityLedgerBlock,
   type ActivityReportWire,
   type ActivityAssistantUsage,
-  type ActivityWorkflowTotal,
 } from "../../../models/dashboard/activity.js";
 import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
 import {
@@ -48,8 +46,8 @@ import {
   type Fingerprint,
   type BrowserSystemId,
   type IsoInstant,
+  type RunId,
 } from "../../../rules/identity/ids.js";
-import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import type { RunSummary, DelegationWaitState } from "../../../models/run/summary.js";
 import {
@@ -69,6 +67,7 @@ import { queueRowActions } from "./queue-row-actions.js";
 import { allowsSubjectIdentity, resolveResultTitle, verifiedResultDisplayValue, resolveSubjectTitle } from "./run-subject-title.js";
 import { lastRunOf, stepInterruptOf, workerCardOf, type WorkerCardWire } from "./worker-cards.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
+import type { DashboardBackgroundReadRequest, DashboardBackgroundReadResult } from "../../storage/sqlite/dashboard-background-read-worker.js";
 import type { TimelineRepository } from "../../../models/events/timeline.js";
 import { readTimelineRecords, timelineSpanLocation } from "../../storage/events/timeline-reader.js";
 import { nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
@@ -128,12 +127,36 @@ interface WorkerFold {
 // Production summaries share the authority snapshot; fixture readers may omit this port.
 export interface ServedSummaryQueries {
   withSnapshot<T>(read: () => T): T;
-  queue(input: { fromDay: string; toDay: string; limit: number; topLevel: boolean; after?: { localDay: string; runId: string } }): {
+  dayCounts(fromDay: string, toDay: string): ReadonlyMap<string, number>;
+  queue(input: { fromDay: string; toDay: string; limit: number; topLevel: boolean; workflow?: string; after?: { localDay: string; runId: string } }): {
     items: readonly { runId: string; localDay: string; shape: string; parent: QueueParent | null; title: string; status: QueueSurfaceWire["status"]; children: readonly { runId: string }[] }[];
     next: { localDay: string; runId: string } | null;
   };
   itemAttempts(day: string, items: readonly { workflowId: string; itemId: string }[]): readonly RunRecord[];
   activity(from: string, to: string): ActivityReportWire;
+}
+
+type CheckQueueDaySources = AuthorityDatabase["checkQueueDaySources"];
+type QueueDaySources = Exclude<Parameters<CheckQueueDaySources>[1], number | undefined>;
+
+interface CachedQueueDay {
+  wire: DashboardDayWire;
+  sources: QueueDaySources;
+  notificationRecords: ReturnType<RunQueueProjectionDeps["authority"]["listNotifications"]>;
+  workerKey: string;
+  reusable: ReadonlySet<string>;
+  builtAt: number;
+  validUntil: number;
+  cursor: string;
+  refreshedRuns: Set<string>;
+}
+
+interface QueueDayPatch {
+  previous: CachedQueueDay;
+  affected: ReadonlySet<string>;
+  dayRunIds: readonly string[];
+  countDays: readonly string[];
+  sameWorkers: boolean;
 }
 
 export interface RunQueueProjectionDeps {
@@ -158,8 +181,12 @@ export interface RunQueueProjectionDeps {
     reviewAvailable?(runId: string): boolean;
     recordMembers?(run: RunRecord, children: readonly RunRecord[]): QueueRecordMembers | undefined;
     /** Durable inbox rows served by day. */
-    listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
+    listNotifications(actorId: string): readonly ServedNotificationRecord[];
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
+    /** Whether a storage concern is still active; absent or unknown keeps its notices standing. */
+    notificationConcernActive?(concern: string): boolean | undefined;
+    /** Whether a command has its result; absent or unknown leaves its recovery notice clearable. */
+    notificationCommandSettled?(commandId: string): boolean | undefined;
     command?(commandId: string): CommandRequest | undefined;
     listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
     listCheckpoints: RunTimelineEvidenceSource["authority"]["listCheckpoints"];
@@ -174,8 +201,10 @@ export interface RunQueueProjectionDeps {
     heldDuoLeases?(workerId: string): readonly { system: BrowserSystemId; since: IsoInstant }[];
     /** Whether the run holds an `attempting` (fenced, unsettled) write intent. */
     writeInFlight?(runId: string): boolean;
-    /** Absent in fixtures that have no SQLite generation. Present, an unchanged key skips the live-run read. */
-    changeKey?(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }>;
+    /** An unchanged key skips the live-run read. */
+    changeKey?(): number | undefined;
+    checkDaySources?: CheckQueueDaySources;
+    nextDuoLeaseExpiry?(nowMs: number): number;
 
     listWorkerPools(): readonly WorkerPoolRecord[];
     listRunBatches(): readonly RunSessionRecord[];
@@ -202,10 +231,14 @@ export interface RunQueueProjectionDeps {
   readonly scheduleRebuild?: (rebuild: () => void) => void;
 }
 
+type ProjectionCursor = z.infer<typeof ProjectionCursorSchema>;
+
 export type RunQueueProjectionChange =
-  | { readonly kind: "patch"; readonly cursor: string; readonly day: string; readonly patch: z.infer<typeof DashboardDayPatchSchema> }
-  | { readonly kind: "snapshot"; readonly cursor: string }
-  | { readonly kind: "generation"; readonly cursor: string };
+  | { readonly kind: "patch"; readonly cursor: ProjectionCursor; readonly position: number; readonly day: string; readonly patch: z.infer<typeof DashboardDayPatchSchema> }
+  | { readonly kind: "snapshot"; readonly cursor: ProjectionCursor; readonly position: number }
+  | { readonly kind: "generation"; readonly cursor: ProjectionCursor }
+  /** Runs whose timeline records an ingest folded, notes included, that no patch or snapshot of that ingest carried. */
+  | { readonly kind: "runs"; readonly runIds: readonly RunId[]; readonly position: number };
 
 export interface RunQueueProjectionHealth {
   readonly state: "live" | "degraded";
@@ -235,6 +268,7 @@ interface CanonicalProjectionSnapshot {
 
 interface QueueReadContext {
   runs: Map<string, RunRecord>;
+  reviewAvailability?: Map<string, boolean>;
   parents: Map<string, QueueParent | null>;
   links: Map<string, LinkedRunView>;
   receipts: Map<string, ReceiptView | undefined>;
@@ -267,43 +301,58 @@ interface SurfaceFold {
 }
 
 
-const ACTIVITY_STATUS_BUCKET = {
-  done: "completion",
-  failed: "failed",
-  cancelled: "cancelled",
-  partial: "partial",
-  queued: "open",
-  running: "open",
-  cancelling: "open",
-  blocked: "open",
-  "awaiting-approval": "open",
-} as const satisfies Record<QueueSurfaceWire["status"], string>;
-
-type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal, "workflowId" | "registration" | "needsAttention" | "typicalTime" | "outcomes" | "days" | "failedAt" | "typicalMedian">;
-
-function emptyActivityWorkflowCounts(): ActivityWorkflowCounts {
-  return {
-    runs: 0,
-    completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
-    failed: 0,
-    cancelled: 0,
-    partial: 0,
-    open: 0,
-  };
-}
-
-// Individual pseudonyms and generations stay in authority; publish aggregate evidence only.
-function activityPeopleOf(personRows: readonly RunRecord[], read: ((runId:string)=>RunSummary["person"]) | undefined) {
-  const identities=personRows.map(run=>read?.(run.envelope.runId) ?? {state:"unavailable" as const,reason:"canonical-result-reader-unavailable"});
-  const available=identities.filter(row=>row.state==="available"),unavailableRows=identities.length-available.length;
-  if(unavailableRows!==0)return {state:"absent" as const,evidenceRows:available.length,unavailableRows,
-    reason:`${String(unavailableRows)} of ${String(personRows.length)} current Separations run/member rows lack validated canonical identity; distinct people is unavailable`};
-  return {state:"present" as const,distinct:new Set(available.map(row=>row.identity)).size,evidenceRows:available.length};
-}
-
-
 const MEMBER_PREVIEW_LIMIT = 3;
+const DAY_CACHE_LIMIT = 16;
 
+const PROJECTION_SPAN_TYPES = [
+  "run.queued", "run.claimed", "run.requeued", "span.started", "span.ended",
+  "gate.opened", "gate.resolved", "transaction.fenced", "data.observed",
+] satisfies SpanEventWire["t"][];
+
+const PROJECTION_SPAN_TYPE_SET: ReadonlySet<string> = new Set(PROJECTION_SPAN_TYPES);
+
+function isProjectionSpan(record: ReturnType<typeof readTimelineRecords>["records"][number]): boolean {
+  return record.payload.kind === "span" && PROJECTION_SPAN_TYPE_SET.has(record.payload.event.t);
+}
+
+function projectionEvents(records: ReturnType<typeof readTimelineRecords>["records"]) {
+  return records.map(record => {
+    if (record.payload.kind !== "span" || record.payload.event.t === "transaction.previewed") {
+      throw new ProjectionDegradedError("unexpected projection timeline kind");
+    }
+    const event = record.payload.event;
+    return { event, line: timelineSpanLocation(record) };
+  });
+}
+
+interface BackgroundWorkerFacts {
+  fingerprint: string;
+  slotWorkflows: DashboardBackgroundReadResult["workers"]["slotWorkflows"];
+  leases: Map<string, { system: BrowserSystemId; since: IsoInstant }[]>;
+}
+
+class TimelineFoldState {
+  readonly rows = new Map<string, RunFoldRecord>();
+  readonly workers = new Map<string, WorkerFold>();
+  readonly runLogs = new Map<string, ProjectedRunLogEntry[]>();
+}
+
+const BACKGROUND_PAGE_SIZE = 32;
+type ProjectionEvent = ReturnType<typeof projectionEvents>[number];
+function compareEvents(left: ProjectionEvent, right: ProjectionEvent): number {
+  return left.event.ts.localeCompare(right.event.ts) || left.line.lineNumber - right.line.lineNumber;
+}
+
+// Merge sorted worker pages without a single sort or copy of the entire retained history.
+function mergeReplayPages(left: Iterator<ProjectionEvent>, right: Iterator<ProjectionEvent>): IterableIterator<ProjectionEvent> {
+  let a = left.next(), b = right.next();
+  return (function* () {
+    while (!a.done || !b.done) {
+      if (!a.done && (b.done || compareEvents(a.value, b.value) <= 0)) { yield a.value; a = left.next(); }
+      else if (!b.done) { yield b.value; b = right.next(); }
+    }
+  })();
+}
 
 type LinkedRunView = QueueSurfaceWire["linkedRuns"][number];
 
@@ -312,20 +361,23 @@ type LinkedRunView = QueueSurfaceWire["linkedRuns"][number];
 
 export class RunQueueProjection {
   readonly #deps: RunQueueProjectionDeps;
-  readonly #rows = new Map<string, RunFoldRecord>();
-  readonly #workers = new Map<string, WorkerFold>();
-  readonly #runLogs = new Map<string, ProjectedRunLogEntry[]>();
+  #foldState = new TimelineFoldState();
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
-  readonly #notifiedRows = new Map<string, { status: string; surface: string }>();
+  readonly #notifiedRows = new Map<string, { status: QueueSurfaceWire["status"]; surface?: string }>();
+  readonly #dayCache = new Map<string, CachedQueueDay>();
 
   #timelineCursor = 0;
 
   #workerAuthorityFingerprint: string;
+  #backgroundWorkers?: BackgroundWorkerFacts;
+  #foregroundSnapshot?: { fingerprint: string };
   #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
-  #storedCanonical: { key: string; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
-  #cursorValue = 0;
+  #storedCanonical: { key: number; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
+  /** One step per emitted envelope; the projection is the only owner of the sequence. */
+  #cursorValue = 1;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
+  #rebuildScheduled = false;
 
   constructor(deps: RunQueueProjectionDeps) {
     this.#deps = deps;
@@ -350,12 +402,27 @@ export class RunQueueProjection {
     return this.#deps.descriptorSetHash;
   }
 
-  cursor(): string {
-    return ProjectionCursorSchema.parse(`pc:${String(Math.max(1, this.#cursorValue))}`);
+  cursor(): ProjectionCursor {
+    return ProjectionCursorSchema.parse(`pc:${String(this.#cursorValue)}`);
+  }
+
+  /** Advance the sequence for one envelope and name its cursor. */
+  takeCursor(): ProjectionCursor {
+    const previous = this.cursor();
+    this.#cursorValue += 1;
+    const next = this.cursor();
+    // A minted cursor changes no row; a cached day stays current and is restamped when served.
+    for (const cached of this.#dayCache.values()) if (cached.cursor === previous) cached.cursor = next;
+    return next;
+  }
+
+  /** The highest `timeline_events.cursor` folded so far. */
+  position(): number {
+    return this.#timelineCursor;
   }
 
   runFold(runId: string): RunFoldRecord | undefined {
-    return this.#rows.get(runId);
+    return this.#foldState.rows.get(runId);
   }
 
   // Index logs by durable ingestion order, never by run-instant file partitions.
@@ -365,7 +432,7 @@ export class RunQueueProjection {
         `the run/queue projection is degraded and refuses to serve observed logs: ${this.#health.lastError ?? "unknown"}`,
       );
     }
-    const entries = this.#runLogs.get(runId) ?? [];
+    const entries = this.#foldState.runLogs.get(runId) ?? [];
     return Object.freeze({
       projectionGeneration: this.#generationValue,
       snapshotRevision: entries.at(-1)?.revision ?? 0,
@@ -374,11 +441,10 @@ export class RunQueueProjection {
   }
 
 
-  apply(event: SpanEventWire): void {
+  apply(event: SpanEventWire, line?: TimelineLine): void {
     try {
-      const affected = this.#fold(event);
-      this.#cursorValue += 1;
-      this.#notify(affected);
+      const affected = this.#foldEvent(event, line);
+      if (affected !== undefined) this.#notify(affected);
     } catch (error) {
       this.#degrade(`projection apply failed for ${event.t}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -386,29 +452,127 @@ export class RunQueueProjection {
 
 
   ingestFromTimeline(): void {
-    // While degraded, recovery belongs to the scheduled rebuild alone — it
-    // re-reads the whole stream and resets these cursors.
-    if (this.#health.state === "degraded") return;
+    if (this.#health.state === "degraded") {
+      this.#scheduleRebuild();
+      return;
+    }
     try {
-      const tail = readTimelineRecords(this.#deps.timeline, this.#timelineCursor);
-      this.#timelineCursor = tail.cursor;
-      if (tail.records.length === 0) return;
-      const events = tail.records.filter((record) => record.payload.kind === "span")
-        .map((record) => ({ event: SpanEventWireSchema.parse(record.payload.kind === "span" ? record.payload.event : undefined), line: timelineSpanLocation(record) }));
-      if (events.length === 0) return;
-      const runIds = new Set<string>();
-      let workerChanged = false;
-      for (const { event, line } of events) {
-        const affected = this.#fold(event, line);
-        this.#cursorValue += 1;
-        this.#recordRunLog(event, line);
-        for (const runId of affected.runIds) runIds.add(runId);
-        workerChanged ||= affected.workerChanged;
-      }
-      this.#notify({ runIds: [...runIds], workerChanged }, events.length > 1);
+      this.#ingestTail(readTimelineRecords(this.#deps.timeline, this.#timelineCursor));
     } catch (error) {
       this.#degrade(`timeline ingest failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  #ingestTail(tail: ReturnType<typeof readTimelineRecords>, workerFactsCaptured = false): void {
+    this.#timelineCursor = tail.cursor;
+    if (tail.records.length === 0) return;
+    const touched = new Set<RunId>();
+    for (const record of tail.records) if (record.scope.kind === "run") touched.add(record.scope.runId);
+    const events = projectionEvents(tail.records.filter(isProjectionSpan));
+    let queueRevisions = 0;
+    const runIds = new Set<string>();
+    let workerChanged = false;
+    for (const { event, line } of events) {
+      const affected = this.#foldEvent(event, line);
+      if (affected === undefined) continue;
+      queueRevisions += 1;
+      for (const runId of affected.runIds) runIds.add(runId);
+      workerChanged ||= affected.workerChanged;
+    }
+    const affected = { runIds: [...runIds], workerChanged };
+    const forceSnapshot = queueRevisions > 1 && (workerChanged || runIds.size !== 1);
+    const carried = queueRevisions > 0 ? this.#notify(affected, forceSnapshot, workerFactsCaptured) : { snapshot: false, runIds: [] };
+    const uncarried = carried.snapshot ? [] : [...touched].filter(runId => !carried.runIds.includes(runId));
+    if (uncarried.length > 0) this.#emit({ kind: "runs", runIds: uncarried, position: this.#timelineCursor });
+  }
+
+  async pollBackground(read: (request: DashboardBackgroundReadRequest) => Promise<DashboardBackgroundReadResult>, nowMs: number,
+    workerRevisionState?: () => { readUnchanged: boolean; startupUnchanged: boolean }): Promise<number | undefined> {
+    const generation = this.#generationValue, rebuilding = this.#health.state === "degraded";
+    const first = this.#backgroundWorkers === undefined;
+    const foregroundAtRead = this.#foregroundSnapshot;
+    const workerFactsCurrent = () => (this.#foregroundSnapshot === undefined || this.#foregroundSnapshot === foregroundAtRead)
+      && workerRevisionState?.().readUnchanged !== false;
+    const after = rebuilding ? 0 : this.#timelineCursor;
+    const request = { limit: BACKGROUND_PAGE_SIZE, nowMs, ...(rebuilding ? { spanTypes: PROJECTION_SPAN_TYPES } : {}) };
+    const current = () => generation === this.#generationValue && rebuilding === (this.#health.state === "degraded");
+    let page = await read({ ...request, after });
+    const { through } = page;
+    const workers: BackgroundWorkerFacts = { fingerprint: page.workers.fingerprint, slotWorkflows: [], leases: new Map() };
+    const batches = new Map<string, number>();
+    const replay: (IterableIterator<ProjectionEvent> | undefined)[] = [];
+    let expiry = Infinity, moreWorkerFacts = true;
+    for (;;) {
+      if (!current()) return undefined;
+      if (moreWorkerFacts) {
+        workers.slotWorkflows.push(...page.workers.slotWorkflows);
+        for (const batch of page.workers.batchVersions) batches.set(batch.sessionId, batch.version);
+        for (const lease of page.workers.heldDuoLeases) {
+          expiry = Math.min(expiry, Date.parse(lease.expiresAt));
+          const leases = workers.leases.get(lease.workerId) ?? [];
+          leases.push({ system: lease.system, since: lease.since });
+          workers.leases.set(lease.workerId, leases);
+        }
+        moreWorkerFacts = page.workers.next !== null;
+        // A timeline snapshot carries worker state too. Capture its admitted fingerprint before publishing it.
+        if (!moreWorkerFacts && !rebuilding && workerFactsCurrent()) this.#backgroundWorkers = workers;
+      }
+      if (rebuilding && page.records.length > 0) {
+        let events: IterableIterator<ProjectionEvent> = projectionEvents(page.records).sort(compareEvents).values();
+        let level = 0;
+        for (const previous of replay) {
+          if (previous === undefined) break;
+          events = mergeReplayPages(previous, events);
+          replay[level++] = undefined;
+        }
+        replay[level] = events;
+      } else if (!rebuilding && page.cursor > this.#timelineCursor) {
+        // A synchronous command may already have consumed part or all of this page.
+        this.#ingestTail({ records: page.records.filter(row => row.cursor > this.#timelineCursor), cursor: page.cursor }, this.#backgroundWorkers === workers && workerFactsCurrent());
+      }
+      if (page.cursor >= through && !moreWorkerFacts) break;
+      const workerCursor = moreWorkerFacts ? page.workers.next : null;
+      page = await read({ ...request, after: page.cursor, through, ...(workerCursor === null ? {} : { workerCursor }) });
+    }
+    const rebuilt = rebuilding ? new TimelineFoldState() : undefined;
+    if (rebuilt !== undefined) {
+      const ordered = replay.reduce<IterableIterator<ProjectionEvent> | undefined>((left, right) =>
+        left === undefined ? right : right === undefined ? left : mergeReplayPages(left, right), undefined);
+      let count = 0;
+      for (const { event, line } of ordered ?? []) {
+        this.#foldEvent(event, line, rebuilt);
+        if (++count % BACKGROUND_PAGE_SIZE === 0) {
+          await yieldTurn();
+          if (!current()) return undefined;
+        }
+      }
+    }
+    // Fold the timeline even when a concurrent commit requires a fresh read of worker authority.
+    if (!rebuilding && !workerFactsCurrent()) return undefined;
+    this.#publishedBatchVersions = batches;
+    if (rebuilt !== undefined) {
+      this.#backgroundWorkers = workers;
+      this.#foldState = rebuilt;
+      this.#notifiedRows.clear();
+      this.#finishRebuild(through);
+    } else {
+      // The worker uses a different fingerprint format. Only rebaseline silently when the startup facts still match.
+      if (first && workerRevisionState?.().startupUnchanged === true) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
+      // Commands can publish the same authority before the worker catches up.
+      const foreground = this.#foregroundSnapshot;
+      this.#foregroundSnapshot = undefined;
+      if (foreground !== undefined) {
+        const fingerprint = this.#captureSharedAuthorityFingerprint();
+        if (fingerprint !== this.#workerAuthorityFingerprint && this.#deps.reader.withRunTreeSnapshot([], () =>
+          this.#captureSharedAuthorityFingerprint(undefined, true)) === foreground.fingerprint) this.#workerAuthorityFingerprint = fingerprint;
+      }
+      this.reconcileWorkerAuthority();
+    }
+    return expiry;
+  }
+
+  backgroundReadFailed(error: unknown): void {
+    this.#health = { state: "degraded", lastError: `timeline background read failed: ${error instanceof Error ? error.message : String(error)}` };
   }
 
   // Reconcile live leases independently of span ingestion; lifecycle changes need not emit spans.
@@ -418,54 +582,71 @@ export class RunQueueProjection {
       const fingerprint = this.#captureSharedAuthorityFingerprint();
       if (fingerprint === this.#workerAuthorityFingerprint) return;
       this.#workerAuthorityFingerprint = fingerprint;
-      this.#cursorValue += 1;
-      this.#notify({ runIds: [], workerChanged: true });
+      if (this.#backgroundWorkers === undefined) {
+        this.#notify({ runIds: [], workerChanged: true });
+        return;
+      }
+      this.#dayCache.clear();
+      this.#publishBackgroundSnapshot();
     } catch (error) {
       this.#degrade(`worker authority reconcile failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
 
+  #publishBackgroundSnapshot(): void {
+    this.#emit({ kind: "snapshot", cursor: this.takeCursor(), position: this.#timelineCursor });
+  }
+
+  /** Worker authority can publish a run's new status before its spans arrive. */
+  recordPublishedDay(day: DashboardDayWire): void {
+    for (const { runId, status, startedAt } of day.queueSurfaces) {
+      const previous = this.#notifiedRows.get(runId);
+      if (previous !== undefined && previous.status !== status && searchPartitionDay(new Date(startedAt)) === day.day) {
+        this.#notifiedRows.set(runId, { status });
+      }
+    }
+  }
+
   #degrade(lastError: string): void {
     this.#health = { state: "degraded", lastError };
+    this.#scheduleRebuild();
+  }
+
+  #scheduleRebuild(): void {
+    if (this.#rebuildScheduled) return;
+    this.#rebuildScheduled = true;
     const schedule = this.#deps.scheduleRebuild ?? ((rebuild: () => void): void => rebuild());
-    schedule(() => this.rebuildFromTimeline());
+    schedule(() => {
+      try {
+        if (this.#health.state === "degraded") this.rebuildFromTimeline();
+      } finally {
+        this.#rebuildScheduled = false;
+      }
+    });
   }
 
 
-  #recordRunLog(event: SpanEventWire, line: TimelineLine): void {
-    if (event.t !== "data.observed" && event.t !== "transaction.fenced") return;
-    const entries = this.#runLogs.get(event.runId) ?? [];
-    if (!this.#runLogs.has(event.runId)) this.#runLogs.set(event.runId, entries);
-    entries.push(Object.freeze({ event, line, revision: this.#cursorValue }));
+  #foldEvent(event: SpanEventWire, line?: TimelineLine, state = this.#foldState) {
+    const affected = this.#fold(event, line, state);
+    if (line !== undefined && (event.t === "data.observed" || event.t === "transaction.fenced")) {
+      const entries = state.runLogs.get(event.runId) ?? [];
+      if (entries.length === 0) state.runLogs.set(event.runId, entries);
+      entries.push(Object.freeze({ event, line, revision: entries.length + 1 }));
+    }
+    if (affected.runIds.length === 0 && !affected.workerChanged) return undefined;
+    return affected;
   }
 
   /** Rebuild derived views from a consistent SQLite timeline snapshot. */
   rebuildFromTimeline(): void {
     try {
-      const whole = readTimelineRecords(this.#deps.timeline);
-      const events = whole.records.filter((record) => record.payload.kind === "span")
-        .map((record) => ({ event: SpanEventWireSchema.parse(record.payload.kind === "span" ? record.payload.event : undefined), line: timelineSpanLocation(record) }))
-        .sort((left, right) => left.event.ts.localeCompare(right.event.ts) || left.line.lineNumber - right.line.lineNumber);
-      this.#rows.clear();
-      this.#workers.clear();
-      this.#runLogs.clear();
+      const whole = readTimelineRecords(this.#deps.timeline, 0, undefined, PROJECTION_SPAN_TYPES);
+      const events = projectionEvents(whole.records).sort(compareEvents);
+      this.#foldState = new TimelineFoldState();
       this.#notifiedRows.clear();
-      this.#cursorValue = 0;
-      for (const { event, line } of events) {
-        this.#fold(event, line);
-        this.#cursorValue += 1;
-        this.#recordRunLog(event, line);
-      }
-      // The tail resumes from exactly what this rebuild consumed — set
-      // together with `live` so the two ingest paths can never overlap.
-      this.#timelineCursor = whole.cursor;
-      this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
-      this.#cursorValue = Math.max(1, this.#cursorValue);
-      this.#health = { state: "live" };
-      this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
-      const change: RunQueueProjectionChange = { kind: "generation", cursor: this.cursor() };
-      for (const listener of this.#listeners) listener(change);
+      for (const { event, line } of events) this.#foldEvent(event, line);
+      this.#finishRebuild(whole.cursor);
     } catch (error) {
       this.#health = {
         state: "degraded",
@@ -475,8 +656,19 @@ export class RunQueueProjection {
   }
 
 
+  #finishRebuild(cursor: number): void {
+    // The tail resumes from exactly what this rebuild consumed — set
+    // together with `live` so the two ingest paths can never overlap.
+    this.#timelineCursor = cursor;
+    this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
+    this.#cursorValue = 1;
+    this.#health = { state: "live" };
+    this.#foregroundSnapshot = undefined;
+    this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
+    this.#emit({ kind: "generation", cursor: this.cursor() });
+  }
+
   refreshRun(runId: string): void {
-    this.#cursorValue += 1;
     this.#notify({ runIds: [runId], workerChanged: false });
   }
 
@@ -495,18 +687,19 @@ export class RunQueueProjection {
       const context = this.#readContext(runs);
       return runIds.flatMap(runId => {
         const run = byId.get(runId);
-        return run === undefined ? [] : [this.#surface(this.#rows.get(runId), run, children.get(runId) ?? [], context)];
+        return run === undefined ? [] : [this.#surface(this.#foldState.rows.get(runId), run, children.get(runId) ?? [], context)];
       });
     });
   }
 
-  #workerLastRun(workerId: string): NonNullable<WorkerCardWire["lastRun"]> {
-    const record = this.#deps.timeline.lastWorkerClaim(workerId);
+  #workerLastRun(workerId: string, readRun: RunQueueProjectionDeps["reader"]["read"],
+    timeline: TimelineRepository): NonNullable<WorkerCardWire["lastRun"]> {
+    const record = timeline.lastWorkerClaim(workerId);
     const claim = record?.payload.kind === "span" && record.payload.event.t === "run.claimed" ? record.payload.event : undefined;
-    const read = claim === undefined ? undefined : this.#deps.reader.read(claim.runId);
+    const read = claim === undefined ? undefined : readRun(claim.runId);
     const run = read?.state === "present" && read.disposition === "live" ? read.run : undefined;
     return lastRunOf({ claim: claim === undefined ? undefined : { runId: claim.runId, attempt: claim.attempt }, run,
-      spans: claim === undefined ? undefined : this.#rows.get(claim.runId)?.taskSpans,
+      spans: claim === undefined ? undefined : this.#foldState.rows.get(claim.runId)?.taskSpans,
       taskIdOf: (nodeId, spanPath) => run === undefined ? undefined : this.#taskIdOf(run, nodeId, spanPath) });
   }
 
@@ -523,14 +716,15 @@ export class RunQueueProjection {
     return contract === undefined ? undefined : "id" in contract ? String(contract.id) : String(contract.taskId);
   }
 
-  #workerTimeline(runId: string, surfaces: readonly QueueSurfaceWire[]): NonNullable<WorkerCardWire["timeline"]> {
-    const read = this.#deps.reader.read(runId);
+  #workerTimeline(runId: string, surfaces: readonly QueueSurfaceWire[], readRun: RunQueueProjectionDeps["reader"]["read"],
+    presentation: RunTimelineEvidenceSource): NonNullable<WorkerCardWire["timeline"]> {
+    const read = readRun(runId);
     if (read.state !== "present" || read.disposition !== "live") return { state: "unavailable", reason: "run-unavailable" };
     const descriptor = this.#deps.descriptors.resolve(read.run.envelope.workflow);
     if (descriptor !== undefined && (descriptor.version !== read.run.envelope.descriptorVersion
       || descriptor.contractFingerprint !== read.run.envelope.contractFingerprint)) {
       try {
-        assertRunTimelineCompatible(read.run, descriptor.timeline, { timeline: this.#deps.timeline, authority: this.#deps.authority }, this.#rows.get(runId));
+        assertRunTimelineCompatible(read.run, descriptor.timeline, presentation, this.#foldState.rows.get(runId));
       } catch (error) {
         if (error instanceof LogIdentityRefusedError) return { state: "unavailable", reason: "timeline-incompatible" };
         throw error;
@@ -548,20 +742,20 @@ export class RunQueueProjection {
 
   /* ── folding ───────────────────────────────────────────────────────────── */
 
-  #row(runId: string, eventType: string): RunFoldRecord {
-    const row = this.#rows.get(runId);
+  #row(runId: string, eventType: string, state: TimelineFoldState): RunFoldRecord {
+    const row = state.rows.get(runId);
     if (row === undefined) {
       throw new Error(`${eventType} names run ${runId}, which has no run.queued span in the fold`);
     }
     return row;
   }
 
-  #fold(event: SpanEventWire, line?: TimelineLine): { runIds: readonly string[]; workerChanged: boolean } {
+  #fold(event: SpanEventWire, line: TimelineLine | undefined, state: TimelineFoldState): { runIds: readonly string[]; workerChanged: boolean } {
     if (event.t === "run.queued") {
-      if (this.#rows.has(event.runId)) {
+      if (state.rows.has(event.runId)) {
         throw new Error(`run.queued replayed for ${event.runId}; identity attributes are write-once`);
       }
-      this.#rows.set(event.runId, RunFoldRecordSchema.parse({
+      state.rows.set(event.runId, RunFoldRecordSchema.parse({
         queued: event,
         attempt: event.attempt,
         requeues: 0,
@@ -574,7 +768,7 @@ export class RunQueueProjection {
       }));
       const affected = [event.runId];
       if (event.parentRunId !== undefined) {
-        const parent = this.#rows.get(event.parentRunId);
+        const parent = state.rows.get(event.parentRunId);
         if (parent !== undefined && !parent.memberRunIds.includes(event.runId)) {
           parent.memberRunIds.push(event.runId);
           affected.push(event.parentRunId);
@@ -584,12 +778,12 @@ export class RunQueueProjection {
     }
 
     if (event.t === "run.claimed") {
-      const row = this.#row(event.runId, event.t);
+      const row = this.#row(event.runId, event.t, state);
       row.claimedBy = event.workerId;
       row.attempt = event.attempt;
       row.lastEventAt = event.ts;
       row.eventCount += 1;
-      const worker = this.#workers.get(event.workerId);
+      const worker = state.workers.get(event.workerId);
       if (worker !== undefined) {
         worker.currentRunId = event.runId;
         worker.eventCount += 1;
@@ -598,8 +792,8 @@ export class RunQueueProjection {
     }
 
     if (event.t === "run.requeued") {
-      const row = this.#row(event.runId, event.t);
-      const worker = row.claimedBy === undefined ? undefined : this.#workers.get(row.claimedBy);
+      const row = this.#row(event.runId, event.t, state);
+      const worker = row.claimedBy === undefined ? undefined : state.workers.get(row.claimedBy);
       if (worker?.currentRunId === event.runId) {
         delete worker.currentRunId;
         worker.eventCount += 1;
@@ -613,7 +807,7 @@ export class RunQueueProjection {
     }
 
     if (event.t === "gate.opened") {
-      const row = this.#row(event.runId, event.t);
+      const row = this.#row(event.runId, event.t, state);
       row.openGates.push({ gate: event.gate, openedAt: event.ts });
       row.lastEventAt = event.ts;
       row.eventCount += 1;
@@ -621,7 +815,7 @@ export class RunQueueProjection {
     }
 
     if (event.t === "gate.resolved") {
-      const row = this.#row(event.runId, event.t);
+      const row = this.#row(event.runId, event.t, state);
       row.openGates = row.openGates.filter(({ gate }) => gate !== event.gate);
       row.resolvedGates.push({
         gate: event.gate,
@@ -636,7 +830,7 @@ export class RunQueueProjection {
 
     if (event.t === "span.started") {
       if (event.kind === "task") {
-        const row = this.#row(event.runId, event.t);
+        const row = this.#row(event.runId, event.t, state);
         row.taskSpans.push({
           ...(line === undefined ? {} : { nativeEventId: line.file.path.replace(/^timeline:/u, "") }),
           attempt: event.attempt,
@@ -649,16 +843,16 @@ export class RunQueueProjection {
         return { runIds: [event.runId], workerChanged: false };
       }
       if (event.kind === "worker") {
-        this.#workers.set(event.workerId, {
+        state.workers.set(event.workerId, {
           workerId: event.workerId,
           startedAt: event.ts,
           eventCount: 1,
         });
         return { runIds: [], workerChanged: true };
       }
-      const worker = this.#workers.get(event.workerId)
+      const worker = state.workers.get(event.workerId)
         ?? { workerId: event.workerId, startedAt: event.ts, eventCount: 0 };
-      this.#workers.set(event.workerId, worker);
+      state.workers.set(event.workerId, worker);
       worker.eventCount += 1;
       return { runIds: [], workerChanged: true };
     }
@@ -674,7 +868,7 @@ export class RunQueueProjection {
 
     // span.ended
     if (event.kind === "task") {
-      const row = this.#row(event.runId, event.t);
+      const row = this.#row(event.runId, event.t, state);
       // A close binds to the last still-open occurrence at its identity.
       let span: z.infer<typeof TaskSpanFoldSchema> | undefined;
       for (let index = row.taskSpans.length - 1; index >= 0; index -= 1) {
@@ -703,7 +897,7 @@ export class RunQueueProjection {
       return { runIds: [event.runId], workerChanged: false };
     }
     if (event.kind === "run") {
-      const row = this.#row(event.runId, event.t);
+      const row = this.#row(event.runId, event.t, state);
       if (event.outcome === "skipped") {
         throw new Error(`run span ${event.runId} ended as skipped; skipped is a task-span outcome`);
       }
@@ -715,7 +909,7 @@ export class RunQueueProjection {
       row.lastEventAt = event.ts;
       row.eventCount += 1;
       let workerChanged = false;
-      for (const worker of this.#workers.values()) {
+      for (const worker of state.workers.values()) {
         if (worker.currentRunId === event.runId) {
           delete worker.currentRunId;
           worker.eventCount += 1;
@@ -725,7 +919,7 @@ export class RunQueueProjection {
       return { runIds: [event.runId], workerChanged };
     }
     // worker / browser span end
-    const worker = this.#workers.get(event.workerId);
+    const worker = state.workers.get(event.workerId);
     if (worker !== undefined) {
       if (event.kind === "worker") worker.endedAt = event.ts;
       worker.eventCount += 1;
@@ -733,10 +927,21 @@ export class RunQueueProjection {
     return { runIds: [], workerChanged: true };
   }
 
-  // Row patches carry no count tuples; count changes require a snapshot.
-  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, forceSnapshot = false): void {
+  #emit(change: RunQueueProjectionChange): void {
+    for (const listener of this.#listeners) listener(change);
+  }
+
+  /** Publishes day changes and reports which runs they carried. A snapshot carries every run. */
+  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, forceSnapshot = false,
+    workerFactsCaptured = false): { snapshot: boolean; runIds: readonly string[] } {
+    if (affected.workerChanged) this.#dayCache.clear();
+    else {
+      for (const cached of this.#dayCache.values()) {
+        for (const id of affected.runIds) cached.refreshedRuns.add(id);
+      }
+    }
     const publications = this.#deps.reader.withRunTreeSnapshot([], () => {
-      const changes: RunQueueProjectionChange[] = [];
+      const patches: { day: string; patch: z.infer<typeof DashboardDayPatchSchema> }[] = [];
       let snapshotNeeded = affected.workerChanged;
       let batchPresentationChanged = false;
       let crossDayMembersChanged = false;
@@ -756,7 +961,7 @@ export class RunQueueProjection {
       }
       for (const runId of [...affectedIds]) for (const child of children.get(runId) ?? []) affectedIds.add(child.envelope.runId);
       for (const runId of affectedIds) {
-        const row = this.#rows.get(runId);
+        const row = this.#foldState.rows.get(runId);
         const authority = byId.get(runId);
         const previous = this.#notifiedRows.get(runId);
         const previousStatus = previous?.status;
@@ -797,9 +1002,7 @@ export class RunQueueProjection {
           snapshotNeeded = true;
           continue;
         }
-        changes.push({
-          kind: "patch",
-          cursor: this.cursor(),
+        patches.push({
           day,
           patch: DashboardDayPatchSchema.parse({
             operation: "replace-queue-surface",
@@ -808,26 +1011,40 @@ export class RunQueueProjection {
           }),
         });
       }
-      const snapshotOnly = forceSnapshot || batchPresentationChanged || crossDayMembersChanged
-        || changes.filter(change => change.kind === "patch").length > 1;
+      const snapshotOnly = forceSnapshot || batchPresentationChanged || crossDayMembersChanged || patches.length > 1;
       if (snapshotOnly) snapshotNeeded = true;
-      if (snapshotNeeded) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint(snapshot.runs);
-      if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.cursor() });
-      const publications: readonly RunQueueProjectionChange[] = snapshotOnly
-        ? [{ kind: "snapshot", cursor: this.cursor() }]
-        : changes;
-      return publications;
+      if (snapshotNeeded) {
+        this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint(snapshot.runs);
+        this.#foregroundSnapshot = workerFactsCaptured ? undefined : { fingerprint: this.#backgroundWorkers === undefined
+          ? this.#workerAuthorityFingerprint : this.#captureSharedAuthorityFingerprint(snapshot.runs, true) };
+      }
+      // Each emitted change takes its own cursor, in emission order.
+      const position = this.#timelineCursor;
+      const changes: RunQueueProjectionChange[] = snapshotOnly ? []
+        : patches.map(patch => ({ kind: "patch" as const, cursor: this.takeCursor(), position, ...patch }));
+      if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.takeCursor(), position });
+      return changes;
     });
-    for (const change of publications) {
-      for (const listener of this.#listeners) listener(change);
-    }
+    for (const change of publications) this.#emit(change);
+    return {
+      snapshot: publications.some(change => change.kind === "snapshot"),
+      runIds: publications.flatMap(change => change.kind === "patch" ? [change.patch.target.runId] : []),
+    };
   }
 
   /** Capture shared authority at a snapshot/reconcile boundary, including the batch revisions row patches may expose. */
-  #captureSharedAuthorityFingerprint(canonicalRuns?: readonly RunRecord[]): string {
+  #captureSharedAuthorityFingerprint(canonicalRuns?: readonly RunRecord[], foreground = false): string {
+    const facts = foreground ? undefined : this.#backgroundWorkers;
+    if (facts !== undefined) {
+      const members = this.#deps.authority.workerMembers?.().map(view => ({
+        workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version,
+        duoLeases: facts.leases.get(view.member.workerId) ?? [],
+      }));
+      const startupPending = facts.slotWorkflows.filter(workflow => this.#deps.authority.workerStartupPending?.(workflow));
+      return JSON.stringify([facts.fingerprint, members, startupPending]);
+    }
     const key = this.#deps.authority.changeKey?.();
-    const keyText = key === undefined ? undefined : `${key.authorityGeneration}:${key.dataVersion}:${key.totalChanges}`;
-    const stored = canonicalRuns === undefined && keyText !== undefined && this.#storedCanonical?.key === keyText ? this.#storedCanonical : undefined;
+    const stored = canonicalRuns === undefined && key !== undefined && this.#storedCanonical?.key === key ? this.#storedCanonical : undefined;
     let built: { storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined = stored;
     if (built === undefined) {
       const source = canonicalRuns ?? listCanonicalRuns(this.#deps.reader, "live");
@@ -849,7 +1066,7 @@ export class RunQueueProjection {
         pause: run.pause,
       }));
       built = { storeJson: JSON.stringify({ pools, batches, runs }), claimedIds: source.filter((run) => runClaim(run) !== undefined).map((run) => run.envelope.runId), batches };
-      if (canonicalRuns === undefined && keyText !== undefined) this.#storedCanonical = { key: keyText, ...built };
+      if (key !== undefined) this.#storedCanonical = { key, ...built };
     }
     const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version,
       duoLeases: this.#deps.authority.heldDuoLeases?.(view.member.workerId) }));
@@ -858,7 +1075,7 @@ export class RunQueueProjection {
     const startupPending = [...new Set(members?.map(member => member.workflow))].filter(workflowId => this.#deps.authority.workerStartupPending?.(workflowId) === true);
     const fingerprint = JSON.stringify({ members, workers, writeInFlight, startupPending }) + built.storeJson;
     const batches = built.batches;
-    this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
+    if (!foreground || canonicalRuns !== undefined) this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
     return fingerprint;
   }
 
@@ -1127,12 +1344,20 @@ export class RunQueueProjection {
     return parent;
   }
 
+  #reviewAvailable(context: QueueReadContext, runId: string): boolean {
+    const cached = context.reviewAvailability?.get(runId);
+    if (cached !== undefined) return cached;
+    const available = this.#deps.authority.reviewAvailable?.(runId) === true;
+    context.reviewAvailability?.set(runId, available);
+    return available;
+  }
+
   #runLink(context: QueueReadContext, run: RunRecord): LinkedRunView {
     const known = context.links.get(run.envelope.runId);
     if (known !== undefined) return known;
     const link: LinkedRunView = { runId: run.envelope.runId, partitionDay: LocalDateSchema.parse(searchPartitionDay(new Date(run.envelope.enqueuedAt))),
       workflowId: run.envelope.workflow, label: this.#deps.descriptors.resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
-      panelKind: panelKindOf(run.envelope.shape, this.#deps.authority.reviewAvailable?.(run.envelope.runId) === true), status: this.#status(run) };
+      panelKind: panelKindOf(run.envelope.shape, this.#reviewAvailable(context, run.envelope.runId)), status: this.#status(run) };
     context.links.set(run.envelope.runId, link);
     return link;
   }
@@ -1150,7 +1375,7 @@ export class RunQueueProjection {
     if (known !== undefined) return known;
     const descriptor = this.#deps.descriptors.resolve(run.envelope.workflow);
     const title = (descriptor === undefined ? undefined : resolveResultTitle(descriptor, run, receipt?.value))
-      ?? this.#subjectTitle(run.envelope.workflow, run) ?? this.#rows.get(run.envelope.runId)?.queued.title ?? run.envelope.runId;
+      ?? this.#subjectTitle(run.envelope.workflow, run) ?? this.#foldState.rows.get(run.envelope.runId)?.queued.title ?? run.envelope.runId;
     context.titles.set(run.envelope.runId, title);
     return title;
   }
@@ -1281,7 +1506,7 @@ export class RunQueueProjection {
     const receipt = this.#receipt(context, authority, status);
     const warningVerdict = this.#warningVerdict(status, receipt);
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
-    const reviewAvailable = this.#deps.authority.reviewAvailable?.(queued.runId) === true;
+    const reviewAvailable = this.#reviewAvailable(context, queued.runId);
     const recordMembers = this.#deps.authority.recordMembers?.(authority, children);
 
     const members = children.filter(member => isQueueMember({ parent: this.#parentFact(context, member), status: this.#status(member) }));
@@ -1412,42 +1637,166 @@ export class RunQueueProjection {
 
 
   buildDashboardDayWire(day: string): DashboardDayWire {
-    const summaries = this.#deps.reader.summaries;
-    return summaries === undefined ? this.#buildDashboardDayWire(day)
-      : summaries.withSnapshot(() => this.#buildDashboardDayWire(day));
-  }
-
-  #buildDashboardDayWire(day: string): DashboardDayWire {
     if (this.#health.state === "degraded") {
       throw new ProjectionDegradedError(`the run/queue projection is degraded and refuses to serve counts: ${this.#health.lastError ?? "unknown"}`);
     }
-    const parsedDay = z.iso.date().parse(day);
+    const parsedDay = LocalDateSchema.parse(day);
+    const summaries = this.#deps.reader.summaries;
+    const saved = this.#dayCache.get(parsedDay);
+    const cursor = this.cursor();
+    const current = saved?.wire.projectionGeneration === this.#generationValue && saved.cursor === cursor ? saved : undefined;
+    const atCursor = (wire: DashboardDayWire): DashboardDayWire => wire.snapshotCursor === cursor ? wire : Object.freeze({ ...wire, snapshotCursor: cursor });
+    if (current !== undefined && current.refreshedRuns.size === 0) {
+      // Classify a changed journal only inside the snapshot that will consume it.
+      const revision = this.#deps.authority.checkDaySources?.(parsedDay, current.sources.through);
+      const now = this.#deps.clock.nowMs();
+      if (revision?.kind === "unchanged" && current.builtAt <= now && now < current.validUntil) {
+        current.wire = atCursor(current.wire);
+        return current.wire;
+      }
+    }
+    this.#dayCache.delete(parsedDay);
+    const read = (): { wire: DashboardDayWire; cache?: CachedQueueDay } => {
+      const now = this.#deps.clock.nowMs();
+      // Sample the rebuild position in the same snapshot as its rows.
+      const previous = current !== undefined && current.builtAt <= now && now < current.validUntil ? current : undefined;
+      const revision = summaries === undefined ? undefined : this.#deps.authority.checkDaySources?.(parsedDay, previous?.sources);
+      if (previous !== undefined && revision?.kind === "unchanged" && previous.refreshedRuns.size === 0) {
+        const wire = atCursor(previous.wire);
+        return { wire, cache: { ...previous, wire, sources: { ...previous.sources, through: revision.through } } };
+      }
+      let patch: QueueDayPatch | undefined;
+      if (previous !== undefined && revision?.kind === "runs") {
+        const affected = new Set(revision.runIds);
+        if ([...previous.refreshedRuns].every(id => affected.has(id))) {
+          const sameWorkers = previous.workerKey === this.#workerSurfaceKey(previous.wire.workerAuthority.members);
+          patch = { previous, affected, dayRunIds: revision.dayRunIds, countDays: revision.countDays, sameWorkers };
+        }
+      }
+      const notifications = patch?.previous.notificationRecords ?? this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID);
+      const { wire, sources, reusable } = this.#buildDashboardDayWire(parsedDay, notifications, now, patch);
+      if (revision === undefined || wire.workerAuthority.state === "unavailable" || wire.unavailableWorkerCards !== undefined) return { wire };
+
+      const workerKey = this.#workerSurfaceKey(wire.workerAuthority.members);
+      if (typeof workerKey !== "string") return { wire };
+      let validUntil = this.#deps.authority.nextDuoLeaseExpiry?.(now) ?? Infinity;
+      for (const notice of notifications) {
+        if (notice.readOnlyHistory === true || notice.snooze.state !== "snoozed") continue;
+        const until = Date.parse(notice.snooze.until);
+        if (until > now) validUntil = Math.min(validUntil, until);
+      }
+      deepFreeze(wire);
+      return { wire, cache: { wire, notificationRecords: notifications, workerKey,
+        sources: { ...sources, through: revision.through }, reusable, builtAt: now, validUntil,
+        cursor: wire.snapshotCursor, refreshedRuns: new Set() } };
+    };
+    const { wire, cache } = summaries === undefined ? read() : summaries.withSnapshot(read);
+    if (cache !== undefined) {
+      const oldest = this.#dayCache.keys().next().value;
+      if (this.#dayCache.size >= DAY_CACHE_LIMIT && oldest !== undefined) this.#dayCache.delete(oldest);
+      this.#dayCache.set(parsedDay, cache);
+    }
+    return wire;
+  }
+
+  #workerSurfaceKey(members: readonly WorkerSlotRecord[]): string | { state: "unavailable" } {
+    // SQLite certifies the durable slots, writes and leases. Live views and pending starts are process state.
+    try {
+      const views = this.#deps.authority.workerMembers?.();
+      if (views === undefined) return { state: "unavailable" };
+      const pending = [...new Set(members.map(member => member.workflow))]
+        .filter(workflow => this.#deps.authority.workerStartupPending?.(workflow) === true);
+      return JSON.stringify([views, pending]);
+    } catch {
+      // A missing observation disables row reuse. The worker card reader reports its own availability.
+      return { state: "unavailable" };
+    }
+  }
+
+  #selectedDaySurfaces(day: string, summaries: ServedSummaryQueries, context: QueueReadContext, patch?: QueueDayPatch): QueueSurfaceWire[] {
+    const surfaces: QueueSurfaceWire[] = [];
+    const readPage = (afterId: string | undefined, limit: number, workflow?: string) => {
+      const page = summaries.queue({ fromDay: day, toDay: day, topLevel: false, limit, workflow,
+        ...(afterId === undefined ? {} : { after: { localDay: day, runId: afterId } }) });
+      for (const summary of page.items) context.parents.set(summary.runId, summary.parent);
+      for (const summary of page.items) {
+        if (summary.localDay !== day) throw new ProjectionDegradedError("queue-summary-day-mismatch");
+        const authority = this.#readRun(context, summary.runId);
+        const children = summary.children.map(child => this.#readRun(context, child.runId));
+        const surface = this.#surface(this.#foldState.rows.get(summary.runId), authority, children, context);
+        if (surface.status !== summary.status) throw new ProjectionDegradedError("run-summary-status-stale");
+        surfaces.push(surface);
+      }
+      return page;
+    };
+
+    const fullDay = () => {
+      let afterId: string | undefined;
+      do { afterId = readPage(afterId, 500).next?.runId; } while (afterId !== undefined);
+      return surfaces;
+    };
+    if (patch === undefined || !patch.sameWorkers) return fullDay();
+
+    const selected = patch.dayRunIds.map(runId => ({
+      runId, workflowId: this.#readRun(context, runId).envelope.workflow,
+    }));
+    const reusable = new Map<string, QueueSurfaceWire>();
+    for (const surface of patch.previous.wire.queueSurfaces) {
+      if (patch.affected.has(surface.runId) || searchPartitionDay(new Date(surface.startedAt)) !== day) continue;
+      selected.push({ runId: surface.runId, workflowId: surface.workflowId });
+      if (patch.previous.reusable.has(surface.runId)) reusable.set(surface.runId, surface);
+    }
+    // The summary merger uses locale order and SQLite seeks in binary order.
+    selected.sort((a, b) => a.runId.localeCompare(b.runId));
+    if (selected.some((row, index) => index > 0 && selected[index - 1].runId > row.runId)) return fullDay();
+    for (const [workflow, rows] of Map.groupBy(selected, row => row.workflowId)) {
+      for (let start = 0; start < rows.length;) {
+        const cached = reusable.get(rows[start].runId);
+        if (cached !== undefined) {
+          surfaces.push(cached);
+          start += 1;
+          continue;
+        }
+        let end = start + 1;
+        while (end < rows.length && end - start < 500 && !reusable.has(rows[end].runId)) end += 1;
+        const page = readPage(rows[start - 1]?.runId, end - start, workflow);
+        if (page.items.length !== end - start || page.items.some((row, index) => row.runId !== rows[start + index].runId)) {
+          throw new ProjectionDegradedError("queue-summary-membership-mismatch");
+        }
+        start = end;
+      }
+    }
+    return surfaces.sort((a, b) => a.runId.localeCompare(b.runId));
+  }
+
+  #buildDashboardDayWire(parsedDay: string, notifications: ReturnType<RunQueueProjectionDeps["authority"]["listNotifications"]>, now: number,
+    patch?: QueueDayPatch): {
+    wire: DashboardDayWire; sources: Omit<QueueDaySources, "through">; reusable: ReadonlySet<string>;
+  } {
     const surfaces: QueueSurfaceWire[] = [];
     let fixtureRuns: readonly RunRecord[] | undefined;
     const monthPrefix = parsedDay.slice(0, 7);
+    const monthFrom = `${monthPrefix}-01`;
+    const monthEnd = new Date(`${monthFrom}T00:00:00.000Z`);
+    monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
+    const monthTo = monthEnd.toISOString().slice(0, 10);
     const monthCounts = new Map<string, number>();
     const summaries = this.#deps.reader.summaries;
     let context: QueueReadContext;
     if (summaries !== undefined) {
-      context = this.#readContext();
-      let after: { localDay: string; runId: string } | undefined;
-      const readLive = (runId: string): RunRecord => {
-        return this.#readRun(context, runId);
-      };
-      do {
-        const page = summaries.queue({ fromDay: `${monthPrefix}-01`, toDay: new Date(Date.UTC(Number(parsedDay.slice(0, 4)), Number(parsedDay.slice(5, 7)), 0)).toISOString().slice(0, 10), limit: 500,
-          topLevel: false, ...(after === undefined ? {} : { after }) });
-        for (const summary of page.items) context.parents.set(summary.runId, summary.parent);
-        for (const summary of page.items) {
-          if (isQueueTopLevel(summary)) monthCounts.set(summary.localDay, (monthCounts.get(summary.localDay) ?? 0) + 1);
-          if (summary.localDay !== parsedDay) continue;
-          const authority = readLive(summary.runId);
-          const surface = this.#surface(this.#rows.get(summary.runId), authority, summary.children.map(child => readLive(child.runId)), context);
-          if (surface.status !== summary.status) throw new ProjectionDegradedError("run-summary-status-stale");
-          surfaces.push(surface);
+      context = { ...this.#readContext(), reviewAvailability: new Map() };
+      for (const surface of this.#selectedDaySurfaces(parsedDay, summaries, context, patch)) surfaces.push(surface);
+      if (patch === undefined) {
+        for (const [day, count] of summaries.dayCounts(monthFrom, monthTo)) monthCounts.set(day, count);
+      } else {
+        for (const { day, count } of patch.previous.wire.monthCounts) monthCounts.set(day, count);
+        for (const day of patch.countDays) {
+          if (day < monthFrom || day > monthTo) continue;
+          const count = day === parsedDay ? surfaces.filter(isQueueTopLevel).length : summaries.dayCounts(day, day).get(day);
+          if (count === undefined || count === 0) monthCounts.delete(day);
+          else monthCounts.set(day, count);
         }
-        after = page.next ?? undefined;
-      } while (after !== undefined);
+      }
     } else {
       // Explicit fixture-only compatibility. Production composition always supplies summaries.
       const runs = listCanonicalRuns(this.#deps.reader, "live");
@@ -1455,7 +1804,7 @@ export class RunQueueProjection {
       fixtureRuns = runs;
       const children = canonicalRunChildren(runs);
       for (const authority of runs) {
-        const row = this.#rows.get(authority.envelope.runId);
+        const row = this.#foldState.rows.get(authority.envelope.runId);
         const rowDay = searchPartitionDay(new Date(authority.envelope.enqueuedAt));
         if (rowDay.startsWith(monthPrefix) && isQueueTopLevel({ parent: this.#parentFact(context, authority) })) {
           monthCounts.set(rowDay, (monthCounts.get(rowDay) ?? 0) + 1);
@@ -1477,7 +1826,7 @@ export class RunQueueProjection {
         for (const runId of missing) {
           const run = this.#readRun(context, runId);
           related.set(runId, run);
-          surfaces.push(this.#surface(this.#rows.get(runId), run, children.get(runId) ?? [], context));
+          surfaces.push(this.#surface(this.#foldState.rows.get(runId), run, children.get(runId) ?? [], context));
         }
       });
     }
@@ -1525,6 +1874,29 @@ export class RunQueueProjection {
 
 
     let members: readonly WorkerSlotRecord[] | undefined;
+    const sharedRuns = new Set<string>();
+    const notificationCommands = new Set<string>();
+    const timelineRunIds = new Set<string>();
+    const lastWorkerClaims: { workerId: string; cursor: number | null }[] = [];
+    const presentation: RunTimelineEvidenceSource = {
+      authority: this.#deps.authority,
+      timeline: {
+        ...this.#deps.timeline,
+        page: input => {
+          if (input.runId !== undefined) timelineRunIds.add(input.runId);
+          return this.#deps.timeline.page(input);
+        },
+        lastWorkerClaim: workerId => {
+          const claim = this.#deps.timeline.lastWorkerClaim(workerId);
+          lastWorkerClaims.push({ workerId, cursor: claim?.cursor ?? null });
+          return claim;
+        },
+      },
+    };
+    const readSharedRun: RunQueueProjectionDeps["reader"]["read"] = runId => {
+      sharedRuns.add(runId);
+      return this.#deps.reader.read(runId);
+    };
     let workerAuthority: DashboardDayWire["workerAuthority"];
     const workerCards: DashboardDayWire["workerCards"] = [];
     const unavailableWorkerCards: NonNullable<DashboardDayWire["unavailableWorkerCards"]> = [];
@@ -1540,17 +1912,18 @@ export class RunQueueProjection {
           const view = views.find(candidate => candidate.member.workerId === member.workerId);
           const runId = view?.activity?.runId;
           const lastRun = runId === undefined && (view === undefined || view.state === "exited"
-            || view.state === "running" && (view.activity === undefined || view.activity.state === "idle")) ? this.#workerLastRun(member.workerId) : undefined;
+            || view.state === "running" && (view.activity === undefined || view.activity.state === "idle"))
+            ? this.#workerLastRun(member.workerId, readSharedRun, presentation.timeline) : undefined;
           const timelineRunId = runId ?? (lastRun?.state === "present" ? lastRun.runId : undefined);
-          workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#workers.get(member.workerId)?.eventCount ?? 0,
+          workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#foldState.workers.get(member.workerId)?.eventCount ?? 0,
             startupPending: this.#deps.authority.workerStartupPending?.(member.workflow) === true,
             duoSystems: this.#deps.authority.heldDuoLeases?.(member.workerId).map(lease => lease.system),
             writeInFlight: runId => this.#deps.authority.writeInFlight?.(runId) === true,
             ...(lastRun === undefined ? {} : { lastRun }),
-            ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces) }
+            ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces, readSharedRun, presentation) }
               : lastRun?.state === "unavailable" && lastRun.reason === "run-unavailable" ? { timeline: { state: "unavailable", reason: "run-unavailable" } } : {}),
             resolveRun: runId => {
-              const read = this.#deps.reader.read(runId);
+              const read = readSharedRun(runId);
               return read.state === "present" && read.disposition === "live" ? read.run : undefined;
             } }));
         } catch (error) {
@@ -1564,7 +1937,54 @@ export class RunQueueProjection {
         reason: error instanceof Error ? error.message : "Worker authority could not be verified." };
     }
 
-    return DashboardDayWireSchema.parse({
+    const reusedNotices = new Set<string>();
+    const observedTimelines = new Set(patch?.previous.sources.timelineRunIds);
+    const changedNotices = notifications.filter(record => {
+      const link = record.links[0];
+      if (patch === undefined || record.trigger === "storage" || link === undefined || !("runId" in link)
+        || patch.affected.has(link.runId)) return true;
+      reusedNotices.add(record.notificationId);
+      sharedRuns.add(link.runId);
+      if (observedTimelines.has(link.runId)) timelineRunIds.add(link.runId);
+      return false;
+    });
+    const projected = notificationListProjection(changedNotices, now, {
+      display: {
+        read: readSharedRun,
+        descriptor: id => this.#deps.descriptors.resolve(id),
+        receipt: id => this.#deps.authority.getReceipt(id),
+        presentation,
+        checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
+        command: id => {
+          notificationCommands.add(id);
+          return this.#deps.authority.command?.(id);
+        },
+      },
+      source: id => this.#deps.authority.latestNotificationSource?.(id),
+      standing: {
+        runPark: id => { const read = readSharedRun(id); return read.state === "present" ? lifecyclePark(read.run.lifecycle) : undefined; },
+        noticePark: id => publicationPark(this.#deps.authority.latestNotificationSource?.(id)),
+        storageConcern: id => {
+          const event = this.#deps.authority.latestNotificationSource?.(id)?.event;
+          const parsed = event === undefined ? undefined : NotificationTriggerEventSchema.parse(event);
+          return parsed?.kind === "storage-degraded" ? parsed.concern : undefined;
+        },
+        concernActive: concern => this.#deps.authority.notificationConcernActive?.(concern),
+        commandSettled: id => {
+          notificationCommands.add(id);
+          return this.#deps.authority.notificationCommandSettled?.(id);
+        },
+      },
+    });
+    const noticesById = new Map(projected.map(notice => [notice.notificationId, notice]));
+    const noticeRows = patch === undefined || reusedNotices.size === 0 ? projected : patch.previous.wire.notifications.map(notice => {
+      if (reusedNotices.has(notice.notificationId)) return notice;
+      const updated = noticesById.get(notice.notificationId);
+      if (updated === undefined) throw new ProjectionDegradedError("queue-notification-membership-mismatch");
+      return updated;
+    });
+
+    const wire = DashboardDayWireSchema.parse({
       day: parsedDay,
       descriptorHash: this.#deps.descriptorSetHash,
       projectionGeneration: this.#generationValue,
@@ -1597,18 +2017,39 @@ export class RunQueueProjection {
         plannedBy: pool.plannedBy,
         plannedAt: pool.plannedAt,
       })),
-      notifications: notificationListProjection(this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID), this.#deps.clock.nowMs(), {
-        display: {
-          read: id => this.#deps.reader.read(id),
-          descriptor: id => this.#deps.descriptors.resolve(id),
-          receipt: id => this.#deps.authority.getReceipt(id),
-          presentation: this.#deps,
-          checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
-          command: id => this.#deps.authority.command?.(id),
-        },
-        source: id => this.#deps.authority.latestNotificationSource?.(id),
-      }),
+      notifications: noticeRows,
     });
+    const relationships = new Map<string, QueueDaySources["relationships"][number]>();
+    if (patch !== undefined) {
+      for (const source of patch.previous.sources.relationships) {
+        if (!patch.affected.has(source.runId)) relationships.set(source.runId, source);
+      }
+    }
+    for (const { envelope } of context.runs.values()) {
+      relationships.set(envelope.runId, { runId: envelope.runId, parentId: envelope.parent?.runId ?? null,
+        workflowId: envelope.workflow, itemId: envelope.itemId, day: searchPartitionDay(new Date(envelope.enqueuedAt)) });
+    }
+    const runIds = new Set([...relationships.keys(), ...sharedRuns]);
+    const reusable = new Set<string>();
+    for (const surface of surfaces) {
+      const run = context.runs.get(surface.runId);
+      if (run === undefined) {
+        if (patch?.previous.reusable.has(surface.runId)) reusable.add(surface.runId);
+      } else {
+        // Review and continuation rows can read retained evidence outside their run tree.
+        const review = this.#deps.descriptors.resolve(surface.workflowId)?.capabilities?.review === true
+          || run.envelope.continuation !== undefined || surface.surfaceKind === "operation" && surface.recordMembers !== undefined;
+        if (!review) reusable.add(surface.runId);
+      }
+      if (surface.surfaceKind !== "operation" || surface.recordMembers === undefined) continue;
+      for (const runId of surface.recordMembers.runIds) runIds.add(runId);
+      for (const member of surface.recordMembers.members) {
+        runIds.add(member.kind === "record" ? member.record.runId : member.ownerRunId);
+      }
+    }
+    return { wire, reusable, sources: { relationships: [...relationships.values()], runIds: [...runIds], timelineRunIds: [...timelineRunIds], lastWorkerClaims,
+      commandIds: [...notificationCommands],
+      month: { from: monthFrom, to: monthTo, counts: wire.monthCounts } } };
   }
 
 
@@ -1623,182 +2064,57 @@ export class RunQueueProjection {
     const end = z.iso.date().parse(to);
     if (start > end) throw new Error(`activity range ${start}..${end} ends before it starts`);
 
-    const inRange: { day: string; fold: SurfaceFold; authority: RunRecord; taskSpans: RunFoldRecord["taskSpans"] }[] = [];
-    const personRows: RunRecord[] = [];
+    const activityRows: ActivityReportRow[] = [];
+    const people: RunSummary["person"][] = [];
     const runs = listCanonicalRuns(this.#deps.reader, "live");
     const context = this.#readContext(runs);
     const children = canonicalRunChildren(runs);
     for (const authority of runs) {
-      const row = this.#rows.get(authority.envelope.runId);
-      const day = searchPartitionDay(new Date(authority.envelope.enqueuedAt));
+      const { envelope, lifecycle } = authority;
+      const { runId, workflow, enqueuedAt } = envelope;
+      const day = searchPartitionDay(new Date(enqueuedAt));
       if (day < start || day > end) continue;
 
-      if (authority.envelope.shape !== "operation" && authority.envelope.workflow === "separations") personRows.push(authority);
-      // Member containment, applied once: a member counted inside its
-      // operation's rollup is not counted again at top level.
+      if (envelope.shape !== "operation" && workflow === "separations") {
+        people.push(this.#deps.authority.canonicalPerson?.(runId)
+          ?? { state: "unavailable", reason: "canonical-result-reader-unavailable" });
+      }
       if (!isQueueTopLevel({ parent: this.#parentFact(context, authority) })) continue;
-      inRange.push({ day, fold: this.#surfaceFold(row, authority, children.get(authority.envelope.runId) ?? [], context), authority, taskSpans: row?.taskSpans ?? [] });
-    }
-
-    const people = activityPeopleOf(
-      personRows,
-      this.#deps.authority.canonicalPerson === undefined ? undefined : (runId) => this.#deps.authority.canonicalPerson!(runId),
-    );
-
-    const workflows = new Map<string, ActivityWorkflowCounts>();
-    const analytics = createActivityAnalytics();
-    const statuses = new Map<string, { runs: number; sample: string[] }>();
-    const outcomes = new Map<string, number>();
-    const failures = new Map<string, { workflowId: string; code: string; runs: number; transient: number; sample: string[] }>();
-    const measured: { runId: string; ms: number }[] = [];
-
-    const completion = { readBack: 0, warnings: 0, warningsUnknown: 0 };
-    let unmeasured = 0;
-    let terminalRuns = 0;
-
-    for (const { day, fold: { surface, warningVerdict }, authority, taskSpans } of inRange) {
-      const counts = workflows.get(surface.workflowId) ?? emptyActivityWorkflowCounts();
-      counts.runs += 1;
-      workflows.set(surface.workflowId, counts);
-
-      const statusBucket = statuses.get(surface.status) ?? { runs: 0, sample: [] };
-      statusBucket.runs += 1;
-      // The Who sample is for work the operator can still act on; a terminal
-      // bucket carries none, which the wire's own refinement then enforces.
-      if (
-        !TERMINAL_QUEUE_STATUSES.has(surface.status)
-        && statusBucket.sample.length < ACTIVITY_SAMPLE_LIMIT
-      ) {
-        statusBucket.sample.push(surface.runId);
-      }
-      statuses.set(surface.status, statusBucket);
-
-      const axis = ACTIVITY_STATUS_BUCKET[surface.status];
-      if (axis !== "completion") {
-        counts[axis] += 1;
-      } else {
-        // An unread receipt remains unread; it cannot count as a receipt with no warnings.
-        const arm = warningVerdict.kind === "present"
-          ? "warnings"
-          : warningVerdict.kind === "none"
-            ? "readBack"
-            : "warningsUnknown";
-        counts.completion[arm] += 1;
-        completion[arm] += 1;
-      }
-
-      const durationMs = authority.lifecycle.state === "terminal" && surface.endedAt.state === "present"
+      const row = this.#foldState.rows.get(runId);
+      const { surface, warningVerdict } = this.#surfaceFold(row, authority, children.get(runId) ?? [], context);
+      const durationMs = lifecycle.state === "terminal" && surface.endedAt.state === "present"
         ? Math.max(0, Date.parse(surface.endedAt.value) - Date.parse(surface.startedAt))
         : null;
       const failureStep = surface.status === "failed"
-        ? failureStepOfTaskSpans(taskSpans, this.#deps.descriptors.resolve(surface.workflowId)?.timeline)
+        ? failureStepOfTaskSpans(row?.taskSpans ?? [], this.#deps.descriptors.resolve(workflow)?.timeline)
         : undefined;
-      analytics.observe({ workflowId: surface.workflowId, day, status: surface.status, lifecycleState: authority.lifecycle.state, durationMs, ...(failureStep === undefined ? {} : { failureStep }) });
-      if (authority.lifecycle.state !== "terminal") continue;
-      terminalRuns += 1;
-      outcomes.set(authority.lifecycle.outcome, (outcomes.get(authority.lifecycle.outcome) ?? 0) + 1);
-      // A terminal row without an end instant has unknown duration, never a growing elapsed value.
-      if (durationMs !== null) measured.push({ runId: surface.runId, ms: durationMs });
-      else unmeasured += 1;
-      const { failureId } = authority.lifecycle;
-      if (failureId === undefined) continue;
-      const failure = this.#deps.authority.getFailure(failureId);
-      if (failure === undefined) {
-        throw new Error(
-          `run ${surface.runId} settled failed against failure ${failureId}, which authority does not hold; `
-          + "refusing to report a failure breakdown with a hole in it",
-        );
+      let terminal: ActivityReportRow["terminal"];
+      if (lifecycle.state === "terminal") {
+        terminal = { outcome: lifecycle.outcome };
+        if (lifecycle.failureId !== undefined) {
+          const failure = this.#deps.authority.getFailure(lifecycle.failureId);
+          if (failure === undefined) {
+            throw new Error(`run ${runId} settled failed against failure ${lifecycle.failureId}, which authority does not hold; `
+              + "refusing to report a failure breakdown with a hole in it");
+          }
+          terminal.failure = failure;
+        }
       }
-      const key = JSON.stringify([surface.workflowId, failure.code]);
-      const bucket = failures.get(key) ?? { workflowId: surface.workflowId, code: failure.code, runs: 0, transient: 0, sample: [] };
-      bucket.runs += 1;
-      if (failure.transient) bucket.transient += 1;
-      if (bucket.sample.length < ACTIVITY_SAMPLE_LIMIT) bucket.sample.push(surface.runId);
-      failures.set(key, bucket);
+      const completion = warningVerdict.kind === "present" ? "warnings"
+        : warningVerdict.kind === "none" ? "readBack" : "warningsUnknown";
+      activityRows.push({ day, enqueuedAt, workflowId: workflow, runId, parentRunId: envelope.parent?.runId ?? null,
+        status: surface.status, lifecycleState: lifecycle.state, durationMs, completion,
+        ...(terminal === undefined ? {} : { terminal }), ...(failureStep === undefined ? {} : { failureStep }) });
     }
 
-    const timingRows = inRange.map(({ fold: { surface }, authority }) => ({ workflowId: surface.workflowId,
-      status: surface.status, parentRunId: authority.envelope.parent?.runId ?? null,
-      durationMs: authority.lifecycle.state === "terminal" && surface.endedAt.state === "present"
-        ? Math.max(0, Date.parse(surface.endedAt.value) - Date.parse(surface.startedAt)) : null }));
-    const categories = new Map<string, number>();
-    let unregisteredCategoryRuns = 0;
-    const workflowTotals = [...workflows.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([workflowId, counts]) => {
-      const typicalTime = activityTypicalTime(successfulActivityTiming(workflowId, timingRows));
-      const descriptor = this.#deps.descriptors.resolve(workflowId);
-      if (descriptor === undefined) {
-        unregisteredCategoryRuns += counts.runs;
-        return {
-          ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
-          workflowId,
-          registration: {
-            state: "unregistered",
-            reason: `workflow ${workflowId} is no longer registered; its label and category are unavailable`,
-          },
-        };
-      }
-      categories.set(descriptor.category, (categories.get(descriptor.category) ?? 0) + counts.runs);
-      return {
-        ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
-        workflowId,
-        registration: {
-          state: "registered",
-          label: descriptor.label,
-          code: descriptor.code,
-          categoryId: descriptor.category,
-        },
-      };
-    });
-
-    const sorted = [...measured].sort((a, b) => a.ms - b.ms);
-    const longest = sorted.at(-1);
-    const median = sorted.length === 0 ? undefined : sorted[Math.floor((sorted.length - 1) / 2)];
-    const typicalMedian = activityMedian(measured.map(entry => entry.ms));
-
-    if (this.#deps.assistantUsage === undefined) throw new Error("assistant-usage-source-unavailable");
     const generatedAt = this.#deps.clock.now().toISOString();
-    return ActivityReportWireSchema.parse({
-      wireVersion: 1,
-      from: start,
-      to: end,
-      generatedAt,
-      ...this.#deps.assistantUsage(start, end, generatedAt),
-      totalRuns: inRange.length,
-      terminalRuns,
-      inFlightRuns: inRange.length - terminalRuns,
-      people,
-      completion,
-      outcomeSplit: analytics.outcomeSplit(),
-      typicalMedian,
-      days: analytics.days(),
-      workflows: workflowTotals,
-      categories: [
-        ...[...categories.entries()].sort(([a], [b]) => a.localeCompare(b))
-          .map(([categoryId, runs]) => ({ category: { state: "registered", categoryId }, runs })),
-        ...(unregisteredCategoryRuns === 0 ? [] : [{
-          category: { state: "unregistered", reason: "the workflows behind these runs are no longer registered" },
-          runs: unregisteredCategoryRuns,
-        }]),
-      ],
-      statuses: [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b))
-        .map(([status, bucket]) => ({ status, runs: bucket.runs, sample: bucket.sample })),
-      outcomes: [...outcomes.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([outcome, runs]) => ({ outcome, runs })),
-      failures: [...failures.values()].sort((a, b) => a.workflowId.localeCompare(b.workflowId) || a.code.localeCompare(b.code))
-        .map(bucket => ({ ...bucket, sentence: operatorFailureSentence(bucket.code),
-          registration: workflowTotals.find(workflow => workflow.workflowId === bucket.workflowId)!.registration })),
-      durations: {
-        measuredRuns: measured.length,
-        unmeasuredRuns: unmeasured,
-        medianMs: median === undefined
-          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
-          : { state: "present", value: median.ms },
-        longestMs: longest === undefined
-          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
-          : { state: "present", value: longest.ms, runId: longest.runId },
-        totalMs: measured.reduce((total, entry) => total + entry.ms, 0),
+    return buildActivityReport({
+      from: start, to: end, generatedAt, rows: activityRows, people, descriptors: this.#deps.descriptors,
+      assistantUsage: () => {
+        if (this.#deps.assistantUsage === undefined) throw new Error("assistant-usage-source-unavailable");
+        return this.#deps.assistantUsage(start, end, generatedAt);
       },
-
-      ledger: this.#deps.ledger.foldActivityRange(start, end),
+      ledger: () => this.#deps.ledger.foldActivityRange(start, end),
     });
   }
 }

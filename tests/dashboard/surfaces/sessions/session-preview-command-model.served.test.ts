@@ -1,6 +1,6 @@
 import { IdleSessionSchedule, IDLE_REFRESH_MS } from "../../../../src/dashboard/surfaces/sessions/session-idle-model.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
@@ -23,7 +23,11 @@ import { createSessionPreviewPort, sessionCommandEffect, type SessionCommandBind
 import { sessionsFromDay, sessionWorkerAuthorityKey } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 import { DashboardDayWireSchema, WorkerCardWireSchema, UnavailableWorkerCardWireSchema, type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../mocks/helpers/fixture-day.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../support/helpers/dashboard/mock-world/fixture-day.js";
+import { createRowStore } from "../../../../src/dashboard/client/index.js";
+
+/** Waits for the panel's own read-back of an unknown outcome to settle (at most about 2.5 s). */
+async function settled(check: () => void) { await vi.waitFor(async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); check(); }, { timeout: 4000, interval: 20 }); }
 
 function SessionPanelWithToasts(props: ComponentProps<typeof SessionPanel>) {
   return createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, props)));
@@ -79,13 +83,13 @@ function harness(initial = dayWith()) {
       if (typeof init.body !== "string") throw new Error("JSON body missing");
       const command = CommandRequestSchema.parse(JSON.parse(init.body)); sent.push(command);
       const reply = await effect(command); return reply instanceof Response ? reply : Response.json(reply); }
-    if (String(url).includes("/api/v1/worker-commands/")) return Response.json(auditFor ? auditFor(String(url).split("/").pop() ?? "") : audit);
+    if (String(url).includes("/api/v1/worker-commands/")) return Response.json(auditFor ? await auditFor(String(url).split("/").pop() ?? "") : audit);
     gets.push(String(url)); return Response.json(await read(day));
   } });
   let scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
   const executor = new CommandExecutor(() => scope);
-  const binding = (): SessionCommandBinding => ({ client, executor, scope, day: day.day, nowIso: now,
-    dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request: scope.dayRequest, day: { state: "loaded", value: day }, connection: { state: "connecting" }, refresh() {} } });
+  const binding = (): SessionCommandBinding => ({ client, executor, scope, day: day.day, now: () => now,
+    dayState: { rows: createRowStore(), subscribePublications: () => { throw new Error("fixture publications are not served"); }, request: scope.dayRequest, day: { state: "loaded", value: day }, connection: { state: "connecting" }, refresh() {} } });
   const port = createSessionPreviewPort(() => ({ binding: binding(), catalog }));
   return { port, client, executor, sent, gets, binding, day: () => day, setDay: (next: DashboardDayWire) => { day = next; }, setRead: (next: typeof read) => { read = next; },
     effect: (next: typeof effect) => { effect = next; }, audit: (next: unknown) => { audit = next; auditFor = undefined; }, auditBy: (next: (commandId: string) => unknown) => { auditFor = next; }, scope: () => scope, setScope: (next: CommandExecutionScope) => { scope = next; } };
@@ -164,9 +168,9 @@ it.each([
   { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "direct" },
   { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_REMOVAL_CHILD_CLOSE_UNPROVED" }, code: "WORKER_REMOVAL_CHILD_CLOSE_UNPROVED", via: "direct" },
   { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_BUSY" }, code: "WORKER_BUSY", via: "audit" },
-  { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "check" },
+  { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "later audit" },
   { status: 422, result: { state: "rejected", code: "invalid-state", message: "PRIVATE_SERVER_DETAIL" }, code: "COMMAND_REFUSED", via: "direct" },
-] as const)("shows the $code and summary on the retained Remove card via $via", async ({ status, result, code, via }) => {
+] as const)("shows the $code summary in staff words via $via: as one toast, never a note on the row", async ({ status, result, code, via }) => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness();
   const recorded = (command: CommandRequest) => ({ state: "recorded", request: command, result: { ...result, commandId: command.commandId } });
@@ -181,28 +185,27 @@ it.each([
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
     const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
     await act(async () => button.click());
-    if (via === "check") {
-      h.audit(recorded(h.sent[0]));
-      const check = [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Check outcome");
-      assert(check);
-      await act(async () => check.click());
-    }
+    if (via === "later audit") h.audit(recorded(h.sent[0]));
     const card = document.querySelector(WORKER_ENTRY); assert(card);
-    assert.ok(card.textContent?.includes(code), card.textContent ?? "");
-    assert.ok(card.textContent?.includes(ERROR_CATALOG[code].text), card.textContent ?? "");
-    assert.doesNotMatch(card.textContent ?? "", /PRIVATE_SERVER_DETAIL|Check outcome/u);
+    const toasts = () => [...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent ?? "");
+    await settled(() => assert.equal(toasts().filter(toast => toast.includes(ERROR_CATALOG[code].text)).length, 1));
+    assert.ok(!card.textContent?.includes(ERROR_CATALOG[code].text), "a failed removal leaves no note on the row, only one toast");
+    assert.ok(!card.textContent?.includes(code), "the card shows staff words, never the code");
+    assert.doesNotMatch(`${card.textContent ?? ""}${toasts().join("")}`, /PRIVATE_SERVER_DETAIL|Check outcome/u);
     assert.equal(h.sent.length, 1);
     assert.equal(h.gets.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
 
-it("removes the card when a lost Remove reply is confirmed by its audit and served readback", async () => {
+for (const [name, stamp] of [["the browser's request", (command: CommandRequest) => command],
+  ["Relay's stamped provenance", (command: CommandRequest) => ({ ...command, source: "dashboard", requestedAt: "2026-08-26T09:00:07.000Z" })]] as const)
+it(`removes the card when a lost Remove reply is confirmed by its audit (${name}) and served readback`, async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness();
   const binding = h.binding();
   h.effect(command => {
     h.setDay(effectOf(h.day(), command));
-    h.audit({ state: "recorded", request: command, result: applied(command) });
+    h.audit({ state: "recorded", request: stamp(command), result: applied(command) });
     throw new Error("connection reset");
   });
   const host = document.createElement("div"); document.body.append(host);
@@ -211,7 +214,7 @@ it("removes the card when a lost Remove reply is confirmed by its audit and serv
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding, open: true, onOpenChange() {} })));
     const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
     await act(async () => button.click());
-    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0);
+    await settled(() => assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0));
     assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -319,7 +322,33 @@ it("refresh confirms only while the member keeps the lifetime it was sent to", a
   assert.equal(h.sent.length, 1);
 });
 
-it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flight across a remount to its %s outcome without resending", async outcome => {
+it("a Remove refused after a remount is one toast, never a note on the row, and the row returns", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); let release!: (value: unknown) => void; let original: CommandRequest | undefined;
+  h.effect(command => { original = command; return new Promise(resolve => { release = resolve; }); });
+  const host = document.createElement("div"); document.body.append(host); let root = createRoot(host);
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} }));
+  const toasts = () => [...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent ?? "");
+  try {
+    await act(async () => render());
+    const remove = [...document.querySelectorAll("button")].find(button => button.getAttribute("aria-label") === "Remove worker"); assert(remove);
+    await act(async () => remove.click()); assert(original);
+    await act(async () => root.unmount()); root = createRoot(host);
+    await act(async () => render());
+    assert.match(document.body.textContent ?? "", /Removing/);
+    const progress = document.querySelector('[aria-label="Session Panel"] p[role="status"]'); assert(progress);
+    assert.match(progress.textContent ?? "", /^Removing .+, .+\.$/u, "the pending Remove is announced");
+    await act(async () => { release(Response.json({ state: "rejected", code: "invalid-state", message: "WORKER_BUSY", commandId: original!.commandId }, { status: 422 })); await Promise.resolve(); });
+    await settled(() => assert.equal(toasts().filter(toast => toast.includes(ERROR_CATALOG.WORKER_BUSY.text)).length, 1));
+    assert.doesNotMatch(document.querySelector(WORKER_ENTRY)?.textContent ?? "", /Removing|Remove requested/u);
+    assert.ok(!(document.querySelector(WORKER_ENTRY)?.textContent ?? "").includes(ERROR_CATALOG.WORKER_BUSY.text), "no note on the row");
+    assert.equal(progress.textContent, "");
+    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
+    assert.equal(h.sent.length, 1);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flight across a remount to its %s outcome by reading it back, without resending", async outcome => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness(); let release!: (value: unknown) => void; let original: CommandRequest | undefined;
   h.effect(command => { original = command; return new Promise((resolve, reject) => { release = value => { if (value instanceof Error) reject(value); else resolve(value); }; }); });
@@ -332,18 +361,53 @@ it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flig
     await act(async () => remove.click()); assert.equal(h.sent.length, 1); assert(original);
     await act(async () => root.unmount()); root = createRoot(host);
     await act(async () => render());
-    assert.match(text(), /Remove requested/u, "the remounted panel holds the in-flight Remove");
+    assert.match(text(), /Removing/u, "the remounted panel holds the in-flight Remove");
     assert.doesNotMatch(text(), /Check outcome/u);
     await act(async () => { release(outcome === "pending" ? { state: "pending", commandId: original!.commandId } : outcome === "lost" ? new Error("connection reset") : applied(original!)); await Promise.resolve(); });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-    assert.match(text(), /Check outcome/u, "the settled unknown outcome is checkable on the new mount");
     assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
     h.setDay(effectOf(h.day(), original));
-    const check = [...document.querySelectorAll("button")].find(button => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === "Check outcome"); assert(check);
-    await act(async () => check.click());
-    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, outcome === "applied" ? 0 : 1, outcome === "applied" ? "its own applied reply confirms once served" : "a served removal is no proof for a command with no applied reply");
+    // The new mount reads the unknown outcome back by itself; nothing asks the operator to check it.
+    await settled(() => {
+      assert.doesNotMatch(text(), /Check outcome|Removing/u);
+      if (outcome === "applied") assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0, "its own applied reply confirms once served");
+      else { assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1, "a served removal is no proof for a command with no applied reply"); assert.match(text(), /Couldn't remove this worker\./u); }
+    });
     assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("a worker audit that never answers ends at its deadline, and the next click on that worker reaches Relay", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const h = harness(); const card = h.day().workerCards[0];
+    const request: SessionPreviewRequest = { id: uuidOf(8950), target: card.workerId, action: "pause" };
+    h.effect(command => ({ state: "pending", commandId: command.commandId }));
+    assert.equal((await h.port.send(request)).state, "uncertain");
+    h.auditBy(() => new Promise(() => undefined));
+    const checked = h.port.check(request);
+    await vi.advanceTimersByTimeAsync(3000);
+    assert.equal((await checked).state, "uncertain");
+    await h.port.abandon?.(request);
+    h.effect(command => applied(command));
+    await h.port.send({ id: uuidOf(8951), target: card.workerId, action: "pause" });
+    assert.equal(h.sent.length, 2, "the stalled check no longer holds the worker's lock");
+  } finally { vi.useRealTimers(); }
+});
+
+it("an applied worker command whose Day read stalls ends at its deadline, and the next click on that worker reaches Relay", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const h = harness(); const card = h.day().workerCards[0];
+    const request: SessionPreviewRequest = { id: uuidOf(8960), target: card.workerId, action: "pause" };
+    h.setRead(() => new Promise(() => undefined));
+    const sent = h.port.send(request);
+    await vi.advanceTimersByTimeAsync(3000);
+    assert.equal((await sent).state, "uncertain");
+    await h.port.abandon?.(request);
+    h.setRead(snapshot => snapshot);
+    await h.port.send({ id: uuidOf(8961), target: card.workerId, action: "pause" });
+    assert.equal(h.sent.length, 2, "the stalled Day read no longer holds the worker's lock");
+  } finally { vi.useRealTimers(); }
 });
 
 it("hydrates no retained control for another scope", async () => {
@@ -373,14 +437,14 @@ it("hydrates mounted Remove after remount, retains it through outage and a faile
     const pendingDay = h.day();
     await act(async () => root.unmount()); root = createRoot(host);
     await act(async () => render());
-    assert.match(document.body.textContent ?? "", /Check outcome/); assert.equal(h.sent.length, 1);
+    assert.match(document.body.textContent ?? "", /Removing/); assert.doesNotMatch(document.body.textContent ?? "", /Check outcome/); assert.equal(h.sent.length, 1);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerAuthority: { state: "unavailable", reason: "missing member", members: pendingDay.workerAuthority.members }, workerCards: [] }));
-    await act(async () => render()); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0); assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing member/);
+    await act(async () => render()); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0); assert.match(document.body.textContent ?? "", /Sessions are unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing member/);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerCards: [{ ...pendingDay.workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" }] }));
-    await act(async () => render()); assert.match(document.body.textContent ?? "", /Check outcome/);
+    await act(async () => render());
     const retry = document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert(retry?.disabled, "same Remove still locks newest failed card");
     h.setDay(effectOf(pendingDay, original));
-    await click("Check outcome"); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0); assert.equal(h.sent.length, 1);
+    await settled(() => assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0)); assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
 
@@ -432,7 +496,7 @@ it("maps unavailable served authority/catalog to fixed text while retaining diag
   const base = h.binding();
   try {
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, open: true, onOpenChange() {}, binding: { ...base, dayState: { ...base.dayState, day: { state: "failed", error } } } })));
-    assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /private transport diagnostic/);
+    assert.match(document.body.textContent ?? "", /Sessions are unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /private transport diagnostic/);
     assert.equal(error.message, "private transport diagnostic");
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -446,7 +510,7 @@ it("maps a cached ready card to fixed unavailable when the mounted catalog remov
     assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog: [], binding, open: true, onOpenChange() {} })));
     assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0);
-    assert.match(document.body.textContent ?? "", /Session information is unavailable/);
+    assert.match(document.body.textContent ?? "", /Sessions are unavailable/);
     assert.doesNotMatch(document.body.textContent ?? "", /SESSION_WORKFLOW_UNREGISTERED|person-lookup/);
     assert.equal(h.sent.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
@@ -496,7 +560,7 @@ it("refreshes only observed physical sessions through required presentation slot
   assert.equal(refusal.state, "refused"); assert.equal(h.sent.length, 0);
   const acknowledged = h.day();
   const acknowledgedView = sessionsFromDay(acknowledged, catalog, now);
-  schedule.sync(acknowledgedView, IDLE_REFRESH_MS, { [card.workerId]: { request: partial, state: "uncertain", message: "awaiting readback" } });
+  schedule.sync(acknowledgedView, IDLE_REFRESH_MS, { [card.workerId]: { request: partial, state: "pending", message: "awaiting readback" } });
   schedule.confirm(partial, IDLE_REFRESH_MS, acknowledgedView);
   assert.deepEqual(schedule.view(IDLE_REFRESH_MS)[card.workerId], { remainingMs: IDLE_REFRESH_MS, waiting: false }, "unopened UCPath does not block exact physical CRM rearm");
   h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], browsers: [observed, { ...observed, sessionId: uuidOf(9102), system: "ucpath" }] }] }));
@@ -527,7 +591,7 @@ it.each(["outside-day", "empty", "skipped", "cancelled"] as const)("keeps the se
     const article = host.querySelector("article"); assert(article);
     assert(!article.textContent?.includes(reason), "the served timeline refusal is a data gap, not card text");
     assert.equal((sessionsFromDay(h.day(), catalog, now) as Extract<ReturnType<typeof sessionsFromDay>, { state: "ready" }>).workers[0].timelineUnavailable, reason);
-    assert.equal(article.querySelector('[role="progressbar"]'), null);
+    assert.equal(article.querySelector('[role="progressbar"]') === null, true);
     assert.equal(h.sent.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -541,7 +605,7 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
   try {
     h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state: "running", currentRun: { state: "present", runId: row.runId, traceId: row.traceId } }],
       queueSurfaces: [{ ...row, pipeline: [{ id: "served-active", label: "Served active step", state: "active" }] }] }));
-    await act(async () => render()); assert.equal(host.querySelector('[role="progressbar"]'), null);
+    await act(async () => render()); assert.equal(host.querySelector('[role="progressbar"]') === null, true);
     const served = sessionsFromDay(h.day(), catalog, now); assert(served.state === "ready");
     assert.deepEqual(served.workers[0].timeline, [{ id: "served-active", label: "Served active step", state: "active" }]);
     assert.doesNotMatch(host.textContent ?? "", /Run timeline is not served|No steps are served|states unavailable/);
@@ -550,8 +614,8 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
         ...(state === "failed" ? { endedAt: now, stopReason: "crashed" } : {}) }] }));
       await act(async () => render());
       assert.doesNotMatch(host.textContent ?? "", /No current claimed run|Run timeline is not served|No steps are served|states unavailable/);
-      assert.equal(host.querySelector('[role="progressbar"]'), null);
-      if (state === "idle") { assert.match(host.textContent ?? "", /Idle/); assert.doesNotMatch(host.textContent ?? "", /No run assigned/); }
+      assert.equal(host.querySelector('[role="progressbar"]') === null, true);
+      if (state === "idle") { assert.match(host.textContent ?? "", /Idle/); assert.match(host.textContent ?? "", /No run assigned/); }
       if (state === "starting") assert.match(host.textContent ?? "", /Starting.*No run assigned/s);
       if (state === "failed") assert(host.textContent?.includes("Its run is no longer on record."));
     }
@@ -579,7 +643,7 @@ it("distinguishes unopened browser requirements from observed unavailable health
       const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
       assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", observation?.state === "present" && observation.health === "failed" ? "failed" : "unavailable"], ["UCPath", "unopened"]]);
       await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
-      assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), [observation?.state === "present" && observation.health === "failed" ? "CRMFailed" : observation?.state === "unavailable" ? "CRMUnavailable. Browser health was not served" : "CRMUnavailable", "UCPathNot opened"]);
+      assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), [observation?.state === "present" && observation.health === "failed" ? "CRMFailed" : "CRMUnavailable", "UCPathNot opened"]);
       assert.match(host.querySelector("article")?.textContent ?? "", /Starting.*No run assigned/s);
       assert.equal(h.sent.length, 0);
     }
@@ -637,21 +701,16 @@ async function lostRetry(options: { audit?: (command: CommandRequest) => unknown
   const text = () => document.body.textContent ?? "";
   const retry = () => document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]');
   const toasts = () => [...document.querySelectorAll('[data-slot="toast"]')].filter(toast => (toast.textContent ?? "").includes("Couldn't restart this worker."));
-  const checkOutcome = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => (button.textContent ?? "").includes("Check outcome"));
   await render();
   const button = retry(); assert(button && !button.disabled);
   const dayBeforeClick = h.day(); const getsBeforeClick = h.gets.length;
   await act(async () => button.click());
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-  if (!audit) { assert.match(text(), /Check outcome/); assert(retry()?.disabled, "the uncertain Retry locks the control"); }
+  assert.doesNotMatch(text(), /Check outcome/);
   assert.equal(h.sent.length, 1);
   const command = h.sent[0]; assert(command.family === "worker-browser" && command.type === "retry-worker");
   const finish = async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); };
-  return { h, card, command, render, text, retry, toasts, checkOutcome, dayBeforeClick, getsBeforeClick, finish };
-}
-async function publishChange(h: ReturnType<typeof harness>, render: () => Promise<void>) {
-  h.setDay(DashboardDayWireSchema.parse({ ...h.day() })); await render();
-  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  return { h, card, command, render, text, retry, toasts, dayBeforeClick, getsBeforeClick, finish };
 }
 const rejected = (command: CommandRequest) => ({ state: "recorded", request: command, result: { state: "rejected", commandId: command.commandId, code: "invalid-state", message: "WORKER_START_FAILED" } });
 const anyToasts = () => document.querySelectorAll('[data-slot="toast"]').length;
@@ -659,23 +718,21 @@ const anyToasts = () => document.querySelectorAll('[data-slot="toast"]').length;
 it("recovers a Retry whose reply was lost from its audited rejection: one toast, controls released, no resend", async () => {
   const { h, render, text, retry, toasts, dayBeforeClick, getsBeforeClick, finish } = await lostRetry({ audit: rejected });
   try {
+    await settled(() => { assert.equal(toasts().length, 1); assert.equal(retry()?.disabled, false); });
     assert.equal(h.day(), dayBeforeClick, "the served day was never changed"); assert.equal(h.gets.length, getsBeforeClick, "a rejection needs no day read");
-    assert.doesNotMatch(text(), /Check outcome/); assert.equal(retry()?.disabled, false);
-    assert.equal(toasts().length, 1); assert.equal(anyToasts(), 1); assert.equal(h.sent.length, 1);
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(anyToasts(), 1); assert.equal(h.sent.length, 1);
     await render(); await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     assert.equal(h.day(), dayBeforeClick); assert.equal(toasts().length, 1); assert.equal(h.sent.length, 1);
   } finally { await finish(); }
 });
 
-it("settles a lost Retry on Check outcome once its audit is recorded, with one toast", async () => {
-  const { h, command, text, retry, toasts, checkOutcome, finish } = await lostRetry();
+it("settles a lost Retry once its audit is recorded during the read-back, with one toast", async () => {
+  const { h, command, text, retry, toasts, finish } = await lostRetry();
   try {
+    assert(retry()?.disabled, "the control stays locked while its result is read back");
     h.audit(rejected(command));
-    const button = checkOutcome(); assert(button);
-    await act(async () => button.click());
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-    assert.doesNotMatch(text(), /Check outcome/); assert.equal(retry()?.disabled, false);
-    assert.equal(toasts().length, 1); assert.equal(anyToasts(), 1); assert.equal(h.sent.length, 1);
+    await settled(() => { assert.equal(toasts().length, 1); assert.equal(retry()?.disabled, false); });
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(anyToasts(), 1); assert.equal(h.sent.length, 1);
   } finally { await finish(); }
 });
 
@@ -686,30 +743,20 @@ it("recovers a lost Retry reply from its audited success without resending", asy
   };
   const { h, text, retry, finish } = await lostRetry({ serverEffect: restart, audit: command => ({ state: "recorded", request: command, result: applied(command) }) });
   try {
-    assert.doesNotMatch(text(), /Check outcome/); assert.equal(retry()?.disabled ?? false, false);
-    assert.equal(anyToasts(), 0); assert.equal(h.sent.length, 1);
+    await settled(() => assert.equal(retry()?.disabled ?? false, false));
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(anyToasts(), 0); assert.equal(h.sent.length, 1);
   } finally { await finish(); }
 });
 
-it("keeps a lost Retry unproved while no audit is recorded", async () => {
-  const { h, render, text, retry, finish } = await lostRetry();
+for (const [name, audit] of [["no audit is recorded", undefined], ["only another command's outcome is recorded", (command: CommandRequest) => {
+  const copy = structuredClone(command); assert(copy.family === "worker-browser" && copy.type === "retry-worker");
+  copy.target.lifetimeId = uuidOf(7999); return rejected(copy);
+}]] as const) it(`ends a lost Retry in one failure toast with the control released when ${name}`, async () => {
+  const { h, text, retry, toasts, dayBeforeClick, finish } = await lostRetry(audit === undefined ? {} : { audit });
   try {
-    await publishChange(h, render);
-    assert.match(text(), /Check outcome/); assert(retry()?.disabled);
-    assert.equal(document.querySelectorAll('[data-slot="toast"]').length, 0); assert.equal(h.sent.length, 1);
-  } finally { await finish(); }
-});
-
-it("does not adopt another command's recorded outcome for a lost Retry", async () => {
-  const other = (command: CommandRequest) => {
-    const copy = structuredClone(command); assert(copy.family === "worker-browser" && copy.type === "retry-worker");
-    copy.target.lifetimeId = uuidOf(7999); return rejected(copy);
-  };
-  const { h, render, text, retry, finish } = await lostRetry({ audit: other });
-  try {
-    await publishChange(h, render);
-    assert.match(text(), /Check outcome/); assert(retry()?.disabled);
-    assert.equal(anyToasts(), 0); assert.equal(h.sent.length, 1);
+    await settled(() => { assert.equal(toasts().length, 1); assert.equal(retry()?.disabled, false); });
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(anyToasts(), 1);
+    assert.equal(h.day(), dayBeforeClick); assert.equal(h.sent.length, 1);
   } finally { await finish(); }
 });
 
@@ -757,9 +804,8 @@ it("keeps a system nickname's full name and an unavailable reason in the chip's 
   try {
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
     const [chip, plain] = [...host.querySelectorAll("article li")];
-    assert.equal(chip.textContent, "SNowServiceNowUnavailable. ServiceNow did not answer");
-    assert.equal(chip.querySelector("span[aria-hidden='true']")?.textContent, "SNow");
-    assert.equal(chip.querySelector("[tabindex='0']")?.getAttribute("tabindex"), "0");
-    assert.equal(plain.querySelector("[tabindex]"), null, "a chip with nothing to add is not a tab stop");
+    assert.equal(chip.textContent, "SNowUnavailable");
+    assert.equal(chip.querySelector("[tabindex='0']")?.getAttribute("aria-label"), "ServiceNow. Unavailable. ServiceNow did not answer");
+    assert.equal(plain.querySelector("[tabindex]") === null, true, "a chip with nothing to add is not a tab stop");
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 import { ConfigSchema } from "../../../../models/config/schema.js";
+import { runtimeProfiles } from "../../../../models/config/define-runtime-isolation.js";
 import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment } from "../../../../models/config/secrets.js";
 import {
 CancelProfileOnboardingDuoRequestSchema,
@@ -13,6 +14,9 @@ CompleteProfileOnboardingRequestSchema, DuoReenrolStateSchema, ReopenProfileOnbo
 ConfirmProfileOnboardingDuoRequestSchema,DeleteProfileAccountRequestSchema,PROFILE_ONBOARDING_STATE,
 ProfileDetailsChangeRequestSchema,
 ProfileDetailsChangeResultSchema,
+ProfileDuoKeyChangeRequestSchema,
+ProfileDuoKeyChangeResponseSchema,
+ProfileDuoKeysReadSchema,
 ProfileLoginChangeResultSchema,
 ProfileLoginRequestSchema,
 profileAccount,
@@ -30,7 +34,7 @@ import { appendEmergencyFault } from "../../../logs/emergency-faults.js";
 import { serializeTokenedErrorCauses } from "../../../../models/failures/error-origins.js";
 import { ProfileRuntimeStartFailedError,ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { type ActiveProfileSession } from "../../../profiles/profile-session.js";
-import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
+import { copySigninFixtureBrowser, createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { PROFILE_ONBOARDING_BROWSER_DIRECTORY } from "../../../storage/browser-root-contract.js";
 import { createBrowserRoots } from "../../../storage/browser-roots.js";
@@ -48,6 +52,7 @@ import { probePrimaryDisplay } from "../../host/primary-display.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
 import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
 import { probeOwnedViteServer } from "../../host/local-vite-probe.js";
+import { applicationDataWorkspace, runtimeProfile } from "../../config/runtime-isolation.js";
 import { RuntimeCustodyUncertainError,composeProfileRuntime } from "../storage-compose.js";
 import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeInput,type DashboardRuntime } from "./runtime-contracts.js";
 import { composeDashboardRuntime } from "./runtime-startup.js";
@@ -65,6 +70,16 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   const machine = requireRuntimeAdmission(input.admission), clock = input.clock ?? systemClock;
   const installation = machine.readInstallationContext();
   if (installation === undefined) throw new Error("profile-application-installation-required");
+  if (input.copySignin !== undefined) {
+    const profile = input.copySignin.profile, ports = runtimeProfiles[profile];
+    const workspace = applicationDataWorkspace(undefined, profile);
+    if (runtimeProfile === "production" || profile !== runtimeProfile || input.backendPortOverride !== undefined || input.frontendPortOverride !== undefined
+      || input.isolation.backendPort !== ports.backendPort || input.isolation.frontendPort !== ports.frontendPort
+      || input.lifetimeLock.port !== ports.lockPort || installation.workspace !== workspace
+      || machine.stateRoot !== join(workspace, input.isolation.stateRoot) || realpathSync(machine.stateRoot) !== machine.stateRoot
+      || machine.artifactRoot !== join(workspace, input.isolation.artifactRoot) || realpathSync(machine.artifactRoot) !== machine.artifactRoot
+      || input.onboardingDuo !== undefined) throw new Error("copy-signin-target-refused");
+  }
   const repoRoot = input.repoRoot ?? process.cwd();
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
   const bundle = frontend === "built-bundle" ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript) : undefined;
@@ -76,7 +91,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       ensureChildDirectory(machine.stateRoot, browsers, "onboarding browsers", 0o700, 0o700);
       ensureChildDirectory(browsers, browserRoot, "onboarding browsers", 0o700, 0o700);
       onboardingDuo = createProfileOnboardingDuoProvider({ browserRoots: createBrowserRoots(machine), browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
-        clock, closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
+        clock, copySignin: input.copySignin, ...(input.copySignin === undefined ? {} : copySigninFixtureBrowser()), closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
     }
     const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: facts,  onboardingDuo });
     try { await profile.session.recoverOnboarding(); }
@@ -184,6 +199,17 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     if (frontend === "vite-dev" && !frontendOwned && new URL(`http://${c.req.header("host") ?? ""}`).port === String(frontendPort)) {
       const probe = await (input.frontendProbe ?? probeOwnedViteServer)({ port: frontendPort, signal: c.req.raw.signal,
         deadlineMonotonicMs: clock.monotonicMs() + FRONTEND_PROBE_MS, clock, ownerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] });
+      if (probe.state === "not-owned" && probe.cleanupFailure !== undefined) {
+        try {
+          appendEmergencyFault({ stateRoot: machine.stateRoot, build: appVersion, code: "DASHBOARD_FRONTEND_NOT_OWNED", area: "profile-request",
+            reason: "frontend-probe-cleanup-failed", now: clock.now(),
+            error: probe.cleanupFailure instanceof Error ? probe.cleanupFailure : new Error("frontend-probe-cleanup-failed", { cause: probe.cleanupFailure }) });
+        } catch (logFailure) {
+          // The refusal still answers; codes and class names only, since messages can carry paths.
+          process.stderr.write(`${JSON.stringify({ code: "DASHBOARD_FRONTEND_NOT_OWNED", reason: "frontend-probe-cleanup-failed",
+            diagnostic: "boot-log-write-failed", cause: logFailure instanceof Error ? logFailure.name : typeof logFailure })}\n`);
+        }
+      }
       if (probe.state !== "owned") return c.json(PublicProfileStateSchema.parse({ state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" }), 403);
       frontendOwned = true;
     }
@@ -218,33 +244,43 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
   app.use("/api/v1/profile/account/*", operatorMutationIngressGuard);
   app.use("/api/v1/profile/duo/reenrol/*", operatorMutationIngressGuard);
-  const activeState = (profileId: string, epoch: number) => {
-    const row = machine.readProfileRegistry().profiles.find(value => value.profileId === profileId);
+  const activeState = (profileId: string, epoch: number, registry = machine.readProfileRegistry()) => {
+    const row = registry.profiles.find(value => value.profileId === profileId);
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     return { state: "active" as const, profileId, epoch, duoState: row.duoState,
-      account: profileAccount(row) };
+      account: profileAccount(row, verifiers.identify) };
   };
   const mountActive = async (result: ActiveProfileSession, onInitialPreflight = input.onInitialPreflight): Promise<PublicProfileState> => {
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     const guarded = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
-    guarded.use("*", async (c, next) => {
-      try { current(c.req.raw); } catch (error) {
-        if (!(error instanceof ProfileSessionRefusedError)) throw error;
-        debugEvents.emit({ code: error.code, reason: "profile-session-refused" });
-        return c.json(PublicProfileStateSchema.parse({ state: "refused", code: error.code }), 401);
-      }
-      return next();
-    });
     guarded.onError((error, c) => {
       const failure = publicFailure(error);
       debugEvents.emit({ ...failure.body, reason: "profile-request-failed" });
       return c.json(failure.body, failure.status);
     });
     let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
-    guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return dispatchMountedRequest(selectedApp, c.req.raw); });
+    const admitted = new WeakSet<Request>();
+    guarded.all("*", c => {
+      const request = c.req.raw;
+      try {
+        const active = current(request);
+        if (active.token !== result.token || active.profileId !== result.profileId || active.epoch !== result.epoch) {
+          throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+        }
+      } catch (error) {
+        if (!(error instanceof ProfileSessionRefusedError)) throw error;
+        debugEvents.emit({ code: error.code, reason: "profile-session-refused" });
+        return c.json(PublicProfileStateSchema.parse({ state: "refused", code: error.code }), 401);
+      }
+      if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+      admitted.add(request);
+      try { return dispatchMountedRequest(selectedApp, request); }
+      finally { admitted.delete(request); }
+    });
     const runtime = await composeDashboardRuntime({ ...input, onInitialPreflight, requestApplicationQuit: resolveApplicationQuit, profile: { runtime: profileRuntime, token: result.token },
-      applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } })
+      applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath,
+        consumeAdmission: request => { if (!admitted.delete(request)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE"); } } })
       .catch((error: unknown) => {
         if (error instanceof RuntimeCustodyUncertainError || error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError) throw error;
         throw new ProfileRuntimeStartFailedError({ cause: error });
@@ -379,7 +415,9 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       if (completed.response.body.state === "active") {
         if (selection === undefined || selection.sessionId !== completed.activeSessionId || selection.profileId !== completed.profileId || selection.epoch !== completed.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
         profileRuntime.assertCurrent(selection.token);
+        const { account } = activeState(completed.profileId, completed.epoch, registry);
         issue(c, selection);
+        return c.json({ ...completed.response.body, account }, completed.response.status);
       }
       return c.json(completed.response.body, completed.response.status);
     }
@@ -470,6 +508,19 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const request = ProfileDetailsChangeRequestSchema.parse(await c.req.json());
     const result = profileRuntime.session.changeDetails(current(c.req.raw).token, request);
     return c.json(ProfileDetailsChangeResultSchema.parse(result.state === "changed" ? result : { state: "refused", code: result.code }));
+  });
+  app.get("/api/v1/profile/account/duo-keys", c => {
+    const { token, profileId, epoch } = current(c.req.raw);
+    c.header("cache-control", "no-store");
+    return c.json(ProfileDuoKeysReadSchema.parse({ profileId, epoch, snapshot: profileRuntime.session.readDuoKeys(token) }));
+  });
+  app.post("/api/v1/profile/account/duo-keys", async c => {
+    const { token, profileId, epoch } = current(c.req.raw);
+    const request = ProfileDuoKeyChangeRequestSchema.parse(await c.req.json());
+    if (request.profileId !== profileId || request.epoch !== epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    c.header("cache-control", "no-store");
+    return c.json(ProfileDuoKeyChangeResponseSchema.parse({ profileId, epoch, commandId: request.change.commandId,
+      result: profileRuntime.session.changeDuoKey(token, request.change) }));
   });
   const serveDuoReenrol = async (c: Context, respond: (token: string, body: unknown) => unknown) => {
     const token = current(c.req.raw).token;

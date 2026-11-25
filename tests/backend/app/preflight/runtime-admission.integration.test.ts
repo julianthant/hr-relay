@@ -52,8 +52,8 @@ import { createOperatorProjection } from "../../../../src/backend/app/compositio
 import { sessionsFromDay } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { sessionCommandEffect } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";

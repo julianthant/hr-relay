@@ -11,16 +11,6 @@ export function preflightRemedy(check: string): PreflightRemedy {
   }
 }
 
-export function preflightRemedyLabel(remedy: PreflightRemedy): string {
-  switch (remedy) {
-    case 'sessions': return 'Open Sessions';
-    case 'storage': return 'Open Storage';
-    case 'credentials': return 'Configure credentials';
-    case 'routes': return 'Configure SharePoint route';
-    case 'settings': return 'Open Settings';
-  }
-}
-
 /** Where a failed Run-dialog check can be fixed: the Settings page, the row on it that changes the value, and the button's name; null when no Settings control changes it. */
 export type RunCheckFix = Readonly<{ section: string; label: string; target?: string }> | null;
 

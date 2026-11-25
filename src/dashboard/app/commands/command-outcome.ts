@@ -33,8 +33,10 @@ export class CommandOutcomeInvalidError extends Error {
   }
 }
 
+/** Staff see an unknown outcome as these words; the catalogue sentences ask them to investigate Relay's bookkeeping. */
+export const UNKNOWN_OUTCOME_TEXT = "Not confirmed yet.";
 function feedback(code: "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_RESULT_IDENTITY_MISMATCH"): ErrorCatalogMessage {
-  return formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
+  return { ...formatErrorCatalogFailure(createErrorCatalogFailure(code, {})), text: UNKNOWN_OUTCOME_TEXT };
 }
 
 /** The one builder for an outcome whose effect is unknown. */
@@ -132,7 +134,9 @@ export type AttemptEvent =
   | { readonly type: "create" }
   | { readonly type: "dispatch"; readonly origin: "execute" | "replay" }
   | { readonly type: "check"; readonly retained: CommandAttemptView }
-  | { readonly type: "reply"; readonly via: "dispatch" | "check"; readonly outcome: CommandOutcome; readonly scopeCurrent: boolean };
+  | { readonly type: "reply"; readonly via: "dispatch" | "check"; readonly outcome: CommandOutcome; readonly scopeCurrent: boolean }
+  /** A surface read the served state back after an unknown outcome and found whether the command landed. */
+  | { readonly type: "resolve"; readonly retained: CommandAttemptView; readonly outcome: CommandOutcome };
 /** `release`: which of the attempt's target reservations the executor frees. */
 export type AttemptSettlement = { readonly phase: "settled"; readonly outcome: CommandOutcome; readonly release: "all" | "settled-children" | "none" };
 export type AttemptMove = { readonly phase: "absent" | "pending"; readonly release: "none" } | AttemptSettlement;
@@ -173,6 +177,10 @@ export function attemptTransition(phase: AttemptPhase, event: AttemptEvent): Att
       if (outcome.kind === "confirmed" || (outcome.kind === "refused" && outcomeEffect(outcome) === "none")) return { phase: "settled", outcome, release: "all" };
       return { phase: "settled", outcome: uncertainOutcome(outcome.commandId, outcome, outcome.reply), release: "none" };
     }
+    case "resolve":
+      if (phase === "absent") return { refused: "attempt-unavailable" };
+      if (phase === "pending" || event.retained.view !== "unknown") return { refused: "locked" };
+      return { phase: "settled", outcome: event.outcome, release: "all" };
   }
   throw new AttemptTransitionInvalidError(phase, event.type);
 }

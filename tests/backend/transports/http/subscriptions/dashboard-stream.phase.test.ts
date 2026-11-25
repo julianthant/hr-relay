@@ -23,8 +23,11 @@ function scriptedProjection(): ScriptedProjection & {
   onChange(listener: (change: RunQueueProjectionChange) => void): () => void;
   health(): { readonly state: "degraded" };
   buildDashboardDayWire(day: string): never;
+  recordPublishedDay(): never;
   generation(): number;
-  cursor(): string;
+  cursor(): ReturnType<typeof ProjectionCursorSchema.parse>;
+  takeCursor(): never;
+  position(): number;
   descriptorSetHash(): string;
 } {
   // Connect reads pc:1 and never builds a day. Each patch advances one step, so the first is pc:2.
@@ -39,14 +42,20 @@ function scriptedProjection(): ScriptedProjection & {
     buildDashboardDayWire: () => {
       throw new Error("phase test reaches the day wire only if connect treats the projection as live");
     },
+    recordPublishedDay: () => { throw new Error("phase test publishes no day snapshots"); },
     generation: () => 1,
     cursor: () => ProjectionCursorSchema.parse(`pc:${String(cursor)}`),
+    takeCursor: () => {
+      throw new Error("phase test takes a handoff cursor only if connect treats the projection as live");
+    },
+    position: () => 0,
     descriptorSetHash: () => DESCRIPTOR_HASH,
     emitPatch() {
       cursor += 1;
       const change: RunQueueProjectionChange = {
         kind: "patch",
         cursor: ProjectionCursorSchema.parse(`pc:${String(cursor)}`),
+        position: 0,
         day: DAY,
         patch: DashboardDayPatchSchema.parse({
           operation: "remove-queue-surface",
@@ -87,8 +96,13 @@ describe("dashboard stream subscriber phase", () => {
     projection.emitPatch();
     projection.emitPatch();
     assert.equal(connection.pending, 2);
-    assert.equal(cursorOf(await connection.next()), "pc:2");
-    assert.equal(cursorOf(await connection.next()), "pc:3");
+    const first = await connection.next();
+    const second = await connection.next();
+    assert.equal(cursorOf(first), "pc:2");
+    assert.equal(cursorOf(second), "pc:3");
+    if (first?.type !== "change" || second?.type !== "change") assert.fail("expected two changes");
+    assert.equal(first.after, "pc:1", "the first change follows the cursor the connection was greeted at");
+    assert.equal(second.after, "pc:2", "each change follows the one handed before it");
     assert.equal(connection.pending, 0);
   });
 

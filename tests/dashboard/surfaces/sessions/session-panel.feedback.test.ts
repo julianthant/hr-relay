@@ -6,8 +6,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it, vi } from "vitest";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
@@ -25,7 +25,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, success and refusal in toasts while preserving %s recovery", async outcome => {
+it.each(["normal", "refused", "uncertain"] as const)("shows add progress in the panel and success and refusal in toasts and settles a %s add without the operator", async outcome => {
   vi.useFakeTimers();
   window.history.replaceState(null, "", `/?sessionsPreview=empty${outcome === "normal" ? "" : `&workerCommandPreview=${outcome}`}`);
   const host = document.createElement("div"); document.body.append(host);
@@ -34,49 +34,44 @@ it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, succes
   await act(async () => render());
   const panel = host.querySelector('section[aria-label="Session Panel"]'); assert(panel);
   const trigger = panel.querySelector('button[aria-label="Add workers"]'); assert(trigger instanceof HTMLButtonElement);
+  const progress = panel.querySelector('p[role="status"]'); assert(progress);
+  assert.equal(progress.textContent, "", "the status line is in the page before there is anything to announce");
   await act(async () => { trigger.focus(); trigger.click(); });
   const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === "Add workers");
   assert(confirm instanceof HTMLButtonElement);
   await act(async () => { confirm.focus(); confirm.click(); });
-  assert.equal(document.querySelector('[role="dialog"]'), null);
+  assert.equal(document.querySelector('[role="dialog"]') === null, true);
   assert.doesNotMatch(panel.textContent ?? "", /Adding workers|Workers added/);
-  assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 1);
-  assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Adding workers…");
+  assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 0, "progress is never a toast");
+  assert.equal(panel.querySelectorAll('ul[aria-label="Workers being added"] li[aria-busy]').length, 1, "the panel shows one pending card");
+  assert.equal(panel.querySelector("[data-session-strip]")?.firstElementChild?.getAttribute("aria-label"), "Workers being added", "the pending card is first in the strip");
+  assert.doesNotMatch(panel.textContent ?? "", /No workers yet/);
+  assert.match(progress.textContent ?? "", /^Starting a worker for .+\.$/u, "the pending add is announced");
   assert.equal(trigger.disabled, true);
+  assert.equal(trigger.getAttribute("aria-busy"), "true");
   await act(async () => vi.advanceTimersByTimeAsync(600));
   assert.doesNotMatch(panel.textContent ?? "", /Adding workers|Workers added/);
-  if (outcome === "normal") {
-    assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Workers added");
-    assert.equal(panel.querySelectorAll("article").length, 1);
-    assert.equal(trigger.disabled, false);
-    await act(async () => render());
-    assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 1, "rerender does not repeat confirmed feedback");
-  } else {
-    if (outcome === "refused") {
-      assert.equal(panel.querySelector('[role="alert"]')?.textContent, undefined, "a refusal is a toast, not an inline panel");
-      assert.deepEqual([...document.querySelectorAll('[data-slot="toast-title"]')].map(title => title.textContent), ["Couldn't add workers"]);
-      assert.match(document.querySelector('[data-slot="toast-description"]')?.textContent ?? "", /Worker control was refused/);
-    } else {
-      assert.match(panel.querySelector('[role="alert"]')?.textContent ?? "", /Response unavailable/);
-      assert.equal(document.querySelector('[data-slot="toast-title"]'), null, "settlement dismisses progress");
-    }
+  if (outcome === "uncertain") await act(async () => vi.advanceTimersByTimeAsync(1500));
+  assert.equal(progress.textContent, "", "a settled add leaves nothing to announce");
+  assert.equal(trigger.hasAttribute("aria-busy"), false);
+  assert.doesNotMatch(panel.textContent ?? "", /Check outcome|uncertain|Response unavailable/, "an unknown outcome is read back, never shown");
+  if (outcome === "refused") {
+    assert.equal(panel.querySelector('[role="alert"]')?.textContent, undefined, "a refusal is a toast, not an inline panel");
+    assert.deepEqual([...document.querySelectorAll('[data-slot="toast-title"]')].map(title => title.textContent), ["Couldn't add workers"]);
+    assert.match(document.querySelector('[data-slot="toast-description"]')?.textContent ?? "", /Worker control was refused/);
     assert.equal(panel.querySelectorAll("article").length, 0);
-    assert.equal(trigger.disabled, outcome === "uncertain");
-    if (outcome === "uncertain") {
-      const check = [...panel.querySelectorAll("button")].find(button => button.textContent === "Check outcome"); assert(check instanceof HTMLButtonElement);
-      await act(async () => check.click());
-      assert.match(panel.textContent ?? "", /Checking command/);
-      assert.equal(trigger.disabled, true);
-      await act(async () => vi.advanceTimersByTimeAsync(600));
-      assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Workers added");
-      assert.equal(panel.querySelectorAll("article").length, 1, "check confirms the original addition once");
-      assert.equal(trigger.disabled, false);
-      assert.doesNotMatch(panel.textContent ?? "", /Workers added|Adding workers/);
-    }
+    assert.equal(trigger.disabled, false);
+    return;
   }
+  assert.equal(panel.querySelector('[role="alert"]') === null, true);
+  assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, outcome === "uncertain" ? undefined : "Workers added");
+  assert.equal(panel.querySelectorAll("article").length, 1, "the read-back confirms the addition once");
+  assert.equal(trigger.disabled, false);
+  await act(async () => render());
+  assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, outcome === "uncertain" ? 0 : 1, "rerender does not repeat confirmed feedback");
 });
 
-it("dismisses add progress when the panel unmounts and ignores its late settlement", async () => {
+it("drops add progress when the panel unmounts and ignores its late settlement", async () => {
   vi.useFakeTimers();
   window.history.replaceState(null, "", "/?sessionsPreview=empty");
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -87,9 +82,10 @@ it("dismisses add progress when the panel unmounts and ignores its late settleme
   await act(async () => trigger.click());
   const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === "Add workers"); assert(confirm instanceof HTMLButtonElement);
   await act(async () => confirm.click());
-  assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Adding workers…");
+  assert.equal(document.querySelector('[data-slot="toast-title"]') === null, true, "progress is never a toast");
+  assert.equal(host.querySelectorAll('li[aria-busy]').length, 1);
   shown = false; await act(async () => render());
-  assert.equal(document.querySelector('[data-slot="toast-title"]'), null);
+  assert.equal(document.querySelector('[data-slot="toast-title"]') === null, true);
   await act(async () => vi.advanceTimersByTimeAsync(600));
-  assert.equal(document.querySelector('[data-slot="toast-title"]'), null, "late confirmation cannot recreate a toast");
+  assert.equal(document.querySelector('[data-slot="toast-title"]') === null, true, "late confirmation cannot recreate a toast");
 });

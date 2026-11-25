@@ -89,17 +89,19 @@ export function createCredentialStore(input: Omit<Parameters<typeof productionCr
   return productionCredentialStore({ ...input, admission: admissionForStateRoot(input.stateRoot) });
 }
 
-export function readAuthenticatedCredentialFixture(machineRoot: string, profileId: string): unknown {
+export function readAuthenticatedCredentialFixture(machineRoot: string, profileId: string, kind: "protected" | "duo" = "protected"): unknown {
   const admission = findProfileFixtureAdmission(join(machineRoot, "profiles", profileId));
   if (admission === undefined) throw new Error("fixture-bound-profile-credential-owner-required");
-  const frame = createCanonicalCredentials(admission).readRecord("protected");
+  const frame = createCanonicalCredentials(admission).readRecord(kind);
   if (frame === undefined) throw new Error("fixture-protected-frame-required");
   return frame.value;
 }
 
-export function rewriteAuthenticatedCredentialFixture(machineRoot: string, profileId: string, change: (payload: unknown) => unknown): void {
-  const payload = change(readAuthenticatedCredentialFixture(machineRoot, profileId));
-  const path = join(machineRoot, "profiles", profileId, "credentials", "protected.json");
+/** Re-seals a profile's record in place under its own key, so a test can stage a stored shape the current writers refuse. */
+export function rewriteAuthenticatedCredentialFixture(machineRoot: string, profileId: string, change: (payload: unknown) => unknown,
+  kind: "protected" | "duo" = "protected"): void {
+  const payload = change(readAuthenticatedCredentialFixture(machineRoot, profileId, kind));
+  const path = kind === "duo" ? join(machineRoot, "machine", "duo-credentials", `${profileId}.json`) : join(machineRoot, "profiles", profileId, "credentials", "protected.json");
   const frame = JSON.parse(readFileSync(path, "utf8")) as { schemaVersion: number; kind: string; installationId: string; profileId: string;
     generation: number; keyId: string; revision: number; nonce: string; tag: string; ciphertext: string };
   const head = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(machineRoot, "machine", "credential-keys", `${profileId}.json`), "utf8")));
@@ -126,20 +128,15 @@ export function syntheticOnboardingDuo(): ProfileOnboardingDuoProvider {
     async openPortal(owner) { owner.assertCurrent(); },
     async stop() {},
     async closeBrowser() { return { state: "closed" }; },
-    async start(attempt, bind, _reportFailure) {
-      const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
+    async start(_attempt, bind, _reportFailure) {
+      const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: 1,
         origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
-      const credentialId = randomBytes(32).toString("base64url");
-      if (attempt.method === "key") {
-        const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-        await capability.persistPending({ credentialId,
-          privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
-          publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"),
-          transport: "usb", isResidentCredential: false, createdAt: new Date().toISOString() });
-      }
-      await capability.recordCeremony({ credentialId, requestId: randomUUID(),
-        mechanism: attempt.method === "key" ? "fast-duo" : "native-platform", softwareInterceptionDisabled: attempt.method === "touch" });
-      if (attempt.method === "touch") await capability.recordPortalAcceptance({ credentialId, requestId: randomUUID(), acceptance: "portal-accepted" });
+      const credentialId = randomBytes(32).toString("base64url"), pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+      await capability.persistPending({ credentialId,
+        privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
+        publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"),
+        transport: "usb", isResidentCredential: false, createdAt: new Date().toISOString() });
+      await capability.recordCeremony({ credentialId, requestId: randomUUID() });
     },
     async cancel() { return { state: "closed" }; },
   };
@@ -155,12 +152,10 @@ export function createSyntheticProfileSession(input: Parameters<typeof createPro
 export async function readyProfileOnboarding(session: Pick<ReturnType<typeof createProfileSession>, "startOnboardingDuo" | "confirmOnboardingDuo" | "readOnboarding">,
   draft: ReturnType<ReturnType<typeof createProfileSession>["signUp"]>) {
   if (draft.state !== "onboarding") return draft;
-  for (const method of ["key", "touch"] as const) {
-    const started = await session.startOnboardingDuo(draft.token, draft.operationId, method);
-    const attemptId = started.methods[method].attemptId;
-    if (attemptId === undefined) throw new Error("fixture onboarding attempt missing");
-    session.confirmOnboardingDuo(draft.token, draft.operationId, method, attemptId);
-  }
+  const started = await session.startOnboardingDuo(draft.token, draft.operationId, "key");
+  const attemptId = started.methods.key.attemptId;
+  if (attemptId === undefined) throw new Error("fixture onboarding attempt missing");
+  session.confirmOnboardingDuo(draft.token, draft.operationId, "key", attemptId);
   return session.readOnboarding(draft.token, draft.operationId);
 }
 
@@ -170,6 +165,10 @@ export async function finishProfileOnboarding(session: Pick<ReturnType<typeof cr
   const ready = await readyProfileOnboarding(session, draft);
   if (ready.state !== "onboarding" || ready.step !== "ready") throw new Error("fixture onboarding did not become ready");
   return session.completeOnboarding(draft.token, draft.operationId);
+}
+
+export function withFixtureUcpath<T extends { email: string; password: string }>(fields: T) {
+  return { ...fields, ucpathUsername: fields.email, ucpathPassword: fields.password };
 }
 
 export function signInBoundProfileFixture(machine: RuntimeAdmission): void {
@@ -198,7 +197,7 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
         password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
       const session = createSyntheticProfileSession({ admission: machine, machineRoot: machine.stateRoot,
         activity: { hasUnquiescedWork: () => false } });
-      const draft = options.pending === "storage" ? undefined : session.signUp(fields);
+      const draft = options.pending === "storage" ? undefined : session.signUp(withFixtureUcpath(fields));
       if (draft !== undefined && draft.state !== "onboarding") throw new Error(`fixture draft was not created: ${draft.code}`);
       const operation = draft ?? machine.beginProfileSignUp({ firstName: fields.firstName, lastName: fields.lastName,
         createdAt: IsoInstantSchema.parse(fields.createdAt), emailKey: createProfileVerifiers(machine.stateRoot).emailKeyFor(fields.email),

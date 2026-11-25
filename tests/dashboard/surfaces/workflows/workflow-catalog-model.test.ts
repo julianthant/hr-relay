@@ -12,8 +12,8 @@ import { buildWorkflowCatalog,servedLaunchWorkflows } from "../../../../src/dash
 import { childWorkflowModuleOf,WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectWorkflowStartSteps } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { workflowDryRunSupport } from "../../../../src/workflow-kit/workflow.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
+import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 
 
 const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
@@ -98,7 +98,7 @@ describe("frontend workflow catalog", () => {
   });
 
   it("supplies matching registration membership and labels to navigation, Run and Explorer", () => {
-    const rail = renderToStaticMarkup(createElement(WorkflowRail, { workflows: catalog, active: "", onSelect: noop, onDataPage: noop }));
+    const rail = renderToStaticMarkup(createElement(WorkflowRail, { workflows: catalog, active: "", onSelect: noop }));
     const picker = renderToStaticMarkup(createElement(RunWorkflowPicker, { catalog, value: "", query: "", onQuery: noop, onChange: noop }));
     for (const entry of catalog) {
       expect(rail).toContain(`aria-label="${entry.label}"`);

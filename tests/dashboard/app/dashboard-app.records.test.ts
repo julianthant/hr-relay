@@ -7,13 +7,12 @@ import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
-import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
 import { RunDetailWireSchema, NotePageSchema } from "../../../src/models/dashboard/run-detail.js";
 import { parseViewRoute } from "../../../src/dashboard/app/navigation/view-route-model.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
 import { ocrReviewPageFixture } from "../../support/fixtures/dashboard/ocr-review.js";
 
@@ -51,8 +50,11 @@ it("opens shared-lookup records through real routes and keyboard selection witho
       return Response.json(path.endsWith("/review") ? { section: "review", payload: page } : path.endsWith("/logs") ? { section: "logs", payload: logs } : detail);
     }
     if (url.includes("/events/v1?")) return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+      // The stream carries the selected run's panel, as the server's snapshot row does.
+      const opened = new URL(url).searchParams.get("topics")?.includes(`run:${owner.runId}`) === true;
+      const rows = opened ? [{ model: "run-panel", key: owner.runId, value: { state: "available", detail, logs, sections: [] } }] : [];
       const messages = [{ type: "hello", wireVersion: 1, descriptorHash: day.descriptorHash, projectionGeneration: day.projectionGeneration, cursor: day.snapshotCursor },
-        { type: "snapshot", topic: "dashboard-day", cursor: day.snapshotCursor, payload: day }];
+        { type: "snapshot", topic: "dashboard-day", rows, position: 0, cursor: day.snapshotCursor, payload: day }];
       for (const message of messages) controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(message)}\n\n`));
       init?.signal?.addEventListener("abort", () => controller.close(), { once: true });
     } }), { headers: { "content-type": "text/event-stream" } });
@@ -63,7 +65,7 @@ it("opens shared-lookup records through real routes and keyboard selection witho
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, {
-      workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" }),
+      workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: createPersonPreferences("preview"),
     }) })));
     await vi.waitFor(() => assert.ok(host.querySelector(`[data-queue-record-id="${records[0].recordId}"]`)));
     await act(async () => host.querySelector<HTMLElement>(`[data-queue-record-id="${records[0].recordId}"]`)?.click());
@@ -76,7 +78,7 @@ it("opens shared-lookup records through real routes and keyboard selection witho
     assert.deepEqual(readSelection(), { kind: "record", record: { runId: owner.runId, recordId: records[0].recordId } });
     // Review records is a dialog; queue shortcuts resume once it closes.
     await act(async () => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    await vi.waitFor(() => assert.equal(document.querySelector('[role="dialog"][data-state="open"]'), null));
+    await vi.waitFor(() => assert.equal(document.querySelector('[role="dialog"][data-state="open"]') === null, true));
     await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true })));
     await vi.waitFor(() => assert.deepEqual(readSelection(), { kind: "record", record: { runId: owner.runId, recordId: records[1].recordId } }));
     assert.ok(requestedRuns.length > 0); assert.ok(requestedRuns.every(runId => runId === owner.runId));

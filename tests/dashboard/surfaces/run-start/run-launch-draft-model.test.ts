@@ -262,7 +262,7 @@ describe("rerun restore", () => {
   });
   it("refuses protected typed source input", () => {
     const protectedInput = RerunValuesSnapshotSchema.parse({ ...snapshot, source: { ...snapshot.source, workflow: "work-study" }, sourceInput: { state: "unavailable", reason: "protected" } });
-    assert.throws(() => restoreRerunDraft(freshLaunchDraft(undefined), protectedInput, workStudy), /source input is protected/u);
+    assert.throws(() => restoreRerunDraft(freshLaunchDraft(undefined), protectedInput, workStudy), /This input is protected and cannot be copied/u);
   });
   it("starts from the given text with every step selected for a failed plain-input rerun", () => {
     const next = restoreRerunDraft(freshLaunchDraft(plain), snapshot, plain, "10812345");

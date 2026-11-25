@@ -1,6 +1,5 @@
 
 /* Dialogs keep their compact size and take the dashboard's blue primary. */
-.sv2-dialog { --ds-accent: var(--ui-info); --ds-accent-hover: var(--ui-info); --ds-accent-fg: var(--ui-canvas); }
 
 /* Page hierarchy from the shared body tokens. */
 .hub-sheets-library .ds-body-section { margin-bottom:var(--ds-settings-section-gap); }
@@ -22,3 +21,9 @@
 .sv2-grid tbody td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 10%, transparent); }
 .sv2-grid tbody tr:hover > td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 14%, transparent); }
 
+
+/* Tags read in the interface font, as in the mock; the chip primitive sets its text in the data font. */
+.sv2-tag .ds-nums { font-family: var(--ds-font-sans); }
+
+/* The mock's search is a pill, taller than the default field. */
+.hub-sheets-library .sv2-search [data-slot="search-field-group"] { height: 32px; min-height: 32px; max-height: 32px; border-radius: 9999px; padding-inline: 12px 8px; }

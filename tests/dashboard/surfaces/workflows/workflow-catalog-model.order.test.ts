@@ -5,7 +5,7 @@ import { runPickerGroups } from "../../../../src/dashboard/surfaces/run-start/ru
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { workflowNavigationGroups } from "../../../../src/dashboard/surfaces/shell/workflow-rail-model.js";
 import { buildWorkflowCatalog, servedLaunchWorkflows } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 
 /** Every served workflow: category groups as the rail shows them (Lookup, Separations, Onboarding, Work-Study, then categories the rail does not name),
  * inside each group the order `config/dashboard-workflow-sources.json` declares. */

@@ -128,7 +128,7 @@ const IDLE: LaunchActivity = { kind: "idle" };
 const NONE: LaunchRecovery = { state: "none" };
 const catalogText = (code: "DASHBOARD_AUTHORITY_REPLACED" | "COMMAND_DISPATCH_FAILED" | "BOUNDARY_VALIDATION_FAILED") =>
   formatErrorCatalogFailure(createErrorCatalogFailure(code, code === "BOUNDARY_VALIDATION_FAILED" ? { source: "http-response" } : {})).text;
-export const REFERENCES_UNAVAILABLE = "Reference data is unavailable. Refresh it before planning.";
+export const REFERENCES_UNAVAILABLE = "Reference data is unavailable. Refresh it first.";
 
 export const initialRunDialogState: RunDialogState = { nextRequest: 1, stage: "Input", source: { kind: "start" }, recovery: NONE, detached: [], activity: IDLE };
 

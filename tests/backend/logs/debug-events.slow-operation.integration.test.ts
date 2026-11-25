@@ -17,7 +17,7 @@ import { ManualScheduler } from "../../support/helpers/phase1f-executor-harness.
 const AT = new Date("2026-11-14T12:00:00.000Z");
 
 function slowOperationEvents(database: AuthorityDatabase): DebugEvent[] {
-  return database.authority.timelineEvents.page({}).flatMap(record =>
+  return database.authority.timelineEvents.debugPage({}).flatMap(record =>
     record.payload.kind === "debug" && record.payload.event.reason === "slow-operation" ? [record.payload.event] : []);
 }
 

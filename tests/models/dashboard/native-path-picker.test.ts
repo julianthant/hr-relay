@@ -5,6 +5,7 @@ import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import { middleTruncatePath } from "../../../src/dashboard/ds/primitives/primitives-form.js";
 import { SettingsPathPicker } from "../../../src/dashboard/surfaces/settings/general/settings-path-picker.js";
 import { type NativePathPickerResponse } from "../../../src/models/dashboard/native-path-picker.js";
 
@@ -23,17 +24,16 @@ async function mount(pickSettingsPath: DashboardClient["pickSettingsPath"], onSe
 }
 
 describe("native Paths picker control", () => {
-  it("shows the full accessible path, selects one file, and leaves cancellation untouched", async () => {
+  it("shows the path, middle-truncated when long, selects one file, and leaves cancellation untouched", async () => {
     const selected: string[] = [];
     const requests: unknown[] = [];
     let response: NativePathPickerResponse = { state: "selected", field: "paths.i9CheckTrackerPath", path: "/tmp/private/new.json" };
     const surface = await mount(request => { requests.push(request); return Promise.resolve(response); }, path => selected.push(path));
     const value = surface.querySelector(".ds-path-value");
-    assert.equal(value?.getAttribute("aria-label"), "/tmp/private/duo.json");
+    assert.equal(value?.textContent, "/tmp/private/duo.json");
+    assert.equal(middleTruncatePath("/Users/julian/Documents/Codex/chats-outside"), "/Users/julian…/chats-outside");
+    assert.equal(value?.getAttribute("aria-label"), null);
     assert.equal(value?.getAttribute("title"), null);
-    assert.equal((value as HTMLElement | null)?.tabIndex, 0);
-    assert.equal(value?.querySelector(".sr-only")?.textContent, "/tmp/private/duo.json");
-    assert.equal(value?.querySelector(".ds-path-basename")?.textContent, "duo.json");
     const button = surface.querySelector('button[aria-label="Change Duo credential file"]');
     if (!(button instanceof HTMLButtonElement)) throw new Error("picker button missing");
     await act(async () => { button.click(); await Promise.resolve(); });
@@ -56,7 +56,7 @@ describe("native Paths picker control", () => {
     button.click();
     assert.equal(calls, 1);
     await act(async () => release?.({ state: "unavailable", field: "paths.i9CheckTrackerPath", reason: "busy" }));
-    assert.match(surface.querySelector('[role="alert"]')?.textContent ?? "", /Another path picker is already open/u);
+    assert.match(surface.querySelector('[role="alert"]')?.textContent ?? "", /A folder picker is already open/u);
     assert.deepEqual(selected, []);
   });
 

@@ -306,6 +306,8 @@ describe("authenticated SharePoint downloads", () => {
   it.each([
     { Id: 0, LoginName: "fixture-user@ucsd.edu" }, { Id: 7, LoginName: "other@ucsd.edu" },
     { Id: 7, LoginName: "evil|fixture-user@ucsd.edu" }, { Id: 7, LoginName: "fixture-user@ucsd.edu.evil.test" },
+    { Id: 7, LoginName: "fixture-user@ucsd.edu", Email: "other@ucsd.edu" },
+    { d: { Id: 7, LoginName: "fixture-user@ucsd.edu" }, LoginName: "other@ucsd.edu" },
   ])("refuses positive HTTP without exact configured identity: %j", async identity => {
     const f = await world({ identityAfterMetadata: identity });
     await assert.rejects(f.download(), BrowserLoginError);
@@ -333,6 +335,8 @@ describe("bounded streaming and cleanup", () => {
     { UniqueId: "foreign/file", Name: "Book.xlsx", Length: 3 }, { UniqueId: GUID, Name: "Other.xlsx", Length: 3 },
     { UniqueId: GUID, Name: "Book.xlsx", Length: 0 }, { UniqueId: GUID, Name: "Book.xlsx", Length: "3.5" },
     { UniqueId: GUID, Name: "Book.xlsx", Length: 20 * 1024 * 1024 + 1 },
+    { UniqueId: GUID, Name: "Book.xlsx", Length: 3, ServerRelativeUrl: "/sites/other/Book.xlsx" },
+    { d: { UniqueId: GUID, Name: "Book.xlsx", Length: 3 }, UniqueId: GUID },
   ])("refuses unproved file metadata without requesting bytes: %j", async metadata => {
     const f = await world({ metadata });
     await assert.rejects(f.download(), SharePointDownloadError);

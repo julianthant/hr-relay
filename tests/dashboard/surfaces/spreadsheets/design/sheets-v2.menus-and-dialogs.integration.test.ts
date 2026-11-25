@@ -70,7 +70,7 @@ it('shows each served sync state under the SharePoint link and offers Retry sync
     await act(async () => { await new Promise(done => setTimeout(done, 700)); });
     return document.body.querySelector('[role="tooltip"]')?.textContent ?? '';
   };
-  assert.match(await why('Bad.xlsx'), /^The saved workbook changed\. Read its current version before saving\. \(Nov 2/u);
+  assert.match(await why('Bad.xlsx'), /^The saved workbook changed\. Load its current version before saving\. \(Nov 2/u);
   assert.match(await why('Odd.xlsx'), /^Sync did not finish\. Start Sync again\. \(Nov 2/u);
   assert.doesNotMatch(host.textContent ?? '', /WORKBOOK_/u);
   assert.equal(status('New.xlsx'), 'Not synced yet');
@@ -117,7 +117,7 @@ it('sends a SharePoint import with the link, name and tags when Next is chosen',
   await render();
   await click(byText('button', 'Import'));
   await click(document.body.querySelector('input[type="radio"][value="sharepoint"]'));
-  assert.equal(byText('button', 'Choose file'), undefined);
+  assert.equal(byText('button', 'Choose file') === undefined, true);
   assert.equal((byText('button', 'Next') as HTMLButtonElement).disabled, true);
   await type(document.body.querySelector('input[aria-label="SharePoint workbook link"]'), LINK);
   await type(document.body.querySelector('input[aria-label="Name"]'), 'Roster 2');

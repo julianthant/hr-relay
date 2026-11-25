@@ -9,7 +9,7 @@ import { basename,dirname,join,relative,resolve } from "node:path";
 import { createNativeBrowserProbe,NativeBrowserClosureUnprovedError } from "../runtime/browser/native-browser.js";
 
 import { z } from "zod";
-import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema } from "../../models/config/protected-settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema,ProtectedValueSchemas } from "../../models/config/protected-settings.js";
 import { resolveConfigWithProvenance } from "../app/config/resolve.js";
 import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding-duo-provider.js";
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
@@ -25,7 +25,8 @@ import { operatorFailureSentence,type ErrorCatalogCode } from "../../models/fail
 import { assertFinishedProfileOnboarding,deriveProfileNames,DuoReenrolOperationSchema,LogoutOperationSchema,ProfileAuthoritySnapshotSchema,ProfileNameValidationError,ProfileOperationSchema,profileDetailsPatch,type DuoReenrolOperation,type LogoutOperation,type ProfileDetailsChange,type ProfileRegistryRow,type ProfileAuthoritySnapshot,type ProfileOperation,type SignUpOperation } from "../../models/profiles/profile.js";
 import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
 import { DuoReenrolStateSchema,ProfileOnboardingStateSchema,profileAccount,type DuoReenrolState,type ProfileAccount,type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
-import type { DuoReenrolCommitIntent } from "../../models/config/duo-credential-store.js";
+import type { DuoKeyChange, DuoReenrolCommitIntent } from "../../models/config/duo-credential-store.js";
+import type { DuoKeyChangeResult } from "../../models/profiles/public-profile.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { systemClock,type Clock } from "../../rules/time/clock.js";
 import { noSymlinkAncestry,withOperationProof,type DirectoryIdentity } from "../storage/configuration/credential-safe-file.js";
@@ -33,7 +34,7 @@ import { createDuoCredentialStore,DuoCredentialError } from "../storage/configur
 import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
 import { type CredentialInventory } from "./credential-inventory.js";
 import type { ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
-import { changeRelayLogin,RelayLoginOutcomeUnknownError,RelayLoginUnsettledError,restoreInterruptedLogin,type RelayLogin,type RelayLoginChange } from "./login-change.js";
+import { changeRelayLogin,RelayLoginOutcomeUnknownError,restoreInterruptedLogin,type RelayLogin,type RelayLoginChange } from "./login-change.js";
 import { createProfileOnboarding,type DuoDraft } from "./profile-onboarding.js";
 import { appendDuoDiagnostic } from "../logs/duo-diagnostics.js";
 import { createDebugEventWriter } from "../logs/debug-events.js";
@@ -139,7 +140,6 @@ export function createProfileSession(input: {
   const registry = createProfileRegistry(admission);
   const verifiers = createProfileVerifiers(machineRoot);
   const sessions = new Map<string, { readonly profileId: string; readonly epoch: number; readonly admission: RuntimeAdmission }>();
-  const unsettledLogins = new Map<string, RelayLogin>();
   const onboardingSessions = new Map<string, { readonly operationId: string; readonly epoch: number }>();
   function retainOnboardingBrowserFailure(error: unknown): never {
     if (!hasUnprovedSourceClosure(error) && !(error instanceof ProfileSessionRefusedError && error.code === "BROWSER_CLOSURE_UNPROVED")) throw error;
@@ -158,6 +158,10 @@ export function createProfileSession(input: {
 
   function readOperations(): ProfileOperation[] {
     registry.read();
+    return readAdmittedOperationFiles();
+  }
+
+  function readAdmittedOperationFiles(): ProfileOperation[] {
     const directory = join(machineRoot, "machine", "operations");
     if (!existsSync(directory)) return [];
     const operations: ProfileOperation[] = [];
@@ -232,9 +236,9 @@ export function createProfileSession(input: {
     }
     const row = current.profiles.find(entry => entry.profileId === session.profileId);
     if (current.activeProfileId !== session.profileId || current.sessionGeneration !== session.epoch
-      || row?.lifecycle !== "ready" || row.credentialState !== "saved" || row.registration.onboardingCompletion === undefined
+      || row?.lifecycle !== "ready" || row.relayEmail === undefined || row.credentialState !== "saved" || row.registration.onboardingCompletion === undefined
       || commitHolds.has(session.profileId)
-      || readOperations().some(operation => operation.kind === "logout" ? operation.phase !== "complete"
+      || readAdmittedOperationFiles().some(operation => operation.kind === "logout" ? operation.phase !== "complete"
         : operation.profileId === session.profileId && (operation.kind === "sign-up" || operation.commit !== undefined))) {
       sessions.delete(token);
       return refusal("PROFILE_SESSION_STALE");
@@ -244,20 +248,62 @@ export function createProfileSession(input: {
     return session;
   }
 
-  function activate(profileId: string): ActiveProfileSession {
-    admission.assertWritable();
-    admission.lifetime.assertRuntimeAvailable();
-    const selected = registry.read().activeProfileId;
-    if (selected !== null && selected !== profileId) throw new Error("profile-session-not-current");
+  type SignIn = { at: ReturnType<typeof IsoInstantSchema.parse>; login?: RelayLogin };
+  function upgradeEmail(row: ProfileRegistryRow, signIn?: SignIn): string {
+    const store = storeFor(row.profileId);
+    if (row.relayEmail === undefined && signIn?.login !== undefined) restoreInterruptedLogin(verifiers, store, row.profileId, signIn.login, signIn.at);
+    // A credential format awaiting conversion holds admission even after the Relay login is upgraded.
+    const record = store.read();
+    if (row.relayEmail !== undefined) return signIn?.login?.email ?? row.relayEmail;
+    const email = record.entries.ucpathUserId?.value, password = record.entries.ucpathPassword?.value;
+    if (email !== undefined && password !== undefined) {
+      if (signIn?.login === undefined) {
+        const owner = verifiers.identify(email);
+        if (owner !== "unknown" && owner.profileId === row.profileId && verifiers.passwordMatches(row.profileId, password)) return email;
+      } else if (email === signIn.login.email && password === signIn.login.password) return email;
+    }
+    throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+  }
+
+  function activate(profileId: string) {
     const epoch = registry.advanceSession(profileId, "profile-activated");
     sessions.clear();
-    unsettledLogins.clear();
     releaseOrdinary(profileId);
     const currentAdmission = admittedProfile(profileId);
     currentAdmission.assertWritable();
-    const token = randomUUID();
-    sessions.set(token, { profileId, epoch, admission: currentAdmission });
-    return { state: "active", token, epoch, profileId };
+    return { profileId, epoch, admission: currentAdmission };
+  }
+
+  function admitSignedIn(profileId: string, signIn?: SignIn): ActiveProfileSession {
+    admission.assertWritable();
+    admission.lifetime.assertRuntimeAvailable();
+    const selection = registry.read(), selected = selection.activeProfileId;
+    if (selected !== null && selected !== profileId) throw new Error("profile-session-not-current");
+    const row = selection.profiles.find(entry => entry.profileId === profileId);
+    if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+    try {
+      const active = activate(profileId);
+      if (signIn !== undefined) {
+        // Aborted enrolment stages must be discarded before any legacy credential read.
+        const leftover = reenrolmentFor(profileId);
+        if (leftover?.abort !== undefined && leftover.commit === undefined) discardDuoReenrol(leftover);
+      }
+      const relayEmail = upgradeEmail(row, signIn);
+      if (signIn !== undefined) {
+        verifiers.clearFailures(profileId);
+        registry.update(profileId, { relayEmail, lastSignedInAt: signIn.at, lifecycle: "ready" });
+      } else if (row.relayEmail === undefined) registry.update(profileId, { relayEmail });
+      const token = randomUUID();
+      sessions.set(token, active);
+      return { state: "active", token, epoch: active.epoch, profileId };
+    } catch (error) {
+      sessions.clear();
+      try {
+        registry.advanceSession(selected, "profile-sign-in-refused");
+        if (!hasUnprovedSourceClosure(error)) releaseOrdinary(profileId);
+      } catch (cleanup) { throw new AggregateError([error, cleanup], "profile sign-in and selection closure failed", { cause: cleanup }); }
+      throw error;
+    }
   }
 
   function settingsAuthority(snapshot: SettingsRuntimeSnapshot) {
@@ -332,10 +378,8 @@ export function createProfileSession(input: {
     if (operation.phase !== "publishing" || draft?.finish === undefined || completion === undefined
       || registration.operationId !== operation.operationId || registration.commandId !== operation.commandId || registration.writeId !== operation.writeId
       || completion.generation !== draft.generation || completion.finishId !== draft.finish.finishId || completion.finishedAt !== draft.finish.finishedAt) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-    for (const method of ["key", "touch"] as const) {
-      const receipt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
-      if (createHash("sha256").update(canonicalJsonStringify(receipt)).digest("hex") !== completion[method].receiptDigest) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-    }
+    const receipt = draft.attempts.findLast(entry => entry.generation === draft.generation);
+    if (createHash("sha256").update(canonicalJsonStringify(receipt)).digest("hex") !== completion.key.receiptDigest) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
   }
 
   function settleSignUp(operation: SignUpOperation, proof?: StartupRegistrationProof): string {
@@ -350,7 +394,7 @@ export function createProfileSession(input: {
     return operation.profileId;
   }
 
-  function publishSignUp(operation: SignUpOperation): ActiveProfileSession { return activate(settleSignUp(operation)); }
+  function publishSignUp(operation: SignUpOperation): ActiveProfileSession { return admitSignedIn(settleSignUp(operation)); }
 
   function signUpDraft(operation: SignUpOperation): DuoDraft {
     const draft = operation.onboarding;
@@ -365,8 +409,8 @@ export function createProfileSession(input: {
   }
 
   function duoSetupState(draft: DuoDraft) {
-    const method = (name: "key" | "touch") => {
-      const attempt = draft.attempts.findLast(entry => entry.method === name && entry.generation === draft.generation);
+    const method = () => {
+      const attempt = draft.attempts.findLast(entry => entry.generation === draft.generation);
       if (draft.aborted) return { state: "unavailable" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
       const idle = input.onboardingDuo === undefined ? "unavailable" as const : "idle" as const;
       const state = attempt?.state === "closed" ? idle : attempt?.state ?? idle;
@@ -375,12 +419,11 @@ export function createProfileSession(input: {
         ...(attempt === undefined ? {} : { attemptId: attempt.attemptId }),
         ceremonyObserved: attempt?.ceremony !== undefined, portalAccepted: attempt?.portal?.acceptance === "portal-accepted",
         operatorConfirmed: attempt?.operatorConfirmedAt !== undefined,
-        ...(attempt?.ceremony?.mechanism === "native-platform" || attempt?.ceremony?.mechanism === "chromium-platform" ? { platformAuthenticator: attempt.ceremony.mechanism } : {}),
         exactCredentialRequestObserved: attempt?.portal?.acceptance === "exact-credential-request" };
     };
-    const methods = { key: method("key"), touch: method("touch") };
+    const methods = { key: method() };
     return { operationId: draft.operationId, profileId: draft.profileId,
-      step: methods.key.state === "complete" && methods.touch.state === "complete" ? "ready" as const : "duo" as const, methods, browser: onboarding.browserState(draft.operationId) };
+      step: methods.key.state === "complete" ? "ready" as const : "duo" as const, methods, browser: onboarding.browserState(draft.operationId) };
   }
 
   function onboardingState(operation: SignUpOperation): ProfileOnboardingState {
@@ -444,20 +487,28 @@ export function createProfileSession(input: {
     readonly lastName: string;
     readonly email: string;
     readonly password: string;
+    readonly ucpathUsername?: string;
+    readonly ucpathPassword?: string;
     readonly createdAt: string;
   }, names: ReturnType<typeof deriveProfileNames>): OnboardingProfileSession | ProfileRefusal {
     admission.assertWritable();
     const selection = registry.read();
     if (selection.profiles.some(row => row.lifecycle === "cancelling") || readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_LOGOUT_INCOMPLETE");
     if (selection.activeProfileId !== null) return refusal("PROFILE_SIGN_UP_OTHER_SIGNED_IN");
-    const emailKey = verifiers.emailKeyFor(fields.email);
     if (readOperations().some(entry => entry.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
+    const username = ProtectedValueSchemas.ucpathUserId.safeParse(fields.ucpathUsername);
+    const password = ProtectedValueSchemas.ucpathPassword.safeParse(fields.ucpathPassword);
+    if (!username.success || !password.success || !z.email().safeParse(username.data.trim()).success || !/@ucsd\.edu$/iu.test(username.data.trim())) {
+      return refusal("PROFILE_SIGN_IN_REFUSED");
+    }
     const identified = verifiers.identify(fields.email);
     if (identified !== "unknown" && registry.read().profiles.some((row) => row.profileId === identified.profileId)) {
       return refusal("PROFILE_OTHER_EMAIL");
     }
+    const { emailKey, salt, passwordVerifier } = verifiers.derive(fields.email, fields.password);
     let operation = admission.beginProfileSignUp({
-      emailKey, firstName: names.firstName, lastName: names.lastName, createdAt: IsoInstantSchema.parse(fields.createdAt), commandFingerprint: "a".repeat(64),
+      emailKey, relay: { email: fields.email, salt, passwordVerifier },
+      firstName: names.firstName, lastName: names.lastName, createdAt: IsoInstantSchema.parse(fields.createdAt), commandFingerprint: "a".repeat(64),
     });
     if (operation.onboarding === undefined || operation.phase !== "applying" && !(operation.phase === "publishing" && operation.onboarding.finish !== undefined)) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
     if (operation.onboarding.abort !== undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
@@ -487,8 +538,8 @@ export function createProfileSession(input: {
           writeId: operation.writeId,
           updatedAt: operation.createdAt,
           entries: {
-            ucpathUserId: { set: fields.email },
-            ucpathPassword: { set: fields.password },
+            ucpathUserId: { set: username.data },
+            ucpathPassword: { set: password.data },
           },
         }));
         if (applied.state !== "applied" && !store.ownsCommandId(operation.commandId)) {
@@ -503,15 +554,15 @@ export function createProfileSession(input: {
     }
     if (store.ownsCommandId(operation.commandId)) {
       const current = store.read().entries;
-      const same = current.ucpathUserId?.value === fields.email
-        && current.ucpathPassword?.value === fields.password;
+      const same = current.ucpathUserId?.value === username.data
+        && current.ucpathPassword?.value === password.data;
       if (!same) return refusal("PROFILE_SIGN_IN_REFUSED");
     }
     return issueOnboardingSession(operation);
   }
 
-  function admitSignedIn(row: ProfileRegistryRow, at: ReturnType<typeof IsoInstantSchema.parse>,
-    credentialsMatch: (entries: ReturnType<ReturnType<typeof storeFor>["read"]>["entries"]) => boolean, proved?: RelayLogin): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
+  function admitExistingProfile(row: ProfileRegistryRow, at: ReturnType<typeof IsoInstantSchema.parse>,
+    login?: RelayLogin): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
     const finishing = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId && entry.onboarding !== undefined);
     if (finishing.length > 1) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
     for (const operation of finishing) {
@@ -529,26 +580,9 @@ export function createProfileSession(input: {
     if (readOperations().some((entry) => entry.kind === "logout" && entry.profileId !== row.profileId && entry.phase !== "complete")) {
       return refusal("PROFILE_TRANSITION_BLOCKED");
     }
-    try {
-      const active = activate(row.profileId);
-      // A draft boot aborted while its profile was signed out is discarded before the first credential read, which its stage files would refuse.
-      const leftover = reenrolmentFor(row.profileId);
-      if (leftover?.abort !== undefined && leftover.commit === undefined) discardDuoReenrol(leftover);
-      const store = storeFor(row.profileId);
-      if (proved !== undefined) restoreInterruptedLogin(verifiers, store, row.profileId, proved, at);
-      if (!credentialsMatch(store.read().entries)) {
-        sessions.clear();
-        registry.advanceSession(selection.activeProfileId, "profile-sign-in-refused");
-        releaseOrdinary(row.profileId);
-        return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
-      }
-      verifiers.clearFailures(row.profileId);
-      registry.update(row.profileId, { lastSignedInAt: at, lifecycle: "ready" });
-      return active;
-    } catch (error) {
-      sessions.clear();
-      try { registry.advanceSession(selection.activeProfileId, "profile-sign-in-refused"); if (!hasUnprovedSourceClosure(error)) releaseOrdinary(row.profileId); }
-      catch (cleanup) { throw new AggregateError([error, cleanup], "profile sign-in and selection closure failed", { cause: cleanup }); }
+    try { return admitSignedIn(row.profileId, { at, login }); }
+    catch (error) {
+      if (error instanceof ProfileSessionRefusedError && error.code === "PROFILE_AUTHORITY_UNAVAILABLE" && !hasUnprovedSourceClosure(error)) return refusal(error.code);
       throw error;
     }
   }
@@ -631,10 +665,6 @@ export function createProfileSession(input: {
     store: draft => createDuoCredentialStore(admittedProfile(draft.profileId), input.clock ?? systemClock),
   });
 
-  /**
-   * Change the signed-in profile's Relay login under the profile lock. A change left unsettled keeps its proved old login in
-   * memory for this session, and the session's next change writes it back first; after a restart the old-login sign-in does.
-   */
   function changeLogin(token: string, fields: { readonly currentPassword: string; readonly change: RelayLoginChange; readonly at: string }): LoginChangeResult {
     const at = IsoInstantSchema.parse(fields.at);
     admission.assertWritable();
@@ -655,24 +685,30 @@ export function createProfileSession(input: {
     const session = requireSession(token);
     if ("state" in session) return session;
     if (readOperations().some(operation => operation.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
-    const store = storeFor(session.profileId, session.admission);
-    const unsettled = unsettledLogins.get(token);
-    if (unsettled !== undefined) { restoreInterruptedLogin(verifiers, store, session.profileId, unsettled, at); unsettledLogins.delete(token); }
-    const priorEmail = store.read().entries.ucpathUserId?.value;
-    try {
-      const outcome = changeRelayLogin(verifiers, store, session.profileId, { ...fields, at });
-      if (outcome.kind === "refused") return refusal(outcome.code);
-      if (outcome.kind === "changed") return { state: "changed" };
-      if (hasUnprovedSourceClosure(outcome.failure)) admission.retainSourceClosure(outcome.failure);
-      return { state: "changed", durability: "unconfirmed", failure: outcome.failure };
-    } catch (error) {
-      const unclosed = hasUnprovedSourceClosure(error), settleable = error instanceof RelayLoginUnsettledError || error instanceof RelayLoginOutcomeUnknownError;
-      if (unclosed) admission.retainSourceClosure(error);
-      // The next change writes the proved old login back only if the swap did not land; a landed swap already proves the new one.
-      if (settleable && priorEmail !== undefined) unsettledLogins.set(token, { email: priorEmail, password: fields.currentPassword });
-      if (unclosed || !settleable || priorEmail === undefined) throw error;
-      return error instanceof RelayLoginOutcomeUnknownError ? { state: "unknown", failure: error } : refusal("PROFILE_LOGIN_CHANGE_UNSETTLED");
+    const row = registry.read().profiles.find(entry => entry.profileId === session.profileId);
+    if (row?.relayEmail === undefined) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
+    let outcome: ReturnType<typeof changeRelayLogin>;
+    try { outcome = changeRelayLogin(verifiers, row.profileId, row.relayEmail, { ...fields, at }); }
+    catch (error) {
+      if (hasUnprovedSourceClosure(error) || !(error instanceof RelayLoginOutcomeUnknownError)) throw error;
+      return { state: "unknown", failure: error };
     }
+    if (outcome.kind === "refused") return refusal(outcome.code);
+    const changed = outcome.kind === "unconfirmed"
+      ? { state: "changed" as const, durability: "unconfirmed" as const, failure: outcome.failure } : { state: "changed" as const };
+    if (outcome.kind === "unconfirmed" && hasUnprovedSourceClosure(outcome.failure)) {
+      admission.retainSourceClosure(outcome.failure);
+      return changed;
+    }
+    if (fields.change.kind === "username") {
+      try { registry.update(row.profileId, { relayEmail: fields.change.email }); }
+      catch (error) {
+        if (hasUnprovedSourceClosure(error)) admission.retainSourceClosure(error);
+        return { ...changed, failure: outcome.kind === "unconfirmed"
+          ? new AggregateError([outcome.failure, error], "profile login and display update unconfirmed") : error };
+      }
+    }
+    return changed;
   }
 
   async function cancelOnboarding(token: string, operationId: string): Promise<{ readonly state: "signed-out" }> {
@@ -738,14 +774,12 @@ export function createProfileSession(input: {
     deleteOperation(aborted.operationId);
   }
 
-  /** The commit intent for exactly the credentials the draft's two proved attempts stored; anything else is a pre-effect refusal. */
+  /** The commit intent for exactly the credential the draft's proved security-key attempt stored; anything else is a pre-effect refusal. */
   function prepareDuoReenrolCommit(operation: DuoReenrolOperation): DuoReenrolCommitIntent {
     const draft = reenrolDraft(operation);
     onboarding.verifyProved(draft);
-    const proved = (["key", "touch"] as const).flatMap(method => {
-      const receipt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
-      return receipt?.ceremony === undefined || receipt.ceremony.mechanism === "native-platform" ? [] : [receipt.ceremony.credentialId];
-    });
+    const receipt = draft.attempts.findLast(entry => entry.generation === draft.generation);
+    const proved = receipt?.ceremony === undefined ? [] : [receipt.ceremony.credentialId];
     let intent: DuoReenrolCommitIntent;
     try { intent = duoStore(operation.profileId).prepareReenrolCommit(draft.accountId); }
     catch (error) {
@@ -785,7 +819,6 @@ export function createProfileSession(input: {
       onboarding.assertClosed();
       logoutContinuationGeneration++;
       sessions.clear();
-      unsettledLogins.clear();
       onboardingSessions.clear();
       completedOnboarding.clear();
       for (const profileId of storageAdmissions.keys()) {
@@ -795,6 +828,31 @@ export function createProfileSession(input: {
       }
     },
     closeOnboarding(): Promise<void> { return onboarding.close(); },
+    readDuoKeys(token: string) {
+      const session = requireSession(token);
+      if ("state" in session) throw new ProfileSessionRefusedError(session.code);
+      return duoStore(session.profileId).readSettings();
+    },
+    changeDuoKey(token: string, change: DuoKeyChange): DuoKeyChangeResult {
+      admission.assertWritable();
+      admission.lifetime.assertRuntimeAvailable();
+      return withProfileLock(machineRoot, () => {
+        const session = requireSession(token);
+        if ("state" in session) return { state: "refused", code: session.code };
+        if (reenrolmentFor(session.profileId) !== undefined) return { state: "refused", code: "PROFILE_DUO_REENROL_OPEN" };
+        const store = duoStore(session.profileId);
+        let outcome: ReturnType<typeof store.changeKey>;
+        try {
+          outcome = store.changeKey(change);
+        } catch (error) {
+          if (error instanceof DuoCredentialError && (error.code === "DUO_CREDENTIAL_CONFLICT" || error.code === "DUO_CREDENTIAL_BUSY")) {
+            return { state: "refused", code: error.code };
+          }
+          throw error;
+        }
+        return outcome === "name-in-use" ? { state: "name-in-use" } : { state: "changed", snapshot: store.readSettings() };
+      });
+    },
     /** Opens, or returns the open, Duo re-enrolment for the active session's Duo-ready profile; its old enrolment keeps signing. */
     beginDuoReenrol(token: string): DuoReenrolState {
       admission.assertWritable();
@@ -1047,8 +1105,10 @@ export function createProfileSession(input: {
           const published = registry.read().profiles.find(row => row.profileId === operation.profileId);
           if (published !== undefined) assertPublishedFinish(operation, published.registration);
           else assertFinishedProfileOnboarding(operation);
-          const profileId = settleSignUp(operation, options.registrationProofs?.find(proof => proof.operationId === operation.operationId));
-          if (options.deferActivation !== true) activate(profileId);
+          withProfileLock(machineRoot, () => {
+            const profileId = settleSignUp(operation, options.registrationProofs?.find(proof => proof.operationId === operation.operationId));
+            if (options.deferActivation !== true) admitSignedIn(profileId);
+          });
         } else {
           if (operation.onboarding?.abort === undefined) onboarding.recoverClosed(operation.operationId);
           const draft = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operation.operationId);
@@ -1109,13 +1169,11 @@ export function createProfileSession(input: {
         if (row.lifecycle === "cancelling" || pending !== undefined) return cancelling(pending?.operationId);
         if (!checkLoginPassword(row.profileId, fields.password, at)) return refusal("PROFILE_SIGN_IN_REFUSED");
         if (mounted !== undefined && mountedToken !== undefined) {
-          const entries = storeFor(mounted.profileId, mounted.admission).read().entries;
-          if (entries.ucpathUserId?.value !== fields.email || entries.ucpathPassword?.value !== fields.password) return refusal("PROFILE_SIGN_IN_REFUSED");
+          if (row.relayEmail !== fields.email) registry.update(row.profileId, { relayEmail: fields.email });
           verifiers.clearFailures(row.profileId);
           return { state: "active" as const, profileId: mounted.profileId, epoch: mounted.epoch, token: mountedToken };
         }
-        return admitSignedIn(row, at, entries => entries.ucpathUserId?.value === fields.email && entries.ucpathPassword?.value === fields.password,
-          { email: fields.email, password: fields.password });
+        return admitExistingProfile(row, at, { email: fields.email, password: fields.password });
       });
     },
     resumeSignedInProfile(fields: { readonly at: string; readonly expected?: Readonly<{ installationId: string; profileId: string; epoch: number }> }): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
@@ -1130,12 +1188,7 @@ export function createProfileSession(input: {
         if (row.registration.onboardingCompletion === undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
         const pending = openLogout(row.profileId);
         if (row.lifecycle === "cancelling" || pending !== undefined) return cancelling(pending?.operationId);
-        return admitSignedIn(row, at, entries => {
-          const email = entries.ucpathUserId?.value, password = entries.ucpathPassword?.value;
-          if (email === undefined || password === undefined) return false;
-          const identified = verifiers.identify(email);
-          return identified !== "unknown" && identified.profileId === row.profileId && verifiers.passwordMatches(row.profileId, password);
-        });
+        return admitExistingProfile(row, at);
       });
     },
     changePassword(token: string, fields: { readonly currentPassword: string; readonly newPassword: string; readonly at: string }) {
@@ -1153,7 +1206,11 @@ export function createProfileSession(input: {
       return withProfileLock(machineRoot, () => {
         const session = requireSession(token);
         if ("state" in session) return session;
-        return { state: "changed", account: profileAccount(registry.update(session.profileId, checked.patch)) };
+        const row = registry.read().profiles.find(entry => entry.profileId === session.profileId);
+        if (row === undefined) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
+        const account = profileAccount({ ...row, ...checked.patch }, verifiers.identify);
+        registry.update(session.profileId, checked.patch);
+        return { state: "changed", account };
       });
     },
     logOut(token: string, inputFields: { readonly at: string }): { readonly state: "signed-out" } | ProfileLogoutResult | ProfileCancelling {
@@ -1293,11 +1350,11 @@ export function createProfileSession(input: {
         phase: operation.phase,
       }));
     },
-    prepareCurrentStorage(token: string): { readonly state: "available" } | ProfileRefusal {
+    prepareCurrentStorage(token: string): { readonly state: "available"; readonly profileId: string; readonly epoch: number } | ProfileRefusal {
       const current = requireSession(token);
       if ("state" in current) return current;
       storeFor(current.profileId, current.admission);
-      return { state: "available" };
+      return { state: "available", profileId: current.profileId, epoch: current.epoch };
     },
     readCurrentAuthority,
     async revalidateAuthority(token: string, captured: ProfileAuthoritySnapshot): Promise<{ readonly state: "available"; readonly snapshot: ProfileAuthoritySnapshot } | ProfileRefusal> {

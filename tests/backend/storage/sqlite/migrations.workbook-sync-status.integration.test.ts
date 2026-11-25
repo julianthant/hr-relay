@@ -4,7 +4,7 @@ import { applyAuthorityMigrationsAfter } from '../../../../src/backend/storage/s
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, migrationTableNames } from '../../../../src/backend/storage/sqlite/migrations.js';
 import { createWorkbookLibraryRepository, validateWorkbookLibrary, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { IsoInstantSchema } from '../../../../src/rules/identity/ids.js';
-import { removeSchema36WorkbookSyncStatus } from '../../../support/fixtures/storage/historical-run-schema.js';
+import { removeSchema36WorkbookSyncStatus, withCurrentWorkbookLayout } from '../../../support/fixtures/storage/historical-run-schema.js';
 
 const databases: DatabaseSync[] = [];
 afterEach(() => databases.splice(0).forEach(database => database.close()));
@@ -16,24 +16,26 @@ function schema35Store() {
   const database = new DatabaseSync(':memory:'); databases.push(database);
   for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= 35)) for (const statement of migration.statements) database.exec(statement);
   database.exec("UPDATE database_states SET schema_version=35; PRAGMA user_version=35");
-  const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => work().result });
-  repository.create({ libraryId: 'roster', version: 1, createdAt: at, savedAt: at, workbook: { libraryId: 'roster', name: 'Roster.csv', themes: [], hasFormulas: false,
-    sheets: [{ id: 'people', name: 'Sheet 1', hidden: [], width: 1, rows: [{ id: 'header', cells: [{ value: 'EID' }] }, { id: 'person', cells: [{ value: '10000001' }] }] }] } });
-  repository.libraryAction('roster', { operationId: 'link', expectedRevision: 1, expectedVersion: 1, change: { kind: 'link', url } }, at);
+  withCurrentWorkbookLayout(database, () => {
+    const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => work().result });
+    repository.create({ libraryId: 'roster', version: 1, createdAt: at, savedAt: at, workbook: { libraryId: 'roster', name: 'Roster.csv', themes: [], hasFormulas: false,
+      sheets: [{ id: 'people', name: 'Sheet 1', hidden: [], width: 1, rows: [{ id: 'header', cells: [{ value: 'EID' }] }, { id: 'person', cells: [{ value: '10000001' }] }] }] } });
+    repository.libraryAction('roster', { operationId: 'link', expectedRevision: 1, expectedVersion: 1, change: { kind: 'link', url } }, at);
+  });
   return database;
 }
 const rows = (database: DatabaseSync) => database.prepare('SELECT * FROM workbook_library_state ORDER BY id').all().map(row => ({ ...row }));
 const upgrade = (database: DatabaseSync) => applyAuthorityMigrationsAfter(database, 35, { now: '2026-11-18T00:00:00.000Z', captureFile: () => { throw new Error('no capture expected'); } });
 
-it('is schema version 36, the current schema, and adds no table', () => {
+it('is schema version 36, under the current schema 42, and adds no table', () => {
   expect(WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.version).toBe(36);
-  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(36);
+  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(42);
   expect(migrationTableNames(36)).toEqual(migrationTableNames(35));
 });
 
 it('validates a schema-35 library as a predecessor and refuses it as current', () => {
   const database = schema35Store();
-  expect(validateWorkbookLibrary(database, true, true, true, false)).toBeGreaterThan(0);
+  expect(validateWorkbookLibrary(database, true, true, true, false, false)).toBeGreaterThan(0);
   expect(() => validateWorkbookLibrary(database)).toThrow();
 });
 
@@ -65,5 +67,5 @@ it('steps an upgraded store back to schema 35 with the rewind helper', () => {
   removeSchema36WorkbookSyncStatus(database);
   expect(database.prepare('PRAGMA user_version').get()?.user_version).toBe(35);
   expect(rows(database)).toEqual(before);
-  expect(validateWorkbookLibrary(database, true, true, true, false)).toBeGreaterThan(0);
+  expect(validateWorkbookLibrary(database, true, true, true, false, false)).toBeGreaterThan(0);
 });

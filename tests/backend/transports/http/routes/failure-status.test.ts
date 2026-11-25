@@ -75,7 +75,7 @@ describe("failureStatus", () => {
     assert.equal(refusal.status, 409);
     assert.equal(refusal.body.code, "LOGS_IDENTITY_REFUSED");
     assert.equal(refusal.body.retryable, false);
-    assert.equal(refusal.body.message, "Logs cannot be ordered because their recorded identities are missing or inconsistent.");
+    assert.equal(refusal.body.message, "Logs could not be ordered because some entries are missing or inconsistent.");
   });
 
   it("answers 404 for a not-found refusal whose wording carries no retired marker", () => {
@@ -250,7 +250,7 @@ it("returns fixed catalog text for a failed dashboard read while preserving its 
   const cause = new Error("private-query-detail");
   const error = new DashboardReadFailedError(cause);
   assert.equal(error.cause, cause);
-  assert.deepEqual(failureStatus(error), { status: 500, body: { state: "error", code: "DASHBOARD_READ_FAILED", message: "The dashboard could not load this from the local service. Try again.", retryable: false } });
+  assert.deepEqual(failureStatus(error), { status: 500, body: { state: "error", code: "DASHBOARD_READ_FAILED", message: "This could not load. Try again.", retryable: false } });
 });
 
 it("returns the defined crash cleanup refusal without disclosing its private proof failure", () => {

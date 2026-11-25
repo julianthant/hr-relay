@@ -45,7 +45,7 @@ it('isolates retained chats, cancels cross-chat replies and invalidates every ch
   assert.equal(current.state.messages.length, 0);
   await act(async () => { current.onAction({ type: 'edit', value: 'B request' }); current.onAction({ type: 'send' }); });
   await act(async () => { pending[1].settle({ state: 'refused', code: 'ASSISTANT_SUBJECT_REQUIRED', message: 'Synthetic refusal' }); });
-  assert.equal(current.state.messages.at(-1)?.text, 'Select an unambiguous subject before preparing a proposal.');
+  assert.equal(current.state.messages.at(-1)?.text, 'Select one person before preparing a proposal.');
   await render('a'); assert.equal(current.state.draft, '  Exact Unicode Ω\nrequest  '); assert.equal(current.state.turn.state, 'unknown');
   assert.equal(current.state.messages.some(message => message.text === 'Late A'), false);
   await act(async () => { current.onAction({ type: 'new-chat' }); current.onAction({ type: 'edit', value: 'Fresh manual request' }); current.onAction({ type: 'send' }); });
@@ -189,7 +189,7 @@ it.each(['run-action', 'workflow'] as const)('renders the existing served %s car
   await act(async () => { confirm.click(); confirm.click(); });
   await vi.waitFor(() => assert.equal(confirmations, 1));
   await act(async () => { await vi.waitFor(() => assert.match(host.textContent ?? '', kind === 'workflow' ? /Started/u : /Done/u)); });
-  assert.equal(host.querySelector('article[aria-label^="Proposed "]'), null);
+  assert.equal(host.querySelector('article[aria-label^="Proposed "]') === null, true);
 });
 
 function setupAccount() {

@@ -206,11 +206,11 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
     const message = resolveErrorCatalogFailure(h.failure, "http-response");
     assert.ok(message.state === "resolved");
     assert.equal(message.code, "ERROR_CATALOG_CODE_UNREGISTERED");
-    assert.equal(message.text, "This failure code is not in the current catalog. Review the recorded local evidence.");
+    assert.equal(message.text, "Relay did not recognize this failure. Open the run in Logs.");
     assert.equal(decision.id, h.failure.failureId);
     assert.equal(decision.decision.title, "Step could not be completed");
     assert.equal(decision.decision.state, "failed");
-    assert.equal(decision.decision.message, "This failure code is not in the current catalog. Review the recorded local evidence.");
+    assert.equal(decision.decision.message, "Relay did not recognize this failure. Open the run in Logs.");
   });
 
   it("keeps an unlinked failure's capture absent", async () => {

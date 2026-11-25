@@ -1,7 +1,7 @@
 
 import { default as assert } from "node:assert/strict";
 import { describe, it } from "vitest";
-import { buildRunEvidenceReceipt, deriveActionWriteProof, ensureRunEvidenceReceipt, type EvidenceReceiptStore, type ReceiptWriteEvidence } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt, deriveActionWriteProof, ensureRunEvidenceReceipt, type EvidenceReceiptStore, type ReceiptWriteEvidence } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { KualiSaveSeparationFinalization } from "../../../../src/models/systems/kuali/save-separation-finalization.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -72,13 +72,13 @@ function alreadyPresentReceiptEvidence() {
 
 describe("current receipt — the commit action carries what proved the write", () => {
   const evidence = kualiReceiptEvidence();
-  const receipt = buildRunEvidenceReceipt({
+  const receipt = deriveRunEvidenceReceipt({
     descriptor: separationsKualiFinalizationDescriptor,
     run: evidence.run,
     result: evidence.result,
     checkpoints: evidence.checkpoints,
     writes: evidence.writes,
-  }, 5);
+  }, 5).receipt;
 
   it("stamps the composition it derived under", () => {
     assert.equal(receipt.composition, 5);
@@ -101,7 +101,7 @@ describe("current receipt — the commit action carries what proved the write", 
     assert.ok(retained.some(fact => fact.path === "proof.value.fields.transactionNumber"));
     assert.ok(retained.some(fact => fact.path === "output.schemaHash"));
     const missing = kualiReceiptEvidence({ transactionProvenance: retained });
-    const partial = buildRunEvidenceReceipt({ descriptor: separationsKualiFinalizationDescriptor, ...missing });
+    const partial = deriveRunEvidenceReceipt({ descriptor: separationsKualiFinalizationDescriptor, ...missing }).receipt;
     const fact = partial.observations.find(row => row.field === "transactionNumber"
       && "taskId" in row.source && row.source.taskId === KualiSaveSeparationFinalization.id);
     assert.ok(fact?.state === "unresolved");
@@ -146,7 +146,7 @@ describe("current receipt — the commit action carries what proved the write", 
   it("REFUSES a settled outcome no intent row pairs with — corruption may not render as documented absence", () => {
     // A settled transaction checkpoint requires its durable intent, recorded before settlement.
     assert.throws(
-      () => buildRunEvidenceReceipt({
+      () => deriveRunEvidenceReceipt({
         descriptor: separationsKualiFinalizationDescriptor,
         run: evidence.run,
         result: evidence.result,
@@ -179,7 +179,7 @@ describe("the intent join — one commit contract, exactly one intent row", () =
       idempotencyKeyDigest: deriveIdempotencyKeyDigest("kuali", duplicateKey),
     });
     assert.throws(
-      () => buildRunEvidenceReceipt({
+      () => deriveRunEvidenceReceipt({
         descriptor: separationsKualiFinalizationDescriptor,
         run: evidence.run,
         result: evidence.result,
@@ -199,13 +199,13 @@ describe("the intent join — one commit contract, exactly one intent row", () =
 
 describe("current receipt identity", () => {
   const evidence = kualiReceiptEvidence();
-  const deriveCurrent = () => buildRunEvidenceReceipt({
+  const deriveCurrent = () => deriveRunEvidenceReceipt({
     descriptor: separationsKualiFinalizationDescriptor,
     run: evidence.run,
     result: evidence.result,
     checkpoints: evidence.checkpoints,
     writes: evidence.writes,
-  }, 5);
+  }, 5).receipt;
 
   it("is deterministic — the property the immutable insert stands on", () => {
     assert.deepEqual(deriveCurrent(), deriveCurrent());
@@ -213,13 +213,13 @@ describe("current receipt identity", () => {
 
   it("withholds the transaction key in the already-present identity sentence", () => {
     const { evidence: observedEvidence, observed, checkpoints } = alreadyPresentReceiptEvidence();
-    const receipt = buildRunEvidenceReceipt({
+    const receipt = deriveRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       run: observedEvidence.run,
       result: observedEvidence.result,
       checkpoints,
       writes: [{ intent: observed, attempts: [] }],
-    }, 5);
+    }, 5).receipt;
     const decision = receipt.decisions.find(({ kind }) => kind === "identity");
     assert.equal(
       decision?.reason,
@@ -352,9 +352,9 @@ describe("receipt composition", () => {
     const evidence = kualiReceiptEvidence();
     const input = { descriptor: separationsKualiFinalizationDescriptor, run: evidence.run,
       result: evidence.result, checkpoints: evidence.checkpoints, writes: evidence.writes };
-    const current = buildRunEvidenceReceipt(input);
+    const current = deriveRunEvidenceReceipt(input).receipt;
     assert.equal(current.composition, 5);
-    assert.equal(canonicalJsonStringify(buildRunEvidenceReceipt(input)), canonicalJsonStringify(current));
+    assert.equal(canonicalJsonStringify(deriveRunEvidenceReceipt(input).receipt), canonicalJsonStringify(current));
     assert.ok(current.observations.length > 0);
     const valued = current.observations.filter(fact => fact.state === "satisfied");
     assert.ok(valued.length > 0);

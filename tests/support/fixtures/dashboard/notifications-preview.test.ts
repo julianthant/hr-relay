@@ -2,8 +2,8 @@ import { describe,expect,it } from "vitest";
 import { notificationDestinationRefusal,notificationPreviewState } from "./notifications-preview.js";
 import { applyNotificationReads,notificationView } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import { QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY,FIXTURE_NOW } from "../../../mocks/helpers/fixture-identity.js";
-import { FIXTURE_DAY_WIRE,FIXTURE_IDS } from "../../../mocks/helpers/fixture-queue.js";
+import { FIXTURE_DAY,FIXTURE_NOW } from "../../helpers/dashboard/mock-world/fixture-identity.js";
+import { FIXTURE_DAY_WIRE,FIXTURE_IDS } from "../../helpers/dashboard/mock-world/fixture-queue.js";
 
 const input = { day: FIXTURE_DAY, nowIso: FIXTURE_NOW, anchorIso: FIXTURE_NOW, rows: FIXTURE_DAY_WIRE.queueSurfaces, workflowLabel: () => "Person Lookup" };
 function ready(state = notificationPreviewState("normal", input)) {

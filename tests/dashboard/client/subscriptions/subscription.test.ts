@@ -5,7 +5,7 @@ import { describe,it } from "vitest";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { subscribeDashboardDay,type SubscriptionState } from "../../../../src/dashboard/client/subscriptions/subscription.js";
 import type { DashboardTransport,SseMessage,StreamHandle } from "../../../../src/dashboard/client/transport.js";
-import { NotificationPublicationWireSchema, type NotificationPublicationWire } from "../../../../src/models/dashboard/subscription.js";
+import { NotificationPublicationWireSchema, type NotificationArrival } from "../../../../src/models/dashboard/subscription.js";
 import { type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
 
 const DAY = "2026-08-03";
@@ -27,15 +27,23 @@ function hello(cursor: string, projectionGeneration = 7): Record<string, unknown
 }
 
 function snapshotEnvelope(cursor: string, surfaces: readonly Record<string, unknown>[], projectionGeneration = 7): Record<string, unknown> {
-  return { type: "snapshot", topic: "dashboard-day", cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
+  return { type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
+}
+
+/** The cursor a change follows when nothing was skipped: the one before its own. */
+function cursorBefore(cursor: string): string {
+  return `pc:${String(Math.max(1, Number(cursor.slice(3)) - 1))}`;
 }
 
 function replacePatch(cursor: string, rowRevision: number): Record<string, unknown> {
   return {
-    type: "patch",
+    type: "change",
+    rows: [],
     topic: "dashboard-day",
     cursor,
-    payload: {
+    after: cursorBefore(cursor),
+    position: 0,
+    day: {
       operation: "replace-queue-surface",
       target: { runId: RUN_ID, rowRevision },
       replacement: surfaceOf(rowRevision),
@@ -45,10 +53,13 @@ function replacePatch(cursor: string, rowRevision: number): Record<string, unkno
 
 function removePatch(cursor: string, rowRevision: number): Record<string, unknown> {
   return {
-    type: "patch",
+    type: "change",
+    rows: [],
     topic: "dashboard-day",
     cursor,
-    payload: {
+    after: cursorBefore(cursor),
+    position: 0,
+    day: {
       operation: "remove-queue-surface",
       target: { runId: RUN_ID, rowRevision },
       reason: "the run was deleted from the queue",
@@ -71,6 +82,8 @@ interface FakeStream {
 interface Harness {
   readonly streams: FakeStream[];
   readonly days: DashboardDayWire[];
+  /** The stream position each delivered day was served at. */
+  readonly cursors: (string | undefined)[];
   readonly states: SubscriptionState[];
   /** Every reconnect delay `subscribeDashboardDay` asked the scheduler for. */
   readonly scheduled: number[];
@@ -79,9 +92,10 @@ interface Harness {
   close(): void;
 }
 
-function subscribe(onPublication?: (publication: NotificationPublicationWire) => void): Harness {
+function subscribe(onPublication?: (arrival: NotificationArrival) => void): Harness {
   const streams: FakeStream[] = [];
   const days: DashboardDayWire[] = [];
+  const cursors: (string | undefined)[] = [];
   const states: SubscriptionState[] = [];
   const scheduled: number[] = [];
   let pending: (() => void) | undefined;
@@ -129,7 +143,7 @@ function subscribe(onPublication?: (publication: NotificationPublicationWire) =>
     transport,
     day: DAY,
     ...(onPublication === undefined ? {} : { publications: { actorId: "local-operator", onPublication } }),
-    onDay: (day) => days.push(day),
+    onDay: (day, cursor) => { days.push(day); cursors.push(cursor); },
     onState: (state) => states.push(state),
     schedule: (delayMs, run) => {
       scheduled.push(delayMs);
@@ -143,6 +157,7 @@ function subscribe(onPublication?: (publication: NotificationPublicationWire) =>
   return {
     streams,
     days,
+    cursors,
     states,
     scheduled,
     runScheduled: () => {
@@ -195,6 +210,13 @@ describe("dashboard day subscription — cursor idempotence", () => {
     h.close();
   });
 
+  it("serves each day with the cursor it was served at: the snapshot's, then each applied change's", () => {
+    const h = liveAtCursorTwo();
+    assert.equal(h.days[1].snapshotCursor, "pc:1", "a patched day keeps its snapshot cursor");
+    assert.deepEqual(h.cursors, ["pc:1", "pc:2"]);
+    h.close();
+  });
+
   it("ignores an OLDER patch", () => {
     const h = liveAtCursorTwo();
     h.streams[0].push(replacePatch("pc:1", 1));
@@ -204,7 +226,29 @@ describe("dashboard day subscription — cursor idempotence", () => {
     h.close();
   });
 
-  it("applies a snapshot at the HELD cursor, because one projection batch stamps both", () => {
+  it("applies a change that skips cursors this connection was never sent", () => {
+    const h = liveAtCursorTwo();
+    h.streams[0].push({ ...replacePatch("pc:7", 3), after: "pc:2" });
+    assert.equal(h.days.length, 3);
+    assert.equal(h.days[2].queueSurfaces[0].rowRevision, 3);
+    assert.equal(h.streams.length, 1);
+    assert.deepEqual(h.scheduled, []);
+    h.close();
+  });
+
+  it("moves the held cursor on a change with no day part and delivers no day", () => {
+    const h = liveAtCursorTwo();
+    h.streams[0].push({ type: "change", topic: "dashboard-day", rows: [], cursor: "pc:5", after: "pc:2", position: 0 });
+    assert.equal(h.days.length, 2);
+    h.streams[0].push(replacePatch("pc:6", 3));
+    assert.equal(h.days.length, 3, "the next change follows the cursor the empty change set");
+    h.streams[0].push({ ...replacePatch("pc:4", 4), after: "pc:2" });
+    assert.equal(h.days.length, 3, "a change below the moved cursor is already applied");
+    assert.deepEqual(h.scheduled, []);
+    h.close();
+  });
+
+  it("applies a snapshot at the HELD cursor", () => {
 
     const h = liveAtCursorTwo();
     h.streams[0].push(snapshotEnvelope("pc:2", [surfaceOf(9)]));
@@ -401,7 +445,7 @@ it("rejects a wrong-day snapshot and ignores callbacks from superseded handles",
   h.streams[1].push(hello("pc:2"));
   h.streams[1].push(snapshotEnvelope("pc:3", [surfaceOf(3)]));
   assert.equal(h.days.length, prior + 1);
-  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:4",
+  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: "pc:4",
     payload: { ...dayOf([surfaceOf(4)], "pc:4"), day: "2026-08-02" } });
   assert.equal(h.days.length, prior + 1);
   const state = h.states.at(-1); assert.equal(state?.state, "stopped");
@@ -418,7 +462,7 @@ describe("dashboard day subscription authority", () => {
       const h = subscribe();
       h.streams[0].push(hello("pc:1"));
       const payload = { ...dayOf([], "pc:1"), [field]: field === "day" ? "2026-08-04" : field === "descriptorHash" ? "e".repeat(64) : field === "projectionGeneration" ? 8 : "pc:2" };
-      h.streams[0].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload });
+      h.streams[0].push({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: "pc:1", payload });
       assert.equal(h.days.length, 0);
       assert.equal(h.states.at(-1)?.state, "stopped");
       h.close();
@@ -441,7 +485,7 @@ it("rejects a lower-cursor snapshot with stale authority instead of silently dis
   for (const field of ["day", "descriptorHash", "projectionGeneration"] as const) {
     const h = liveAtCursorTwo();
     const payload = { ...dayOf([], "pc:1"), [field]: field === "day" ? "2026-08-04" : field === "descriptorHash" ? "e".repeat(64) : 8 };
-    h.streams[0].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload });
+    h.streams[0].push({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: "pc:1", payload });
     assert.equal(h.days.length, 2);
     const state = h.states.at(-1);
     assert.equal(state?.state, "stopped");
@@ -459,7 +503,7 @@ it("resets a high cursor on same-generation descriptor replacement and publishes
   assert.equal(h.streams[1].lastEventId, "pc:2");
   assert.equal(h.streams[1].lastProjectionGeneration, 7);
   h.streams[1].push({ ...hello("pc:1"), descriptorHash });
-  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload: { ...dayOf([surfaceOf(5)], "pc:1"), descriptorHash } });
+  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: "pc:1", payload: { ...dayOf([surfaceOf(5)], "pc:1"), descriptorHash } });
   assert.equal(h.days.length, 3);
   assert.equal(h.days[2].descriptorHash, descriptorHash);
   assert.equal(h.days[2].queueSurfaces[0].rowRevision, 5);
@@ -471,15 +515,16 @@ it("resets a high cursor on same-generation descriptor replacement and publishes
   h.close();
 });
 
+const PUBLISHED_ROW = {
+  kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1,
+  publicationId: "b".repeat(64), trigger: "storage", readState: "unread", state: "unread", severity: "warning", title: "Storage health degraded",
+  occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "storage-degraded" },
+};
 function publicationEnvelope(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { type: "notification-publication", day: DAY, descriptorHash: HASH_D, projectionGeneration: 7,
-    publication: { sourceId: "a".repeat(64), actorId: "local-operator", durable: "created", notification: {
-      kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1,
-      publicationId: "b".repeat(64), trigger: "storage", readState: "unread", state: "unread", severity: "warning", title: "Storage health degraded",
-      occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "storage-degraded" },
-    } }, ...overrides };
+  return { type: "notification-publication", cursor: "pc:2", day: DAY, descriptorHash: HASH_D, projectionGeneration: 7, listed: PUBLISHED_ROW, target: { kind: "storage" },
+    publication: { sourceId: "a".repeat(64), actorId: "local-operator", durable: "created", notification: PUBLISHED_ROW }, ...overrides };
 }
-function startPublications(onPublication: (publication: NotificationPublicationWire) => void): Harness {
+function startPublications(onPublication: (arrival: NotificationArrival) => void): Harness {
   const h = subscribe(onPublication);
   h.streams[0].push(hello("pc:1"));
   h.streams[0].push(snapshotEnvelope("pc:1", []));
@@ -488,7 +533,7 @@ function startPublications(onPublication: (publication: NotificationPublicationW
 }
 describe("committed publication transport", () => {
   it("delivers explicit publications once without deriving them from baseline or resnapshots", () => {
-    const publications: NotificationPublicationWire[] = [], h = startPublications(value => publications.push(value));
+    const publications: NotificationArrival[] = [], h = startPublications(value => publications.push(value));
     assert.equal(publications.length, 0);
     h.streams[0].push(publicationEnvelope()); h.streams[0].push(publicationEnvelope());
     assert.equal(publications.length, 1);
@@ -497,7 +542,7 @@ describe("committed publication transport", () => {
     h.close();
   });
   it("ignores superseded and closed stream callbacks and does not toast reconnect snapshots", async () => {
-    const publications: NotificationPublicationWire[] = [], h = startPublications(value => publications.push(value));
+    const publications: NotificationArrival[] = [], h = startPublications(value => publications.push(value));
     h.streams[0].eof(); await tick(); h.runScheduled();
     h.streams[0].push(publicationEnvelope());
     assert.equal(publications.length, 0);
@@ -512,8 +557,8 @@ describe("committed publication transport", () => {
     const publication = NotificationPublicationWireSchema.parse(publicationEnvelope().publication);
     for (const overrides of [{ day: "2026-08-02" }, { descriptorHash: "c".repeat(64) }, { projectionGeneration: 8 },
       { publication: { ...publication, actorId: "other-operator" } },
-      { publication: { ...publication, actorId: "other-operator", notification: { ...publication.notification, actorId: "other-operator" } } }]) {
-      const publications: NotificationPublicationWire[] = [], h = startPublications(value => publications.push(value));
+      { publication: { ...publication, actorId: "other-operator", notification: { ...publication.notification, actorId: "other-operator" } }, listed: { ...publication.notification, actorId: "other-operator" } }]) {
+      const publications: NotificationArrival[] = [], h = startPublications(value => publications.push(value));
       h.streams[0].push(publicationEnvelope(overrides));
       assert.equal(publications.length, 0);
       assert.equal(h.states.at(-1)?.state, "stopped"); h.close();

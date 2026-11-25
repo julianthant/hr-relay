@@ -15,7 +15,7 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { AuthorityDatabase, createCredentialStore, inspectAuthorityBackupReadOnly } from "../../support/helpers/synthetic-storage-admission.js";
-import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../src/backend/runs/commands/command-kernel.js";
+import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../src/backend/runs/commands/command-arms.js";
 
 
 

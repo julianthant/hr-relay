@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { RailSearch } from "../../../../../src/dashboard/surfaces/shell/search/navbar-view.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -23,13 +23,18 @@ it("reopens the search palette with an empty query", async () => {
   const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.bind(input()!);
   await act(async () => { setValue?.("archer"); input()!.dispatchEvent(new Event("input", { bubbles: true })); });
   assert.equal(input()?.value, "archer");
-  await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-  assert.equal(input(), null);
+  const escape = () => act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+  await escape();
+  assert.equal(input()?.value, "");
+  await escape();
+  assert.equal(input() === null, true);
+  // Radix returns focus in a timer after the dialog unmounts. A failing assert.equal on two jsdom nodes inspects them without bound.
+  await vi.waitFor(() => assert.equal(document.activeElement === trigger(), true));
   await act(async () => trigger().click());
   assert.equal(input()?.value, "");
 });
 
-it("puts the filter tabs under the input, gives workflows their rail icon and routes data destinations", async () => {
+it("puts the filter tabs after the results, gives workflows their rail icon and routes data destinations", async () => {
   const actions: string[] = [];
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
@@ -37,10 +42,10 @@ it("puts the filter tabs under the input, gives workflows their rail icon and ro
   await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!.click());
   const palette = document.querySelector(".search-palette")!;
   const order = [...palette.querySelector("[cmdk-root]")!.children].filter(child => !child.hasAttribute("cmdk-label")).map(child => child.getAttribute("cmdk-input") !== null ? "input" : child.classList.contains("search-palette-chips") ? "tabs" : "list");
-  assert.deepEqual(order, ["input", "tabs", "list"]);
+  assert.deepEqual(order, ["input", "list", "tabs"]);
   const rows = [...palette.querySelectorAll(".search-palette-row")];
   assert.deepEqual(rows.slice(0, 5).map(row => row.textContent), ["Start a runR", "Spreadsheets", "Explorer", "Analytics", "Settings"]);
-  assert.equal(palette.querySelector(".search-palette-key"), null);
+  assert.equal(palette.querySelector(".search-palette-key") === null, true);
   assert(palette.querySelector("kbd")?.textContent === "R");
   const workflowIcon = rows.find(row => row.textContent === "Separations")!.querySelector("svg")!;
   assert(workflowIcon.classList.contains("lucide-user-minus"));

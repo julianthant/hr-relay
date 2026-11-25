@@ -17,15 +17,18 @@ describe("Dialog and ConfirmDialog", () => {
   }
   const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 
-  it("sizes sm 400, md 560, lg 880 and always shows a close X", async () => {
-    for (const [size, width] of [["sm", 400], ["md", 560], ["lg", 880]] as const) {
+  it("sizes sm 520, md 560, lg 880 and always shows a close X", async () => {
+    for (const [size, width] of [["sm", 520], ["md", 560], ["lg", 880]] as const) {
       const unmount = await mount(createElement(Dialog, { open: true },
-        createElement(DialogContent, { size, title: "Title", hideClose: true, children: createElement(DialogFooter, null, "x") })));
+        createElement(DialogContent, { size, title: "Title", children: createElement(DialogFooter, null, "x") })));
       const surface = dialog();
       assert.ok(surface, size);
       assert.ok(surface.className.includes(`max-w-[${width}px]`), `${size}: ${surface.className}`);
       assert.ok(surface.querySelector('button[aria-label="Close"]'), `${size} has no close X`);
-      assert.match(surface.querySelector("h2")?.className ?? "", /font-medium/u);
+      assert.match(surface.querySelector("h2")?.className ?? "", /font-semibold/u);
+      assert.match(surface.querySelector("h2")?.className ?? "", /--ds-dialog-title-size/u);
+      assert.match(surface.className, /rounded-\[var\(--ds-radius-dialog\)\]/u);
+      assert.doesNotMatch(surface.className, /(^|\s)border(\s|$)/u, `${size} has a border`);
       await unmount();
     }
   });
@@ -53,13 +56,13 @@ describe("Dialog and ConfirmDialog", () => {
     const unmount = await mount(createElement(Harness));
     const surface = dialog();
     assert.ok(surface);
-    assert.match(surface.className, /max-w-\[400px\]/u);
+    assert.match(surface.className, /max-w-\[520px\]/u);
     assert.equal(surface.querySelector("h2")?.textContent, "Delete this run?");
     assert.equal(surface.querySelector("p")?.textContent, "Its log is removed.");
     assert.ok(surface.querySelector('button[aria-label="Close"]'));
     const buttons = [...surface.querySelectorAll<HTMLButtonElement>("footer button")];
     assert.deepEqual(buttons.map(button => button.textContent), ["Cancel", "Delete run"]);
-    assert.equal(document.activeElement, buttons[0]);
+    assert.equal(document.activeElement === buttons[0], true);
     assert.match(buttons[1].className, /--ds-danger/u);
     assert.doesNotMatch(buttons[0].className, /--ds-danger/u);
     await act(async () => buttons[1].click());

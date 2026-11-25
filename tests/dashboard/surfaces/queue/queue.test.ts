@@ -6,8 +6,8 @@ import { act as act_m0,createElement as createElement_m0 } from 'react';
 import { createRoot as createRoot_m0,type Root as Root_m0 } from 'react-dom/client';
 import { it as it_m0 } from 'vitest';
 import { QueuePanel as QueuePanel_m0,type QueueHandlers as QueueHandlers_m0,type QueueViewState as QueueViewState_m0 } from '../../../../src/dashboard/surfaces/queue/queue.js';
-import { FIXTURE_NOW as FIXTURE_NOW_m0 } from '../../../mocks/helpers/fixture-identity.js';
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from '../../../mocks/helpers/fixture-queue.js';
+import { FIXTURE_NOW as FIXTURE_NOW_m0 } from '../../../support/helpers/dashboard/mock-world/fixture-identity.js';
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from '../../../support/helpers/dashboard/mock-world/fixture-queue.js';
 // @vitest-environment jsdom
 import assert_m1 from "node:assert/strict";
 import { createElement as createElement_m1 } from "react";
@@ -16,8 +16,8 @@ import { describe as describe_m1,it as it_m1 } from "vitest";
 import { orderMembers as orderMembers_m1,type QueueSurfaceWire as MemberSurfaceWire_m1 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueRow as QueueRow_m1 } from "../../../../src/dashboard/surfaces/queue/queue.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m1,type QueueSurfaceWire as QueueSurfaceWire_m1 } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_NOW as FIXTURE_NOW_m1 } from "../../../mocks/helpers/fixture-identity.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1 } from "../../../mocks/helpers/fixture-queue.js";
+import { FIXTURE_NOW as FIXTURE_NOW_m1 } from "../../../support/helpers/dashboard/mock-world/fixture-identity.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1 } from "../../../support/helpers/dashboard/mock-world/fixture-queue.js";
 
 import assert_m2 from "node:assert/strict";
 import { createElement as createElement_m2 } from "react";
@@ -35,7 +35,7 @@ let root: Root_m0 | undefined;
 let host: HTMLDivElement | undefined;
 const _afterEachFixture0 = () => { act_m0(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; };
 
-it_m0('redraws only affected selections while preserving new handlers, clock and bulk state', async () => {
+it_m0('redraws only affected selections while preserving new handlers, and clock', async () => {
 try {
 
 
@@ -54,16 +54,13 @@ try {
   assert_m0.deepEqual(renders, [rows[0].runId]); renders.length = 0;
   state = { ...state, selectedRunId: rows[1].runId }; draw();
   assert_m0.deepEqual(new Set(renders), new Set([rows[0].runId, rows[1].runId])); renders.length = 0;
-  assert_m0.equal(host.querySelector(`[data-demo-row-id="${rows[0].runId}"]`)?.getAttribute('aria-pressed'), 'false');
-  assert_m0.equal(host.querySelector(`[data-demo-row-id="${rows[1].runId}"]`)?.getAttribute('aria-pressed'), 'true');
+  assert_m0.equal(host.querySelector(`[data-demo-row-id="${rows[0].runId}"] [data-queue-open]`)?.getAttribute('aria-pressed'), 'false');
+  assert_m0.equal(host.querySelector(`[data-demo-row-id="${rows[1].runId}"] [data-queue-open]`)?.getAttribute('aria-pressed'), 'true');
   const selected: string[] = []; handlers = { onSelect(id) { selected.push(id); } }; draw();
   assert_m0.equal(renders.length, 3); renders.length = 0;
-  act_m0(() => host?.querySelector<HTMLElement>(`[data-demo-row-id="${rows[2].runId}"]`)?.click());
+  act_m0(() => host?.querySelector<HTMLElement>(`[data-demo-row-id="${rows[2].runId}"] [data-queue-open]`)?.click());
   assert_m0.deepEqual(selected, [rows[2].runId]);
   state = { ...state, nowIso: '2026-08-14T19:00:00.000Z' }; draw(); assert_m0.equal(renders.length, 3); renders.length = 0;
-  state = { ...state, selectMode: true, bulkIds: new Set([rows[2].runId]) }; handlers = { ...handlers, onToggleBulk() {} }; draw();
-  assert_m0.equal(renders.length, 3);
-  assert_m0.equal(host.querySelectorAll('[role="checkbox"][aria-checked="true"]').length, 1);
 
 } finally {
 _afterEachFixture0();
@@ -114,7 +111,7 @@ try {
   assert_m0.equal(host.querySelector('[data-demo-row-id]')?.getAttribute('data-demo-row-id'), first.runId);
   draw([newest]);
   assert_m0.equal(host.querySelector('[data-demo-row-id]')?.getAttribute('data-demo-row-id'), newest.runId);
-  assert_m0.equal(host.querySelector('[data-demo-row-id]')?.getAttribute('aria-pressed'), 'false');
+  assert_m0.equal(host.querySelector('[data-demo-row-id] [data-queue-open]')?.getAttribute('aria-pressed'), 'false');
   const cancel = host.querySelector<HTMLButtonElement>('button[aria-label="Cancel surviving attempt"]');
   assert_m0.ok(cancel);
   act_m0(() => cancel.click());
@@ -133,11 +130,11 @@ function single(status: QueueSurfaceWire_m1["status"]): QueueSurfaceWire_m1 {
   assert_m1.ok(row, `missing ${status} fixture`);
   return row;
 }
-function render(surface: QueueSurfaceWire_m1, members: readonly MemberSurfaceWire_m1[] = [], selectMode = false): HTMLElement {
+function render(surface: QueueSurfaceWire_m1, members: readonly MemberSurfaceWire_m1[] = []): HTMLElement {
   const host = document.createElement("div");
   host.innerHTML = renderToStaticMarkup_m1(createElement_m1(QueueRow_m1, {
-    surface, members, state: { nowIso: FIXTURE_NOW_m1, openWells: new Set<string>(), selectMode, panelWorkflowId: surface.workflowId },
-    handlers: { onSelect: () => {}, onToggleBulk: () => {} }, workflowLabelOf: () => "Separations",
+    surface, members, state: { nowIso: FIXTURE_NOW_m1, openWells: new Set<string>(), panelWorkflowId: surface.workflowId },
+    handlers: { onSelect: () => {} }, workflowLabelOf: () => "Separations",
   }));
   return host;
 }
@@ -150,13 +147,13 @@ describe_m1("approved mixed queue presentation", () => {
     const body = host.querySelector("[data-queue-body]");
     assert_m1.ok(body);
     assert_m1.equal(body.querySelector("[data-demo-row-title]")?.textContent, row.title);
-    assert_m1.equal(body.firstElementChild?.querySelector("svg:not(.lucide-flask-conical)"), null);
-    assert_m1.ok(body.querySelector("svg.lucide-flask-conical"));
-    assert_m1.ok(host.textContent?.includes("Dry run"));
+    assert_m1.equal(body.firstElementChild?.querySelector("svg:not(.lucide-flask-conical)") === null, true);
+    assert_m1.equal(body.querySelector("svg.lucide-flask-conical") === null, true);
+    assert_m1.ok(body.firstElementChild?.querySelector("[data-queue-labels]")?.textContent?.includes("dry run"));
     assert_m1.ok(host.textContent?.includes("test"));
     assert_m1.ok(host.textContent?.includes("Done"));
-    assert_m1.equal(host.querySelector('[aria-label^="What is this row"]'), null);
-    assert_m1.equal(body.querySelector('[aria-label^="Attempts for"]'), null);
+    assert_m1.equal(host.querySelector('[aria-label^="What is this row"]') === null, true);
+    assert_m1.equal(body.querySelector('[aria-label^="Attempts for"]') === null, true);
     assert_m1.equal(host.querySelector('[aria-label^="Attempts for"]')?.textContent, "#1");
     const identity = [...host.querySelectorAll('span[title]')].find(element => element.getAttribute('title') === row.traceId);
     assert_m1.ok(identity);
@@ -179,7 +176,7 @@ describe_m1("approved mixed queue presentation", () => {
     assert_m1.ok(host.querySelector(".animate-spin")?.closest("[data-slot=badge]"));
     const absent = QueueSurfaceWireSchema_m1.parse({ ...row, pipeline: [], liveMessage: { state: "absent", reason: "No active step was recorded" } });
     const empty = render(absent);
-    assert_m1.equal(empty.querySelector("[data-queue-progress]"), null);
+    assert_m1.equal(empty.querySelector("[data-queue-progress]") === null, true);
     assert_m1.ok(!empty.textContent?.includes("0 / 0"));
   });
   it_m1("omits an unmeasured terminal duration and preserves measured zero", () => {
@@ -189,17 +186,6 @@ describe_m1("approved mixed queue presentation", () => {
     assert_m1.ok(!unknown.textContent?.includes("<1s"));
     const zero = render(QueueSurfaceWireSchema_m1.parse({ ...done, endedAt: { state: "present", value: done.startedAt } }));
     assert_m1.ok(zero.textContent?.includes("<1s"));
-  });
-  it_m1("places the bulk selector outside the card and keeps the row's selection target", () => {
-    const row = single("queued");
-    const host = render(row, [], true);
-    const target = host.querySelector("[data-demo-row-id]");
-    assert_m1.ok(target);
-    const checkbox = host.querySelector('[role="checkbox"]');
-    assert_m1.ok(checkbox);
-    assert_m1.ok(!target.contains(checkbox));
-    assert_m1.equal(target.getAttribute("tabindex"), "0");
-    assert_m1.equal(target.getAttribute("aria-pressed"), "false");
   });
   it_m1("shows the served group counter and ordered member statuses in Name/Status columns", () => {
     const operation = FIXTURE_DAY_WIRE_m1.queueSurfaces.find(row => row.surfaceKind === "operation" && row.memberRunIds.length === 3);
@@ -220,7 +206,7 @@ describe_m1("approved mixed queue presentation", () => {
     const review = render(single("awaiting-approval"));
     const parked = render(single("blocked"));
     assert_m1.ok(review.querySelector("[data-queue-body] .text-ui-info"));
-    assert_m1.equal(review.querySelector("[data-queue-body] [class*=ds-status-waiting-fg]"), null);
+    assert_m1.equal(review.querySelector("[data-queue-body] [class*=ds-status-waiting-fg]") === null, true);
     assert_m1.ok(parked.querySelector("[data-queue-body] [class*=ds-status-parked-fg]"));
   });
 });

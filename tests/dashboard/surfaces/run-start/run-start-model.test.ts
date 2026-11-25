@@ -113,7 +113,7 @@ describe("why this dialog cannot start a workflow", () => {
   it("names the modal's own precondition and does not speak for the server", () => {
     const reason = START_DOOR_ABSENCE["no-typed-input"];
     // No typed-input dialog does not forbid API input; JSON submissions still use the workflow schema.
-    assert.match(reason, /this dialog/u);
+    assert.match(reason, /This dialog/u);
     assert.doesNotMatch(reason, /refus|server|not allowed|cannot be started/u);
   });
 
@@ -390,5 +390,21 @@ describe("explicit unchosen typed mode", () => {
     assert.deepEqual(changeTypedInput(declaration, {}, "mode", "new-hire"), { mode: "new-hire" });
     assert.throws(() => restoreTypedInput(declaration, { email: "hire@example.test" }), /no mode/u);
     assert.throws(() => restoreTypedInput(declaration, { email: "hire@example.test", mode: "unknown" }), /Undeclared/u);
+  });
+});
+
+describe("Separations launch input", () => {
+  const surface = DESCRIPTORS.find(workflow => workflow.id === "separations")?.surfaces.inputRun;
+  assert.ok(surface);
+  it("removes duplicate IDs", () => {
+    const preview = previewRunInput(surface, "1234567; 1234567; 7654321");
+    assert.equal(preview.problem, null);
+    assert.equal(preview.entries.length, 2);
+    assert.deepEqual(preview.entries.map(entry => entry.index), [0, 1]);
+  });
+  it("marks only the invalid entry", () => {
+    const preview = previewRunInput(surface, "1234567; nope; 7654321");
+    assert.notEqual(preview.problem, null);
+    assert.deepEqual(preview.refusedIndexes, [1]);
   });
 });

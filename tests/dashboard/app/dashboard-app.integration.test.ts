@@ -1,16 +1,16 @@
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
-import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
-import { FIXTURE_EXPLORER_WIRE } from "../../mocks/helpers/fixture-explorer.js";
-import { servedFixtureSources } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-explorer.js";
+import { servedFixtureSources } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { workflowComposition as servedWorkflowComposition } from "../../../src/dashboard/app/workflow-sources.js";
 import { vi } from "vitest";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
 import { disposeHttpRouteHarness, harness as backendHarness, type Harness as BackendHarness } from "../../support/helpers/backend/http-route-harness.js";
-import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m0 } from "../../mocks/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m0 } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
+import { loadLazyPages } from "../../support/helpers/dashboard/lazy-pages.js";
 import { act as act_m0,createElement as createElement_m0 } from "react";
 import { createRoot as createRoot_m0,type Root as Root_m0 } from "react-dom/client";
 import { it as it_m0 } from "vitest";
@@ -19,7 +19,7 @@ import { DashboardApp as DashboardApp_m0 } from "../../../src/dashboard/app/dash
 import { createDashboardClient as createDashboardClient_m0,type DashboardClient as DashboardClient_m0 } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider as DashboardClientProvider_m0 } from "../../../src/dashboard/state/client-context.js";
 import { importWorkbook as importSpreadsheet_m0 } from '../../../src/rules/spreadsheets/workbook-io.js';
-import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../mocks/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { createFixtureBff as createFixtureBff_m0 } from "../../support/helpers/dashboard/served-fixtures/fixture-bff.js";
 // @vitest-environment jsdom
@@ -35,6 +35,7 @@ import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection
 import { LocalDateSchema as LocalDateSchema_m1 } from "../../../src/rules/identity/ids.js";
 import { FIXTURE_BOOTSTRAP as FIXTURE_BOOTSTRAP_m1 } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1,FIXTURE_IDS as FIXTURE_IDS_m1 } from "../../support/fixtures/dashboard/fixture-queue.js";
+import { serveReadyNotificationStatus, streamingRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 import { createFixtureBff as createFixtureBff_m1 } from "../../support/helpers/dashboard/served-fixtures/fixture-bff.js";
 import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
 import { FIXTURE_RUN_DETAILS } from "../../support/fixtures/dashboard/fixture-detail.js";
@@ -68,16 +69,17 @@ async function key(value: string) {
 }
 async function mount(overrides: Partial<DashboardClient_m0> = {}) {
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE_m0.day}`);
-  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "icon" });
+  const preview = createPersonPreferences("preview");
   const { app } = createFixtureBff_m0();
   library = await backendHarness();
   const client: DashboardClient_m0 = {
     ...createDashboardClient_m0({baseUrl:"http://fixture",fetchImpl:async (url,init) => { const { pathname, search } = new URL(String(url)); return pathname.startsWith("/api/v1/workbooks") ? library!.app.request(`http://localhost${pathname}${search}`, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), ...libraryHeaders } }) : app.request(String(url), init); }}),
-    subscribeDay(input) { input.onDay(FIXTURE_DAY_WIRE_m0); input.onState({state:"live"}); return {close() {}}; },
+    subscribeDay(input) { input.onDay(FIXTURE_DAY_WIRE_m0); input.onState({state:"live"}); return { select() {}, close() {} }; },
     ...overrides,
   };
   const host=document.createElement("div"); document.body.append(host); root=createRoot_m0(host);
   await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { workflowComposition: workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m0(workflows) }), previewPreferences: preview })})));
+  await loadLazyPages();
   await settle();
 }
 it_m0("command binding never renders implementation comment text", async () => {
@@ -134,12 +136,17 @@ it_m0("spreadsheet import is a Settings destination and leaves the Run launch fo
 try {
   let uploads = 0;
   await mount({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } });
+  // The assistant panel mounts on first open and stays mounted while closed.
+  const launcher = document.querySelector<HTMLButtonElement>("[data-assistant-launcher]"); assert_m0.ok(launcher);
+  await click(launcher); await click(launcher);
   await click(button("Start run"));
   const launch = document.querySelector('[role="dialog"]'); assert_m0.ok(launch);
   assert_m0.equal(launch.querySelectorAll('input[type="file"]').length, 0);
   assert_m0.equal(document.querySelectorAll('#hub-panel-assistant input[type="file"]').length, 1);
   await key("Escape"); assert_m0.ok(document.activeElement === button("Start run"));
-  await click(button("Spreadsheets"));
+  await click(button("Settings"));
+  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link);
+  await click(link);
   await click(button("Import"));
   await chooseSpreadsheet();
   await click(button("Next"));
@@ -156,7 +163,8 @@ await _afterEachFixture0();
 it_m0.each(["Cancel", "Escape"])("standalone spreadsheet import: %s closes without registering or starting a run", async dismissal => {
 try {
   let starts = 0;
-  await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Spreadsheets"));
+  await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Settings"));
+  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link); await click(link);
   const before = (await savedWorkbooks()).map(record => record.name);
   await click(button("Import"));
   await chooseSpreadsheet();
@@ -195,24 +203,29 @@ function button(name: string): HTMLButtonElement {
 }
 function workflowButton(name: string): HTMLButtonElement {
   const found = [...document.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflows"] button')]
-    .find(node => node.textContent?.trim().startsWith(name));
+    .find(node => node.getAttribute("aria-label")?.startsWith(name));
   assert_m1.ok(found, `workflow ${name}`);
   return found;
 }
 async function click(node: HTMLElement) { await act_m1(async () => node.click()); await settle(); }
 let shellPreferences = createPersonPreferences("preview");
-async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}, panelMode: "icon" | "sidebar" = "icon", workflowComposition = MOCK_WORKFLOW_COMPOSITION_m1) {
+async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}, workflowComposition = MOCK_WORKFLOW_COMPOSITION_m1) {
   window.history.replaceState(null, "", `/${search}`);
-  await shellPreferences.change({ "preferences.workflowPanelMode": { set: panelMode } });
   const { app } = createFixtureBff_m1();
-  const client: DashboardClient_m1 = {
+  const days: DashboardClient_m1 = {
     ...createDashboardClient_m1({baseUrl:"http://fixture",fetchImpl: async (url, init) => app.request(String(url), init)}),
-    subscribeDay(input) { input.onDay(FIXTURE_DAY_WIRE_m1); input.onState({state:"live"}); return {close() {}}; },
+    subscribeDay(input) { input.onDay(FIXTURE_DAY_WIRE_m1); input.onState({state:"live"}); return { select() {}, close() {} }; },
     ...overrides,
   };
+  // The stream carries the selected run's panel, read through the final client as the server reads it.
+  const client: DashboardClient_m1 = { ...days, subscribeDay(input) {
+    const day = days.subscribeDay(input), panels = streamingRunPanel(input, client);
+    return { select(run) { day.select(run); panels.select(run); }, close() { day.close(); panels.close(); } };
+  } };
   const host = document.createElement("div"); document.body.append(host); root = createRoot_m1(host);
   await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1,{client,children:createElement_m1(DashboardApp_m1, { workflowComposition, previewPreferences: shellPreferences })})));
   await settle();
+  await loadLazyPages();
   return client;
 }
 async function historyMove(direction: "back" | "forward") { window.history[direction](); await settle(); await settle(); }
@@ -224,7 +237,7 @@ afterEach_m1(_afterEachFixture0);
     const first = FIXTURE_BOOTSTRAP_m1.workflows[0]; assert_m1.ok(first);
     const workflows = [first, { ...first, id: "separations", code: "sp", label: "Separations" }];
     const bootstrap = async () => ({ ...FIXTURE_BOOTSTRAP_m1, workflows });
-    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, { bootstrap }, "sidebar");
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, { bootstrap });
     await click(workflowButton("Separations"));
     assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
     assert_m1.equal(workflowButton("Separations").querySelector(".workflow-rail-running")?.textContent, "");
@@ -236,11 +249,11 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
 
     await act_m1(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
-    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, { bootstrap }, "sidebar");
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, { bootstrap });
     assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
 
     await act_m1(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
-    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, {}, "sidebar");
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`);
     assert_m1.equal(workflowButton("Person Lookup").getAttribute("aria-current"), "page");
   });
   it_m1("refuses a linked mock workflow outside the served selection without throwing or navigating", async () => {
@@ -249,8 +262,8 @@ afterEach_m1(_afterEachFixture0);
         linkedRuns: [{ runId: "11111111-1111-4111-8111-111111111111", partitionDay: FIXTURE_DAY_WIRE_m1.day,
           workflowId: "separations", label: "Unavailable mock link", panelKind: "run", status: "queued" }] } : surface) });
     await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, {
-      subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { close() {} }; },
-    }, "sidebar");
+      subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { select() {}, close() {} }; },
+    });
     const link = document.querySelector<HTMLButtonElement>(`[data-demo-row-id="${FIXTURE_IDS_m1.queuedRun}"] button[data-demo-row-link]`);
     assert_m1.ok(link);
     const before = window.location.search;
@@ -281,12 +294,12 @@ afterEach_m1(_afterEachFixture0);
     const detail = FIXTURE_RUN_DETAILS[child.runId]; assert_m1.ok(detail);
     await mount(`?day=${sourceDay.day}`, {
       dashboardDay: async day => { assert_m1.equal(day, targetDay); return linkedDay; },
-      subscribeDay(input) { input.onDay(input.day === sourceDay.day ? sourceDay : linkedDay); input.onState({ state: "live" }); return { close() {} }; },
+      subscribeDay(input) { input.onDay(input.day === sourceDay.day ? sourceDay : linkedDay); input.onState({ state: "live" }); return { select() {}, close() {} }; },
       runDetail: async id => { reads.push(id);
         if (id === parent.runId) { const ownerDetail = FIXTURE_RUN_DETAILS[id]; assert_m1.ok(ownerDetail); return ownerDetail; }
         assert_m1.equal(id, child.runId);
         return { ...detail, panelKind: target.panelKind, header: { ...detail.header, workflowId: target.workflowId } }; },
-    }, "sidebar");
+    });
     const preference = shellPreferences.snapshot().value.selectedWorkflowId;
     const chip = document.querySelector<HTMLButtonElement>(`[data-demo-row-id="${parent.runId}"] button[data-demo-row-link]`); assert_m1.ok(chip);
     await click(chip);
@@ -313,7 +326,7 @@ afterEach_m1(_afterEachFixture0);
     let release: ((day: typeof linkedDay) => void) | undefined;
     await mount(`?day=${linkedDay.day}`, {
       dashboardDay: () => new Promise(resolve => { release = resolve; }),
-      subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { close() {} }; },
+      subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { select() {}, close() {} }; },
     });
     const chip = document.querySelector<HTMLButtonElement>(`[data-demo-row-id="${row.runId}"] button[data-demo-row-link]`); assert_m1.ok(chip);
     await click(chip); assert_m1.ok(release);
@@ -329,11 +342,9 @@ afterEach_m1(_afterEachFixture0);
     const linkedDay = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1,
       queueSurfaces: FIXTURE_DAY_WIRE_m1.queueSurfaces.map(item => item === row ? { ...item, workflowId: "separations", title } : item) });
     await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&settings=general`, {
-      subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { close() {} }; },
-      notificationSnapshot: async () => [NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title, occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: "Separations" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId: row.runId } })],
-      notificationStatus: async () => ({ state: "ready" as const, pending: 0 }),
+      subscribeDay(input) { input.onDay({ ...linkedDay, notifications: [NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title, occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: "Separations" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId: row.runId } })] }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} }; },
       notificationTarget: async () => ({ kind: "run" as const, runId: row.runId, day: linkedDay.day }),
-    }, "sidebar", workflows => {
+    }, workflows => {
       const composition = MOCK_WORKFLOW_COMPOSITION_m1(workflows);
       return { ...composition, harness: { ...composition.harness, useInbox: undefined }, dataSources: { ...composition.dataSources, separations: "served" } };
     });
@@ -347,11 +358,11 @@ afterEach_m1(_afterEachFixture0);
     const preference = shellPreferences.snapshot().value.selectedWorkflowId;
     const target = surface === "search"
       ? [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent?.includes(title))
-      : [...document.querySelectorAll<HTMLButtonElement>('.notification-item')].find(item => item.querySelector(".notification-item-title")?.textContent === title);
+      : [...document.querySelectorAll<HTMLButtonElement>('.notice-main')].find(item => item.querySelector(".notice-title")?.textContent === title);
     assert_m1.ok(target);
     await click(target);
-    assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
-    assert_m1.match(document.body.textContent ?? "", /This workflow is not available for selection in the current catalog/);
+    assert_m1.equal(document.body.textContent?.includes("Discard changes?"), false);
+    assert_m1.match(document.body.textContent ?? "", /This workflow is not available to select\./);
     assert_m1.equal(location.search, before);
     assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, preference);
     assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
@@ -374,39 +385,31 @@ afterEach_m1(_afterEachFixture0);
     const selected = document.querySelector(`[data-demo-row-id="${FIXTURE_IDS_m1.runningRun}"]`);
     assert_m1.ok(selected, "selected run must belong to the visible queue");
   });
-  it_m1.each([["?settings=spreadsheets", "Spreadsheets"], ["?settings=explorer", "Explorer"], ["?settings=activity", "Analytics"], ["?spreadsheets=1", "Spreadsheets"]])("opens %s as the %s data page with the rail and Sessions bar still there", async (search, label) => {
-    await mount(search);
-    assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"]') === null, true, "Settings is not open");
-    assert_m1.ok(document.querySelector('[aria-label="Session actions"]'), "the Sessions bar stays");
-    assert_m1.equal(document.querySelector('aside[aria-label="Workspace"] [aria-current="page"]')?.textContent?.trim(), label);
-    assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
-  });
-  it_m1("moves focus to the data page heading on arrival and back to its rail row on leaving", async () => {
-    await mount("?day=" + FIXTURE_DAY_WIRE_m1.day);
-    await click(button("Explorer"));
-    await act_m1(async () => { await new Promise(resolve => requestAnimationFrame(() => resolve(undefined))); });
-    assert_m1.equal(parseRoute_m1(location.search).explore, "");
-    assert_m1.equal(document.activeElement, document.querySelector("h1"), "focus lands on the page heading");
-    await historyMove("back");
-    assert_m1.equal(parseRoute_m1(location.search).explore, undefined);
-    assert_m1.equal(document.activeElement?.id, "rail-data-explorer", "focus returns to the launching row");
-  });
-  it_m1("Back to run closes Settings opened from the Run dialog and keeps the dialog's route", async () => {
+  it_m1("Close settings closes Settings opened from the Run dialog and keeps the dialog's route", async () => {
     await mount("?day=" + FIXTURE_DAY_WIRE_m1.day + "&start=1&settings=account&settingsFrom=run");
     assert_m1.ok(document.querySelector('nav[aria-label="Settings sections"]'));
-    await click(button("Back to run"));
+    await click(button("Close settings"));
     const route = parseRoute_m1(location.search);
     assert_m1.equal(route.settings, undefined);
     assert_m1.equal(route.settingsFrom, undefined);
     assert_m1.equal(route.start, true);
     assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"]') === null, true);
   });
-  it_m1("Settings gear opens the surface, Back to dashboard closes it and competing keys resolve one takeover", async () => {
+  it_m1("Escape closes Settings opened from the Run dialog's Fix button and returns to the dialog", async () => {
+    await mount("?day=" + FIXTURE_DAY_WIRE_m1.day + "&start=1&settings=account&settingsFrom=run");
+    assert_m1.ok(document.querySelector('nav[aria-label="Settings sections"]'));
+    await act_m1(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    const route = parseRoute_m1(location.search);
+    assert_m1.equal(route.settings, undefined);
+    assert_m1.equal(route.settingsFrom, undefined);
+    assert_m1.equal(route.start, true);
+  });
+  it_m1("Settings gear opens the surface, Close settings closes it and competing keys resolve one takeover", async () => {
     await mount("?settings=keyboard&archive=&explore=missing");
     assert_m1.ok(document.querySelector('[aria-label="Settings"]'));
-    assert_m1.equal(document.querySelector('[aria-label="Session actions"]'), null);
+    assert_m1.equal(document.querySelector('[aria-label="Session actions"]') === null, true);
     const cursor = Number(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"));
-    await click(button("Back to dashboard"));
+    await click(button("Close settings"));
     assert_m1.equal(new URLSearchParams(location.search).has("settings"), false);
     assert_m1.equal(new URLSearchParams(location.search).has("archive"),false);
     assert_m1.equal(new URLSearchParams(location.search).has("explore"),false);
@@ -429,43 +432,41 @@ async function editHeadlessPreference() {
   await act_m1(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, editedJobEndDate); input.dispatchEvent(new Event("input", { bubbles: true })); });
   assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
 }
-it_m1("keeps the Settings editor and draft across ordinary-section native history", async () => {
+it_m1("asks before a sidebar section switch with an unsaved draft, and both answers work", async () => {
 try {
 
 
   await mount("?settings=general");
   await editHeadlessPreference();
-  const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Account"); assert_m1.ok(general);
-  await click(general);
-  await historyMove("back");
-  assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
-  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
-  await click(button("Analytics"));
-  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), true);
+  const account = () => [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Account"); assert_m1.ok(account());
+  await click(account()!);
+  assert_m1.equal(document.body.textContent?.includes("Discard changes?"), true);
   await click(button("Keep editing"));
-  assert_m1.equal(new URLSearchParams(location.search).has("activity"), false);
+  assert_m1.equal(new URLSearchParams(location.search).get("settings"), "general");
   assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
-  await click(button("Back to dashboard"));
+  await click(account()!);
   await click(button("Discard changes"));
+  assert_m1.equal(new URLSearchParams(location.search).get("settings"), "account");
+  await click(button("Close settings"));
   assert_m1.equal(new URLSearchParams(location.search).has("settings"),false);
 
 } finally {
 await _afterEachFixture0();
 }
 });
-it_m1.each(["?settings=archive", "?archive=", "?archive=archive-demo-run-48216&archiveView=versions"])("keeps retired Archive URL %s explicit and returns to the queue", async search => {
+it_m1.each(["?settings=archive", "?archive=", "?archive=archive-demo-run-48216&archiveView=versions"])("opens the first Settings section for retired Archive URL %s", async search => {
 try {
 
 
   await mount(search);
-  assert_m1.match(document.body.textContent ?? "", /Archive page removed/u);
-  assert_m1.equal(document.querySelector('[aria-label="Archive"]'), null);
-  assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
+  assert_m1.doesNotMatch(document.body.textContent ?? "", /Archive page removed/u);
+  assert_m1.equal(document.querySelector('[aria-label="Archive"]') === null, true);
+  assert_m1.equal(document.querySelector('a[href="?settings=archive"]') === null, true);
   // Subscription folded into General (1f9149b4fe); Archive is retired.
   assert_m1.deepEqual([...document.querySelectorAll('nav[aria-label="Settings sections"] a')].map(link => link.getAttribute("href")),
-    ["general", "account", "keyboard"].map(id => `?settings=${id}`));
-  assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'), null);
-  await click(button("Return to dashboard"));
+    ["general", "account", "spreadsheets", "explorer", "activity", "keyboard"].map(id => `?settings=${id}`));
+  assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]') === null, true);
+  await click(button("Close settings"));
   assert_m1.equal(parseRoute_m1(location.search).archive, undefined);
   assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
   assert_m1.ok(document.querySelector('[data-demo-row-id]'));
@@ -484,7 +485,7 @@ try {
     await act_m1(async()=>window.dispatchEvent(new KeyboardEvent("keydown",{key,bubbles:true,cancelable:true})));
   }
   assert_m1.equal(location.search,before);
-  assert_m1.equal(document.querySelector('[role="dialog"][aria-label="Workflow Panel"]'),null);
+  assert_m1.equal(document.querySelector('[role="dialog"][aria-label="Workflow Panel"]') === null, true);
 
 } finally {
 await _afterEachFixture0();
@@ -504,7 +505,7 @@ it_m1("passes canonical Queue outcomes through the mounted app and refreshes out
       subscribeDay(input) {
         current = input;
         input.onDay(DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1, queueSurfaces: [canonical] }));
-        input.onState({ state: "live" }); return { close() {} };
+        input.onState({ state: "live" }); return { select() {}, close() {} };
       },
     });
     const text = () => {
@@ -531,22 +532,17 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     let reads = 0;
     const search = `?day=${FIXTURE_DAY_WIRE_m1.day}&run=${FIXTURE_IDS_m1.openGateRun}&section=logs`;
     const client = await mount(search, {
-      runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", message: "private transport detail" }); },
-    }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
+      runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", retryable: true, message: "private transport detail" }); },
+    }, workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.ok(reads > 0);
     assert_m1.ok(document.body.textContent?.includes("Couldn't load logs."));
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Is this the right person\?|private transport detail/);
-    const retryLogs = [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Retry");
-    assert_m1.ok(retryLogs, "the logs notice offers Retry");
-    const readsBeforeRetry = reads;
-    await act_m1(async () => { retryLogs.click(); });
-    await settle();
-    assert_m1.ok(reads > readsBeforeRetry, "Retry reads the logs again");
+    assert_m1.ok([...document.querySelectorAll("button")].every(button => button.textContent?.trim() !== "Retry"), "a refused panel offers no client Retry; the server re-serves it");
     const failedReads = reads;
     await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { key: "mock-composition", client,
       children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
     await settle();
-    assert_m1.equal(reads, failedReads);
+    assert_m1.equal(reads, failedReads, "mock Logs ask for no panel");
     assert_m1.match(document.body.textContent ?? "", /Is this the right person\?/);
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Logs unavailable|cross-source chronology unavailable/);
     const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows), FIXTURE_BOOTSTRAP_m1.workbookCompatibility)[0];
@@ -572,7 +568,7 @@ it_m1("passes the app client to a served Explorer read", async () => {
     let calls = 0;
     await mount("?explore=person-lookup&view=%7B%22explorerWorkflow%22%3A%22person-lookup%22%7D", {
       workflowExplorer: async () => { calls++; return { ...explorer, workflows: explorer.workflows.map(workflow => workflow.id === "person-lookup" ? { ...workflow, version: parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows).find(entry => entry.id === workflow.id)!.start.version } : workflow) }; },
-    }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
+    }, workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.equal(calls, 1);
     assert_m1.ok(document.body.textContent?.includes("Search UCPath by employee ID or name and read the matching person records."), document.body.textContent ?? "");
     assert_m1.ok(document.body.textContent?.includes("Anything not listed stops the run with a failure card."));
@@ -586,7 +582,7 @@ try {
   let current: Parameters<DashboardClient_m1["subscribeDay"]>[0] | undefined;
   let old: Parameters<DashboardClient_m1["subscribeDay"]>[0] | undefined;
   await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&run=${FIXTURE_IDS_m1.runningRun}`,{
-    subscribeDay(input){old=current;current=input;if(input.day===FIXTURE_DAY_WIRE_m1.day) input.onDay(FIXTURE_DAY_WIRE_m1);return{close(){}};},
+    subscribeDay(input){old=current;current=input;if(input.day===FIXTURE_DAY_WIRE_m1.day) input.onDay(FIXTURE_DAY_WIRE_m1);return { select() {}, close(){} };},
   });
   await act_m1(async()=>{
     window.history.pushState({hrDashboardRouteCursor:1},"","/?day=2026-08-02");
@@ -606,7 +602,7 @@ it_m1("an empty catalog is not a fabricated workflow queue",async()=>{
 try {
 
 
-  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), servedDay: true }));
+  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), servedDay: true }));
   assert_m1.match(document.body.textContent??"",/No workflows available/);
 
 } finally {
@@ -618,7 +614,7 @@ try {
 
 
   const {DashboardClientError}=await import("../../../src/dashboard/client/index.js");
-  await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`,{subscribeDay(input){input.onState({state:"stopped",error:new DashboardClientError({kind:"network",message:"Queue transport failed"})});return{close(){}};}});
+  await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`,{subscribeDay(input){input.onState({state:"stopped",error:new DashboardClientError({kind:"network",message:"Queue transport failed"})});return { select() {}, close(){} };}});
   assert_m1.equal((document.body.textContent??"").split("Couldn't load the queue.").length-1,1,"one queue failure notice");
   assert_m1.doesNotMatch(document.body.textContent??"",/Run unavailable/);
   assert_m1.ok([...document.querySelectorAll("button")].some(button => button.textContent?.trim()==="Retry"),"the queue notice offers Retry");
@@ -637,7 +633,7 @@ try {
   await mount("?day=2026-08-02", {
     subscribeDay(input) {
       input.onDay({ ...FIXTURE_DAY_WIRE_m1, day: LocalDateSchema_m1.parse(input.day), queueSurfaces: [], statusCounts: [], workflowCounts: [], monthCounts: [] });
-      input.onState({ state: "live" }); return { close() {} };
+      input.onState({ state: "live" }); return { select() {}, close() {} };
     },
   });
   await click(button("Settings"));

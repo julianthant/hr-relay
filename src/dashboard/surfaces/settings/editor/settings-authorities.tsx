@@ -1,9 +1,9 @@
 import { profileInitials } from "../../../../models/profiles/profile-identity.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
-import { Fragment, useRef, useState } from "react";
+import { Fragment } from "react";
 import { Server } from "lucide-react";
 import { Form } from "@heroui/react";
-import { BodySection, Button, Dialog, DialogContent, DialogFooter, FormGroup, PageHeading, Panel, PanelBody, PanelHeader, ResultRow, Spinner, dsIcon, dsText, Notice } from "../../../ds/ui.js";
+import { BodySection, FormGroup, PageHeading, Panel, PanelBody, PanelHeader, ResultRow, Spinner, dsIcon, dsText, Notice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
@@ -20,43 +20,28 @@ const PROTECTED_DESCRIPTION: Readonly<Record<string, string>> = {
   ucpathPassword: "Password for UCPath access.",
 };
 
-type Removal = { name: Parameters<Editor["protectedEditor"]["clear"]>[0]; label: string; hasSaved: boolean };
-
 function CredentialsSection({ editor, profileName, embedded }: { editor: Editor; profileName: string; embedded: boolean }) {
-  const [removal, setRemoval] = useState<Removal | null>(null);
-  const removeTrigger = useRef<HTMLElement | null>(null);
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" contentOnly={embedded} />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Credentials unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Credentials unavailable" description="Reopen Settings to try again." />;
   const settingsDocument = editor.editor.document;
   const authority = settingsDocument.protectedSettings;
   const credentials = editor.protectedEditor;
   const Root = embedded ? Fragment : "div";
   const profile = { displayName: profileName, initials: profileInitials(profileName) };
-  const askRemove = (target: Removal): void => {
-    removeTrigger.current = globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null;
-    setRemoval(target);
-  };
-  const confirmRemove = (): void => {
-    if (removal === null) return;
-    if (!removal.hasSaved) credentials.reset(removal.name);
-    else credentials.clear(removal.name);
-    setRemoval(null);
-  };
   return <Root {...embedded ? {} : { className: "settings-compact-page settings-credentials-page" }}>
     {!embedded && <PageHeading title="Account" description="Sign-in details and protected workflow configuration." />}
-    {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current values unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
+    {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current values unavailable" description="Reopen Settings to refresh." />}
     {authority.state === "unknown" && <Notice sticky tone="warning" title="Credentials unavailable" description="Reopen Settings to try again." />}
-    <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />
+    <SettingsSaveFeedback save={credentials.save} />
     <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
-      <BodySection title="UCPath sign-in" description={embedded ? "What workflows use to sign in to UCPath. Separate from your Relay account." : undefined}>
+      <BodySection title="UCPath sign-in" description={embedded ? "Workflows use this to sign in to UCPath." : undefined}>
         <FormGroup label="UCPath sign-in">
           {authority.rows.filter(row => row.name === "ucpathUserId" || row.name === "ucpathPassword").map(row => {
             const description = PROTECTED_DESCRIPTION[row.name] ?? row.purpose;
-            const onRemove = (hasSaved: boolean, removeLabel: string): void => askRemove({ name: row.name, label: removeLabel, hasSaved });
             return embedded
-              ? <ProtectedPencilRow key={row.name} editor={editor} name={row.name} label={row.name === "ucpathUserId" ? "Username" : "Password"} thing={row.name === "ucpathUserId" ? "UCPath username" : "UCPath password"} description={description} onRemove={onRemove} />
-              : <ProtectedSettingField key={row.name} editor={editor} name={row.name} description={description} onRemove={onRemove} />;
+              ? <ProtectedPencilRow key={row.name} editor={editor} name={row.name} label={row.name === "ucpathUserId" ? "Username" : "Password"} thing={row.name === "ucpathUserId" ? "UCPath username" : "UCPath password"} description={description} />
+              : <ProtectedSettingField key={row.name} editor={editor} name={row.name} description={description} />;
           })}
         </FormGroup>
       </BodySection>
@@ -66,14 +51,6 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
         </FormGroup>
       </BodySection>}
     </Form>
-    <Dialog open={removal !== null} onOpenChange={open => { if (!open) setRemoval(null); }}>
-      <DialogContent size="sm" hideClose className="ds-body-overlay" title={`Remove ${removal?.label ?? "value"}?`}
-        description={removal?.hasSaved ? "The stored credential will be removed from the protected store." : "This unsent value will be removed from the editor. No write will be sent."}
-        onCloseAutoFocus={event => { if (removeTrigger.current?.isConnected) { event.preventDefault(); removeTrigger.current.focus(); } removeTrigger.current = null; }}>
-        <DialogFooter><Button variant="muted" onClick={() => setRemoval(null)}>Cancel</Button>
-          <Button variant="danger" onClick={confirmRemove}>Remove credential</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
   </Root>;
 }
 

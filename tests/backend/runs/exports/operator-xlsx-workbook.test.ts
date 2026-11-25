@@ -319,7 +319,7 @@ describe("operator XLSX workbook", () => {
     }
     assert.equal(workbook.find(sheet => sheet.sheet === "By Status")?.data[3]?.[2], SECOND_RUN_ID);
     assert.equal(workbook.find(sheet => sheet.sheet === "Failures")?.data[1]?.[3], SEARCH_RUN_ID);
-    assert.deepEqual(workbook.find(sheet => sheet.sheet === "Failures")?.data[1]?.slice(4), ["retired-workflow", "workflow registration is unavailable", "This failure code is not in the current catalog. Review the recorded local evidence."]);
+    assert.deepEqual(workbook.find(sheet => sheet.sheet === "Failures")?.data[1]?.slice(4), ["retired-workflow", "workflow registration is unavailable", "Relay did not recognize this failure. Open the run in Logs."]);
     assert.deepEqual(workbook.find(sheet => sheet.sheet === "By Workflow")?.data[1]?.slice(12), [1, 12000, 1, 0]);
     assert.equal(workbook.find(sheet => sheet.sheet === "Summary")?.data.find(row => row[0] === "Longest duration")?.[3], SEARCH_RUN_ID);
   });

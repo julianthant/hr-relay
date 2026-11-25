@@ -9,10 +9,10 @@ import { composeProfileRuntime } from "../../../../src/backend/app/composition/s
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import type { StartupCleanup } from "../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { operatorRequestedCapture } from "../../../../src/backend/logs/diagnostics/run-diagnostic-capture.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
 import type { DiagnosticBundle } from "../../../../src/models/trust/diagnostic.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
@@ -114,8 +114,12 @@ it("sweeps diagnostics and timeline rows daily on an unref'd timer and clears it
     const capture = await captures(fixture);
     const repository = fixture.database.authority.timelineEvents;
     const clock = fixture.world.clock;
-    const { record } = createDebugEventWriter({ repository, clock, build: "test" })
-      .emit({ category: "http", phase: "settled", correlationId: "daily-timeline" });
+    createNoteTimelineWriter({ repository, clock, pid: 1 }).emitNote({ workflow: "person-lookup",
+      address: { workerId: fixture.workerId, spanPath: fixture.workerId }, level: "step", message: "daily-timeline" });
+    const record = repository.page({ after: repository.highWaterMark() - 1 })[0];
+    assert.ok(record); assert.equal(record.payload.kind, "note");
+    const { record: debug } = createDebugEventWriter({ repository, clock, build: "test" })
+      .emit({ category: "http", phase: "settled", correlationId: "daily-debug" });
     clock.advanceWall(DAY_MS);
     const bundle = await operatorRequestedCapture(capture.request(run.envelope.runId, '{"daily":true}'));
     clock.advanceWall(29 * DAY_MS);
@@ -123,6 +127,8 @@ it("sweeps diagnostics and timeline rows daily on an unref'd timer and clears it
     timeline = startTimeline(fixture);
     clearInterval(timeline.timelineTimer);
     assert.equal(timeline.diagnosticRetentionTimer.hasRef(), false);
+    // Debug entries keep 7 days, so the startup sweep already removed the 30-day-old one.
+    assert.equal(repository.get(debug.eventId), undefined);
     const projectionGeneration = fixture.world.projection.generation();
     clock.advanceWall(DAY_MS - 1);
     vi.advanceTimersByTime(DAY_MS - 1);
@@ -161,7 +167,7 @@ it.each(["bytes", "rows"])("records one debug event per failed %s sweep and keep
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     timeline = startTimeline(fixture);
     clearInterval(timeline.timelineTimer);
-    const failures = () => readTimelineRecords(fixture.database.authority.timelineEvents).records.filter(record =>
+    const failures = () => fixture.database.authority.timelineEvents.debugPage({ limit: 1000 }).filter(record =>
       record.payload.kind === "debug" && record.payload.event.area === "diagnostic-retention");
     assert.equal(failures().length, 1);
     fixture.world.clock.advanceWall(DAY_MS);

@@ -33,10 +33,11 @@ jobs:
       cancel-in-progress: false
     uses: ./.github/workflows/checks.yml
     with:
-      kind: release
+      # A staging release relies on its cut's full run; hotfixes and manual releases keep the native suite.
+      kind: ${{ github.head_ref == 'staging' && 'portable' || 'release' }}
 
   codeql:
-    if: ${{ github.event_name != 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'push' || startsWith(github.head_ref, 'hotfix/') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,11 +62,30 @@ jobs:
           node-version-file: .node-version
       - run: npm audit --omit=dev --audit-level=high
 
+  # Passes only on a green scheduled full run of the exact content (scripts/ci/full-run.ts).
+  full-proof:
+    name: full-proof
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'staging' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const { fullRunProof } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/ci/full-run.ts`);
+            core.info(await fullRunProof({ github, context }));
+
   production:
     name: production
-    needs: [checks, codeql, dependencies]
+    needs: [checks, codeql, dependencies, full-proof]
     if: ${{ always() && github.event_name != 'push' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       - env:
           EVENT: ${{ github.event_name }}
@@ -73,10 +93,14 @@ jobs:
           PIPELINE: ${{ needs.checks.result }}
           CODEQL: ${{ needs.codeql.result }}
           DEPENDENCIES: ${{ needs.dependencies.result }}
+          FULL_PROOF: ${{ needs.full-proof.result }}
         run: |
           if [ "$EVENT" = pull_request ]; then
-            case "$HEAD_REF" in staging | hotfix/*) ;; *) exit 1 ;; esac
-            test "$CODEQL" = success
+            case "$HEAD_REF" in
+              staging) test "$FULL_PROOF" = success ;;
+              hotfix/*) test "$CODEQL" = success ;;
+              *) exit 1 ;;
+            esac
             test "$DEPENDENCIES" = success
           else
             test "$EVENT" = workflow_dispatch

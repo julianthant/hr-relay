@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -107,10 +108,10 @@ export const DialogClose = DialogPrimitive.Close;
 
 export type DsDialogSize = "sm" | "md" | "lg" | "xl";
 
-/** sm 400, md 560, lg 880. `lg` is the Start run frame: a 73px divided header and a 57px recessed footer.
+/** sm 520, md 560, lg 880. `lg` is the Start run frame: a 73px divided header and a 57px recessed footer.
  * `xl` is Review records' own size and is not a general width. */
 const DIALOG_SIZE: Record<DsDialogSize, string> = {
-  sm: "max-w-[400px]",
+  sm: "max-w-[520px]",
   md: "max-w-[560px]",
   lg: "max-w-[880px]",
   xl: "max-w-[min(94vw,1100px)]",
@@ -131,9 +132,6 @@ function Scrim({ layer, entered, slow }: { layer: string; entered: boolean; slow
   );
 }
 
-/** A dialog's confirming action is the dashboard blue. */
-const DIALOG_BLUE = "[--ds-accent:var(--ui-info)] [--ds-accent-fg:var(--ui-canvas)] [--ds-accent-hover:var(--ui-info)]";
-
 /** A modal dialog. `title` is REQUIRED — Radix warns without one,
  * and an unlabelled modal is unusable with a screen reader. */
 export function DialogContent({
@@ -150,8 +148,6 @@ export function DialogContent({
   title: ReactNode;
   description?: ReactNode;
   size?: DsDialogSize;
-  /** Ignored: every dialog has a close X. Left for surfaces that still pass it. */
-  hideClose?: boolean;
   /** A divided header and a recessed footer band; `size="lg"` always has them. */
   band?: boolean;
   className?: string;
@@ -222,18 +218,17 @@ function DialogSurface({
           "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] -translate-x-1/2 -translate-y-1/2",
           DIALOG_SIZE[size],
           dsLayer.modal,
-          "group/dialog flex max-h-[86vh] flex-col overflow-hidden border outline-none", DIALOG_BLUE,
-          "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-overlay)]",
-          dsRadius.xl,
+          "group/dialog flex max-h-[86vh] flex-col overflow-hidden outline-none",
+          "bg-[var(--ds-dialog-bg)] rounded-[var(--ds-radius-dialog)]",
           dsElev.high,
           dsMotion.enter,
           entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]",
           className,
         )}
       >
-        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)] group-data-[size=lg]/dialog:h-[73px] group-data-[size=lg]/dialog:items-center group-data-[size=lg]/dialog:bg-[var(--ds-surface-2)]">
+        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-dialog-pad)] pb-[var(--ds-dialog-header-pb)] pt-[var(--ds-dialog-pad)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)] group-data-[size=lg]/dialog:h-[73px] group-data-[size=lg]/dialog:items-center group-data-[size=lg]/dialog:bg-[var(--ds-surface-2)]">
           <div className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
-            <DialogPrimitive.Title className={cn(dsText.section, "font-medium text-[color:var(--ds-fg)]")}>
+            <DialogPrimitive.Title className="text-[length:var(--ds-dialog-title-size)] font-semibold leading-[var(--ds-dialog-title-lh)] text-[color:var(--ds-fg)]">
               {title}
             </DialogPrimitive.Title>
             {description && (
@@ -243,7 +238,7 @@ function DialogSurface({
             )}
           </div>
           <DialogPrimitive.Close asChild>
-            <IconButton label="Close" size="md" icon={<X aria-hidden className={dsIcon.md} />} />
+            <IconButton label="Close" size="md" variant="ghost" className="ds-dialog-close" icon={<X aria-hidden className={dsIcon.lg} />} />
           </DialogPrimitive.Close>
         </header>
         {children}
@@ -254,7 +249,7 @@ function DialogSurface({
 
 export function DialogBody({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]", className)}>
+    <div data-slot="dialog-body" className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-dialog-pad)] pt-[var(--ds-dialog-body-pt)] pb-[var(--ds-dialog-body-pb)]", className)}>
       {children}
     </div>
   );
@@ -273,9 +268,10 @@ export function DialogFooter({
 }) {
   return (
     <footer
+      data-slot="dialog-footer"
       className={cn(
         // Compact: the buttons sit in the dialog's own padding. Only the Run and Rerun dialog (`band`) has the recessed plane.
-        "flex shrink-0 items-center gap-[var(--ds-space-base)] px-[var(--ds-space-loose)] pb-[var(--ds-space-cozy)]",
+        "flex shrink-0 items-center gap-[var(--ds-dialog-footer-gap)] px-[var(--ds-dialog-pad)] pb-[var(--ds-dialog-pad)] pt-[var(--ds-dialog-footer-pt)]",
         "group-data-[size=lg]/dialog:h-[57px] group-data-[size=lg]/dialog:pb-0 group-data-[band]/dialog:border-t group-data-[band]/dialog:border-[color:var(--ds-border-subtle)] group-data-[band]/dialog:bg-[var(--ds-recess-bg)] group-data-[band]/dialog:pt-[var(--ds-space-cozy)] group-data-[band]/dialog:[border-end-start-radius:inherit] group-data-[band]/dialog:[border-end-end-radius:inherit]",
         meta ? "justify-between" : "justify-end",
         className,
@@ -291,7 +287,7 @@ export function DialogFooter({
           {meta}
         </span>
       )}
-      <span className="flex shrink-0 items-center gap-[var(--ds-space-base)]">{children}</span>
+      <span className="flex shrink-0 items-center gap-[var(--ds-dialog-footer-gap)]">{children}</span>
     </footer>
   );
 }
@@ -342,7 +338,7 @@ export function ConfirmDialog({
         )}
         <DialogFooter>
           <DialogClose asChild>
-            <Button data-confirm-cancel variant="muted" disabled={busy}>{cancelLabel}</Button>
+            <Button data-confirm-cancel variant="secondary" disabled={busy}>{cancelLabel}</Button>
           </DialogClose>
           <Button variant={destructive ? "danger" : "primary"} loading={busy} onClick={onConfirm}>{confirmLabel}</Button>
         </DialogFooter>
@@ -525,6 +521,7 @@ export function PopoverContent({
   hideClose,
   className,
   surfaceRef,
+  onOpenAutoFocus,
   sideOffset,
   children,
 }: {
@@ -540,6 +537,7 @@ export function PopoverContent({
   hideClose?: boolean;
   className?: string;
   surfaceRef?: Ref<HTMLDivElement>;
+  onOpenAutoFocus?: (event: Event) => void;
   children: ReactNode;
 }) {
   return (
@@ -555,6 +553,7 @@ export function PopoverContent({
         hideClose={hideClose}
         className={className}
         surfaceRef={surfaceRef}
+        onOpenAutoFocus={onOpenAutoFocus}
         sideOffset={sideOffset}
       >
         {children}
@@ -576,6 +575,7 @@ function PopoverSurface({
   hideClose,
   className,
   surfaceRef,
+  onOpenAutoFocus,
   sideOffset = 6,
   children,
 }: {
@@ -590,6 +590,7 @@ function PopoverSurface({
   hideClose?: boolean;
   className?: string;
   surfaceRef?: Ref<HTMLDivElement>;
+  onOpenAutoFocus?: (event: Event) => void;
   children: ReactNode;
 }) {
   const entered = useEntered();
@@ -603,6 +604,7 @@ function PopoverSurface({
       sideOffset={sideOffset}
       collisionPadding={8}
       aria-label={title}
+      onOpenAutoFocus={onOpenAutoFocus}
     >
       <FloatingSurface
         id={id}
@@ -781,13 +783,12 @@ export interface DsToast {
   tone: DsToastTone;
   title: string;
   description?: string;
-  /** ms before auto-dismiss; default 3000, `danger` 12000. A toast with an action stays until acted on or clicked. */
+  /** ms before auto-dismiss; default 3000, `danger` 12000. */
   duration?: number;
   /** stays until its owner dismisses it or the operator clicks it */
   sticky?: boolean;
   /** one action, one toast: a new toast with the same key replaces the earlier one; defaults to the title */
   key?: string;
-  action?: { label: string; onClick: () => void };
 }
 
 interface ToastContextValue {
@@ -805,7 +806,8 @@ export function useToasts(): ToastContextValue {
   return ctx;
 }
 
-export function ToastProvider({ children }: { children: ReactNode }) {
+/** `hold` keeps every toast until it is dismissed: a state gallery that walks the page by keyboard must find the toast still there. */
+export function ToastProvider({ children, hold = false }: { children: ReactNode; hold?: boolean }) {
   const manager = useMemo(() => ToastPrimitive.createToastManager(), []);
   const nextId = useRef(0);
   const byKey = useRef(new Map<string, string>());
@@ -817,14 +819,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       if (earlier !== undefined) manager.close(earlier);
       byKey.current.set(key, id);
       manager.add({ id, title: input.title, description: input.description,
-        ...(input.action === undefined ? {} : { actionProps: { children: input.action.label, onClick: input.action.onClick } }),
         type: input.tone === "danger" ? "error" : input.tone,
-        timeout: input.sticky || input.action !== undefined ? 0 : input.duration ?? (input.tone === "danger" ? 12000 : 3000),
+        timeout: input.sticky || hold ? 0 : input.duration ?? (input.tone === "danger" ? 12000 : 3000),
       });
       return id;
     },
     dismiss: id => manager.close(id),
-  }), [manager]);
+  }), [manager, hold]);
   return <ToastContext.Provider value={value}><ToastPrimitive.Provider toastManager={manager} limit={3}>
     {children}<ToastViewport />
   </ToastPrimitive.Provider></ToastContext.Provider>;
@@ -846,15 +847,39 @@ export function Notice({ tone, title, description, sticky = false }: Pick<DsToas
 function ToastViewport() {
   const { toasts, close } = ToastPrimitive.useToastManager();
   const inert = useAnyOverlayOpen();
-  return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
+  // The stack's bottom edge (12px top; 8px gaps expanded, 14px peeks at rest), published so the open Sessions panel always ends below it.
+  // It grows at once when the stack expands and shrinks only after the 300ms collapse, so the panel never meets a moving toast.
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (viewport === null) return;
+    const observer = new MutationObserver(() => setExpanded(viewport.hasAttribute("data-expanded")));
+    observer.observe(viewport, { attributes: true, attributeFilter: ["data-expanded"] });
+    return () => observer.disconnect();
+  }, []);
+  const shown = toasts.filter(item => item.limited !== true);
+  const stackBottom = shown.length === 0 ? 0 : 12 + (expanded
+    ? shown.reduce((sum, item) => sum + (item.height ?? 0), 0) + 8 * (shown.length - 1)
+    : (shown[0]?.height ?? 0) + 14 * (shown.length - 1));
+  const [published, setPublished] = useState(stackBottom);
+  useEffect(() => {
+    if (stackBottom >= published) { setPublished(stackBottom); return; }
+    const timer = window.setTimeout(() => setPublished(stackBottom), 300);
+    return () => window.clearTimeout(timer);
+  }, [stackBottom, published]);
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--toast-stack-bottom", `${String(Math.max(stackBottom, published))}px`);
+    return () => { root.style.removeProperty("--toast-stack-bottom"); };
+  }, [stackBottom, published]);
+  return <BaseToastViewport ref={viewportRef} aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
     {toasts.map(item => {
-      const action = item.actionProps;
       return <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" tabIndex={0} aria-label="Dismiss notification"
         onClick={() => close(item.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === "Escape" || event.key === " ") close(item.id); }}
         className={cn(inert && "pointer-events-none")}>
         <BaseToastContent><BaseToastIcon type={item.type} />
           <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription />
-            {action !== undefined && <Button size="sm" variant="secondary" onClick={action.onClick}>{action.children}</Button>}
           </div>
         </BaseToastContent>
       </BaseToast>;

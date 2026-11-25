@@ -6,16 +6,13 @@
   --ds-text-meta: var(--text-caption);
   --ds-text-body-value: var(--text-body);
   --ds-h-md: 28px;
-  --ds-accent: var(--ui-info);
-  --ds-accent-hover: var(--ui-info);
-  --ds-accent-fg: var(--ui-canvas);
   --ds-control-border: var(--ui-stroke-control);
   --ds-border-strong: var(--ui-stroke-control);
   --ds-radius-md: 8px;
   @apply text-body;
 }
 .launch-dialog {
-  @apply rounded-xl border-ui-stroke-control bg-ui-panel;
+  @apply bg-ui-panel;
   display: grid;
   overflow: clip;
   height: min(calc(100dvh - 2 * var(--ds-space-loose)), 40rem);
@@ -43,7 +40,7 @@
 }
 .launch-design .launch-stage-marker[data-current] { @apply border-transparent bg-ui-info text-ui-canvas; }
 .launch-design .launch-stage-marker[data-completed] { @apply text-ui-positive; }
-.launch-design .launch-content { @apply flex flex-col gap-3 px-5 py-5; }
+.launch-design .launch-content { @apply flex flex-col gap-3; }
 .launch-dialog .launch-content > section { @apply gap-1; }
 .launch-dialog .launch-content > section > h3 { @apply m-0 text-control font-medium; }
 .launch-dialog .launch-content [data-slot="input"] { @apply bg-ui-field; }

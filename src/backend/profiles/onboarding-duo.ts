@@ -38,23 +38,21 @@ export interface DraftDuoPendingCredential {
   readonly privateKeyPkcs8: string;
   readonly publicKeySpki: string;
   readonly userHandle?: string;
-  readonly transport: "internal" | "usb";
+  readonly transport: "usb";
   readonly isResidentCredential: boolean;
   readonly createdAt: string;
-  readonly initialSignCount?: number;
 }
 
 export interface DraftDuoCeremonyReceipt {
   readonly credentialId: string;
   readonly requestId: string;
-  readonly mechanism: "fast-duo" | "native-platform" | "chromium-platform";
-  readonly softwareInterceptionDisabled: boolean;
 }
 
 export interface DraftDuoPortalReceipt {
   readonly credentialId: string;
   readonly requestId: string;
   readonly acceptance: "portal-accepted" | "exact-credential-request";
+  readonly name?: string;
 }
 
 // Issued by the draft owner after observing the owned provider tab. No profile admission is exposed.

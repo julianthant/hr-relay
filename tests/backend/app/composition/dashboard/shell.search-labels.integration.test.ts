@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { composeShell } from "../../../../../src/backend/app/composition/dashboard/shell.js";
@@ -98,9 +98,11 @@ it("serves the visible Queue title for known input without a retained queued eve
     const queue = projection.queueSurface(run.envelope.runId);
     assert.ok(queue);
     assert.notEqual(queueRowTitle(queue), run.envelope.workflow);
+    const buildQueue = vi.spyOn(projection, "queueSurfaces");
     const query = CrossDateSearchQuerySchema.parse({ q: "" });
     const page = shell.search.search(query);
     assert.equal(searchResults({ ...page, query })[0].subject, queueRowTitle(queue));
+    assert.equal(buildQueue.mock.calls.length, 0);
   } finally { await close(); }
 });
 

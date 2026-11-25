@@ -89,15 +89,17 @@ export function createNominatimService(input: Readonly<{
     const timer = setTimeout(abort, remaining);
     const cancelled = () => unavailable(clock, requestQueued() ? (options.signal.aborted ? "aborted" : "timeout") : "adapter-unavailable");
     const work = tail.then(async () => {
-      if (controller.signal.aborted || !requestQueued()) return cancelled();
-      nextStart ??= machineMonotonicMs() + 1000;
-      const waitMs = nextStart - machineMonotonicMs();
-      if (waitMs > 0) await new Promise<void>(done => {
-        const wake = () => { clearTimeout(wait); done(); };
-        const wait = setTimeout(() => { controller.signal.removeEventListener("abort", wake); done(); }, Math.ceil(waitMs));
-        controller.signal.addEventListener("abort", wake, { once: true });
-      });
-      if (controller.signal.aborted || !requestQueued() || clock.monotonicMs() >= options.deadlineMonotonicMs) return cancelled();
+      for (;;) {
+        if (controller.signal.aborted || !requestQueued() || clock.monotonicMs() >= options.deadlineMonotonicMs) return cancelled();
+        nextStart ??= machineMonotonicMs() + 1000;
+        const waitMs = nextStart - machineMonotonicMs();
+        if (waitMs <= 0) break;
+        await new Promise<void>(done => {
+          const wake = () => { clearTimeout(wait); done(); };
+          const wait = setTimeout(() => { controller.signal.removeEventListener("abort", wake); done(); }, Math.ceil(waitMs));
+          controller.signal.addEventListener("abort", wake, { once: true });
+        });
+      }
       try {
         adapter ??= input.adapter((...args) => {
           try { return (input.fetchFn ?? fetch)(...args); }
@@ -107,7 +109,8 @@ export function createNominatimService(input: Readonly<{
       } catch { return unavailable(clock, controller.signal.aborted ? (options.signal.aborted ? "aborted" : "timeout") : "adapter-unavailable"); }
     });
     // The queue retains unfinished fetches even when their callers have cancelled.
-    tail = work.then(() => {}, () => {});
+    const releaseController = () => { controllers.delete(controller); };
+    tail = work.then(releaseController, releaseController);
     try {
       return await new Promise<ProviderAdapterOutcome>((done, reject) => {
         const cancel = () => done(cancelled());
@@ -118,7 +121,6 @@ export function createNominatimService(input: Readonly<{
     } finally {
       clearTimeout(timer);
       options.signal.removeEventListener("abort", abort);
-      void work.finally(() => controllers.delete(controller));
     }
   }
 
@@ -127,10 +129,11 @@ export function createNominatimService(input: Readonly<{
     const attached = transitionNominatimOwner(state.phase, { type: "attach" });
     if (!("state" in attached) || attached.state !== "running" || !child.connected) throw new Error("nominatim-parent-channel-unavailable");
     const requests = new Map<string, AbortController>();
-    const replyFailed = (cause: unknown): void => {
-      try { child.emit("error", new NominatimReplySendError(cause)); }
+    const failChannel = (error: Error): void => {
+      try { child.emit("error", error); }
       finally { if (child.connected) child.disconnect(); }
     };
+    const replyFailed = (cause: unknown): void => failChannel(new NominatimReplySendError(cause));
     const receive = (value: unknown) => {
       const cancellation = CancelSchema.safeParse(value);
       if (cancellation.success) { requests.get(cancellation.data.requestId)?.abort(); return; }
@@ -147,7 +150,9 @@ export function createNominatimService(input: Readonly<{
             if (error) replyFailed(error);
           });
         } catch (error) { replyFailed(error); }
-      }).finally(() => requests.delete(message.requestId));
+      }).finally(() => requests.delete(message.requestId)).catch((cause: unknown) => {
+        failChannel(cause instanceof Error ? cause : new Error("nominatim-invoke-failed", { cause }));
+      });
     };
     const disconnect = () => {
       child.removeListener("disconnect", disconnect);

@@ -9,8 +9,8 @@ import { WorkflowExplorer } from "../../../../src/dashboard/surfaces/explorer/ex
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { FIXTURE_EXPLORER_WIRE } from "../../../mocks/helpers/fixture-explorer.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../../support/helpers/dashboard/mock-world/fixture-explorer.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 class ResizeObserverStub { observe() {} disconnect() {} unobserve() {} }
@@ -93,4 +93,32 @@ it("a saved choice of a sub-workflow shows the main workflow that starts it; an 
     root = undefined;
     host.remove();
   }
+});
+
+it("while the definitions are first read, shows the heading and picker and no guessed run options or steps", async () => {
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  const pending = { workflowExplorer: () => new Promise<never>(() => {}) } as never;
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(WorkflowExplorer, { catalog, client: pending }))));
+  const frame = host.querySelector('[role="status"][aria-busy="true"][aria-label="Loading workflow definition"]');
+  assert.ok(frame, "a labelled loading region, so startup still waits for it");
+  assert.ok(host.querySelector('[aria-label="Explorer workflow"]'), "the picker stays usable above it");
+  assert.equal(frame.childElementCount, 0);
+  assert.equal(host.querySelector('[data-slot="skeleton"]') === null, true);
+});
+
+it("keeps the workflow picker mounted, focus included, when the definitions arrive", async () => {
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  let settle!: (wire: typeof FIXTURE_EXPLORER_WIRE) => void;
+  const pending = { workflowExplorer: () => new Promise<typeof FIXTURE_EXPLORER_WIRE>(resolve => { settle = resolve; }) } as never;
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(WorkflowExplorer, { catalog, client: pending }))));
+  const picker = host.querySelector<HTMLSelectElement>('[aria-label="Explorer workflow"]');
+  assert.ok(picker);
+  picker.focus();
+  await act(async () => { settle(FIXTURE_EXPLORER_WIRE); });
+  assert.equal(host.querySelector('[aria-label="Loading workflow definition"]') === null, true);
+  assert.ok(host.querySelector("#run-options"), "the spec replaced the busy region");
+  assert.equal(host.querySelector('[aria-label="Explorer workflow"]') === picker, true, "the same picker node");
+  assert.equal(document.activeElement === picker, true);
 });

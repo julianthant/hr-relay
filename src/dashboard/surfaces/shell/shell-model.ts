@@ -9,7 +9,7 @@ WorkflowCountWireSchema
 import { dsFocus,dsMotion,dsRadius,dsText } from "../../ds/ui.js";
 import { usePersonPreferences } from "../../lib/person-preferences.js";
 import { cn } from "../../lib/utils.js";
-import { type QueueStatus } from "../shared/status/status-model.js";
+import { NEEDS_YOU_STATUSES, type QueueStatus } from "../shared/status/status-model.js";
 import {
 groupWorkflowsByCategory,
 type WorkflowCategoryGroup,
@@ -116,41 +116,6 @@ export const toolbarControl = (): string =>
   );
 
 
-/** ── Workflow Panel ──────────────────────────────────────────────────────── */
-
-/** Where the Workflow Panel is, and how much of the window it costs.
- * `floating` — a window over the panels. */
-export type WorkflowPanelMode = "floating" | "icon" | "sidebar";
-
-
-const PANEL_MODE_CYCLE: WorkflowPanelMode[] = ["floating", "icon", "sidebar"];
-
-
-export const WORKFLOW_PANEL_MODE_LABEL: Record<WorkflowPanelMode, string> = {
-  floating: "floating window",
-  icon: "icon",
-  sidebar: "sidebar",
-};
-
-
-export function useWorkflowPanelMode(): {
-  mode: WorkflowPanelMode;
-  setMode: (mode: WorkflowPanelMode) => void;
-  cycleMode: () => void;
-  opened: boolean;
-} {
-  const preferences = usePersonPreferences();
-  const mode = preferences.value.workflowPanelMode;
-  const [opened, setOpened] = useState(false);
-  const change = preferences.change;
-  const setMode = useCallback((next: WorkflowPanelMode) => {
-    setOpened(true);
-    void change?.({ "preferences.workflowPanelMode": { set: next } });
-  }, [change]);
-  const cycleMode = useCallback(() => setMode(PANEL_MODE_CYCLE[(PANEL_MODE_CYCLE.indexOf(mode) + 1) % PANEL_MODE_CYCLE.length]), [mode, setMode]);
-  return { mode, setMode, cycleMode, opened };
-}
-
 export type WorkflowRailGroup = WorkflowCategoryGroup<WorkflowBootstrapPrimitive>;
 
 
@@ -198,12 +163,8 @@ export function statusPillOrder(counts: readonly StatusCountWire[], active: Stat
 }
 
 
-/** The two statuses that are stuck on a decision from the operator. */
-const NEEDS_YOU_STATUSES: QueueStatus[] = ["awaiting-approval", "blocked"];
-
-
 /** The `Needs you` composite, over the SERVED counts.
- * This adds two numbers the projection served; it does not count rows. The risk */
+ * This adds the numbers the projection served; it does not count rows. The risk */
 export function needsYouCount(counts: readonly StatusCountWire[]): number {
   return NEEDS_YOU_STATUSES.reduce((total, status) => total + statusCount(counts, status), 0);
 }

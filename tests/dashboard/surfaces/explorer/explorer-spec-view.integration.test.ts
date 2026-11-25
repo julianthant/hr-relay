@@ -5,8 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
 import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { resolveExplorer } from "../../../../src/dashboard/surfaces/explorer/explorer-spec.js";
-import { ExplorerSpecView } from "../../../../src/dashboard/surfaces/explorer/explorer-spec-view.js";
-import { FIXTURE_EXPLORER_WIRE } from "../../../mocks/helpers/fixture-explorer.js";
+import { ExplorerPage, ExplorerSpecView } from "../../../../src/dashboard/surfaces/explorer/explorer-spec-view.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../../support/helpers/dashboard/mock-world/fixture-explorer.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 class ResizeObserverStub { observe() {} disconnect() {} unobserve() {} }
@@ -19,7 +19,7 @@ const workflows = [{ id: "person-lookup", title: "Person Lookup" }];
 async function mount() {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
-  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(ExplorerSpecView, { spec, workflowId: "person-lookup", workflows, onWorkflow: () => undefined }))));
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(ExplorerPage, { workflowId: "person-lookup", workflows, onWorkflow: () => undefined, children: createElement(ExplorerSpecView, { spec, onWorkflow: () => undefined }) }))));
   return host;
 }
 const click = async (node: Element | null) => { assert.ok(node instanceof HTMLElement); await act(async () => { node.focus(); node.click(); }); };
@@ -49,7 +49,7 @@ it("tells a step toggle from a run option of the same label and words its values
   assert.ok(labels.includes(`Step: ${toggle.label}`));
   assert.equal(new Set(labels).size, labels.length, "no two options share a label");
   assert.match(host.querySelector(`[aria-labelledby="option-${toggle.id}"]`)?.textContent ?? "", /^Included/u);
-  assert.equal(host.querySelector("svg.lucide-lock-keyhole"), null);
+  assert.equal(host.querySelector("svg.lucide-lock-keyhole") === null, true);
 });
 
 it("changes and renumbers the steps when a run option changes", async () => {
@@ -84,8 +84,8 @@ it("opens a fill value's source and returns focus to its arrow when Escape close
   const dialog = document.querySelector('[role="dialog"]');
   assert.ok(dialog);
   const close = dialog.querySelector('button[aria-label="Close field source"]');
-  assert.equal(document.activeElement, close);
+  assert.equal(document.activeElement === close, true);
   await act(async () => { close?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-  assert.equal(document.querySelector('[role="dialog"]'), null);
-  assert.equal(document.activeElement, arrow);
+  assert.equal(document.querySelector('[role="dialog"]') === null, true);
+  assert.equal(document.activeElement === arrow, true);
 });

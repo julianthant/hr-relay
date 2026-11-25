@@ -4,11 +4,11 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { applyAuthorityMigrationsAfter, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { commandFromRow, insertNativeCommand, settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { COMMAND_ROW_STATE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { COMMAND_ROW_STATE_MIGRATION, COMMAND_ROW_STATE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { deriveBulkChildCommand } from "../../../../src/rules/commands/command-groups.js";
 import { BulkRunCommandRequestSchema, deriveBulkRunCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { dropSchema36WorkbookSyncStatusColumn, restoreSchema32CommandRows } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema32CommandRows } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { LATER, NOW, UUID_1, UUID_2, UUID_3 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -29,11 +29,10 @@ function schema32(): DatabaseSync {
   return database;
 }
 
-/** Applies the migrations after 32, then drops schema 36's column so only migration 33's effect remains. */
+/** Applies migration 33 alone, so the schema it leaves is schema 33's. */
 function migrateTo33(database: DatabaseSync): void {
   database.exec("BEGIN");
-  applyAuthorityMigrationsAfter(database, 32, { now: AT, captureFile: () => { throw new Error("no capture expected"); } });
-  dropSchema36WorkbookSyncStatusColumn(database);
+  for (const statement of COMMAND_ROW_STATE_MIGRATION.statements) database.exec(statement);
   database.exec("COMMIT");
 }
 
@@ -54,9 +53,9 @@ function seed(database: DatabaseSync): void {
 }
 
 describe("command row state migration 33", () => {
-  it("is schema version 33, under the workbook sync status's current 36", () => {
+  it("is schema version 33, under the current schema 42", () => {
     assert.equal(COMMAND_ROW_STATE_SCHEMA_VERSION, 33);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 36);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 42);
     assert.deepEqual(migrationTableNames(33), migrationTableNames(32));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });

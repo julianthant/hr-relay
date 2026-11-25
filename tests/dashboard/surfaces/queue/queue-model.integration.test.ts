@@ -167,7 +167,7 @@ afterEach_m1(_afterEachFixture0);
     await act_m1(async () => oldAttempt.focus());
     await render([row(5, true, 2, 3), ...rows], undefined, row(2).runId);
     const selected = document.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]');
-    assert_m1.equal(document.activeElement, selected);
+    assert_m1.equal(document.activeElement === selected, true);
     assert_m1.match(selected?.textContent ?? "", /#1.*Queued/u);
     assert_m1.equal(document.querySelector('[aria-label="Attempts for Ben"]')?.getAttribute("aria-expanded"), "true");
     assert_m1.equal(document.querySelectorAll('[data-demo-row-id]').length, 3);
@@ -182,8 +182,8 @@ afterEach_m1(_afterEachFixture0);
     await act_m1(async () => second.click());
     assert_m1.deepEqual(selected, [String(row(2).runId)]);
     await render(rows, undefined, row(2).runId);
-    assert_m1.equal(document.querySelectorAll('[data-demo-row-id][aria-pressed="true"]').length, 1);
-    assert_m1.equal(second.getAttribute("aria-pressed"), "true");
+    assert_m1.equal(document.querySelectorAll('[data-demo-row-id] [data-queue-open][aria-pressed="true"]').length, 1);
+    assert_m1.equal(second.querySelector("[data-queue-open]")?.getAttribute("aria-pressed"), "true");
   });
   it_m1("does not invoke grouping commands for either served preference", async () => {
     for (const grouped of [true, false]) {
@@ -291,7 +291,7 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     assert_m1.equal(document.querySelector(`tr[data-demo-row-id="${rows[1].runId}"] button`)?.getAttribute("aria-pressed"), "true");
     const retry = lookupRow(4, { itemId: rows[1].itemId, attempt: 2, startedAt: "2026-08-03T18:00:00.000Z" });
     await render([...rows, retry], handlers, rows[1].runId);
-    assert_m1.equal(document.querySelector('[data-queue-batch-id]'), group);
+    assert_m1.equal(document.querySelector('[data-queue-batch-id]') === group, true);
     assert_m1.equal(group.querySelectorAll('tr[data-demo-row-id]').length, 3);
     const trigger = group.querySelector<HTMLButtonElement>('button[aria-label="Attempts for Ben"]'); assert_m1.ok(trigger);
     await act_m1(async () => trigger.click());
@@ -299,7 +299,7 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     await act_m1(async () => prior.focus());
     const third = lookupRow(5, { itemId: rows[1].itemId, attempt: 3, startedAt: "2026-08-03T18:05:00.000Z" });
     await render([third, ...rows, retry], handlers, rows[1].runId);
-    assert_m1.equal(document.activeElement, prior);
+    assert_m1.equal(document.activeElement === prior, true);
     assert_m1.equal(trigger.getAttribute("aria-expanded"), "true");
     const latest = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes("#3")); assert_m1.ok(latest);
     selected.length = 0;
@@ -349,20 +349,39 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     assert_m1.ok(memberButton() === null);
   });
 
-  it_m1("keeps batch and individual selection local with partial-selection state", async () => {
-    const rows = [lookupRow(1), lookupRow(2), lookupRow(3)];
-    const toggled: string[] = [], opened: string[] = [];
-    const handlers: QueueHandlers_m1 = { onSelect: id => { opened.push(id); }, onToggleBulk: id => { toggled.push(id); } };
-    await render(rows, handlers, undefined, { selectMode: true, bulkIds: new Set([rows[0].runId]) });
-    const groupSelection = document.querySelector<HTMLElement>('[role="checkbox"]'); assert_m1.ok(groupSelection);
-    assert_m1.equal(groupSelection.getAttribute("data-state"), "indeterminate");
-    const memberSelection = document.querySelector<HTMLElement>(`tr[data-demo-row-id="${rows[1].runId}"] [role="checkbox"]`); assert_m1.ok(memberSelection);
-    await act_m1(async () => memberSelection.click());
-    await act_m1(async () => groupSelection.click());
-    assert_m1.deepEqual(toggled, [rows[1].runId, `batch:${uuidOf_m1(700)}`]);
-    assert_m1.deepEqual(opened, []);
-    await render(rows, handlers, undefined, { selectMode: true, bulkIds: new Set(rows.map(row => row.runId)) });
-    assert_m1.equal(groupSelection.getAttribute("data-state"), "checked");
+  it_m1("shows a row action pending until the reply arrives, ignores a second press, and frees it on a refusal", async () => {
+    const pause = { kind: "command", key: "pause", command: "pause", label: "Pause after this step", expectedVersion: 12, intent: "neutral", placement: ["footer"], icon: "pause" };
+    const row = lookupRow(1, { rowRevision: 12, actions: [pause] });
+    const sent: unknown[] = [];
+    let reply: () => void = () => undefined;
+    const handlers: QueueHandlers_m1 = { onSelect: () => undefined, onAction: (action, target) => { sent.push([action, target]); return new Promise<void>(resolve => { reply = resolve; }); } };
+    await render([row], handlers, row.runId);
+    const button = (): HTMLButtonElement | null => document.querySelector<HTMLButtonElement>('[data-queue-member-actions] button[aria-label="Pause after this step"]');
+    const before = button(); assert_m1.ok(before);
+    assert_m1.equal(before.disabled, false);
+    await act_m1(async () => before.click());
+    const pending = button(); assert_m1.ok(pending);
+    assert_m1.equal(pending.disabled, true);
+    assert_m1.ok(pending.querySelector(".animate-spin"));
+    await act_m1(async () => pending.click());
+    assert_m1.equal(sent.length, 1);
+    await act_m1(async () => reply());
+    assert_m1.equal(button()?.disabled, false);
+    assert_m1.equal(button()?.querySelector(".animate-spin") === null, true);
+    await act_m1(async () => button()?.click());
+    assert_m1.equal(button()?.disabled, true);
+    await render([lookupRow(1, { rowRevision: 13, actions: [{ ...pause, expectedVersion: 13 }] })], handlers, row.runId);
+    await act_m1(async () => reply());
+    assert_m1.equal(button()?.disabled, false);
+  });
+
+  it_m1("keeps every queue row control outside any other control", async () => {
+    const rows = [lookupRow(1), lookupRow(2)];
+    await render(rows, { onSelect: () => undefined }, rows[0].runId);
+    const interactive = 'button, a[href], input, select, textarea, [role="button"], [role="checkbox"], [tabindex]';
+    for (const control of document.querySelectorAll<HTMLElement>(interactive)) {
+      assert_m1.equal((control.parentElement?.closest(interactive) ?? null) === null, true, control.outerHTML.slice(0, 120));
+    }
   });
 
   it_m1("keeps a single-person start flat and expands a large group by its stable session key", async () => {

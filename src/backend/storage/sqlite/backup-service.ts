@@ -22,14 +22,16 @@ import {
   writeFileSync,
 } from "node:fs";
 import { noSymlinkAncestry, readPrivateFile, removeExactPath, statDirectory } from "../configuration/credential-safe-file.js";
-import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
+import { createReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly, withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
+import { AuthorityUpgradeRecordSchema, type AuthorityUpgradeRecord } from "../../../models/config/authority.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { type Clock, systemClock } from "../../../rules/time/clock.js";
-import { inspectAuthorityBackupReadOnly, type AuthorityBackupSourceReadOnly, type BackupCopyInspection } from "./backup-inspection.js";
+import { inspectOpenDatabase, inspectVerifiedBackupCopyReadOnly, type AuthorityBackupSourceReadOnly, type BackupCopyInspection } from "./backup-inspection.js";
 import { inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
+import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
@@ -124,13 +126,61 @@ export function parseBackupManifestFile(manifestPath: string): AuthorityBackupMa
 type BackupCopyInspector = (copyAdmission: RuntimeAdmission, backupPath: string, schemaVersion: number) => BackupCopyInspection | Promise<BackupCopyInspection>;
 
 export function verifyBackupManifestAtPath(admissionInput: RuntimeAdmission, manifestPathInput: string): Promise<VerifiedBackup> {
-  return verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => inspectAuthorityBackupReadOnly(copy, backupPath, schemaVersion));
+  return verifyManifest(admissionInput, manifestPathInput, inspectVerifiedBackupCopyReadOnly);
 }
 
 /** verifyBackupManifestAtPath with the full inspection on a worker thread, for a caller that must keep the event loop running. */
 export function verifyBackupManifestOffThread(admissionInput: RuntimeAdmission, manifestPathInput: string,
   options: Readonly<{ signal?: AbortSignal }>): Promise<VerifiedBackup> {
   return verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => inspectAuthorityBackupOffThread(copy, backupPath, schemaVersion, options));
+}
+
+/**
+ * Reads another person's backup, checked against `source` with the same identity and inspection checks as verifyBackupManifestAtPath.
+ * The verified copy admission holds the backup file; the manifest digest is proved on the private snapshot that the inspection and
+ * `read` use. Nothing next to the backup is written or removed.
+ */
+export function readVerifiedBackupManifestAtPath<T>(admissionInput: RuntimeAdmission, manifestPathInput: string,
+  source: Extract<AuthorityBackupExpectedSource, { kind: "profile" }>, read: (database: Parameters<typeof inspectOpenDatabase>[0]) => T): VerifiedBackup & Readonly<{ value: T }> {
+  const admission = requireRuntimeAdmission(admissionInput);
+  const manifestPath = resolve(z.string().min(1).parse(manifestPathInput));
+  if (!existsSync(manifestPath)) throw new Error(`backup manifest ${manifestPath} does not exist`);
+  const manifest = parseBackupManifestFile(manifestPath);
+  if (manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity(source)) {
+    throw new Error(`backup manifest ${basename(manifestPath)} belongs to a different authority database`);
+  }
+  assertExpectedBackupSource(source, manifest);
+  const backupPath = join(dirname(manifestPath), manifest.backupFileName);
+  const copy = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
+  try {
+    const { inspection, value } = withAuthorityDatabaseReadOnly(copy, backupPath, database => {
+      const image = database.location();
+      if (image === null || resolve(image) === backupPath) throw new Error("authority-backup-snapshot-required");
+      assertSnapshotBytes(image, manifest);
+      const inspected = inspectOpenDatabase(database, manifest.schemaVersion);
+      assertBackupInspection(manifest, inspected, source);
+      const result = read(database);
+      assertSnapshotBytes(image, manifest);
+      return { inspection: inspected, value: result };
+    });
+    copy.assertLive();
+    assertBackupInspection(manifest, inspection, source);
+    return Object.freeze({ manifestPath, backupPath, manifest, value });
+  } finally { copy.release(); }
+}
+
+/** The private snapshot holds exactly the manifest's bytes, with nothing pending in a write-ahead log beside it. */
+function assertSnapshotBytes(path: string, manifest: Readonly<{ byteSize: number; sha256: string }>): void {
+  const wal = statSync(`${path}-wal`, { throwIfNoEntry: false });
+  if (wal !== undefined && wal.size !== 0) throw new Error("authority-backup-snapshot-wal-not-empty");
+  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW), hash = createHash("sha256"), chunk = Buffer.alloc(64 * 1024);
+  let count = 0;
+  try {
+    for (let size = readSync(descriptor, chunk, 0, chunk.length, null); size > 0; size = readSync(descriptor, chunk, 0, chunk.length, null)) {
+      count += size; hash.update(chunk.subarray(0, size));
+    }
+  } finally { closeSync(descriptor); }
+  if (count !== manifest.byteSize || hash.digest("hex") !== manifest.sha256) throw new Error("authority-backup-snapshot-digest-mismatch");
 }
 
 async function verifyManifest(
@@ -175,7 +225,7 @@ function assertExpectedBackupSource(expected: AuthorityBackupExpectedSource,
   }
 }
 
-function assertBackupInspection(manifest: StoppedAuthorityBackupManifest, inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>,
+function assertBackupInspection(manifest: StoppedAuthorityBackupManifest, inspection: BackupCopyInspection,
   expected: AuthorityBackupExpectedSource): void {
   assertExpectedBackupSource(expected, manifest);
   assertExpectedBackupSource(expected, inspection);
@@ -192,13 +242,13 @@ export function verifyStoppedBackupManifestAtPath(admissionInput: RuntimeAdmissi
   admission.assertStateRoot(manifestPath);
   return verifyStoppedManifest(manifestPath, admission.authorityBackupExpectedSource(), path => admission.assertStateRoot(path), (backupPath, manifest) => {
     const copy = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
-    try { return inspectAuthorityBackupReadOnly(copy, backupPath, manifest.schemaVersion); }
+    try { return inspectVerifiedBackupCopyReadOnly(copy, backupPath, manifest.schemaVersion); }
     finally { copy.release(); }
   });
 }
 
 function verifyStoppedManifest(manifestPath: string, expected: AuthorityBackupExpectedSource, assertPath: (path: string) => void,
-  inspect: (path: string, manifest: StoppedAuthorityBackupManifest) => ReturnType<typeof inspectAuthorityBackupReadOnly>): VerifiedBackup {
+  inspect: (path: string, manifest: StoppedAuthorityBackupManifest) => BackupCopyInspection): VerifiedBackup {
   const file = readPrivateFile(manifestPath, { label: "lock", maxBytes: 64_000 });
   if (file === undefined) throw new Error("profile-maintenance-backup-manifest-required");
   const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes));
@@ -258,6 +308,7 @@ function backupSuffix(purpose: "clean-shutdown" | "in-session" | undefined): str
 const BackupAttemptToken = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const BackupStageName = new RegExp(`^\\.authority-${BackupAttemptToken}\\.(?:sqlite\\.tmp(?:-(?:journal|wal|shm))?|manifest\\.json\\.tmp)$`, "u");
 const FinalBackupName = new RegExp(`^authority-g\\d+-\\d{17}-${BackupAttemptToken}(?:\\.shutdown|\\.session)?\\.sqlite$`, "u");
+const RestoreStageName = new RegExp(`^(\\.restore-${BackupAttemptToken}\\.sqlite\\.tmp)(?:-(?:journal|wal|shm))?$`, "u");
 
 export function reconcileBackupsAfterBrowserClosure(browserClosure: ProfileBrowserClosure, machine: RuntimeAdmission,
   operation: OfflineMaintenanceOperation): ProfileBrowserClosure {
@@ -273,27 +324,58 @@ export function reconcileBackupsAfterBrowserClosure(browserClosure: ProfileBrows
         admission.assertOfflineMaintenance(operation);
       };
       assertHeld();
-      reconcileAbandonedBackups(admission, assertHeld);
+      reconcileAbandonedBackups(admission.stateRoot, assertHeld, () => AuthorityDatabase.readProfileMaintenanceInventory(admission).upgrades);
     },
   };
 }
 
-function reconcileAbandonedBackups(admission: RuntimeAdmission, assertHeld: () => void): void {
-  const directory = join(admission.stateRoot, "backups", "authority");
+export function reconcileStartupAuthorityStages(machine: RuntimeAdmission, profileId: string, operation: OfflineMaintenanceOperation): number {
+  const id = z.uuid().parse(profileId), root = join(machine.stateRoot, "profiles", id);
+  const assertHeld = () => { machine.assertOfflineMaintenance(operation); machine.assertStateRoot(root); };
+  assertHeld();
+  const context = machine.readInstallationContext();
+  if (context === undefined || fileStatus(join(context.workspace, ".tracker", "control", "journal.json"), true) !== undefined) {
+    throw new Error("authority-restore-recovery-required");
+  }
   const ancestry = new Map<string, DirectoryIdentity>();
-  if (!noSymlinkAncestry(directory, ancestry)) return;
+  if (!noSymlinkAncestry(root, ancestry)) return 0;
+  const names = new Set(readdirSync(root));
+  const restores = [...names].flatMap(name => {
+    const stage = RestoreStageName.exec(name)?.[1];
+    if (stage === undefined || names.has(`${stage}-wal.live-companion`) || names.has(`${stage}-shm.live-companion`)) return [];
+    const file = abandonedFile(root, name);
+    return file === undefined ? [] : [file];
+  });
+  if (restores.length > 0) assertMaintenanceCustodyAvailable("restore");
+  const backups = reconcileAbandonedBackups(root, assertHeld, () => {
+    if (!machine.readStartupProfileIds().includes(id)) throw new Error("profile-startup-registration-required");
+    const binding = { installationId: context.locator.installationId, profileId: id };
+    return withReadonlyAuthoritySnapshot(join(root, "state.db"), database => {
+      const { user_version: version } = z.strictObject({ user_version: z.number().int().positive() }).parse(database.prepare("PRAGMA user_version").get());
+      assertExpectedBackupSource({ kind: "profile", binding }, inspectOpenDatabase(database, version));
+      return database.prepare("SELECT * FROM database_upgrades ORDER BY rowid").all()
+        .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
+    });
+  });
+  return backups + removeAbandonedFiles(root, ancestry, restores, assertHeld, "restore-stage-custody-changed");
+}
+
+function reconcileAbandonedBackups(root: string, assertHeld: () => void, readUpgrades: () => readonly AuthorityUpgradeRecord[]): number {
+  const directory = join(root, "backups", "authority");
+  const ancestry = new Map<string, DirectoryIdentity>();
+  if (!noSymlinkAncestry(directory, ancestry)) return 0;
   const names = new Set(readdirSync(directory));
   const stages = [...names].filter(name => BackupStageName.test(name));
   const unpaired = [...names].filter(name => FinalBackupName.test(name)
     && !names.has(`${name}.manifest.json`) && !names.has(`${name}.manifest.json.retiring`));
-  if (stages.length === 0 && unpaired.length === 0) return;
+  if (stages.length === 0 && unpaired.length === 0) return 0;
   assertMaintenanceCustodyAvailable("backup");
   statDirectory(directory, "authority backup", 0o700);
 
   const claimed = new Set<string>();
   if (unpaired.length > 0) {
     // A missing manifest cannot make a recorded upgrade backup eligible for cleanup.
-    for (const record of AuthorityDatabase.readProfileMaintenanceInventory(admission).upgrades) {
+    for (const record of readUpgrades()) {
       if (record.phase === "settled") claimed.add(basename(record.backup.manifestPath, ".manifest.json"));
     }
     for (const name of names) {
@@ -304,24 +386,33 @@ function reconcileAbandonedBackups(admission: RuntimeAdmission, assertHeld: () =
       claimed.add(parseCurrentBackupManifest(value).backupFileName);
     }
   }
-  const privateFile = (name: string) => {
-    const path = join(directory, name), status = fileStatus(path);
-    if (!status.isFile() || privateFileNumber(status.nlink) !== 1 || privatePathRejects(path, status, "group-write")) {
-      throw new Error("abandoned-backup-file-unsafe");
-    }
-    return { path, device: status.dev, inode: status.ino };
-  };
   const orphans = unpaired.filter(name => !claimed.has(name));
   for (const name of orphans) {
     if (["-wal", "-shm", "-journal"].some(suffix => names.has(`${name}${suffix}`))) throw new Error("abandoned-backup-companion-unproved");
   }
-  const abandoned = [...stages, ...orphans].map(privateFile);
+  const abandoned = [...stages, ...orphans].map(name => {
+    const file = abandonedFile(directory, name);
+    if (file === undefined) throw new Error("abandoned-backup-file-unsafe");
+    return file;
+  });
+  return removeAbandonedFiles(directory, ancestry, abandoned, assertHeld, "abandoned-backup-file-changed");
+}
+
+function abandonedFile(directory: string, name: string): (DirectoryIdentity & { path: string }) | undefined {
+  const path = join(directory, name), status = fileStatus(path);
+  if (!status.isFile() || privateFileNumber(status.nlink) !== 1 || privatePathRejects(path, status, "group-write")) return undefined;
+  return { path, device: status.dev, inode: status.ino };
+}
+
+function removeAbandonedFiles(directory: string, ancestry: Map<string, DirectoryIdentity>,
+  abandoned: readonly (DirectoryIdentity & { path: string })[], assertHeld: () => void, changed: string): number {
   for (const file of abandoned) {
     assertHeld();
     noSymlinkAncestry(directory, ancestry);
-    removeExactPath(file.path, file, false, "abandoned-backup-file-changed");
+    removeExactPath(file.path, file, false, changed);
   }
   if (abandoned.length > 0) fsyncPath(directory);
+  return abandoned.length;
 }
 
 export class AuthorityBackupService {
@@ -420,12 +511,12 @@ export class AuthorityBackupService {
       this.#admission.assertAuthorityBackupWrite(this.#directory);
       const inspectedDigest = await sha256File(temporaryBackupPath);
       const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, inspectedDigest);
-      let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
+      let inspection: BackupCopyInspection;
       try {
         const schemaVersion = this.#source.getMeta().schemaVersion;
         inspection = this.#purpose === "in-session"
           ? await inspectAuthorityBackupOffThread(copyAdmission, temporaryBackupPath, schemaVersion, { ...(this.#signal === undefined ? {} : { signal: this.#signal }) })
-          : inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath, schemaVersion);
+          : inspectVerifiedBackupCopyReadOnly(copyAdmission, temporaryBackupPath, schemaVersion);
       }
       finally { copyAdmission.release(); }
       assertExpectedBackupSource(expected, inspection);

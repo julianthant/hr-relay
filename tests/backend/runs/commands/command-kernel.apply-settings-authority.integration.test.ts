@@ -3,7 +3,7 @@ import { createProfileFixtureSet, createBoundProfileFixture } from "../../../sup
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { type SettingsApplicationExecutor } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { type SettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { SETTINGS_SCHEMA_HASH, SettingsApplyRejectionCodeSchema, derivePersistedSettingsFingerprint, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";

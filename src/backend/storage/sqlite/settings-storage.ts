@@ -1,4 +1,4 @@
-import { convertSettingsRecordRow } from "./settings-record-conversion.js";
+import { createSettingsRecordConversion } from "./settings-record-conversion.js";
 import { derivePersonPreferencesFingerprint, resolvePersonPreferences } from "../../../models/config/person-preferences.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -30,7 +30,7 @@ export function authenticateSavedSettings(currentInput:unknown,commandInput:unkn
 export function readAppSettings(database: DatabaseSync, convertRow: (table: string, row: unknown) => unknown = (_table, row) => row): AppSettings | undefined {
   const raw = database.prepare("SELECT * FROM settings WHERE id='current'").get();
   if (raw === undefined) {
-    const history=database.prepare("SELECT 1 FROM commands WHERE family='settings' OR json_extract(request_json,'$.kind')='settings-initialization' LIMIT 1").get();
+    const history=database.prepare("SELECT 1 FROM commands WHERE family IN ('settings','settings-initialization') LIMIT 1").get();
     if(history!==undefined || database.prepare("SELECT 1 FROM settings_snapshots LIMIT 1").get()!==undefined)throw new Error("settings-current-missing-with-history");
     return undefined;
   }
@@ -81,11 +81,16 @@ export function writeAppSettings(database: DatabaseSync, input: AppSettings): vo
       canonicalJsonStringify(record), record.saved?.committedAt ?? record.active?.activatedAt ?? record.initialization.initializedAt);
 }
 
+export function readSettingsRecordConversion(database: DatabaseSync) {
+  return createSettingsRecordConversion(database.prepare("SELECT payload_json FROM settings WHERE id='current'").get()?.payload_json);
+}
+
 /** The forward conversion of every settings record conversion; runs inside its migration while the immutability triggers are dropped. */
 export function migrateSettingsRecords(database: DatabaseSync): void {
+  const convert = readSettingsRecordConversion(database);
   for (const table of ["settings_snapshots", "settings", "commands", "command_audits"]) {
     for (const raw of database.prepare(`SELECT * FROM ${table}`).all()) {
-      const row = convertSettingsRecordRow(table, raw);
+      const row = convert(table, raw);
       if (canonicalJsonStringify(row) === canonicalJsonStringify(raw)) continue;
       if (table === "commands") database.prepare("UPDATE commands SET request_json=?,request_digest=?,outcome_json=? WHERE id=?")
         .run(z.string().parse(row.request_json), z.string().parse(row.request_digest), z.string().nullable().parse(row.outcome_json), z.string().parse(row.id));

@@ -38,6 +38,7 @@ import type { DashboardApp } from "../../../src/backend/transports/http/routes/a
 import { sourceBoundHarness } from "./integration/source-bound-fixtures.js";
 import { sourceBoundReadContract, sourceBoundReadStores } from "./source-bound-read-fixtures.js";
 import { WriteFixturePrepare, WriteFixtureCommit, buildWriteFixtureRegistry, absentProbeEvidence } from "./write-sequencer-fixtures.js";
+import { createRowStore } from "../../../src/dashboard/client/index.js";
 
 const Input = z.strictObject({ eid: EidSchema, memo: z.string().optional() });
 export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", current: { version?: number; fingerprint?: string; stepPrefix?: string; gateDependency?: boolean; gateCorrection?: boolean; readReplay?: "checkpoint" | "always-rerun" } = {}) {
@@ -146,8 +147,8 @@ export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", in
   const request = Object.freeze({ client, day, epoch, revision: 0 });
   const scope = Object.freeze({ actorId: "local-operator", client, authority: epoch, dayRequest: request });
   const executor = new CommandExecutor(() => scope);
-  const authority: DashboardAuthority = { epoch, catalog: [], nowIso: bootstrap.serverClock.now, today: day, day,
-    dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request, day: { state: "loaded", value: dayWire }, connection: { state: "connecting" }, refresh: () => undefined },
+  const authority: DashboardAuthority = { epoch, catalog: [], now: () => bootstrap.serverClock.now, today: day, day,
+    dayState: { rows: createRowStore(), subscribePublications: () => { throw new Error("fixture publications are not served"); }, request, day: { state: "loaded", value: dayWire }, connection: { state: "connecting" }, refresh: () => undefined },
     selection: { route: { start: false }, workflowId: descriptor.id } };
   const binding: DashboardCommandBinding = { authority, executor, scope, feedback: () => undefined };
   return { ...h, get queueRoots() { return h.queueRoots; }, get descriptor() { return h.descriptor; }, get workflow() { return currentWorkflow(); }, app, client, launch, binding, submissions, finalCommands, loseResponse: () => { loseResponse = true; },

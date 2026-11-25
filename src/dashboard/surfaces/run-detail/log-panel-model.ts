@@ -1,6 +1,5 @@
 /** Tab and terminal copy for the run-detail composition. */
 import type { z } from "zod";
-import { formatTime } from "../../lib/date-format.js";
 import type { RunDetailWireSchema } from "../../../models/dashboard/run-detail.js";
 import type { RunDetailSectionSchema } from "../../../models/dashboard/primitives.js";
 
@@ -35,15 +34,3 @@ export function defaultTabFor(detail: Pick<RunDetailWire, "availableSections" | 
   if (detail.outcome.state === "terminal" && detail.outcome.result === "failed") return pick("logs");
   return pick("logs");
 }
-
-/** THE OUTCOME BAR'S WORDS for a settled run — .
- * A REHEARSAL says so first. The bar states what the run came to, and for a dry */
-export function terminalOutcomeText(
-  outcome: Extract<RunDetailWire["outcome"], { state: "terminal" }>,
-): string {
-  const rehearsal = outcome.rehearsal === true ? "dry run · " : "";
-  return `${rehearsal}${outcome.result} · ${formatTime(outcome.completedAt)}`;
-}
-
-export { timelineAxisTotals, timelineHasOrphanGate, timelineSegmentUnmeasured } from "./timeline/timeline-model.js";
-export type { TimelineAxisTotals, TimelineSegmentState } from "./timeline/timeline-model.js";

@@ -14,7 +14,9 @@ import {
 
 prepareWindowsObserverPolicy(import.meta.dirname);
 
-const BACKEND = "http://127.0.0.1:3938";
+import { rebuildRuntimeIsolation } from "./src/backend/app/config/runtime-isolation.js";
+
+const BACKEND = `http://127.0.0.1:${rebuildRuntimeIsolation.backendPort}`;
 const ownerNonceInput = process.env[DASHBOARD_LAUNCH_NONCE_ENV];
 const ownerNonce = ownerNonceInput === undefined
   ? undefined
@@ -72,7 +74,7 @@ return defineConfig({
   },
   server: {
     host: DASHBOARD_FRONTEND_HOST,
-    port: 5174,
+    port: rebuildRuntimeIsolation.frontendPort,
     strictPort: true,
     proxy: {
       "/api": { target: BACKEND, changeOrigin: false },
@@ -81,7 +83,7 @@ return defineConfig({
     },
   },
   preview: {
-    port: 5174,
+    port: rebuildRuntimeIsolation.frontendPort,
     strictPort: true,
   },
 });

@@ -50,7 +50,7 @@ async function mount(synchronous = false) {
     const button = [...dialog().querySelectorAll("button")].find(node => node.textContent === "Add workers");
     assert.ok(button instanceof HTMLButtonElement);
     await settle(() => { button.focus(); button.click(); });
-    assert.equal(document.querySelector('[role="dialog"]'), null, "confirmation closes immediately");
+    assert.equal(document.querySelector('[role="dialog"]') === null, true, "confirmation closes immediately");
     assert.equal(calls, 1);
   };
   const transition = async (state: SessionPreviewOperation["state"]) => {
@@ -82,15 +82,13 @@ describe("Sessions confirmation focus", () => {
     assert.ok(document.activeElement === harness.trigger, "focus returns to the Add workers trigger");
   });
 
-  it("keeps uncertain and checking commands locked until a checked outcome unlocks", async () => {
+  it("keeps a pending add locked until it settles", async () => {
     const harness = await mount();
     await harness.open(); await harness.confirm();
-    for (const state of ["uncertain", "checking"] as const) {
-      await harness.transition(state);
-      assert.equal(harness.trigger.disabled, true);
-      assert.ok(document.activeElement !== harness.trigger, "disabled trigger cannot receive return focus");
-      assert.equal(harness.calls(), 1, "focus never resubmits an uncertain command");
-    }
+    await harness.transition("pending");
+    assert.equal(harness.trigger.disabled, true);
+    assert.ok(document.activeElement !== harness.trigger, "disabled trigger cannot receive return focus");
+    assert.equal(harness.calls(), 1, "focus never resubmits a pending command");
     await harness.transition("confirmed");
     assert.ok(document.activeElement === harness.trigger, "focus returns to the Add workers trigger");
   });
@@ -116,7 +114,7 @@ describe("Sessions confirmation focus", () => {
         assert.ok(cancel);
         await settle(() => cancel.click());
       } else await settle(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-      assert.equal(document.querySelector('[role="dialog"]'), null);
+      assert.equal(document.querySelector('[role="dialog"]') === null, true);
       assert.ok(document.activeElement === harness.trigger, "focus returns to the Add workers trigger");
       assert.equal(harness.calls(), 0);
     });

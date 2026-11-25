@@ -46,7 +46,7 @@ describe("the queue row's served facts", () => {
 
     assert.deepEqual(rowOf(w, 4).liveMessage, {
       state: "present",
-      value: "This failure code is not in the current catalog. Review the recorded local evidence.",
+      value: "Relay did not recognize this failure. Open the run in Logs.",
     });
     assert.notEqual(rowOf(w, 4).liveMessage, { state: "present", value: failure.summary });
   });

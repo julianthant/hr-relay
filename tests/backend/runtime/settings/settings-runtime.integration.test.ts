@@ -9,7 +9,8 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { resolveConfigWithProvenance, type ResolvedConfig } from "../../../../src/backend/app/config/resolve.js";
-import { executeSettingsCommand, type CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
+import type { CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { buildSettingsEditor } from "../../../../src/backend/runs/queries/settings-editor.js";
 import { activeSettingsConfig, activeSettingsRuntimeIdentity, createCredentialSecretSource, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
@@ -110,7 +111,7 @@ afterEach(_afterEachFixture0);
       assert.equal(editor.settingsFingerprint, f.initial.settingsFingerprint);
       assert.deepEqual(editor.runtimeStatus, { state: "current", identity: f.active });
       const leaves = editor.sections.flatMap((section) => section.leaves);
-      assert.equal(leaves.length, 68);
+      assert.equal(leaves.length, 67);
       assert.equal(leaves.some(leaf => leaf.path === "paths.browserProfileRoot" || leaf.path === "paths.duoCredential"), false);
     }
     assert.equal(existsSync(join_m0(f.root, "settings")), false);
@@ -378,7 +379,7 @@ it("persists each person's appearance and shell settings across a database reope
     const a = await fixture(); const b = await fixture();
     const run = a.create(); const original = selectActiveRunSettings(a.database.authority);
     const result = a.save({ "preferences.theme": { set: "light" }, "preferences.animations": { set: false },
-      "preferences.workflowPanelMode": { set: "sidebar" }, "preferences.selectedWorkflowId": { set: "separations" },
+      "preferences.selectedWorkflowId": { set: "separations" },
       "preferences.shortcuts.bindings.search": { set: ["g"] } });
     assert.equal(result.state, "applied");
     const accepted = selectActiveRunSettings(a.database.authority);

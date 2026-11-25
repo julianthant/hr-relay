@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, LockKeyhole, Minus, Monitor, Plus, RotateCw } from "lucide-react";
-import { Select, Button, Dialog, DialogContent, DialogTrigger, IconButton, SegmentedChoice } from "../../../ds/ui.js";
+import { Select, Button, Dialog, DialogBody, DialogContent, DialogTrigger, IconButton, SegmentedChoice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { useAuthenticatedImage } from "../../shared/authenticated-image.js";
 import type { LogScreenshot } from "./log-feed-model.js";
@@ -102,7 +102,7 @@ export function LogScreenshots({ screenshots, presentation }: { screenshots: rea
   if (!capture) throw new Error("log-screenshot-selection-missing");
   const browsers = screenshots.length > 1 && screenshots.every(item => item.kind === "browser");
   return <Dialog><div className={cn("log-capture-group", browsers && "log-capture-group--browsers", screenshots.length === 1 && "log-capture-group--single", presentation === "submit" && "log-capture-group--submit")} aria-label="Screenshots">{screenshots.map((item, index) => <CapturePreview key={`${item.src}-${item.width}-${item.height}-${index}`} screenshot={item} submit={presentation === "submit"} onChoose={button => { opener.current = button; setSelected(index); }} />)}</div>
-    <DialogContent className="ui-theme-scope log-viewer-dialog font-ui text-ui-primary" title={`${capture.system ?? "Capture"} · ${capture.label ?? captureKindLabel(capture.kind)}`} description={<span className="sr-only">Captured screenshot viewer</span>} size="xl" onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }}><CaptureWorkspace screenshots={screenshots} selected={selected} choose={setSelected} /></DialogContent>
+    <DialogContent className="ui-theme-scope log-viewer-dialog font-ui text-ui-primary" title={`${capture.system ?? "Capture"} · ${capture.label ?? captureKindLabel(capture.kind)}`} description={<span className="sr-only">Captured screenshot viewer</span>} size="xl" onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }}><DialogBody><CaptureWorkspace screenshots={screenshots} selected={selected} choose={setSelected} /></DialogBody></DialogContent>
   </Dialog>;
 }
 

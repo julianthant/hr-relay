@@ -4,7 +4,6 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
-import { readTimelineRecords } from "../../../../../src/backend/storage/events/timeline-reader.js";
 import { RequestIdentityRefusedError } from "../../../../../src/backend/runs/commands/refusals.js";
 import { DashboardClientDisconnectedError } from "../../../../../src/backend/transports/http/http-server.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
@@ -25,7 +24,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(await json(response), {
       state: "error", code: "INTERNAL_FAILURE", message: ERROR_CATALOG.INTERNAL_FAILURE.text, retryable: false,
     });
-    const records = readTimelineRecords(h.database.authority.timelineEvents).records;
+    const records = h.database.authority.timelineEvents.debugPage({ limit: 1000 });
     const diagnostics = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "request-cause" ? [record.payload.event] : []);
     assert.equal(diagnostics.length, 1);
     assert.equal(diagnostics[0]?.message, "TypeError");
@@ -44,7 +43,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(await json(response), {
       state: "error", code: "INTERNAL_FAILURE", message: "The command request body must be valid JSON.", retryable: false,
     });
-    const records = readTimelineRecords(h.database.authority.timelineEvents).records;
+    const records = h.database.authority.timelineEvents.debugPage({ limit: 1000 });
     const diagnostics = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "request-cause" ? [record.payload.event] : []);
     assert.ok(diagnostics.some(event => event.message === "SyntaxError" && event.status === 500));
     assert.doesNotMatch(JSON.stringify(diagnostics), /fixture invalid JSON/u);
@@ -59,7 +58,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const response = await h.app.request(`/api/v1/runs/${UUID_4}`);
     assert.equal(response.status, 409);
     assert.equal((await json(response)).code, "PREFLIGHT_TIMEOUT");
-    const rows = readTimelineRecords(h.database.authority.timelineEvents).records
+    const rows = h.database.authority.timelineEvents.debugPage({ limit: 1000 })
       .flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "preflight-timeout" ? [record.payload.event] : []);
     assert.equal(rows.length, 1);
     assert.equal(rows[0]?.code, "PREFLIGHT_TIMEOUT");
@@ -77,7 +76,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       throw new Error("aborted", { cause: disconnected });
     });
     await h.app.request(`/api/v1/runs/${UUID_4}`, { signal: abort.signal });
-    const events = readTimelineRecords(h.database.authority.timelineEvents).records
+    const events = h.database.authority.timelineEvents.debugPage({ limit: 1000 })
       .flatMap(record => record.payload.kind === "debug" && record.payload.event.category === "http" ? [record.payload.event] : []);
     assert.deepEqual(events.filter(event => event.reason === "request-cause").map(event => [event.message, event.status]),
       [["Error", undefined], ["DashboardClientDisconnectedError", undefined]]);

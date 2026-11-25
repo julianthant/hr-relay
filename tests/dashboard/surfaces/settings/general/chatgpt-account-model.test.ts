@@ -38,7 +38,7 @@ describe("General ChatGPT account", () => {
     await click("Connect");
     assert.equal(signIn.mock.calls.length, 1);
     assert.deepEqual(signIn.mock.calls[0], [{ usePlan: true }]);
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.equal(document.querySelectorAll('input[type="password"],input[name="token"],input[name="apiKey"]').length, 0);
     assert.equal(port.getSnapshot().state, "connected");
     assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
@@ -57,9 +57,9 @@ describe("General ChatGPT account", () => {
     if (identity.state !== "connected") throw new Error("preview-account-not-connected");
     assert.equal(identity.planUsage, "disabled");
     assert.match(host?.textContent ?? "", /ChatGPT plan access not enabled/u);
-    assert.equal(host?.querySelector(`a[href="${CHATGPT_USAGE_URL}"]`), null);
+    assert.equal(host?.querySelector(`a[href="${CHATGPT_USAGE_URL}"]`) === null, true);
     await click("Connect");
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
     assert.doesNotMatch(host?.textContent ?? "", /Using ChatGPT plan|Preview/u);
     const usage = host?.querySelector<HTMLAnchorElement>(`a[href="${CHATGPT_USAGE_URL}"]`);
@@ -91,10 +91,10 @@ describe("General ChatGPT account", () => {
     assert.equal(button("Connect").disabled, true);
     await click("Connect");
     assert.equal(calls, 1);
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.querySelector('[role="dialog"]') === null, true);
     assert.equal(port.getSnapshot().state, "signed-out");
     await act(async () => reject(new Error("synthetic-refusal")));
-    assert.match(host?.textContent ?? "", /Relay could not connect ChatGPT\. Try connecting again\./u);
+    assert.match(host?.textContent ?? "", /ChatGPT did not connect\. Try again\./u);
     assert.equal(button("Connect").disabled, false);
     assert.equal(port.getSnapshot().state, "signed-out");
   });

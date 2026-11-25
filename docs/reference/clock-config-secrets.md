@@ -192,7 +192,7 @@ optional value absent. `SETTINGS_SCHEMA_HASH` derives from the editable schema;
 and patch fingerprint mismatch before ordinary application. Under the kernel's SQLite transaction,
 it checks the expected revision, merges the patch, resolves the complete candidate, validates
 changed browser and Duo paths, and checks the 1,048,576-byte ordinary document bound. It inserts the
-new snapshot and activates it. `command-kernel.ts` journals the command and audit and advances saved
+new snapshot and activates it. `settings-command.ts` journals the command and audit and advances saved
 settings before the same transaction commits. Failure rolls back ordinary activation and journal
 changes. An ordinary success returns `restartRequired: false`.
 
@@ -388,7 +388,7 @@ closure still stops startup and retains its owners.
 Ordinary readers accept only the current schema. Stopped conversion and flat-source inspection own
 the previous grammar; retained value-free receipts keep the catalog used by their original write.
 
-Registry document 4 binds immutable installation ID and safe revision, and each row stores its timekeeper initials apart from its timekeeper name. Control 7 binds logical registry digest/revision/epoch and operation membership; marker 9 selects the current tuple and external browser-root registry. Startup under stopped exclusive custody upgrades document 3 at marker 8 forward once, seeding each row's timekeeper initials from the letters of its timekeeper name; its control intent `registry-initials-upgrade.json` lets a stop at any step finish the same upgrade, and the conversion refuses while a publication, restore journal, control upgrade or account deletion is pending. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
+Registry document 5 binds immutable installation ID and safe revision, and each row stores its timekeeper initials apart from its timekeeper name. Control 7 binds logical registry digest/revision/epoch and operation membership; marker 10 selects the current tuple and external browser-root registry. Startup under stopped exclusive custody upgrades document 3 at marker 8 forward once, seeding each row's timekeeper initials from the letters of its timekeeper name; its control intent `registry-initials-upgrade.json` lets a stop at any step finish the same upgrade, and the conversion refuses while a publication, restore journal, control upgrade or account deletion is pending. Document 4 at marker 9 then upgrades to document 5 at marker 10 the same way (intent `security-key-only-upgrade.json`): stored sign-up and re-enrol operations drop their Touch ID attempts and ceremony mechanism fields, each completion drops its Touch ID receipt, and an open operation still holding a live Touch ID attempt refuses with `security-key-upgrade-touch-attempt-in-flight`. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
 
 Browser-root registry schema 2 stores short numeric handles with complete owner bindings. Stopped startup
 runs `maintenance/browser-root-upgrade.ts` before ordinary admission. Its schema-1 forward conversion
@@ -561,7 +561,7 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-The current schema is 36. Workbook catalogue names and the version in use are separate from immutable workbook snapshots and action receipts. Its forward upgrade refuses an older captured workbook-reference schema rather than rewriting retained input or its proof. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+Workbook catalogue names and the version in use are separate from immutable workbook snapshots and action receipts. Its forward upgrade refuses an older captured workbook-reference schema rather than rewriting retained input or its proof. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
 
 
 Fresh workbook storage contains one General type seed. Incomplete-profile inventory reports that row and treats only its exact initial payload as pristine, alongside either bare authority or authenticated Settings initialization. Extra or edited types and workbook masters, creations, operations or named versions remain activity that blocks withdrawal.
@@ -569,7 +569,7 @@ Fresh workbook storage contains one General type seed. Incomplete-profile invent
 The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29 and 30. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 36` and
+`src/models/config/authority-schema-versions.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 42` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
@@ -580,6 +580,8 @@ Schemas 1 through 30 are inspected only under stopped upgrade or maintenance aut
 use the current layout. Stopped inspection projects the absent pre-v15 pause column as null only
 after validating the predecessor's registered schema, including run/search/timeline/result owners.
 The native layout includes the pause scalar and its JSON-equality triggers, plus immutable OCR source uploads, review revisions and approved snapshots. The forward v18 migration adds library catalogue state, immutable named snapshots and action receipts under the same verified-backup upgrade boundary. The v19 guard checks every captured workbook reference in runs and retained start plans, including terminal runs and consumed plans, against the current derived output-schema hash. A mismatch refuses with `workbook_reference_schema_upgrade_unproved` before migration effects and preserves retained references, proofs and the source schema; it never rehashes or rebinds evidence. The v27 migration moves the assistant effort preference to light|medium|high|xhigh|max: a stored `low` becomes `light` in the preference, its commands (request digest recomputed) and their audits, with the audit and preference triggers dropped and recreated around the conversion. The v29 migration drops the empty `assistant_grants` table; a store that still holds a grant, an assistant action, or a command or audit carrying `assistantPermission` refuses the upgrade with `assistant-grant-history-unsupported` and keeps its version. The v30 migration marks every library state and recorded library action result unpinned with no manual tags, with the action-journal update trigger dropped and recreated around the conversion; stopped inspection of an earlier store reads its states as unpinned and untagged. The v31 migration adds the `authority_changes` log, the `run_references` link from JSON run ids to their source rows, their capture triggers and the indexes the scoped store check reads through; it backfills the links and rewrites no existing row. The v35 migration adds the assistant send shortcut (`preferences.sendShortcut`, `enter` by default) to every stored settings snapshot and moves settings rows, settings-initialization commands and their audits to the current settings schema, with the snapshot and audit triggers dropped and recreated around the conversion; stopped inspection of an earlier store reads its settings rows through the same conversion. The v36 migration adds a nullable `sync_json` column to `workbook_library_state` holding the last finished SharePoint sync of each entry (its link, finish time, result and failure catalog code); every existing row starts with no recorded sync, and stopped inspection of an earlier store validates no sync record.
+
+The v42 migration removes the unused panel mode from saved settings and native and imported settings snapshots. It advances the preferences fingerprint and, where the saved override changes, the matching saved settings, active generation and settlement fingerprints. Historical commands retain their original requests under the schema hash that admitted them.
 
 The v25 migration adds `workflow_workbook_selections`, one ordered last-used source selection per workflow in the owning person database. An absent row means no selection has been recorded; no default or historical run seeds it. Sources retain library and worksheet identities without foreign keys, so removed sources stay stale and history clearing preserves selections. Its repository records the accepted command, used time and revision; confirmed Start integration is separate. Before adding the table, the migration refuses unreceipted operator workbook operations whose identity begins with the exact `library:` prefix, using `workflow_workbook_selection_pending_library_operation`. It preserves pending ordinary run operations, completed library actions, workbook mappings and all write evidence without replaying them. A registered schema 25 marker binds the captured `run-reference` workbook-write source grammar into its plan digest. That source retains immutable version, worksheet, key, required fields and explicit writable fields; only selected-row patches with exact version CAS are admitted. Its storage apply and replay use the captured key and writable fields, while predecessor operations retain historical type semantics. Producing this source from accepted runs is separate work. The existing stopped exclusive transaction, verified pre-upgrade backup and strict current readback own this upgrade.
 
@@ -713,6 +715,53 @@ the bytes again before publication. Changed content, identity, permissions or an
 Startup owns automatic same-person repair before ordinary admission, providers or HTTP. It selects the newest verified supported backup that preserves current write fences, attempts, evidence, deletion tombstones and generated-file publication records. It refuses when current critical evidence or immutable identity cannot be inspected, or when a backup would weaken it; it never unions databases. Current runtime roots must match the admitted person.
 
 The one external control `journal.json` restore record (schema 3) binds source/stage/quarantine/manifest bytes, current canonical credential head, retained files and browser membership. Replacement advances the session epoch once, revokes old runtime authority and preserves the authenticated profile selection. Startup resumes only its exact interrupted prefix, verifies the original manifest and preserved evidence again, and retains an on-disk repair record with the backup time. Unknown prefixes remain held. No restore command or picker exists. Settled schema-6 control converts once under stopped exclusive custody to logical control 7 and marker 8, then to registry document 4 and marker 9; old physical completed-restore entries are checked during that conversion and removed from current control.
+
+### Isolated library import
+
+`npm run profile:<staging|development> -- --source-person <uuid>` uses `importIsolatedProfileData`
+in `storage/maintenance/isolated-library-import.ts` to seed one staging or development person from
+the newest backup for the selected production person. `importIsolatedWorkbookLibrary` in the same
+module imports only the workbook library.
+
+- Sign up first. The person signs up in the isolated copy (Relay login and Duo), which issues that
+  installation's own installation and profile IDs and its own credentials. The import never creates
+  a person and never changes either identity.
+- Call it from the copy's own staging or development controller with its lifetime lock held, after
+  stopping its dashboard: acquire the copy's exclusive entrypoint admission, admit the signed-up person
+  and open its `state.db` through `AuthorityDatabase.open` with that admission. Pass that admission and
+  database with
+  `{ source: { manifestPath, binding: { installationId, profileId } }, destination: { installationId, profileId } }`.
+- The source is a version-4 backup manifest, checked against the named source binding with the same
+  identity and inspection checks restore uses.
+  The verified read-only copy admission holds the backup file and refuses one with a second link. The
+  verifier checks the backup's size, SHA-256 and empty write-ahead log and reads from a private
+  snapshot. For a supported older schema, the import makes a separate, writable copy of that
+  snapshot, runs the registered authority migrations and verifies the resulting current schema before
+  reading it. The temporary upgrade copy is closed and removed after use, including after a failed
+  migration or read. If closing or removing the copy fails, the error includes any migration or read
+  failure. The backup and its `-wal` and `-shm` files stay untouched.
+- It refuses (`IsolatedLibraryImportRefusedError`) when the store was not opened by this exclusive
+  admission or is not its `state.db` (`destination-store-unbound`), when the admission, open store and
+  named destination differ, when the controller holds the production lifetime lock, its workspace lies
+  inside the production application data or the destination shares the source's installation
+  (`destination-not-isolated`), when the source differs from its binding, and when a source workbook
+  type differs from the destination's type of the same ID. It refuses a schema newer than the build
+  with `source-schema-newer` and an older schema without a registered upgrade with
+  `source-schema-upgrade-unsupported`.
+- The profile import carries runs, timeline events, notifications and related run records in a
+  read-only history archive. It records unfinished source runs as discarded so they cannot resume
+  in the copy. Settings, assistant state, credentials, browser sessions and queued work stay behind.
+- The library import carries each local workbook's current content and workbook types. Each source
+  entry lands on a library ID derived from both bindings and the source entry, so a repeated call
+  refreshes the same entries. Library journals, tags, workflow output workbooks and SharePoint links
+  stay behind.
+- Run it again to update a copy. It creates entries new in the source and refreshes an imported entry
+  only while its journal and library revision show nothing but the import's own writes and it has no
+  pending operation. Entries the copy created, and imported entries the copy edited, removed, acted on
+  or still has pending operations on, are left unchanged and counted as `keptLocal`; their pending
+  operations stay queued. Entries removed from the source stay in the copy.
+- Workbook writes share one store transaction. The profile import publishes the history archive
+  after source verification and the workbook transaction finish.
 
 ## Settings and readiness readback
 
@@ -893,18 +942,16 @@ enrollment, persisted credential, counter reservation or readiness proof.
 
 `profile-onboarding.ts` issues exact operation/generation/method attempts. Software FastDuo readiness
 requires native pending-key acknowledgement and ceremony plus either exact scoped operator CONFIRM
-or an observed exact-credential request; an unobserved portal acceptance remains false. Touch ID separately requires a platform ceremony with software interception disabled, actual Duo
-portal acceptance and operator confirmation. The owned extension prepares platform discovery before answering Duo availability queries. Touch ID uses Chromium's emulated internal authenticator on both macOS and Windows, without a hardware availability probe or installed Chrome dependency. The registration handoff disables native signatures before exporting the observed counter and private key. Login rehydrates ready internal material with native signatures disabled; the current backend ceremony lease remains required for signing. Virtual platform
-keys enter the same encrypted Duo custody and must be ready before Finish. The retained receipt and
-public method state identify `native-platform` or `chromium-platform`. Public method states display these receipts; they do not
-authorize publication. Each SIGN uses a distinct durable reservation nonce.
+or an observed exact-credential request; an unobserved portal acceptance remains false. The security key is the only Duo method:
+the extension answers Duo's platform availability check with false, refuses platform enrollment, and workflow logins sign only
+with the stored usb key. Public method states display these receipts; they do not authorize publication. Each SIGN uses a
+distinct durable reservation nonce.
 
-Platform setup uses the broker-verified top-level Duo page. Same-origin child frames are not
-additional enrollment targets; ambiguous top-level pages refuse. Credential IDs remain canonical
+Setup uses the broker-verified top-level Duo page. Same-origin child frames are not
+additional enrollment targets. Credential IDs remain canonical
 base64url in Duo custody and convert to standard base64 only at the Chromium protocol boundary.
-A completed Chromium platform receipt with a matching ready encrypted key survives the scoped
-retention hook, just like the software key. Actual provider failures still retain their error and
-block Finish through the existing custody checks.
+Actual provider failures still retain their error and block Finish through the existing custody checks.
+The first open of a credential store retires any stored transport `internal` row and its head counter.
 
 Setting Duo up again for an active profile is a separate `duo-reenrol` operation beside the active session. The same draft owner
 runs its attempts under a fresh account, but a proved credential is staged, not confirmed, so workflows keep signing with the

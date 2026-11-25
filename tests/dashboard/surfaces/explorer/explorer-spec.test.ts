@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { applies, fieldSource, resolveExplorer, rowValue, visible, type SpecCard } from "../../../../src/dashboard/surfaces/explorer/explorer-spec.js";
-import { FIXTURE_EXPLORER_WIRE } from "../../../mocks/helpers/fixture-explorer.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../../support/helpers/dashboard/mock-world/fixture-explorer.js";
 
 const workflow = FIXTURE_EXPLORER_WIRE.workflows.find(candidate => candidate.id === "person-lookup");
 assert.ok(workflow);

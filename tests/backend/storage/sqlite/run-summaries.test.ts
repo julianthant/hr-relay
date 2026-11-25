@@ -73,7 +73,7 @@ describe("native summary snapshots", () => {
       expect(first.items).toEqual(expected.slice(0, 2).map(row => ({ ...row, cancelRequested: false })));
       const second = f.summaries.query(9, { workflow: QUEUED_RUN.envelope.workflow, limit: 2, after: first.next ?? undefined });
       expect(second.items).toEqual(expected.slice(2, 4).map(row => ({ ...row, cancelRequested: false })));
-      expect(queries.some(sql => /FROM runs INDEXED BY runs_day_idx/u.test(sql) && /LIMIT \?/u.test(sql))).toBe(true);
+      expect(queries.some(sql => /FROM runs INDEXED BY runs_workflow_day_idx/u.test(sql) && /LIMIT \?/u.test(sql))).toBe(true);
       queries.splice(0);
       expect(f.summaries.calendar(9, { month: "2026-10", day: "2026-10-05", today: "2026-10-21" }).monthCounts.reduce((total, row) => total + row.count, 0)).toBe(40);
       expect(queries.every(sql => !/SELECT \*/u.test(sql))).toBe(true);

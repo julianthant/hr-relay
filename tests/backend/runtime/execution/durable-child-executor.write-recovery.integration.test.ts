@@ -17,7 +17,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
@@ -198,7 +198,7 @@ it(`authenticates task and transaction prerequisites through child resume with u
   const first = await f.execution.step(f.run, world.SIGNAL);
   const failure = first.outcome.state === "failed" ? f.database.authority.failures.get(first.outcome.failureId) : undefined;
   const code = ErrorCatalogCodeSchema.safeParse(failure?.code);
-  const diagnosticPaths = new Set(["src/backend/runtime/execution/run-executor.ts","src/backend/runtime/execution/durable-child-executor.ts","src/backend/runs/lifecycle/run-record-service.ts","src/backend/runs/lifecycle/delegation-admission.ts","src/backend/storage/sqlite/authority-database.ts","src/workflow-kit/task.ts","src/workflow-kit/workflow.ts"]);
+  const diagnosticPaths = new Set(["src/backend/runtime/execution/run-executor.ts","src/backend/runtime/execution/run-execution-outcome.ts","src/backend/runtime/execution/run-execution-plan.ts","src/backend/runtime/execution/run-execution-task.ts","src/backend/runtime/execution/run-execution-walk.ts","src/backend/runtime/execution/run-execution-write.ts","src/backend/runtime/execution/durable-child-executor.ts","src/backend/runs/lifecycle/run-record-service.ts","src/backend/runs/lifecycle/delegation-admission.ts","src/backend/storage/sqlite/authority-database.ts","src/workflow-kit/task.ts","src/workflow-kit/workflow.ts"]);
     const diagnosticTexts = failure?.debug === undefined ? [] : [failure.debug.stack, ...failure.debug.causes];
     const diagnosticFrames = diagnosticTexts.flatMap((value) => [...value.matchAll(/(?:^|[(/\s])((?:src)\/[A-Za-z0-9_./-]+\.ts):(\d+):(\d+)/gm)]
       .filter((match) => diagnosticPaths.has(match[1] ?? ""))

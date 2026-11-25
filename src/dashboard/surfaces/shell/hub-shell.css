@@ -6,6 +6,8 @@
 .hub-slot[hidden] { display:none; }
 .hub-slot-header,#hub-panel-assistant>.hub-panel-header { display:flex;flex:none;padding:10px 12px 10px 16px;min-height:52px;align-items:center;gap:8px;border:0;background:transparent; }
 .hub-slot-title { min-width:0;flex:1;display:flex;overflow:hidden;font-size:14px;line-height:20px;color:var(--ui-primary); }
+/* The history heading takes focus from script only; it is not a control. */
+.hub-slot-title:focus-visible { outline:none; }
 .hub-chat-title { display:inline-flex;width:fit-content;max-width:100%;font-weight:500;color:var(--ui-primary);padding:0 4px;margin-left:-4px;min-height:28px;line-height:20px;border:0;background:transparent;border-radius:8px;text-align:left; }
 .hub-chat-title > span { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .hub-header-actions { display:flex;gap:2px;flex:none; }
@@ -38,6 +40,3 @@
 .hub-history { display:flex;flex-direction:column;flex:1;min-height:0; }
 .hub-history-bar { display:flex;flex:none;align-items:center;gap:8px;padding:4px 16px 8px; }
 .hub-history-bar > :first-child { flex:1;min-width:0; }
-.hub-history-bar .ds-search-field--sidebar [data-slot="search-field-group"] { height:32px;min-height:32px;max-height:32px;border:1px solid color-mix(in srgb,var(--ds-fg) 3.5%,transparent); }
-.hub-history-bar .ds-segment { flex:none;height:32px; }
-.hub-history-bar .ds-segment > label > span { padding-inline:12px; }

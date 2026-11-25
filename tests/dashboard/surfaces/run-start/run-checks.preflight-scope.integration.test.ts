@@ -12,7 +12,6 @@ import type { DashboardApp } from "../../../../src/backend/transports/http/route
 import { registerSettingsPreflightRoutes } from "../../../../src/backend/transports/http/routes/settings-preflight.js";
 import { createDashboardClient, type DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { SETTINGS_READ_DEADLINE_MS } from "../../../../src/dashboard/client/read-deadline.js";
-import { FailureNotice } from "../../../../src/dashboard/ds/primitives/failure-notice.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { runChecksBlocked, useRunChecks } from "../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import { RunChecksStage } from "../../../../src/dashboard/surfaces/run-start/run-checks.js";
@@ -83,11 +82,9 @@ function checksHarness(workflowId: string, failingCheck: "config.valid" | "secre
 const checksUnavailable = () => [...document.querySelectorAll("button")].some(button => button.textContent === "Check again");
 
 function Checks({ client, workflowId }: { client: DashboardClient; workflowId: string }) {
-  const checks = useRunChecks(client, workflowId, true);
+  const checks = useRunChecks(client, workflowId, true, true, true);
   return createElement("div", null,
-    checks.state.state === "unavailable" && createElement(FailureNotice, { sentence: checks.state.message,
-      action: { label: "Check again", onClick: checks.recheck } }),
-    createElement(RunChecksStage, { checks: checks.state, onFix: () => undefined }),
+    createElement(RunChecksStage, { checks: checks.state, onFix: () => undefined, onRecheck: checks.recheck }),
     createElement("button", { disabled: runChecksBlocked(checks.state), "data-checks-start": true }, "Start dry run"));
 }
 
@@ -115,7 +112,7 @@ it("produces Emergency Contact's exact-scope report and shows its real failed ch
   assert.match(missing.reason, /Preflight evidence is unavailable for this exact scope/u);
   await mount(h.client, "emergency-contact");
   assert.ok(document.body.textContent?.includes("Relay's settings could not be read. Restart Relay, then check again."), document.body.textContent ?? "");
-  assert.equal(document.querySelector('[data-run-check-fix="config.valid"]'), null, "Settings cannot fix an invalid runtime configuration");
+  assert.equal(document.querySelector('[data-run-check-fix="config.valid"]') === null, true, "Settings cannot fix an invalid runtime configuration");
   const report = PreflightReadinessWireSchema.parse(await h.client.readPreflight(selection));
   assert.equal(report.state, "present");
   if (report.state !== "present") throw new Error("completed exact-scope report required");

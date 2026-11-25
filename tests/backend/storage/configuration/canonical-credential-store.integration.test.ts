@@ -21,6 +21,49 @@ function credential() {
     createdAt: "2026-11-01T12:00:01.000Z", confirmedAt: "2026-11-01T12:00:02.000Z" };
 }
 
+it("authenticates the same head once per record and checks key custody again before returning", async () => {
+  const f = await createBoundProfileFixture();
+  try {
+    const store = createCanonicalCredentials(f.admission);
+    const decode = vi.spyOn(CanonicalCredentialHeadSchema, "safeParse");
+    const { value: get } = Object.getOwnPropertyDescriptors(FakeKeyringEntry.prototype).getPassword;
+    assert.ok(get);
+    const custody = vi.spyOn(FakeKeyringEntry.prototype, "getPassword");
+    for (let read = 1; read <= 2; read++) {
+      assert.ok(store.readRecord("protected"));
+      assert.equal(decode.mock.calls.length, read);
+      assert.equal(custody.mock.calls.length, 2 * read);
+    }
+    custody.mockImplementationOnce(get).mockReturnValueOnce(null);
+    assert.throws(() => store.readRecord("protected"), { code: "CREDENTIAL_UNAVAILABLE" });
+  } finally {
+    vi.restoreAllMocks();
+    await f.close();
+  }
+});
+
+it("rechecks a different credential head published during a record read", async () => {
+  const f = await createBoundProfileFixture();
+  const path = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
+  const original = readFileSync(path);
+  try {
+    const head = CanonicalCredentialHeadSchema.parse(JSON.parse(original.toString("utf8")));
+    assert.equal(head.state, "active");
+    const store = createCanonicalCredentials(f.admission);
+    const { value: get } = Object.getOwnPropertyDescriptors(FakeKeyringEntry.prototype).getPassword;
+    assert.ok(get);
+    vi.spyOn(FakeKeyringEntry.prototype, "getPassword").mockImplementationOnce(function (this: FakeKeyringEntry) {
+      writeFileSync(path, JSON.stringify({ ...head, mac: "0".repeat(64) }));
+      return get.call(this);
+    });
+    assert.throws(() => store.readRecord("protected"), { code: "CREDENTIAL_UNAVAILABLE" });
+  } finally {
+    vi.restoreAllMocks();
+    writeFileSync(path, original);
+    await f.close();
+  }
+});
+
 it("preserves a callback's exact domain failure after releasing the actual global ChatGPT lease", async () => {
   const f = await createBoundProfileFixture();
   try {

@@ -1,11 +1,17 @@
 import { z } from "zod";
+import { ProtectedValueSchemas } from "../config/protected-settings.js";
 import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { ErrorCodeSchema } from "../../rules/identity/ids.js";
 import { ProfileIdSchema, ProfileRegistryRowSchema, type ProfileRegistryRow } from "./profile.js";
 import { PreflightReportWireSchema } from "../preflight/preflight-contract.js";
+import { DuoKeyChangeSchema, DuoKeyIdSchema, DuoKeyNameSchema } from "../config/duo-credential-store.js";
 
 export const ProfileLoginRequestSchema = z.strictObject({ email: z.string().min(1).max(254), password: z.string().min(1).max(1024) });
-export const ProfileSignUpRequestSchema = ProfileLoginRequestSchema.extend({ firstName: z.string().min(1).max(64), lastName: z.string().min(1).max(64) });
+export const ProfileSignUpRequestSchema = ProfileLoginRequestSchema.extend({
+  firstName: z.string().min(1).max(64), lastName: z.string().min(1).max(64),
+  ucpathUsername: ProtectedValueSchemas.ucpathUserId,
+  ucpathPassword: ProtectedValueSchemas.ucpathPassword,
+});
 export type ProfileLoginRequest = z.infer<typeof ProfileLoginRequestSchema>;
 export type ProfileSignUpRequest = z.infer<typeof ProfileSignUpRequestSchema>;
 /**
@@ -23,12 +29,13 @@ export const ProfileLoginChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
 ]);
 /** The signed-in person's account values; the timekeeper name and timekeeper initials are stored and changed independently. */
-export const ProfileAccountSchema = z.strictObject({ name: z.string(), initials: ProfileRegistryRowSchema.shape.initials,
+export const ProfileAccountSchema = z.strictObject({ username: ProfileRegistryRowSchema.shape.relayEmail, name: z.string(), initials: ProfileRegistryRowSchema.shape.initials,
   timekeeper: ProfileRegistryRowSchema.shape.timekeeperName, timekeeperInitials: ProfileRegistryRowSchema.shape.timekeeperInitials,
   lastSignedInAt: ProfileRegistryRowSchema.shape.lastSignedInAt });
 export type ProfileAccount = z.infer<typeof ProfileAccountSchema>;
-export function profileAccount(row: ProfileRegistryRow): ProfileAccount {
-  return ProfileAccountSchema.parse({ name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName,
+export function profileAccount(row: ProfileRegistryRow, identify: (email: string) => "unknown" | { readonly profileId: string }): ProfileAccount {
+  const owner = row.relayEmail === undefined ? "unknown" : identify(row.relayEmail);
+  return ProfileAccountSchema.parse({ ...(owner !== "unknown" && owner.profileId === row.profileId && { username: row.relayEmail }), name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName,
     timekeeperInitials: row.timekeeperInitials, lastSignedInAt: row.lastSignedInAt });
 }
 /** A details change names at least one value; each value is checked by `profileDetailsPatch`, whose refusal states the reason. */
@@ -43,12 +50,26 @@ export const ProfileDetailsChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("changed"), account: ProfileAccountSchema }),
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
 ]);
+const DuoKeySummarySchema = z.strictObject({ id: DuoKeyIdSchema, name: DuoKeyNameSchema.optional(),
+  shortId: z.string().min(1).max(8).regex(/^[A-Za-z0-9_-]+$/u), addedAt: z.iso.datetime(), lastUsedAt: z.iso.datetime().optional() });
+export const DuoKeysSnapshotSchema = z.strictObject({ revision: z.number().int().safe().nonnegative(), keys: z.array(DuoKeySummarySchema).max(1000) });
+export type DuoKeysSnapshot = z.infer<typeof DuoKeysSnapshotSchema>;
+export const ProfileDuoKeysScopeSchema = z.strictObject({ profileId: ProfileIdSchema, epoch: z.number().int().safe().positive() });
+export const ProfileDuoKeysReadSchema = ProfileDuoKeysScopeSchema.extend({ snapshot: DuoKeysSnapshotSchema });
+export const ProfileDuoKeyChangeRequestSchema = ProfileDuoKeysScopeSchema.extend({ change: DuoKeyChangeSchema });
+export const DuoKeyChangeResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("changed"), snapshot: DuoKeysSnapshotSchema }),
+  z.strictObject({ state: z.literal("name-in-use") }),
+  z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
+]);
+export type DuoKeyChangeResult = z.infer<typeof DuoKeyChangeResultSchema>;
+export const ProfileDuoKeyChangeResponseSchema = ProfileDuoKeysScopeSchema.extend({ commandId: z.uuid(), result: DuoKeyChangeResultSchema });
 /** A Relay username the dashboard sign-in form accepts: one UCSD work email with no surrounding spaces. */
 export function isRelayUsername(value: string): boolean { return /^[^\s@]+@ucsd\.edu$/iu.test(value); }
 export const DeleteProfileAccountRequestSchema = z.strictObject({ confirmed: z.literal(true),
   expectedProfileId: ProfileIdSchema, expectedEpoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
 export type DeleteProfileAccountRequest = z.infer<typeof DeleteProfileAccountRequestSchema>;
-export const ProfileOnboardingMethodSchema = z.enum(["key", "touch"]);
+export const ProfileOnboardingMethodSchema = z.enum(["key"]);
 export type ProfileOnboardingMethod = z.infer<typeof ProfileOnboardingMethodSchema>;
 export const ProfileOnboardingMethodStateSchema = z.strictObject({
   state: z.enum(["unavailable", "idle", "pending", "complete", "unknown"]),
@@ -57,7 +78,6 @@ export const ProfileOnboardingMethodStateSchema = z.strictObject({
   portalAccepted: z.boolean(),
   operatorConfirmed: z.boolean(),
   exactCredentialRequestObserved: z.boolean(),
-  platformAuthenticator: z.enum(["native-platform", "chromium-platform"]).optional(),
 });
 export type ProfileOnboardingMethodState = z.infer<typeof ProfileOnboardingMethodStateSchema>;
 export const PROFILE_ONBOARDING_STATE = "onboarding";
@@ -72,14 +92,14 @@ export type ProfileOnboardingBrowser = z.infer<typeof ProfileOnboardingBrowserSc
 const DuoSetupFields = {
   operationId: z.uuid(), profileId: ProfileIdSchema,
   step: z.enum(["duo", "ready"]),
-  methods: z.strictObject({ key: ProfileOnboardingMethodStateSchema, touch: ProfileOnboardingMethodStateSchema }),
+  methods: z.strictObject({ key: ProfileOnboardingMethodStateSchema }),
   browser: ProfileOnboardingBrowserSchema,
 };
 function refineDuoSetup(value: Readonly<{ step: "duo" | "ready"; methods: Readonly<Record<ProfileOnboardingMethod, ProfileOnboardingMethodState>> }>, context: z.RefinementCtx): void {
-  const complete = value.methods.key.state === "complete" && value.methods.touch.state === "complete";
+  const complete = value.methods.key.state === "complete";
   if ((value.step === "ready") !== complete) context.addIssue({ code: "custom", message: "profile-onboarding-readiness-invalid" });
-  for (const [name, method] of Object.entries(value.methods)) {
-    const confirmed = method.operatorConfirmed || method.portalAccepted || name === "key" && method.exactCredentialRequestObserved;
+  for (const method of Object.values(value.methods)) {
+    const confirmed = method.operatorConfirmed || method.portalAccepted || method.exactCredentialRequestObserved;
     if (method.state === "complete" && (!method.ceremonyObserved || !confirmed)) {
       context.addIssue({ code: "custom", message: "profile-onboarding-method-incomplete" });
     }

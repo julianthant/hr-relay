@@ -115,10 +115,10 @@ describe("served Person Lookup Run and Rerun", () => {
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "completed", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "completed", reason: "checkpoint" })) })), values: [], transactions: [] });
     const dialog = await h.openDialog(h.stubClient({ rerunValues: async () => ({ state: "available", snapshot }) }),
       { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
-    assert.match(dialog.text(), /source input is protected/u);
+    assert.match(dialog.text(), /This input is protected and cannot be copied/u);
     await dialog.press("Continue");
     assert.equal(dialog.stage(), "Steps");
-    assert.equal(document.querySelector("textarea"), null);
+    assert.equal(document.querySelector("textarea") === null, true);
   });
   it("blocks a cleared rerun input before planning and accepts fresh canonical replacement input", async () => {
     const input = { mode: "search", emplId: "10000001", crmCheck: true, keepNonHdh: false, includeCrmDates: false };

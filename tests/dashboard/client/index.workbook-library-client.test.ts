@@ -203,7 +203,7 @@ it('rejects merge requests before transport and refuses historical merge records
   assert.equal(h.calls.length, 0);
   await assert.rejects(harness(result).client.workbookLibraryAction('target', { ...current, change: { kind: 'remove' } }), schemaFailure);
   await assert.rejects(harness({ state: 'recorded', record: result }).client.workbookLibraryActionStatus('target', action.operationId), schemaFailure);
-  const retired = { state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: 'This library action has been retired. Its retained evidence is unavailable here.' };
+  const retired = { state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: 'This spreadsheet action was retired.' };
   assert.deepEqual(await harness(retired).client.workbookLibraryActionStatus('target', action.operationId), retired);
   await assert.rejects(harness({ ...retired, record: result }).client.workbookLibraryActionStatus('target', action.operationId), schemaFailure);
 });

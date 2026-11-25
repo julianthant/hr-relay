@@ -13,7 +13,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameS
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
@@ -53,6 +53,7 @@ it("upgrades a genuinely READY bound profile with exact preference conversion, r
       else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else if (table === "run_results" || table === "run_receipts") assertUpgradedRunSettlementRows(table, after[table] ?? [], before);
+      else if (table === "run_search") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, ocr_subject_terms: null })));
       else assert.deepEqual(after[table]?.map(row => prePreferencesSettingsRow(table, row)), rows.map(row => ({ ...row })));
     }
     assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
@@ -165,13 +166,14 @@ it("automatically upgrades schema 25 with queued work intact", async () => {
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
     assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION), ...AUTHORITY_DERIVED_TABLES].sort());
     const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_attachments", "assistant_conversations", "assistant_messages"].sort());
+    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_attachments", "assistant_conversations", "assistant_messages", "debug_events", "workbook_payloads"].sort());
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") { assert.deepEqual(after[table].slice(0, rows.length), rows); assert.equal(after[table].length, rows.length + 1); }
+      else if (table === "run_search") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, ocr_subject_terms: null })));
       else assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row })), table);
     }
-    assert.deepEqual([after.assistant_conversations, after.assistant_messages], [[], []]);
+    assert.deepEqual([after.assistant_conversations, after.assistant_messages, after.workbook_payloads], [[], [], []]);
   } finally { await f.close(); }
 });
 
@@ -183,12 +185,14 @@ it("automatically upgrades schema 28 at startup, dropping only the empty grant t
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
     assertGrantTableRetired(f.path);
     const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    assert.deepEqual(Object.keys(after).sort(), Object.keys(before).sort());
+    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "debug_events", "workbook_payloads"].sort());
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") { assert.deepEqual(after[table].slice(0, rows.length), rows); assert.equal(after[table].length, rows.length + 1); }
+      else if (table === "run_search") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, ocr_subject_terms: null })));
       else assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row })), table);
     }
+    assert.deepEqual(after.workbook_payloads, []);
   } finally { await f.close(); }
 });
 
@@ -211,6 +215,7 @@ it.each([8, 11, 12, 13, 14, 15, 16, 19, 20] as const)("automatically upgrades sc
       if (PRE_BUILD_RUN_TABLES.has(table)) continue;
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else if (table === "run_search") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, ocr_subject_terms: null })));
       else assert.deepEqual(after[table]?.map(row => sourceVersion < 16 ? prePreferencesSettingsRow(table, row) : { ...row }), rows.map(row => ({ ...row })), table);
     }
     assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
@@ -417,6 +422,7 @@ it("upgrades a frozen schema 23 older-build store through its original fingerpri
       if (table === "worker_slots") continue;
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else if (table === "run_search") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, ocr_subject_terms: null })));
       else assert.deepEqual(after[table], rows, table);
     }
     assert.deepEqual(after.workflow_workbook_selections, []);

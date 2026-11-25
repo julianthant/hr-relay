@@ -1,26 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { attemptUnresolved } from "../app/commands/command-outcome.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { DashboardClient } from "../client/index.js";
 import { NotificationWireSchema, type NotificationWire } from "../../models/dashboard/projection.js";
-import type { NotificationPublicationWire } from "../../models/dashboard/subscription.js";
+import type { NotificationArrival } from "../../models/dashboard/subscription.js";
+import type { HeldNotificationStatus } from "../client/subscriptions/row-store.js";
 import type { NotificationCollectionTarget } from "../../models/notifications/notifications.js";
 import type { NotificationTarget } from "../../models/notifications/notification-target.js";
 import type { NotificationTriggerEvent } from "../../rules/notifications/notification-triggers.js";
 import { NotificationCommandRequestSchema } from "../../rules/commands/commands.js";
-import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
-import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure, shortFailureText } from "../../models/failures/error-catalog.js";
 import { verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
-import type { NotificationControl, NotificationDestination, NotificationItem, NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
+import { notificationAge, type NotificationControl, type NotificationDestination, type NotificationItem, type NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
 import { formatLocalDay, formatMonthDay, formatWeekday } from "../lib/date-format.js";
 
 const policies = {
   "run-failed": { trigger: "failed", tone: "danger", detail: "Review the failed run before continuing." },
-  "subject-mismatch": { trigger: "failed", tone: "danger", detail: "The subject identity did not match. Review the failure before continuing." },
+  "subject-mismatch": { trigger: "failed", tone: "danger", detail: "The subject identity did not match." },
   "gate-opened": { trigger: "gate-waiting", tone: "warning", detail: "This run is waiting for your review." },
-  "write-parked": { trigger: "write-parked", tone: "warning", detail: "A write is parked. Review its evidence before continuing." },
-  "repeating-failure": { trigger: "repeating", tone: "danger", detail: "A failure crossed its repetition threshold. Review the failure." },
-  "storage-degraded": { trigger: "storage", tone: "warning", detail: "Relay could not save everything. Reopen Relay before starting more work." },
+  "write-parked": { trigger: "write-parked", tone: "warning", detail: "A write is parked." },
+  "repeating-failure": { trigger: "repeating", tone: "danger", detail: "This failure keeps repeating." },
+  "storage-degraded": { trigger: "storage", tone: "warning", detail: "Relay could not save everything." },
   "verified-done": { trigger: "verified-done", tone: "positive", detail: "Completed with the required verification evidence." },
   "backfill-gap": { trigger: "backfill-gap", tone: "warning", detail: "Notification history is incomplete. Reconcile the affected work." },
   "command-refused": { trigger: "command", tone: "warning", detail: "Relay did not do this, so nothing changed." },
@@ -48,7 +48,9 @@ export function notificationTargetMatches(row: NotificationWire, target: Notific
   if (row.kind !== "notification") return false;
   const link = row.link;
   if (target.kind === "storage") return link?.kind === "storage";
-  if (target.kind === "run") return link?.kind === "run" && link.runId === target.runId;
+  // The server sends a delegated run to its host run and names the linked run beside it.
+  if (target.kind === "run") return target.linkedRunId === undefined ? link?.kind === "run" && link.runId === target.runId
+    : (link?.kind === "run" || link?.kind === "failure") && link.runId === target.linkedRunId;
   if (target.kind === "failure") return link?.kind === "failure" && link.runId === target.runId && link.failureId === target.failureId;
   return false;
 }
@@ -65,20 +67,48 @@ function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap
   if (row.kind === "command") return row.summary;
   const source = row.sourceEvent;
   if (row.summary !== undefined && (source?.state === "available" ? source.kind === "run-failed"
-    : row.trigger === "failed" && Object.values(ERROR_CATALOG).some(entry => entry.text === row.summary))) return row.summary;
+    : row.trigger === "failed" && Object.values(ERROR_CATALOG).some(entry => shortFailureText(entry.text) === row.summary))) return row.summary;
   return notificationPolicy(row)?.detail;
 }
 
-/** Repeats of one event for one run (or for storage) fold into one item: its latest time, unread while any repeat is unread, the sum of its counts. */
-function foldKey(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): string | undefined {
+type ListedRow = Exclude<NotificationWire, { kind: "backfill-gap" }>;
+const linkedRun = (row: ListedRow) => row.kind === "notification" && row.link !== undefined && "runId" in row.link ? row.link.runId : undefined;
+const repeatingNotice = (row: ListedRow) => row.kind === "notification" && row.trigger === "repeating";
+const historyKey = (row: ListedRow, key: string) => row.readOnlyHistory === true ? `history\u0000${key}` : key;
+
+/** Repeats fold into one item. A failure repeats across runs: the same workflow, person and failure text. Every other event repeats
+ * for one run, or for storage. */
+function foldKey(row: ListedRow): string | undefined {
   if (row.kind !== "notification" || row.link === undefined) return undefined;
-  const subject = row.link.kind === "storage" ? "storage" : "runId" in row.link ? row.link.runId : undefined;
-  return subject === undefined ? undefined : `${row.trigger}\u0000${row.title}\u0000${subject}`;
+  if (row.link.kind === "storage") return `${row.trigger}\u0000${row.title}\u0000storage`;
+  if (row.trigger === "failed" && row.context.state === "available") return `failed\u0000${row.title}\u0000${row.context.workflow}\u0000${row.context.subject}\u0000${notificationDetail(row) ?? ""}`;
+  return `${row.trigger}\u0000${row.title}\u0000${row.link.runId}`;
+}
+
+/** The rows each item stands for, newest item first; an item shows its first row. A "Repeating failure" notice joins the failure of
+ * the run it names instead of standing beside it. */
+export function foldRows(served: readonly NotificationWire[]): readonly (readonly ListedRow[])[] {
+  const rows = served.flatMap(row => row.kind === "backfill-gap" ? [] : [row]);
+  const failures = new Map<string, string>();
+  for (const row of rows) {
+    const run = linkedRun(row), key = foldKey(row);
+    if (run !== undefined && key !== undefined && row.kind === "notification" && row.trigger === "failed") failures.set(historyKey(row, run), key);
+  }
+  const byKey = new Map<string, ListedRow[]>(), groups: ListedRow[][] = [];
+  for (const row of rows.sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt))) {
+    const run = linkedRun(row);
+    const fold = (repeatingNotice(row) && run !== undefined ? failures.get(historyKey(row, run)) : undefined) ?? foldKey(row);
+    const key = fold === undefined ? undefined : historyKey(row, fold);
+    const group = key === undefined ? undefined : byKey.get(key);
+    if (group === undefined) { const made = [row]; if (key !== undefined) byKey.set(key, made); groups.push(made); }
+    else if (repeatingNotice(group[0]) && !repeatingNotice(row)) group.unshift(row);
+    else group.push(row);
+  }
+  return groups;
 }
 
 function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" }>, nowIso: string): NotificationItem {
   const policy = notificationPolicy(row);
-  const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(row.occurredAt)) / 60000));
   const context = row.context;
   const command = row.kind === "command";
   const tone = policy?.tone ?? (row.severity === "error" ? "danger" : row.severity === "warning" ? "warning" : "info");
@@ -90,28 +120,33 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
       workflow: context.state === "available" || context.state === "workflow-only" ? context.workflow : "",
       detail: notificationDetail(row) ?? "",
       ...(row.kind === "notification" && row.count > 1 ? { count: row.count } : {}),
-      age: elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`,
+      age: notificationAge(row.occurredAt, nowIso), at: row.occurredAt,
       day: notificationDay(row.occurredAt, nowIso),
+      ...(row.readOnlyHistory === true ? { readOnlyHistory: true } : {}),
       read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },
     };
 }
 
-export function inboxProjection(rows: readonly NotificationWire[], nowIso: string): { state: NotificationsState; notice: string; needsYou: number } {
-  const notices = new Set<string>();
-  const items: NotificationItem[] = [];
-  const folded = new Map<string, number>();
-  const newestFirst = [...rows].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
-  for (const row of newestFirst) {
-    if (row.kind === "backfill-gap") { notices.add(inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE")); continue; }
-    const item = notificationItem(row, nowIso), key = foldKey(row);
-    const at = key === undefined ? undefined : folded.get(key);
-    if (at === undefined) { if (key !== undefined) folded.set(key, items.length); items.push(item); continue; }
-    const kept = items[at];
-    items[at] = { ...kept, read: kept.read && item.read, count: (kept.count ?? 1) + (item.count ?? 1) };
-  }
+/** Whether a row was cleared at or after the revision it is listed at; a newer revision is a repeat and lists again. */
+const clearedRow = (row: NotificationWire, cleared: ReadonlyMap<string, number>) => {
+  const at = cleared.get(row.notificationId);
+  return at !== undefined && row.kind !== "backfill-gap" && row.revision <= at;
+};
+/** The rows the panel shows: the listed rows the person has not cleared. */
+const shownRows = (rows: readonly NotificationWire[], cleared: ReadonlyMap<string, number> = new Map()) => rows.filter(row => !clearedRow(row, cleared));
+
+export function inboxProjection(rows: readonly NotificationWire[], nowIso: string, gone: ReadonlySet<string> = new Set(), cleared: ReadonlyMap<string, number> = new Map()): { state: NotificationsState; notice: string; needsYou: number } {
+  const notice = rows.some(row => row.kind === "backfill-gap") ? inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") : "";
+  const items = foldRows(shownRows(rows, cleared)).map((group): NotificationItem => {
+    const shown = notificationItem(group[0], nowIso);
+    // A repeating notice says the failure repeats; it is not one more failure.
+    const counted = group.filter(row => row === group[0] || !repeatingNotice(row)).reduce((sum, row) => sum + (row.kind === "notification" ? row.count : 1), 0);
+    return { ...shown, read: group.every(row => row.readState === "read"), ...(counted > 1 ? { count: counted } : {}), ...(group.some(row => gone.has(row.notificationId)) ? { gone: true } : {}),
+      ...(group.some(row => row.standing === true) ? { standing: true as const } : {}) };
+  });
   const needsYou = items.filter(item => !item.read && (item.tone === "danger" || item.tone === "warning")).length;
-  return { state: { state: "ready", items, pinned: [] }, notice: [...notices].join(" "), needsYou };
+  return { state: { state: "ready", items, pinned: [] }, notice, needsYou };
 }
 
 export type InboxArrival = Readonly<{ sourceId: string; item: NotificationItem }>;
@@ -120,70 +155,160 @@ export interface InboxWiring {
   readonly state: NotificationsState;
   readonly notice: string;
   control(id: string, action: NotificationControl | "snooze" | "unsnooze"): Promise<boolean>;
+  /** Whether the item's controls may act now: a served row is display-only until its rows and status are current. */
+  canAct(id: string): boolean;
+  /** Whether the item may be cleared now: only while its rows and status are current on a live stream. */
+  canClear(id: string): boolean;
   readAll(): Promise<void>;
+  /** Clears the item and every row it stands for; the item leaves at once and comes back if Relay refuses. */
+  clear(id: string): Promise<boolean>;
+  /** Clears every clearable item the tab lists; standing and history items stay. */
+  clearAll(show: "all" | "unread"): Promise<void>;
   /** Delivers each distinct publication once, as the item it adds; snapshots never deliver. */
   onPublication(listener: (arrival: InboxArrival) => void): () => void;
   open(item: NotificationItem, navigate: (target: NotificationDestination, opened: () => void, refused: (message: string) => void) => void, opened: () => void, refused: (message: string) => void): void;
 }
 
+/** Each durable notification a listed row stands for, with its revision: a storage group stands for its members. */
+function memberRevisions(row: NotificationWire): ReadonlyMap<string, number> {
+  if (row.kind === "notification" && row.group !== undefined) return new Map(row.group.members.map(member => [member.notificationId, member.revision]));
+  return new Map([[row.notificationId, row.kind === "backfill-gap" ? 0 : row.revision]]);
+}
+
+/** Whether a listed row is ahead of the held rows: newer for one of its notifications, or holding one they lack, and older for none. */
+function listedAhead(rows: readonly NotificationWire[], listed: NotificationWire): boolean {
+  const held = new Map(rows.flatMap(row => [...memberRevisions(row)]));
+  const entries = [...memberRevisions(listed)];
+  return entries.some(([id, revision]) => (held.get(id) ?? -1) < revision) && entries.every(([id, revision]) => (held.get(id) ?? -1) <= revision);
+}
+
+/** Puts a listed row in place of every held row it stands for, when it is ahead of them; otherwise the held rows stand. */
+export function upsertListedRow(rows: readonly NotificationWire[], listed: NotificationWire): readonly NotificationWire[] {
+  const incoming = memberRevisions(listed);
+  const covered = rows.filter(row => [...memberRevisions(row).keys()].some(id => incoming.has(id)));
+  if (!listedAhead(covered, listed)) return rows;
+  return [...rows.filter(row => !covered.includes(row)), listed];
+}
+
+/** A row the inbox holds over its day. A publication's row stands while the day is the snapshot the stream held when it arrived,
+ * since the stream's next snapshot carries it; a command readback stands while it is ahead of the day's rows, since the stream may
+ * deliver a snapshot frozen before the command. */
+type Overlay = Readonly<{ row: NotificationWire } & ({ source: "publication"; snapshotCursor: string } | { source: "readback" })>;
+
+/** The overlays that still stand over this day's rows. */
+export function standingOverlays(overlays: readonly Overlay[], day: Readonly<{ rows: readonly NotificationWire[]; snapshotCursor: string }> | undefined): readonly Overlay[] {
+  return overlays.filter(overlay => overlay.source === "publication" ? overlay.snapshotCursor === day?.snapshotCursor
+    : day === undefined || listedAhead(day.rows, overlay.row));
+}
+
+const NO_UPSERTS: readonly Overlay[] = Object.freeze([]);
+const noStatus = (): HeldNotificationStatus | undefined => undefined;
+
+/** The inbox's rows come from the day it holds and the publications and command readbacks since; its status comes from the stream's row. */
 export function useInboxWiring({ client, enabled, binding }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding }): InboxWiring {
-  const request = useMemo(() => ({ client, enabled, scope: binding.scope }), [client, enabled, binding.scope]);
-  const current = useRef({ request, binding, fresh: false }); current.current = { request, binding, fresh: false };
-  const [revision, refresh] = useState(0);
-  const readEpoch = useRef(0);
-  const [settled, setSettled] = useState<{ request: typeof request; read: object; rows: readonly NotificationWire[] | undefined; notice: string; failed?: boolean }>();
+  const dayState = binding.authority.dayState;
+  // Commands run in the app's active scope; the inbox's own rows are keyed by the day stream it reads, which may be another day's.
+  const request = useMemo(() => ({ client, enabled, scope: binding.scope, dayRequest: dayState.request }), [client, enabled, binding.scope, dayState.request]);
+  const store = dayState.rows;
+  const status = useSyncExternalStore(listener => store.subscribe(listener), () => store.notificationStatus(), noStatus);
+  const day = dayState.day;
+  const frame = day.state === "loaded" ? day.value : day.state === "loading" ? day.kept?.value : undefined;
+  const dayRows = frame?.notifications;
+  const dayView = useMemo(() => frame === undefined ? undefined : { rows: frame.notifications, snapshotCursor: frame.snapshotCursor }, [frame]);
+  const [upserts, setUpserts] = useState<{ request: typeof request; overlays: readonly Overlay[] }>();
   const [commandNotice, setCommandNotice] = useState<{ request: typeof request; text: string }>();
   const [publicationNotice, setPublicationNotice] = useState<{ request: typeof request; text: string }>();
-  const subscribePublications = binding.authority.dayState.subscribePublications;
-  const day = binding.authority.dayState.day;
-  const snapshotKey = day.state === "loaded" ? canonicalJsonStringify(day.value.notifications) : day.state;
-  const read = useMemo(() => ({ request, revision, snapshotKey }), [request, revision, snapshotKey]);
-  current.current.fresh = settled?.request === request && settled.read === read && !settled.failed;
-  useEffect(() => {
-    if (!enabled) return;
-    let active = true;
-    const token = ++readEpoch.current;
-    void Promise.all([client.notificationSnapshot(), client.notificationStatus()]).then(([rows, status]) => {
-      if (!active || token !== readEpoch.current || current.current.request !== request) return;
-      if (rows.some(row => row.actorId !== request.scope.actorId) || new Set(rows.map(row => row.notificationId)).size !== rows.length) throw new Error("NOTIFICATION_INBOX_IDENTITY_MISMATCH");
-      const notice = status.state === "ready" ? "" : inboxMessage(status.code ?? "NOTIFICATION_OBSERVATION_FAILED");
-      setSettled({ request, read, rows, notice });
-    }).catch(() => {
-      if (active && token === readEpoch.current && current.current.request === request) setSettled(previous => ({ request, read, rows: previous?.request === request ? previous.rows : undefined, notice: inboxMessage("DASHBOARD_READ_FAILED"), failed: true }));
-    });
-    return () => { active = false; };
-  }, [client, enabled, request, read]);
-  const rows = settled?.request === request ? settled.rows : undefined;
+  /** Items whose run the server answered as deleted when the operator opened them. */
+  const [gone, setGone] = useState<{ request: typeof request; ids: ReadonlySet<string> }>();
+  /** Rows the person cleared, at the revision they were listed at; a refused clear takes its rows back out. */
+  const [cleared, setCleared] = useState<{ request: typeof request; ids: ReadonlyMap<string, number> }>();
+  const clearedIds = cleared?.request === request ? cleared.ids : undefined;
+  const clearedRef = useRef(clearedIds); clearedRef.current = clearedIds;
+  const held = upserts?.request === request ? upserts.overlays : NO_UPSERTS;
+  const rows = useMemo(() => dayRows === undefined ? undefined
+    : standingOverlays(held, dayView).reduce<readonly NotificationWire[]>((next, overlay) => upsertListedRow(next, overlay.row), dayRows), [dayRows, dayView, held]);
+  const consistent = rows !== undefined && rows.every(row => row.actorId === request.scope.actorId) && new Set(rows.map(row => row.notificationId)).size === rows.length;
+  // Controls act only on rows read with a status the stream has delivered as available.
+  const usable = enabled && consistent && status !== undefined && !status.unavailable;
+  // A clear also needs the stream live with a status it delivered itself: rows held through a reload or a reconnect may be behind
+  // the server's, and a resumed stream reports itself live before the changes it missed and its status row.
+  const clearsNow = usable && status?.stale !== true && day.state === "loaded" && dayState.connection.state === "live";
+  const current = useRef({ request, binding, usable, clearsNow }); current.current = { request, binding, usable, clearsNow };
   const rowsRef = useRef(rows); rowsRef.current = rows;
+  const dayRowsRef = useRef(dayRows); dayRowsRef.current = dayRows;
+  /** Adds rows over the day. A publication drops those of older snapshots, and a readback drops those the last rendered rows caught up
+   * with; the render filters the rest, since a snapshot delivered with this row may not have rendered yet. */
+  const overlay = useCallback((listed: readonly NotificationWire[], arrived: Readonly<{ source: "publication"; snapshotCursor: string }> | Readonly<{ source: "readback" }>): void => {
+    const rendered = dayRowsRef.current;
+    rowsRef.current = listed.reduce<readonly NotificationWire[]>(upsertListedRow, rowsRef.current ?? []);
+    setUpserts(previous => ({ request, overlays: [...(previous?.request === request ? previous.overlays : NO_UPSERTS).filter(held => held.source === "publication"
+      ? arrived.source === "readback" || held.snapshotCursor === arrived.snapshotCursor
+      : rendered === undefined || listedAhead(rendered, held.row)),
+    ...listed.map(row => ({ row, ...arrived }))] }));
+  }, [request]);
+  const subscribePublications = dayState.subscribePublications;
   const arrivalListeners = useRef(new Set<(arrival: InboxArrival) => void>());
   useEffect(() => {
     if (!enabled) return;
     const delivered = new Set<string>();
-    return subscribePublications((publication: NotificationPublicationWire) => {
+    return subscribePublications(({ publication, listed, target, snapshotCursor }: NotificationArrival) => {
       if (current.current.request !== request || publication.actorId !== request.scope.actorId || delivered.has(publication.sourceId)) return;
       delivered.add(publication.sourceId);
-      current.current.fresh = false;
-      readEpoch.current++;
-      refresh(value => value + 1);
+      overlay([listed], { source: "publication", snapshotCursor });
       const row = publication.notification;
       if (row.kind === "backfill-gap") { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") }); return; }
       if (row.state === "snoozed") return;
-      const arrival = { sourceId: publication.sourceId, item: notificationItem(row, current.current.binding.authority.nowIso) };
+      const arrival = { sourceId: publication.sourceId, item: notificationItem(row, current.current.binding.authority.now()) };
       for (const listener of arrivalListeners.current) listener(arrival);
-      void client.notificationTarget(row.notificationId).then(target => {
-        if (current.current.request !== request) return;
-        if (!notificationTargetMatches(row, target)) { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return; }
-      }).catch(() => { if (current.current.request === request) setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); });
+      if (!notificationTargetMatches(row, target)) setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") });
     });
-  }, [client, enabled, request, subscribePublications]);
+  }, [enabled, request, subscribePublications, overlay]);
+  const hide = (entries: readonly (readonly [string, number])[]) => {
+    clearedRef.current = new Map([...(clearedRef.current ?? []), ...entries]);
+    setCleared({ request, ids: clearedRef.current });
+  };
+  const unhide = (entries: readonly (readonly [string, number])[]) => {
+    const ids = new Set(entries.map(([id]) => id));
+    clearedRef.current = new Map([...(clearedRef.current ?? [])].filter(([id]) => !ids.has(id)));
+    setCleared({ request, ids: clearedRef.current });
+  };
+  /** An unresolved notification command of this actor, for any of these rows or for any row when none are named. */
+  const heldAttempt = (ids?: ReadonlySet<string>) => current.current.binding.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
+    && attempt.request.target.actorId === request.scope.actorId && attemptUnresolved(attempt)
+    && (ids === undefined || ("members" in attempt.request.target ? attempt.request.target.members.some(entry => ids.has(entry.notificationId)) : ids.has(attempt.request.target.notificationId))));
+  /** Each durable row a listed row stands for, at its listed revision. */
+  const durableRows = (row: NotificationWire): readonly (readonly [string, number])[] => row.kind === "backfill-gap" ? []
+    : row.kind === "notification" && row.group !== undefined ? row.group.members.map(member => [member.notificationId, member.revision] as const) : [[row.notificationId, row.revision] as const];
+  const clearable = (row: NotificationWire) => row.kind !== "backfill-gap" && row.readOnlyHistory !== true && row.standing !== true;
+  /** The items this render shows. A clear names only these rows at these revisions; a row published since is not on screen yet. */
+  const shownGroups = foldRows(shownRows(rows ?? [], clearedIds));
+  /** What clearing these items sends, without rows a clear from this same render already took. */
+  const clearEntries = (groups: readonly (readonly NotificationWire[])[]) => groups.flatMap(group => group.flatMap(durableRows)).filter(([id, revision]) => (clearedRef.current?.get(id) ?? -1) < revision);
+  /** One command clears exactly these rows at their listed revisions, or none of them. */
+  const sendClear = async (entries: readonly (readonly [string, number])[]): Promise<boolean> => {
+    const owner = current.current.binding;
+    hide(entries);
+    const members = [...new Map(entries)].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([notificationId, expectedVersion]) => ({ notificationId, expectedVersion }));
+    const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.now(), requestedBy: request.scope.actorId,
+      source: "dashboard", family: "notification", type: "notification-clear", target: { actorId: request.scope.actorId, members, matchingCount: members.length } });
+    const outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
+      publish: outcome => {
+        if (current.current.request !== request || outcome.kind === "confirmed") return;
+        owner.feedback(outcome);
+        if (outcome.kind === "conflict") dayState.refresh();
+      } });
+    if (outcome.kind !== "confirmed") { if (current.current.request === request) unhide(entries); return false; }
+    return current.current.request === request;
+  };
   const control = async (id: string, action: NotificationControl | "snooze" | "unsnooze"): Promise<boolean> => {
-    if (!enabled || current.current.request !== request || !current.current.fresh) return false;
+    if (!enabled || current.current.request !== request || !current.current.usable) return false;
     const row = rowsRef.current?.find(row => row.notificationId === id);
     if (row?.kind !== "notification" || row.actorId !== request.scope.actorId) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
+    if (row.readOnlyHistory === true) return false;
     const owner = current.current.binding;
-    const key = foldKey(row);
-    const repeats = action === "read" && key !== undefined ? (rowsRef.current ?? []).flatMap(other => other.kind === "notification" && other.notificationId !== id && other.readState !== "read" && foldKey(other) === key
-      ? [{ notificationId: other.notificationId, revision: other.revision }] : []) : [];
+    // Marking an item read marks every unread row it stands for.
+    const group = action === "read" ? foldRows(shownRows(rowsRef.current ?? [], clearedRef.current)).find(members => members.includes(row)) ?? [] : [];
+    const repeats = group.flatMap(other => other.kind === "notification" && other !== row && other.readState !== "read" ? [{ notificationId: other.notificationId, revision: other.revision }] : []);
     const members = [...(row.group?.members ?? [{ notificationId: id, revision: row.revision }]), ...repeats];
     for (const member of members) {
       const retained = owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
@@ -193,51 +318,73 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     }
     setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") });
     let outcome: Awaited<ReturnType<typeof owner.executor.execute>> | undefined;
-    // A group acts on every durable member it holds; the authoritative snapshot is read again afterwards.
+    // A group acts on every durable member it holds; each confirmed readback replaces the rows it stands for.
     for (const member of members) {
-      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.nowIso, requestedBy: request.scope.actorId,
+      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.now(), requestedBy: request.scope.actorId,
         source: "dashboard", family: "notification", type: `notification-${action}`, target: { notificationId: member.notificationId, actorId: request.scope.actorId, expectedVersion: member.revision } });
       outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
         publish: outcome => {
           if (current.current.request !== request) return;
           if (outcome.kind === "confirmed") {
-            const confirmed = NotificationWireSchema.parse(outcome.readback);
-            const next = rowsRef.current?.map(row => row.notificationId === confirmed.notificationId ? confirmed : row);
-            rowsRef.current = next;
-            if (next !== undefined) setSettled(previous => previous?.request === request ? { ...previous, rows: next } : previous);
+            overlay([NotificationWireSchema.parse(outcome.readback)], { source: "readback" });
             setCommandNotice({ request, text: "" });
-            if (!current.current.fresh) { readEpoch.current++; refresh(value => value + 1); }
           }
-          else { setCommandNotice({ request, text: outcome.feedback.text }); owner.feedback(outcome); if (outcome.kind === "conflict") { current.current.fresh = false; refresh(value => value + 1); } }
+          else {
+            setCommandNotice({ request, text: outcome.feedback.text }); owner.feedback(outcome);
+            // The held row is older than the server's; only a new day snapshot carries the current one.
+            if (outcome.kind === "conflict") dayState.refresh();
+          }
         } });
       if (outcome.kind !== "confirmed") break;
     }
     if (outcome === undefined) return false;
-    if (members.length > 1 && current.current.request === request) { current.current.fresh = false; readEpoch.current++; refresh(value => value + 1); }
+    // A command that settles after the inbox moved to another day of the same authority leaves that day's rows behind it.
     const replacement = current.current;
     if (replacement.request !== request && replacement.request.enabled && replacement.request.client === client
       && replacement.binding.scope.client === owner.scope.client && replacement.binding.scope.actorId === owner.scope.actorId
-      && replacement.binding.scope.authority === owner.scope.authority) {
-      replacement.fresh = false; readEpoch.current++; refresh(value => value + 1);
-    }
+      && replacement.binding.scope.authority === owner.scope.authority) replacement.binding.authority.dayState.refresh();
     return current.current.request === request && outcome.kind === "confirmed";
   };
-  const projection = rows === undefined ? { state: settled?.request === request && settled.failed ? { state: "unavailable" as const, reason: settled.notice } : { state: "loading" as const }, notice: "" }
-    : inboxProjection(rows, binding.authority.nowIso);
-  return { state: projection.state, notice: [rows !== undefined && !current.current.fresh && !settled?.failed ? inboxMessage("NOTIFICATION_REFRESH_PENDING") : "", projection.notice, settled?.request === request ? settled.notice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
+  const statusNotice = !consistent ? inboxMessage("DASHBOARD_READ_FAILED") : status === undefined ? ""
+    : status.unavailable ? inboxMessage("DASHBOARD_READ_FAILED")
+    : status.status !== undefined && status.status.state !== "ready" ? inboxMessage(status.status.code ?? "NOTIFICATION_OBSERVATION_FAILED") : "";
+  const projection = rows === undefined
+    ? { state: day.state === "failed" ? { state: "unavailable" as const, reason: inboxMessage("DASHBOARD_READ_FAILED") } : { state: "loading" as const }, notice: "" }
+    : !consistent ? { state: { state: "unavailable" as const, reason: statusNotice }, notice: "" }
+    : inboxProjection(rows, binding.authority.now(), gone?.request === request ? gone.ids : undefined, clearedIds);
+  const pending = enabled && consistent && status === undefined ? inboxMessage("NOTIFICATION_REFRESH_PENDING") : "";
+  return { state: projection.state, notice: [pending, projection.notice, enabled ? statusNotice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
     control,
+    canAct: () => usable,
+    canClear: () => clearsNow,
+    clear: async id => {
+      if (current.current.request !== request || !current.current.clearsNow) return false;
+      // Clearing an item clears every row it stands for: its repeats and a storage group's members.
+      const group = shownGroups.find(members => members.some(row => row.notificationId === id));
+      if (group === undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
+      if (!group.every(clearable)) return false;
+      if (heldAttempt(new Set(group.flatMap(durableRows).map(([memberId]) => memberId))) !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
+      const entries = clearEntries([group]);
+      return entries.length > 0 && sendClear(entries);
+    },
+    clearAll: async show => {
+      if (current.current.request !== request || !current.current.clearsNow) return;
+      if (heldAttempt() !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return; }
+      // Whole displayed items only: a standing item stays whole, and Unread clears every row of an item with any unread row.
+      const entries = clearEntries(shownGroups.filter(group => group.every(clearable)
+        && (show === "all" || group.some(row => row.readState === "unread"))));
+      if (entries.length > 0) await sendClear(entries);
+    },
     onPublication: listener => { arrivalListeners.current.add(listener); return () => { arrivalListeners.current.delete(listener); }; },
     readAll: async () => {
-      if (!enabled || current.current.request !== request || !current.current.fresh || client.notificationCollection === undefined) return;
+      if (!enabled || current.current.request !== request || !current.current.usable || client.notificationCollection === undefined) return;
       const owner = current.current.binding;
-      const held = () => owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
-        && attempt.request.target.actorId === request.scope.actorId && attemptUnresolved(attempt));
-      if (held() !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return; }
+      if (heldAttempt() !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return; }
       let target: NotificationCollectionTarget;
       try { target = await client.notificationCollection("read"); }
       catch { if (current.current.request === request) setCommandNotice({ request, text: inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE") }); return; }
-      if (current.current.request !== request || !current.current.fresh || held() !== undefined || target.actorId !== request.scope.actorId) return;
-      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.nowIso,
+      if (current.current.request !== request || !current.current.usable || heldAttempt() !== undefined || target.actorId !== request.scope.actorId) return;
+      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.now(),
         requestedBy: request.scope.actorId, source: "dashboard", family: "notification", type: "notification-read-all", target });
       setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") });
       await owner.executor.execute(command, { scope: owner.scope,
@@ -245,23 +392,22 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
         publish: outcome => {
           if (current.current.request !== request) return;
           if (outcome.kind === "confirmed") {
-            const confirmed = NotificationWireSchema.array().parse(outcome.readback);
-            const updated = new Map(confirmed.map(row => [row.notificationId, row]));
-            const next = rowsRef.current?.map(row => updated.get(row.notificationId) ?? row);
-            rowsRef.current = next;
-            if (next !== undefined) setSettled(previous => previous?.request === request ? { ...previous, rows: next } : previous);
+            overlay(NotificationWireSchema.array().parse(outcome.readback), { source: "readback" });
             setCommandNotice({ request, text: "" });
-            current.current.fresh = false; readEpoch.current++; refresh(value => value + 1);
           } else { setCommandNotice({ request, text: outcome.feedback.text }); owner.feedback(outcome); }
         } });
     },
     open: (item, navigate, opened, refused) => {
-      if (!enabled || current.current.request !== request || !current.current.fresh) return;
+      if (!enabled || current.current.request !== request || !current.current.usable) return;
       void client.notificationTarget(item.id).then(target => {
-        if (current.current.request !== request || !current.current.fresh) return;
+        if (current.current.request !== request || !current.current.usable) return;
         const row = rowsRef.current?.find(row => row.notificationId === item.id);
+        if (row !== undefined && target.kind === "refused" && (target.reason === "run-unavailable" || target.reason === "failure-unavailable")) {
+          setGone(previous => ({ request, ids: new Set([...(previous?.request === request ? previous.ids : []), item.id]) }));
+          return;
+        }
         if (row === undefined || (target.kind !== "refused" && target.kind !== "archive" && !notificationTargetMatches(row, target))) { refused(inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE")); return; }
-        navigate(target, () => { if (current.current.request !== request) return; opened(); if (row.kind === "notification" && row.readState !== "read") void control(item.id, "read"); }, refused);
+        navigate(target, () => { if (current.current.request !== request) return; opened(); if (row.kind === "notification" && !item.read) void control(item.id, "read"); }, refused);
       }).catch(() => { if (current.current.request === request) refused(inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE")); });
     },
   };

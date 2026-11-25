@@ -258,7 +258,7 @@ describe('named library actions', () => {
     const { client, adapter } = setup(), file = entry();
     client.workbookCatalog.mockResolvedValue([file]); client.workbookTypes.mockResolvedValue([file.type]);
     client.workbookLibraryAction.mockRejectedValue(new Error('lost response'));
-    client.workbookLibraryActionStatus.mockResolvedValue({ state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: 'This library action has been retired. Its retained evidence is unavailable here.' });
+    client.workbookLibraryActionStatus.mockResolvedValue({ state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: 'This spreadsheet action was retired.' });
     await adapter.refreshCatalog();
     const result = await adapter.changeLibrary(file, { kind: 'remove' });
     assert.equal(result.state, 'refused');

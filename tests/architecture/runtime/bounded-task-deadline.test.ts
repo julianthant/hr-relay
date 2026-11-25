@@ -26,6 +26,18 @@ afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose();
 });
 
+function executionSource(): string {
+  return [
+    "run-executor.ts",
+    "run-execution-contract.ts",
+    "run-execution-outcome.ts",
+    "run-execution-plan.ts",
+    "run-execution-task.ts",
+    "run-execution-walk.ts",
+    "run-execution-write.ts",
+  ].map(file => readFileSync(join(REPO_ROOT, "src/backend/runtime/execution", file), "utf8")).join("\n");
+}
+
 function deadlineInvocationIssues(content: string): readonly string[] {
   const source = ts.createSourceFile("run-executor.ts", content, ts.ScriptTarget.Latest, true);
   const issues: string[] = [];
@@ -91,7 +103,7 @@ function deadlineInvocationIssues(content: string): readonly string[] {
 
 describe("bounded task deadline", () => {
   it("keeps the deadline mandatory and racing on every invocation path", () => {
-    const source = readFileSync(join(REPO_ROOT, "src/backend/runtime/execution/run-executor.ts"), "utf8");
+    const source = executionSource();
     assert.ok(/readonly taskDeadlineMs: number;/.test(source), "taskDeadlineMs must be a required dependency");
     assert.ok(!/taskDeadlineMs\s*\?\?/.test(source), "taskDeadlineMs must have no defaulting fallback");
     assert.ok(
@@ -108,7 +120,7 @@ describe("bounded task deadline", () => {
   });
 
   it("rejects missing task races and ignored lease or task signals inside notes wrappers", () => {
-    const source = readFileSync(join(REPO_ROOT, "src/backend/runtime/execution/run-executor.ts"), "utf8");
+    const source = executionSource();
     for (const bad of [
       source.replace("() => raceAbortable(", "() => unbounded("),
       source.replace("deps.sessions.withDriver(need, instanceSelection, controller.signal", "deps.sessions.withDriver(need, instanceSelection, unrelated.signal"),

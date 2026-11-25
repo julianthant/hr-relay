@@ -15,7 +15,7 @@ export const ViewRouteSchema = z.object({
   reviewPages: z.record(identity, z.number().int().min(0).max(10000)).refine(value => Object.keys(value).length <= 200).optional(),
   queueOpen: z.array(identity).max(200).optional(),
   queueFilter: z.array(z.enum(["all", "needsYou", "queued", "running", "cancelling", "blocked", "awaiting-approval", "done", "failed", "cancelled", "partial"])).max(12).optional(), queueSort: z.enum(["attention", "newest", "oldest", "longest"]).optional(),
-  notifications: z.boolean().optional(), notificationActive: z.string().max(200).optional(),
+
   workerWorkflow: identity.optional(), sessions: z.boolean().optional(), addWorkers: z.boolean().optional(),
   search: z.boolean().optional(), searchQuery: z.string().max(500).optional(), settingsQuery: z.string().max(500).optional(),
   spreadsheetImport: z.boolean().optional(), spreadsheetMapping: identity.optional(), spreadsheetImportView: z.enum(["mapping", "preview", "columns"]).optional(), spreadsheetType: identity.nullable().optional(),
@@ -32,6 +32,10 @@ export const ViewRouteSchema = z.object({
   activityPreview: z.enum(['normal', 'empty', 'incomplete', 'loading', 'unavailable']).optional(),
 }).strict();
 export type ViewRoute = z.infer<typeof ViewRouteSchema>;
+/** The patch that removes the Start run dialog's coordinates from the view when the dialog closes. */
+export const LAUNCH_CLEARED: Readonly<Partial<ViewRoute>> = Object.freeze({
+  launchRerun: undefined, launchServed: undefined, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined, launchCustomize: undefined,
+});
 export type RouteSetter = (next: AppRouteState | ((current: AppRouteState) => AppRouteState), mode?: "push" | "replace") => void;
 export interface ViewNavigation { readonly view: ViewRoute; readonly start: boolean; setStart(this: void, open: boolean): void; update(this: void, patch: Partial<ViewRoute>, mode?: "push" | "replace"): void }
 export const ViewNavigationContext = createContext<ViewNavigation | undefined>(undefined);

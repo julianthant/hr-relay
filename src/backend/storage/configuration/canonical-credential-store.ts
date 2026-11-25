@@ -4,7 +4,7 @@ import { createCipheriv,createDecipheriv,createHash,createHmac,randomBytes,rando
 import { lstatSync,readdirSync } from "node:fs";
 import { dirname,join } from "node:path";
 import { z } from "zod";
-import { DuoCredentialRecordSchema, DuoEnrollmentScopeSchema, DuoReenrolCommitIntentSchema, DuoStoredCredentialSchema, type DuoCredentialRecord, type DuoEnrollmentScope, type DuoReenrolCommitIntent, type DuoStoredCredential } from "../../../models/config/duo-credential-store.js";
+import { DuoCredentialRecordSchema, DuoEnrollmentScopeSchema, DuoKeyChangeReceiptSchema, DuoKeyChangeSchema, DuoKeyNameSchema, DuoReenrolCommitIntentSchema, DuoStoredCredentialSchema, type DuoCredentialRecord, type DuoEnrollmentScope, type DuoKeyChange, type DuoReenrolCommitIntent, type DuoStoredCredential } from "../../../models/config/duo-credential-store.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import type { SignUpOperation } from "../../../models/profiles/profile.js";
 import { credentialHeadStateOf, credentialHeadTransition, type CredentialHeadInconsistency, type CredentialHeadRefusal, type CredentialOperationFile } from "../../../rules/storage/credential-head.js";
@@ -44,12 +44,26 @@ export const CanonicalCredentialPublicationSourceSchema = z.strictObject({ head:
 export type CanonicalCredentialPublicationSource = z.infer<typeof CanonicalCredentialPublicationSourceSchema>;
 const Binding = z.strictObject({ installationId: z.uuid(), profileId: z.uuid() });
 const NativeKey = Binding.extend({ schemaVersion: z.literal(2), keyId: z.uuid(), keyDigest: Digest });
+/** The Duo record as written before security-key-only; only readStoredDuoRecord reads it. */
+const StoppedPlatformDuoRecordSchema = z.strictObject({ credentials: z.array(z.looseObject({ credentialId: z.string().min(1),
+  authenticator: z.looseObject({ transport: z.enum(["internal", "usb"]) }).optional() })).max(1000),
+  keyChanges: z.array(DuoKeyChangeReceiptSchema).optional() });
+/** Validates a stored Duo record that may still hold platform rows: the current shape apart from transport "internal", membership included. */
+function readStoredDuoRecord(value: unknown): Readonly<{ record: z.infer<typeof DuoCredentialRecordSchema>; platformIds: readonly string[] }> {
+  const prior = StoppedPlatformDuoRecordSchema.parse(value);
+  const record = DuoCredentialRecordSchema.parse({ ...prior, credentials: prior.credentials.map(row => row.authenticator?.transport === "internal"
+    ? { ...row, authenticator: { ...row.authenticator, transport: "usb" } } : row) });
+  return { record, platformIds: prior.credentials.filter(row => row.authenticator?.transport === "internal").map(row => row.credentialId) };
+}
 const Counter = z.strictObject({ credentialId: z.string().min(1), publicKeySpki: z.string().min(1),
   count: z.number().int().min(0).max(0xffff_ffff),
+  lastUsedAt: z.iso.datetime().optional(),
   requests: z.array(z.strictObject({ requestId: z.string().min(1), count: z.number().int().min(1).max(0xffff_ffff) })).max(100_000) });
 const ActiveHeadBody = Binding.extend({ schemaVersion: z.literal(1), state: z.literal("active"),
   generation: z.number().int().safe().positive(), revision: Revision, key: NativeKey,
-  counters: z.array(Counter).max(1000), retired: z.array(z.string().min(1)).max(100_000) });
+  counters: z.array(Counter).max(1000), retired: z.array(z.string().min(1)).max(100_000),
+  duoRemoval: z.strictObject({ credentialId: z.string().min(1), receipt: DuoKeyChangeReceiptSchema.extend({ kind: z.literal("remove") }),
+    nextDigest: Digest }).optional() });
 const ActiveHead = ActiveHeadBody.extend({ mac: Digest });
 const ErasedHeadBody = Binding.extend({ schemaVersion: z.literal(1), state: z.literal("erased"),
   generation: z.number().int().safe().positive(), operationId: z.uuid(), key: NativeKey,
@@ -68,6 +82,7 @@ const maxBytes = MAX_CANONICAL_CREDENTIAL_BYTES;
 const kinds = ["protected", "duo", "chatgpt"] as const;
 const encode = (value: unknown) => Buffer.from(canonicalJsonStringify(value), "utf8");
 const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+const duoSettingsKeyId = (credentialId: string): string => digest(Buffer.from(credentialId));
 function parse(bytes: Uint8Array): unknown { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown; }
 function increment(value: number): number {
   if (!Number.isSafeInteger(value + 1)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
@@ -91,6 +106,8 @@ function authenticateHeadBody(head: Head, key: Buffer): Buffer {
     || !timingSafeEqual(Buffer.from(head.mac, "hex"), Buffer.from(headMac(body, key), "hex"))) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
   if (new Set(head.counters.map(counter => counter.credentialId)).size !== head.counters.length
     || new Set(head.retired).size !== head.retired.length) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+  if (head.duoRemoval !== undefined && (!head.retired.includes(head.duoRemoval.credentialId)
+    || head.duoRemoval.receipt.keyId !== duoSettingsKeyId(head.duoRemoval.credentialId))) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
   for (const counter of head.counters) if (head.retired.includes(counter.credentialId)
     || new Set(counter.requests.map(request => request.requestId)).size !== counter.requests.length
     || counter.requests.some(request => request.count > counter.count)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
@@ -306,6 +323,8 @@ function publishCreate(paths: ReturnType<typeof canonicalPaths>, operation: z.in
 }
 
 type ReenrolTarget = "head" | "duo";
+/** Stage owner of the security-key-only migration; no account uses it. */
+const PLATFORM_DUO_MIGRATION_OWNER = "00000000-0000-4000-8000-0000000000d0";
 function reenrolStagePath(paths: ReturnType<typeof canonicalPaths>, owner: string, target: ReenrolTarget): string {
   return join(target === "head" ? paths.directory : dirname(paths.records.duo), `.${paths.binding.profileId}.${z.uuid().parse(owner)}.reenrol-${target}.canonical.tmp`);
 }
@@ -318,7 +337,7 @@ function reenrolStageOwner(paths: ReturnType<typeof canonicalPaths>, directory: 
 type OwnedStages = ReadonlyMap<string, Readonly<{ bytes: Buffer; kind?: CanonicalCredentialKind; identity?: DirectoryIdentity }>>;
 function inspectCanonicalNamespace(paths: ReturnType<typeof canonicalPaths>, head: Head, key: Buffer,
   owned: OwnedStages, assertCurrent: () => void, ancestry = new Map<string, DirectoryIdentity>(),
-  tolerateReenrolStages = false): void {
+  abandonedStages?: ReadonlySet<string>): void {
   const writerLockPath = join(paths.directory, `.${paths.binding.profileId}.writer.lock`);
   function validatePrivateLock(bytes: Buffer): void {
     try { assertPrivateFileLockBytes(bytes); }
@@ -349,7 +368,7 @@ function inspectCanonicalNamespace(paths: ReturnType<typeof canonicalPaths>, hea
         }
         continue;
       }
-      if (tolerateReenrolStages && !profileDirectory && reenrolStageOwner(paths, directory, name) !== undefined) continue;
+      if (abandonedStages?.has(path)) continue;
       if (!name.endsWith(".canonical.tmp")) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
       const expected = owned.get(path);
       if (expected === undefined && writerLockPresent()) throw new CanonicalCredentialError("CREDENTIAL_BUSY");
@@ -413,6 +432,14 @@ function captureAbandonedSignUpHead(paths: ReturnType<typeof fixedCanonicalPaths
   };
 }
 
+const startupStageRepairs = new WeakMap<RuntimeLifetimeLock, number>();
+
+export function takeCanonicalCredentialStartupStageRepairs(lifetime: RuntimeLifetimeLock): number {
+  const count = startupStageRepairs.get(lifetime) ?? 0;
+  startupStageRepairs.delete(lifetime);
+  return count;
+}
+
 export function captureCanonicalCredentialStartupLocks(lifetime: RuntimeLifetimeLock, workspace: string,
   machineRoot: string, installationId: string, abandonable: (profileId: string) => boolean): readonly (() => void)[] {
   if (!(lifetime instanceof RuntimeLifetimeLock)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
@@ -474,14 +501,25 @@ export function captureCanonicalCredentialStartupLocks(lifetime: RuntimeLifetime
       if (reading.state === "active") {
         const head = reading.head;
         guard(); const key = authenticateHead(head);
-        // A re-enrolment stage never became authority: its operation rolls forward from the intent, head and record, so boot removes it.
-        inspectCanonicalNamespace(paths, head, key, new Map(), guard, ancestry, true);
-        for (const stageDirectory of [paths.directory, dirname(paths.records.duo)]) for (const name of readdirSync(stageDirectory)) {
-          if (reenrolStageOwner(paths, stageDirectory, name) === undefined) continue;
-          guard(); const path = join(stageDirectory, name), stage = readPrivateFile(path, { label: "protected.json", maxBytes });
-          if (stage === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-          removals.push(() => { guard(); removeExactPath(path, stage.identity, false, "credential-reenrol-stage-changed"); fsyncPath(stageDirectory); });
+        const stages = new Set<string>();
+        for (const stageDirectory of [paths.directory, dirname(paths.records.duo), dirname(paths.records.protected)]) {
+          for (const name of readdirSync(stageDirectory)) {
+            const ordinary = /^\.([0-9a-f-]{36})\.([0-9a-f-]{36})\.canonical\.tmp$/u.exec(name);
+            const reenrol = reenrolStageOwner(paths, stageDirectory, name) !== undefined;
+            if (!reenrol && (ordinary?.[1] !== profileId || !z.uuidv4().safeParse(ordinary[2]).success)) continue;
+            guard(); const path = join(stageDirectory, name), stage = readPrivateFile(path, { label: "protected.json", maxBytes });
+            if (stage === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+            stages.add(path);
+            removals.push(() => {
+              guard();
+              noSymlinkAncestry(stageDirectory, ancestry);
+              removeExactPath(path, stage.identity, false, "credential-stage-changed");
+              fsyncPath(stageDirectory);
+              startupStageRepairs.set(lifetime, (startupStageRepairs.get(lifetime) ?? 0) + 1);
+            });
+          }
         }
+        inspectCanonicalNamespace(paths, head, key, new Map(), guard, ancestry, stages);
         for (const kind of kinds) {
           guard(); const record = readPrivateFile(paths.records[kind], { label: "protected.json", maxBytes });
           if (record === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
@@ -1008,7 +1046,7 @@ export function eraseCanonicalDraftCredentials(machine: RuntimeAdmission, profil
         if (source === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
         const record = open(parsed, key, kind, source.bytes);
         if (kind === "duo" && record !== undefined) {
-          duo = DuoCredentialRecordSchema.parse(record.value);
+          duo = readStoredDuoRecord(record.value).record;
           for (const credential of duo.credentials) validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
         }
         return { kind, digest: digest(source.bytes), ...fileIdentityObservation(source.identity, { preserveSafeNumbers: true }) };
@@ -1105,35 +1143,46 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
       && (error instanceof PrivateFileLockUnavailableError || error instanceof PrivateFileReadTransitionError);
     throw new CanonicalCredentialError(busy ? "CREDENTIAL_BUSY" : code, { cause: error });
   }
-  function readHead(): { head: Head; key: Buffer } {
+  type HeadFile = ReturnType<typeof readPrivateFile>;
+  type ReadHeadProof = { head: Head; file: HeadFile };
+  function authenticateReadHead(file: HeadFile, prior?: ReadHeadProof) {
+    if (file !== undefined && prior?.file !== undefined && sameDirectory(file.identity, prior.file.identity) && file.bytes.equals(prior.file.bytes)) {
+      // Exact head bytes retain their MAC proof. Native key custody can change independently.
+      return { head: prior.head, key: keyBytes(prior.head) };
+    }
+    const parsed = file === undefined ? undefined : CanonicalCredentialHeadSchema.safeParse(parse(file.bytes));
+    const reading = canonicalCredentialHeadReading(parsed === undefined ? "absent" : parsed.success ? parsed.data : "unparseable", "absent");
+    // An unparseable head is a person that still needs conversion, as an absent one does.
+    if ("inconsistent" in reading) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
+    if ("head" in reading && (reading.head.installationId !== binding.installationId || reading.head.profileId !== binding.profileId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    const access = credentialHeadTransition(reading.state, "read");
+    if ("refused" in access) throw headRefusal(access.refused);
+    if (reading.state !== "active") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    return { head: reading.head, key: authenticateHead(reading.head) };
+  }
+  function readHead(prior?: ReadHeadProof) {
     return withOperationProof(() => {
       assertRead();
       assertAccess();
       if (readPrivateFile(operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CanonicalCredentialError("CREDENTIAL_BUSY");
       const file = readPrivateFile(headPath, { label: "lock", maxBytes });
-      const parsed = file === undefined ? undefined : CanonicalCredentialHeadSchema.safeParse(parse(file.bytes));
-      const reading = canonicalCredentialHeadReading(parsed === undefined ? "absent" : parsed.success ? parsed.data : "unparseable", "absent");
-      // An unparseable head is a person that still needs conversion, as an absent one does.
-      if ("inconsistent" in reading) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
-      if ("head" in reading && (reading.head.installationId !== binding.installationId || reading.head.profileId !== binding.profileId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      const access = credentialHeadTransition(reading.state, "read");
-      if ("refused" in access) throw headRefusal(access.refused);
-      if (reading.state !== "active") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      const head = reading.head, key = authenticateHead(head);
+      const { head, key } = authenticateReadHead(file, prior);
       inspectCanonicalNamespace(canonical, head, key, ownedStages, assertAccess, ancestry);
       if (capturedGeneration !== undefined && (head.generation !== capturedGeneration.generation || head.key.keyId !== capturedGeneration.keyId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       capturedGeneration ??= { generation: head.generation, keyId: head.key.keyId };
-      assertAccess(); assertRead(); return { head, key };
+      assertAccess(); assertRead(); return { head, key, file };
     });
   }
   function assertCurrent(): void { try { readHead(); } catch (error) { translate(error); } }
   function read(kind: CanonicalCredentialKind): CanonicalCredentialRecord | undefined {
     return withOperationProof(() => {
-      const { head, key } = readHead();
+      const proof = readHead();
       if (!noSymlinkAncestry(dirname(paths[kind]), ancestry)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       const file = readPrivateFile(paths[kind], { label: "protected.json", maxBytes });
       if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      const record = open(head, key, kind, file.bytes); assertCurrent(); return record;
+      const record = open(proof.head, proof.key, kind, file.bytes);
+      try { readHead(proof); } catch (error) { translate(error); }
+      return record;
     });
   }
   function publish(path: string, bytes: Buffer, kind?: CanonicalCredentialKind,
@@ -1218,6 +1267,7 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
       if (next.credentials.some(credential => head.retired.includes(credential.credentialId))
         || prior.credentials.some(credential => !next.credentials.some(candidate => candidate.credentialId === credential.credentialId
           && candidate.publicKeySpki === credential.publicKeySpki && candidate.privateKeyPkcs8 === credential.privateKeyPkcs8))) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+      if (canonicalJsonStringify(next.keyChanges ?? []) !== canonicalJsonStringify(prior.keyChanges ?? [])) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
       const priorRows = new Map(prior.credentials.map(row => [row.credentialId, canonicalJsonStringify(row)]));
       const nextRows = new Map(next.credentials.map(row => [row.credentialId, canonicalJsonStringify(row)]));
       // Re-enrolment rows enter, change and leave only through the bounded re-enrolment operations.
@@ -1238,18 +1288,20 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
     if (frame === undefined) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
     return { revision: frame.revision, record: DuoCredentialRecordSchema.parse(frame.value) };
   }
-  /** Re-enrolment acts only for an account that owns no ready row, on a record whose ready rows belong to another account. */
+  /** A registered profile can re-enrol from empty only after removing its last key. */
   function assertReenrolAccount(record: DuoCredentialRecord, accountId: string): void {
     const ready = record.credentials.filter(row => row.state === "ready");
-    if (ready.length === 0 || ready.some(row => row.scope.accountId === accountId)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+    if (ready.some(row => row.scope.accountId === accountId)
+      || ready.length === 0 && !record.keyChanges?.some(change => change.kind === "remove")) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+    if (ready.length === 0) admission.assertProfileRuntime();
   }
-  function publishHead(head: Head, key: Buffer, changes: Readonly<Partial<Pick<Head, "counters" | "retired">>>, stage?: string): number {
+  function publishHead(head: Head, key: Buffer, changes: Readonly<Partial<Pick<Head, "counters" | "retired" | "duoRemoval">>>, stage?: string): number {
     const { mac: _mac, ...priorBody } = head;
     const body = ActiveHeadBody.parse({ ...priorBody, ...changes, revision: increment(head.revision) });
     publish(headPath, encode({ ...body, mac: headMac(body, key) }), undefined, stage);
     return body.revision;
   }
-  function retireHead(head: Head, key: Buffer, ids: readonly string[], stage: string): void {
+  function retireHead(head: Head, key: Buffer, ids: readonly string[], stage?: string): void {
     if (ids.every(id => head.retired.includes(id)) && !head.counters.some(counter => ids.includes(counter.credentialId))) return;
     publishHead(head, key, { retired: [...head.retired, ...ids.filter(id => !head.retired.includes(id))],
       counters: head.counters.filter(counter => !ids.includes(counter.credentialId)) }, stage);
@@ -1260,31 +1312,40 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
     for (const credential of next.credentials) validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
     return !next.credentials.some(credential => head.retired.includes(credential.credentialId));
   }
-  /** Writes a Duo record past the generic anti-removal guard; only the bounded re-enrolment operations call it. */
+  /** Writes a Duo record after its caller proves exact membership and retirement. */
   function publishDuo(expectedRevision: number, value: DuoCredentialRecord, stage?: string): number {
     if (read("duo")?.revision !== expectedRevision) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
     const { head, key } = readHead(), next = DuoCredentialRecordSchema.parse(value);
     if (!publishable(head, next)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
     return publishRecord("duo", head, key, deepFreeze({ revision: increment(expectedRevision), value: next }), stage).revision;
   }
-  function initializeCounter(credential: DuoStoredCredential | undefined, credentialId: string, count: number, stage?: string): void {
-    if (credential?.state !== "pending" || credential.authenticator?.transport !== "internal") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-    validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
-    const { head, key } = readHead();
-    if (head.retired.includes(credentialId) || head.counters.some(counter => counter.credentialId === credentialId)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
-    publishHead(head, key, { counters: [...head.counters, Counter.parse({ credentialId, publicKeySpki: credential.publicKeySpki, count, requests: [] })] }, stage);
+  function removalRecord(record: DuoCredentialRecord, removal: Pick<NonNullable<Head["duoRemoval"]>, "credentialId" | "receipt">): DuoCredentialRecord {
+    return DuoCredentialRecordSchema.parse({ ...record, credentials: record.credentials.filter(row => row.credentialId !== removal.credentialId),
+      keyChanges: [...(record.keyChanges ?? []), removal.receipt] });
   }
-  function reserveCounter(credential: DuoStoredCredential, requestId: string, stage?: string): Readonly<{ count: number; revision: number }> {
+  function finishDuoRemoval(head: Head): void {
+    const removal = head.duoRemoval;
+    if (removal === undefined) return;
+    const { revision, record } = readDuo();
+    const receipt = record.keyChanges?.find(change => change.commandId === removal.receipt.commandId);
+    const row = record.credentials.find(credential => credential.credentialId === removal.credentialId);
+    if (row === undefined && canonicalJsonStringify(receipt ?? null) === canonicalJsonStringify(removal.receipt)) return;
+    if (revision !== removal.receipt.expectedRevision || row?.state !== "ready" || receipt !== undefined) throw new CanonicalCredentialError("CREDENTIAL_UNCERTAIN");
+    const next = removalRecord(record, removal);
+    if (digest(encode(next)) !== removal.nextDigest) throw new CanonicalCredentialError("CREDENTIAL_UNCERTAIN");
+    publishDuo(revision, next, reenrolStagePath(canonical, removal.receipt.commandId, "duo"));
+  }
+  function reserveCounter(credential: DuoStoredCredential, requestId: string, stage?: string, at?: string): Readonly<{ count: number; revision: number }> {
     validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
     const { head, key } = readHead(), credentialId = credential.credentialId;
     if (head.retired.includes(credentialId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     const prior = head.counters.find(counter => counter.credentialId === credentialId);
-    if (prior === undefined && credential.authenticator?.transport === "internal") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     if (prior !== undefined && prior.publicKeySpki !== credential.publicKeySpki) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     const existing = prior?.requests.find(request => request.requestId === requestId);
     if (existing !== undefined) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
     const count = (prior?.count ?? 0) + 1;
-    const counter = Counter.parse({ credentialId, publicKeySpki: credential.publicKeySpki, count,
+    const lastUsedAt = at === undefined || prior?.lastUsedAt !== undefined && prior.lastUsedAt > at ? prior?.lastUsedAt : at;
+    const counter = Counter.parse({ credentialId, publicKeySpki: credential.publicKeySpki, count, ...(lastUsedAt === undefined ? {} : { lastUsedAt }),
       requests: [...(prior?.requests ?? []), { requestId, count }] });
     const revision = publishHead(head, key, { counters: [...head.counters.filter(candidate => candidate.credentialId !== credentialId), counter] }, stage);
     return { count, revision };
@@ -1298,7 +1359,7 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
     if (canonicalJsonStringify(account.map(row => row.credentialId)) !== canonicalJsonStringify(intent.stagedIds)
       || canonicalJsonStringify(ready.map(row => row.credentialId)) !== canonicalJsonStringify(intent.retireIds)
       || account.some(row => row.state !== "staged")) return undefined;
-    return DuoCredentialRecordSchema.parse({ credentials: record.credentials.filter(row => row.state !== "ready").map(row => {
+    return DuoCredentialRecordSchema.parse({ ...record, credentials: record.credentials.filter(row => row.state !== "ready").map(row => {
       if (row.state !== "staged" || row.scope.accountId !== intent.accountId) return row;
       const { provedAt, reenrol: _reenrol, ...fields } = row;
       return { ...fields, state: "ready" as const, confirmedAt: provedAt };
@@ -1320,14 +1381,14 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
     try { ({ head, key } = readHead()); }
     catch (cause) { retainClosure(cause); return { head: "unprovable", record: "unprovable", cause }; }
     const retired = intent.retireIds.filter(id => head.retired.includes(id)).length;
-    const headState: Classification = retired === intent.retireIds.length ? "applied" : retired === 0 ? "not-applied" : "unprovable";
+    const headState: Classification = retired === 0 ? "not-applied" : retired === intent.retireIds.length ? "applied" : "unprovable";
     let frame: CanonicalCredentialRecord | undefined;
     try { frame = read("duo"); }
     catch (cause) { retainClosure(cause); return { head: headState, record: "unprovable", source: { head, key }, cause }; }
     const record = frame === undefined ? undefined : DuoCredentialRecordSchema.safeParse(frame.value);
     if (frame === undefined || record?.success !== true) return { head: headState, record: "unprovable", source: { head, key } };
     if (frame.revision === increment(intent.duoRevision) && macMatches(intent.mac, commitMac(key, intent, record.data))) {
-      return { head: headState, record: "applied", source: { head, key } };
+      return { head: intent.retireIds.length === 0 ? "applied" : headState, record: "applied", source: { head, key } };
     }
     const next = frame.revision === intent.duoRevision ? committedRecord(record.data, intent) : undefined;
     if (next === undefined || !publishable(head, next) || !macMatches(intent.mac, commitMac(key, intent, next))) return { head: headState, record: "unprovable", source: { head, key } };
@@ -1405,42 +1466,102 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
         return locked(() => replace(kind, expectedRevision, value));
       } catch (error) { translate(error); }
     },
-    initializePendingDuoCounter(credentialId: string, count: number): void {
+    /**
+     * Forward migration to security-key-only Duo: rows with transport "internal" (platform) are retired in the head with their
+     * counters, then dropped from the record; the security key stays. A record without such rows is left as it is.
+     */
+    dropPlatformDuoCredentials(): void {
       try { locked(() => {
-        const record = read("duo"), document = DuoCredentialRecordSchema.parse(record?.value);
-        const credential = document.credentials.find(candidate => candidate.credentialId === credentialId);
-        if (credential?.state === "pending" && credential.reenrol === true) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
-        initializeCounter(credential, credentialId, count);
-      }); } catch (error) { translate(error); }
+        finishDuoRemoval(readHead().head);
+        const frame = read("duo");
+        if (frame === undefined) return;
+        const { record, platformIds: ids } = readStoredDuoRecord(frame.value);
+        if (ids.length === 0) return;
+        const { head, key } = readHead();
+        const next = DuoCredentialRecordSchema.parse({ ...record, credentials: record.credentials.filter(row => !ids.includes(row.credentialId)) });
+        if (!publishable({ ...head, retired: [...head.retired, ...ids] }, next)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+        // Re-enrolment-named stages: boot and the next run clear an unrenamed one, and a rerun converges from either publication.
+        retireHead(head, key, ids, reenrolStagePath(canonical, PLATFORM_DUO_MIGRATION_OWNER, "head"));
+        publishDuo(frame.revision, next, reenrolStagePath(canonical, PLATFORM_DUO_MIGRATION_OWNER, "duo"));
+      }, true); } catch (error) { translate(error); }
     },
-    /** Enrols a re-enrolment row pending, with its platform counter; its stages are re-enrolment stages, so discard and boot can clear them. */
-    enrollReenrolDuoCredential(input: DuoStoredCredential, initialSignCount?: number): Readonly<{ revision: number }> {
+    readDuoSettings() {
+      try {
+        return withOperationProof(() => {
+          const proof = readHead(), frame = read("duo"), head = readHead(proof).head;
+          if (head.revision !== proof.head.revision) throw new CanonicalCredentialError("CREDENTIAL_BUSY");
+          const credentials = frame === undefined ? [] : DuoCredentialRecordSchema.parse(frame.value).credentials;
+          if (credentials.some(row => head.retired.includes(row.credentialId))) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+          const used = new Map(head.counters.map(row => [row.credentialId, row.lastUsedAt]));
+          return { revision: frame?.revision ?? 0, keys: credentials.filter(row => row.state === "ready").map(row => {
+            const lastUsedAt = used.get(row.credentialId);
+            return { id: duoSettingsKeyId(row.credentialId), shortId: row.credentialId.slice(0, 8), addedAt: row.createdAt,
+              ...(row.name === undefined ? {} : { name: row.name }), ...(lastUsedAt === undefined ? {} : { lastUsedAt }) };
+          }) };
+        });
+      } catch (error) { translate(error); }
+    },
+    changeDuoKey(input: DuoKeyChange, at: string): "changed" | "name-in-use" {
+      try { return locked(() => {
+        admission.assertProfileRuntime();
+        const request = DuoKeyChangeSchema.parse(input), requestDigest = digest(encode(request));
+        finishDuoRemoval(readHead().head);
+        const { revision, record } = readDuo(), { head, key } = readHead();
+        const prior = record.keyChanges?.find(change => change.commandId === request.commandId);
+        if (prior?.requestDigest === requestDigest) return "changed";
+        const row = record.credentials.find(credential => duoSettingsKeyId(credential.credentialId) === request.keyId);
+        if (prior !== undefined || revision !== request.expectedRevision || row?.state !== "ready"
+          || head.retired.includes(row.credentialId)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+        const { commandId, keyId, expectedRevision, kind } = request;
+        const receipt = DuoKeyChangeReceiptSchema.parse({ commandId, keyId, expectedRevision, kind, at, requestDigest });
+        const stage = reenrolStagePath(canonical, commandId, "duo");
+        if (request.kind === "rename") {
+          const name = request.name, comparable = name.normalize("NFKC").toLowerCase();
+          if (record.credentials.some(credential => credential !== row && credential.state === "ready"
+            && credential.name?.normalize("NFKC").toLowerCase() === comparable)) return "name-in-use";
+          publishDuo(revision, { ...record, credentials: record.credentials.map(credential => credential === row ? { ...row, name } : credential),
+            keyChanges: [...(record.keyChanges ?? []), receipt] }, stage);
+        } else {
+          const removal = { credentialId: row.credentialId, receipt: { ...receipt, kind: "remove" as const } };
+          const next = removalRecord(record, removal), retired = [...head.retired, row.credentialId];
+          if (!publishable({ ...head, retired }, next)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+          publishHead(head, key, { retired, counters: head.counters.filter(counter => counter.credentialId !== row.credentialId),
+            duoRemoval: { ...removal, nextDigest: digest(encode(next)) } }, reenrolStagePath(canonical, commandId, "head"));
+          finishDuoRemoval(readHead().head);
+        }
+        return "changed";
+      }, true); } catch (error) { translate(error); }
+    },
+    recordDuoEnrollmentName(credentialId: string, scope: DuoEnrollmentScope, name: string): void {
+      try { locked(() => {
+        const expected = canonicalJsonStringify(DuoEnrollmentScopeSchema.parse(scope)), label = DuoKeyNameSchema.parse(name);
+        const { revision, record } = readDuo();
+        const row = record.credentials.find(credential => credential.credentialId === credentialId
+          && canonicalJsonStringify(credential.scope) === expected);
+        if (row === undefined || row.name !== undefined && row.name !== label) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+        if (row.name === label) return;
+        publishDuo(revision, { ...record, credentials: record.credentials.map(credential => credential === row ? { ...row, name: label } : credential) },
+          reenrolStagePath(canonical, scope.accountId, "duo"));
+      }, true); } catch (error) { translate(error); }
+    },
+    /** Enrols a re-enrolment row pending; its stages are re-enrolment stages, so discard and boot can clear them. */
+    enrollReenrolDuoCredential(input: DuoStoredCredential): Readonly<{ revision: number }> {
       try { return locked(() => {
         const credential = DuoStoredCredentialSchema.parse(input), { revision, record } = readDuo();
         if (credential.state !== "pending" || credential.reenrol !== true
           || record.credentials.some(row => row.credentialId === credential.credentialId)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
         assertReenrolAccount(record, credential.scope.accountId);
-        const next = publishDuo(revision, { credentials: [...record.credentials, credential] }, reenrolStagePath(canonical, credential.scope.accountId, "duo"));
-        if (initialSignCount !== undefined) initializeCounter(credential, credential.credentialId, initialSignCount, reenrolStagePath(canonical, credential.scope.accountId, "head"));
+        const next = publishDuo(revision, { ...record, credentials: [...record.credentials, credential] }, reenrolStagePath(canonical, credential.scope.accountId, "duo"));
         return { revision: next };
       }, true); } catch (error) { translate(error); }
     },
-    readDuoCounter(credentialId: string): number {
-      try {
-        const document = DuoCredentialRecordSchema.parse(read("duo")?.value);
-        const credential = document.credentials.find(candidate => candidate.credentialId === credentialId);
-        const { head } = readHead(), counter = head.counters.find(candidate => candidate.credentialId === credentialId);
-        if (credential === undefined || counter === undefined || counter.publicKeySpki !== credential.publicKeySpki || head.retired.includes(credentialId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-        return counter.count;
-      } catch (error) { translate(error); }
-    },
-    reserveDuoCounter(credentialId: string, requestId: string): Readonly<{ count: number; revision: number }> {
+    reserveDuoCounter(credentialId: string, requestId: string, at?: string): Readonly<{ count: number; revision: number }> {
       try { return locked(() => {
         if (requestId.length === 0) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
         const record = read("duo"), document = DuoCredentialRecordSchema.parse(record?.value);
         const credential = document.credentials.find(candidate => candidate.credentialId === credentialId && candidate.state === "ready");
         if (credential === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-        return reserveCounter(credential, requestId);
+        return reserveCounter(credential, requestId, undefined, at);
       }); } catch (error) { translate(error); }
     },
     /** Counts a portal verification signed by a staged row; only its exact enrolment scope may reserve. */
@@ -1461,10 +1582,8 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
         const pending = record.credentials.find(row => row.credentialId === credentialId);
         if (pending?.state !== "pending" || pending.reenrol !== true || canonicalJsonStringify(pending.scope) !== canonicalJsonStringify(parsed)
           || Date.parse(at) < Date.parse(pending.createdAt) || Date.parse(at) >= Date.parse(pending.scope.expiresAt)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
-        if (pending.authenticator?.transport === "internal" && !readHead().head.counters.some(counter => counter.credentialId === credentialId
-          && counter.publicKeySpki === pending.publicKeySpki)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
         const credentials = record.credentials.map(row => row === pending ? { ...pending, state: "staged" as const, reenrol: true as const, provedAt: at } : row);
-        return { revision: publishDuo(revision, { credentials }, reenrolStagePath(canonical, parsed.accountId, "duo")) };
+        return { revision: publishDuo(revision, { ...record, credentials }, reenrolStagePath(canonical, parsed.accountId, "duo")) };
       }, true); } catch (error) { translate(error); }
     },
     /** Removes an abandoned re-enrolment's rows: retire their ids and counters in the head, then drop them from the record. */
@@ -1472,11 +1591,15 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
       try {
         const owner = z.uuid().parse(accountId);
         locked(() => {
-          const { revision, record } = readDuo(), { head, key } = readHead();
+          const frame = read("duo");
+          if (frame === undefined) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+          // A record written before security-key-only drops its platform rows with the draft, under the same re-enrolment stages.
+          const { revision } = frame, { record, platformIds } = readStoredDuoRecord(frame.value), { head, key } = readHead();
           assertReenrolAccount(record, owner);
-          if (record.credentials.some(row => row.state === "ready" && head.retired.includes(row.credentialId))) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
-          const draft = record.credentials.filter(row => row.scope.accountId === owner).map(row => row.credentialId);
-          const kept = { credentials: record.credentials.filter(row => row.scope.accountId !== owner) };
+          // A platform row an interrupted discard already retired resumes here; a retired ready security key still refuses.
+          if (record.credentials.some(row => row.state === "ready" && !platformIds.includes(row.credentialId) && head.retired.includes(row.credentialId))) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+          const draft = [...new Set([...record.credentials.filter(row => row.scope.accountId === owner).map(row => row.credentialId), ...platformIds])];
+          const kept = { ...record, credentials: record.credentials.filter(row => !draft.includes(row.credentialId)) };
           if (draft.length === 0) return;
           if (!publishable({ ...head, retired: [...head.retired, ...draft] }, kept)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
           retireHead(head, key, draft, reenrolStagePath(canonical, owner, "head"));
