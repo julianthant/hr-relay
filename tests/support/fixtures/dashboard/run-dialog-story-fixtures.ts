@@ -17,6 +17,7 @@ import { CommandResultSchema, type CommandResult } from "../../../../src/rules/c
 import intakeSnapshot from "./run-dialog-intake-sessions.json" with { type: "json" };
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../../src/models/intake/wire.js";
 import bootstrapSnapshot from "./run-dialog-bootstrap.json" with { type: "json" };
+import workStudySnapshot from "./run-dialog-work-study.json" with { type: "json" };
 
 /** The served bootstrap of the one registered workflow, saved so the gallery page stays free of backend modules; run-dialog-bootstrap.integration.test.ts keeps it current. */
 export const RUN_DIALOG_BOOTSTRAP = FrontendBootstrapWireSchema.parse(bootstrapSnapshot);
@@ -29,7 +30,7 @@ export const RUN_DIALOG_WORKFLOW = "person-lookup";
 export const RUN_DIALOG_TYPED = "10873698";
 const HASH = "a".repeat(64);
 
-export const RUN_DIALOG_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(FIXTURE_BOOTSTRAP.workflows).map((entry): RunStartWorkflow => {
+const startWorkflows = (workflows: readonly unknown[]): readonly RunStartWorkflow[] => parseWorkflows(workflows).map((entry): RunStartWorkflow => {
   const start = entry.start;
   return {
     workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId, role: entry.role, icon: entry.icon,
@@ -42,6 +43,7 @@ export const RUN_DIALOG_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
     referenceSources: FIXTURE_BOOTSTRAP.workbookCompatibility.workflows.find(workflow => workflow.workflowId === entry.id)?.sources ?? [],
   };
 });
+export const RUN_DIALOG_WORKFLOWS = startWorkflows(FIXTURE_BOOTSTRAP.workflows);
 
 export const RUN_DIALOG_CATALOG = buildWorkflowCatalog(RUN_DIALOG_WORKFLOWS,
   Object.freeze(Object.fromEntries(RUN_DIALOG_WORKFLOWS.map(flow => [flow.workflowId, "served" as const]))));
@@ -133,26 +135,21 @@ export function runDialogRerunSnapshot(outcome: "failed" | "done" = "failed"): R
   } });
 }
 
-/** The served Work-Study layout: three required steps, the last filing one UCPath transaction. */
-const WRITE_STEPS = [
-  ["ucpath-auth", "Sign in to UCPath", ["paypath-position"]],
-  ["reference-check", "Check reference spreadsheets", ["reference-check", "reference-stop", "reference-check-review"]],
-  ["transaction", "Submit work-study transaction", ["transaction-plan", "save-transaction"]],
-] as const;
-export const RUN_DIALOG_WRITE_RERUN_CATALOG = catalogOf(flow => {
-  const [template] = flow.steps; if (template === undefined) throw new Error("the fixture workflow has no step");
-  return { ...flow, label: "Work-Study", steps: WRITE_STEPS.map(([key, label]) => ({ ...template, key, label,
-    control: { state: "required" as const, reason: "This workflow requires every node in this step." } })) };
-});
+/** The served Work-Study entry, saved beside the bootstrap; run-dialog-bootstrap.integration.test.ts keeps it current. */
+const [WORK_STUDY] = startWorkflows([workStudySnapshot]);
+if (WORK_STUDY === undefined) throw new Error("the saved Work-Study entry is missing");
+export const RUN_DIALOG_WORK_STUDY = WORK_STUDY.workflowId;
+export const RUN_DIALOG_WRITE_RERUN_CATALOG = buildWorkflowCatalog([WORK_STUDY], Object.freeze({ [WORK_STUDY.workflowId]: "served" as const }));
+const WRITE_NODES = { "ucpath-auth": ["paypath-position"], "reference-check": ["reference-check", "reference-stop", "reference-check-review"], transaction: ["transaction-plan", "save-transaction"] } as const;
 const WRITE_RECEIPT = { nodeId: "save-transaction", taskId: "ucpath/submit-paypath-work-study", writeIntentId: "20000000-0000-4000-8000-000000000002", evidenceDigest: HASH } as const;
 
 /** A Work-Study run cancelled after Save and Submit committed, before its filing step finished; the receipt is the source's own. */
 export function runDialogWriteRerunSnapshot(): RerunValuesResponse {
   return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
-    sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED } },
-    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome: "cancelled", dryRun: false, priority: "interactive", browserMode: "headless" },
-    steps: WRITE_STEPS.map(([key, , nodes]) => key !== "transaction"
-      ? { key, state: "completed", nodes: nodes.map(nodeId => ({ nodeId, state: "completed", reason: "checkpoint" })) }
+    sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED, effectiveDate: "2026-08-03" } },
+    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORK_STUDY, descriptorVersion: WORK_STUDY.version, contractFingerprint: HASH, outcome: "cancelled", dryRun: false, priority: "interactive", browserMode: "headless" },
+    steps: WORK_STUDY.steps.map(({ key }) => key !== "transaction"
+      ? { key, state: "completed", nodes: (WRITE_NODES[key as keyof typeof WRITE_NODES] ?? []).map(nodeId => ({ nodeId, state: "completed", reason: "checkpoint" })) }
       : { key, state: "unfinished", nodes: [{ nodeId: "transaction-plan", state: "completed", reason: "checkpoint" },
         { nodeId: "save-transaction", state: "unfinished", reason: "incomplete-execution" }] }),
     values: [], transactions: [{ stepKey: "transaction", ...WRITE_RECEIPT, disposition: "committed", filedBySource: true }],
@@ -161,8 +158,8 @@ export function runDialogWriteRerunSnapshot(): RerunValuesResponse {
 
 /** The repeat warning for that Work-Study source: its required filing step runs again. */
 export function runDialogWriteRerunWarning(): RerunWarningWire {
-  return RerunWarningWireSchema.parse({ workflowId: RUN_DIALOG_WORKFLOW, rerun: {
-    source: { runId: RUN_ID, expectedVersion: 3, intent: "rerun", selectedStepKeys: WRITE_STEPS.map(([key]) => key) },
+  return RerunWarningWireSchema.parse({ workflowId: RUN_DIALOG_WORK_STUDY, rerun: {
+    source: { runId: RUN_ID, expectedVersion: 3, intent: "rerun", selectedStepKeys: WORK_STUDY.steps.map(({ key }) => key) },
     warnings: [{ ...WRITE_RECEIPT, system: "ucpath", businessKeyDigest: HASH }], warningDigest: HASH,
   } });
 }
