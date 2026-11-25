@@ -262,7 +262,7 @@ it('holds composing through the expiry check and shows only the accepted account
     await act(async () => { current.onAction({ type: 'edit', value: 'Held request' }); current.onAction({ type: 'send' }); });
     assert.equal(requests, 0); assert.equal(current.state.draft, 'Held request'); assert.equal(current.state.turn.state, 'idle');
     await account.resolve(1, connected('Second', '2026-10-12T14:00:00.000Z'));
-    assert.equal(current.canCompose, true); assert.equal(current.models, undefined); assert.equal(lists.length, 2);
+    assert.equal(current.canCompose, true); assert.equal(current.models === undefined, true); assert.equal(lists.length, 2);
     lists[1].resolve({ models: [{ slug: 'second-model', displayName: 'Second model' }] }); await account.settle();
     assert.deepEqual(current.models?.map(model => model.slug), ['second-model']);
   } finally { account.port.dispose(); vi.useRealTimers(); }
