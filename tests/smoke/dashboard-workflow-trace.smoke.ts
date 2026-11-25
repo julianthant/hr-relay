@@ -104,7 +104,7 @@ test("Work-Study: the Start run dialog starts one run, a second press while pend
   await expect.poll(start.sent, { message: "the held Start reached the server" }).toBe(1);
   await dashboard.pressAgain(startButton);
   start.release();
-  await dashboard.expectOneToast("Run started: 1 Work-Study run created.", "Work-Study has no worker. Open Sessions.");
+  await dashboard.expectOneToast({ title: "Run started", line: "1 Work-Study run created." }, "Work-Study has no worker. Open Sessions.");
   await expect(dashboard.dialog).toBeHidden();
   expect(start.sent(), "a second press while pending sent a second command").toBe(1);
   const row = page.locator("[data-demo-row-id]");
@@ -154,7 +154,7 @@ test("Person Lookup: Rerun starts one new run, a second press while pending send
   await expect.poll(started.sent, { message: "the held Rerun reached the server" }).toBe(1);
   await dashboard.pressAgain(rerunStart);
   started.release();
-  await dashboard.expectOneToast("Rerun created: 1 Person Lookup run created.");
+  await dashboard.expectOneToast({ title: "Rerun created", line: "1 Person Lookup run created." });
   await expect(rerun).toBeHidden();
   expect(started.sent(), "a second press while pending sent a second command").toBe(1);
   expect(appliedRunIds(await started.result()).filter(id => id !== runId)).toHaveLength(1);

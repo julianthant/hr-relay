@@ -170,7 +170,7 @@ it.each([
   { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_BUSY" }, code: "WORKER_BUSY", via: "audit" },
   { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "later audit" },
   { status: 422, result: { state: "rejected", code: "invalid-state", message: "PRIVATE_SERVER_DETAIL" }, code: "COMMAND_REFUSED", via: "direct" },
-] as const)("shows the $code summary in staff words via $via: on the card when the send returned it, as one toast when read back", async ({ status, result, code, via }) => {
+] as const)("shows the $code summary in staff words via $via: as one toast, never a note on the row", async ({ status, result, code, via }) => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness();
   const recorded = (command: CommandRequest) => ({ state: "recorded", request: command, result: { ...result, commandId: command.commandId } });
@@ -188,11 +188,8 @@ it.each([
     if (via === "later audit") h.audit(recorded(h.sent[0]));
     const card = document.querySelector(WORKER_ENTRY); assert(card);
     const toasts = () => [...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent ?? "");
-    if (via === "direct") await settled(() => assert.ok(card.textContent?.includes(ERROR_CATALOG[code].text), card.textContent ?? ""));
-    else {
-      await settled(() => assert.equal(toasts().filter(toast => toast.includes(ERROR_CATALOG[code].text)).length, 1));
-      assert.ok(!card.textContent?.includes(ERROR_CATALOG[code].text), "a refusal found by reading back leaves no note on the card");
-    }
+    await settled(() => assert.equal(toasts().filter(toast => toast.includes(ERROR_CATALOG[code].text)).length, 1));
+    assert.ok(!card.textContent?.includes(ERROR_CATALOG[code].text), "a failed removal leaves no note on the row, only one toast");
     assert.ok(!card.textContent?.includes(code), "the card shows staff words, never the code");
     assert.doesNotMatch(`${card.textContent ?? ""}${toasts().join("")}`, /PRIVATE_SERVER_DETAIL|Check outcome/u);
     assert.equal(h.sent.length, 1);
@@ -325,6 +322,32 @@ it("refresh confirms only while the member keeps the lifetime it was sent to", a
   assert.equal(h.sent.length, 1);
 });
 
+it("a Remove refused after a remount is one toast, never a note on the row, and the row returns", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); let release!: (value: unknown) => void; let original: CommandRequest | undefined;
+  h.effect(command => { original = command; return new Promise(resolve => { release = resolve; }); });
+  const host = document.createElement("div"); document.body.append(host); let root = createRoot(host);
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} }));
+  const toasts = () => [...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent ?? "");
+  try {
+    await act(async () => render());
+    const remove = [...document.querySelectorAll("button")].find(button => button.getAttribute("aria-label") === "Remove worker"); assert(remove);
+    await act(async () => remove.click()); assert(original);
+    await act(async () => root.unmount()); root = createRoot(host);
+    await act(async () => render());
+    assert.match(document.body.textContent ?? "", /Removing/);
+    const progress = document.querySelector('[aria-label="Session Panel"] p[role="status"]'); assert(progress);
+    assert.match(progress.textContent ?? "", /^Removing .+, .+\.$/u, "the pending Remove is announced");
+    await act(async () => { release(Response.json({ state: "rejected", code: "invalid-state", message: "WORKER_BUSY", commandId: original!.commandId }, { status: 422 })); await Promise.resolve(); });
+    await settled(() => assert.equal(toasts().filter(toast => toast.includes(ERROR_CATALOG.WORKER_BUSY.text)).length, 1));
+    assert.doesNotMatch(document.querySelector(WORKER_ENTRY)?.textContent ?? "", /Removing|Remove requested/u);
+    assert.ok(!(document.querySelector(WORKER_ENTRY)?.textContent ?? "").includes(ERROR_CATALOG.WORKER_BUSY.text), "no note on the row");
+    assert.equal(progress.textContent, "");
+    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
+    assert.equal(h.sent.length, 1);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
 it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flight across a remount to its %s outcome by reading it back, without resending", async outcome => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness(); let release!: (value: unknown) => void; let original: CommandRequest | undefined;
@@ -338,14 +361,14 @@ it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flig
     await act(async () => remove.click()); assert.equal(h.sent.length, 1); assert(original);
     await act(async () => root.unmount()); root = createRoot(host);
     await act(async () => render());
-    assert.match(text(), /Remove requested/u, "the remounted panel holds the in-flight Remove");
+    assert.match(text(), /Removing/u, "the remounted panel holds the in-flight Remove");
     assert.doesNotMatch(text(), /Check outcome/u);
     await act(async () => { release(outcome === "pending" ? { state: "pending", commandId: original!.commandId } : outcome === "lost" ? new Error("connection reset") : applied(original!)); await Promise.resolve(); });
     assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
     h.setDay(effectOf(h.day(), original));
     // The new mount reads the unknown outcome back by itself; nothing asks the operator to check it.
     await settled(() => {
-      assert.doesNotMatch(text(), /Check outcome|Remove requested/u);
+      assert.doesNotMatch(text(), /Check outcome|Removing/u);
       if (outcome === "applied") assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0, "its own applied reply confirms once served");
       else { assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1, "a served removal is no proof for a command with no applied reply"); assert.match(text(), /Couldn't remove this worker\./u); }
     });
@@ -414,7 +437,7 @@ it("hydrates mounted Remove after remount, retains it through outage and a faile
     const pendingDay = h.day();
     await act(async () => root.unmount()); root = createRoot(host);
     await act(async () => render());
-    assert.match(document.body.textContent ?? "", /Remove requested/); assert.doesNotMatch(document.body.textContent ?? "", /Check outcome/); assert.equal(h.sent.length, 1);
+    assert.match(document.body.textContent ?? "", /Removing/); assert.doesNotMatch(document.body.textContent ?? "", /Check outcome/); assert.equal(h.sent.length, 1);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerAuthority: { state: "unavailable", reason: "missing member", members: pendingDay.workerAuthority.members }, workerCards: [] }));
     await act(async () => render()); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0); assert.match(document.body.textContent ?? "", /Sessions are unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing member/);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerCards: [{ ...pendingDay.workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" }] }));
@@ -592,7 +615,7 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
       await act(async () => render());
       assert.doesNotMatch(host.textContent ?? "", /No current claimed run|Run timeline is not served|No steps are served|states unavailable/);
       assert.equal(host.querySelector('[role="progressbar"]') === null, true);
-      if (state === "idle") { assert.match(host.textContent ?? "", /Idle/); assert.doesNotMatch(host.textContent ?? "", /No run assigned/); }
+      if (state === "idle") { assert.match(host.textContent ?? "", /Idle/); assert.match(host.textContent ?? "", /No run assigned/); }
       if (state === "starting") assert.match(host.textContent ?? "", /Starting.*No run assigned/s);
       if (state === "failed") assert(host.textContent?.includes("Its run is no longer on record."));
     }

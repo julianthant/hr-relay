@@ -1135,7 +1135,6 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
 {
 
 const APP = readFileSync_m3(new FileURL("../../../src/dashboard/app/dashboard-app.tsx", import.meta.url), "utf8");
-const LAUNCHER_MODEL = readFileSync_m3(new FileURL("../../../src/dashboard/surfaces/assistant/assistant-controller-model.ts", import.meta.url), "utf8");
 const OVERLAY = readFileSync_m3(new FileURL("../../../src/dashboard/ds/primitives/base-toast.tsx", import.meta.url), "utf8");
 
 function sourceSlice(source: string, start: string, end: string, label: string): string {
@@ -1147,7 +1146,7 @@ function sourceSlice(source: string, start: string, end: string, label: string):
 
 describe_m3("shell and queue structural fidelity", () => {
 
-  it_m3("places the floor-bearing root outside both providers", () => {
+  it_m3("places the theme root outside both providers", () => {
     const rootStart = APP.indexOf("<div\n      data-app-root=\"\"");
     const tooltipStart = APP.indexOf("<TooltipProvider delayDuration={200}>", rootStart);
     const toastStart = APP.indexOf("<ToastProvider>", tooltipStart);
@@ -1158,21 +1157,7 @@ describe_m3("shell and queue structural fidelity", () => {
     assert_m3.ok(rootStart >= 0, "the app root must be a real outer DOM node");
     assert_m3.ok(rootStart < tooltipStart && tooltipStart < toastStart, "providers must be descendants of the root");
     assert_m3.ok(toastEnd < tooltipEnd && tooltipEnd < rootEnd, "the root must close after both providers");
-    assert_m3.match(
-      APP.slice(rootStart, tooltipStart),
-      /"--ds-toast-inset-bottom": "calc\(2 \* \(var\(--ds-h-bar\) \+ var\(--ds-space-loose\)\)\)"/u,
-      "the outer root is the one place that sets the floor above the Sessions bar and the Logs footer",
-    );
-    assert_m3.match(
-      OVERLAY,
-      /fixed bottom-\[var\(--ds-toast-inset-bottom,0\.75rem\)\] left-1\/2/u,
-      "the fixed toast viewport is bottom-centred on the Sessions bar floor, clear of the toolbar and page title",
-    );
-    assert_m3.match(
-      LAUNCHER_MODEL,
-      /var\(--ds-toast-inset-bottom\)/u,
-      "the docked assistant launcher consumes the shell-owned floor",
-    );
+    assert_m3.match(OVERLAY, /pointer-events-none fixed top-3 left-1\/2 w-\[320px\]/u, "the fixed toast viewport is top centre, 12px from the top and 320px wide");
   });
 
   it_m3("retains the desktop canvas floor and internal viewport clip", () => {

@@ -29,6 +29,8 @@ export const BULK_VERB_LABEL: Record<BulkVerb, string> = { cancel: "Cancel", ret
 
 /** Keep sent subjects with results; current-day lookups lose names after navigation. */
 export interface BulkBatchOutcome {
+  /** The bulk command that was sent; its notice is read and cleared under this identity alone. */
+  readonly commandId: string;
   readonly plan: BulkVerbPlan;
   /** runId → the row's own name, frozen from the plan that was sent */
   readonly subjects: ReadonlyMap<string, string>;

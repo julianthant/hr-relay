@@ -5,6 +5,7 @@ export const STATE_RULE_NAMES = [
   "no-banned-text",
   "word-limits",
   "toast-text-only",
+  "toast-placement",
   "skeleton-only-while-fetching",
   "dialogs-share-shape",
   "primary-button-accent",

@@ -910,7 +910,7 @@ const EXPECTED_ACTIVE = {
   ],
   gate: ["resolve-gate"],
 
-  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
+  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all", "notification-clear"],
 
   intake: [
     "inspect-intake", "confirm-intake-mapping", "correct-intake-row",
@@ -1455,6 +1455,6 @@ describe("control-command-single-path", () => {
 
   it("notification stays read/unread/snooze", () => {
     const notification = COMMAND_FAMILY_REGISTRY.find(({ family }) => family === "notification");
-    assert.deepEqual(notification?.actions, ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"]);
+    assert.deepEqual(notification?.actions, ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all", "notification-clear"]);
   });
 });

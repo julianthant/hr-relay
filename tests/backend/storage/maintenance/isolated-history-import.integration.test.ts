@@ -33,6 +33,7 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { verifyShellCommandEffect } from "../../../../src/dashboard/app/commands/command-dispatch.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { searchPartitionDay } from "../../../../src/models/dashboard/search-calendar.js";
+import { DASHBOARD_REQUEST_REPORT_MESSAGE, debugFailureOutcome } from "../../../../src/models/events/debug-report.js";
 import { OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { NotificationCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
@@ -87,7 +88,9 @@ async function openCopyDashboard(copy: Awaited<ReturnType<typeof openCurrentWorl
     repoRoot: copy.workspace, clock: at, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
     preflightRunnerFactory: healthyRuntimePreflightRunners, workerProcess: { spawn } });
   cleanups.push(() => dashboard.stop());
-  return { client: createDashboardClient({ baseUrl: `http://127.0.0.1:${String(dashboard.port)}` }), outbound, spawn };
+  const baseUrl = `http://127.0.0.1:${String(dashboard.port)}`;
+  return { client: createDashboardClient({ baseUrl }), baseUrl, outbound, spawn,
+    debugRecords: () => runtime.selectedContext(active.token).database.authority.timelineEvents.debugPage({ limit: 1000 }) };
 }
 
 it("preserves the migration error when closing the private import copy fails", async () => {
@@ -268,6 +271,61 @@ it("serves archived notices as read alongside actionable copy notices", async ()
   expect(await verifyShellCommandEffect(client, day, unread, toggled)).toMatchObject({ state: "matched" });
   expect((await client.notificationSnapshot()).find(row => row.notificationId === archivedId)).toMatchObject(archived);
   expect(readFileSync(archivePath)).toEqual(archive);
+});
+
+it.each([false, true])("records a refused command with an open run (imported archive: %s)", async imported => {
+  const copy = await openCurrentWorld();
+  const config = initializeCopyConfig(copy, clock);
+  const now = clock.now().toISOString();
+  const run = runRecordOf({ seed: 596, enqueuedAt: now });
+  const { runId } = run.envelope;
+  if (imported) {
+    const source = await openCurrentWorld();
+    source.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    source.database.authority.runs.enqueue(run);
+    source.database.authority.notifications.create(NOTIFICATION);
+    const backup = await takeBackup(source);
+    await importIsolatedProfileData(copy.admission, copy.database, {
+      source: { manifestPath: backup.manifestPath, binding: source.admission.profileBinding },
+      destination: copy.admission.profileBinding,
+    }, clock);
+    expect(copy.database.authority.runs.get(runId)).toBeUndefined();
+  } else {
+    copy.database.authority.runs.enqueue({ ...run, envelope: { ...run.envelope,
+      configSnapshotId: config.configSnapshotId, configFingerprint: config.fingerprint } });
+  }
+  copy.closeDatabase();
+  const { client, baseUrl, debugRecords } = await openCopyDashboard(copy, clock);
+  expect((await client.runDetail(runId)).runId).toBe(runId);
+  const post = (path: string, body: unknown) => fetch(`${baseUrl}${path}`, {
+    method: "POST", headers: { origin: baseUrl, "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  const response = await post("/api/v1/commands", NotificationCommandRequestSchema.parse({
+    commandId: randomUUID(), requestedAt: now, requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "dashboard",
+    family: "notification", type: "notification-read",
+    target: { actorId: LOCAL_OPERATOR_ACTOR_ID, notificationId: NOTIFICATION.notificationId, expectedVersion: 1 },
+  }));
+  expect(response.status).toBe(422);
+  const refusal: unknown = await response.json();
+  expect(refusal).toMatchObject({ state: "rejected", code: "target-not-found" });
+
+  const report = { reportId: randomUUID(), clientId: randomUUID(), release: "dashboard", route: "/api/v1/commands",
+    surface: "queue", message: DASHBOARD_REQUEST_REPORT_MESSAGE, runId, ...debugFailureOutcome(refusal, response.status) };
+  const reportResponse = await post("/api/v1/debug/errors", report);
+  expect(reportResponse.status).toBe(201);
+  expect(await reportResponse.json()).toEqual({ state: "recorded", reportId: report.reportId });
+  const recorded = debugRecords().find(row => row.payload.kind === "debug" && row.payload.event.correlationId === report.reportId);
+  expect(recorded).toMatchObject({
+    scope: imported ? { kind: "client", clientId: report.clientId } : { kind: "run", runId },
+    payload: { kind: "debug", event: { category: "client", code: "target-not-found", reason: "operation-refused" } },
+  });
+
+  const conflict = await post("/api/v1/debug/errors", { ...report, surface: "settings" });
+  expect(conflict.status).toBe(500);
+  const cause = debugRecords().find(row => row.payload.kind === "debug" && row.payload.event.reason === "debug-report-identity-conflict");
+  expect(cause).toMatchObject({ payload: { kind: "debug", event: {
+    category: "http", status: 500, method: "POST", route: "/api/v1/debug/errors", reason: "debug-report-identity-conflict",
+  } } });
 });
 
 it("refreshes imported runs beside copy-created runs and starts the dashboard on a schema-39 archive with no imported work or outbound requests", async () => {

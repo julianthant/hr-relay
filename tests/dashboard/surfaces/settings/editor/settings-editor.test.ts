@@ -95,11 +95,7 @@ describe('confirmed Settings feedback through the current editor', () => {
     const input = inputNamed(host, 'ucpathUserId');
     await act(async () => input.focus());
     await act(async () => controller().protectedEditor.update('ucpathUserId', 'private-blur-sentinel'));
-    const remove = host.querySelector<HTMLButtonElement>('button[aria-label="Remove UCPath username"]');
-    assert(remove);
-    await act(async () => remove.focus());
     assert.equal(commands.length, 0); assert.deepEqual(notices, []); assert.deepEqual(problems, []);
-    await act(async () => input.focus());
     await act(async () => input.blur());
     assert.equal(commands.length, 1); assert.deepEqual(notices, [{ key: 'settings-save', title: 'Saved UCPath username' }]);
     assert.equal(controller().protectedEditor.save.state, 'applied');

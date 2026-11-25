@@ -95,6 +95,7 @@ it("announces rename and delete only after the chat port acknowledges them and k
       chatsPort: port, settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
     })) })));
     await act(async () => button("History").click());
+    assert.equal(document.activeElement === host.querySelector('.hub-slot-title'), true, "opening History keeps the focus in the panel");
     await act(async () => button("Delete chat Kept chat").click());
     await act(async () => submit().click());
     assert.equal(status(), "", "no success before the acknowledgment");

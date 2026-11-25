@@ -39,7 +39,7 @@ export const WIDE_WORKER: SessionWorker = { ...SESSION_WORKER_BY_STATE.running, 
   { id: "servicenow", label: "SNow", name: "ServiceNow", state: "ready" }, { id: "sharepoint", label: "SP", name: "SharePoint", state: "starting" },
 ] };
 
-/** An idle worker with nothing to say is a tally row; a crowded pool mixes rows and cards. */
+/** Idle workers with nothing to say: each is a card, like every other worker. */
 export const QUIET_IDLE: readonly SessionWorker[] = [0, 1, 2].map(index => ({ ...SESSION_WORKER_BY_STATE.idle, id: `worker-quiet-${index}`, label: `Worker ${index + 9}`,
   workflowId: index % 2 === 0 ? "person-lookup" : "separations", workflow: index % 2 === 0 ? "Person Lookup" : "Separations" }));
 
@@ -82,7 +82,7 @@ export const notificationsReady = (...items: readonly NotificationItem[]): Notif
 const notice = (id: string, item: Partial<NotificationItem> & Pick<NotificationItem, "title" | "detail" | "tone">): NotificationItem =>
   ({ ...NOTICE_BASE, id, kind: "run", priority: item.tone === "danger" || item.tone === "warning", action: "Open log", destination: { kind: "run", runId: run(4), day: "2026-08-26" }, ...item });
 export const POPOVER_FAILED = notice("popover-failed", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10555001", detail: "CRM sign-in failed.", tone: "danger", count: 3, age: "12 min ago" });
-export const POPOVER_WAITING = notice("popover-waiting", { title: "Run waiting", workflow: "Onboarding", subject: "Morrow, Bea", detail: "Waiting for hire review.", tone: "warning", age: "34 min ago" });
+export const POPOVER_WAITING = notice("popover-waiting", { title: "Run waiting", workflow: "Onboarding", subject: "Morrow, Bea", detail: "Waiting for hire review.", tone: "warning", age: "34 min ago", standing: true });
 export const POPOVER_DONE = notice("popover-done", { title: "Run completed", workflow: "Separations", subject: "Separation 5017", detail: "Completed and verified.", tone: "positive", read: true, day: "Today", age: "2 hr ago" });
 export const POPOVER_STORAGE = notice("popover-storage", { kind: "storage", title: "Storage needs attention", detail: "Relay couldn't save everything.", tone: "warning", count: 213, action: "", age: "4 days ago" });
 export const POPOVER_GONE = notice("popover-gone", { title: "Run failed", workflow: "Person Lookup", subject: "EID 10101010", detail: "Couldn't save the browser screenshot.", tone: "danger", read: true, gone: true, day: "Monday", age: "8 days ago" });

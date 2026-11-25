@@ -11,6 +11,7 @@ import { ASSISTANT_FAILURES } from "../../../../../../src/models/dashboard/assis
 import { ASSISTANT_STORY_CHATS, ASSISTANT_STORY_PROMPT, type AssistantProposalKind } from "../../../../fixtures/dashboard/assistant-story-fixtures.js";
 import { withKnownBreaks } from "../known-breaks.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
+import type { ComposerMenu } from "../../../../../../src/dashboard/surfaces/shell/composer-model.js";
 import { AssistantHost, ChatListHost, CONNECTED, type AssistantHostProps } from "./assistant-story-host.js";
 
 const PANEL = '[aria-label="Relay assistant"]';
@@ -110,16 +111,17 @@ const CHATS = {
   "no-match": chatList("A search that matches no chat", ASSISTANT_STORY_CHATS, 'text="No matching chats."', async page => { await page.getByLabel("Search chats").fill("zzzz"); }),
 } satisfies Record<ChatListView, Story>;
 
+const MENU = {
+  model: scene("Served model choices in the composer", { account: CONNECTED, modelPreference: { slug: "gpt-6.1-sol", effort: "medium" }, modelChoices: true },
+    { ready: "#hub-model-trigger" }),
+} satisfies Record<Extract<ComposerMenu, "model">, Story>;
+
 const AUDIT_FIXES = "#532";
 const BREAK_SETS = {
   /** The composer's approval picker is switched off while no model preference is served, and its Send button is not painted the accent. */
   COMPOSER: ["no-dead-disabled-control", "primary-button-accent"],
-  /** COMPOSER, and the account strip's text runs past the panel's width. */
-  COMPOSER_OVERFLOW: ["fits-viewport", "no-dead-disabled-control", "primary-button-accent"],
   /** COMPOSER, and a control in the open panel (the message box, or a button in the transcript) shows no visible focus ring. */
   COMPOSER_FOCUS: ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-  /** Pressing History removes the focused button, so Tab restarts past the chat list and none of its controls can be reached with the keyboard. */
-  LIST_FOCUS: ["named-and-focusable"],
   /** COMPOSER_FOCUS, and the history skeleton is drawn from the loading flag while no read is held. */
   COMPOSER_FOCUS_SKELETON: ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent", "skeleton-only-while-fetching"],
 } as const;
@@ -132,8 +134,8 @@ const KNOWN_BREAKS = {
   "account/signed-out": BREAK_SETS.COMPOSER,
   "account/unavailable": BREAK_SETS.COMPOSER,
   "plan/disabled": BREAK_SETS.COMPOSER,
-  "account/signing-in": BREAK_SETS.COMPOSER_OVERFLOW,
-  "plan/limit-reached": BREAK_SETS.COMPOSER_OVERFLOW,
+  "account/signing-in": BREAK_SETS.COMPOSER,
+  "plan/limit-reached": BREAK_SETS.COMPOSER,
   "account/connected": BREAK_SETS.COMPOSER_FOCUS,
   "attachment/failed": BREAK_SETS.COMPOSER_FOCUS,
   "attachment/spreadsheet": BREAK_SETS.COMPOSER_FOCUS,
@@ -144,10 +146,11 @@ const KNOWN_BREAKS = {
   "disposition/confirming": BREAK_SETS.COMPOSER_FOCUS,
   "disposition/review": BREAK_SETS.COMPOSER_FOCUS,
   "disposition/stale": BREAK_SETS.COMPOSER_FOCUS,
-  "disposition/unknown": BREAK_SETS.COMPOSER_FOCUS,
+  "disposition/unknown": BREAK_SETS.COMPOSER,
   "history/failed": BREAK_SETS.COMPOSER_FOCUS,
   "history/notice": BREAK_SETS.COMPOSER_FOCUS,
   "history/ready": BREAK_SETS.COMPOSER_FOCUS,
+  "menu/model": ["named-and-focusable", "primary-button-accent"],
   "kind/pause": BREAK_SETS.COMPOSER_FOCUS,
   "kind/rerun": BREAK_SETS.COMPOSER_FOCUS,
   "kind/separations-many": BREAK_SETS.COMPOSER_FOCUS,
@@ -160,14 +163,11 @@ const KNOWN_BREAKS = {
   "reply/answer-long": BREAK_SETS.COMPOSER_FOCUS,
   "turn/failed": BREAK_SETS.COMPOSER_FOCUS,
   "turn/idle": BREAK_SETS.COMPOSER_FOCUS,
-  "turn/unknown": BREAK_SETS.COMPOSER_FOCUS,
-  "turn/waiting": BREAK_SETS.COMPOSER_FOCUS,
+  "turn/unknown": BREAK_SETS.COMPOSER,
+  "turn/waiting": BREAK_SETS.COMPOSER,
   "history/loading": BREAK_SETS.COMPOSER_FOCUS_SKELETON,
-  "chats/empty": BREAK_SETS.LIST_FOCUS,
-  "chats/listed": BREAK_SETS.LIST_FOCUS,
-  "chats/no-match": BREAK_SETS.LIST_FOCUS,
 } as const;
 
 export const ASSISTANT_STORIES = withKnownBreaks(
-  defineSurface("assistant", { account: ACCOUNT, plan: PLAN, turn: TURN, reply: REPLY, kind: KIND, disposition: DISPOSITION, refusal: REFUSAL, attachment: ATTACHMENT, history: HISTORY, chats: CHATS }),
+  defineSurface("assistant", { account: ACCOUNT, plan: PLAN, turn: TURN, reply: REPLY, kind: KIND, disposition: DISPOSITION, refusal: REFUSAL, attachment: ATTACHMENT, history: HISTORY, chats: CHATS, menu: MENU }),
   "assistant", AUDIT_FIXES, KNOWN_BREAKS);

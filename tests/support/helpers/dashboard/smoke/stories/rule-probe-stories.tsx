@@ -1,28 +1,56 @@
 /** Planted violations that prove each state rule bites, on the dashboard's real primitives. Never part of the catalogue. */
 import { useEffect, useState } from "react";
 import {
-  ActionBar, ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, Switch, Tab, TabList, TabPanel, Tabs, useToasts,
+  Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, SegmentedChoice, Skeleton, Switch, Tab, TabList, TabPanel, Tabs, useToasts,
 } from "../../../../../../src/dashboard/ds/ui.js";
+import { SessionsView } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import type { StateRuleName } from "../state-rule-limits.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import { StoryFrame } from "./story-frame.js";
 
 export interface RuleProbe {
   readonly story: Story;
+  readonly atBothDesktopWidths?: true;
   /** What each rule must report on this story. */
   readonly finds: Readonly<Partial<Record<StateRuleName, readonly RegExp[]>>>;
   /** Rules that must report nothing on this story. */
   readonly clean?: readonly StateRuleName[];
 }
 
-function ToastOverToolbar() {
+/** The Sessions panel open, with the toast viewport pushed off centre and down onto it. */
+function ToastOverSessions() {
   const { toast } = useToasts();
-  // After the provider's own effects: it starts listening for toasts once it has mounted.
   useEffect(() => {
-    const timer = window.setTimeout(() => { toast({ tone: "danger", sticky: true, title: "Run unavailable", description: "This run is no longer in the queue." }); }, 0);
+    const timer = window.setTimeout(() => { toast({ tone: "success", sticky: true, title: "Workers added" }); }, 0);
     return () => { window.clearTimeout(timer); };
   }, [toast]);
-  return <div className="fixed inset-x-0" style={{ bottom: "calc(var(--ds-toast-inset-bottom) - 1rem)" }}><ActionBar><ActionBarRow label="Queue actions"><Button>Start run</Button></ActionBarRow></ActionBar></div>;
+  return <>
+    <style>{'[data-slot="toast-viewport"] { top: auto !important; bottom: 24px !important; left: 25% !important; }'}</style>
+    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+  </>;
+}
+
+/** The Sessions bar collapsed, with a centred toast inside the window that hangs lower than its place. */
+function ToastBelowTop() {
+  const { toast } = useToasts();
+  useEffect(() => {
+    const timer = window.setTimeout(() => { toast({ tone: "success", sticky: true, title: "Workers added" }); }, 0);
+    return () => { window.clearTimeout(timer); };
+  }, [toast]);
+  return <>
+    <style>{'[data-slot="toast-viewport"] { top: 66px !important; }'}</style>
+    <SessionsView data={{ state: "ready", workers: [] }} open={false} onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+  </>;
+}
+
+/** The Sessions panel open and, at the left edge clear of the toasts, a button that raises one more toast per press. */
+function RaiseToasts() {
+  const { toast } = useToasts();
+  const [raised, setRaised] = useState(0);
+  return <>
+    <div><Button onClick={() => { toast({ tone: "success", sticky: true, title: `Result ${String(raised + 1)}` }); setRaised(raised + 1); }}>Raise toast</Button></div>
+    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+  </>;
 }
 
 /** Starts a request after first paint; it answers 404 and then the text changes. */
@@ -84,6 +112,27 @@ export const RULE_PROBES = {
     },
     finds: { "named-and-focusable": [/has no name/u, /"Skipped" cannot be reached with the keyboard/u, /^(?![\s\S]*"Reached")/u] },
   },
+  "tab-drops-focus": {
+    story: {
+      title: "Tab drops focus before the last two controls",
+      render: () => <StoryFrame>
+        <Button>Before drop</Button>
+        <Button onKeyDown={event => {
+          if (event.key !== "Tab") return;
+          event.preventDefault();
+          event.currentTarget.blur();
+        }}>Drops focus</Button>
+        <Button>After drop</Button>
+        <Button>Last control</Button>
+      </StoryFrame>,
+    },
+    atBothDesktopWidths: true,
+    finds: { "named-and-focusable": [
+      /"After drop" cannot be reached with the keyboard/u,
+      /"Last control" cannot be reached with the keyboard/u,
+      /^(?![\s\S]*"(?:Before drop|Drops focus)")/u,
+    ] },
+  },
   "hidden-radios-and-toolbar": {
     story: {
       title: "Radios drawn by their labels, and a toolbar button no key reaches",
@@ -136,9 +185,22 @@ export const RULE_PROBES = {
       render: () => <StoryFrame>
         <div style={{ width: 120, overflow: "hidden" }}><div style={{ width: 120, whiteSpace: "nowrap" }}>a long line of text that cannot fit its box</div></div>
         <div style={{ width: 400, overflow: "hidden" }}><div style={{ width: 400, whiteSpace: "nowrap" }}>a short line</div></div>
+        <div role="group" aria-label="Row" tabIndex={0} style={{ width: 120, overflowX: "auto" }}><div style={{ paddingLeft: 2000, whiteSpace: "nowrap" }}>a line the keyboard can scroll to</div></div>
+        <div style={{ width: 120, overflowX: "auto" }}><div style={{ paddingLeft: 2000, whiteSpace: "nowrap" }}>a line no key scrolls to</div></div>
       </StoryFrame>,
     },
-    finds: { "fits-viewport": [/"a long line of text that cannot fit its box" is cut off sideways by its container/u, /^(?![\s\S]*"a short line")/u] },
+    finds: { "fits-viewport": [/"a long line of text that cannot fit its box" is cut off sideways by its container/u, /"a line no key scrolls to" runs \d+px past the right edge/u, /^(?![\s\S]*(?:"a short line"|"a line the keyboard))/u] },
+  },
+  "ellipsis-without-full-text": {
+    story: {
+      title: "A truncated label with no full text, beside one a tooltip trigger names, and a label that wraps",
+      render: () => <StoryFrame>
+        <div style={{ width: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>a label cut with nothing to read it in full</div>
+        <div style={{ width: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title="a label whose title carries it in full">a label whose title carries it in full</div>
+        <div style={{ width: 120 }}><span data-one-line>a label that wraps onto two lines</span></div>
+      </StoryFrame>,
+    },
+    finds: { "fits-viewport": [/"a label cut with nothing to read it in full" is cut off sideways/u, /takes \d+ lines; it must stay on one line/u, /^(?![\s\S]*"a label whose title)/u] },
   },
   "dialog-off-shape": {
     story: {
@@ -151,9 +213,28 @@ export const RULE_PROBES = {
     },
     finds: { "dialogs-share-shape": [/a dialog:sm dialog has body padding 0px; the design system draws it with /u, /a dialog:sm dialog has bottom border 4px /u, /^(?![\s\S]*(?:header|footer) padding)/u] },
   },
-  "toast-over-toolbar": {
-    story: { title: "A toast over the queue toolbar", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastOverToolbar /></StoryFrame> },
-    finds: { "toast-text-only": [/covers the toolbar "Queue actions"/u] },
+  "toast-over-sessions": {
+    story: { title: "A toast off centre and over the Sessions panel", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastOverSessions /></StoryFrame> },
+    finds: { "toast-placement": [/is \d+px off the horizontal centre/u, /overlaps the Sessions panel/u, /runs outside the window/u] },
+  },
+  "toast-below-top": {
+    story: { title: "A centred toast clear of the Sessions bar, lower than its place", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastBelowTop /></StoryFrame> },
+    finds: { "toast-placement": [/the toast viewport sits 66px .* not 12px/u, /the front toast sits 66px .* not 12px/u, /^(?![\s\S]*(?:horizontal centre|overlaps|outside))/u] },
+  },
+  "picker-beside-a-request": {
+    story: {
+      title: "A picker switched off beside a control that waits on its own request",
+      render: () => <StoryFrame>
+        <ul><li aria-busy>Starting</li></ul>
+        <Button aria-haspopup="dialog" disabled aria-busy>Add workers</Button>
+        <Button aria-haspopup="menu" disabled>Workflow</Button>
+      </StoryFrame>,
+    },
+    finds: { "no-dead-disabled-control": [/the picker "Workflow" is shown switched off/u, /^(?![\s\S]*"Add workers")/u] },
+  },
+  "toast-with-a-button": {
+    story: { title: "A toast that holds a button", ready: "[data-ds-toast-state]", render: () => <StoryFrame><div data-ds-toast-state="full">Run deleted<Button>Undo</Button></div></StoryFrame> },
+    finds: { "toast-text-only": [/the toast "Run deleted\s*Undo" holds 1 control or image/u] },
   },
   "slow-fetch": {
     story: {
@@ -190,4 +271,5 @@ export const RULE_PROBES = {
 
 export const RULE_PROBE_ENTRIES = defineSurface("probe", {
   rule: Object.fromEntries(Object.entries(RULE_PROBES).map(([name, probe]) => [name, probe.story])),
+  motion: { toast: { title: "Toasts raised by a button over the open Sessions panel, with motion on", render: () => <StoryFrame animated><RaiseToasts /></StoryFrame> } },
 });
