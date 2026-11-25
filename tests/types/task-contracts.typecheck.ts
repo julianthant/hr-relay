@@ -74,6 +74,7 @@ export const typedReadTask = defineTask(typedUcpathDriver, contract, {
 defineTask(typedUcpathDriver, contract, {
   sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
   async run({ input }) {
+    // oxlint-disable-next-line typescript/no-unsafe-return -- The invalid task declaration is the negative type fixture.
     return input;
   },
 });

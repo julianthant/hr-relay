@@ -1,16 +1,14 @@
 import { describe, it } from "vitest";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { lintBatches } from "../../../scripts/test/lint.js";
-import { REPO_ROOT } from "../support/helpers/guard-files.js";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { extname, join, resolve } from "node:path";
+import oxlintConfig from "../../../.oxlintrc.json" with { type: "json" };
+import { gitVisibleFiles, repoRelative, REPO_ROOT } from "../support/helpers/guard-files.js";
 
 const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
   scripts: Record<string, string>;
 };
-const eslintConfig = readFileSync(join(REPO_ROOT, "eslint.config.js"), "utf8");
-const lintRunner = readFileSync(join(REPO_ROOT, "scripts/test/lint.ts"), "utf8");
 const tsconfig = JSON.parse(readFileSync(join(REPO_ROOT, "tsconfig.json"), "utf8")) as {
   include: string[];
   exclude?: string[];
@@ -18,6 +16,7 @@ const tsconfig = JSON.parse(readFileSync(join(REPO_ROOT, "tsconfig.json"), "utf8
 
 /** Every root this repo authors code in. Adding one means gating it. */
 const AUTHORED_ROOTS = ["src", "tests", "scripts"] as const;
+const LINT_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"]);
 /** The approved root TS inputs in the sole tsconfig program. */
 const EXPECTED_ROOT_TYPESCRIPT_CONFIG_FILES = [
   "vitest.config.ts",
@@ -32,7 +31,7 @@ const rootTypeScriptConfigFiles = tsconfig.include
 
 const EXACT_GATE_COMMANDS = {
   typecheck: "node --max-old-space-size=6144 node_modules/typescript/bin/tsc --noEmit",
-  lint: "node scripts/test/lint.ts",
+  lint: "oxlint --type-aware --max-warnings 0 src scripts tests vitest.config.ts vite.dashboard.config.ts vite.mocks.config.ts",
   test: "vitest run --project unit --project integration --project architecture --project perf",
   "test:coverage": "vitest run --coverage --project unit --project integration --project architecture",
   "test:perf": "vitest run --project perf --passWithNoTests=false",
@@ -75,70 +74,55 @@ describe("gate coverage", () => {
       "tsconfig exclude re-appeared; an excluded authored root is exactly the legacy dashboard bug");
   });
 
-  it("lints every authored root and fails on warnings", () => {
-    assert.match(lintRunner, /"--max-warnings",\s*"0"/,
-      "npm run lint must carry --max-warnings 0; without it new warnings accumulate invisibly");
-    assert.match(lintRunner, /"--max-old-space-size=6144"/);
-    assert.doesNotMatch(
-      [lintRunner, ...Object.values(pkg.scripts)].join("\n"),
-      /--no-error-on-unmatched-pattern/,
-      "an unmatched lint pattern must fail, never silently lint nothing",
-    );
-
-    const root = mkdtempSync(join(tmpdir(), "relay-lint-batches-"));
-    try {
-      for (const directory of ["tests/new-suite", "tests/.new-suite"]) {
-        mkdirSync(join(root, directory), { recursive: true });
-      }
-      const topLevelFiles = [".hidden.ts", "new.cjs", "new.cts", "new.js", "new.mjs", "new.mts", "new.ts", "new.tsx"];
-      for (const file of [...topLevelFiles, "notes.md"]) writeFileSync(join(root, "tests", file), "");
-
-      const [source, ...tests] = lintBatches(root);
-      assert.deepEqual(source?.targets.toSorted(), [
-        ...AUTHORED_ROOTS.filter((name) => name !== "tests"),
-        ...EXPECTED_ROOT_TYPESCRIPT_CONFIG_FILES,
-      ].toSorted());
-      assert.deepEqual(
-        Object.fromEntries(tests.map(({ name, targets }) => [name, targets.toSorted()])),
-        {
-          "tests-dir-.new-suite": ["tests/.new-suite"],
-          "tests-dir-new-suite": ["tests/new-suite"],
-          "tests-files": topLevelFiles.map((file) => "tests/" + file).toSorted(),
-        },
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("lints every root TypeScript config the type program includes", () => {
-    const lintTargets = lintBatches(REPO_ROOT).flatMap(({ targets }) => targets);
+  it("selects every authored lint input, including the root TypeScript configs", () => {
     assert.deepEqual(
       rootTypeScriptConfigFiles,
       [...EXPECTED_ROOT_TYPESCRIPT_CONFIG_FILES].toSorted(),
-      "root TypeScript entries in tsconfig must remain the approved exact set; a new typechecked root config requires deliberate lint coverage",
+      "a new typechecked root config requires deliberate lint coverage",
     );
-    for (const configFile of rootTypeScriptConfigFiles) {
-      assert.ok(
-        lintTargets.includes(configFile),
-        `lint must target ${configFile}; otherwise a root config is typechecked but escapes lint`,
-      );
-      assert.match(
-        eslintConfig,
-        new RegExp(`files:\\s*\\[[^\\]]*"${configFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`),
-        `the typed ESLint config must explicitly cover ${configFile}; a command target without a strict block passes vacuously`,
-      );
-    }
+    assert.doesNotMatch(Object.values(pkg.scripts).join("\n"), /--no-error-on-unmatched-pattern/);
+
+    const args = EXACT_GATE_COMMANDS.lint.split(" ").slice(1);
+    const actual = execFileSync(process.execPath, [
+      join(REPO_ROOT, "node_modules/oxlint/bin/oxlint"), ...args, "--debug", "files",
+    ], { cwd: REPO_ROOT, encoding: "utf8" }).trimEnd().split(/\r?\n/u)
+      .map((file) => repoRelative(resolve(REPO_ROOT, file)));
+    const authored = gitVisibleFiles(AUTHORED_ROOTS).filter((file) => LINT_EXTENSIONS.has(extname(file)));
+    assert.deepEqual(actual.toSorted(), [...authored, ...rootTypeScriptConfigFiles].toSorted());
   });
 
-  it("keeps the typed ESLint config covering the same roots the CLI targets", () => {
-    // CLI target and typed rule block must BOTH cover a root: linting a file
-    // with no matching typed block reports nothing and passes vacuously.
-    assert.match(eslintConfig, /files:\s*\["src\/\*\*\/\*\.ts"\]/);
-    assert.match(eslintConfig, /files:\s*\["scripts\/\*\*\/\*\.ts"\]/);
-    assert.match(eslintConfig, /files:\s*\["tests\/\*\*\/\*\.ts",\s*"tests\/\*\*\/\*\.tsx"\]/);
-    assert.match(eslintConfig, /src\/dashboard\/\*\*\/\*\.tsx/);
-    assert.match(eslintConfig, /recommendedTypeChecked/);
+  it("keeps typed rules, globals, and unused bindings scoped", () => {
+    const [plainJs, typed, tuned, node, dashboard, tests] = oxlintConfig.overrides;
+    assert.ok(plainJs && typed && tuned && node && dashboard && tests);
+    assert.deepEqual(plainJs.files, ["**/*.{js,cjs,mjs}"]);
+    assert.equal(plainJs.rules["no-undef"], "error");
+    assert.ok(!("typescript/no-floating-promises" in plainJs.rules));
+    assert.equal(oxlintConfig.rules["no-useless-assignment"], "error");
+    assert.deepEqual(typed.files, ["**/*.{ts,tsx,mts,cts}"]);
+    assert.equal(typed.rules["typescript/no-floating-promises"], "error");
+    assert.deepEqual(tuned.files.toSorted(), [
+      "src/**/*.ts", "src/dashboard/**/*.tsx", "scripts/**/*.ts", "tests/**/*.{ts,tsx}",
+      ...rootTypeScriptConfigFiles,
+    ].toSorted());
+    assert.deepEqual(node.files.toSorted(), ["src/**/*.ts", "scripts/**/*.ts", ...rootTypeScriptConfigFiles].toSorted());
+    assert.deepEqual(node.env, { node: true });
+    assert.deepEqual(node.excludeFiles, ["src/dashboard/**"]);
+    assert.deepEqual(dashboard.files, ["src/dashboard/**/*.{ts,tsx}"]);
+    assert.deepEqual(dashboard.env, { browser: true });
+    assert.equal(dashboard.rules["react/rules-of-hooks"], "error");
+    assert.equal(dashboard.rules["react/exhaustive-deps"], "error");
+    assert.deepEqual(tests.files, ["tests/**/*.{ts,tsx}"]);
+    assert.deepEqual(tests.env, { node: true });
+    for (const [override, severity, args] of [
+      [node, "warn", "all"], [dashboard, "warn", "all"], [tests, "error", "after-used"],
+    ] as const) {
+      assert.deepEqual(override.rules["no-unused-vars"], [
+        severity, { vars: "all", args, caughtErrors: "all", reportVarsOnlyUsedAsTypes: true,
+          varsIgnorePattern: "^_", argsIgnorePattern: "^_" },
+      ]);
+    }
+    assert.equal(oxlintConfig.options.reportUnusedDisableDirectives, "warn");
+    assert.equal(oxlintConfig.rules["no-debugger"], "error");
   });
 
   it("carries no legacy debt-manifest escape hatch", () => {

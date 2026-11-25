@@ -375,16 +375,26 @@ describe("dashboard day subscription — stream failure classification", () => {
     h.close();
   });
 
-  it("STOPS on an HTTP stream failure, even one the server calls retryable", async () => {
+  it("reconnects on its own when the server cannot answer the stream right now", async () => {
     const h = liveAtCursorTwo();
+    for (const attempt of [0, 1]) {
+      h.streams[attempt].fail(new DashboardClientError({ kind: "http", status: 503, code: "STORAGE_SNAPSHOT_CHANGED", message: "changed", retryable: true }));
+      await tick();
+      assert.deepEqual(h.states.at(-1), { state: "reconnecting" });
+      assert.deepEqual(h.scheduled, Array.from({ length: attempt + 1 }, () => 1000));
+      h.runScheduled();
+      assert.equal(h.streams[attempt + 1].lastEventId, "pc:2");
+    }
+    assert.equal(h.states.some(state => state.state === "stopped"), false);
+    h.close();
+  });
 
-    const error = new DashboardClientError({
-      kind: "http",
-      status: 503,
-      code: "PROJECTION_DEGRADED",
-      message: "the day projection is unavailable",
-      retryable: true,
-    });
+  it.each([
+    { status: 500, code: "PROJECTION_DEGRADED", retryable: true },
+    { status: 503, code: "ASSISTANT_UNAVAILABLE", retryable: false },
+  ])("STOPS on an HTTP stream failure a reconnect cannot answer: $status $code", async failure => {
+    const h = liveAtCursorTwo();
+    const error = new DashboardClientError({ kind: "http", message: "the day projection is unavailable", ...failure });
     h.streams[0].fail(error);
     await tick();
     const last = h.states.at(-1);
