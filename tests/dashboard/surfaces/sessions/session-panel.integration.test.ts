@@ -65,4 +65,5 @@ it("shows the loading placeholder, with Add workers switched off, when a day loa
   assert.equal(host.querySelector('[role="status"][aria-label="Loading sessions"]')?.getAttribute("aria-busy"), "true");
   assert.equal(host.querySelector("[data-sessions-stale]") === null, true);
   assert.equal(addWorkers(host)?.disabled, true);
+  assert.equal(addWorkers(host)?.parentElement?.getAttribute("aria-label"), "Sessions are loading");
 });
