@@ -111,6 +111,7 @@ it("produces Emergency Contact's exact-scope report and shows its real failed ch
   assert.equal(missing.state, "unavailable");
   if (missing.state !== "unavailable") throw new Error("unexecuted scope must be unavailable");
   assert.match(missing.reason, /Preflight evidence is unavailable for this exact scope/u);
+  assert.equal(missing.code, "PREFLIGHT_EVIDENCE_MISSING");
   await mount(h.client, "emergency-contact");
   assert.ok(document.body.textContent?.includes("Relay's settings could not be read. Restart Relay, then check again."), document.body.textContent ?? "");
   assert.equal(document.querySelector('[data-run-check-fix="config.valid"]') === null, true, "Settings cannot fix an invalid runtime configuration");

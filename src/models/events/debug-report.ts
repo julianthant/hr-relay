@@ -26,9 +26,12 @@ export function dashboardReportAccepted(report: DashboardErrorReport): boolean {
 const FailureOutcomeSchema = z.object({ state: z.enum(["error", "failed", "refused", "rejected", "conflict", "unknown", "uncertain", "unavailable"]), code: z.string().optional() });
 const TRANSPORT_CODES = new Set(["SCHEMA_INVALID", "INTERNAL_FAILURE", "REQUEST_IDENTITY_REFUSED", "ROUTE_NOT_FOUND", "SECTION_UNAVAILABLE", "PROJECTION_DEGRADED", "DEBUG_REPORT_INVALID", "DEBUG_REPORT_RATE_LIMIT", "DEBUG_REPORT_SIZE_LIMIT"]);
 
-export function debugFailureOutcome(value: unknown, status = 200): { code: string; reason: string } | undefined {
-  // An unavailable readiness is an answer: the reader prepares the checks and reads again.
-  if (status === 200 && PreflightReadinessWireSchema.safeParse(value).success) return undefined;
+/** Readiness answers the checks act on by preparing again; any other unavailable readiness is a failure. */
+const EXPECTED_READINESS_CODES = new Set(["PREFLIGHT_EVIDENCE_EXPIRED", "PREFLIGHT_EVIDENCE_MISSING", "PREFLIGHT_EVIDENCE_STALE"]);
+
+export function debugFailureOutcome(value: unknown, status = 200, route?: string): { code: string; reason: string } | undefined {
+  const readiness = status === 200 && route === "/api/v1/preflight" ? PreflightReadinessWireSchema.safeParse(value) : undefined;
+  if (readiness?.success && readiness.data.state === "unavailable" && EXPECTED_READINESS_CODES.has(readiness.data.code ?? "")) return undefined;
   if (z.object({ state: z.literal("signed-out"), remoteRevocation: z.literal("unconfirmed") }).safeParse(value).success) {
     return { code: "CHATGPT_AUTH_UNAVAILABLE", reason: "remote-revocation-unconfirmed" };
   }
@@ -42,7 +45,7 @@ export function debugFailureOutcome(value: unknown, status = 200): { code: strin
   return { code, reason: uncertain ? "outcome-unknown" : state === "refused" || state === "rejected" || state === "conflict" ? "operation-refused" : "operation-failed" };
 }
 
-export function debugFailureOutcomes(value: unknown, status = 200): (NonNullable<ReturnType<typeof debugFailureOutcome>> & { correlationId?: string })[] {
+export function debugFailureOutcomes(value: unknown, status = 200, route?: string): (NonNullable<ReturnType<typeof debugFailureOutcome>> & { correlationId?: string })[] {
   const command = CommandResultSchema.safeParse(value);
   if (command.success && (command.data.state === "applied" || command.data.state === "already-applied") && command.data.workerStartup !== undefined) {
     const startup = command.data.workerStartup;
@@ -56,7 +59,7 @@ export function debugFailureOutcomes(value: unknown, status = 200): (NonNullable
       code: "code" in result ? result.code : undefined });
     return failure === undefined ? [] : [{ ...failure, correlationId: result.commandId }];
   });
-  const failure = debugFailureOutcome(value, status);
+  const failure = debugFailureOutcome(value, status, route);
   return failure === undefined ? [] : [failure];
 }
 

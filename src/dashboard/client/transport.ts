@@ -151,7 +151,7 @@ export function createDashboardTransport(input: Readonly<{
   const reportFailure = (path: string, body: unknown, status = 200, method = "GET", reason?: string): void => {
     if (path === "/api/v1/debug/errors") return;
     if (EXPECTED_REFUSALS[`${method.toUpperCase()} ${path.split("?")[0] ?? path}`]?.includes(status) === true) return;
-    for (const failure of debugFailureOutcomes(body, status)) input.onFailure?.({ ...failure, ...(reason === undefined ? {} : { reason }), route: diagnosticRequestRoute(path) });
+    for (const failure of debugFailureOutcomes(body, status, diagnosticRequestRoute(path))) input.onFailure?.({ ...failure, ...(reason === undefined ? {} : { reason }), route: diagnosticRequestRoute(path) });
   };
   const send = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
     try {

@@ -27,7 +27,7 @@ export function registerDebugResponses(app: DashboardApp, writer: { emit(input: 
           correlationId: randomUUID(), method: c.req.method, route: c.req.routePath, status: c.res.status });
         return;
       }
-      const failures = debugFailureOutcomes(body, c.res.status);
+      const failures = debugFailureOutcomes(body, c.res.status, c.req.routePath);
       for (const failure of failures) writer.emit({ category: "http", phase: "failed", area: "request",
         ...failure, correlationId: failure.correlationId ?? randomUUID(), method: c.req.method, route: c.req.routePath, status: c.res.status });
     };

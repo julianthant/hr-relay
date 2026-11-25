@@ -132,7 +132,7 @@ describe("Settings read deadlines", () => {
 });
 
 describe("run-start read retries", () => {
-  const readiness = { state: "unavailable", reason: "Preflight evidence is unavailable for this exact scope; re-check readiness." };
+  const readiness = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_MISSING", reason: "Preflight evidence is unavailable for this exact scope; re-check readiness." };
   it("asks a checks read that got no answer in time again without reporting a failure", async () => {
     const { vi } = await import("vitest"); vi.useFakeTimers();
     const failures: unknown[] = [];

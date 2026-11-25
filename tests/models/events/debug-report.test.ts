@@ -5,16 +5,24 @@ import { buildPreflightReport, requiredPreflightChecks } from "../../../src/mode
 import { manualClock } from "../../../src/rules/time/clock.js";
 
 describe("metadata-only failure reports", () => {
-  it("keeps a readiness 200 answer distinct from failed or malformed reads", () => {
+  it("keeps an expected readiness 200 on the preflight route distinct from failed or malformed reads", () => {
     const report = buildPreflightReport({ configFingerprint: "a".repeat(64), requestedCapabilities: ["dashboard.serve"],
       clock: manualClock(new Date("2026-11-04T00:00:00Z")),
       observations: requiredPreflightChecks(["dashboard.serve"]).map(check => ({ check, state: "healthy", summary: "Fixture healthy" })) });
+    const route = "/api/v1/preflight";
     const expired = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_EXPIRED", reason: "Readiness expired.", lastCompleted: report };
-    assert.equal(debugFailureOutcome(expired, 200), undefined);
-    assert.equal(debugFailureOutcomes(expired, 200).length, 0);
-    assert.equal(debugFailureOutcome({ state: "unavailable", reason: "Preflight evidence is unavailable for this exact scope; re-check readiness." }, 200), undefined);
-    for (const [body, status] of [[expired, 503], [{ ...expired, lastCompleted: {} }, 200], [{ ...expired, code: "PRIVATE_CODE" }, 200]] as const) {
-      assert.equal(debugFailureOutcome(body, status)?.reason, "operation-failed");
+    const missing = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_MISSING", reason: "Preflight evidence is unavailable for this exact scope; re-check readiness." };
+    const stale = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_STALE", reason: "Run prerequisites changed; re-check readiness." };
+    for (const body of [expired, missing, stale]) {
+      assert.equal(debugFailureOutcome(body, 200, route), undefined);
+      assert.equal(debugFailureOutcomes(body, 200, route).length, 0);
+      assert.equal(debugFailureOutcome(body, 200, "/api/v1/settings")?.reason, "operation-failed");
+    }
+    assert.deepEqual(debugFailureOutcome({ state: "unavailable", code: "PREFLIGHT_READ_FAILED", reason: "Preflight report reader is unavailable." }, 200, route),
+      { code: "PREFLIGHT_READ_FAILED", reason: "operation-failed" });
+    for (const [body, status] of [[expired, 503], [{ ...expired, lastCompleted: {} }, 200],
+      [{ state: "unavailable", reason: "Storage could not be read." }, 200], [{ ...expired, code: "PRIVATE_CODE" }, 200]] as const) {
+      assert.equal(debugFailureOutcome(body, status, route)?.reason, "operation-failed");
     }
   });
   it("recognizes refusals and unknown results even on HTTP 200", () => {
