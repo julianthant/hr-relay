@@ -17,8 +17,8 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) awai
 const POLICY = { thresholdBytes: 64 * 1024, minRetryMs: 250, maxRetryMs: 1_000 };
 const WAL_PEAK_LIMIT_BYTES = 16 * 1024 * 1024;
 const INTERACTIVE_MS = 10, BACKGROUND_MS = 60;
-/** The gate's peer write rate; the 16 MiB peak is defined against it. */
-const WRITER_COMMITS_PER_SECOND = 100;
+/** The gate's peer write rate and workload; the 16 MiB peak is defined against them. */
+const WRITER_COMMITS_PER_SECOND = 100, WRITER_COMMITS = 250;
 
 async function walHost(checkpoint: typeof POLICY = POLICY) {
   const fixture = await openBoundDatabaseFixture("read-lane-wal");
@@ -36,17 +36,18 @@ async function walHost(checkpoint: typeof POLICY = POLICY) {
    * WAL after each commit. It shares the host's thread, so it never commits in a burst. A held read keeps the WAL from
    * resetting, so its size follows the commit count. Each tick's main-thread span, the commit and its fsync included, is kept.
    */
-  const writer = () => {
+  const writer = (limit = Number.POSITIVE_INFINITY) => {
     let written = 0;
     const ticks: { startedAt: number; finishedAt: number }[] = [];
     const timer = setInterval(() => {
+      if (written >= limit) return;
       const startedAt = systemClock.nowMs();
       notes.emitNote({ workflow: "person-lookup", address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step",
         message: `peer write ${String(++written)} ${"x".repeat(512)}` });
       ticks.push({ startedAt, finishedAt: systemClock.nowMs() });
       peak = Math.max(peak, walBytes());
     }, 1_000 / WRITER_COMMITS_PER_SECOND);
-    return { ticks, stop: () => { clearInterval(timer); return written; } };
+    return { ticks, done: () => written >= limit, stop: () => { clearInterval(timer); return written; } };
   };
   return { fixture, lanes, walBytes, writer, peak: () => peak };
 }
@@ -79,13 +80,14 @@ it("G1-WAL: bounds the WAL under a continuous writer, a held peer read and a fai
   held.exec("BEGIN");
   held.prepare("SELECT count(*) AS n FROM sqlite_schema").get();
 
-  const write = writer();
+  const write = writer(WRITER_COMMITS);
   const spans: z.infer<typeof SpanSchema>[] = [];
   const clicks: { dispatchedAt: number; startedAt: number; afterRestart: boolean }[] = [];
   const background: Promise<unknown>[] = [];
   const started = performance.now();
   let injected = false, afterRestart = false, restartWaitMs: number | undefined;
-  while (performance.now() - started < 2_500) {
+  // Clicks run across the whole workload: the window ends once every peer commit has landed, however slow the runner.
+  while (!write.done()) {
     if (!injected && performance.now() - started > 1_000) {
       // The lane's own rollback fails mid-workload: the lane must exit, release its read mark and restart.
       injected = true;
@@ -104,8 +106,10 @@ it("G1-WAL: bounds the WAL under a continuous writer, a held peer read and a fai
     afterRestart = false;
     await delay(25);
   }
+  const windowMs = performance.now() - started;
   await Promise.all(background);
   const written = write.stop();
+  assert.equal(written, WRITER_COMMITS);
   assert.equal(lanes.status().restarts, 1);
   const busy = lanes.status().checkpoints.filter(attempt => attempt.busy !== 0);
   assert.ok(busy.length >= 2, "the held read keeps checkpoints busy");
@@ -135,7 +139,7 @@ it("G1-WAL: bounds the WAL under a continuous writer, a held peer read and a fai
   });
   const longest = measured.filter(click => !click.afterRestart)
     .reduce((worst, click) => click.overBoundMs > worst.overBoundMs ? click : worst);
-  await annotate(JSON.stringify({ gate: "G1-WAL", commitsPerSecond: WRITER_COMMITS_PER_SECOND, written, peakWalBytes: Math.max(peak(), status.walPeakBytes),
+  await annotate(JSON.stringify({ gate: "G1-WAL", commitsPerSecond: WRITER_COMMITS_PER_SECOND, written, windowMs, peakWalBytes: Math.max(peak(), status.walPeakBytes),
     resetMs, clicks: measured.length, longestInteractiveWaitMs: longest.waitMs, readAheadMs: longest.readAheadMs,
     checkpointAheadMs: longest.checkpointAheadMs, restartWaitMs, bootMs: status.bootMs, checkpointMs: checkpointSpans.map(span => span.finishedAt - span.startedAt),
     checkpoints: frames(lanes),
