@@ -23,6 +23,7 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { admitFixtureSlot } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { scaledMs } from "../../../../support/time-scale.js";
 
 const profileFixtures = createProfileFixtureSet();
@@ -160,8 +161,11 @@ describe("canonical notification producers", () => {
 
       const report = await measureNotificationScan(syntheticStateRoot(f.root), f.db, 1);
       expect(report.counts).toEqual({ runs: 2, failures: 1, receipts: 1, publications: 1 });
-      expect(report.samples).toEqual([{ scanMs: expect.any(Number), clickMs: expect.any(Number), order: ["scan", "click", "rerun"] }]);
-      expect(report.samples[0].scanMs).toBeGreaterThan(0);
+      expect(report.samples).toHaveLength(1);
+      const [sample] = report.samples;
+      expect(sample.order).toEqual(["scan", "click", "rerun"]);
+      expect(sample.scanMs).toBeGreaterThan(0);
+      expect(sample.clickMs).toBeGreaterThan(0);
     } finally { await f.close(); }
   });
   it("crosses the third-failure threshold and publishes each captured native observation", async () => {
@@ -307,7 +311,7 @@ it("publishes through the real app lane entry in built-bundle dashboard composit
     const f = await world.createProfileFixture(clock);
     const repoRoot = f.workspace;
     cpSync("src", join(repoRoot, "src"), { recursive: true });
-    mkdirSync(join(repoRoot, "config"));
+    mkdirSync(join(repoRoot, "config"), { recursive: true });
     for (const file of ["vite.dashboard.config.ts", "tsconfig.json", "config/dashboard-workflow-sources.json"]) copyFileSync(file, join(repoRoot, file));
     const distDir = join(repoRoot, "dist", "dashboard");
     mkdirSync(distDir, { recursive: true });
@@ -317,8 +321,18 @@ it("publishes through the real app lane entry in built-bundle dashboard composit
     const { profile } = f.dashboardInput;
     const { database } = profile.runtime.selectedContext(profile.token);
     if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    const now = clock.now().toISOString();
+    const workflow = personLookupDescriptor.id;
+    const slot = database.withAuthorityTransaction(repos => admitFixtureSlot(repos, workflow, 1, now));
     const { run } = seedPersonLookupExitRun(database);
     database.authority.evidenceReceipts.insert(receiptOf(run, 5));
+    database.withAuthorityTransaction(repos => {
+      const pool = repos.workerPools.get(workflow);
+      if (pool === undefined) throw new Error("fixture worker pool missing");
+      const plan = repos.workerPools.plan({ workflow, expectedVersion: pool.version, desiredWorkers: 0, requestedBy: "local-operator", now });
+      if (plan.state !== "applied") throw new Error("fixture worker pool reset refused");
+      repos.workerSlots.retire({ workerId: slot.workerId, now });
+    });
     expect(database.authority.notificationPublications.list()).toEqual([]);
 
     const dashboard = await world.composeDashboardRuntime({ ...f.dashboardInput, lifetimeLock: f.lifetime, repoRoot,

@@ -63,15 +63,12 @@ export function createTrustNotifications(input: { admission?: RuntimeAdmission; 
       healthDueAt = Date.parse(sample.observedAt) + 60_000;
     },
   });
-  const observer = Object.freeze({ ...observation, sourceReadOnLane: input.readLanes !== undefined,
+  const observer = Object.freeze({ ...observation, ...(input.readLanes === undefined ? {} : { sourceReadOnLane: true }),
     healthDueAt: () => healthDueAt, async stop() { healthStop.abort(); await observation.stop(); } });
   return { observer, inbox, backfillGapNotifier: createBackfillGapNotifier({ inbox }), gateParkNotifier: createGateParkNotifier({ inbox }), readParks: () => readGateParks(database, input.reader) };
 }
 
-type NotificationPollObserver = Pick<ReturnType<typeof createTrustNotifications>["observer"], "observe" | "observeSources" | "status" | "healthDueAt">
-  & { readonly sourceReadOnLane?: boolean };
-
-export function startNotificationPolling(database: AuthorityDatabase, clock: Clock, observation: NotificationPollObserver) {
+export function startNotificationPolling(database: AuthorityDatabase, clock: Clock, observation: ReturnType<typeof createTrustNotifications>["observer"]) {
   const revision = observation.sourceReadOnLane === true ? undefined : database.trackAuthorityTables(NOTIFICATION_SOURCE_TABLES, "poll-hint");
   let observed = revision?.();
   const changed = revision === undefined ? undefined : () => {

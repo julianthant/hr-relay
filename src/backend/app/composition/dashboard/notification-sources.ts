@@ -82,17 +82,17 @@ export const notificationSourceScan = defineLaneRead(import.meta.url, "notificat
 export function createLaneNotificationSourceReader(lanes: Pick<DashboardReadLanes, "read">): () => Promise<NotificationSourceRead> {
   let diagnostics: NotificationSourceRead["diagnostics"] | undefined;
   return async () => {
-    try {
-      const { body, cached } = await lanes.read(notificationSourceScan, {});
-      if (cached && diagnostics !== undefined) return { observations: [], diagnostics };
-      const read = NotificationSourceReadSchema.parse(JSON.parse(body));
-      diagnostics = read.diagnostics;
-      return read;
-    } catch (error) {
-      // Replay the complete body if the lane cached a result before a failed reply.
-      diagnostics = undefined;
-      throw error;
+    const previous = diagnostics;
+    // A failed reply may have populated the lane cache without delivering the result.
+    diagnostics = undefined;
+    const { body, cached } = await lanes.read(notificationSourceScan, {});
+    if (cached && previous !== undefined) {
+      diagnostics = previous;
+      return { observations: [], diagnostics };
     }
+    const read = NotificationSourceReadSchema.parse(JSON.parse(body));
+    diagnostics = read.diagnostics;
+    return read;
   };
 }
 
