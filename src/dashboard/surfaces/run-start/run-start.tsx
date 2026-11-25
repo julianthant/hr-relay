@@ -602,6 +602,16 @@ export function RunStartDialog({
                 </section>
               )}
 
+              {/* The source's own receipts show before Start, whether or not their step runs again; the repeat warning replaces them once Start asks for consent. */}
+              {onLastStage && isRerun && warning === null && snapshot !== null && snapshot.transactions.length > 0 && (
+                <section aria-label="Already submitted by this run" className="launch-section">
+                  <RunList title="Already submitted" description="The earlier run filed these." label="Already submitted by this run">{snapshot.transactions.map((entry) => (
+                    <RunListRow key={`${entry.nodeId}:${entry.writeIntentId}`} title={stepLabel(entry.stepKey)}>
+                      <span className="text-[13px] text-ui-secondary">{selectedStepKeys.includes(entry.stepKey) ? "Runs again" : "Not run again"}</span>
+                    </RunListRow>))}</RunList>
+                </section>
+              )}
+
               {currentStage === "Start" && (
                 <RunOptionsLayout locked={sending} priority={priority} onPriorityChange={next => update(current => launchDraft.changePriority(current, next))} browserMode={browserMode} onBrowserModeChange={next => update(current => launchDraft.changeBrowserMode(current, next))}
                   flags={<>
