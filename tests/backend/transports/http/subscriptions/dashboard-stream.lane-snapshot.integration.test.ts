@@ -71,7 +71,7 @@ async function laneHarness(options: Readonly<{ maxPending?: number }> = {}) {
         capture: () => {
           replica.ingestFromTimeline();
           const built = replica.buildLaneDay(day);
-          const held = new Set(w.database.authority.notificationPublications.list().map(record => record.sourceId));
+          const held = new Set<string>(w.database.authority.notificationPublications.list().map(record => record.sourceId));
           const missing = request.publications.filter(sourceId => !held.has(sourceId));
           return { body: JSON.stringify({ d: built.d, f: { ...built.f, missingPublications: missing } }), processRevision: state.revision };
         },
@@ -118,7 +118,8 @@ async function drain(connection: DashboardStreamConnection): Promise<DashboardSt
 }
 
 const cursorOf = (cursor: string): number => Number(cursor.slice("pc:".length));
-const unstamped = ({ snapshotCursor: _cursor, projectionGeneration: _generation, ...day }: DashboardDayWire) => day;
+/** The day without its stamp, as its JSON reads: a key the builder leaves undefined is not on the wire. */
+const unstamped = ({ snapshotCursor: _cursor, projectionGeneration: _generation, ...day }: DashboardDayWire): unknown => JSON.parse(JSON.stringify(day));
 
 /**
  * Applies everything after the snapshot to it and checks it reaches main's own day: no change is missing and none is applied
@@ -318,7 +319,7 @@ describe("the day wire main stamps around the lane's body", () => {
     assert.equal(event, `id: ${snapshot.cursor}\ndata: ${JSON.stringify(DashboardStreamEnvelopeSchema.parse(JSON.parse(data)))}\n\n`,
       "the framed envelope is the envelope today's serializer writes");
     assert.ok(data.includes(`"payload":${today},"rows":`), "the snapshot carries the GET body as its payload");
-    assert.deepEqual(snapshot.payload, JSON.parse(today));
+    assert.equal(JSON.stringify(snapshot.payload), today);
   });
 
   it("refuses a lane body whose leading members are not this day, and never re-serializes it", async () => {

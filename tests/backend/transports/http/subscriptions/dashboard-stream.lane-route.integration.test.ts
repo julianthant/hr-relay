@@ -11,16 +11,16 @@ import { createDashboardReadHost } from "../../../../../src/backend/storage/sqli
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { createDashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
+import { searchPartitionDay } from "../../../../../src/models/dashboard/search-calendar.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { LANE_WARM_ENTRY, laneWarmed, WARM_MS } from "../../../../support/fixtures/backend/dashboard-lane-warm-reads.js";
 import { LANE_WARM_REFUSED_ENTRY, laneWarmRefused } from "../../../../support/fixtures/backend/dashboard-lane-warm-refused.js";
 import { openBoundDatabaseFixture } from "../../../../support/helpers/admission-fixture.js";
-import { foundationFixture, id, NOW } from "../../../../support/helpers/database-foundation/fixtures.js";
+import { foundationFixture, id } from "../../../../support/helpers/database-foundation/fixtures.js";
 
 const cleanups: (() => unknown)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
-const DAY = NOW.slice(0, 10);
 /** The lane entry the dashboard's composition starts its read lanes from. */
 const COMPOSED_LANE_ENTRY = new URL("../../../../../src/backend/app/composition/dashboard/read-lane-entry.js", import.meta.url);
 const APP_VERSION = (JSON.parse(readFileSync(new URL("../../../../../package.json", import.meta.url), "utf8")) as { version: string }).version;
@@ -58,11 +58,12 @@ async function composed() {
   return { f, main, local };
 }
 
-const unstamped = ({ snapshotCursor: _cursor, projectionGeneration: _generation, ...day }: DashboardDayWire) => day;
+const unstamped = ({ snapshotCursor: _cursor, projectionGeneration: _generation, ...day }: DashboardDayWire): unknown => JSON.parse(JSON.stringify(day));
 
 describe("the queue day through the composition's navigation lane", () => {
   it("serves GET and the SSE handoff from the lane while every main-connection read throws", async () => {
     const { f, main, local } = await composed();
+    const DAY = searchPartitionDay(new Date(f.run.envelope.enqueuedAt));
     const expected = DashboardDayWireSchema.parse(JSON.parse(await local.servedDashboardDay(DAY)));
     assert.ok(expected.queueSurfaces.length > 0, "the fixture's run is on the day");
     const hub = createDashboardStreamHub({ projection: main,
