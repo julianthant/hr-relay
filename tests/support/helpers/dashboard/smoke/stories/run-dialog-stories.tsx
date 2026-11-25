@@ -8,6 +8,7 @@ import { RunStartDialog } from "../../../../../../src/dashboard/surfaces/run-sta
 import type { RunStartStage } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import type { LaunchActivity, LaunchRecovery, RerunLoad } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import { PreflightCheckIdSchema } from "../../../../../../src/models/preflight/preflight-contract.js";
+import { ERROR_CATALOG } from "../../../../../../src/models/failures/error-catalog.js";
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
@@ -89,6 +90,8 @@ const CHECK_COMBINATION = {
   "fixable-failure": stage("A failed check with a Fix button", reading(PASS, FIXABLE), "Start"),
   "unfixable-failure": stage("A failed check with no Fix button", reading(UNFIXABLE, PASS), "Start"),
   "failure-and-warning": stage("A failed check and a warning together", reading(FIXABLE, WARN, PASS), "Start"),
+  "duo-key-missing": stage("A missing Duo key blocks Start", reading({ check: PreflightCheckIdSchema.parse("browser.duo-key"), status: "fail",
+    summary: ERROR_CATALOG.DUO_READY_CREDENTIAL_REQUIRED.text }), "Start", { ready: '[data-run-check-fix="browser.duo-key"]' }),
 } satisfies Record<string, Story>;
 
 const RERUN_LOAD = {

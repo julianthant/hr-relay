@@ -64,6 +64,7 @@ function signInOf(view: WorkerMemberView, observed: WorkerChildBrowserObservatio
 }
 
 function stopReasonOf(exit: WorkerExitFact | undefined): NonNullable<WorkerCardWire["stopReason"]> {
+  if (exit?.outcome === "setup-refused") return "setup-refused";
   if (exit?.outcome !== "stopped" || exit.reason === "fault") return "crashed";
   return exit.reason === "shutdown" || exit.reason === "logout" ? "shutdown" : "operator";
 }
@@ -120,7 +121,7 @@ export function workerCardOf(input: Readonly<{
     startedAt: view.startedAt,
     ...(view.state === "exited"
       ? { endedAt: exit?.at ?? view.startedAt, stopReason: stopReasonOf(exit),
-        ...(exit?.outcome === "crashed" && exit.failureCode !== undefined ? { failureCode: exit.failureCode } : {}),
+        ...(exit !== undefined && exit.outcome !== "stopped" && exit.failureCode !== undefined ? { failureCode: exit.failureCode } : {}),
         // An exited member holds no live browser; its last reported sessions stay readable.
         lastBrowsers: view.browsers.map(browserWire) }
       : {}),

@@ -21,6 +21,12 @@ export const WorkerBrowserObservationSchema = z.strictObject({
 });
 export type WorkerBrowserObservation = z.infer<typeof WorkerBrowserObservationSchema>;
 
+export const WorkerSetupRefusalCodeSchema = z.enum([
+  "DUO_READY_CREDENTIAL_REQUIRED", "DUO_SIGNING_SOURCE_REQUIRED",
+  "DUO_CREDENTIAL_BUSY", "DUO_CREDENTIAL_CONFLICT", "DUO_CREDENTIAL_UNCERTAIN", "DUO_CREDENTIAL_UNAVAILABLE",
+]);
+export type WorkerSetupRefusalCode = z.infer<typeof WorkerSetupRefusalCodeSchema>;
+
 export class WorkerControlRefusal extends Error {
   override readonly name = "WorkerControlRefusal";
 }

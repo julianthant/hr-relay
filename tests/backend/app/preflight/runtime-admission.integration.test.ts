@@ -15,7 +15,7 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { doctorAuthorityStorage, StorageDoctorObservationChangedError } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 import { composeRuntimePreflight } from "../../../../src/backend/app/preflight/runtime-admission.js";
-import { createRuntimePreflightRunners } from "../../../../src/backend/app/preflight/runtime-runners.js";
+import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../../src/backend/app/preflight/runtime-runners.js";
 import { claimWithPreflight, preflightSessionFactory } from "../../../../src/backend/app/preflight/worker-admission.js";
 import { OcrPublicationRefusedError } from "../../../../src/backend/runs/lifecycle/ocr-checkpoint-publication.js";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -57,6 +57,7 @@ import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../.
 import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { fixtureDuoSigningSource } from "../../../support/helpers/browser/duo-signing.js";
 const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
 const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 import { AuthorityBackupService, AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -78,7 +79,7 @@ afterAll(() => profileFixtures.close());
 const cleanup: (() => void | Promise<void>)[] = [];
 const _afterEachFixture0 = async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); };
 const signal = (): AbortSignal => new AbortController().signal;
-async function harness(configureRunners?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]) {
+async function harness(configureRunners?: (runners: readonly PreflightRunner[], input: RuntimePreflightRunnerInput) => readonly PreflightRunner[], duo?: RuntimePreflightRunnerInput["duo"]) {
   const profile = await profileFixtures.create();
   const repoRoot = profile.workspace, stateRoot = profile.stateRoot;
   const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
@@ -98,15 +99,15 @@ async function harness(configureRunners?: (runners: readonly PreflightRunner[]) 
   const faults = new Set<string>(); const probes: string[] = []; let supportMissing = false;
   const freshPreflight = () => composeRuntimePreflight({ admission: profile.admission, credentials: boundProfileCredentials(profile.admission),
     database, clock, repoRoot, isolation: rebuildRuntimeIsolation, descriptors,
-    descriptorSetHash: personLookupDescriptor.contractFingerprint, protectedSecrets: { read: () => protectedRecord }, environment: {},
+    descriptorSetHash: personLookupDescriptor.contractFingerprint, protectedSecrets: { read: () => protectedRecord }, environment: {}, duo,
     runnerFactory: input => {
       const available = healthyRuntimePreflightRunners(input);
-      const missing = supportMissing ? createRuntimePreflightRunners(input).find(runner => runner.check === "browser.assets") : undefined;
-      const controlled = available.map(runner => missing !== undefined && runner.check === "browser.assets" ? missing : ({ ...runner, async run(context: PreflightRunnerContext) {
+      const missing = supportMissing ? createRuntimePreflightRunners(input).find(runner => runner.check === "browser.duo-key") : undefined;
+      const controlled = available.map(runner => missing !== undefined && runner.check === missing.check ? missing : ({ ...runner, async run(context: PreflightRunnerContext) {
         probes.push(runner.check);
         return faults.has(runner.check) ? { check: runner.check, state: "unhealthy" as const, summary: "Controlled dependency unavailable", impact: "Selected work cannot use it" } : runner.run(context);
       } }));
-      return configureRunners?.(controlled) ?? controlled;
+      return configureRunners?.(controlled, input) ?? controlled;
     } });
   const preflight = freshPreflight();
   let publications = 0;
@@ -139,6 +140,33 @@ async function harness(configureRunners?: (runners: readonly PreflightRunner[]) 
       lastApplied: { commandId: "77777777-7777-4777-8777-777777777777", commandFingerprint: "7".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "88888888-8888-4888-8888-888888888888" } });
   }, missing() { supportMissing = true; } };
 }
+
+it("invalidates a reviewed start when the profile loses its last ready Duo key", async () => {
+  try {
+    let ready = true;
+    const duo = fixtureDuoSigningSource({ credentials: () => ready ? [
+      { credentialId: "fixture-key", rpId: "duosecurity.com", transport: "usb", isResidentCredential: false },
+    ] : [] });
+    const h = await harness((runners, input) => {
+      const detector = createRuntimePreflightRunners(input).find(runner => runner.check === "browser.duo-key");
+      assert.ok(detector);
+      return runners.map(runner => runner.check === detector.check ? detector : runner);
+    }, duo);
+    if (h.plans.prepare === undefined) throw new Error("fixture preparation is missing");
+    await h.plans.prepare(h.ingress, signal());
+    const plan = h.plans.plan(h.ingress);
+    const scope = h.preflight.currentScope(personLookupDescriptor.id);
+    assert.equal(h.preflight.admission.read(scope).results.find(result => result.check === "browser.duo-key")?.status, "pass");
+
+    ready = false;
+    assert.throws(() => h.preflight.admission.read(scope), PreflightAdmissionRefusal);
+    const denied = await h.service.submit(h.command(plan));
+    assert.equal(denied.state, "rejected");
+    assert.equal(h.capacityCalls, 0);
+    assert.deepEqual(h.database.authority.runs.listByWorkflow(personLookupDescriptor.id), []);
+    assert.equal(h.preflight.admission.read(scope).results.find(result => result.check === "browser.duo-key")?.status, "fail");
+  } finally { await _afterEachFixture0(); }
+});
 
 for (const delayMs of [60_000, 300_000]) it(`Start refreshes readiness through the command service after ${delayMs}ms`, async () => {
   try {
@@ -723,8 +751,8 @@ it("session readiness checks only its admitted system and freshly refuses every 
     h.faults.add("endpoint.ucpath.prod");
     await assert.rejects(factory.open(open), error => error === reachedBrowser);
     assert.equal(opens, 1);
-    assert.deepEqual(new Set(h.probes), new Set(["browser.assets", "secrets.ucpath-sso", "endpoint.crm.prod"]));
-    for (const check of ["browser.assets", "secrets.ucpath-sso", "endpoint.crm.prod"]) {
+    assert.deepEqual(new Set(h.probes), new Set(["browser.assets", "browser.duo-key", "secrets.ucpath-sso", "endpoint.crm.prod"]));
+    for (const check of ["browser.assets", "browser.duo-key", "secrets.ucpath-sso", "endpoint.crm.prod"]) {
       h.faults.add(check);
       await assert.rejects(factory.open(open), error => error instanceof PreflightAdmissionRefusal && error.reason === "blocked" && error.message.includes(check));
       assert.equal(opens, 1);
