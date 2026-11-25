@@ -56,25 +56,20 @@ function listen(server: Server): Promise<number> {
 
 /** One cold process: open the copy's store as the dashboard does, start the real lane, and frame the busiest day. */
 async function measure(workspace: string, lockPort: number, requestedDay: string | undefined): Promise<Run> {
-  const [{ acquireRuntimeLifetimeLock }, { acquireEntrypointAdmission }, { createCredentialStore }, { AuthorityDatabase },
-    { createDashboardReadHost }, { createOperatorProjection }, { composeQueueSummaries }, { composeNotificationReads },
-    { RunRecordService }, { createTransactionHistory }, { READABLE_WORKFLOW_MODULES, DESCRIPTORS, descriptorSetHash },
-    { createDashboardStreamHub }, { sseSerialize }, { systemIdFactory }] = await Promise.all([
-    import("../../src/backend/storage/admission/lifetime-lock.js"),
-    import("../../src/backend/storage/admission/bootstrap-admission.js"),
-    import("../../src/backend/storage/configuration/credential-store.js"),
-    import("../../src/backend/storage/sqlite/authority-database.js"),
-    import("../../src/backend/storage/sqlite/dashboard-read-host.js"),
-    import("../../src/backend/app/composition/dashboard/queue.js"),
-    import("../../src/backend/app/composition/dashboard/queue-summaries.js"),
-    import("../../src/backend/app/composition/dashboard/notification-wiring.js"),
-    import("../../src/backend/runs/lifecycle/run-record-service.js"),
-    import("../../src/backend/storage/sqlite/transaction-history.js"),
-    import("../../src/backend/app/registries/workflow-registry.js"),
-    import("../../src/backend/transports/http/subscriptions/dashboard-stream.js"),
-    import("../../src/backend/transports/http/subscriptions/sse-response.js"),
-    import("../../src/rules/identity/identifiers.js"),
-  ]);
+  const { acquireRuntimeLifetimeLock } = await import("../../src/backend/storage/admission/lifetime-lock.js");
+  const { acquireEntrypointAdmission } = await import("../../src/backend/storage/admission/bootstrap-admission.js");
+  const { createCredentialStore } = await import("../../src/backend/storage/configuration/credential-store.js");
+  const { AuthorityDatabase } = await import("../../src/backend/storage/sqlite/authority-database.js");
+  const { createDashboardReadHost } = await import("../../src/backend/storage/sqlite/dashboard-read-host.js");
+  const { createOperatorProjection } = await import("../../src/backend/app/composition/dashboard/queue.js");
+  const { composeQueueSummaries } = await import("../../src/backend/app/composition/dashboard/queue-summaries.js");
+  const { composeNotificationReads } = await import("../../src/backend/app/composition/dashboard/notification-wiring.js");
+  const { RunRecordService } = await import("../../src/backend/runs/lifecycle/run-record-service.js");
+  const { createTransactionHistory } = await import("../../src/backend/storage/sqlite/transaction-history.js");
+  const { READABLE_WORKFLOW_MODULES, DESCRIPTORS, descriptorSetHash } = await import("../../src/backend/app/registries/workflow-registry.js");
+  const { createDashboardStreamHub } = await import("../../src/backend/transports/http/subscriptions/dashboard-stream.js");
+  const { sseSerialize } = await import("../../src/backend/transports/http/subscriptions/sse-response.js");
+  const { systemIdFactory } = await import("../../src/rules/identity/identifiers.js");
   const lock = await acquireRuntimeLifetimeLock(lockPort);
   try {
     const machine = acquireEntrypointAdmission(workspace, "exclusive", lock);
