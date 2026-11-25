@@ -20,6 +20,12 @@ describe("run-start timeline", () => {
     assert.equal(adjacentRunStartStage(stages, "Start", "previous"), "Input");
   });
 
+  it("adds Steps as the last page of a run that customizes them, and leaves a rerun as it is", () => {
+    assert.deepEqual(runStartStages(false, true).map(stage => stage.label), ["Input", "Start", "Steps"]);
+    assert.deepEqual(runStartStages(true, true), runStartStages(true));
+    assert.equal(reconcileRunStartStage(runStartStages(false), "Steps"), "Input");
+  });
+
   it("keeps a stage on the path and falls back to the first page for one that is not", () => {
     for (const [rerun, first, missing] of [[false, "Input", "Steps"], [true, "Steps", "Input"]] as const) {
       const stages = runStartStages(rerun);

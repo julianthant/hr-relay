@@ -92,7 +92,16 @@ async function toStart(dialog: Opened, kind: Case) {
     const form = document.querySelector<HTMLInputElement>('input[type="radio"][value="w4"]'); assert.ok(form, "the Form choice");
     await act(async () => form.click());
   }
-  if (kind === "typed" || kind === "failed spreadsheets") await dialog.press("Customize steps");
+  if (customizes(kind)) await dialog.press("Customize steps");
+  await settleAll();
+}
+/** A customized start has one more page after Start. */
+const customizes = (kind: Case) => kind === "typed" || kind === "failed spreadsheets";
+const lastStage = (kind: Case) => customizes(kind) ? "Steps" : "Start";
+async function toLast(dialog: Opened, kind: Case) {
+  if (!customizes(kind)) return;
+  await dialog.press("Continue");
+  assert.equal(dialog.stage(), "Steps");
   await settleAll();
 }
 const startLabel = (kind: Case) => kind === "spreadsheet" ? "Start run" : "Start live run";
@@ -114,9 +123,10 @@ describe("Enter on a focused control", () => {
       executeCommand: async () => { calls.push("command"); return h.APPLIED; },
     });
     const walked: string[] = [];
-    for (const stage of [firstStage(kind), "Start"] as const) {
+    for (const stage of [firstStage(kind), "Start", ...(customizes(kind) ? ["Steps"] : [])]) {
       if (stage === "Start") await toStart(dialog, kind);
-      assert.equal(dialog.disabled(stage !== "Start" ? "Continue" : startLabel(kind)), false, `${stage} is ready to go on, so Enter could act: ${dialog.text()}`);
+      if (stage === "Steps") await toLast(dialog, kind);
+      assert.equal(dialog.disabled(stage !== lastStage(kind) ? "Continue" : startLabel(kind)), false, `${stage} is ready to go on, so Enter could act: ${dialog.text()}`);
       for (let index = 0; index < controls().length; index += 1) {
         const node = controls()[index];
         const name = nameOf(node);
@@ -126,7 +136,7 @@ describe("Enter on a focused control", () => {
         assert.deepEqual(calls, [], `Enter on ${stage}: ${name} asked for a run`);
         // A text field's Enter continues, which starts nothing; go back and take the next control.
         if (dialog.stage() !== stage) {
-          assert.notEqual(stage, "Start");
+          assert.notEqual(stage, lastStage(kind));
           assert.match(name, /^(textarea|input)/u, `${name} continued`);
           assert.doesNotMatch(name, /radio|switch|checkbox/u);
           await dialog.press("Back");
@@ -188,19 +198,21 @@ describe("a start whose command is held", () => {
     await toStart(dialog, kind);
     assert.ok(openControls().some(name => /Back/u.test(name)) && openControls().some(name => /headless/u.test(name)), "Start is open before the start");
     await dialog.chooseBrowserMode("headless");
+    await toLast(dialog, kind);
     await dialog.press(startLabel(kind));
     await settleAll();
     assert.equal(replies.length, 1, `the command is out: ${dialog.text()}`);
 
-    assert.deepEqual(openControls(), [], "Start");
+    assert.deepEqual(openControls(), [], lastStage(kind));
     assert.equal(document.querySelectorAll('.launch-content input[type="radio"]').length, 0, "no choice is offered while its changes are refused");
-    assert.equal(chosen("Browser mode"), "Hidden");
+    if (!customizes(kind)) assert.equal(chosen("Browser mode"), "Hidden");
     if (kind === "pdf") assert.equal(chosen("Form"), "W-4");
 
     // An unknown outcome gives the dialog back; its replay is a command held on the first page.
     await act(async () => { replies[0].reject(new Error("connection lost")); });
     await settleLong();
     await dialog.press("Back");
+    if (customizes(kind)) await dialog.press("Back");
     assert.equal(dialog.stage(), firstStage(kind));
     await dialog.press("Replay exact submission");
     await settleAll();
@@ -224,6 +236,7 @@ describe("a start whose command is held", () => {
       executeCommand: () => { sent += 1; return reply.promise; },
     });
     await toStart(dialog, "failed spreadsheets");
+    await toLast(dialog, "failed spreadsheets");
     await dialog.press(startLabel("failed spreadsheets"));
     await settleAll();
     assert.equal(sent, 1);

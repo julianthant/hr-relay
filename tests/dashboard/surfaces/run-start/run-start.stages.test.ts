@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
+import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";
 import { versionTag } from "../../../../src/dashboard/surfaces/shared/status/format.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 
@@ -26,6 +27,33 @@ describe("the Run dialog has no Confirm stage", () => {
     await dialog.press("Start run");
     assert.equal(plans.length, 1);
     assert.deepEqual(h.closed, [false], "a clean plan submits in the same press");
+  });
+
+  it("adds Steps as the last page only while Customize steps is on, and keeps the choices across Back", async () => {
+    const plans: unknown[] = [];
+    const dialog = await h.openDialog(h.stubClient({
+      submitStartPlan: async request => { plans.push(request); return h.planResponse(PLAN_ID); },
+      executeCommand: async () => h.APPLIED,
+    }));
+    await dialog.type(h.TYPED);
+    await dialog.press("Continue");
+    await dialog.press("Customize steps");
+    assert.deepEqual(stageNames(), ["Input", "Start", "Steps"]);
+    await dialog.press("Customize steps");
+    assert.deepEqual(stageNames(), ["Input", "Start"]);
+    assert.ok(!dialog.text().includes("Continue"), "Start run is back on the Start page");
+    await dialog.press("Customize steps");
+    await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Steps");
+    await dialog.press("CRM Dates");
+    await dialog.press("Back");
+    assert.equal(dialog.stage(), "Start");
+    await dialog.press("Back");
+    await dialog.press("Continue");
+    await dialog.press("Continue");
+    await dialog.press("Start run");
+    assert.equal(plans.length, 1);
+    assert.deepEqual(StartPlanRequestSchema.parse(plans[0]).selectedStepKeys, ["searching", "cross-verify", "active-status", "crm-dates"]);
   });
 
   it("shows neither the workflow version line nor planned outputs on a stopped plan", async () => {
