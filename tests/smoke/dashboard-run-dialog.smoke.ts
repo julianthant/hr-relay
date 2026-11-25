@@ -9,6 +9,8 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     for (const label of WORKFLOW_LABELS) {
       test(`${label} shows its Input stage inside the window`, async ({ dashboard }) => {
         await dashboard.open();
+        // The rail starts collapsed below 1200px, and the sidebar + lives on the expanded rows.
+        if (viewport.width < 1200) await dashboard.page.getByRole("button", { name: "Expand sidebar" }).click();
         await dashboard.page.getByRole("button", { name: `Start a ${label} run`, exact: true }).click();
         await expect(dashboard.dialog).toBeVisible();
         await expect(dashboard.dialog.getByRole("banner")).toContainText(label);
