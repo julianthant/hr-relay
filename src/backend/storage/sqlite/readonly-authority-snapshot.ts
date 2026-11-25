@@ -421,11 +421,12 @@ export function withAuthorityDatabaseReadOnly<Result>(admission:RuntimeAdmission
  });
 }
 
-export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (database: DatabaseSync) => Result, busyTimeoutMs = 250): Result {
+export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (database: DatabaseSync) => Result,
+  busyTimeoutMs = 250, lifetime: "operation" | "reader" = "operation"): Result {
  const path = resolve(pathInput);
  requireDatabaseSourcePath(path);
  if(!existsSync(path)||statSync(path).size===0)throw new Error("authority-backup-source-missing");
- const snapshot=createReadonlyAuthoritySnapshot(path);
+ const snapshot = lifetime === "reader" ? copyReadonlyAuthoritySnapshot(path) : createReadonlyAuthoritySnapshot(path);
  let database: DatabaseSync | undefined;
  let result: { value: Result } | undefined;
  const failures: unknown[] = [];
