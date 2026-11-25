@@ -6,6 +6,7 @@ import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixture
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { seedCorruptWriteFenceFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
+import { traceSqliteStatements } from "../../../perf/sqlite-statement-counter.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -51,17 +52,12 @@ describe("canonical run-record service", () => {
   });
 
   it("counts history status in SQL without loading run records", async () => {
-    const { service, request, database } = await fixture();
-    const run = created(service, { ...request, matchKey: "history-count",
+    const { service, request } = await fixture();
+    created(service, { ...request, matchKey: "history-count",
       descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint });
-    const runs = database.authority.runs;
-    const load = (): never => { throw new Error("history-status-loaded-records"); };
-    const originals = { listWorkflows: runs.listWorkflows, listByWorkflow: runs.listByWorkflow };
-    Object.assign(runs, { listWorkflows: load, listByWorkflow: load });
-    try {
-      assert.deepEqual(service.historyStatus(), { state: "available", finishedRuns: 0, activeRuns: 1 });
-    } finally { Object.assign(runs, originals); }
-    assert.equal(run.envelope.runId.length > 0, true);
+    const { value, statements } = traceSqliteStatements(() => service.historyStatus());
+    assert.deepEqual(value, { state: "available", finishedRuns: 0, activeRuns: 1 });
+    assert.deepEqual(statements.filter(({ sql }) => /SELECT \* FROM runs/u.test(sql)), []);
   });
 
   it("table-class coverage drives every public service method and generation class", async () => {

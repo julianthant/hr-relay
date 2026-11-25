@@ -5300,9 +5300,8 @@ export class AuthorityDatabase implements Disposable {
         WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'
         ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id`).all().map(runRecordFromRow))),
       // Terminal needs both representations to agree, as listNonTerminal treats a drifted row as active.
-      countByTerminal: () => this.#withReadSnapshot(() => z.strictObject({ finished: z.number().int(), active: z.number().int() }).parse(this.#database.prepare(`
-        SELECT coalesce(sum(state='terminal' AND json_extract(lifecycle_json,'$.lifecycle.state') IS 'terminal'),0) AS finished,
-          coalesce(sum(NOT(state='terminal' AND json_extract(lifecycle_json,'$.lifecycle.state') IS 'terminal')),0) AS active FROM runs`).get())),
+      countByTerminal: () => this.#withReadSnapshot(() => z.strictObject({ finished: z.number().int(), active: z.number().int() }).parse(this.#database.prepare(
+        "SELECT coalesce(sum(state='terminal' AND json_extract(lifecycle_json,'$.lifecycle.state') IS 'terminal'),0) AS finished, coalesce(sum(NOT(state='terminal' AND json_extract(lifecycle_json,'$.lifecycle.state') IS 'terminal')),0) AS active FROM runs").get())),
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE workflow = ? ORDER BY created_at, id
       `).all(workflow).map((row) => runRecordFromRow(row))),
