@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PreflightSelectionSchema, type PreflightReadinessWire } from "../../../models/preflight/preflight-contract.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { readWithDeadline } from "../../client/read-deadline.js";
+import { PREFLIGHT_RERUN_DEADLINE_MS, readWithDeadline } from "../../client/read-deadline.js";
 import type { PreflightQueries } from "../../client/queries/preflight-queries.js";
 import type { SettingsQueries } from "../../client/queries/settings-queries.js";
 import { useDashboardCommandBinding } from "../../state/client-context.js";
@@ -44,7 +44,7 @@ export function runCheckRows(wire: PreflightReadinessWire): RunChecksState {
 export const runChecksBlocked = (state: RunChecksState): boolean =>
   state.state !== "ready" || state.rows.some(row => row.verdict === "fail");
 
-/** Reads exact-scope evidence while active. Checks may prepare missing evidence once per open dialog and once after a Fix visit. */
+/** Reads exact-scope evidence while active; the transport bounds and retries each read. Checks may prepare missing evidence once per open dialog and once after a Fix visit. */
 export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "editableSettings">, workflowId: string | undefined, active: boolean, prepare: boolean, open: boolean) {
   const binding = useDashboardCommandBinding();
   const actorId = binding?.scope.actorId;
@@ -74,7 +74,7 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
     const check = async (): Promise<PreflightReadinessWire | undefined> => {
       const selection = PreflightSelectionSchema.parse({ workflowId });
       if (!posting) {
-        const wire = await readWithDeadline(() => client.readPreflight(selection), "PREFLIGHT_READ_UNAVAILABLE");
+        const wire = await client.readPreflight(selection);
         if (!current || wire.state === "present") return wire;
         if (asked.current) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_READ_UNAVAILABLE.text };
         if (!prepareNow.current) { setHeld(workflowId); return; }
@@ -92,9 +92,9 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
           expectedConfigFingerprint: settings.activeConfigFingerprint,
           expectedDescriptorFingerprint: workflow.descriptorFingerprint, selection,
         },
-      }), "PREFLIGHT_RERUN_UNAVAILABLE");
+      }), "PREFLIGHT_RERUN_UNAVAILABLE", PREFLIGHT_RERUN_DEADLINE_MS);
       if (!current) return;
-      return readWithDeadline(() => client.readPreflight(selection), "PREFLIGHT_READ_UNAVAILABLE");
+      return client.readPreflight(selection);
     };
     void check().then(
       wire => { if (current && wire !== undefined) setState(runCheckRows(wire)); },

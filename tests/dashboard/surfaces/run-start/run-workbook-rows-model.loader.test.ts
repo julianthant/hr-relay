@@ -4,7 +4,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { DashboardClientError, networkError, schemaError } from "../../../../src/dashboard/client/errors.js";
-import { SETTINGS_READ_DEADLINE_MS } from "../../../../src/dashboard/client/read-deadline.js";
 import { WorkbookLibraryVersionSchema, WorkbookLibraryVersionViewSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { useWorkbookRows } from "../../../../src/dashboard/surfaces/run-start/run-workbook-rows-model.js";
 
@@ -99,10 +98,3 @@ it("keeps malformed typed responses classified as boundary failures", async () =
   expect(observed?.state).toBe("error"); expect(observed?.error).toBe(ERROR_CATALOG.BOUNDARY_VALIDATION_FAILED.text);
 });
 
-it("uses the same public read failure when the unchanged read deadline expires", async () => {
-  vi.useFakeTimers();
-  const pending = deferred();
-  await render({ client: { workbookLibraryVersion: () => pending.promise } });
-  await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS); });
-  expect(observed?.state).toBe("error"); expect(observed?.error).toBe(ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
-});

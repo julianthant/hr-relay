@@ -11,7 +11,7 @@ import { createTimeoutDeadlineScheduler } from "../../../../src/backend/runtime/
 import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
 import { registerSettingsPreflightRoutes } from "../../../../src/backend/transports/http/routes/settings-preflight.js";
 import { createDashboardClient, type DashboardClient } from "../../../../src/dashboard/client/index.js";
-import { SETTINGS_READ_DEADLINE_MS } from "../../../../src/dashboard/client/read-deadline.js";
+import { PREFLIGHT_RERUN_DEADLINE_MS, SETTINGS_READ_DEADLINE_MS } from "../../../../src/dashboard/client/read-deadline.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { runChecksBlocked, useRunChecks } from "../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import { RunChecksStage } from "../../../../src/dashboard/surfaces/run-start/run-checks.js";
@@ -36,7 +36,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-function checksHarness(workflowId: string, failingCheck: "config.valid" | "secrets.ucpath-sso" | false = "config.valid", beforeRerun?: () => Promise<void>) {
+function checksHarness(workflowId: string, failingCheck: "config.valid" | "secrets.ucpath-sso" | false = "config.valid", beforeRerun?: () => Promise<void>, beforeRead?: () => Promise<void>) {
   const descriptor = WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor;
   assert.ok(descriptor, `registered workflow ${workflowId}`);
   const clock = manualClock(new Date("2026-11-17T12:00:00Z"));
@@ -73,6 +73,7 @@ function checksHarness(workflowId: string, failingCheck: "config.valid" | "secre
     const path = new URL(url).pathname;
     requests.push(`${init?.method ?? "GET"} ${path}`);
     if (path === "/api/v1/preflight/rerun") await beforeRerun?.();
+    if (path === "/api/v1/preflight") await beforeRead?.();
     return app.request(url, { ...init, headers: { ...init?.headers, host: "127.0.0.1:3938" } });
   } });
   return { client, clock, observations, requests, scope };
@@ -209,6 +210,31 @@ it("does not execute a late check after the dialog has closed during settings ac
   assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 0);
 });
 
+it("shows the checks when the live rerun answers after the read deadline", async () => {
+  const rerun = Promise.withResolvers<void>();
+  const h = checksHarness("emergency-contact", false, () => rerun.promise);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await mount(h.client, "emergency-contact");
+  await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS + 5_000); });
+  assert.equal(checksUnavailable(), false, document.body.textContent ?? "");
+  await act(async () => { rerun.resolve(); });
+  await settle();
+  assert.equal(checksUnavailable(), false, document.body.textContent ?? "");
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
+});
+
+it("asks a checks read that got no answer in time again and shows the checks", async () => {
+  let reads = 0;
+  const h = checksHarness("emergency-contact", false, undefined, () => (reads += 1) === 1 ? new Promise<void>(() => undefined) : Promise.resolve());
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await mount(h.client, "emergency-contact");
+  await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS + 250); });
+  await settle();
+  assert.equal(checksUnavailable(), false, document.body.textContent ?? "");
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
+  assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
+});
+
 it("bounds a stalled rerun response, ignores its late completion and permits an explicit fresh check", async () => {
   const response = Promise.withResolvers<void>();
   const h = checksHarness("emergency-contact", false, () => response.promise);
@@ -216,7 +242,7 @@ it("bounds a stalled rerun response, ignores its late completion and permits an 
   try {
     await mount(h.client, "emergency-contact");
     assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS - 1); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(PREFLIGHT_RERUN_DEADLINE_MS - 1); });
     assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, true);
     assert.ok(document.body.textContent?.includes("Checking"));
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
