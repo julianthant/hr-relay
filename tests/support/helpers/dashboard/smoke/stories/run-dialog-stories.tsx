@@ -36,14 +36,14 @@ const at = (page: Page, stage: string) => current(page).filter({ hasText: stage 
 
 /** Where each kind of dialog goes by Continue, in order. */
 const START_PATH = ["Input", "Start"] as const;
-const RERUN_PATH = ["Input", "Start"] as const;
+const RERUN_PATH = ["Steps", "Start"] as const;
 /** Types the input of a start, then presses Continue until `stage` is current. */
 async function reach(page: Page, stage: RunStartStage, rerun: boolean): Promise<void> {
   const path: readonly string[] = rerun ? RERUN_PATH : START_PATH;
   if (!rerun && stage !== "Input") await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED);
   await at(page, path[0] ?? "");
   for (const next of path.slice(1)) {
-    if (stage === "Input") return;
+    if (stage === path[0]) return;
     if (path.indexOf(next) > path.indexOf(stage)) return;
     await press(page, "Continue");
     await at(page, next);
@@ -72,11 +72,11 @@ const stage = scene;
 
 const STAGE = {
   Input: stage("Input, nothing typed", () => runDialogClient(), "Input"),
-  RerunInput: stage("A rerun's Input, the values the source ran on", rerunClient(), "Input", { rerun: true }),
-  Warning: stage("A rerun's warning that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }), "Input", { rerun: true,
+  RerunSteps: stage("A rerun's Steps, each step as the source ended", rerunClient(), "Steps", { rerun: true }),
+  Warning: stage("A rerun's warning that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }), "Steps", { rerun: true,
     then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
   Start: stage("Start, options, steps and checks, every check ready", reading(PASS), "Start"),
-  RerunStart: stage("A rerun's Start, each step as the source ended", rerunClient(), "Start", { rerun: true }),
+  RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true }),
 } satisfies Record<string, Story>;
 
 const CHECKS = {
@@ -92,14 +92,14 @@ const CHECK_COMBINATION = {
 } satisfies Record<string, Story>;
 
 const RERUN_LOAD = {
-  loading: stage("A rerun reading its source", () => runDialogClient({ rerunValues: never }), "Input", { rerun: true }),
-  failed: stage("A rerun whose source could not be read", () => runDialogClient({ rerunValues: async () => { throw new Error("The source run could not be read."); } }), "Input", { rerun: true }),
-  ready: stage("A rerun with its source read", rerunClient(), "Input", { rerun: true }),
+  loading: stage("A rerun reading its source", () => runDialogClient({ rerunValues: never }), "Steps", { rerun: true }),
+  failed: stage("A rerun whose source could not be read", () => runDialogClient({ rerunValues: async () => { throw new Error("The source run could not be read."); } }), "Steps", { rerun: true }),
+  ready: stage("A rerun with its source read", rerunClient(), "Steps", { rerun: true }),
 } satisfies Record<RerunLoad["state"], Story>;
 
 const ACTIVITY = {
   planning: stage("Start pressed, the plan being built", planning({ submitStartPlan: never }), "Start", { then: start }),
-  "checking-warnings": stage("A rerun looking for repeat warnings", rerunClient({ previewRerunWarnings: never }), "Input", { rerun: true, then: async page => { await press(page, "Continue"); await press(page, "Start run"); } }),
+  "checking-warnings": stage("A rerun looking for repeat warnings", rerunClient({ previewRerunWarnings: never }), "Steps", { rerun: true, then: async page => { await press(page, "Continue"); await press(page, "Start run"); } }),
   submitting: stage("The plan sent, waiting on the answer", planning({ executeCommand: never }), "Start", { then: start }),
   replanning: stage("An expired plan being built again", planning({ executeCommand: async () => CommandResultSchema.parse({ state: "rejected", commandId: "3a000000-0000-4000-8000-000000000003",
     code: "RUN_START_PLAN_EXPIRED", message: "The plan expired." }), submitStartPlan: never }), "Start", { then: start }),

@@ -142,20 +142,17 @@ test("Person Lookup: Rerun starts one new run, a second press while pending send
   await dashboard.openRun(runId);
 
   await dashboard.clearToasts();
-  await dashboard.runPanel.getByRole("button", { name: "Rerun" }).click();
-  const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
-  const path = rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem");
-  await expect(path.filter({ hasText: "Input" })).toHaveAttribute("aria-current", "step");
-  await rerun.getByRole("button", { name: "Continue" }).click();
-  await expect(path.filter({ hasText: "Start" })).toHaveAttribute("aria-current", "step");
   const started = await dashboard.holdCommands("start-run");
-  const rerunStart = rerun.getByRole("button", { name: "Start run" });
-  await rerunStart.click();
+  const rerun = dashboard.runPanel.getByRole("button", { name: "Rerun" });
+  await rerun.click();
   await expect.poll(started.sent, { message: "the held Rerun reached the server" }).toBe(1);
-  await dashboard.pressAgain(rerunStart);
+  // A finished run reruns in one click: no dialog opens, and a second press while it queues is refused.
+  await expect(page.getByRole("dialog", { name: "Rerun", exact: true })).toBeHidden();
+  await dashboard.pressAgain(rerun);
+  await expect(page.getByText("Still queuing the last rerun").first()).toBeVisible();
+  await dashboard.clearToasts();
   started.release();
-  await dashboard.expectOneToast({ title: "Rerun created", line: "1 Person Lookup run created." });
-  await expect(rerun).toBeHidden();
+  await dashboard.expectOneToast({ title: "Rerun queued", line: "Person Lookup" });
   expect(started.sent(), "a second press while pending sent a second command").toBe(1);
   expect(appliedRunIds(await started.result()).filter(id => id !== runId)).toHaveLength(1);
 });
