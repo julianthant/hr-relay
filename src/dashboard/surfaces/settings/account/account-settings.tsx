@@ -318,7 +318,7 @@ function DuoSecurityKeys({ port, onSetup }: { port?: DuoKeysPort; onSetup?: () =
   return <>
     <div data-settings-path={DUO_SECURITY_TARGET}><ResultRow label="Duo" value={
       <span className="inline-flex items-center justify-end gap-3">
-        {snapshot !== undefined ? <span className="text-ui-primary">{ready ? "Ready" : "Not set up"}</span>
+        {snapshot !== undefined ? <span className="text-ui-primary">{ready ? "Ready" : null}</span>
           : state?.state === "failed" || port === undefined ? <span>Duo keys unavailable</span>
           : <span role="status" aria-label="Loading Duo security keys"><Skeleton className="h-3 w-16" /></span>}
         {snapshot !== undefined && onSetup !== undefined && <Button ref={setup} variant="secondary" onClick={() => {
