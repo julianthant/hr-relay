@@ -34,6 +34,10 @@ import { protectedSecretSource } from "../../../support/helpers/protected-secret
 import { RerunValuesResponseSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { ONBOARDING_INPUT_EXAMPLE, OnboardingCanonicalInput, OnboardingInput } from "../../../../src/models/workflows/onboarding/input.js";
 import { workbookInputBinding } from "../../../../src/backend/runs/workbooks.js";
+import { bindRunWorkbookReference } from "../../../../src/models/dashboard/workbooks.js";
+import { EmergencyContactCanonicalInput } from "../../../../src/models/workflows/emergency-contact/input.js";
+import { OCR_INPUT_EXAMPLE } from "../../../../src/models/workflows/ocr/input.js";
+import { OCR_ROSTER_FIELDS, OCR_ROSTER_TYPE_ID } from "../../../../src/models/workflows/ocr/roster.js";
 import { InputRunSurfaceSchema } from "../../../../src/models/workflow/ingress.js";
 
 const disposers: (() => void | Promise<void>)[] = [];
@@ -192,6 +196,68 @@ describe("source-bound Rerun value read", () => {
         reader: { read: () => ({ state: "present", disposition: "live", run: changed }) } }, request(changed));
       assert.deepEqual(malformed, { state: "refused", code: "source-invalid" });
     }
+  });
+
+  it.each([true, false])("serves how the source ran, dry run %s, with no spreadsheets when it picked none", async dryRun => {
+    const h = await harness(); const source = await failed(h);
+    const read = (changed: Partial<RunRecord["envelope"]>) => {
+      const run = RunRecordSchema.parse({ ...source, envelope: { ...source.envelope, dryRun, priority: "bulk", ...changed } });
+      const result = readRerunValues({ ...rerunValuesDeps(h), reader: { read: () => ({ state: "present", disposition: "live", run }) } }, request(run));
+      assert.ok(result.state === "available", JSON.stringify(result)); return result.snapshot;
+    };
+    const shown = read({ browserMode: "headed" });
+    assert.equal(shown.source.dryRun, dryRun); assert.equal(shown.source.priority, "bulk"); assert.equal(shown.source.browserMode, "headed");
+    assert.equal(Object.hasOwn(shown, "spreadsheets"), false);
+    assert.equal(read({ browserMode: "headless" }).source.browserMode, "headless");
+    assert.equal(Object.hasOwn(read({ browserMode: undefined }).source, "browserMode"), false);
+  });
+
+  it("serves each picked worksheet of the source's saved spreadsheets, and its picked row only on its own sheet", async () => {
+    const h = await harness(); const source = await failed(h);
+    const worksheets = [{ sheetId: "people", name: "People" }, { sheetId: "extra", name: "Extra" }];
+    const type = { id: "onboarding-roster", name: "Roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: null };
+    const selectedRow = { sheetId: "people", rowId: "person" };
+    const rows = [{ key: "hire@example.test", state: "matched", matches: [{ ...selectedRow, values: { email: "hire@example.test" } }] }];
+    const saved = { libraryId: "roster", version: 1, versionId: "saved", versionName: "Saved", worksheets, type, rows };
+    const { versionId: _versionId, versionName: _versionName, ...unsaved } = saved;
+    const asked = { typeId: type.id, libraryId: "roster", keys: ["hire@example.test"], fields: ["email"] };
+    const served = (references: readonly unknown[]) => {
+      const run = RunRecordSchema.parse({ ...source, input: { ...source.input, workbookReferences: references } });
+      const result = readRerunValues({ ...rerunValuesDeps(h), reader: { read: () => ({ state: "present", disposition: "live", run }) } }, request(run));
+      assert.ok(result.state === "available", JSON.stringify(result)); return result.snapshot.spreadsheets;
+    };
+    const pick = { typeId: type.id, libraryId: "roster", versionId: "saved" };
+    assert.deepEqual(served([bindRunWorkbookReference({ ...asked, versionId: "saved", selectedRow }, saved)]),
+      [{ ...pick, sheetId: "people", selectedRow }, { ...pick, sheetId: "extra" }]);
+    assert.deepEqual(served([bindRunWorkbookReference({ ...asked, versionId: "saved" }, saved)]),
+      [{ ...pick, sheetId: "people" }, { ...pick, sheetId: "extra" }]);
+    assert.equal(served([bindRunWorkbookReference(asked, unsaved)]), undefined);
+  });
+
+  it("serves Emergency Contact source input with its captured roster reset, ready to submit again", async () => {
+    const h = await harness(); const source = await failed(h);
+    const descriptor = DESCRIPTORS.find(entry => entry.id === "emergency-contact"); assert.ok(descriptor);
+    const binding = workbookInputBinding(descriptor.canonicalInput); assert.ok(binding);
+    const type = { id: OCR_ROSTER_TYPE_ID, name: "Roster", keyFieldId: "eid", fields: [...OCR_ROSTER_FIELDS], defaultWorkbookId: null };
+    const reference = bindRunWorkbookReference({ mode: "all", typeId: type.id, libraryId: "roster", expectedVersion: 1, versionId: "saved", fields: [...OCR_ROSTER_FIELDS] },
+      { libraryId: "roster", version: 1, versionId: "saved", versionName: "Saved", worksheets: [{ sheetId: "people", name: "People" }], type,
+        rows: [{ key: "10812345", state: "matched", matches: [{ sheetId: "people", rowId: "person", values: { eid: "10812345", fullName: "Person Example" } }] }] });
+    const { sourceRunId: _sourceRunId, formType: _formType, approval: _approval, ...scan } = OCR_INPUT_EXAMPLE;
+    const ingress = EmergencyContactCanonicalInput.parse({ ...scan, onbaseFiling: "file" });
+    const value = descriptor.canonicalInput.parse(binding.bind(ingress, [reference], h.clock.now().toISOString()));
+    assert.throws(() => binding.assertSubmission(value), /caller-supplied roster/u);
+    const { sessionId: _sessionId, completion: _completion, ...withoutSession } = source;
+    const run = RunRecordSchema.parse({ ...withoutSession,
+      envelope: { ...source.envelope, workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint },
+      lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() },
+      input: { ...source.input, workbookReferences: [reference], parsed: { ...source.input.parsed, schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value } } });
+    const result = readRerunValues({ ...rerunValuesDeps(h), descriptors: { resolve: () => descriptor },
+      reader: { read: () => ({ state: "present", disposition: "live", run }) } }, request(run));
+    assert.ok(result.state === "available", JSON.stringify(result));
+    assert.ok(result.snapshot.sourceInput.state === "available", JSON.stringify(result.snapshot.sourceInput));
+    assert.deepEqual(result.snapshot.sourceInput.value, ingress);
+    binding.assertSubmission(result.snapshot.sourceInput.value);
+    assert.deepEqual(result.snapshot.spreadsheets, [{ typeId: type.id, libraryId: "roster", versionId: "saved", sheetId: "people" }]);
   });
 
   it("keeps caller roster refused and never invents a source mode", () => {
