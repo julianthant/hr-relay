@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { composeStoppedControlCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
@@ -28,36 +29,41 @@ function causeHas(error: unknown, message: string): boolean {
     || error instanceof AggregateError && error.errors.some((nested: unknown) => causeHas(nested, message)));
 }
 
+/** Counts the password searches over the backup's first bytes, and the reads of a table only the backup's schema still has. */
 function watchBackup(path: string) {
   const head = readFileSync(path).subarray(0, 100), password = Buffer.from(historicalIncompleteProfileFields.password);
-  const seen = { searches: 0, digestProofs: 0 };
-  const includes = Buffer.prototype.includes, verify = RuntimeAdmission.prototype.verifiedReadOnlyCopy;
-  const searching = vi.spyOn(Buffer.prototype, "includes").mockImplementation(function (this: Buffer, ...args: Parameters<Buffer["includes"]>) {
-    if (args[0] instanceof Uint8Array && password.equals(args[0]) && this.length >= head.length && this.subarray(0, head.length).equals(head)) seen.searches += 1;
+  const buffers: unknown = Buffer.prototype;
+  assert.ok(buffers instanceof Uint8Array);
+  let byteSearches = 0;
+  // Invoked below with its original receiver; a spy would retain every searched buffer.
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  const includes = buffers.includes;
+  buffers.includes = function (this: Uint8Array, ...args: Parameters<Uint8Array["includes"]>) {
+    const sought: unknown = args[0];
+    if (sought instanceof Uint8Array && password.equals(sought) && head.equals(this.subarray(0, head.length))) byteSearches += 1;
     return includes.apply(this, args);
-  });
-  const proving = vi.spyOn(RuntimeAdmission.prototype, "verifiedReadOnlyCopy").mockImplementation(function (this: RuntimeAdmission, ...args: Parameters<RuntimeAdmission["verifiedReadOnlyCopy"]>) {
-    if (args[0] === path) seen.digestProofs += 1;
-    return verify.apply(this, args);
-  });
-  return { seen, restore() { searching.mockRestore(); proving.mockRestore(); } };
+  };
+  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  return {
+    scans: () => ({ bytes: byteSearches, rows: prepare.mock.calls.filter(([sql]) => sql === "SELECT * FROM explorer_overrides").length }),
+    restore() { buffers.includes = includes; prepare.mockRestore(); },
+  };
 }
 
-it("searches an unchanged retained backup once per inspection and still proves its digest on every pass", async () => {
+it("scans an unchanged retained backup once per inspection, across its preparation and every revalidation", async () => {
   const f = await stoppedFixture();
   const watch = watchBackup(f.archive.path);
   try {
     const inventory = f.inspect();
-    // Four passes each prove the backup against its manifest; the one row scan opens its own proved copy.
-    assert.deepEqual(watch.seen, { searches: 1, digestProofs: 5 });
-    f.revalidate(inventory);
-    assert.deepEqual(watch.seen, { searches: 1, digestProofs: 8 });
+    assert.deepEqual(watch.scans(), { bytes: 1, rows: 1 });
+    f.revalidate(inventory); f.revalidate(inventory);
+    assert.deepEqual(watch.scans(), { bytes: 1, rows: 1 });
     f.inspect();
-    assert.equal(watch.seen.searches, 2);
+    assert.deepEqual(watch.scans(), { bytes: 2, rows: 2 });
   } finally { watch.restore(); await f.cleanup(); }
 }, scaledMs(30000));
 
-it("searches a backup again after its bytes change under the same inode, size, modified time and a matching manifest", async () => {
+it("scans a backup again after its bytes change under the same inode, size, modified time and a matching manifest", async () => {
   const f = await stoppedFixture();
   try {
     const { path, manifestPath, manifest } = f.archive, inventory = f.inspect();
