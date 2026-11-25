@@ -7,6 +7,7 @@ import type { AppRouteState } from "./url-state.js";
 
 const identity = z.string().max(200);
 const stage = z.enum(["Input", "Options", "Steps", "Values", "Warning", "Checks"]);
+const retiredViewKeys = ["bumpScope", "bumpSelection", "bumpReview", "preflightScope", "capabilitiesQuery"];
 export const ViewRouteSchema = z.object({
   queueMember: QueueMemberSelectionSchema.optional(),
   logFailure: z.strictObject({ runId: RunIdSchema, failureId: FailureIdSchema }).optional(),
@@ -23,9 +24,7 @@ export const ViewRouteSchema = z.object({
   spreadsheetTab: z.enum(["registered", "types"]).optional(), spreadsheetQuery: z.string().max(500).optional(), spreadsheet: identity.nullable().optional(),
   spreadsheetSheet: identity.optional(), spreadsheetPage: z.number().int().min(0).max(100000).optional(), spreadsheetRowsQuery: z.string().max(500).optional(), spreadsheetColumnPage: z.number().int().min(0).max(100000).optional(),
   explorerSource: z.object({ field: identity, step: z.number().int().min(1).max(10000), form: identity.optional() }).optional(), explorerWorkflow: identity.optional(), explorerOpen: z.record(z.string().max(200), z.boolean()).refine(value => Object.keys(value).length <= 200).optional(),
-  bumpScope: z.enum(["workflows", "dashboard"]).optional(), bumpSelection: z.array(identity).max(100).optional(), bumpReview: z.string().max(4000).nullable().optional(),
   keyboardQuery: z.string().max(500).optional(),
-  preflightScope: identity.optional(), capabilitiesQuery: z.string().max(500).optional(),
   activityBrowse: z.object({ metric: z.enum(['completed', 'outstanding', 'failed', 'timed']), workflow: identity.optional(),
     page: z.number().int().min(0).max(100000), run: identity.optional(), query: z.string().max(500).optional(),
     sort: z.object({ column: z.enum(['name', 'duration']), direction: z.enum(['ascending', 'descending']) }).strict().optional() }).strict().nullable().optional(),
@@ -43,7 +42,14 @@ export const ViewNavigationContext = createContext<ViewNavigation | undefined>(u
 export function parseViewRoute(value: string | null): ViewRoute | null {
   if (value === null) return {};
   if (value.length > 16000) return null;
-  try { const result = ViewRouteSchema.safeParse(JSON.parse(value)); return result.success ? result.data : null; }
+  try {
+    const decoded: unknown = JSON.parse(value);
+    if (typeof decoded === "object" && decoded !== null) {
+      for (const key of retiredViewKeys) Reflect.deleteProperty(decoded, key);
+    }
+    const result = ViewRouteSchema.safeParse(decoded);
+    return result.success ? result.data : null;
+  }
   catch { return null; }
 }
 
