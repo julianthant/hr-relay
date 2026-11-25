@@ -50,6 +50,20 @@ describe("canonical run-record service", () => {
     assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
   });
 
+  it("counts history status in SQL without loading run records", async () => {
+    const { service, request, database } = await fixture();
+    const run = created(service, { ...request, matchKey: "history-count",
+      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint });
+    const runs = database.authority.runs;
+    const load = (): never => { throw new Error("history-status-loaded-records"); };
+    const originals = { listWorkflows: runs.listWorkflows, listByWorkflow: runs.listByWorkflow };
+    Object.assign(runs, { listWorkflows: load, listByWorkflow: load });
+    try {
+      assert.deepEqual(service.historyStatus(), { state: "available", finishedRuns: 0, activeRuns: 1 });
+    } finally { Object.assign(runs, originals); }
+    assert.equal(run.envelope.runId.length > 0, true);
+  });
+
   it("table-class coverage drives every public service method and generation class", async () => {
     const { service, request, runtimeConfig, database, lifetime } = await fixture();
     const covered = new Set<string>();
