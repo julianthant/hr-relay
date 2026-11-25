@@ -604,7 +604,7 @@ function runReadLane(port: MessagePort, data: unknown) {
   const cache = new Map<string, CacheEntry>();
   const checkpoints: number[] = [];
   const interactive: QueuedRead[] = [], background: QueuedRead[] = [];
-  let scheduled = false, closed = false;
+  let scheduled = false, closed = false, gateWait = false;
   const leftInTransaction = () => native.hasOpenTransaction() || history.hasOpenTransaction() || resources.some(resource => resource.inTransaction());
   const close = () => {
     closed = true;
@@ -649,15 +649,21 @@ function runReadLane(port: MessagePort, data: unknown) {
     });
   };
 
-  /** A lane marks itself reading before a read, and never starts one while a checkpoint holds the gate. */
-  const enterRead = () => {
-    for (;;) {
-      Atomics.store(gate, readingAt(self), 1);
-      if (Atomics.load(gate, GATE_FLAG) === 0) return;
-      Atomics.store(gate, readingAt(self), 0);
-      Atomics.notify(gate, readingAt(self));
-      Atomics.wait(gate, GATE_FLAG, 1);
-    }
+  /** A lane marks itself reading before it picks a read, and backs off while a checkpoint holds the gate. */
+  const tryEnterRead = () => {
+    Atomics.store(gate, readingAt(self), 1);
+    if (Atomics.load(gate, GATE_FLAG) === 0) return true;
+    Atomics.store(gate, readingAt(self), 0);
+    Atomics.notify(gate, readingAt(self));
+    return false;
+  };
+  /** The lane waits for the gate without blocking, so cancels and new messages still reach its queues before it picks. */
+  const waitForGate = () => {
+    gateWait = true;
+    const resume = () => { gateWait = false; schedule(); };
+    const wait = Atomics.waitAsync(gate, GATE_FLAG, 1);
+    if (wait.async) void wait.value.then(resume);
+    else resume();
   };
   const leaveRead = () => {
     Atomics.store(gate, readingAt(self), 0);
@@ -688,7 +694,7 @@ function runReadLane(port: MessagePort, data: unknown) {
   };
 
   /**
-   * Runs the next read with every queued twin of it: same key and process revision. None of them had started, so one run
+   * Runs the next read, under the lane's reading mark, with every queued twin of it: same key and process revision. None of them had started, so one run
    * after all of their dispatches answers each. The latest message carries the run's clock and begin position.
    */
   const runRead = (picked: QueuedRead) => {
@@ -703,7 +709,6 @@ function runReadLane(port: MessagePort, data: unknown) {
     }
     const ids = twins.map(twin => twin.message.id);
     const latest = twins.reduce((last, twin) => twin.message.beginSeq > last.message.beginSeq ? twin : last).message;
-    enterRead();
     let reply: LaneReply;
     try { reply = { kind: "read", ids, ...serve(picked.definition, latest) }; }
     catch (error) {
@@ -745,7 +750,9 @@ function runReadLane(port: MessagePort, data: unknown) {
     if (closed) return;
     const id = checkpoints.shift();
     if (id !== undefined) send(runCheckpoint(id));
-    else {
+    else if (interactive.length + background.length > 0) {
+      if (!tryEnterRead()) { waitForGate(); return; }
+      // Picked only once the lane holds its reading mark: nothing leaves a queue while the gate is held.
       const picked = interactive.shift() ?? background.shift();
       if (picked !== undefined) runRead(picked);
     }
@@ -753,7 +760,7 @@ function runReadLane(port: MessagePort, data: unknown) {
   };
   // One event-loop turn between messages lets every message that arrived during a read join the queues before the next pick.
   function schedule() {
-    if (scheduled || closed || checkpoints.length + interactive.length + background.length === 0) return;
+    if (scheduled || closed || gateWait || checkpoints.length + interactive.length + background.length === 0) return;
     scheduled = true;
     setImmediate(() => {
       // A failed send or close leaves the lane in an unknown state; the host restarts it from its exit.

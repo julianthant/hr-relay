@@ -1,3 +1,5 @@
+import { existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { parentPort } from "node:worker_threads";
 import { z } from "zod";
 import "../../../../src/backend/storage/sqlite/dashboard-background-read-worker.js";
@@ -38,6 +40,23 @@ export const laneTimedSleep = defineLaneRead(import.meta.url, "lane-timed-sleep"
 /** laneBackground that also reports when the lane started and finished it. */
 export const laneTimedBackground = defineLaneRead(import.meta.url, "lane-timed-background", { lane: "navigation", priority: "background",
   args: SleepSchema, run: (_context, args) => timed(args) });
+
+const BarrierSchema = z.strictObject({ tag: z.string().min(1), dir: z.string().min(1) });
+/** Writes `started` in `dir`, then holds the lane until the test writes `release` there. */
+function barrier(args: z.infer<typeof BarrierSchema>) {
+  runs += 1;
+  writeFileSync(join(args.dir, "started"), "");
+  const deadline = performance.now() + 10_000;
+  while (!existsSync(join(args.dir, "release"))) {
+    if (performance.now() > deadline) throw new Error("fixture barrier never released");
+    Atomics.wait(pause, 0, 0, 5);
+  }
+  return { tag: args.tag, run: runs };
+}
+
+/** Background navigation read held on an explicit barrier the test releases. */
+export const laneBackgroundBarrier = defineLaneRead(import.meta.url, "lane-background-barrier", { lane: "navigation", priority: "background",
+  args: BarrierSchema, run: (_context, args) => barrier(args) });
 
 /** Search-lane read; shape A routes it to the navigation worker. */
 export const laneSearch = defineLaneRead(import.meta.url, "lane-search", { lane: "search", priority: "interactive", args: SleepSchema,

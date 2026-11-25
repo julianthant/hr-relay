@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Worker } from "node:worker_threads";
 import { afterEach, it } from "vitest";
 import { z } from "zod";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createDashboardReadHost, ReadLaneRestartedError, type DashboardReadReply } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
+import { workerExecArgv } from "../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
+import { prepareReadLaneStart } from "../../../../src/backend/storage/sqlite/read-lane-admission.js";
+import { workerBootstrapEnvironment } from "../../../../src/models/config/secrets.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { LANE_READS_ENTRY, laneBackground, laneSearch, laneSleep, laneStuck } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { LANE_READS_ENTRY, laneBackground, laneBackgroundBarrier, laneSearch, laneSleep, laneStuck } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
-const cleanups: (() => Promise<void>)[] = [];
+const cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 const RunSchema = z.object({ tag: z.string(), run: z.number().int() });
@@ -23,13 +30,29 @@ async function host(options: Partial<Pick<Parameters<typeof createDashboardReadH
   return { fixture, lanes };
 }
 
+/** A directory the barrier read signals `started` in and the test releases it through. */
+function barrierDir() {
+  const dir = mkdtempSync(join(tmpdir(), "read-lane-barrier-"));
+  cleanups.push(() => { rmSync(dir, { recursive: true, force: true }); });
+  return { dir, release: () => { writeFileSync(join(dir, "release"), ""); } };
+}
+const until = async (ready: () => boolean) => {
+  const deadline = performance.now() + 10_000;
+  while (!ready()) {
+    if (performance.now() > deadline) throw new Error("condition never held");
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+};
+
 it("dispatches a queued click before the next background message after a background reply", async () => {
   const { lanes } = await host();
-  const scan = lanes.read(laneBackground, { tag: "scan", ms: 150 });
-  // The lane picks its own next message, so the scan must be running before the others arrive for it to go first.
-  await new Promise(resolve => setTimeout(resolve, 50));
+  const { dir, release } = barrierDir();
+  const scan = lanes.read(laneBackgroundBarrier, { tag: "scan", dir });
+  // The lane picks its own next message: the scan is running on its barrier before the others arrive.
+  await until(() => existsSync(join(dir, "started")));
   const nextScan = lanes.read(laneBackground, { tag: "next-scan", ms: 0 });
   const click = lanes.read(laneSleep, { tag: "click", ms: 0 });
+  release();
   assert.deepEqual(await Promise.all([run(scan), run(click), run(nextScan)]), [1, 2, 3]);
 });
 
@@ -95,4 +118,39 @@ it("routes search to the navigation worker in shape A and to its own worker in s
   assert.equal(await run(shapeB.lanes.read(laneSearch, { tag: "search", ms: 0 })), 1);
   assert.ok(performance.now() - started < 300, "the search lane does not wait for the navigation lane");
   assert.equal(await run(blockingB), 1);
+});
+
+it("keeps reads queued and answers a cancel while a checkpoint holds the gate, then runs interactive work first", async () => {
+  const fixture = await openBoundDatabaseFixture("read-lane-gate");
+  cleanups.push(() => fixture.close());
+  // The gate is a checkpoint flag and one reading flag per lane; the raised flag stands in for the navigation lane's checkpoint.
+  const gate = new Int32Array(new SharedArrayBuffer(3 * Int32Array.BYTES_PER_ELEMENT));
+  const SEARCH_READING = 2;
+  Atomics.store(gate, 0, 1);
+  const worker = new Worker(LANE_READS_ENTRY, { workerData: { start: prepareReadLaneStart(fixture.profile.admission, fixture.database, "search"),
+    gate }, execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
+  cleanups.push(async () => { await worker.terminate(); });
+  const replies: { kind: string; id?: number; ids?: number[]; body?: string }[] = [];
+  worker.on("message", (reply: { kind: string }) => { replies.push(reply); });
+  await until(() => replies.some(reply => reply.kind === "ready"));
+  const read = (id: number, definition: typeof laneSleep, tag: string) => {
+    const args = { tag, ms: 0 };
+    worker.postMessage({ kind: "read", id, beginSeq: id, module: definition.module, name: definition.name, key: `${definition.name}:${tag}`,
+      args, nowMs: systemClock.nowMs(), processRevision: null, processFacts: null });
+  };
+  // A background read arrives first; the interactive ones arrive while the gate is still held.
+  read(1, laneBackground, "scan");
+  read(2, laneSleep, "click");
+  read(3, laneSleep, "stale");
+  worker.postMessage({ kind: "cancel", id: 3 });
+  await until(() => replies.some(reply => reply.kind === "cancelled"));
+  // The lane answered the cancel while the gate was held, and never marked itself reading or replied to a read.
+  assert.deepEqual(replies.filter(reply => reply.kind !== "ready"), [{ kind: "cancelled", id: 3 }]);
+  assert.equal(Atomics.load(gate, SEARCH_READING), 0);
+  Atomics.store(gate, 0, 0);
+  Atomics.notify(gate, 0);
+  await until(() => replies.filter(reply => reply.kind === "read").length === 2);
+  const reads = replies.filter(reply => reply.kind === "read").map(reply => ({ ids: reply.ids, ...RunSchema.parse(JSON.parse(reply.body ?? "")) }));
+  assert.deepEqual(reads, [{ ids: [2], tag: "click", run: 1 }, { ids: [1], tag: "scan", run: 2 }]);
+  assert.equal(Atomics.load(gate, SEARCH_READING), 0);
 });
