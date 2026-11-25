@@ -44,10 +44,13 @@ it("reuses an entry across a write to an undeclared table, re-stamped at the new
   assert.equal(reused.body, first.body);
   assert.ok(reused.position.changeLogSeq > first.position.changeLogSeq);
   assert.ok(reused.position.authorityGeneration > first.position.authorityGeneration);
+  // The hit is re-stamped at its validation's dispatch sequence, which is what makes this later dispatch eligible for it.
+  assert.ok(reused.beginSeq > first.beginSeq);
   // The re-stamped entry serves the next dispatch from its new position.
   const again = await lanes.read(lanePool, { workflow: WORKFLOW });
   assert.equal(again.cached, true);
   assert.deepEqual(again.position, reused.position);
+  assert.ok(again.beginSeq > reused.beginSeq);
   assert.deepEqual(body(again), { run: 1, desiredWorkers: 0 });
 });
 

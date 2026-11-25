@@ -120,7 +120,8 @@ const CheckpointRowSchema = z.strictObject({ busy: z.number().int(), log: z.numb
 const CheckpointSpanSchema = z.strictObject({ startedAtMs: z.number(), finishedAtMs: z.number() });
 const ReplySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("ready") }),
-  z.strictObject({ kind: z.literal("read"), id: z.number().int().positive(), body: z.string(), position: ReadPositionSchema, cached: z.boolean() }),
+  z.strictObject({ kind: z.literal("read"), id: z.number().int().positive(), body: z.string(), position: ReadPositionSchema, cached: z.boolean(),
+    beginSeq: z.number().int().nonnegative() }),
   z.strictObject({ kind: z.literal("read-failed"), id: z.number().int().positive(), message: z.string().min(1) }),
   z.strictObject({ kind: z.literal("checkpoint"), id: z.number().int().positive(), ...CheckpointRowSchema.shape, ...CheckpointSpanSchema.shape }),
   z.strictObject({ kind: z.literal("checkpoint-failed"), id: z.number().int().positive(), message: z.string().min(1) }),
@@ -131,6 +132,8 @@ export interface DashboardReadReply {
   readonly body: string;
   readonly position: ReadPosition;
   readonly cached: boolean;
+  /** The dispatch sequence the lane validated or built this body at; only waiters dispatched at or before it receive it. */
+  readonly beginSeq: number;
 }
 
 export interface DashboardReadOptions {
@@ -369,10 +372,15 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       let outcome: { reply: DashboardReadReply } | { error: Error };
       try {
         admit(start);
-        outcome = reply.kind === "read" ? { reply: Object.freeze({ body: reply.body, position: reply.position, cached: reply.cached }) }
+        outcome = reply.kind === "read"
+          ? { reply: Object.freeze({ body: reply.body, position: reply.position, cached: reply.cached, beginSeq: reply.beginSeq }) }
           : { error: new ReadLaneReadError(reply.message) };
       } catch (error) { outcome = { error: error instanceof Error ? error : new Error("read-lane-admission-failed", { cause: error }) }; }
-      for (const waiter of [...running.waiters]) settleWaiter(waiter, outcome);
+      // A body validated before a waiter's dispatch may predate what that waiter must see: the waiter is refused, never served it.
+      const stale = { error: new ReadLaneReadError("read-lane-reply-ineligible") };
+      for (const waiter of [...running.waiters]) {
+        settleWaiter(waiter, "reply" in outcome && waiter.dispatchSeq > outcome.reply.beginSeq ? stale : outcome);
+      }
       observeWal();
     }
     startCheckpointWhenIdle();
@@ -620,7 +628,7 @@ function runReadLane(port: MessagePort, data: unknown) {
         if (reusable) {
           cached.position = { ...held, authorityGeneration: base.authorityGeneration, changeLogSeq: change.changeLogSeq };
           cached.beginSeq = message.beginSeq;
-          return { body: cached.body, position: cached.position, cached: true };
+          return { body: cached.body, position: cached.position, cached: true, beginSeq: cached.beginSeq };
         }
       }
       let own: Parameters<LaneReadContext["snapshotAt"]>[0] | undefined;
@@ -632,7 +640,7 @@ function runReadLane(port: MessagePort, data: unknown) {
       const position: ReadPosition = { ...base, changeLogSeq: change.changeLogSeq, ...own, timelineThrough,
         processRevision: message.processRevision, validUntil: definition.cacheMs === undefined ? null : message.nowMs + definition.cacheMs };
       if (definition.tables.length > 0) cache.set(message.key, { body, position, beginSeq: message.beginSeq });
-      return { body, position, cached: false };
+      return { body, position, cached: false, beginSeq: message.beginSeq };
     });
   };
 
