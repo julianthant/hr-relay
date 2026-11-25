@@ -79,8 +79,8 @@ const STAGE = {
   Warning: stage("A succeeded write run's rerun, warned that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }, "done"), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG,
     then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
   Start: stage("Start, options and checks, every check ready", reading(PASS), "Start"),
-  StartCustomized: stage("Start with Customize steps on, Continue to Steps", reading(PASS), "Start", { catalog: RUN_DIALOG_RERUN_CATALOG, then: customizeSteps }),
-  StartSteps: stage("A customized start's Steps, the last page", reading(PASS), "Start", { catalog: RUN_DIALOG_RERUN_CATALOG,
+  StartCustomized: stage("Start with Customize steps on, Continue to Steps", reading(PASS), "Start", { then: customizeSteps }),
+  StartSteps: stage("A customized start's Steps, the last page", reading(PASS), "Start", {
     then: async page => { await customizeSteps(page); await press(page, "Continue"); await at(page, "Steps"); } }),
   RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
 } satisfies Record<string, Story>;
