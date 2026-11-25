@@ -32,18 +32,20 @@ for (const [query, presses] of [["employ", 8], ["09/01", 1], ["UCPath", 6]] as c
   });
 }
 
-test("search on a running child run keeps every header control inside the panel", async ({ mount, page }) => {
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await mount("run-panel/log-header/search-child");
-  await page.getByRole("button", { name: "Search logs" }).click();
-  const panel = page.getByRole("region", { name: "Selected run logs" });
-  const edge = await panel.boundingBox();
-  for (const control of [panel.getByRole("button", { name: "Close search" }), panel.getByRole("button", { name: "More actions" })]) {
-    const box = await control.boundingBox();
-    expect(box!.x + box!.width).toBeLessThanOrEqual(edge!.x + edge!.width);
-  }
-  expect((await panel.getByRole("heading", { level: 2 }).boundingBox())!.width).toBeGreaterThanOrEqual(96);
-});
+for (const width of [1024, 1280, 1600]) {
+  test(`search on a running dry-run child run keeps every header control inside the panel at ${width}`, async ({ mount, page }) => {
+    await page.setViewportSize({ width, height: 720 });
+    await mount("run-panel/log-header/search-child");
+    await page.getByRole("button", { name: "Search logs" }).click();
+    const panel = page.getByRole("region", { name: "Selected run logs" });
+    const edge = await panel.boundingBox();
+    for (const control of [panel.getByRole("button", { name: "Close search" }), panel.getByRole("button", { name: "More actions" })]) {
+      const box = await control.boundingBox();
+      expect(box!.x + box!.width).toBeLessThanOrEqual(edge!.x + edge!.width);
+    }
+    expect((await panel.getByRole("heading", { level: 2 }).boundingBox())!.width).toBeGreaterThanOrEqual(96);
+  });
+}
 
 test("the run menu closes on Escape and returns focus to its button", async ({ mount, page }) => {
   await mount("run-panel/log-header/default");

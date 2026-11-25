@@ -204,7 +204,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
     {navigation?.(jump, tools)}
     <div className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col", embedded && "flex-none")}>
     {/* Ahead of the scroller in tab order: tabbing through the rows scrolls to the end, which removes the pill. */}
-    {!embedded && !atEnd && visual.length > 0 && <Button size="sm" icon={<ArrowDownToLine aria-hidden className="size-4" />} className="absolute z-10 bottom-4 left-1/2 -translate-x-1/2 rounded-full shadow-lg" onClick={goLatest}>Jump to latest</Button>}
+    {!embedded && !atEnd && visual.length > 0 && <Button size="sm" icon={<ArrowDownToLine aria-hidden className="size-4" />} className="absolute z-10 bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-ui-panel shadow-lg" onClick={goLatest}>Jump to latest</Button>}
     <div className={cn("@container min-w-0 flex-1 px-4 pb-6 pt-5", !embedded && "overflow-y-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-info")} onScroll={embedded ? undefined : measureEnd} ref={attachScroller} role={embedded ? undefined : "region"} aria-label={embedded ? undefined : label} tabIndex={embedded ? undefined : 0} aria-busy={loading || undefined}>
       {beforeContent}
       {windowed

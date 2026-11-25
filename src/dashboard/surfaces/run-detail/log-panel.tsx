@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ClipboardCheck, CircleCheck, TriangleAlert } from "lucide-react";
 import { DASHBOARD_LOGS_REGION_ID } from "../settings/settings-model.js";
 import { LogFeed, type LogDecisionHandler, type LogTools } from "./logs/log-feed.js";
@@ -16,19 +16,19 @@ import { runHeaderAction } from "./run-header-model.js";
 import type { LogTimelineStage } from "./logs/log-timeline-model.js";
 
 const headerIcon = (label: string) => label === "Review" ? <ClipboardCheck aria-hidden className="size-4" /> : label === "View failure" ? <TriangleAlert aria-hidden className="size-4" /> : <CircleCheck aria-hidden className="size-4" />;
-/** Below this header width the text buttons collapse to icons. */
-const COMPACT_HEADER_WIDTH = 520;
-const SEARCH_FIELD_WIDTH = 360;
-/** Below this header width an open search and the actions take their own line under the title. */
-const STACKED_SEARCH_WIDTH = 600;
-
-/** One row: the title truncates, the actions stay on the line. An open search collapses text buttons sooner, shrinks the field, and on a narrow panel moves below the title, so nothing is pushed past the edge. */
-function LogHeader({ title, status, middle, searching, children }: { title: string; status?: ReactNode; middle?: ReactNode; searching: boolean; children: ReactNode }) {
+/** One row: the title truncates, the actions stay on the line. When the row's contents overflow, text buttons collapse to icons first, then the actions take their own line under the title, so nothing is pushed past the edge. */
+function LogHeader({ title, status, middle, searching, layoutKey, children }: { title: string; status?: ReactNode; middle?: ReactNode; searching: boolean; layoutKey: readonly unknown[]; children: ReactNode }) {
   const row = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(Infinity);
-  // An open search takes the field's width from the text buttons.
-  const compact = width < COMPACT_HEADER_WIDTH + (searching ? SEARCH_FIELD_WIDTH : 0);
-  const stacked = searching && width < STACKED_SEARCH_WIDTH;
+  // 0 = text buttons, 1 = icons, 2 = icons on their own line; any change to the row's width or contents starts again at 0.
+  const [level, setLevel] = useState(0);
+  const key = [width, searching, ...layoutKey];
+  const [seen, setSeen] = useState(key);
+  if (key.length !== seen.length || key.some((value, index) => !Object.is(value, seen[index]))) { setSeen(key); setLevel(0); }
+  useLayoutEffect(() => {
+    const node = row.current;
+    if (node !== null && level < 2 && node.scrollWidth > node.clientWidth) setLevel(level + 1);
+  });
   useEffect(() => {
     const node = row.current;
     if (node === null) return;
@@ -36,9 +36,10 @@ function LogHeader({ title, status, middle, searching, children }: { title: stri
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
+  const stacked = level === 2;
   return <header className="shrink-0 border-b border-ui-stroke bg-ui-table px-4 py-3">
     <div ref={row} className={cn("flex min-h-6 min-w-0 items-center gap-3", stacked && "flex-wrap")}><h2 className={cn("m-0 truncate text-heading", searching ? "min-w-24" : "min-w-0")} title={title}>{title}</h2>{status && <span className="flex shrink-0 items-center gap-2">{status}</span>}{middle}
-      <LogHeaderCompact.Provider value={compact}><span className={cn("ml-auto flex items-center gap-2", searching ? "min-w-0 [&>:not([role=search])]:shrink-0" : "shrink-0", stacked && "w-full flex-wrap justify-end")}>{children}</span></LogHeaderCompact.Provider>
+      <LogHeaderCompact.Provider value={level > 0}><span className={cn("ml-auto flex items-center gap-2", searching ? "min-w-0 [&>:not([role=search])]:shrink-0" : "shrink-0", stacked && "w-full flex-wrap justify-end [&>[role=search]]:order-last [&>[role=search]]:w-full")}>{children}</span></LogHeaderCompact.Provider>
     </div>
   </header>;
 }
@@ -54,7 +55,7 @@ export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar
 }) {
   const action = runHeaderAction(steps, timeline);
   const [searching, setSearching] = useState(false);
-  const header = (jump?: (stepId: string, entryId?: string) => void, tools?: LogTools) => <LogHeader title={title} status={status} searching={searching} middle={jump && !searching ? <LogTimeline stages={timeline} onJump={stepId => jump(stepId)} /> : undefined}>
+  const header = (jump?: (stepId: string, entryId?: string) => void, tools?: LogTools) => <LogHeader title={title} status={status} searching={searching} layoutKey={[title, status, toolbar, headerActions, linkedRuns, action?.label, !!tools]} middle={jump && !searching ? <LogTimeline stages={timeline} onJump={stepId => jump(stepId)} /> : undefined}>
     {action && jump && <LogActionButton label={action.label} variant={action.label === 'Review' ? 'primary' : undefined} icon={headerIcon(action.label)} onClick={() => action.label === 'Review' && onReview ? onReview() : jump(action.stepId, action.entryId)} />}{toolbar}{linkedRuns && <LinkedRunsButton entries={linkedRuns} onOpen={onOpenLinkedRun} />}{headerActions}
     {tools && <><span role="status" className="text-caption text-ui-muted">{tools.copyState === "copied" ? "Copied" : tools.copyState === "failed" ? "Copy unavailable" : ""}</span><LogSearch tools={tools} onOpenChange={setSearching} /></>}
     <LogActionsMenu title={title} tools={tools} rerun={rerun} records={records} />
