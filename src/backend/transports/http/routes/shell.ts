@@ -27,6 +27,10 @@ const StreamResumeSchema = z.strictObject({
 import type { DashboardApp } from "./api-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
 
+function laneJson(body: string): Response {
+  return new Response(body, { headers: { "content-type": "application/json" } });
+}
+
 export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): void {
   app.get("/api/v1/application-lifecycle", c => {
     if (deps.applicationLifecycle === undefined) throw new SectionUnavailableError("Application lifecycle is unavailable");
@@ -34,21 +38,23 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
   });
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
-  app.get("/api/v1/calendar", (c) => {
+  app.get("/api/v1/calendar", async (c) => {
     const entries = [...new URL(c.req.url).searchParams];
     if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new Error("calendar-duplicate-query");
     const query = CalendarQuerySchema.parse(Object.fromEntries(entries));
     if (deps.calendar === undefined) throw new SectionUnavailableError("calendar authority is unavailable");
-    return c.json(deps.calendar.read(query));
+    const result = await deps.calendar.read(query, c.req.raw.signal);
+    return typeof result === "string" ? laneJson(result) : c.json(result);
   });
 
-  app.get("/api/v1/search", (c) =>
-    c.json(deps.search.search(parseCrossDateSearchRouteQuery(c.req.url))));
-
+  app.get("/api/v1/search", async (c) => {
+    const query = parseCrossDateSearchRouteQuery(c.req.url);
+    return deps.searchPage === undefined ? c.json(deps.search.search(query)) : laneJson(await deps.searchPage(query, c.req.raw.signal));
+  });
 
   app.post("/api/v1/exports/search", async c=>{
     if(deps.searchMetadataExports===undefined)throw new SectionUnavailableError("search metadata export is unavailable");
-    return deps.searchMetadataExports.export(await c.req.json());
+    return deps.searchMetadataExports.export(await c.req.json(), c.req.raw.signal);
   });
 
   app.post("/api/v1/exports/xlsx", async (c) => {

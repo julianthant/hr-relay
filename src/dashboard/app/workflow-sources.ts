@@ -12,7 +12,7 @@ import type { RunNavigation } from "./navigation/run-navigation.js";
 import type { PaletteSheet } from "../surfaces/shell/search/search-palette-model.js";
 import type { CommandResultFeedEntry } from "../surfaces/shared/actions/actions-model.js";
 import configuredSources from "../../../config/dashboard-workflow-sources.json" with { type: "json" };
-import type { SessionsHarness } from "../surfaces/sessions/session-panel.js";
+import type { SessionsHarness } from "../surfaces/sessions/use-sessions.js";
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
 import type { DashboardActionHandler } from "../surfaces/shared/actions/actions.js";
 import type { ActivityReportHook } from "../surfaces/activity/activity.js";

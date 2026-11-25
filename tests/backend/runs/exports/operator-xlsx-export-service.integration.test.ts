@@ -5,9 +5,9 @@ import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { Readable } from "node:stream";
 import { describe,it } from "vitest";
-import { exportSearchMetadata } from "../../../../src/backend/runs/exports/search-metadata-export.js";
-import { createOperatorXlsxExportService } from "../../../../src/backend/runs/exports/operator-xlsx-export-service.js";
-import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
+import { createComposedDashboardReadHost } from "../../../../src/backend/app/composition/dashboard/runtime-resources.js";
+import { composeShellLaneReads } from "../../../../src/backend/app/composition/dashboard/shell.js";
+import { collectSearchDocument, createOperatorXlsxExportService } from "../../../../src/backend/runs/exports/operator-xlsx-export-service.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { CrossDateSearchPageSchema } from "../../../../src/models/dashboard/search.js";
 import { LOCAL_OPERATOR_ACTOR_ID,PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
@@ -136,6 +136,7 @@ async function exportHarness(label: string) {
   return {
     root,
     path,
+    profile,
     clock,
     database,
     artifacts: createContentAddressedArtifactWriter({
@@ -155,43 +156,28 @@ function fakeSearchExportService(
     continuations?: Readonly<Record<string, ReturnType<typeof searchPage>>>;
   }>,
 ) {
+  const sourceIdentity = harness.database.getSourceDatabaseIdentity();
   return createOperatorXlsxExportService({
     clock: harness.clock,
     ids: { uuid: () => EXPORT_ID },
     artifacts: harness.artifacts,
-    sourceIdentity: harness.database.getSourceDatabaseIdentity(),
+    sourceIdentity,
     authority: harness.database.authority.operatorXlsxExports,
-    withSearchSnapshot: read => harness.database.withAuthorityReadSnapshot(read),
-    search: {
-      searchSelected: () => pages.first,
-      search: (input) => {
-        const cursor = (input as { readonly cursor?: string }).cursor;
-        const page = cursor === undefined ? undefined : pages.continuations?.[cursor];
-        if (page === undefined) throw new Error(`test search has no page for cursor ${String(cursor)}`);
-        return page;
+    readSearchDocument: async selection => collectSearchDocument({
+      sourceIdentity,
+      withSearchSnapshot: read => read(),
+      search: {
+        searchSelected: () => pages.first,
+        search: (input) => {
+          const cursor = (input as { readonly cursor?: string }).cursor;
+          const page = cursor === undefined ? undefined : pages.continuations?.[cursor];
+          if (page === undefined) throw new Error(`test search has no page for cursor ${String(cursor)}`);
+          return page;
+        },
       },
-    },
+    }, selection),
     activityReport: () => {
       throw new Error("activity must not be read for a search export");
-    },
-  });
-}
-
-function realSearchService(harness: Awaited<ReturnType<typeof exportHarness>>, signingByte: number) {
-  return createCrossDateSearchService({
-    clock: harness.clock,
-    sourceIdentity: harness.database.getSourceDatabaseIdentity(),
-    cursorSigningKey: new Uint8Array(32).fill(signingByte),
-    descriptors: {
-      resolve: (workflowId) => workflowId === "separations"
-        ? { id: "separations", label: "Separations", code: "sp", category: "separation" }
-        : undefined,
-    },
-    authority: {
-      readSnapshot: (read) => harness.database.withAuthorityReadSnapshot(() => read({
-        authorityGeneration: harness.database.getMeta().authorityGeneration,
-        searchRuns: (input) => harness.database.authority.runs.search(input),
-      })),
     },
   });
 }
@@ -211,34 +197,37 @@ describe("operator XLSX export service", () => {
     try {
       insertMeasuredSearchRun(h.database, { authorityPath: h.path, seed: 93, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       insertMeasuredSearchRun(h.database, { authorityPath: h.path, seed: 94, enqueuedAt: "2026-08-28T14:00:00.000Z" });
-      const search = realSearchService(h, 0x41);
-      const query = { ...selectedSearchRequest().selection.query, limit: 1 };
-      const page = search.search(query);
-      assert.equal(page.nextCursor.state, "present");
-      const selection = { kind: "search" as const, query, snapshot: { ...page.snapshot, generatedAt: page.generatedAt } };
-      const generation = h.database.getMeta().authorityGeneration;
-      h.clock.advanceWall(1);
-      assert.equal(h.database.getMeta().authorityGeneration, generation);
-      let captures = 0;
-      const withSearchSnapshot = <Result>(read: () => Result): Result => {
-        captures++;
-        return h.database.withAuthorityReadSnapshot(read);
-      };
-      for (const format of ["csv", "diagnostic"] as const) {
-        const response = exportSearchMetadata({ search, withSearchSnapshot, sourceIdentity: h.database.getSourceDatabaseIdentity() }, { selection, format });
-        const text = await response.text();
-        assert.ok(text.includes(page.generatedAt));
-        assert.ok(text.includes(page.results[0]?.runId ?? "missing"));
-        assert.ok(text.includes(search.search({ ...query, cursor: page.nextCursor.state === "present" ? page.nextCursor.value : undefined }).results[0]?.runId ?? "missing"));
-      }
-      const service = createOperatorXlsxExportService({ clock: h.clock, ids: { uuid: () => EXPORT_ID },
-        artifacts: h.artifacts, sourceIdentity: h.database.getSourceDatabaseIdentity(),
-        authority: h.database.authority.operatorXlsxExports, search, withSearchSnapshot,
-        activityReport: () => { throw new Error("unexpected activity"); } });
-      const result = await service.export(LOCAL_OPERATOR_ACTOR_ID, { requestVersion: 3, selection });
-      assert.equal(result.evidence.selection.kind, "search");
-      assert.ok(result.bytes.length > 0);
-      assert.equal(captures, 3);
+      const lanes = createComposedDashboardReadHost({ admission: h.profile.admission, database: h.database, clock: h.clock });
+      try {
+        const captures: string[] = [];
+        const search = composeShellLaneReads({ ...lanes, read: (definition, args, options) => {
+          captures.push(definition.name);
+          return lanes.read(definition, args, options);
+        } }, new Uint8Array(32).fill(0x41));
+        const query = { ...selectedSearchRequest().selection.query, limit: 1 };
+        const page = CrossDateSearchPageSchema.parse(JSON.parse(await search.searchPage(query)));
+        assert.equal(page.nextCursor.state, "present");
+        const selection = { kind: "search" as const, query, snapshot: { ...page.snapshot, generatedAt: page.generatedAt } };
+        const generation = h.database.getMeta().authorityGeneration;
+        h.clock.advanceWall(1);
+        assert.equal(h.database.getMeta().authorityGeneration, generation);
+        const second = CrossDateSearchPageSchema.parse(JSON.parse(await search.searchPage({ ...query, cursor: page.nextCursor.value })));
+        for (const format of ["csv", "diagnostic"] as const) {
+          const response = await search.searchMetadataExports.export({ selection, format });
+          const text = await response.text();
+          assert.ok(text.includes(page.generatedAt));
+          assert.ok(text.includes(page.results[0]?.runId ?? "missing"));
+          assert.ok(text.includes(second.results[0]?.runId ?? "missing"));
+        }
+        const service = createOperatorXlsxExportService({ clock: h.clock, ids: { uuid: () => EXPORT_ID },
+          artifacts: h.artifacts, sourceIdentity: h.database.getSourceDatabaseIdentity(),
+          authority: h.database.authority.operatorXlsxExports, readSearchDocument: search.readSearchDocument,
+          activityReport: () => { throw new Error("unexpected activity"); } });
+        const result = await service.export(LOCAL_OPERATOR_ACTOR_ID, { requestVersion: 3, selection });
+        assert.equal(result.evidence.selection.kind, "search");
+        assert.ok(result.bytes.length > 0);
+        assert.deepEqual(captures, ["search-page", "search-page", "search-metadata-export", "search-metadata-export", "search-xlsx-selection"]);
+      } finally { await lanes.close(); }
     } finally { await h.close(); }
   });
   it("persists content-addressed bytes and exact attachment evidence before returning", async () => {
@@ -485,39 +474,36 @@ describe("operator XLSX export service", () => {
     const h = await exportHarness("foreign-signer");
     try {
       insertMeasuredSearchRun(h.database, { authorityPath: h.path, seed: 91, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      const selectedBy = realSearchService(h, 0x41);
-      const restarted = realSearchService(h, 0x42);
-      const request = selectedSearchRequest();
-      const selected = selectedBy.search(request.selection.query);
-      const service = createOperatorXlsxExportService({
-        clock: h.clock,
-        ids: { uuid: () => { throw new Error("a refused signer must not mint export evidence"); } },
-        artifacts: h.artifacts,
-        sourceIdentity: h.database.getSourceDatabaseIdentity(),
-        authority: h.database.authority.operatorXlsxExports,
-        withSearchSnapshot: read => h.database.withAuthorityReadSnapshot(read),
-        search: restarted,
-        activityReport: () => {
-          throw new Error("activity must not be read for a search export");
-        },
-      });
-
-      await assert.rejects(
-        service.export(LOCAL_OPERATOR_ACTOR_ID, {
-        requestVersion:3,
-          selection: {
-            ...request.selection,
-            snapshot: {
-              ...request.selection.snapshot,
-              authorityGeneration: selected.snapshot.authorityGeneration,
-              order: selected.snapshot.order,
-              token: selected.snapshot.token,
-            },
+      const lanes = createComposedDashboardReadHost({ admission: h.profile.admission, database: h.database, clock: h.clock });
+      try {
+        const selectedBy = composeShellLaneReads(lanes, new Uint8Array(32).fill(0x41));
+        const restarted = composeShellLaneReads(lanes, new Uint8Array(32).fill(0x42));
+        const request = selectedSearchRequest();
+        const selected = CrossDateSearchPageSchema.parse(JSON.parse(await selectedBy.searchPage(request.selection.query)));
+        const service = createOperatorXlsxExportService({
+          clock: h.clock,
+          ids: { uuid: () => { throw new Error("a refused signer must not mint export evidence"); } },
+          artifacts: h.artifacts,
+          sourceIdentity: h.database.getSourceDatabaseIdentity(),
+          authority: h.database.authority.operatorXlsxExports,
+          readSearchDocument: restarted.readSearchDocument,
+          activityReport: () => {
+            throw new Error("activity must not be read for a search export");
           },
-        }),
-        /snapshot token signature belongs to a different BFF process or was modified/,
-      );
-      assert.equal(evidenceCount(h.path), 0);
+        });
+
+        await assert.rejects(
+          service.export(LOCAL_OPERATOR_ACTOR_ID, {
+            requestVersion: 3,
+            selection: {
+              ...request.selection,
+              snapshot: { ...selected.snapshot, generatedAt: selected.generatedAt },
+            },
+          }),
+          /snapshot token signature belongs to a different BFF process or was modified/,
+        );
+        assert.equal(evidenceCount(h.path), 0);
+      } finally { await lanes.close(); }
     } finally {
       await h.close();
     }

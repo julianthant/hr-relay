@@ -9,6 +9,7 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
+import { createProfileSessionWorld, selectUnupgradedProfile } from "../../../../support/helpers/backend/profile-session-world.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createProfileSession } from "../../../../../src/backend/profiles/profile-session.js";
 import { createProfileRegistry } from "../../../../../src/backend/profiles/registry.js";
@@ -35,7 +36,8 @@ it("refuses a selection change before registry publication when its local transi
 
 for (const mode of ["signin", "resume"] as const) for (const fault of ["username", "password", "missing", "read", "closure"] as const) {
   it(`keeps the selected profile after ${mode} fails at ${fault}, without admitting refused custody`, async () => {
-    const f = await createBoundProfileFixture(), profileId = f.admission.profileBinding.profileId;
+    const f = await createProfileSessionWorld();
+    const signup = { firstName: "Fixture", lastName: "Example", email: fields.email, password: fields.password, createdAt: fields.at };
     const injected = fault === "closure" ? new AuthoritySourceClosureUnprovedError([new Error("synthetic closure failure")]) : new Error("synthetic credential read failure");
     let failing = true, closures = 0;
     const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine,
@@ -45,16 +47,19 @@ for (const mode of ["signin", "resume"] as const) for (const fault of ["username
       },
       closeStorage: () => { closures++; },
     });
-    const save = (entries: ProtectedSettingsApplyInput["entries"]) => {
-      const owner = f.machine.admitProfile(profileId);
-      try {
-        const store = createCredentialStore({ admission: owner, stateRoot: owner.stateRoot });
-        assert.equal(store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(),
-          commandFingerprint: "a".repeat(64), expectedRevision: store.read().revision,
-          protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: fields.at, entries })).state, "applied");
-      } finally { owner.release(); }
-    };
     try {
+      const profileId = fault === "read" || fault === "closure"
+        ? (await f.signUp(f.open(), signup)).profileId
+        : await selectUnupgradedProfile(f, signup);
+      const save = (entries: ProtectedSettingsApplyInput["entries"]) => {
+        const owner = f.machine.admitProfile(profileId);
+        try {
+          const store = createCredentialStore({ admission: owner, stateRoot: owner.stateRoot });
+          assert.equal(store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(),
+            commandFingerprint: "a".repeat(64), expectedRevision: store.read().revision,
+            protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: fields.at, entries })).state, "applied");
+        } finally { owner.release(); }
+      };
       if (fault === "username") save({ ucpathUserId: { set: "other@ucsd.edu" } });
       if (fault === "password") save({ ucpathPassword: { set: "different-fixture-password" } });
       if (fault === "missing") save({ ucpathPassword: { clear: true } });

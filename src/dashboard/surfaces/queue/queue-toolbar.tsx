@@ -1,5 +1,5 @@
-import { useMemo, useRef } from "react";
-import { AlertTriangle, CheckCircle2, Pause, Play } from "lucide-react";
+import { useMemo } from "react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import {
   BareButton,
@@ -17,7 +17,7 @@ import {
   dsText,
 } from "../../ds/ui.js";
 import { OUTCOME_CHIP, bulkSummary } from "./queue-toolbar-model.js";
-import { PAUSE_ALL_EFFECT, PAUSE_ALL_PENDING_STATUS } from "../shared/status/status-model.js";
+import { PAUSE_ALL_EFFECT } from "../shared/status/status-model.js";
 import {
   bulkClosingAssurance,
   bulkUnavailableSentence,
@@ -105,24 +105,15 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
   </>;
 }
 
-export function PauseAllQuitControls({ state, activeCount, onPauseAll, onResumeAll, onPauseAndQuit, quitRequested = false, onQuitDismiss }: {
-  state: "ready" | "pausing" | "paused" | "unavailable";
-  activeCount: number;
-  quitRequested?: boolean;
-  onQuitDismiss?: () => void;
-  onPauseAll?: () => void;
-  onResumeAll?: () => void;
-  onPauseAndQuit?: () => void;
-}) {
-  const pauseAll = useRef<HTMLButtonElement>(null);
-  const enabled = state === "ready" || state === "paused";
-  const resume = state === "paused";
-  const idle = !resume && activeCount === 0;
-  return <>
-    <Button ref={pauseAll} size="sm" variant="secondary" className={cn("size-7 p-0", (!enabled || activeCount === 0) && "opacity-50")} aria-label={resume ? "Resume all runs" : "Pause all runs"} title={resume ? "Resume all paused runs" : idle ? "No runs to pause" : PAUSE_ALL_EFFECT} icon={resume ? <Play aria-hidden className="size-4" /> : <Pause aria-hidden className="size-4" />} disabled={!enabled || activeCount === 0 || (resume ? !onResumeAll : !onPauseAll)} onClick={resume ? onResumeAll : onPauseAll} />
-    {state !== "ready" && <p role="status" className="sr-only">{state === "pausing" ? PAUSE_ALL_PENDING_STATUS : state === "paused" ? "All runs paused. Resume them next time." : "Pause all is unavailable. Check the connection."}</p>}
-    <Dialog open={quitRequested} onOpenChange={open => { if (!open) onQuitDismiss?.(); }}><DialogContent size="sm" title="Pause all and quit?" description={PAUSE_ALL_EFFECT} onCloseAutoFocus={event => { event.preventDefault(); if (pauseAll.current?.disabled === false) pauseAll.current.focus(); else document.getElementById("dashboard-main-region")?.focus(); }}>
-      <DialogFooter><Button variant="secondary" autoFocus onClick={onQuitDismiss}>Keep working</Button><Button disabled={!enabled || !onPauseAndQuit} onClick={() => { onQuitDismiss?.(); onPauseAndQuit?.(); }}>Pause all and quit</Button></DialogFooter>
-    </DialogContent></Dialog>
-  </>;
+/** Quitting leaves runs paused: the queue offers to resume them all from its top. */
+export function PausedRunsStrip({ count, onResumeAll }: { count: number; onResumeAll?: () => void }) {
+  if (count === 0) return null;
+  return <div role="status" className="queue-paused-strip"><span>{count} {count === 1 ? "run" : "runs"} paused ·</span><Button size="sm" variant="ghost" disabled={onResumeAll === undefined} onClick={onResumeAll}>Resume all</Button></div>;
+}
+
+/** Ctrl+Q asks here: it pauses every run and quits once the pauses are confirmed. */
+export function QuitDialog({ requested, canQuit, onDismiss, onQuit }: { requested: boolean; canQuit: boolean; onDismiss: () => void; onQuit: () => void }) {
+  return <Dialog open={requested} onOpenChange={open => { if (!open) onDismiss(); }}><DialogContent size="sm" title="Pause all and quit?" description={PAUSE_ALL_EFFECT} onCloseAutoFocus={event => { event.preventDefault(); document.getElementById("dashboard-main-region")?.focus(); }}>
+    <DialogFooter><Button variant="secondary" autoFocus onClick={onDismiss}>Keep working</Button><Button disabled={!canQuit} onClick={() => { onDismiss(); onQuit(); }}>Pause all and quit</Button></DialogFooter>
+  </DialogContent></Dialog>;
 }

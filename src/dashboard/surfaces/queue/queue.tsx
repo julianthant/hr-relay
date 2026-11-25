@@ -41,7 +41,7 @@ import {
   statusText,
   type ProposedStatus,
 } from "../shared/status/status-model.js";
-import type { QueueSortKey } from "./queue-model.js";
+import type { QueueOrder, QueueSortKey } from "./queue-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import { RenameableTitle } from "../shared/rename/renameable-title.js";
 import {
@@ -1013,6 +1013,7 @@ export const QueuePanel = memo(function QueuePanel({
   onStartRun,
   filter,
   sort = "attention",
+  order,
   sortNowIso = state.nowIso,
   header,
   renderBody,
@@ -1036,6 +1037,8 @@ export const QueuePanel = memo(function QueuePanel({
   filter?: QueueFilterScope;
   /** the toolbar's ordering control; the default passes the projection through */
   sort?: QueueSortKey;
+  /** the order inside each group while `sort` is Attention first */
+  order?: QueueOrder;
   /** The instant the order measures against; the keyboard order reads the same one. */
   sortNowIso?: string;
   header?: ReactNode;
@@ -1043,7 +1046,7 @@ export const QueuePanel = memo(function QueuePanel({
 }) {
   const { top, membersOf } = useMemo(() => partition(surfaces), [surfaces]);
   const { displayTop, itemByRunId } = useMemo(() => queueItemLayout(top), [top]);
-  const bands = queueDisplayGroups(displayTop, sort, sortNowIso);
+  const bands = queueDisplayGroups(displayTop, sort, sortNowIso, order);
   const grouped = displayTop.some(row => "kind" in row);
 
   /** The digest counts drawn finished rows; it cannot replace authoritative day totals. */
