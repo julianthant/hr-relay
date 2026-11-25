@@ -211,15 +211,13 @@ describe("Rerun draws the same rows", () => {
       submitStartPlan: async input => { requests.push(input); return StartPlanWireSchema.parse({ ...planOmitting(["crm-dates"]), rerun: { source: StartPlanRequestSchema.parse(input).rerunSource, warnings: [], warningDigest: h.HASH } }); },
     }), { workflows: [person], panelWorkflowId: "person-lookup", rerunSource: { runId: source.source.runId, expectedVersion: source.source.version } });
     for (let wait = 0; wait < 6; wait += 1) await h.settle();
-    await dialog.press("Continue");
-    for (let wait = 0; wait < 6; wait += 1) await h.settle();
     return dialog;
   }
-  const finish = async (dialog: Awaited<ReturnType<typeof openRerun>>) => { await dialog.press("Start run"); };
+  const finish = async (dialog: Awaited<ReturnType<typeof openRerun>>) => { await dialog.press("Continue"); await dialog.press("Start run"); };
 
   it("starts with every row included and a badge from the source run", async () => {
     const dialog = await openRerun(snapshot(), []);
-    assert.equal(dialog.stage(), "Start");
+    assert.equal(dialog.stage(), "Steps");
     assert.match(dialog.text(), /4 of 4 included/u);
     assert.equal(rowNamed("Search for person").querySelector("[data-status]")?.getAttribute("data-status"), "completed");
     assert.equal(rowNamed("Cross-check identity").querySelector("[data-status]")?.getAttribute("data-status"), "skipped");

@@ -21,13 +21,13 @@ describe("Start run wording and defaults match the approved mock", () => {
     assert.doesNotMatch(text, /Workflow steps|\d+ \/ \d+ included|requires every node|UCPATH/u);
   });
 
-  it("ends on \"Start run\" with the hint \"Enter to start\"", async () => {
+  it("ends on \"Start run\" with no Enter hint", async () => {
     const dialog = await h.openDialog(h.stubClient({}));
     await dialog.type(h.TYPED);
     await dialog.press("Continue");
     assert.equal(dialog.stage(), "Start");
     assert.match(dialog.text(), /Start run/u);
-    assert.match(dialog.text(), /Enter to start/u);
+    assert.doesNotMatch(dialog.text(), /Enter to start/u);
     assert.doesNotMatch(dialog.text(), /Preview plan/u);
   });
 
