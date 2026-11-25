@@ -87,7 +87,8 @@ export type PreflightSelection = z.infer<typeof PreflightSelectionSchema>;
 export const PreflightReadinessWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("present"), report: PreflightReportWireSchema }),
   z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1),
-    code: z.literal("PREFLIGHT_EVIDENCE_EXPIRED").optional(), lastCompleted: PreflightReportWireSchema.optional() }),
+    code: z.enum(["PREFLIGHT_EVIDENCE_EXPIRED", "PREFLIGHT_EVIDENCE_MISSING", "PREFLIGHT_EVIDENCE_STALE", "PREFLIGHT_READ_FAILED"]).optional(),
+    lastCompleted: PreflightReportWireSchema.optional() }),
 ]);
 export type PreflightReadinessWire = z.infer<typeof PreflightReadinessWireSchema>;
 

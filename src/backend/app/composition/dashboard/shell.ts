@@ -1,3 +1,4 @@
+import type { DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
 import type { RunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
 import { exportSearchMetadata } from "../../../runs/exports/search-metadata-export.js";
 import { createCalendarQuery } from "../../../runs/queries/calendar.js";
@@ -20,7 +21,7 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
   "appVersion" | "actorLabel" | "clock" | "descriptorSetHash" | "preflightReport" | "workbookCompatibility">
   & Pick<OperatorXlsxExportServiceDependencies, "ids" | "artifacts">
   & DashboardStreamHubDeps
-  & { projection: Pick<RunQueueProjection, "runFold">; activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
+  & { /** Seam for the search lane reads. */ readLanes?: DashboardReadLanes; projection: Pick<RunQueueProjection, "runFold">; activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
 ): ShellRouteDeps {
   const { projection, clock, ids, artifacts } = input;
   const database = input.database.dashboardHistory();

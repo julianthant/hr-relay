@@ -1,10 +1,15 @@
+import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
+import fs from "node:fs";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { vi } from "vitest";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { reconcileStoppedLogout } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -38,6 +43,30 @@ export function signUpWithLegacyOperation(machineRoot: string, session: Pick<Ses
   writeFileSync(path, canonicalJsonStringify(previous));
   writeFileSync(controlPath, canonicalJsonStringify(control));
   return draft;
+}
+
+/** Leave the selected predecessor row at the boundary before its first successful login upgrade. */
+export async function selectUnupgradedProfile(world: Awaited<ReturnType<typeof createProfileSessionWorld>>,
+  fields: Parameters<Session["signUp"]>[0]): Promise<string> {
+  const session = world.open();
+  const draft = signUpWithLegacyOperation(world.machineRoot, session, fields);
+  const rename = fs.renameSync;
+  const publication = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+    if (basename(String(to)) === "profile-publication.json" && fs.readFileSync(from, "utf8").includes('"relayEmail"')) {
+      throw new Error("fixture withholds registry upgrade");
+    }
+    rename(from, to);
+  });
+  syncBuiltinESMExports();
+  try { await assert.rejects(finishProfileOnboarding(session, draft), /fixture withholds registry upgrade/u); }
+  finally { publication.mockRestore(); syncBuiltinESMExports(); }
+  const registry = createProfileRegistry(world.machine);
+  const [row] = registry.read().profiles;
+  assert.ok(row);
+  assert.equal(row.relayEmail, undefined);
+  assert.equal(registry.read().activeProfileId, null);
+  registry.advanceSession(row.profileId);
+  return row.profileId;
 }
 
 /** One temp installation with real profile sessions whose logout settles through a real native source owner. */

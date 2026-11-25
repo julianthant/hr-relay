@@ -10,6 +10,7 @@ export const AuthorityDatabaseOpenModeSchema = z.enum([
   "storage-backup-read-only-no-migrate",
   "storage-doctor-read-only-no-migrate",
   "storage-upgrade-preflight-read-only-no-migrate",
+  "dashboard-read-worker-read-only-no-migrate",
 ]);
 
 export const AuthorityDatabaseOptionsSchema = z.strictObject({

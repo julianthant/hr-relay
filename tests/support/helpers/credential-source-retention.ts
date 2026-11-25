@@ -20,13 +20,15 @@ import { credentialKeychainTestEnvironment,FakeKeyringEntry } from "./credential
 
 export type CredentialSourceRetentionCase = "readonly-native-close" | "worker-native-open" | "writer-close" | "duo-read-first" | "duo-read-second" | "stopped-head-close"
   | "protected-source" | "chatgpt-source" | "account-projection" | "stopped-control-snapshot-disposal" | "setup-protected-close" | "startup-upgrade-key-close" | "startup-upgrade-service-inspection"
+  | "stopped-upgrade-service" | "stopped-upgrade-command"
   | "startup-upgrade-binding-inspection" | "startup-upgrade-unproved-close" | "startup-upgrade-closed-publication-refusal"
   | "browser-root-native-success" | "browser-root-busy" | "browser-root-close-unproved" | "browser-root-stage-close" | "browser-root-observed-publication" | "browser-root-rm-refusal";
 const retainedChildren = new Set<object>();
 
 export async function runCredentialSourceRetentionCase(scenario: CredentialSourceRetentionCase): Promise<void> {
   const profile = await createBoundProfileFixture({ sharedMachine: true });
-  const setupNonce = scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("startup-upgrade-") || scenario.startsWith("browser-root-") ? randomUUID() : undefined;
+  const stoppedUpgrade = scenario.startsWith("stopped-upgrade-");
+  const setupNonce = stoppedUpgrade || scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("startup-upgrade-") || scenario.startsWith("browser-root-") ? randomUUID() : undefined;
   const setupWorkspace = setupNonce === undefined ? undefined : join(profile.workspace, `.${scenario}-${setupNonce}`);
   if (setupWorkspace !== undefined) mkdirSync(setupWorkspace, { mode: 0o700 });
   const child = fork(fileURLToPath(new URL("../processes/credential-source-retention-worker.ts", import.meta.url)),
@@ -59,7 +61,7 @@ export async function runCredentialSourceRetentionCase(scenario: CredentialSourc
         assert.equal(message.ownedWorkspace.startsWith(`${realpathSync(tmpdir())}${sep}incomplete-publication-`), true);
         ownedWorkspaces.add(message.ownedWorkspace);
       } else if ("ownedSnapshot" in message) {
-        assert.equal(scenario.startsWith("startup-upgrade-") || setupWorkspace === undefined, true);
+        assert.equal(stoppedUpgrade || scenario.startsWith("startup-upgrade-") || setupWorkspace === undefined, true);
         assert.equal(realpathSync(message.ownedSnapshot), message.ownedSnapshot);
         assert.equal(message.ownedSnapshot.startsWith(`${realpathSync(tmpdir())}${sep}relay-readonly-authority-`), true);
         ownedSnapshots.add(message.ownedSnapshot);
@@ -79,7 +81,10 @@ export async function runCredentialSourceRetentionCase(scenario: CredentialSourc
     await closed;
     assert.equal(child.connected, false); assert.equal(stderrBytes, 0);
     await events.return?.();
-    for (const path of ownedSnapshots) rmSync(path, { recursive: true });
+    for (const path of ownedSnapshots) {
+      rmSync(path, { recursive: true });
+      assert.equal(existsSync(path), false);
+    }
     for (const path of ownedWorkspaces) rmSync(path, { recursive: true });
     await profile.close(); retainedChildren.delete(held);
   } catch (error) {

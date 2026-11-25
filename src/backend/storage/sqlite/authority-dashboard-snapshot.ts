@@ -15,7 +15,7 @@ import { runRecordFromRow } from "./run-record-row.js";
 import { createTimelineRepository } from "./timeline-repository.js";
 import { DuoCeremonyLeaseRecordSchema, isDuoCeremonyLeaseLive, type DuoCeremonyLeaseRecord } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
-import { type ChangeLogReader, validateAuthorityStore, changeLogBaseline, admitChanges } from "./authority-change-admission.js";
+import { type ChangeLogReader, validateAuthorityStore, changeLogBaseline, admitChanges, changeLogHighWater } from "./authority-change-admission.js";
 import { readMetaRow, readIntPragma } from "./authority-connection.js";
 import { assertNativeSchema } from "./authority-inspection.js";
 import { assertTimelineOwner, readRunPages } from "./authority-run-evidence.js";
@@ -38,13 +38,16 @@ function includeDashboardFactChange(changes: DashboardFactChanges, entry: Change
 }
 
 /** One worker connection validates peer commits and captures a page and its reconciliation facts together. */
+export type DashboardSnapshotPosition = Readonly<{ schemaVersion: number; schemaCookie: number; authorityGeneration: number; changeLogSeq: number }>;
+
 export function createDashboardSnapshotQuery(database: DatabaseSync, binding: z.infer<typeof ProfileDatabaseBindingSchema>) {
   const timeline = createTimelineRepository({ database, read: read => read(),
     mutate: () => { throw new Error("dashboard-background-read-only"); }, assertOwner: record => assertTimelineOwner(database, record) });
   let baseline: ChangeLogReader | undefined;
   let validatedVersion: number | undefined;
   let facts: ReturnType<typeof createDashboardWorkerFacts> | undefined;
-  return (request: DashboardBackgroundReadRequest) => {
+  /** onSnapshot receives the store position of the transaction the page and its worker facts were read in. */
+  return (request: DashboardBackgroundReadRequest, onSnapshot?: (position: DashboardSnapshotPosition) => void) => {
     database.exec("BEGIN");
     try {
       const meta = readMetaRow(database);
@@ -75,6 +78,8 @@ export function createDashboardSnapshotQuery(database: DatabaseSync, binding: z.
       const records = timeline.page({ after: request.after, through, limit: request.limit, spanTypes: request.spanTypes });
       const cursor = records.length === request.limit ? records[records.length - 1].cursor : through;
       const workers = facts.page(request);
+      onSnapshot?.({ schemaVersion: meta.schema_version, schemaCookie: readIntPragma(database, "schema_version"),
+        authorityGeneration: meta.authority_generation, changeLogSeq: changeLogHighWater(database) });
       database.exec("COMMIT");
       return { records, cursor, through, workers };
     } catch (error) {
