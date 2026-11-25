@@ -122,7 +122,7 @@ export const laneRollbackFails = defineLaneRead(import.meta.url, "lane-rollback-
 /** Posts a reply for a read the host never sent before its real reply: the host must restart the lane. */
 export const laneMismatchedReply = defineLaneRead(import.meta.url, "lane-mismatched-reply", { lane: "navigation", priority: "interactive",
   args: z.strictObject({}), run() {
-    parentPort?.postMessage({ kind: "read-failed", id: 2 ** 30, message: "forged-reply" });
+    parentPort?.postMessage({ kind: "read-failed", ids: [2 ** 30], message: "forged-reply" });
     return { forged: true };
   } });
 

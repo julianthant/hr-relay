@@ -31,11 +31,11 @@ it("dispatches a queued click before the next background message after a backgro
   assert.deepEqual(await Promise.all([run(scan), run(click), run(nextScan)]), [1, 2, 3]);
 });
 
-it("dispatches the interactive request first after a WAL checkpoint pause", async () => {
+it("runs a queued checkpoint first, then the interactive request before the background one", async () => {
   const { fixture, lanes } = await host({ checkpoint: { thresholdBytes: 0 } });
   createNoteTimelineWriter({ repository: fixture.database.authority.timelineEvents, clock: systemClock }).emitNote({ workflow: "person-lookup",
     address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step", message: "grow the write-ahead log" });
-  // The WAL is over the threshold, so the first request pauses dispatch for a checkpoint; both reads queue behind it.
+  // The WAL is over the threshold, so the first request posts a checkpoint ahead of itself; both reads queue behind it in the lane.
   const scan = lanes.read(laneBackground, { tag: "scan", ms: 0 });
   const click = lanes.read(laneSleep, { tag: "click", ms: 0 });
   assert.deepEqual(await Promise.all([run(click), run(scan)]), [1, 2]);
@@ -54,6 +54,27 @@ it("dispatches the interactive request first after a lane restart", async () => 
   // The restarted lane is a new isolate: its first run is the click.
   assert.deepEqual(await Promise.all([run(click), run(scan)]), [1, 2]);
   assert.equal(lanes.status().restarts, 1);
+});
+
+it("holds a checkpoint until the other lane's running read ends, so the checkpoint is never busy on it", async () => {
+  const { fixture, lanes } = await host({ lanes: ["navigation", "search"], checkpoint: { thresholdBytes: 0 } });
+  await run(lanes.read(laneSleep, { tag: "settle", ms: 0 }));
+  const searchStarted = systemClock.nowMs();
+  // The search lane holds its read snapshot for 300 ms; a TRUNCATE run beside it would report busy.
+  const search = lanes.read(laneSearch, { tag: "search", ms: 300 });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  createNoteTimelineWriter({ repository: fixture.database.authority.timelineEvents, clock: systemClock }).emitNote({ workflow: "person-lookup",
+    address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step", message: "grow the write-ahead log beside a search" });
+  const before = lanes.status().checkpoints.length;
+  const click = lanes.read(laneSleep, { tag: "click", ms: 0 });
+  await Promise.all([run(search), run(click)]);
+  const deadline = performance.now() + 2_000;
+  while (lanes.status().checkpoints.length === before && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+  const checkpoint = lanes.status().checkpoints[before];
+  assert.ok(checkpoint !== undefined, "the grown WAL got a checkpoint");
+  assert.equal(checkpoint.busy, 0);
+  assert.equal(checkpoint.walBytesAfter, 0);
+  assert.ok(checkpoint.finishedAtMs >= searchStarted + 300, "the checkpoint ran only after the search read released its snapshot");
 });
 
 it("routes search to the navigation worker in shape A and to its own worker in shape B", async () => {
