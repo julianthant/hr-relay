@@ -108,7 +108,7 @@
 /* Start run beside a workflow: a sibling of the row, so Tab reaches it; it shows on hover and on keyboard focus. */
 .workflow-rail-item { position: relative; }
 .workflow-rail .workflow-rail-start { position: absolute; top: 50%; right: 4px; display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ui-primary); opacity: 0; transform: translateY(-50%); cursor: pointer; }
-.workflow-rail-item:hover .workflow-rail-start, .workflow-rail-item:focus-within .workflow-rail .workflow-rail-start { opacity: 1; }
+.workflow-rail-item:hover .workflow-rail-start, .workflow-rail .workflow-rail-item:focus-within .workflow-rail-start { opacity: 1; }
 .workflow-rail .workflow-rail-start:hover { background: var(--ds-surface-3); }
 .workflow-rail-item:hover .workflow-rail-running, .workflow-rail-item:focus-within .workflow-rail-running { margin-right: 24px; }
 .workflow-rail[data-collapsed] .workflow-rail .workflow-rail-start { display: none; }

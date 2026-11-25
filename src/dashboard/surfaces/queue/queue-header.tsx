@@ -18,6 +18,11 @@ const GROUPS: readonly { label: string; statuses: readonly StatusBucket[] }[] = 
 ];
 const CHRONOLOGICAL = QUEUE_SORTS.filter(entry => entry.key !== "attention");
 
+/** The day comes from the URL, so it can be unreadable; the calendar then opens on today. */
+function calendarDay(day: string, today: string) {
+  try { return parseDate(day); } catch { return parseDate(today); }
+}
+
 /** The card above the queue: the workflow's title, then Ask, Options and Start run as plain icon buttons. */
 export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay, sort, onSort, active, counts, onFilter, dayMark }: {
   title: string; ask: ReactNode; startId: string; onStartRun: () => void;
@@ -46,7 +51,7 @@ export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay
           <DropdownMenuSub>
             <DropdownMenuSubTrigger><CalendarDays aria-hidden />Date<span className="queue-options-value">{day === today ? "Today" : day}</span></DropdownMenuSubTrigger>
             <DropdownMenuSubContent aria-label="Pick a date" className="queue-date-menu">
-              <Calendar label="Dashboard date" value={parseDate(day)} maxValue={parseDate(today)} onChange={date => onDay(date.toString())} />
+              <Calendar label="Dashboard date" value={calendarDay(day, today)} maxValue={parseDate(today)} onChange={date => onDay(date.toString())} />
               <div className="queue-date-footer"><Button size="sm" variant="ghost" onClick={() => onDay(today)}>Today</Button><span>Runs from this day</span></div>
             </DropdownMenuSubContent>
           </DropdownMenuSub>

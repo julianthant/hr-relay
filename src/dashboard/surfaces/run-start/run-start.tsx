@@ -520,7 +520,7 @@ export function RunStartDialog({
         size="lg"
         title={isRerun ? "Rerun" : "Start run"}
         description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? workflow.label : "Choose a workflow to begin"}
-        className={cn("launch-design launch-dialog", isRerun && "launch-rerun")}
+        className={"launch-design launch-dialog"}
       >
           {launchRefusal ? <><DialogBody><EmptyState title="Workflow unavailable" description={launchRefusal} /></DialogBody><DialogFooter><Button onClick={() => closeAndReset(false)}>Close</Button></DialogFooter></> : <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
