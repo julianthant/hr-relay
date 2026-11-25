@@ -6,6 +6,7 @@ import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixture
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { seedCorruptWriteFenceFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
+import { traceSqliteStatements } from "../../../perf/sqlite-statement-counter.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -48,6 +49,34 @@ describe("canonical run-record service", () => {
       /worker-claim-membership-unavailable/);
     assert.equal(database.getMeta().authorityGeneration, before);
     assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
+  });
+
+  it("counts history status in SQL without loading run records", async () => {
+    const { service, request } = await fixture();
+    created(service, { ...request, matchKey: "history-count",
+      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint });
+    const { value, statements } = traceSqliteStatements(() => service.historyStatus());
+    assert.deepEqual(value, { state: "available", finishedRuns: 0, activeRuns: 1 });
+    assert.deepEqual(statements.filter(({ sql }) => /SELECT \* FROM runs/u.test(sql)), []);
+  });
+
+  it("counts a row whose state column and lifecycle JSON disagree as active", async () => {
+    const { service, request, database } = await fixture();
+    let sequence = 700;
+    const make = (matchKey: string) => created(service, { ...request, matchKey, commandId: `99000000-0000-4000-8000-${String(sequence++).padStart(12, "0")}`,
+      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint });
+    const columnOnly = make("drift-column"), jsonOnly = make("drift-json"), finished = make("drift-finished");
+    for (const run of [jsonOnly, finished]) {
+      const outcome = service.transition({ commandId: lifecycleCommandId("drift-terminal", { runId: run.envelope.runId }),
+        runId: run.envelope.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+      assert.equal(outcome.state, "applied");
+    }
+    const raw = new DatabaseSync(syntheticDatabasePath(database));
+    try {
+      raw.prepare("UPDATE runs SET state='terminal', outcome='cancelled' WHERE id=?").run(columnOnly.envelope.runId);
+      raw.prepare("UPDATE runs SET state='queued', outcome=NULL WHERE id=?").run(jsonOnly.envelope.runId);
+    } finally { raw.close(); }
+    assert.deepEqual(service.historyStatus(), { state: "available", finishedRuns: 1, activeRuns: 2 });
   });
 
   it("table-class coverage drives every public service method and generation class", async () => {
