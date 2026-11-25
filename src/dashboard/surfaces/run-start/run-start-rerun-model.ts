@@ -13,6 +13,12 @@ export function defaultRerunSteps(snapshot: RerunValuesSnapshot, workflow: RunSt
   return workflow.steps.map(step => step.key);
 }
 
+/** A finished run with nothing failed in it, members included, reruns in one click; anything else picks its steps first. */
+export function rerunsInOneClick(snapshot: RerunValuesSnapshot): boolean {
+  return snapshot.source.outcome === "done" && snapshot.failedMembers === undefined
+    && [...snapshot.steps, ...(snapshot.children ?? []).flatMap(child => child.steps)].every(step => step.state !== "failed" && step.nodes.every(node => node.state !== "failed"));
+}
+
 export function partialRerunTypedInput(surface: TypedInputSurface, input: Extract<RerunValuesSnapshot["sourceInput"], { state: "partial" }>) {
   const mode = surface.submitsMode === false ? surface.modes[0]?.value ?? null
     : surface.modes.find(mode => input.value[surface.modeField] === mode.value)?.value ?? null;

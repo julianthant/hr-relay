@@ -47,7 +47,7 @@ async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.
 }
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
-  for (const outcome of ["failed", "interrupted"] as const) it(`${outcome} reruns initially select every step and explain missing source values`, async () => {
+  for (const outcome of ["failed", "interrupted"] as const) it(`${outcome} reruns pick up from the first step that did not complete`, async () => {
     const h = await setup(); const source = h.start(h.proposal(undefined, undefined, true));
     if (outcome === "failed") {
       h.world.onPrepare = () => { throw new Error("synthetic prepare failure"); };
@@ -70,8 +70,10 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     }
     await mount(h, h.fresh(source)); assert.equal(checkbox("Read employee").checked, true);
     assert.equal(checkbox("File transaction").checked, true);
-    assert.equal(checkbox("Check employee").checked, true);
-    await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]')); assert.match(text(), /The earlier run did not (?:get far enough to record|record) this\./u);
+    // The failed run's finished step stays off with its recorded value; the interrupted run recorded nothing to keep.
+    assert.equal(checkbox("Check employee").checked, outcome === "interrupted");
+    if (outcome === "failed") assert.match(text(), /CompletedInclude Check employee.*From the earlier run.*File transactionAutomaticFailed/u);
+    else { assert.equal((text().match(/Not started/gu) ?? []).length, 3); assert.doesNotMatch(text(), /From the earlier run/u); }
   });
 
 });
