@@ -59,6 +59,32 @@ describe("classified log screenshot viewer", () => {
     await pick("Whole image");
     assert.equal(choice("Whole image").checked, true);
   });
+  it("leaves arrow keys to the size radios and moves captures only from the image viewport", async () => {
+    await mount();
+    await click("Enlarge screenshot captured at 09:32:38");
+    const alt = () => document.querySelector('[role="dialog"] .log-viewer-image')?.getAttribute("alt");
+    const press = async (target: Element, key: string) => {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      await act(async () => { target.dispatchEvent(event); });
+      return event;
+    };
+    const radio = choice("Fit width");
+    radio.focus();
+    assert.equal((await press(radio, "ArrowRight")).defaultPrevented, false);
+    assert.equal(alt(), "First form");
+    const viewport = document.querySelector('[role="dialog"] .log-image-viewport');
+    assert.ok(viewport);
+    await press(viewport, "ArrowRight");
+    assert.equal(alt(), "Second form");
+  });
+  it("gives each capture one open control and the full-form scroll cue", async () => {
+    await mount();
+    const group = document.querySelector('[aria-label="Screenshots"]');
+    assert.ok(group);
+    assert.equal(group.querySelectorAll("button").length, 2);
+    assert.equal(group.querySelectorAll(".log-form-hint").length, 2);
+    assert.equal(group.querySelector(".log-form-hint")?.textContent, "Full form · open to scroll");
+  });
   it("shows a distinct missing-image alert without treating it as an empty group", async () => {
     await mount([captures[0]]);
     const image = document.querySelector("img");
