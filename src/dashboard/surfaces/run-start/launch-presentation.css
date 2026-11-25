@@ -28,6 +28,8 @@ div.launch-dialog[data-size="lg"][data-band] > header p { @apply text-ui-seconda
 /* The footer is the body's surface under a hairline, like the bell panel's status line. Its 12px top padding is the design system's; the 32px row sits on it with 12px below, so the buttons are centred. */
 div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start border-t border-ui-stroke bg-ui-panel; }
 .launch-dialog > footer > span { @apply flex h-8 items-center; }
+/* A refusal line beside the buttons leaves the summary little room: it takes a second line instead of being cut. */
+.launch-dialog > footer > span:first-child { @apply whitespace-normal; }
 .launch-dialog > footer > span:first-child,
 .launch-dialog > footer > span:first-child span { @apply font-ui text-[12px] leading-4 text-ui-muted; }
 
