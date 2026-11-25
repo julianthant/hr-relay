@@ -9,6 +9,7 @@ import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { fileStatus, sameDirectory } from "../file-identity.js";
 import { existingDatabaseLocation } from "./authority-connection.js";
+import { AuthoritySnapshotChangedError } from "./authority-errors.js";
 import type { AuthorityDatabase } from "./authority-database.js";
 import { workerExecArgv } from "./backup-inspection-worker.js";
 import { admitReadLane, openReadLane, prepareReadLaneStart, ReadLaneNameSchema, readLaneSourceIdentity, type ReadLaneName, type ReadLaneStart } from "./read-lane-admission.js";
@@ -122,7 +123,8 @@ const ReplySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("ready") }),
   z.strictObject({ kind: z.literal("read"), id: z.number().int().positive(), body: z.string(), position: ReadPositionSchema, cached: z.boolean(),
     beginSeq: z.number().int().nonnegative() }),
-  z.strictObject({ kind: z.literal("read-failed"), id: z.number().int().positive(), message: z.string().min(1) }),
+  z.strictObject({ kind: z.literal("read-failed"), id: z.number().int().positive(), message: z.string().min(1),
+    code: z.literal("STORAGE_SNAPSHOT_CHANGED").optional() }),
   z.strictObject({ kind: z.literal("checkpoint"), id: z.number().int().positive(), ...CheckpointRowSchema.shape, ...CheckpointSpanSchema.shape }),
   z.strictObject({ kind: z.literal("checkpoint-failed"), id: z.number().int().positive(), message: z.string().min(1) }),
 ]);
@@ -374,7 +376,8 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
         admit(start);
         outcome = reply.kind === "read"
           ? { reply: Object.freeze({ body: reply.body, position: reply.position, cached: reply.cached, beginSeq: reply.beginSeq }) }
-          : { error: new ReadLaneReadError(reply.message) };
+          // A typed refusal crosses the lane boundary as its code, so routes and pollers still see the retryable error.
+          : { error: reply.code === undefined ? new ReadLaneReadError(reply.message) : new AuthoritySnapshotChangedError() };
       } catch (error) { outcome = { error: error instanceof Error ? error : new Error("read-lane-admission-failed", { cause: error }) }; }
       // A body validated before a waiter's dispatch may predate what that waiter must see: the waiter is refused, never served it.
       const stale = { error: new ReadLaneReadError("read-lane-reply-ineligible") };
@@ -660,7 +663,10 @@ function runReadLane(port: MessagePort, data: unknown) {
       try {
         const definition = resolveLaneRead(message.module, message.name);
         reply = { kind: "read", id: message.id, ...serve(definition, message) };
-      } catch (error) { reply = { kind: "read-failed", id: message.id, message: error instanceof Error && error.message !== "" ? error.message : "read-lane-read-failed" }; }
+      } catch (error) {
+        reply = { kind: "read-failed", id: message.id, message: error instanceof Error && error.message !== "" ? error.message : "read-lane-read-failed",
+          ...(error instanceof AuthoritySnapshotChangedError ? { code: error.code } : {}) };
+      }
     }
     // A failed rollback leaves a transaction that would pin the WAL: exit, which releases the mark, and let the host restart the lane.
     if (leftInTransaction()) process.exit(LANE_TRANSACTION_EXIT_CODE);

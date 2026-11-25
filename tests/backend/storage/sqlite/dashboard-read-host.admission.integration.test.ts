@@ -14,12 +14,14 @@ import { workerBootstrapEnvironment } from "../../../../src/models/config/secret
 import { workerExecArgv } from "../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthoritySnapshotChangedError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
+import { failureStatus } from "../../../../src/backend/transports/http/routes/failure-status.js";
 import { createDashboardReadHost, ReadLaneStartError } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { historyArchivePath } from "../../../../src/backend/storage/sqlite/isolated-history-store.js";
 import { admitReadLane, openReadLane, prepareReadLaneStart, READ_LANE_OPEN_MODE } from "../../../../src/backend/storage/sqlite/read-lane-admission.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { importProfileLibrary } from "../../../../scripts/profiles/profile-copy.js";
-import { LANE_READS_ENTRY, laneHistory, laneRunPage, laneWrite } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { LANE_READS_ENTRY, laneHistory, laneRunPage, laneSnapshotChanged, laneWrite } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createBoundProfileFixture, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -147,6 +149,21 @@ it("answers writes through both lane connections with a refusal", async () => {
     assert.match(result.native, /cannot run inside an authority read snapshot/u);
     assert.match(result.history, /cannot run inside an authority read snapshot/u);
     assert.equal(fixture.database.authority.workerPools.get("person-lookup"), undefined);
+  } finally { await lanes.close(); }
+});
+
+it("carries a changed-snapshot refusal across the lane reply as the typed, retryable error, and the lane keeps serving", async () => {
+  const { fixture } = await laneFixture();
+  const lanes = createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock, lanes: ["navigation"], entry: LANE_READS_ENTRY });
+  try {
+    const refused = await lanes.read(laneSnapshotChanged, {}).then(() => undefined, (error: unknown) => error);
+    assert.ok(refused instanceof AuthoritySnapshotChangedError);
+    assert.equal(refused.code, "STORAGE_SNAPSHOT_CHANGED");
+    const mapped = failureStatus(refused);
+    assert.equal(mapped.status, 503);
+    assert.equal(lanes.status().restarts, 0);
+    assert.equal(z.strictObject({ native: z.string(), history: z.string() }).parse(JSON.parse((await lanes.read(laneWrite, {})).body)).native,
+      "authority mutation cannot run inside an authority read snapshot");
   } finally { await lanes.close(); }
 });
 

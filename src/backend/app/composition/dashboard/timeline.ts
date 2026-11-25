@@ -7,6 +7,7 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import { createNoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
 import { createDashboardBackgroundReader } from "../../../storage/sqlite/dashboard-background-read-worker.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
+import { AuthoritySnapshotChangedError } from "../../../storage/sqlite/authority-errors.js";
 import { createDashboardReadHost, type DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
 import { type StartupCleanup } from "./runtime-contracts.js";
 import { createDiagnosticRetentionSweep, type DiagnosticRetentionSweepDependencies } from "../../../logs/diagnostics/diagnostic-retention.js";
@@ -114,8 +115,9 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       } else leaseExpiry = expiry;
     }).catch((error: unknown) => {
       if (stopped) return;
-      // A normal commit can supersede paged worker facts while the admitted timeline remains live.
-      if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") {
+      // A normal commit can supersede paged worker facts, or land between the lane's paired history and native snapshots,
+      // while the admitted timeline remains live: the next check reads again.
+      if (error instanceof AuthoritySnapshotChangedError || (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale")) {
         observation?.("superseded");
         key = { state: "retry" };
       } else {

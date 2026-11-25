@@ -1,6 +1,7 @@
 import { parentPort } from "node:worker_threads";
 import { z } from "zod";
 import "../../../../src/backend/storage/sqlite/dashboard-background-read-worker.js";
+import { AuthoritySnapshotChangedError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
 import { defineLaneRead, runReadLaneWorker } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { openReadOnlyDatabase } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
@@ -78,6 +79,10 @@ export const laneWrite = defineLaneRead(import.meta.url, "lane-write", { lane: "
     };
     return { native: attempt(plan(context.native)), history: attempt(plan(context.history)) };
   } });
+
+/** Fails as a read whose paired history and native snapshots kept showing different commits. */
+export const laneSnapshotChanged = defineLaneRead(import.meta.url, "lane-snapshot-changed", { lane: "navigation", priority: "background",
+  args: z.strictObject({}), run: () => { throw new AuthoritySnapshotChangedError(); } });
 
 /** Pages the run list through the lane's TEMP paging tables. */
 export const laneRunPage = defineLaneRead(import.meta.url, "lane-run-page", { lane: "navigation", priority: "interactive",
