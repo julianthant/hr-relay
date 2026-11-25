@@ -124,7 +124,8 @@ const RequestSchema = z.discriminatedUnion("kind", [
 ]);
 type LaneRequest = z.infer<typeof RequestSchema>;
 type LaneReadMessage = Extract<LaneRequest, { kind: "read" }>;
-const LaneDataSchema = z.strictObject({ start: z.unknown(), gate: z.instanceof(Int32Array) });
+/** clock: "system" when the host runs on the system clock, so the lane reads the time itself as a snapshot starts; "host" keeps the host's clock sample from the post. */
+const LaneDataSchema = z.strictObject({ start: z.unknown(), gate: z.instanceof(Int32Array), clock: z.enum(["system", "host"]) });
 const CheckpointRowSchema = z.strictObject({ busy: z.number().int(), log: z.number().int(), checkpointed: z.number().int() });
 /** When the lane started and finished the checkpoint, on the wall clock both threads share. */
 const CheckpointSpanSchema = z.strictObject({ startedAtMs: z.number(), finishedAtMs: z.number() });
@@ -435,7 +436,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     const releaseSource = database.retainDashboardReadSource(owner, start.identity);
     let worker: Worker;
     try {
-      worker = new Worker(entry, { name: `relay-dashboard-read-${lane.name}`, workerData: { start, gate },
+      worker = new Worker(entry, { name: `relay-dashboard-read-${lane.name}`, workerData: { start, gate, clock: clock === systemClock ? "system" : "host" },
         execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
     } catch (error) { releaseSource(); throw error; }
     lane.worker = worker;
@@ -581,7 +582,7 @@ interface QueuedRead {
 }
 
 function runReadLane(port: MessagePort, data: unknown) {
-  const { start: record, gate } = LaneDataSchema.parse(data);
+  const { start: record, gate, clock } = LaneDataSchema.parse(data);
   const lane = admitReadLane(record);
   const { start } = lane;
   if (gate.length !== GATE_LENGTH || !(gate.buffer instanceof SharedArrayBuffer)) throw new Error("read-lane-gate-invalid");
@@ -620,6 +621,8 @@ function runReadLane(port: MessagePort, data: unknown) {
     const cached = definition.tables.length === 0 ? undefined : cache.get(message.key);
     return history.withAuthorityReadSnapshot(() => {
       lane.assertSource();
+      // A read that waited in the lane checks expiry at its own snapshot, not at the host's post.
+      const nowMs = clock === "system" ? systemClock.nowMs() : message.nowMs;
       const meta = history.getMeta(), change = history.capturedChangeKey();
       const timelineThrough = definition.timeline ? history.authority.timelineEvents.highWaterMark() : null;
       const base = { source, schemaVersion: meta.schemaVersion, schemaCookie: change.schemaCookie, authorityGeneration: meta.authorityGeneration };
@@ -627,7 +630,7 @@ function runReadLane(port: MessagePort, data: unknown) {
         const held = cached.position;
         // Every authority commit moves the generation, so the proved change-log interval, not the generation, decides reuse.
         const reusable = held.source === base.source && held.schemaVersion === base.schemaVersion && held.schemaCookie === base.schemaCookie
-          && (held.validUntil === null || message.nowMs < held.validUntil)
+          && (held.validUntil === null || nowMs < held.validUntil)
           && held.processRevision === message.processRevision && held.timelineThrough === timelineThrough
           && history.readChangeInterval(held.changeLogSeq, definition.tables).clear;
         if (reusable) {
@@ -637,13 +640,13 @@ function runReadLane(port: MessagePort, data: unknown) {
         }
       }
       let own: Parameters<LaneReadContext["snapshotAt"]>[0] | undefined;
-      const context: LaneReadContext = { start, native, history, nowMs: message.nowMs, processFacts: message.processFacts,
+      const context: LaneReadContext = { start, native, history, nowMs, processFacts: message.processFacts,
         snapshotAt: position => { own = { schemaVersion: position.schemaVersion, schemaCookie: position.schemaCookie,
           authorityGeneration: position.authorityGeneration, changeLogSeq: position.changeLogSeq }; },
         retain: resource => { resources.push(resource); } };
       const body = JSON.stringify(definition.run(context, args));
       const position: ReadPosition = { ...base, changeLogSeq: change.changeLogSeq, ...own, timelineThrough,
-        processRevision: message.processRevision, validUntil: definition.cacheMs === undefined ? null : message.nowMs + definition.cacheMs };
+        processRevision: message.processRevision, validUntil: definition.cacheMs === undefined ? null : nowMs + definition.cacheMs };
       if (definition.tables.length > 0) cache.set(message.key, { body, position, beginSeq: message.beginSeq });
       return { body, position, cached: false, beginSeq: message.beginSeq };
     });

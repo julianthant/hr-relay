@@ -128,7 +128,7 @@ it("keeps reads queued and answers a cancel while a checkpoint holds the gate, t
   const SEARCH_READING = 2;
   Atomics.store(gate, 0, 1);
   const worker = new Worker(LANE_READS_ENTRY, { workerData: { start: prepareReadLaneStart(fixture.profile.admission, fixture.database, "search"),
-    gate }, execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
+    gate, clock: "host" }, execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
   cleanups.push(async () => { await worker.terminate(); });
   const replies: { kind: string; id?: number; ids?: number[]; body?: string }[] = [];
   worker.on("message", (reply: { kind: string }) => { replies.push(reply); });
