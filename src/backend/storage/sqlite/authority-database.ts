@@ -126,7 +126,7 @@ import { DiagnosticAttachmentStorageRecordSchema, type ArtifactOutboxStorageReco
 import { applyWriteTransition, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, ResolvedParkedWriteAbsenceInputSchema, ResolvedParkedWriteCommitInputSchema, WriteFenceInputSchema, WriteFenceRecordsSchema, WriteIntentParkRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRecheckParkRequestSchema, WriteRecheckRequestSchema, WriteRefenceInputSchema, type AtomicWriteCommitReport } from "./write-commit-contracts.js";
 import { type ChangeLogReader, changeLogHighWater, CHANGE_LOG_RETAINED_ENTRIES, readAuthorityChanges, validateAuthorityChanges, readSingletonImage, changeLogBaseline, validateAuthorityStore, admitChanges, CHANGE_LOG_PRUNE_INTERVAL_MS } from "./authority-change-admission.js";
 import { readIntPragma, AuthorityDatabaseOptionsSchema, existingDatabaseLocation, errorMessage, inspectionTableNames, readMetaRow, parseDiagnosticPageCount, readTextPragma, optimizeAuthorityPlanner, AUTHORITY_WAL_SIZE_LIMIT_BYTES, AuthorityMetaSchema, sqliteChanges, AuthoritySchemaInspectionSchema, CountRowSchema, configureWritableConnection, tableNames, type MetaRowSchema } from "./authority-connection.js";
-import { inspectStoredData, CredentialContextRequiredError, AuthoritySchemaVersionError, AuthorityFormatUnsupportedError, type StartupFailureClassification, isSqliteDamage, AuthorityWriterBusyError } from "./authority-errors.js";
+import { inspectStoredData, CredentialContextRequiredError, AuthoritySchemaVersionError, AuthorityFormatUnsupportedError, type StartupFailureClassification, isSqliteDamage, AuthorityWriterBusyError, AuthoritySnapshotChangedError } from "./authority-errors.js";
 import { assertNativeSchema, checkSqliteIntegrity, upgradeInspections, type VerifiedUpgradeImage, type NativeInspection, inspectNativeAuthority, QuickCheckRowSchema, assertPublishedAssistantNumbering, normalizedNativeSchema, expectedNativeSchema, nonProjectionFingerprint, runSearchDefinitions, startupImageDigest, authorityContentFingerprint, inspectStoppedTransaction, commitVerifiedUpgrade, inspectNormalAuthority, inspectOpenDatabase, checkInspectionPragmas } from "./authority-inspection.js";
 import { type AuthorityRepositories, type AuthorityWriteCommitHooks, type AuthorityTerminalizationHooks, type AuthorityLifecycleHooks, type SlowOperationHook, type EarlierRunEvents, type PendingLogoutServices, type ImmutableInsertResult, DiagnosticPurgeDispositionSchema, type CanonicalRunClaimOutcome, type RunRepository, type StartPlanRepository, type DuoCeremonyLeaseRepository, type DuoCeremonyLeaseAcquireOutcome, type WorkerPoolRepository, type RunSessionRepository } from "./authority-repositories.js";
 import { inspectionRunReader, readTimelineRun, assertTimelineOwner, INSPECTED_TIMELINE_KINDS, readRunPages, JsonRowSchema, assertTerminalEvidenceOwner, timelineEvidenceRepositories, assertConfirmationPublication, authenticateStoredWriteResolution, assertRefreshedReceiptSettlement, authenticateStoredResolutionAudit, readConfirmationPublication, authenticatedPublicationDeletion, CURRENT_READERS, readDelegationRefreshCommands } from "./authority-run-evidence.js";
@@ -185,6 +185,7 @@ type StartupCheckpoint = {
   pending?: StartupPosition;
 };
 
+const HISTORY_SNAPSHOT_ATTEMPTS = 5;
 // A different validator module or runtime lifetime always starts with a full inspection.
 const startupCheckpoints = new WeakMap<RuntimeAdmission["lifetime"], Map<string, StartupCheckpoint>>();
 
@@ -3142,7 +3143,7 @@ export class AuthorityDatabase implements Disposable {
     if (owner !== undefined) {
       owner.withAuthorityReadSnapshot(() => {
         owner.#validateExternalQuerySources(mode, searchValidation);
-        if (owner.getMeta().authorityGeneration !== this.getMeta().authorityGeneration) throw new Error("isolated-history-snapshot-changed");
+        if (owner.getMeta().authorityGeneration !== this.getMeta().authorityGeneration) throw new AuthoritySnapshotChangedError();
       });
       return;
     }
@@ -3400,6 +3401,20 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #withReadSnapshot<Result>(read: () => Result): Result {
+    const owner = this.#historyOwner;
+    if (owner === undefined || this.#transactionDepth > 0 || owner.#transactionDepth > 0) return this.#withOwnReadSnapshot(read);
+    // Pin the native store first, then read history only at that same commit; a worker commit in between starts over.
+    for (let attempt = 0; attempt < HISTORY_SNAPSHOT_ATTEMPTS; attempt += 1) {
+      const paired = owner.#withOwnReadSnapshot(() => {
+        const { authorityGeneration } = owner.getMeta();
+        return this.#withOwnReadSnapshot(() => this.getMeta().authorityGeneration === authorityGeneration ? { value: read() } : undefined);
+      });
+      if (paired !== undefined) return paired.value;
+    }
+    throw new AuthoritySnapshotChangedError();
+  }
+
+  #withOwnReadSnapshot<Result>(read: () => Result): Result {
     return withOperationProof(() => {
       if (this.#transactionDepth > 0) {
         if (this.#transactionMode === "read") this.#assertAdmissionLive();
