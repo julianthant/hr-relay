@@ -8,11 +8,12 @@ import { seedSyntheticRuntimeConfig,singleAppliedRunId } from "../../support/fix
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { join,relative } from "node:path";
+import { join } from "node:path";
 import ts from "typescript";
 import { afterEach,describe,it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { createCommandKernel,PHASE1_ACTIVE_COMMAND_ARMS,type CommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel, type CommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
+import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../src/backend/runs/commands/command-arms.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
 import { AuthorityDatabase,type AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../src/models/config/settings.js";
@@ -24,7 +25,104 @@ import { NO_INTAKE_PROJECTIONS,UNWIRED_INTAKE_PARSER } from "../../support/fixtu
 import { COMMAND_FIXTURES,HASH_B,NOW,UUID_2,UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN,sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { boundProfileCredentials,createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
-import { REPO_ROOT,walkFiles } from "../support/helpers/guard-files.js";
+import tsconfig from "../../../tsconfig.json" with { type: "json" };
+import { REPO_ROOT,repoRelative,walkFiles } from "../support/helpers/guard-files.js";
+
+const KERNEL_PATH = "src/backend/runs/commands/command-kernel.ts";
+const WORKER_COMMANDS_PATH = "src/backend/runs/commands/worker-pool-commands.ts";
+const SETTINGS_COMMAND_PATH = "src/backend/runs/commands/settings-command.ts";
+const REPLAY_PATH = "src/backend/runs/commands/command-replay.ts";
+const RUN_LIFECYCLE_COMMANDS_PATH = "src/backend/runs/commands/run-lifecycle-commands.ts";
+
+const COMMAND_EXECUTOR_EXPORTS = new Map<string, readonly string[]>([
+  [REPLAY_PATH, ["replay"]],
+  [RUN_LIFECYCLE_COMMANDS_PATH, ["executeRecover", "executeRetry", "executeCancel", "executeDelete", "executeBump", "executePresentation"]],
+  [SETTINGS_COMMAND_PATH, ["executeSettings"]],
+  [WORKER_COMMANDS_PATH, ["executeWorkerPoolCommand"]],
+  ["src/backend/runs/commands/start-command.ts", ["executeStartRun"]],
+  ["src/backend/runs/commands/intake-commands.ts", ["executeIntake"]],
+  ["src/backend/runs/commands/gate-command.ts", ["executeResolveGate"]],
+  ["src/backend/runs/commands/notification-commands.ts", ["executeNotification"]],
+  ["src/backend/runs/commands/write-resolution-command.ts", ["executeWriteResolution"]],
+]);
+
+const { options: moduleOptions, errors: moduleOptionErrors } = ts.convertCompilerOptionsFromJson(tsconfig.compilerOptions, REPO_ROOT);
+assert.deepEqual(moduleOptionErrors, []);
+const moduleCache = ts.createModuleResolutionCache(REPO_ROOT, path => path, moduleOptions);
+
+function scanCommandExecutorImports(path: string, raw: string): string[] {
+  const file = join(REPO_ROOT, path);
+  const source = ts.createSourceFile(file, raw, ts.ScriptTarget.Latest);
+  const imports: string[] = [];
+  const executorBindings = new Set<string>();
+  function resolve(specifier: ts.Node | undefined): string | undefined {
+    while (specifier && ts.isParenthesizedExpression(specifier)) specifier = specifier.expression;
+    if (!specifier || !ts.isStringLiteralLike(specifier)) return undefined;
+    const resolved = ts.resolveModuleName(specifier.text, file, moduleOptions, ts.sys, moduleCache).resolvedModule;
+    return resolved && repoRelative(resolved.resolvedFileName);
+  }
+  function visit(node: ts.Node): void {
+    if (ts.isImportDeclaration(node) && node.importClause && !node.importClause.isTypeOnly) {
+      const target = resolve(node.moduleSpecifier);
+      const names = COMMAND_EXECUTOR_EXPORTS.get(target ?? "");
+      if (names && target) {
+        const bindings = node.importClause.namedBindings;
+        if (node.importClause.name) imports.push(`${path} -> ${target}: default import`);
+        if (bindings && ts.isNamespaceImport(bindings)) imports.push(`${path} -> ${target}: namespace import`);
+        if (bindings && ts.isNamedImports(bindings)) {
+          for (const binding of bindings.elements) {
+            const name = (binding.propertyName ?? binding.name).text;
+            if (!binding.isTypeOnly && names.includes(name)) {
+              imports.push(`${path} -> ${target}: ${name}`);
+              executorBindings.add(binding.name.text);
+            }
+          }
+        }
+      }
+    } else if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.moduleSpecifier) {
+      const target = resolve(node.moduleSpecifier);
+      const names = COMMAND_EXECUTOR_EXPORTS.get(target ?? "");
+      const clause = node.exportClause;
+      if (names && target && (!clause || !ts.isNamedExports(clause) || clause.elements.some(binding =>
+        !binding.isTypeOnly && names.includes((binding.propertyName ?? binding.name).text)))) {
+        imports.push(`${path} -> ${target}: re-export`);
+      }
+    } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword
+      || (ts.isIdentifier(node.expression) && node.expression.text === "require"))) {
+      const target = resolve(node.arguments[0]);
+      if (target && COMMAND_EXECUTOR_EXPORTS.has(target)) imports.push(`${path} -> ${target}: dynamic import`);
+    } else if (ts.isImportEqualsDeclaration(node) && !node.isTypeOnly && ts.isExternalModuleReference(node.moduleReference)) {
+      const target = resolve(node.moduleReference.expression);
+      if (target && COMMAND_EXECUTOR_EXPORTS.has(target)) imports.push(`${path} -> ${target}: namespace import`);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  for (const node of source.statements) {
+    if (ts.isExportDeclaration(node) && !node.isTypeOnly && !node.moduleSpecifier && node.exportClause
+      && ts.isNamedExports(node.exportClause)) {
+      for (const binding of node.exportClause.elements) {
+        const local = (binding.propertyName ?? binding.name).text;
+        if (!binding.isTypeOnly && executorBindings.has(local)) imports.push(`${path}: re-export of ${local}`);
+      }
+    }
+  }
+  return imports;
+}
+
+function assertCommandExecutorImports(imports: readonly string[]): void {
+  const expected = [...COMMAND_EXECUTOR_EXPORTS].flatMap(([target, names]) => names.map(name => `${KERNEL_PATH} -> ${target}: ${name}`));
+  expected.push(`${WORKER_COMMANDS_PATH} -> ${RUN_LIFECYCLE_COMMANDS_PATH}: executeCancel`,
+    `${WORKER_COMMANDS_PATH} -> ${REPLAY_PATH}: replay`, `${SETTINGS_COMMAND_PATH} -> ${REPLAY_PATH}: replay`);
+  assert.deepEqual([...imports].sort(), expected.sort());
+}
+
+function readCommandScopeSources() {
+  return {
+    kernel: readFileSync(join(REPO_ROOT, KERNEL_PATH), "utf8"),
+    worker: readFileSync(join(REPO_ROOT, WORKER_COMMANDS_PATH), "utf8"),
+  };
+}
 
 /** Read-only command receipt queries: each may reach exactly one commandAudits.findByCommand(id) inside an authority read snapshot. */
 const RECEIPT_QUERIES: readonly string[] = ["src/backend/runs/queries/intake-command-result.ts", "src/backend/runs/queries/worker-command-result.ts"];
@@ -315,7 +413,7 @@ function isStopHeldCancelAdmission(kernel: ts.SourceFile): boolean {
     && scopedOrBare.every(call => { let node: ts.Node | undefined = call; while (node !== undefined && node !== owner) node = node.parent; return node === owner; });
 }
 
-function withoutDelegationAuditReads(content: string, path: string, kernelContent: string): string {
+function withoutDelegationAuditReads(content: string, path: string, commandSources: ReturnType<typeof readCommandScopeSources>): string {
   const specs = DELEGATION_AUDIT_READS[path];
   if (specs === undefined) return content;
   const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true);
@@ -406,37 +504,45 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     admitted.push(use);
   }
   if (path.endsWith("/command-record-row.ts")) {
-    const kernel = ts.createSourceFile("kernel.ts", kernelContent, ts.ScriptTarget.Latest, true);
-    if (!kernel.statements.some(node => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
+    const kernel = ts.createSourceFile(KERNEL_PATH, commandSources.kernel, ts.ScriptTarget.Latest, true);
+    const worker = ts.createSourceFile(WORKER_COMMANDS_PATH, commandSources.worker, ts.ScriptTarget.Latest, true);
+    const importsScope = (owner: ts.SourceFile) => owner.statements.some(node => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
       && node.moduleSpecifier.text === "../../storage/sqlite/command-record-row.js" && node.importClause?.namedBindings !== undefined
-      && ts.isNamedImports(node.importClause.namedBindings) && node.importClause.namedBindings.elements.some(binding => binding.name.text === "withCanonicalRunCommandScope" && binding.propertyName === undefined))) return content;
-    const calls: ts.CallExpression[] = [];
-    function find(node: ts.Node): void { if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
-      && node.expression.text === "withCanonicalRunCommandScope") calls.push(node); ts.forEachChild(node, find); }
-    find(kernel);
-    const argumentsOf = (call: ts.CallExpression) => call.arguments.map(node => node.getText(kernel).replace(/\s+/gu, "")).join(",");
-    if (calls.length !== 2 || argumentsOf(calls[0]) !== "repositories,cancel,()=>executeCancel(dependencies,repositories,cancel,now,!held)"
-      || argumentsOf(calls[1]) !== "repositories,request,()=>dispatchActive(dependencies,repositories,request,now,auditId),parentCommandId") return content;
+      && ts.isNamedImports(node.importClause.namedBindings) && node.importClause.namedBindings.elements.some(binding => binding.name.text === "withCanonicalRunCommandScope" && binding.propertyName === undefined));
+    if (!importsScope(kernel) || !importsScope(worker)) return content;
+    function scopeCalls(owner: ts.SourceFile): ts.CallExpression[] {
+      const calls: ts.CallExpression[] = [];
+      function find(node: ts.Node): void {
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
+          && node.expression.text === "withCanonicalRunCommandScope") calls.push(node);
+        ts.forEachChild(node, find);
+      }
+      find(owner);
+      return calls;
+    }
+    const argumentsOf = (call: ts.CallExpression) => call.arguments.map(node => node.getText().replace(/\s+/gu, "")).join(",");
+    const workerCalls = scopeCalls(worker), calls = scopeCalls(kernel);
+    if (workerCalls.length !== 1 || argumentsOf(workerCalls[0]) !== "repositories,cancel,()=>executeCancel(dependencies,repositories,cancel,now,!held)"
+      || calls.length !== 1 || argumentsOf(calls[0]) !== "repositories,request,()=>dispatchActive(dependencies,repositories,request,now,auditId),parentCommandId") return content;
     // Reset's own Cancel is journaled inside the Reset's transaction: commands.insert before the scope, commandAudits.insert after.
-    let resetOwner: ts.Node | undefined = calls[0].parent;
+    let resetOwner: ts.Node | undefined = workerCalls[0].parent;
     while (resetOwner !== undefined && !ts.isArrowFunction(resetOwner)) resetOwner = resetOwner.parent;
     if (resetOwner === undefined || !ts.isArrowFunction(resetOwner) || !ts.isVariableDeclaration(resetOwner.parent)
-      || resetOwner.parent.name.getText(kernel) !== "journaledResetCancel") return content;
+      || resetOwner.parent.name.getText(worker) !== "journaledResetCancel") return content;
     const resetBefore: ts.CallExpression[] = [], resetAfter: ts.CallExpression[] = [], resetStray: ts.CallExpression[] = [];
     function resetJournal(node: ts.Node): void {
       if (ts.isCallExpression(node)) {
-        const expression = node.expression.getText(kernel);
-        if (expression === "repositories.commands.insert" && node.getText(kernel) === "repositories.commands.insert(cancel)") resetBefore.push(node);
+        const expression = node.expression.getText(worker);
+        if (expression === "repositories.commands.insert" && node.getText(worker) === "repositories.commands.insert(cancel)") resetBefore.push(node);
         else if (expression === "repositories.commandAudits.insert") resetAfter.push(node);
         else if (expression.startsWith("repositories.command")) resetStray.push(node);
       }
       ts.forEachChild(node, resetJournal);
     }
     resetJournal(resetOwner.body);
-    if (resetBefore.length !== 1 || resetAfter.length !== 1 || resetStray.length !== 0 || resetBefore[0].end >= calls[0].getStart(kernel)
-      || calls[0].end >= resetAfter[0].getStart(kernel)) return content;
-    if (!isStopHeldCancelAdmission(kernel)) return content;
-    calls.shift();
+    if (resetBefore.length !== 1 || resetAfter.length !== 1 || resetStray.length !== 0 || resetBefore[0].end >= workerCalls[0].getStart(worker)
+      || workerCalls[0].end >= resetAfter[0].getStart(worker)) return content;
+    if (!isStopHeldCancelAdmission(worker)) return content;
     const selection = calls[0].parent;
     if (!ts.isConditionalExpression(selection) || selection.whenTrue !== calls[0]
       || selection.condition.getText(kernel).replace(/\s+/gu, "") !== 'request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel"||request.type==="resume")') return content;
@@ -549,8 +655,8 @@ describe("finite native delegation audit read ownership", () => {
   for (const [path, specs] of Object.entries(DELEGATION_AUDIT_READS)) {
     it(`retains exact proof-bound reads and refuses altered authority in ${path}`, () => {
       const source = readFileSync(join(REPO_ROOT, path), "utf8");
-      const kernel = readFileSync(join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts"), "utf8");
-      assert.ok(!withoutDelegationAuditReads(source, path, kernel).includes("commandAudits"));
+      const commandSources = readCommandScopeSources();
+      assert.ok(!withoutDelegationAuditReads(source, path, commandSources).includes("commandAudits"));
       const parsed = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
       const calls: ts.CallExpression[] = [], expressions: ts.Node[] = [];
       function visit(node: ts.Node): void {
@@ -652,17 +758,16 @@ describe("finite native delegation audit read ownership", () => {
       }
       for (const [index, mutant] of mutants.entries()) {
         assert.notEqual(mutant, source);
-        if (mutant.includes("commandAudits")) assert.ok(withoutDelegationAuditReads(mutant, path, kernel).includes("commandAudits"), `proof mutant ${index}`);
+        if (mutant.includes("commandAudits")) assert.ok(withoutDelegationAuditReads(mutant, path, commandSources).includes("commandAudits"), `proof mutant ${index}`);
       }
       if (path.endsWith("command-record-row.ts")) {
+        const { kernel, worker } = commandSources;
         for (const mutant of [
           kernel.replace("withCanonicalRunCommandScope(repositories, request,", "withCanonicalRunCommandScope(repositories, otherRequest,"),
           kernel.replace("() => dispatchActive(dependencies, repositories, request, now, auditId), parentCommandId)", "() => arbitraryDispatch(dependencies, repositories, request, now, auditId), parentCommandId)"),
           kernel.replaceAll("dependencies.authority.withAuthorityTransaction", "dependencies.authority.withAuthorityReadSnapshot"),
           kernel.replace('request.family === "ocr-review" || request.family === "start"', 'request.family === "settings" || request.family === "start"'),
           kernel.replace('request.family === "ocr-review" || request.family === "start"', 'request.family === "start"'),
-          kernel.replace("() => executeCancel(dependencies, repositories, cancel, now, !held))", "() => executeCancel(dependencies, repositories, request, now, !held))"),
-          kernel.replace("repositories.commands.insert(cancel);", ""),
           kernel.replace("repositories.commands.insert(request, parentCommandId);", ""),
           kernel.replace("if (replayed !== undefined) return replayed;", ""),
           kernel.replace("const replayed = admitCommand(request, parentCommandId, preferenceCurrent);", "const replayed = undefined;"),
@@ -671,16 +776,23 @@ describe("finite native delegation audit read ownership", () => {
           kernel.replace("return applyCommand(request, undefined, assertEffectCurrent);", "return applyCommand(otherRequest, undefined, assertEffectCurrent);"),
           kernel.replace("await dependencies.preflight.prepare(scope, new AbortController().signal);", "dependencies.preflight.assertReady(scope);"),
           `${kernel}\nconst escapedApplication = applyCommand;`,
-          ...stopHeldCancelMutants(kernel),
-          kernel.replace("const journaledResetCancel =", "const resetCancel ="),
-          kernel.replace("const application = withCanonicalRunCommandScope(repositories, cancel,", "repositories.commandAudits.findByCommand(cancel.commandId); const application = withCanonicalRunCommandScope(repositories, cancel,"),
         ]) {
           assert.notEqual(mutant, kernel);
-          assert.ok(withoutDelegationAuditReads(source, path, mutant).includes("commandAudits"));
+          assert.ok(withoutDelegationAuditReads(source, path, { kernel: mutant, worker }).includes("commandAudits"));
+        }
+        for (const mutant of [
+          worker.replace("() => executeCancel(dependencies, repositories, cancel, now, !held))", "() => executeCancel(dependencies, repositories, request, now, !held))"),
+          worker.replace("repositories.commands.insert(cancel);", ""),
+          ...stopHeldCancelMutants(worker),
+          worker.replace("const journaledResetCancel =", "const resetCancel ="),
+          worker.replace("const application = withCanonicalRunCommandScope(repositories, cancel,", "repositories.commandAudits.findByCommand(cancel.commandId); const application = withCanonicalRunCommandScope(repositories, cancel,"),
+        ]) {
+          assert.notEqual(mutant, worker);
+          assert.ok(withoutDelegationAuditReads(source, path, { kernel, worker: mutant }).includes("commandAudits"));
         }
         const revoked = source.replace("activeRunCommand = undefined;", "void activeRunCommand;");
         assert.notEqual(revoked, source);
-        assert.ok(withoutDelegationAuditReads(revoked, path, kernel).includes("commandAudits"));
+        assert.ok(withoutDelegationAuditReads(revoked, path, commandSources).includes("commandAudits"));
       }
       if (path.endsWith("delegation-root-authority.ts")) {
         for (const proof of [
@@ -692,24 +804,24 @@ describe("finite native delegation audit read ownership", () => {
         ]) {
           const mutant = source.replaceAll(proof, "undefined");
           assert.notEqual(mutant, source);
-          assert.ok(withoutDelegationAuditReads(mutant, path, kernel).includes("commandAudits"));
+          assert.ok(withoutDelegationAuditReads(mutant, path, commandSources).includes("commandAudits"));
         }
         const aliased = source.replace("repositories.commandAudits.findByCommand(gate.commandId)",
           "Reflect.get(repositories, 'commandAudits').findByCommand(gate.commandId)");
         assert.notEqual(aliased, source);
-        assert.ok(withoutDelegationAuditReads(aliased, path, kernel).includes("commandAudits"));
+        assert.ok(withoutDelegationAuditReads(aliased, path, commandSources).includes("commandAudits"));
       }
       if (path.endsWith("ocr-source-service.ts")) {
         const aliased = source.replace("repositories.commandAudits.findByCommand(commandId)", "Reflect.get(repositories, 'commandAudits').findByCommand(commandId)");
         assert.notEqual(aliased, source);
-        assert.ok(withoutDelegationAuditReads(aliased, path, kernel).includes("commandAudits"));
+        assert.ok(withoutDelegationAuditReads(aliased, path, commandSources).includes("commandAudits"));
         for (const [from, to] of [
           ["function readOcrCommandResult", "export function readOcrCommandResult"],
           ["input.assertCurrent();", "void input;"],
           ["input.database.withAuthorityReadSnapshot", "input.database.withAuthorityTransaction"],
         ]) {
           const mutant = source.replaceAll(from, to); assert.notEqual(mutant, source);
-          assert.ok(withoutDelegationAuditReads(mutant, path, kernel).includes("commandAudits"));
+          assert.ok(withoutDelegationAuditReads(mutant, path, commandSources).includes("commandAudits"));
         }
       }
     });
@@ -1013,10 +1125,16 @@ describe("control-command-single-path", () => {
 
   it("keeps the command journal, audit, and start-plan consumption on exactly one executing path", () => {
     const allowed = new Set([
-      "src/backend/runs/commands/command-kernel.ts",
+      KERNEL_PATH,
       "src/backend/storage/sqlite/authority-database.ts",
     ]);
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
+    const movedAuthorityCalls = new Map<string, Readonly<Record<string, number>>>([
+      [REPLAY_PATH, { "commandAudits.findByCommand(": 2, "startPlans.consume(": 1 }],
+      [SETTINGS_COMMAND_PATH, { ".commands.insert(": 1, "commandAudits.insert(": 1 }],
+      ["src/backend/runs/commands/start-command.ts", { "startPlans.consume(": 1 }],
+      [WORKER_COMMANDS_PATH, { ".commands.insert(": 2, "commandAudits.insert(": 2, "commandAudits.findByCommand(": 1 }],
+    ]);
     const settingsAuditReaders = new Map([
       ["src/backend/runtime/settings/settings-runtime.ts", 1],
       ["src/backend/storage/sqlite/backup-service.ts", 0],
@@ -1025,16 +1143,22 @@ describe("control-command-single-path", () => {
       ["src/models/events/confirmed-operation.ts", 1],
     ]);
     const violations: string[] = [];
+    const executorImports: string[] = [];
     let kernelDefinitions = 0;
+    const commandSources = readCommandScopeSources();
     for (const file of walkFiles(join(REPO_ROOT, "src"), { extensions: [".ts", ".tsx"] })) {
-      const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
+      const path = repoRelative(file);
       const raw = readFileSync(file, "utf8");
-      const kernelContent = readFileSync(join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts"), "utf8");
-      const content = withoutDelegationAuditReads(raw, path, kernelContent);
+      executorImports.push(...scanCommandExecutorImports(path, raw));
+      let content = withoutDelegationAuditReads(raw, path, commandSources);
       if (content.includes("export function createCommandKernel")) kernelDefinitions += 1;
-      if (path !== "src/backend/runs/commands/command-kernel.ts" && path !== "src/backend/storage/sqlite/command-record-row.ts"
+      if (path !== KERNEL_PATH && path !== WORKER_COMMANDS_PATH && path !== "src/backend/storage/sqlite/command-record-row.ts"
         && /\bwithCanonicalRunCommandScope\b/u.test(raw)) violations.push(`${path} references private synchronous run command custody outside the kernel`);
       if (allowed.has(path)) continue;
+      for (const [call, count] of Object.entries(movedAuthorityCalls.get(path) ?? {})) {
+        if (content.split(call).length - 1 !== count) violations.push(`${path} changed its command authority calls to ${call}`);
+        content = content.replaceAll(call, "");
+      }
       for (const token of tokens) {
         const expectedSettingsAuditReads = settingsAuditReaders.get(path);
         if (RECEIPT_QUERIES.includes(path) && token === "commandAudits") {
@@ -1067,12 +1191,43 @@ describe("control-command-single-path", () => {
     }
     assert.deepEqual(violations, []);
     assert.equal(kernelDefinitions, 1, "exactly one module may define the command kernel");
+    assertCommandExecutorImports(executorImports);
 
-    // The kernel itself holds no raw storage escape hatch and no UI Delete.
-    const kernelSource = readFileSync(join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts"), "utf8");
-    assert.ok(!/\bDatabaseSync\b/.test(kernelSource), "the kernel may not hold a raw database handle");
-    assert.ok(!/\bDELETE\s+FROM\b/i.test(kernelSource), "the kernel may not physically delete authority rows");
-    assert.ok(!/"Delete"/.test(kernelSource), "the UI label is Hide, never Delete");
+    const foreignPath = "src/backend/runs/foreign-command.ts";
+    const specifier = '"./commands/../commands/start-command.js"';
+    for (const mutant of [
+      `import { executeStartRun as start } from ${specifier};`,
+      `import * as start from ${specifier};`,
+      `const start = () => import(${specifier});`,
+      `export { executeStartRun as start } from ${specifier};`,
+      `export * from ${specifier};`,
+    ]) {
+      assert.throws(() => assertCommandExecutorImports([
+        ...executorImports, ...scanCommandExecutorImports(foreignPath, mutant),
+      ]), /foreign-command\.ts/u);
+    }
+    assert.throws(() => assertCommandExecutorImports([
+      ...executorImports.filter(entry => !entry.startsWith(`${KERNEL_PATH} -> `)),
+      ...scanCommandExecutorImports(KERNEL_PATH, `${commandSources.kernel}\nexport { executeStartRun as start };`),
+    ]), /re-export of executeStartRun/u);
+    assert.deepEqual(scanCommandExecutorImports(foreignPath, `
+      import { type executeStartRun } from ${specifier};
+      import { isAdmittedUnsettled } from "./commands/command-replay.js";
+      import { executeSettingsCommand } from "./commands/settings-command.js";
+    `), []);
+
+    const commandPaths = [KERNEL_PATH, ...movedAuthorityCalls.keys(),
+      "src/backend/runs/commands/command-application.ts", "src/backend/runs/commands/command-arms.ts",
+      "src/backend/runs/commands/command-refusal.ts", "src/backend/runs/commands/gate-command.ts",
+      "src/backend/runs/commands/intake-commands.ts", "src/backend/runs/commands/notification-commands.ts",
+      "src/backend/runs/commands/run-command-context.ts", RUN_LIFECYCLE_COMMANDS_PATH,
+      "src/backend/runs/commands/write-resolution-command.ts"];
+    for (const path of commandPaths) {
+      const content = readFileSync(join(REPO_ROOT, path), "utf8");
+      assert.ok(!/\bDatabaseSync\b/.test(content), `${path} may not hold a raw database handle`);
+      assert.ok(!/\bDELETE\s+FROM\b/i.test(content), `${path} may not physically delete authority rows`);
+      assert.ok(!/"Delete"/.test(content), "the UI label is Hide, never Delete");
+    }
   });
 
   it("carries a version or immutability binding on every wire arm's target", () => {

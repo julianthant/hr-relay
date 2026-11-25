@@ -22,7 +22,7 @@ import { fileStatus } from "../../../../src/backend/storage/file-identity.js";
 import { privatePathRejects } from "../../../../src/backend/storage/private-path.js";
 import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { finishProfileOnboarding, syntheticOnboardingDuo, withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 import { sharedProfileCookieTabs } from "../../../support/helpers/dashboard/shared-profile-cookie-tabs.js";
 
@@ -34,8 +34,8 @@ async function fixture() {
   const runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts: { primaryDisplay: null }, onboardingDuo: syntheticOnboardingDuo() });
   async function signUp(address: string) {
     email = address;
-    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp({ firstName: "Fixture", lastName: "Operator", email,
-      password: "disposable-fixture-password", createdAt: systemClock.now().toISOString() }));
+    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(withFixtureUcpath({ firstName: "Fixture", lastName: "Operator", email,
+      password: "disposable-fixture-password", createdAt: systemClock.now().toISOString() })));
     if (active.state !== "active") throw new Error("actual signup required"); return active;
   }
   async function logOut(active: Awaited<ReturnType<typeof signUp>>) {

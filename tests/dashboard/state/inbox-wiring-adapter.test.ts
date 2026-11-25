@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
-import { inboxProjection, notificationDay, notificationPolicy, notificationTargetMatches, useInboxWiring, type InboxWiring } from "../../../src/dashboard/state/inbox-wiring-adapter.js";
+import { foldRows, inboxProjection, notificationDay, notificationPolicy, notificationTargetMatches, useInboxWiring, type InboxWiring } from "../../../src/dashboard/state/inbox-wiring-adapter.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { CommandExecutor, type CommandExecutionScope } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
@@ -11,7 +11,7 @@ import { notificationWireOf, NotificationWireSchema, type NotificationWire } fro
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
 import { projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { NotificationTargetSchema } from "../../../src/models/notifications/notification-target.js";
-import { ActorIdSchema, CommandIdSchema, ProjectionCursorSchema } from "../../../src/rules/identity/ids.js";
+import { ActorIdSchema, CommandIdSchema, FailureIdSchema, ProjectionCursorSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { NotificationPublicationWireSchema, type NotificationArrival } from "../../../src/models/dashboard/subscription.js";
 import { WireErrorSchema } from "../../../src/models/dashboard/primitives.js";
 import type { NotificationTarget } from "../../../src/models/notifications/notification-target.js";
@@ -119,9 +119,16 @@ it("defines all eight source policies with exact target kinds and honest gap/mis
   assert.equal(notificationPolicy(unsourced), undefined);
   assert(notificationTargetMatches(row(), { kind: "storage" }));
   assert.equal(notificationTargetMatches(row(), { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: "2026-08-03" }), false);
+  const host = RunIdSchema.parse("00000000-0000-4000-8000-000000000999");
+  const linkedRunId = RunIdSchema.parse(runId);
+  assert(notificationTargetMatches(row("gate-opened"), { kind: "run", runId: host, day: "2026-08-03", linkedRunId }), "a delegated run opens its host run");
+  assert(notificationTargetMatches(row("run-failed"), { kind: "run", runId: host, day: "2026-08-03", linkedRunId }));
+  assert.equal(notificationTargetMatches(row("gate-opened"), { kind: "run", runId: host, day: "2026-08-03" }), false, "a host run that names no linked run is another run");
+  assert.equal(notificationTargetMatches(row("gate-opened"), { kind: "run", runId: linkedRunId, day: "2026-08-03", linkedRunId: host }), false);
+  assert.equal(notificationTargetMatches(row("gate-opened"), { kind: "failure", runId: host, failureId: FailureIdSchema.parse(failureId), day: "2026-08-03" }), false);
 });
 it("shows retained failed-run workflow and reason without unavailable text or an inferred source policy", () => {
-  const summary = "UCPath could not be reached. Check the connection.";
+  const summary = "UCPath could not be reached.";
   const retained = row("run-failed", { title: "Run failed", summary,
     context: { state: "workflow-only", workflow: "Onboarding" }, sourceEvent: { state: "unavailable" } });
   const projection = inboxProjection([retained], now);
@@ -139,18 +146,41 @@ it("shows retained failed-run workflow and reason without unavailable text or an
   assert.equal(unavailable.state.items[1].detail, summary);
   assert.equal(unavailable.notice, "");
 });
-it("folds repeats of one event for one run into one item with the summed count and the latest time", () => {
+it("folds a failure repeated across runs into one item per workflow, person and failure text, with its repeating notice", () => {
   const other = "00000000-0000-4000-8000-000000000555";
-  const older = (n: string, at: string, extra: Record<string, unknown> = {}) => row("run-failed", { notificationId: n, title: "Run failed", occurredAt: at, ...extra });
-  const rows = [older("00000000-0000-4000-8000-0000000000a1", "2026-08-03T15:00:00.000Z"), older("00000000-0000-4000-8000-0000000000a2", "2026-08-03T16:30:00.000Z", { readState: "read", state: "read" }),
-    older("00000000-0000-4000-8000-0000000000a3", "2026-08-03T16:00:00.000Z", { link: { kind: "failure", runId: other, failureId } }),
+  const failed = (n: string, at: string, extra: Record<string, unknown> = {}) => row("run-failed", { notificationId: n, title: "Run failed", summary: "UCPath could not be reached.", occurredAt: at, ...extra });
+  const rows = [failed("00000000-0000-4000-8000-0000000000a1", "2026-08-03T15:00:00.000Z"), failed("00000000-0000-4000-8000-0000000000a2", "2026-08-03T16:30:00.000Z", { readState: "read", state: "read" }),
+    failed("00000000-0000-4000-8000-0000000000a3", "2026-08-03T16:00:00.000Z", { link: { kind: "failure", runId: other, failureId } }),
+    row("repeating-failure", { notificationId: "00000000-0000-4000-8000-0000000000a4", title: "Repeating failure", occurredAt: "2026-08-03T16:45:00.000Z", link: { kind: "failure", runId: other, failureId } }),
+    failed("00000000-0000-4000-8000-0000000000a5", "2026-08-03T15:30:00.000Z", { context: { state: "available", subject: "Another person", workflow: "Person Lookup" } }),
+    failed("00000000-0000-4000-8000-0000000000a6", "2026-08-03T15:15:00.000Z", { summary: "Kuali could not be reached." }),
+    row("gate-opened", { notificationId: "00000000-0000-4000-8000-0000000000a7", title: "Run waiting", occurredAt: "2026-08-03T14:30:00.000Z" }),
+    row("gate-opened", { notificationId: "00000000-0000-4000-8000-0000000000a8", title: "Run waiting", occurredAt: "2026-08-03T14:15:00.000Z", link: { kind: "run", runId: other } }),
     row("storage-degraded", { notificationId: "00000000-0000-4000-8000-0000000000b1", occurredAt: "2026-08-03T14:00:00.000Z" }), row("storage-degraded", { notificationId: "00000000-0000-4000-8000-0000000000b2", occurredAt: "2026-08-03T13:00:00.000Z", count: 5 })];
   const projection = inboxProjection(rows, now);
   assert(projection.state.state === "ready");
-  const items = projection.state.items;
-  assert.deepEqual(items.map(item => [item.id, item.count, item.age, item.read]), [
-    ["00000000-0000-4000-8000-0000000000a2", 2, "30 min ago", false], ["00000000-0000-4000-8000-0000000000a3", undefined, "1 hr ago", false],
-    ["00000000-0000-4000-8000-0000000000b1", 6, "3 hr ago", false]]);
+  assert.deepEqual(projection.state.items.map(item => [item.id, item.title, item.count, item.age, item.read]), [
+    ["00000000-0000-4000-8000-0000000000a2", "Run failed", 3, "30 min ago", false],
+    ["00000000-0000-4000-8000-0000000000a5", "Run failed", undefined, "1 hr ago", false],
+    ["00000000-0000-4000-8000-0000000000a6", "Run failed", undefined, "1 hr ago", false],
+    ["00000000-0000-4000-8000-0000000000a7", "Run waiting", undefined, "2 hr ago", false],
+    ["00000000-0000-4000-8000-0000000000a8", "Run waiting", undefined, "2 hr ago", false],
+    ["00000000-0000-4000-8000-0000000000b1", "Notification", 6, "3 hr ago", false]]);
+  assert.deepEqual(foldRows(rows)[0].map(entry => entry.notificationId.slice(-2)), ["a2", "a4", "a3", "a1"]);
+});
+it("marks an item read through every unread row it stands for, across runs", async () => {
+  const other = "00000000-0000-4000-8000-000000000555", newer = "00000000-0000-4000-8000-0000000000d2", older = "00000000-0000-4000-8000-0000000000d1", repeating = "00000000-0000-4000-8000-0000000000d3";
+  const rows = [row("run-failed", { notificationId: older, title: "Run failed", occurredAt: "2026-08-03T16:00:00.000Z" }),
+    row("run-failed", { notificationId: newer, title: "Run failed", occurredAt: "2026-08-03T16:30:00.000Z", link: { kind: "failure", runId: other, failureId } }),
+    row("repeating-failure", { notificationId: repeating, title: "Repeating failure", occurredAt: "2026-08-03T16:20:00.000Z" })];
+  const h = await harness(); h.setRows(rows);
+  await act(async () => { h.listeners[0](publication(rows[1])); await new Promise(resolve => setTimeout(resolve, 0)); });
+  assert(h.value.state.state === "ready");
+  assert.deepEqual(h.value.state.items.map(item => [item.id, item.count, item.read]), [[newer, 2, false]]);
+  await act(async () => { assert(await h.value.control(newer, "read")); });
+  assert.deepEqual(h.commands.map(command => "notificationId" in command.target ? command.target.notificationId : ""), [newer, repeating, older]);
+  assert(h.value.state.state === "ready");
+  assert.deepEqual(h.value.state.items.map(item => [item.id, item.read]), [[newer, true]]);
 });
 it("keeps a folded item unread while any repeat is unread, and marking it read confirms every unread repeat", async () => {
   const older = "00000000-0000-4000-8000-0000000000c1", newer = "00000000-0000-4000-8000-0000000000c2";
@@ -178,7 +208,7 @@ it("withholds raw subject-mismatch summaries when source evidence is unavailable
     const item = projection.state.items[0];
     assert.equal(item.workflow, "Person Lookup");
     assert.equal(item.detail, state === "available"
-      ? "The subject identity did not match. Review the failure before continuing."
+      ? "The subject identity did not match."
       : "");
     assert.equal(projection.notice, "");
     assert.equal(item.detail.includes(runId), false);
@@ -198,13 +228,16 @@ it("retains uncertain command identity without automatic or repeated control ret
   await act(async () => { assert.equal(await h.value.control(id, "read"), false); });
   assert.equal(h.commands.length, 1); assert.equal(h.binding.executor.retainedAttempts()[0].request.commandId, original.request.commandId);
 });
-it("refuses a stale target without marking it read", async () => {
+it("marks a deleted run on its own item, opens nothing and leaves it unread", async () => {
   const h = await harness(); const completed = row("verified-done"); h.setRows([completed]);
   await act(async () => { h.listeners[0](publication(completed)); await new Promise(resolve => setTimeout(resolve, 0)); });
-  h.refuseTarget(); let refused = "";
+  h.refuseTarget();
   const item = h.value.state.state === "ready" ? h.value.state.items[0] : undefined; assert(item);
-  await act(async () => { h.value.open(item, (target, _opened, reject) => { if (target.kind === "refused") reject("Exact refusal"); }, () => assert.fail("must not open"), message => { refused = message; }); await new Promise(resolve => setTimeout(resolve, 0)); });
-  assert.equal(refused, "Exact refusal"); assert.equal(h.commands.length, 0);
+  assert.equal(item.gone, undefined);
+  await act(async () => { h.value.open(item, () => assert.fail("must not navigate"), () => assert.fail("must not open"), () => assert.fail("a deleted run is item state, not a refusal")); await new Promise(resolve => setTimeout(resolve, 0)); });
+  assert(h.value.state.state === "ready");
+  assert.deepEqual(h.value.state.items.map(entry => [entry.id, entry.gone, entry.read]), [[item.id, true, false]]);
+  assert.equal(h.commands.length, 0);
 });
 it("checks the carried target of a published notice that has no source policy and says so when it is refused", async () => {
   const h = await harness(); const bare = row("run-failed", { title: "Run failed", context: { state: "unavailable" }, sourceEvent: { state: "unavailable" } });

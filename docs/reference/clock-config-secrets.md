@@ -192,7 +192,7 @@ optional value absent. `SETTINGS_SCHEMA_HASH` derives from the editable schema;
 and patch fingerprint mismatch before ordinary application. Under the kernel's SQLite transaction,
 it checks the expected revision, merges the patch, resolves the complete candidate, validates
 changed browser and Duo paths, and checks the 1,048,576-byte ordinary document bound. It inserts the
-new snapshot and activates it. `command-kernel.ts` journals the command and audit and advances saved
+new snapshot and activates it. `settings-command.ts` journals the command and audit and advances saved
 settings before the same transaction commits. Failure rolls back ordinary activation and journal
 changes. An ordinary success returns `restartRequired: false`.
 
@@ -716,10 +716,10 @@ The one external control `journal.json` restore record (schema 3) binds source/s
 
 ### Isolated library import
 
-`importIsolatedWorkbookLibrary(admission, database, request, clock?)` in
-`storage/maintenance/isolated-library-import.ts` copies the Spreadsheets library of one verified
-production person backup into one staging or development person. It is the only supported way to
-give an isolated copy production data; seed copies only through it.
+`npm run profile:<staging|development> -- --source-person <uuid>` uses `importIsolatedProfileData`
+in `storage/maintenance/isolated-library-import.ts` to seed one staging or development person from
+the newest backup for the selected production person. `importIsolatedWorkbookLibrary` in the same
+module imports only the workbook library.
 
 - Sign up first. The person signs up in the isolated copy (Relay login and Duo), which issues that
   installation's own installation and profile IDs and its own credentials. The import never creates
@@ -729,30 +729,37 @@ give an isolated copy production data; seed copies only through it.
   and open its `state.db` through `AuthorityDatabase.open` with that admission. Pass that admission and
   database with
   `{ source: { manifestPath, binding: { installationId, profileId } }, destination: { installationId, profileId } }`.
-- The source is a current-schema backup manifest (version 4), checked against the named source
-  binding with the same identity and inspection checks restore uses (`verifyBackupManifestAtPath`).
+- The source is a version-4 backup manifest, checked against the named source binding with the same
+  identity and inspection checks restore uses.
   The verified read-only copy admission holds the backup file and refuses one with a second link. The
-  manifest's size and SHA-256 are proved on the private snapshot that the inspection and the library
-  read use, with an empty write-ahead log. Nothing beside the backup, including empty `-wal` or `-shm`
-  files, is written or removed.
+  verifier checks the backup's size, SHA-256 and empty write-ahead log and reads from a private
+  snapshot. For a supported older schema, the import makes a separate, writable copy of that
+  snapshot, runs the registered authority migrations and verifies the resulting current schema before
+  reading it. The temporary upgrade copy is closed and removed after use, including after a failed
+  migration or read. If closing or removing the copy fails, the error includes any migration or read
+  failure. The backup and its `-wal` and `-shm` files stay untouched.
 - It refuses (`IsolatedLibraryImportRefusedError`) when the store was not opened by this exclusive
   admission or is not its `state.db` (`destination-store-unbound`), when the admission, open store and
   named destination differ, when the controller holds the production lifetime lock, its workspace lies
   inside the production application data or the destination shares the source's installation
-  (`destination-not-isolated`), when the source differs from its binding or is not current, and when a
-  source workbook type differs from the destination's type of the same ID. These checks run again
-  inside the write transaction.
-- It brings only each local workbook's current content and the workbook types. Each source entry
-  lands on a library ID derived from both bindings and the source entry, so a repeated call refreshes
-  the same entries. History, journals, tags, workflow outputs, SharePoint links, runs, evidence,
-  settings, assistant state, credentials, sessions and queued work stay behind.
+  (`destination-not-isolated`), when the source differs from its binding, and when a source workbook
+  type differs from the destination's type of the same ID. It refuses a schema newer than the build
+  with `source-schema-newer` and an older schema without a registered upgrade with
+  `source-schema-upgrade-unsupported`.
+- The profile import carries runs, timeline events, notifications and related run records in a
+  read-only history archive. It records unfinished source runs as discarded so they cannot resume
+  in the copy. Settings, assistant state, credentials, browser sessions and queued work stay behind.
+- The library import carries each local workbook's current content and workbook types. Each source
+  entry lands on a library ID derived from both bindings and the source entry, so a repeated call
+  refreshes the same entries. Library journals, tags, workflow output workbooks and SharePoint links
+  stay behind.
 - Run it again to update a copy. It creates entries new in the source and refreshes an imported entry
   only while its journal and library revision show nothing but the import's own writes and it has no
   pending operation. Entries the copy created, and imported entries the copy edited, removed, acted on
   or still has pending operations on, are left unchanged and counted as `keptLocal`; their pending
   operations stay queued. Entries removed from the source stay in the copy.
-- All writes are one store transaction: a failure part way writes nothing, and a call with nothing
-  new writes nothing.
+- Workbook writes share one store transaction. The profile import publishes the history archive
+  after source verification and the workbook transaction finish.
 
 ## Settings and readiness readback
 

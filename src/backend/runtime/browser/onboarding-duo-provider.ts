@@ -12,7 +12,7 @@ import type { BrowserContext, Locator, Page, Worker } from "playwright";
 import type { RuntimeProfile } from "../../../models/config/define-runtime-isolation.js";
 import { copySigninFixtureWorkspace } from "../../app/config/runtime-isolation.js";
 import { z } from "zod";
-import { BrowserDocumentIdSchema, PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../models/config/duo-credential-store.js";
+import { BrowserDocumentIdSchema, DuoKeyNameSchema, PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../models/config/duo-credential-store.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { type BrowserRoots, type BrowserRootLaunch, type BrowserRootLaunchInput, type SignupBrowserRootInput } from "../../storage/browser-roots.js";
@@ -56,7 +56,8 @@ const BrokerRequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({ id: z.uuid(), kind: z.literal("persist"), data: PendingSchema }),
   z.strictObject({ id: z.uuid(), kind: z.literal("sign"), data: DuoAssertionRequestSchema }),
   z.strictObject({ id: z.uuid(), kind: z.literal("scope-lost"), data: z.strictObject({ requestId: z.uuid() }) }),
-  ...(["software-created", "portal-accepted", "exact-request"] as const).map(kind =>
+  z.strictObject({ id: z.uuid(), kind: z.literal("portal-accepted"), data: ReceiptSchema.extend({ name: DuoKeyNameSchema.optional() }) }),
+  ...(["software-created", "exact-request"] as const).map(kind =>
     z.strictObject({ id: z.uuid(), kind: z.literal(kind), data: ReceiptSchema })),
 ]);
 type BrokerRequest = z.infer<typeof BrokerRequestSchema>;
@@ -321,7 +322,8 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     const enrollmentRequestId = session.requestId;
     await scoped(session, async () => {
       await capability.recordPortalAcceptance({ credentialId, requestId: enrollmentRequestId,
-        acceptance: request.kind === "portal-accepted" ? "portal-accepted" : "exact-credential-request" });
+        acceptance: request.kind === "portal-accepted" ? "portal-accepted" : "exact-credential-request",
+        ...(request.kind === "portal-accepted" && request.data.name !== undefined ? { name: request.data.name } : {}) });
       session.accepted = true;
     });
     current(session);

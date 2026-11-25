@@ -95,17 +95,21 @@ describe("Settings > Account details rows", () => {
     assert.deepEqual(sent, [{ initials: "JXL" }, { timekeeperName: "Alex Kim" }, { timekeeperInitials: "CP" }]);
   });
 
-  it("keeps Save off while the field is empty and sends nothing for an unchanged value", async () => {
+  it("keeps Save off until the value is non-empty and changed, and sends nothing while it is off", async () => {
     const sent: unknown[] = [];
     await mount(async request => { sent.push(request); return { state: "changed", account: account() }; });
     await click("Edit initials");
-    await typeInto("Initials", "  ");
     assert.equal(dialogButton("Save").disabled, true);
-    await typeInto("Initials", "JL");
+    for (const value of ["  ", "JL", " JL "]) {
+      await typeInto("Initials", value);
+      assert.equal(dialogButton("Save").disabled, true, `Save with "${value}"`);
+    }
     await press("Save");
     await settle();
     assert.deepEqual(sent, []);
-    assert.equal(dialog() === null, true);
+    assert.ok(dialog());
+    await typeInto("Initials", "JQ");
+    assert.equal(dialogButton("Save").disabled, false);
   });
 
   for (const field of FIELDS.filter(item => item.row.includes("nitials"))) it(`keeps the ${field.row} dialog open with the typed value and the reason under the field when a change is refused`, async () => {
@@ -140,6 +144,8 @@ describe("Settings > Account details rows", () => {
   it("reads a lost reply back and shows the saved name with no message", async () => {
     const reads: string[] = [];
     await mount(async () => { throw new Error("offline"); }, async () => { reads.push("read"); return account({ name: "Sam Rivera" }); });
+    await settle();
+    reads.length = 0; // the page's own read when it opens is not the read-back
     await click("Edit name");
     await typeInto("Name", "Sam Rivera");
     await press("Save");

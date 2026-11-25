@@ -260,16 +260,14 @@ async function press(button: HTMLButtonElement): Promise<void> {
   });
 }
 
-async function dirtyBrowserSettings(): Promise<{ input: HTMLButtonElement; value: string }> {
-  const input = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
-  assert_m1.ok(input instanceof HTMLButtonElement, "Settings browser window control did not mount");
-  assert_m1.notEqual(input.dataset.value, "Small");
-  await act_m1(async () => input.click());
-  const option = document.querySelector('[role="option"][data-value="Small"]');
-  assert_m1.ok(option instanceof HTMLElement);
-  await act_m1(async () => option.click());
-  assert_m1.equal(input.dataset.value, "Small");
-  return { input, value: "Small" };
+const JOB_END_DATE = '[data-settings-path="annualDates.FY2027.jobEndDate"] input[type="date"]';
+async function dirtyBrowserSettings(): Promise<{ input: HTMLInputElement; value: string }> {
+  const input = document.querySelector<HTMLInputElement>(JOB_END_DATE);
+  assert_m1.ok(input instanceof HTMLInputElement, "Settings job-end date control did not mount");
+  const value = input.value === "2027-06-29" ? "2027-06-28" : "2027-06-29";
+  await act_m1(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  assert_m1.equal(input.value, value);
+  return { input, value };
 }
 
 // jsdom does not implement Tab navigation; assert the first enabled descendant order directly.
@@ -636,12 +634,12 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.ok(otherTheme);
     await act_m1(async () => otherTheme.click());
     assert_m1.equal(themeRadios.find(radio => radio.checked)?.value, initialTheme === "light" ? "dark" : "light");
-    const notifications = document.querySelector(".rail-notification-toggle");
+    const notifications = document.querySelector(".notice-bell");
     assert_m1.ok(notifications instanceof HTMLButtonElement);
     assert_m1.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
     await press(notifications);
     assert_m1.equal(frameOf("Settings") === frame, true, "opening notifications preserves the runtime draft owner");
-    assert_m1.equal(input.dataset.value, value, "browser appearance and notification controls preserve runtime edits");
+    assert_m1.equal(input.value, value, "appearance and notification controls preserve runtime edits");
     await press(notifications);
     const sectionLink = (label: string): HTMLAnchorElement => {
       const link = [...document.querySelectorAll("nav[aria-label='Settings sections'] a")]
@@ -669,9 +667,9 @@ afterEach_m1(_afterEachFixture0);
     });
     assert_m1.equal(document.querySelector('[role="dialog"]') === null, true, "Escape closes the pending dirty-exit dialog");
     assert_m1.equal(document.activeElement === dashboard, true, "Escape restores focus to the persistent navigation control");
-    const restored = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
-    assert_m1.ok(restored instanceof HTMLButtonElement);
-    assert_m1.equal(restored.dataset.value, value);
+    const restored = document.querySelector<HTMLInputElement>(JOB_END_DATE);
+    assert_m1.ok(restored instanceof HTMLInputElement);
+    assert_m1.equal(restored.value, value);
     await press(buttonNamed("Close settings"));
     await press(buttonNamed("Discard changes"));
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
@@ -779,13 +777,15 @@ function servedSessionMocks(workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITI
   for (const id of Object.keys(WORKFLOW_SOURCES)) assert_m2.equal(composition.sources[id], registered.has(id) ? "served" : "hidden", id);
   return Object.freeze({ ...composition, sessionsHarness: undefined });
 }
-async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof MOCK_WORKFLOW_COMPOSITION_m2; accountless?: boolean } = {}) {
+async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof MOCK_WORKFLOW_COMPOSITION_m2; accountless?: boolean; preferences?: ReturnType<typeof createPersonPreferences> } = {}) {
   const { app } = createFixtureBff_m2();
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
   const requests: { url: string; resume?: string | null }[] = [];
   let open = true;
   const publish = (stream: ReadableStreamDefaultController<Uint8Array>, message: unknown) => stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(message)}\n\n`));
+  let cursor = 0;
   const snapshot = (stream: ReadableStreamDefaultController<Uint8Array>, day: DashboardDayWire_m2) => {
+    cursor = Number(String(day.snapshotCursor).slice('pc:'.length));
     publish(stream, { type: 'hello', wireVersion: 1, descriptorHash: day.descriptorHash, projectionGeneration: day.projectionGeneration, cursor: day.snapshotCursor });
     publish(stream, { type: 'snapshot', topic: 'dashboard-day', rows: [], cursor: day.snapshotCursor, position: 0, payload: day });
   };
@@ -816,14 +816,23 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
     return app.request(url, init);
   } });
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE_m2.day}${options.search ? `&${options.search}` : ""}`);
-  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const preview = options.preferences ?? createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement('div'); document.body.append(host); root = createRoot_m2(host);
   const workflowComposition = options.workflowComposition ?? MOCK_WORKFLOW_COMPOSITION_m2;
   await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { workflowComposition, previewPreferences: preview }) })));
   await settle(); disposers.push(() => { open = false; });
   return { host, requests, streams,
     deliver: async (day: DashboardDayWire_m2, index = streams.length - 1) => { await act_m2(async () => snapshot(streams[index], day)); await settle(); },
+    /** A malformed envelope stops the subscription for good. */
+    stop: async () => { await act_m2(async () => publish(streams.at(-1)!, "malformed")); await settle(); },
     disconnect: async () => { await act_m2(async () => streams.at(-1)!.error(new Error('Synthetic disconnect'))); await settle(); },
+    /** The settings row the hub sends after an ordinary commit, as a rows-only change. */
+    settingsRow: (value: unknown) => {
+      const stream = streams.at(-1); assert_m2(stream, 'no stream to carry the settings row');
+      cursor += 1;
+      publish(stream, { type: 'change', topic: 'dashboard-day', after: `pc:${String(cursor - 1)}`, cursor: `pc:${String(cursor)}`, position: 0,
+        rows: [{ model: 'settings', key: 'editable', value: { state: 'available', value } }] });
+    },
     stale: async (day: DashboardDayWire_m2) => { await act_m2(async () => publish(streams.at(-1)!, { type: 'snapshot', topic: 'dashboard-day', rows: [], cursor: day.snapshotCursor, position: 0, payload: day })); await settle(); },
   };
 }
@@ -895,7 +904,12 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
       commands.push(body);
       const command = CommandRequestSchema.parse(body);
-      return Promise.resolve(settlement === "confirmed" ? Response.json(authority.execute(command)) : Response.json(settlement === "conflict"
+      if (settlement === "confirmed") {
+        const reply = authority.execute(command);
+        h.settingsRow(authority.read());
+        return Promise.resolve(Response.json(reply));
+      }
+      return Promise.resolve(Response.json(settlement === "conflict"
         ? { state: "conflict", commandId: command.commandId, currentVersion: 0, message: "Synthetic conflict" }
         : { state: "rejected", commandId: command.commandId, code: "invalid-value", message: "Synthetic refusal" }));
     } });
@@ -928,6 +942,25 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     }
     assert_m2.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent === "Retry exact attempt"), false);
     await settle(); assert_m2.equal(commands.length, 1, "a settled save is never retried");
+  });
+
+  it_m2("ends a display preference save at once when the stream stops while it waits for its row", async () => {
+    const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
+    const preferences = createPersonPreferences("person");
+    let commands = 0;
+    const h = await mount({ preferences, settingsRead: authority.read, command: body => {
+      commands += 1;
+      return Promise.resolve(Response.json(authority.execute(CommandRequestSchema.parse(body))));
+    } });
+    assert_m2.equal(preferences.snapshot().state, "ready");
+    let saving: ReturnType<typeof preferences.change> | undefined;
+    await act_m2(async () => { saving = preferences.change({ "preferences.animations": { set: !preferences.snapshot().value.animations } }); });
+    await settle();
+    assert_m2.equal(commands, 1); assert_m2.equal(preferences.snapshot().state, "saving");
+    await h.stop();
+    assert_m2.equal(preferences.snapshot().state, "ready", "the stop ends the wait, not its bound");
+    assert_m2.equal(await saving, false);
+    assert_m2.ok(liveToasts().some(node => /Settings weren't saved/u.test(node.textContent ?? "")));
   });
 
   for (const landed of [true, false]) it_m2(`reads a lost credentials save back without resending it (${landed ? "landed" : "not landed"}) and the next save reaches Relay`, async () => {
@@ -1030,7 +1063,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     assert_m2.ok([...document.querySelectorAll('[data-slot="toast"]')].some(toast => toast.textContent?.includes("Delete run: outcome unknown")), "the lost response stays visible as a sticky toast");
     const bell = h.host.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m2.ok(bell);
     await act_m2(async () => bell.click()); await settle();
-    const review = [...h.host.querySelectorAll<HTMLButtonElement>("button.notification-item")].find(entry => entry.textContent?.includes("Delete run: outcome unknown"));
+    const review = [...document.querySelectorAll<HTMLButtonElement>("button.notice-main")].find(entry => entry.textContent?.includes("Delete run: outcome unknown"));
     assert_m2.ok(review, "the Priority notification offers the original request for review");
     await act_m2(async () => review.click());
     assert_m2.ok([...document.querySelectorAll('[role="dialog"]')].some(dialog => dialog.textContent?.includes("Recover previous Delete run")));
@@ -1102,7 +1135,6 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
 {
 
 const APP = readFileSync_m3(new FileURL("../../../src/dashboard/app/dashboard-app.tsx", import.meta.url), "utf8");
-const LAUNCHER_MODEL = readFileSync_m3(new FileURL("../../../src/dashboard/surfaces/assistant/assistant-controller-model.ts", import.meta.url), "utf8");
 const OVERLAY = readFileSync_m3(new FileURL("../../../src/dashboard/ds/primitives/base-toast.tsx", import.meta.url), "utf8");
 
 function sourceSlice(source: string, start: string, end: string, label: string): string {
@@ -1114,7 +1146,7 @@ function sourceSlice(source: string, start: string, end: string, label: string):
 
 describe_m3("shell and queue structural fidelity", () => {
 
-  it_m3("places the floor-bearing root outside both providers", () => {
+  it_m3("places the theme root outside both providers", () => {
     const rootStart = APP.indexOf("<div\n      data-app-root=\"\"");
     const tooltipStart = APP.indexOf("<TooltipProvider delayDuration={200}>", rootStart);
     const toastStart = APP.indexOf("<ToastProvider>", tooltipStart);
@@ -1125,21 +1157,7 @@ describe_m3("shell and queue structural fidelity", () => {
     assert_m3.ok(rootStart >= 0, "the app root must be a real outer DOM node");
     assert_m3.ok(rootStart < tooltipStart && tooltipStart < toastStart, "providers must be descendants of the root");
     assert_m3.ok(toastEnd < tooltipEnd && tooltipEnd < rootEnd, "the root must close after both providers");
-    assert_m3.match(
-      APP.slice(rootStart, tooltipStart),
-      /"--ds-toast-inset-bottom": "calc\(2 \* \(var\(--ds-h-bar\) \+ var\(--ds-space-loose\)\)\)"/u,
-      "the outer root is the one place that sets the floor above the Sessions bar and the Logs footer",
-    );
-    assert_m3.match(
-      OVERLAY,
-      /fixed bottom-\[var\(--ds-toast-inset-bottom,0\.75rem\)\] left-1\/2/u,
-      "the fixed toast viewport is bottom-centred on the Sessions bar floor, clear of the toolbar and page title",
-    );
-    assert_m3.match(
-      LAUNCHER_MODEL,
-      /var\(--ds-toast-inset-bottom\)/u,
-      "the docked assistant launcher consumes the shell-owned floor",
-    );
+    assert_m3.match(OVERLAY, /pointer-events-none fixed top-3 left-1\/2 w-\[320px\]/u, "the fixed toast viewport is top centre, 12px from the top and 320px wide");
   });
 
   it_m3("retains the desktop canvas floor and internal viewport clip", () => {

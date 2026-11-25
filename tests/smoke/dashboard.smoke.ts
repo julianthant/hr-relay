@@ -16,5 +16,6 @@ test("every Settings section opens from its navigation link", async ({ dashboard
     await expect(page).toHaveURL(url => url.searchParams.get("settings") === new URLSearchParams(route).get("settings"));
     const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
     await expect(dashboard.pageHeading(new RegExp(`^${escapedLabel}`, "i"))).toBeVisible();
+    if (label === "Account") await expect(page.getByRole("group", { name: "Security", exact: true }).getByText("Smoke security key", { exact: true })).toBeVisible();
   }
 });

@@ -43,7 +43,7 @@ async function mount(initial: NotificationsState, notifications: Partial<PersonP
     const [state, set] = useState(initial); setState = set;
     const [open, setOpen] = useState(false);
     const deliver = useNotificationAlert(() => { probe.sounds += 1; });
-    const model = useNotificationRailModel({ open, setOpen, setNotice: () => undefined, onOpenNotification: () => undefined, served: served(state, listeners),
+    const model = useNotificationRailModel({ open, setOpen, onRefused: () => undefined, onOpenNotification: () => undefined, served: served(state, listeners),
       onAlert: (arrived, sound) => { probe.alerts.push({ id: arrived.id, sound }); deliver(arrived, sound); } });
     probe.unread = model.unread; probe.open = model.changeOpen;
     probe.listed = model.state.state === "ready" ? model.state.items.map(entry => entry.id) : [];

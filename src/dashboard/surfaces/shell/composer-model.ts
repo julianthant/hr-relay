@@ -8,7 +8,7 @@ export const ASSISTANT_APPROVALS = [
   { label: 'Full access', description: 'Relay acts without asking each time.' },
 ] as const;
 export const FULL_ACCESS = ASSISTANT_APPROVALS[1].label;
-export type ComposerMenu = 'attach' | 'approval' | 'voice';
+export type ComposerMenu = 'attach' | 'approval' | 'model' | 'voice';
 export interface ComposerValue { readonly text: string; readonly files: readonly AssistantFile[]; readonly model: string; readonly effort: string; readonly approval: string }
 export interface ComposerDraft { readonly text: string; readonly files: readonly AssistantFile[] }
 export interface ComposerDraftPort { read(): ComposerDraft; retain(draft: ComposerDraft): void }

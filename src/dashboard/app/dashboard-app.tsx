@@ -8,7 +8,6 @@ import { StartupLoading } from "../surfaces/shell/startup-loading.js";
 import { useStartupGate } from "./startup/startup-gate.js";
 import { signInProblems, useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import { sameSessionAccount } from "../surfaces/settings/account/account-session.js";
-import { relayUsernameIn } from "../surfaces/settings/account/relay-username.js";
 import { DeleteAccountControl } from "../surfaces/settings/general/ui-settings-records-general-paths.js";
 import { OnboardingSetup } from "../surfaces/shell/onboarding-setup.js";
 import { Onboarding } from "../surfaces/shell/onboarding.js";
@@ -18,7 +17,7 @@ import { useHubMotion } from "../ds/theme/motion.js";
 import "../ds/theme/hub-theme.css";
 import { productWorkflowComposition, type WorkflowComposition } from "./workflow-sources.js";
 import { ViewNavigationProvider } from "./navigation/view-navigation.js";
-import {useCallback,useContext,useEffect,useMemo,useRef,useState,type CSSProperties } from "react";
+import {useCallback,useContext,useEffect,useMemo,useRef,useState } from "react";
 
 
 import { Button,FailureNotice,EmptyState,ToastProvider,TooltipProvider,useDemoTheme } from "../ds/ui.js";
@@ -61,6 +60,10 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const profileId = session?.state === "active" ? session.profileId : undefined;
   const profileEpoch = session?.state === "active" ? session.epoch : undefined;
   const profileTarget = useMemo(() => profileId === undefined || profileEpoch === undefined ? undefined : { profileId, epoch: profileEpoch }, [profileId, profileEpoch]);
+  const duoKeys = useMemo(() => profileTarget === undefined ? undefined : {
+    read: () => profileClient.readProfileDuoKeys(profileTarget),
+    change: (change: import("../../models/config/duo-credential-store.js").DuoKeyChange) => profileClient.changeProfileDuoKey({ ...profileTarget, change }),
+  }, [profileClient, profileTarget]);
   const accountScope = useMemo(() => ({ profileClient, profileId, profileEpoch }), [profileClient, profileId, profileEpoch]);
   const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort>; ocr: ReturnType<typeof createServedPreflightOcrPort> }>();
   const account = accountOwner?.scope === accountScope ? accountOwner.port : undefined;
@@ -106,7 +109,6 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
     <PersonPreferencesContext.Provider value={preferences}><div
       data-app-root=""
       data-demo-theme={theme}
-      style={{ "--ds-toast-inset-bottom": "calc(2 * (var(--ds-h-bar) + var(--ds-space-loose)))" } as CSSProperties}
       className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]"
     >
     <ChatGptAccountContext.Provider value={account ?? inheritedAccount}>
@@ -145,7 +147,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
                 : { state: publicProfile.accountDeletion.state, personName: session.account?.name ?? boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
-          accountPage={session?.state === "active" && session.account !== undefined ? { values: session.account, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), readAccount: async () => sameSessionAccount(await profileClient.readProfileSession(), session), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request), readUsername: async () => relayUsernameIn(await profileClient.editableSettings()) } } : undefined}
+          accountPage={session?.state === "active" && session.account !== undefined ? { values: session.account, duoKeys, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), readAccount: async () => sameSessionAccount(await profileClient.readProfileSession(), session), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request), readUsername: async () => sameSessionAccount(await profileClient.readProfileSession(), session)?.username } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}

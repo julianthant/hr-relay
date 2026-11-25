@@ -1980,13 +1980,15 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   ]),
 );
 
-/** A `run-panel` stream row carries the run detail, the logs page and the panel sections the routes serve, so their leaves keep the routes' origins. */
+/** A `run-panel` stream row carries the run detail, the logs page and the panel sections the routes serve, and a `settings` row the
+ * editable settings document, so their leaves keep the routes' origins. */
 const RUN_PANEL_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = (() => {
   const carried = new Set(decidableLeaves(DashboardStreamEnvelopeSchema).map(({ path }) => path));
   const prefixes: readonly (readonly [string, string, string])[] = [
     ["wire/run-detail", "", "rows[].value.detail."],
     ["wire/run-detail-section", "", "rows[].value.sections[]."],
     ["wire/run-detail-section", "payload.", "rows[].value.logs."],
+    ["wire/editable-settings", "", "rows[].value.value."],
   ];
   const derived = new Map<string, SurfaceLeafOrigin>();
   for (const entry of ROUTE_LEAF_ORIGINS) {

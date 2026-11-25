@@ -101,6 +101,26 @@ export function createProfileVerifiers(machineRoot: string) {
     return found;
   }
 
+  function prepareVerifier(profileId: string, derive: (pepper: Buffer) => SyntheticVerifier): PreparedProfileVerifier {
+    const sourcePepper = pepper();
+    const document = documentFile();
+    const created = derive(sourcePepper.bytes);
+    const current = ProfileVerifierDocumentSchema.parse(JSON.parse(document.bytes.toString("utf8")));
+    if (current.profiles.some(entry => entry.profileId === profileId || entry.emailKey === created.emailKey)) throw new Error("profile verifier already exists");
+    const row = ProfileVerifierDocumentSchema.shape.profiles.element.parse({ profileId, ...created, consecutiveFailures: 0 });
+    const assertCurrent = () => {
+      for (const [path, maxBytes, before] of [[documentPath, MAX_VERIFIER_BYTES, document], [pepperPath, PEPPER_BYTES, sourcePepper]] as const) {
+        const after = readVerifierFile(path, maxBytes);
+        if (after === undefined || !sameDirectory(after.identity, before.identity)
+          || createHash("sha256").update(after.bytes).digest("hex") !== createHash("sha256").update(before.bytes).digest("hex")) throw new Error("profile-verifier-publication-source-changed");
+      }
+    };
+    const witness = Object.freeze({ profileId });
+    preparedVerifiers.set(witness, { root: machineRoot, row: Object.freeze(row), pepper: sourcePepper.bytes,
+      pepperFile: { ...fileIdentityObservation(sourcePepper.identity, { preserveSafeNumbers: true }), digest: createHash("sha256").update(sourcePepper.bytes).digest("hex") }, assertCurrent });
+    assertCurrent(); return witness;
+  }
+
   return Object.freeze({
     issueResumeProof(binding: ResumeBinding, verifiedPredecessor?: string): string {
       const nonce = verifiedPredecessor === undefined ? randomBytes(32).toString("hex") : verifiedPredecessor.slice(0, 64);
@@ -116,24 +136,14 @@ export function createProfileVerifiers(machineRoot: string) {
     emailKeyFor(email: string): string {
       return emailKey(pepper().bytes, email);
     },
+    derive(email: string, password: string): SyntheticVerifier {
+      return createSyntheticVerifier(pepper().bytes, email, password);
+    },
     prepare(profileId: string, email: string, password: string): PreparedProfileVerifier {
-      const sourcePepper = pepper();
-      const document = documentFile();
-      const created = createSyntheticVerifier(sourcePepper.bytes, email, password);
-      const current = ProfileVerifierDocumentSchema.parse(JSON.parse(document.bytes.toString("utf8")));
-      if (current.profiles.some(entry => entry.profileId === profileId || entry.emailKey === created.emailKey)) throw new Error("profile verifier already exists");
-      const row = ProfileVerifierDocumentSchema.shape.profiles.element.parse({ profileId, ...created, consecutiveFailures: 0 });
-      const assertCurrent = () => {
-        for (const [path, maxBytes, before] of [[documentPath, MAX_VERIFIER_BYTES, document], [pepperPath, PEPPER_BYTES, sourcePepper]] as const) {
-          const after = readVerifierFile(path, maxBytes);
-          if (after === undefined || !sameDirectory(after.identity, before.identity)
-            || createHash("sha256").update(after.bytes).digest("hex") !== createHash("sha256").update(before.bytes).digest("hex")) throw new Error("profile-verifier-publication-source-changed");
-        }
-      };
-      const witness = Object.freeze({ profileId });
-      preparedVerifiers.set(witness, { root: machineRoot, row: Object.freeze(row), pepper: sourcePepper.bytes,
-        pepperFile: { ...fileIdentityObservation(sourcePepper.identity, { preserveSafeNumbers: true }), digest: createHash("sha256").update(sourcePepper.bytes).digest("hex") }, assertCurrent });
-      assertCurrent(); return witness;
+      return prepareVerifier(profileId, bytes => createSyntheticVerifier(bytes, email, password));
+    },
+    prepareFromRow(profileId: string, verifier: SyntheticVerifier): PreparedProfileVerifier {
+      return prepareVerifier(profileId, () => verifier);
     },
     save(profileId: string, email: string, password: string): void {
       const created = createSyntheticVerifier(pepper().bytes, email, password);

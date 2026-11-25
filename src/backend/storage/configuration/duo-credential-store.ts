@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { DuoCredentialRecordSchema, DuoEnrollmentScopeSchema, DuoStoredCredentialSchema, type DuoEnrollmentScope, type DuoReenrolCommitIntent } from "../../../models/config/duo-credential-store.js";
+import { DuoCredentialRecordSchema, DuoEnrollmentScopeSchema, DuoStoredCredentialSchema, type DuoCredentialRecord, type DuoEnrollmentScope, type DuoKeyChange, type DuoReenrolCommitIntent } from "../../../models/config/duo-credential-store.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -36,7 +36,7 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
     if (!platformRowsDropped) { owner.dropPlatformDuoCredentials(); platformRowsDropped = true; }
     return operation();
   });
-  const read = () => access(() => {
+  const read = (): { revision: number; record: DuoCredentialRecord } => access(() => {
     const frame = owner.readRecord("duo");
     return { revision: frame?.revision ?? 0, record: frame === undefined ? { credentials: [] } : DuoCredentialRecordSchema.parse(frame.value) };
   });
@@ -64,7 +64,7 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
     if (credential.state !== state || credential.scope.rpId !== parsed.rpId
       || scope !== undefined && parsed.origin !== scope.origin) throw new Error(`duo-${state}-credential-required`);
     if (state === "staged" && scope === undefined) throw new Error("duo-staged-credential-required");
-    const reservation = state === "ready" || scope === undefined ? owner.reserveDuoCounter(parsed.credentialId, parsed.requestId)
+    const reservation = state === "ready" || scope === undefined ? owner.reserveDuoCounter(parsed.credentialId, parsed.requestId, clock.now().toISOString())
       : owner.reserveStagedDuoCounter(parsed.credentialId, parsed.requestId, scope);
     owner.assertCurrent();
     const result = createDuoAssertion(material, parsed, reservation.count);
@@ -80,6 +80,12 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
       return FingerprintSchema.parse(createHash("sha256").update(canonicalJsonStringify(credentials)).digest("hex"));
     },
     credentials: publicCredentials,
+    readSettings() { return access(() => owner.readDuoSettings()); },
+    changeKey(change: DuoKeyChange) { return access(() => owner.changeDuoKey(change, clock.now().toISOString())); },
+    recordEnrollmentName(credentialId: string, scope: DuoEnrollmentScope, name: string) {
+      assertScope(scope);
+      access(() => owner.recordDuoEnrollmentName(credentialId, scope, name));
+    },
     read() {
       const { revision, record } = read();
       return { state: revision === 0 ? "never-initialized" as const : "registered" as const, revision,
@@ -101,7 +107,7 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
       return access(() => {
         const { revision, record } = read();
         if (record.credentials.some(row => row.credentialId === credential.credentialId)) throw new Error("duo-credential-id-reused");
-        const next = owner.replaceRecord("duo", revision === 0 ? null : revision, DuoCredentialRecordSchema.parse({ credentials: [...record.credentials, credential] }));
+        const next = owner.replaceRecord("duo", revision === 0 ? null : revision, DuoCredentialRecordSchema.parse({ ...record, credentials: [...record.credentials, credential] }));
         return { credentialId: credential.credentialId, revision: next.revision };
       });
     },
@@ -112,7 +118,7 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
         const pending = record.credentials.find(row => row.credentialId === credentialId);
         if (pending?.state !== "pending" || pending.reenrol === true || canonicalJsonStringify(pending.scope) !== canonicalJsonStringify(scope)) throw new Error("duo-pending-credential-mismatch");
         const credentials = record.credentials.map(row => row === pending ? { ...row, state: "ready", confirmedAt: clock.now().toISOString() } : row);
-        return { revision: owner.replaceRecord("duo", revision, DuoCredentialRecordSchema.parse({ credentials })).revision };
+        return { revision: owner.replaceRecord("duo", revision, DuoCredentialRecordSchema.parse({ ...record, credentials })).revision };
       });
     },
     provision(credentialId: string, scope: DuoEnrollmentScope) { return required(credentialId, scope).material; },

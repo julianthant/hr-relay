@@ -39,7 +39,7 @@ describe("Settings field search", () => {
     assert.equal(searchSettings(index, "  DARK  THEME ")[0]?.target, "appearance.theme");
     assert.deepEqual(searchSettings(index, "capture diagnostic"), []);
     assert.equal(searchSettings(index, "animations")[0]?.target, "appearance.animations");
-    assert.equal(searchSettings(index, "browser window")[0]?.target, "browser.window");
+    assert.equal(searchSettings(index, "browser window").some(result => result.target === "browser.window"), false, "the browser window setting is gone from Settings");
     assert.deepEqual(searchSettings(index, "   "), []);
     assert.deepEqual(searchSettings(index, "this setting does not exist"), []);
   });

@@ -96,7 +96,7 @@ describe("SQLite settings authority", () => {
       import { basename, dirname, join } from 'node:path';
       import { manualClock } from './src/rules/time/clock.ts';
       import { resolveConfigWithProvenance } from './src/backend/app/config/resolve.ts';
-      import { executeSettingsCommand } from './src/backend/runs/commands/command-kernel.ts';
+      import { executeSettingsCommand } from './src/backend/runs/commands/settings-command.ts';
       import { createCredentialStore } from './src/backend/storage/configuration/credential-store.ts';
       import { createSettingsApplicationExecutor } from './src/backend/runs/commands/settings-service.ts';
       const clock = manualClock(new Date('2026-09-06T12:00:00Z'));

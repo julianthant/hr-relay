@@ -12,7 +12,8 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../../src/models/config/settings.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { createCredentialStore } from "../synthetic-storage-admission.js";
-import { executeSettingsCommand, type CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
+import type { CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService, type CreateRunRequest, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -46,9 +47,10 @@ export async function settingsFixture(isolateBrowser = false) {
     capturedAt: clock.now().toISOString(), capturedBy: "local-operator" };
   database.authority.runtimeConfig.initialize(snapshot);
   let resolutions = 0;
+  const credentials = createCredentialStore({ stateRoot: root });
   const settings = createSettingsApplicationExecutor((value) => {
     resolutions += 1; return resolveSettings(value);
-  }, createCredentialStore({ stateRoot: root }));
+  }, credentials);
   const command = (patch: SettingsPatch, expectedRevision: number = readSettings(database.authority).revision) => ({
     commandId: randomUUID(), family: "settings", type: "apply-settings", requestedAt: clock.now().toISOString(),
     requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision },
@@ -77,7 +79,7 @@ export async function settingsFixture(isolateBrowser = false) {
     database.close();
     databaseClosed = true;
   };
-  return { root, path, clock, host, database, snapshot, service, request, command, execute, published, closeDatabase,
+  return { root, path, clock, host, database, snapshot, service, request, command, execute, settings, credentials, published, closeDatabase,
     resolutions: () => resolutions,
     save: (patch: SettingsPatch) => execute(command(patch)),
     create: (overrides: Partial<CreateRunRequest> = {}) => requireLifecycleApplied(service.create(request(overrides))),

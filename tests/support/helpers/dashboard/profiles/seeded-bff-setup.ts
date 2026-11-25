@@ -15,7 +15,7 @@ import { addRunningNote, finishRunningStep, parkRunningRunAtGate, seed, seededDo
 
 import { type ScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
 import { scriptedDescriptorOf } from "../served-fixtures/scripted-workflows.js";
-import { FIXTURE_ACTIVE_PROFILE_STATE } from "./fixture-profile-setup.js";
+import { FIXTURE_ACTIVE_PROFILE_STATE, FIXTURE_DUO_KEYS } from "./fixture-profile-setup.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 import { join } from "node:path";
@@ -126,7 +126,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
   }
 
   async function startSeededServer(
-    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog. */ productApp?: boolean; /** Opt-in, with productApp: Runs of the scripted workflows execute on a script the test holds. */ scriptedRuns?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
+    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog. */ productApp?: boolean; /** Opt-in, with productApp: Runs of the scripted workflows execute on a script the test holds. */ scriptedRuns?: boolean; /** Opt-in: ordinary settings save for real and ride the stream. */ liveSettings?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
   ): Promise<SeededServer> {
     // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
@@ -217,7 +217,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     }
 
     const selectionServices = await input.prepareSelection?.({database,clock,root});
-    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true,
+    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true,liveSettings:input.liveSettings===true,
       scripting: input.scriptedRuns === true ? { profilePath: profile.path, reportWorker: (workerId, activity) => { workers.set(workerId, activity); } } : undefined});
     held.services = services;
     const { app, hub, scripted, notificationInbox } = services;
@@ -252,6 +252,11 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
         if (url.pathname === "/api/v1/profile/state") {
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify(FIXTURE_ACTIVE_PROFILE_STATE));
+          return;
+        }
+        if (req.method === "GET" && url.pathname === "/api/v1/profile/account/duo-keys") {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify(FIXTURE_DUO_KEYS));
           return;
         }
         if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/events/")) {

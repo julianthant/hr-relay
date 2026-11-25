@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pause, Play, RotateCw, Square, Trash2 } from "lucide-react";
+import { Loader2, Monitor, Pause, Play, RotateCw, Square, Trash2 } from "lucide-react";
 import { Button, Tooltip, TooltipProvider } from "../../ds/ui.js";
 import { IconActionButton } from "../shared/actions/icon-action-button.js";
 import { cn } from "../../lib/utils.js";
@@ -27,7 +27,7 @@ function cardNote(worker: SessionWorker): string | undefined {
 function BrowserRow({ browser }: { browser: WorkerBrowser }) {
   const detail = [browser.name, browser.reason].filter(Boolean).join(" · ");
   const row = <>
-    <span className="flex min-w-0 items-center gap-1"><span className="break-words">{browser.label}</span></span>
+    <span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span className="break-words">{browser.label}</span></span>
     <span className={cn("shrink-0", BROWSER_TONE[browser.state])}>{BROWSER_WORD[browser.state]}</span>
   </>;
   const name = [browser.name ?? browser.label, BROWSER_WORD[browser.state], browser.reason].filter(Boolean).join(". ");
@@ -42,18 +42,6 @@ function Browsers({ worker, wide }: { worker: SessionWorker; wide: boolean }) {
   return <TooltipProvider delayDuration={200}><ul aria-label={`${worker.label} systems`} className={cn("m-0 grid min-h-[4.5rem] flex-1 list-none content-start gap-1.5 py-3 pl-0", wide ? "grid-cols-3" : "grid-cols-2")}>{worker.browsers.map(browser => <BrowserRow key={browser.id} browser={browser} />)}</ul></TooltipProvider>;
 }
 
-export function IdleWorkerRow({ worker, countdown, operation, disabled = false, onControl }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; disabled?: boolean; onControl: (id: string, control: SessionControl) => void }) {
-  const locked = disabled || operation?.state === "pending";
-  return <li aria-label={`${worker.label} · ${worker.workflow}`} className="list-none rounded-md bg-[var(--ds-worker-card-bg)] px-3">
-    <div className="flex min-h-8 items-center justify-between gap-3">
-      <span className="min-w-0 truncate text-control" title={worker.workflow}>{worker.workflow}</span>
-      <span className="flex shrink-0 items-center gap-2"><span className={cn("inline-flex items-center gap-1.5 text-caption", sessionStateColor(worker.state))}>{countdown ? <IdleRefreshRing countdown={countdown} /> : null}{SESSION_STATE_LABELS[worker.state]}</span>
-        <IconActionButton tone="muted" label="Remove worker" disabled={locked} icon={<Trash2 aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, "remove")} /></span>
-    </div>
-    <WorkerOperationNote operation={operation} />
-  </li>;
-}
-
 /** The elapsed time ticks here, so the card around it does not re-render every second. */
 function WorkerElapsed({ worker }: { worker: SessionWorker }) {
   const card = worker.authority;
@@ -63,21 +51,32 @@ function WorkerElapsed({ worker }: { worker: SessionWorker }) {
 
 export function WorkerCard({ worker, countdown, operation, disabled = false, onControl }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; disabled?: boolean; onControl: (id: string, control: SessionControl) => void }) {
   const locked = disabled || operation?.state === "pending";
+  const removing = operation?.state === "pending" && operation.request.action === "remove";
   const settled = worker.state === "failed" || worker.state === "stopped";
   const note = cardNote(worker);
   const wide = worker.browsers.length > MAX_SYSTEMS;
   const icon = (label: string, control: SessionControl, Glyph: typeof Pause) => <IconActionButton tone="muted" label={label} disabled={locked} icon={<Glyph aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, control)} />;
-  return <article aria-label={`${worker.label} · ${worker.workflow}`} className={cn("flex max-w-full shrink-0 flex-col rounded-lg bg-[var(--ds-worker-card-bg)] px-4 py-3", wide ? "w-[32rem]" : "w-[22rem]")}>
-    <header className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 truncate text-control font-medium" title={worker.workflow}>{worker.workflow}</h3><span title={note} className={cn("inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-caption", sessionStateColor(worker.state))}>{worker.state === "idle" && countdown ? <IdleRefreshRing countdown={countdown} /> : <span aria-hidden className="size-1.5 rounded-full bg-current" />}{SESSION_STATE_LABELS[worker.state]}{note !== undefined && <span className="sr-only">. {note}</span>}</span></header>
+  return <article aria-label={`${worker.label} · ${worker.workflow}`} className={cn("flex shrink-0 flex-col rounded-lg bg-[var(--ds-worker-card-bg)] px-4 py-3", wide ? "w-[32rem]" : "w-[22rem]")}>
+    <header className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 truncate text-control font-medium" title={worker.workflow}>{worker.workflow}</h3><span title={note} className={cn("inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-caption", sessionStateColor(worker.state))}>{removing ? <Loader2 aria-hidden className="size-3 animate-spin motion-reduce:animate-none" /> : worker.state === "idle" && countdown ? <IdleRefreshRing countdown={countdown} /> : <span aria-hidden className="size-1.5 rounded-full bg-current" />}{removing ? "Removing" : SESSION_STATE_LABELS[worker.state]}{note !== undefined && <span className="sr-only">. {note}</span>}</span></header>
     <p className="mb-0 mt-1 truncate text-caption text-ui-secondary" title={worker.subject}>{worker.subject ?? "No run assigned"}</p>
     <Browsers worker={worker} wide={wide} />
-    <WorkerOperationNote operation={operation} />
+    {!removing && <WorkerOperationNote operation={operation} />}
     <footer className="flex items-center justify-between gap-2 border-t border-ui-stroke pt-2"><WorkerElapsed worker={worker} /><span className="flex h-7 items-center gap-1">
       {settled ? <Button size="sm" variant="secondary" className="h-6 gap-1 px-2" disabled={locked} aria-label="Retry" title="Retry" icon={<RotateCw aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, "retry")}>Retry</Button>
         : <>{worker.state === "running" && icon("Pause", "pause", Pause)}{worker.state === "paused" && icon("Resume", "resume", Play)}
           {worker.state === "unavailable" ? null : worker.state !== "idle" ? icon("Stop", "stop", Square) : icon("Remove worker", "remove", Trash2)}</>}
     </span></footer>
   </article>;
+}
+
+/** An add in flight: a card of the strip's own shape until the worker is served. */
+export function StartingCard({ workflow, count }: { workflow: string; count: number }) {
+  return <ul aria-label="Workers being added" className="m-0 flex shrink-0 list-none p-0"><li aria-busy className="flex w-[22rem] flex-col rounded-lg bg-[var(--ds-worker-card-bg)] px-4 py-3">
+    <header className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 truncate text-control font-medium" title={workflow}>{workflow}{count > 1 && <span className="text-ui-muted"> × {count}</span>}</h3><span className={cn("inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-caption", sessionStateColor("starting"))}><Loader2 aria-hidden className="size-3 animate-spin motion-reduce:animate-none" />{SESSION_STATE_LABELS.starting}</span></header>
+    <p className="mb-0 mt-1 truncate text-caption text-ui-secondary">No run assigned</p>
+    <p className="m-0 min-h-[4.5rem] flex-1 py-3 text-caption text-ui-muted">No browser sessions open</p>
+    <footer className="border-t border-ui-stroke pt-2"><span className="flex h-7" /></footer>
+  </li></ul>;
 }
 
 /** The idle session's countdown to the next page refresh: a ring that drains with the remaining time (never spins), with the time in its Tooltip. */

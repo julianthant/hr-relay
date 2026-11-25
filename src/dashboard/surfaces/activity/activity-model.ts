@@ -127,7 +127,7 @@ function parseActivityCalendarDate(value: string): ActivityCalendarDate | null {
   };
 }
 
-function isActivityCalendarDate(value: string): boolean {
+export function isActivityCalendarDate(value: string): boolean {
   return parseActivityCalendarDate(value) !== null;
 }
 

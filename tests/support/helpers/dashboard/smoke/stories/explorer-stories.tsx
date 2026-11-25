@@ -94,15 +94,13 @@ const SOURCE = {
 } satisfies Record<SourceView, Story>;
 
 const AUDIT_FIXES = "#532";
-/** The Onboarding steps show raw workflow codes (UC_FULL_HIRE, UC_CONC_HIRE); after a
- * choice is made, the page's selects lose their focus ring. */
+/** The Onboarding steps show raw workflow codes (UC_FULL_HIRE, UC_CONC_HIRE). */
 const PAGE = ["no-banned-text"] as const;
 const KNOWN_BREAKS = {
   "load/ready": PAGE, "block/card": PAGE, "block/click": PAGE, "block/starts": PAGE, "block/pick": PAGE, "block/decision": PAGE,
   "card/fill": PAGE, "card/read": PAGE, "decision/continues": PAGE,
-  "decision/stops": ["named-and-focusable"],
-  "option/rehire": [...PAGE, "named-and-focusable"], "option/dry-run-on": [...PAGE, "named-and-focusable"],
-  "source/with-reads": [...PAGE, "named-and-focusable"], "source/single-read": [...PAGE, "named-and-focusable"], "source/jumped": [...PAGE, "named-and-focusable"],
+  "option/rehire": PAGE, "option/dry-run-on": PAGE,
+  "source/with-reads": PAGE, "source/single-read": PAGE, "source/jumped": PAGE,
 } as const;
 
 export const EXPLORER_STORIES = withKnownBreaks(

@@ -1,4 +1,4 @@
-import type { WorkerPoolRuntimeSeam } from "../../../../src/backend/runs/commands/command-kernel.js";
+import type { WorkerPoolRuntimeSeam } from "../../../../src/backend/runs/commands/worker-pool-commands.js";
 
 /** A pool seam for suites that never send a worker command; every call fails through `fail`. */
 export function unusedWorkerPool(fail: (...args: never[]) => unknown = () => { throw new Error("unexpected worker command"); }): WorkerPoolRuntimeSeam {

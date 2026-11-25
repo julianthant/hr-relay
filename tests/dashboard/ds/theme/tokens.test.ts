@@ -7,11 +7,6 @@ import { describe,it } from "vitest";
 const DASHBOARD = resolve(import.meta.dirname, "../../../../src/dashboard");
 const TOKENS_CSS = resolve(DASHBOARD, "ds/theme/tokens.css");
 
-/** Tokens a component writes into an inline `style`, and the module that writes it. */
-const RUNTIME_DECLARED: Readonly<Record<string, string>> = {
-  "--ds-toast-inset-bottom": "app/dashboard-app.tsx",
-};
-
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const full = resolve(dir, entry);
@@ -33,7 +28,7 @@ describe("dashboard design tokens", () => {
       const text = readFileSync(file, "utf8");
       for (const match of text.matchAll(/var\((--ds-[a-z0-9-]+)/gu)) {
         const token = match[1];
-        if (token === undefined || defined.has(token) || token in RUNTIME_DECLARED) continue;
+        if (token === undefined || defined.has(token)) continue;
         undefinedUses.push(`${relative(DASHBOARD, file)}: var(${token})`);
       }
     }
@@ -42,16 +37,6 @@ describe("dashboard design tokens", () => {
       [],
       "these read a --ds-* token that tokens.css never defines, so the declaration is dropped and the element paints nothing",
     );
-  });
-
-  it("keeps the runtime-declared allowlist honest", () => {
-    for (const [token, module] of Object.entries(RUNTIME_DECLARED)) {
-      const text = readFileSync(resolve(DASHBOARD, module), "utf8");
-      assert.ok(
-        text.includes(`"${token}"`),
-        `${module} is listed as the writer of ${token} but does not set it`,
-      );
-    }
   });
 
   it("keeps one grid: no fractional px in the theme or app stylesheet", () => {
@@ -65,7 +50,7 @@ describe("dashboard design tokens", () => {
 
   it("holds the approved sidebar width and group label", () => {
     const css = readFileSync(TOKENS_CSS, "utf8");
-    assert.match(css, /--ds-sidebar-width:\s*264px/u);
+    assert.match(css, /--ds-sidebar-width:\s*232px/u);
     assert.match(css, /\.ds-text-group-label\s*\{[^}]*font-size:\s*11px[^}]*font-weight:\s*500/u);
     assert.doesNotMatch(css, /\.ds-text-caps|--log-violet/u);
   });

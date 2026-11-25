@@ -45,7 +45,7 @@
 .settings-credentials-page .settings-compact-form>.ds-body-section+.ds-body-section { margin-top:var(--ds-settings-section-gap); }
 
 .settings-takeover .ds-path-control { gap:12px;justify-content:flex-end; }
-.settings-takeover .ds-path-value { justify-content:flex-end;color:var(--ui-primary);font-family:inherit;font-size:inherit; }
+.settings-takeover .ds-path-value { justify-content:flex-end;color:var(--ui-secondary);font-family:var(--ds-font-mono);font-size:12px; }
 .settings-keyboard-page > .ds-form-group { margin-top:16px; }
 .settings-takeover .ds-path-control > button { min-width:70px;height:28px; }
 .settings-takeover [data-settings-path^="annualDates."] .settings-compact-control { width:153px;margin-left:auto; }
@@ -53,3 +53,6 @@
 .settings-takeover .settings-account-page .ds-result-row-value button[data-slot="button"]:not([aria-label]) { width:112px; }
 .settings-search-arrival[data-held="true"]::before { animation: none; opacity: 1; }
 .settings-fix-banner { position: sticky; top: 0; z-index: 2; background: var(--ui-canvas); }
+/* Edit dialogs with more than one field keep 16px between fields; the rest of the shape is the small dialog in tokens.css. */
+.settings-edit-dialog [data-slot="dialog-body"] { display:flex;flex-direction:column;gap:16px; }
+.settings-edit-dialog .ds-field-copy { gap:0; }

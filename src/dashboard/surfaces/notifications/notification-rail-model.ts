@@ -12,9 +12,8 @@ type NotificationRailInput = Readonly<{
   setOpen: (open: boolean) => void;
   /** Delivers one gated alert per served publication; `sound` is false when Notification sound is off. */
   onAlert?: (item: NotificationItem, sound: boolean) => void;
-  setNotice: (notice: string) => void;
-  /** The item whose destination just opened. */
-  onActive?: (id: string) => void;
+  /** An item whose destination could not be opened, and why. */
+  onRefused: (item: NotificationItem, message: string) => void;
   onOpenNotification: (destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => void;
 }>;
 
@@ -40,7 +39,7 @@ export function alertSwitch(item: NotificationItem, preferences: PersonPreferenc
 
 const unreadCount = (state: NotificationsState) => state.state === "ready" ? state.items.filter(item => !item.read).length : undefined;
 
-export function useNotificationRailModel({ open = false, setOpen, onAlert, setNotice, onOpenNotification, onActive, served }: NotificationRailInput): NotificationRailModel {
+export function useNotificationRailModel({ open = false, setOpen, onAlert, onRefused, onOpenNotification, served }: NotificationRailInput): NotificationRailModel {
   const { notifications: switches } = usePersonPreferences().value;
   const alert = useRef(onAlert); alert.current = onAlert;
   const live = useRef({ open, switches }); live.current = { open, switches };
@@ -51,10 +50,11 @@ export function useNotificationRailModel({ open = false, setOpen, onAlert, setNo
   return {
     state: served.state, unread: unreadCount(served.state),
     changeOpen: setOpen,
-    onControl: (id, action) => { setNotice(""); return served.control(id, action); },
+    onControl: (id, action) => served.control(id, action),
     canAct: id => served.canAct(id),
-    onReadAll: () => { setNotice(""); void served.readAll(); },
-    onOpenItem: item => { setNotice(""); served.open(item, onOpenNotification, () => onActive?.(item.id), setNotice); },
+    onReadAll: () => { void served.readAll(); },
+    // Opening an item closes the list; one that cannot open says so in a toast.
+    onOpenItem: item => served.open(item, onOpenNotification, () => setOpen(false), message => onRefused(item, message)),
   };
 }
 

@@ -9,9 +9,8 @@ import type { EditableSettingsState, SettingsSaveState } from "../../../../../..
 import type { SettingsSectionResolution } from "../../../../../../src/dashboard/surfaces/settings/settings-model.js";
 import type { EditableSettingsWire } from "../../../../../../src/models/dashboard/settings-editor.js";
 import { settingsStoryServer, type SettingsStoryServerOptions } from "../../../../fixtures/dashboard/settings-story-fixtures.js";
-import type { StateRuleName } from "../state-rule-limits.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
-import { SettingsHost, type AccountStub, type SettingsHostProps } from "./settings-story-host.js";
+import { DUO_WORK_KEY, SettingsHost, type AccountStub, type SettingsHostProps } from "./settings-story-host.js";
 
 type Section = "general" | "account" | "keyboard";
 type RuntimeState = EditableSettingsWire["runtimeStatus"]["state"];
@@ -19,7 +18,7 @@ type CredentialStore = EditableSettingsWire["protectedSettings"]["state"];
 type PlanUsage = Extract<ChatGptAccountSnapshot, { state: "connected" }>["planUsage"];
 type SearchState = "results" | "none" | "reading" | "unavailable";
 type DialogName = "edit-name" | "edit-name-refused" | "edit-username" | "edit-username-refused" | "change-password" | "change-password-refused"
-  | "edit-credential" | "remove-credential" | "disconnect-chatgpt" | "delete-account" | "discard-changes" | "edit-shortcut" | "edit-shortcut-refused";
+  | "edit-credential" | "disconnect-chatgpt" | "delete-account" | "discard-changes" | "edit-shortcut" | "edit-shortcut-refused";
 /** What a press on the Account page comes back as, once the dialog or button has closed. */
 type AccountAction = "password-changed" | "password-not-confirmed" | "name-not-saved" | "duo-not-opened";
 type Notice = "restart-required" | "opened-for-check" | "setting-unavailable";
@@ -47,14 +46,13 @@ const click = (name: string | RegExp, exact = true) => async (page: Page): Promi
   await page.getByRole("button", { name, exact }).first().click();
 };
 const then = (...steps: readonly ((page: Page) => Promise<void>)[]) => async (page: Page): Promise<void> => { for (const step of steps) await step(page); };
-/** Waits for the editable settings to arrive: the General page's Browser window choice is on screen. */
-const WINDOW = '[role="combobox"][aria-label="Browser window"]';
+/** Waits for the editable settings to arrive: the General page's failures switch is on screen. */
+const WINDOW = '[data-settings-path="preferences.notifications.failures"] [role="switch"]';
 const loaded = async (page: Page): Promise<void> => { await page.locator(WINDOW).waitFor(); };
-/** The immediate-save choice every save story presses: the browser window starts hidden, so a size is a change. */
+/** The immediate-save edit every save story makes: the failures switch starts on, so one press is a change. */
 const chooseWindow = async (page: Page): Promise<void> => {
   await loaded(page);
   await page.locator(WINDOW).click();
-  await page.getByRole("option", { name: "Small", exact: true }).click();
 };
 const type = (label: string, value: string) => async (page: Page): Promise<void> => { await page.getByLabel(label, { exact: true }).fill(value); };
 
@@ -96,7 +94,7 @@ const saveStory = (title: string, server: SettingsStoryServerOptions, ready: str
 const SAVE = {
   idle: scene("A setting with nothing changed", { play: loaded }),
   saving: scene("A save sent, no answer yet", { server: { save: "never" }, play: chooseWindow, story: { ready: WINDOW } }),
-  applied: saveStory("A save that lands", { save: "applied" }, 'text=/Saved settings/'),
+  applied: saveStory("A save that lands", { save: "applied" }, 'text=/Saved /'),
   refused: saveStory("A save the server refused", { save: "rejected" }, 'text=/Settings weren.t saved/'),
   conflict: saveStory("A save over settings that changed elsewhere", { save: "conflict" }, 'text=/Settings weren.t saved/'),
   unconfirmed: saveStory("A save whose answer was lost", { save: "lost" }, 'text=/Settings weren.t saved/'),
@@ -105,7 +103,7 @@ const SAVE = {
 /** Saves that land with something to say. */
 type SaveCombo = "replayed" | "restart-required";
 const SAVE_COMBO = {
-  replayed: saveStory("A save that was already saved", { save: "replayed" }, 'text=/Already saved settings/'),
+  replayed: saveStory("A save that was already saved", { save: "replayed" }, 'text=/Already saved /'),
   "restart-required": saveStory("A save that needs a restart", { save: "restart" }, 'text=/Restart to use them/'),
 } satisfies Record<SaveCombo, Story>;
 
@@ -146,18 +144,22 @@ const SEARCH = {
   unavailable: scene("Search after settings could not be read", { server: { read: "fail" }, play: find("zzzz"), story: { ready: 'text="Settings fields unavailable"' } }),
 } satisfies Record<SearchState, Story>;
 
+/** The Save just pressed is still under the pointer, which fills it in its hover color; move the pointer off it and let the fill settle, so the story is measured at the accent. */
+const still = async (page: Page): Promise<void> => {
+  await page.mouse.move(1, 1);
+  await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => undefined))));
+};
 const refusedDetails: AccountStub = { details: { state: "refused", code: "PROFILE_NAME_REFUSED" } };
 const refusedLogin: AccountStub = { login: { state: "refused", code: "PROFILE_CURRENT_PASSWORD_REFUSED" } };
 const onAccount = (title: string, play: Scene["play"], ready: string, extra: Partial<Scene> = {}): Story => scene(title, { section: "account", ...(play === undefined ? {} : { play }), story: { ready }, ...extra });
 const DIALOG = {
   "edit-name": onAccount("Editing the account name", click("Edit name"), '[role="dialog"]'),
-  "edit-name-refused": onAccount("A name change the server refused", then(click("Edit name"), type("Name", "Jordan Q Lee"), click("Save")), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedDetails } }),
+  "edit-name-refused": onAccount("A name change the server refused", then(click("Edit name"), type("Name", "Jordan Q Lee"), click("Save"), still), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedDetails } }),
   "edit-username": onAccount("Editing the Relay username", click("Edit username"), '[role="dialog"]'),
-  "edit-username-refused": onAccount("A username change with the wrong password", then(click("Edit username"), type("Current password", "wrong"), type("New username", "jordan@ucsd.edu"), click("Save")), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedLogin } }),
+  "edit-username-refused": onAccount("A username change with the wrong password", then(click("Edit username"), type("Current password", "wrong"), type("New username", "jordan@ucsd.edu"), click("Save"), still), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedLogin } }),
   "change-password": onAccount("Changing the Relay password", click("Change Relay password"), '[role="dialog"]'),
-  "change-password-refused": onAccount("A password change with the wrong password", then(click("Change Relay password"), type("Current password", "wrong"), type("New password", "a-new-password"), type("Confirm new password", "a-new-password"), click("Save")), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedLogin } }),
+  "change-password-refused": onAccount("A password change with the wrong password", then(click("Change Relay password"), type("Current password", "wrong"), type("New password", "a-new-password"), type("Confirm new password", "a-new-password"), click("Save"), still), '[role="dialog"] [role="alert"], [role="dialog"] [data-slot="field-error"]', { host: { account: refusedLogin } }),
   "edit-credential": onAccount("Editing the UCPath username", click("Edit UCPath username"), '[role="dialog"]'),
-  "remove-credential": onAccount("Asked to remove the UCPath username", then(click("Edit UCPath username"), click("Remove UCPath username")), 'text="Remove UCPath username?"'),
   "disconnect-chatgpt": scene("Asked to disconnect ChatGPT", { host: { chatGpt: { state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", planUsage: "enabled" } }, play: click("Disconnect"), story: { ready: 'text="Disconnect ChatGPT?"' } }),
   "delete-account": onAccount("Asked to delete the account", click("Delete"), 'text=/Delete .* account\\?/', { host: { deleteAccount: { state: "ready", personName: "Jordan Lee", onConfirm: () => undefined } } }),
   "discard-changes": scene("Asked to discard unsaved changes", { server: { save: "never" }, play: then(chooseWindow, click("Close settings")), story: { ready: 'text="Discard changes?"' } }),
@@ -173,65 +175,35 @@ const ACTION = {
   "duo-not-opened": onAccount("Duo setup could not be opened", click("Set up again"), 'text=/Duo setup not opened/', { host: { account: { duo: "Couldn't open Duo setup." } } }),
 } satisfies Record<AccountAction, Story>;
 
+type DuoKeysStory = "loading" | "unavailable" | "one-key" | "several-keys" | "rename" | "confirm-removal" | "last-key-removed";
+const showSecurity = (page: Page): Promise<void> => page.getByRole("group", { name: "Security", exact: true }).scrollIntoViewIfNeeded();
+const duoKeys = (title: string, keys: NonNullable<AccountStub["duoKeys"]>, ready: string, play?: Scene["play"]): Story =>
+  onAccount(title, play === undefined ? showSecurity : then(showSecurity, play), ready, { host: { account: { duoKeys: keys } } });
+const WORK_KEY = [DUO_WORK_KEY];
+const loadingDuoKeys = '[aria-label="Loading Duo security keys"]';
+const finishDuoRemoval = async (page: Page): Promise<void> => {
+  await click("Remove")(page);
+  await page.getByRole("button", { name: "Set up", exact: true }).and(page.locator(":focus")).waitFor();
+  await page.getByRole("heading", { name: "Settings", exact: true }).click();
+};
+const DUO_KEYS = {
+  loading: scene("Duo security keys loading", { section: "account", host: { account: { duoKeys: "loading" } }, play: showSecurity, story: { ready: loadingDuoKeys, slowFetch: { region: loadingDuoKeys } } }),
+  unavailable: duoKeys("Duo security keys unavailable", "unavailable", 'text="Duo keys unavailable"'),
+  "one-key": duoKeys("One Duo security key", WORK_KEY, 'text="Work security key"'),
+  "several-keys": duoKeys("Several Duo security keys", [...WORK_KEY, { id: "b".repeat(64), shortId: "bC34de56", addedAt: "2026-09-02T12:00:00.000Z" }], 'text="Key bC34de56"'),
+  rename: duoKeys("Rename a Duo security key", WORK_KEY, 'text="Rename security key"', then(click("Rename Work security key"), type("Name", "Office security key"))),
+  "confirm-removal": duoKeys("Confirm removal of a Duo security key", WORK_KEY, 'text="Remove security key?"', click("Remove Work security key")),
+  "last-key-removed": duoKeys("The last Duo security key was removed", WORK_KEY, 'text="Not set up"', then(click("Remove Work security key"), finishDuoRemoval)),
+} satisfies Record<DuoKeysStory, Story>;
+
 const NOTICE = {
   "restart-required": scene("Restart notice over General", { server: { runtime: "restart-required" }, story: { ready: 'text=/Saved settings apply after Relay restarts/' } }),
   "opened-for-check": scene("Opened from a Run dialog's Fix button", { host: { backToRun: true, searchTarget: "protected.ucpathPassword" }, section: "account", story: { ready: 'text=/change the highlighted setting/' } }),
   "setting-unavailable": scene("A search target that is not on the page", { host: { searchTarget: "nothing.here" }, play: loaded, story: { ready: 'text=/Setting unavailable/' } }),
 } satisfies Record<Notice, Story>;
 
-/** Rules today's Settings breaks, each recorded against the dashboard-audit-fixes feature (#532), whose tickets fix them; never loosened. */
-const AUDIT_FIXES = "#532";
-const breaks = (...rules: readonly StateRuleName[]): Readonly<Partial<Record<StateRuleName, string>>> => Object.fromEntries(rules.map(rule => [rule, AUDIT_FIXES]));
-const BREAK_SETS = {
-  /** Save is not the accent while the Account edit dialog shows a refusal. */
-  ACCENT: breaks("primary-button-accent"),
-  /** The Tab walk reaches no control while a toast is on screen. */
-  FOCUS: breaks("named-and-focusable"),
-  /** FOCUS, and Save is not the accent while the dialog shows a refusal. */
-  FOCUS_ACCENT: breaks("named-and-focusable", "primary-button-accent"),
-} as const;
-
-/** Measured at both widths with the app's Sessions-bar inset on the frame: the bottom-centre toast still covers the "Runs" toolbar (the save, restart and notice stories) or the "Workflow configuration" title and group (the credentials and account-action stories). The overlap is real, so these stay recorded. */
-const TOAST_STORIES: ReadonlySet<string> = new Set([
-  "settings/action/name-not-saved",
-  "settings/action/password-changed",
-  "settings/action/password-not-confirmed",
-  "settings/credentials/unknown",
-  "settings/notice/restart-required",
-  "settings/notice/setting-unavailable",
-  "settings/runtime/restart-required",
-  "settings/save-combo/replayed",
-  "settings/save-combo/restart-required",
-  "settings/save/applied",
-  "settings/save/conflict",
-  "settings/save/refused",
-  "settings/save/unconfirmed",
-]);
-
-/** By `<state type>/<member>`. */
-const KNOWN_BREAKS: Readonly<Record<string, Readonly<Partial<Record<StateRuleName, string>>>>> = {
-  "save/saving": BREAK_SETS.FOCUS,
-  "dialog/change-password-refused": BREAK_SETS.ACCENT,
-  "dialog/edit-name-refused": BREAK_SETS.ACCENT,
-  "dialog/edit-username-refused": BREAK_SETS.ACCENT,
-  "notice/opened-for-check": BREAK_SETS.FOCUS,
-  "action/duo-not-opened": BREAK_SETS.FOCUS,
-  "action/name-not-saved": BREAK_SETS.FOCUS,
-  "action/password-changed": BREAK_SETS.FOCUS,
-  "action/password-not-confirmed": BREAK_SETS.FOCUS,
-  "save-combo/replayed": BREAK_SETS.FOCUS,
-  "save-combo/restart-required": BREAK_SETS.FOCUS,
-  "save/applied": BREAK_SETS.FOCUS,
-  "save/conflict": BREAK_SETS.FOCUS,
-  "save/refused": BREAK_SETS.FOCUS,
-  "save/unconfirmed": BREAK_SETS.FOCUS,
-};
-const SETTINGS_TABLES = defineSurface("settings", {
+export const SETTINGS_STORIES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
-  save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, notice: NOTICE,
+  save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
 });
 
-export const SETTINGS_STORIES = SETTINGS_TABLES.map(entry => {
-  const known = { ...KNOWN_BREAKS[entry.id.slice("settings/".length)], ...(TOAST_STORIES.has(entry.id) ? breaks("toast-text-only") : {}) };
-  return Object.keys(known).length === 0 ? entry : { ...entry, story: { ...entry.story, knownFailures: known } };
-});

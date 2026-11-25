@@ -23,6 +23,12 @@ import { RunIdSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 import { OcrCommandResultWireSchema } from "../../models/dashboard/run-detail.js";
 import { WorkerCommandResultWireSchema, type WorkerCommandResultWire } from "../../models/dashboard/worker-command-result.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../models/failures/error-catalog.js";
+import { ProfileDuoKeyChangeRequestSchema, ProfileDuoKeyChangeResponseSchema, ProfileDuoKeysReadSchema, ProfileDuoKeysScopeSchema,
+  type DuoKeyChangeResult, type DuoKeysSnapshot } from "../../models/profiles/public-profile.js";
+
+type DuoKeysScope = z.infer<typeof ProfileDuoKeysScopeSchema>;
+type DuoKeyChangeRequest = z.infer<typeof ProfileDuoKeyChangeRequestSchema>;
+const DUO_KEYS_PATH = "/api/v1/profile/account/duo-keys";
 
 export type { ApplicationLifecycle } from "../../models/dashboard/application-lifecycle.js";
 export { DashboardClientError };
@@ -54,6 +60,8 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   changeProfilePassword(request: ProfilePasswordChangeRequest): Promise<ProfileLoginChangeResult>;
   changeProfileUsername(request: ProfileUsernameChangeRequest): Promise<ProfileLoginChangeResult>;
   changeProfileDetails(request: ProfileDetailsChangeRequest): Promise<ProfileDetailsChangeResult>;
+  readProfileDuoKeys(scope: DuoKeysScope): Promise<DuoKeysSnapshot>;
+  changeProfileDuoKey(request: DuoKeyChangeRequest): Promise<DuoKeyChangeResult>;
   deleteProfileAccount(request: DeleteProfileAccountRequest): Promise<PublicProfileState>;
   completeProfileOnboarding(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
   cancelProfileOnboardingDuo(request: CancelProfileOnboardingDuoRequest): Promise<PublicProfileState>;
@@ -192,6 +200,13 @@ export function createDashboardClient(input: Readonly<{
     if (profileAuthority !== undefined && state.state === "active" && state.profileId !== profileAuthority.profileId) throw schemaError("POST /api/v1/profile/duo/reenrol", "re-enrolment profile identity mismatch");
     return state;
   };
+  const duoKeysAuthority = (scope: DuoKeysScope) => {
+    const owner = profileAuthority;
+    if (owner === undefined || owner.profileId !== scope.profileId || owner.epoch !== scope.epoch) throw schemaError(DUO_KEYS_PATH, "Duo key session changed");
+    return (identity: DuoKeysScope) => {
+      if (owner !== profileAuthority || identity.profileId !== scope.profileId || identity.epoch !== scope.epoch) throw schemaError(DUO_KEYS_PATH, "Duo key session changed");
+    };
+  };
   const client: DashboardClient = {
     async fetchAuthenticatedResource(url, signal) {
       const target = new URL(url, origin);
@@ -278,6 +293,20 @@ export function createDashboardClient(input: Readonly<{
       return parseDetailsChange((await transport.requestJsonResponse("/api/v1/profile/account/details", {
         method: "POST", body: JSON.stringify(ProfileDetailsChangeRequestSchema.parse(request)),
       })).body);
+    },
+    async readProfileDuoKeys(scope) {
+      const assertOwner = duoKeysAuthority(ProfileDuoKeysScopeSchema.parse(scope));
+      const result = parseOrThrow(ProfileDuoKeysReadSchema, DUO_KEYS_PATH, await transport.requestJson(DUO_KEYS_PATH));
+      assertOwner(result);
+      return result.snapshot;
+    },
+    async changeProfileDuoKey(request) {
+      const parsed = ProfileDuoKeyChangeRequestSchema.parse(request), assertOwner = duoKeysAuthority(parsed);
+      const result = parseOrThrow(ProfileDuoKeyChangeResponseSchema, DUO_KEYS_PATH,
+        await transport.requestJson(DUO_KEYS_PATH, { method: "POST", body: JSON.stringify(parsed) }));
+      assertOwner(result);
+      if (result.commandId !== parsed.change.commandId) throw schemaError(DUO_KEYS_PATH, "Duo key command identity changed");
+      return result.result;
     },
     async completeProfileOnboarding(request) {
       return activateProfile("/api/v1/profile/onboarding/complete", {

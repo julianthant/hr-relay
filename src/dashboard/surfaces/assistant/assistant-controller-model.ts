@@ -11,7 +11,7 @@ import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModel
 import { ASSISTANT_FAILURES, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelCatalog, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_UNKNOWN_NOTICE, assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantProposal, type AssistantState } from './assistant-model.js';
 import { ASSISTANT_UNSAVED_REPLY, type AssistantHistory } from './assistant-history-model.js';
-import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
+import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from '../../../models/failures/error-catalog.js';
 import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
 import { AssistantActionDecisionSchema, type AssistantActionProposal } from '../../../models/dashboard/assistant.js';
 
@@ -223,11 +223,16 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (client.assistantStageAttachment === undefined) throw new Error(ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE);
       return client.assistantStageAttachment(conversationId, file);
     },
-    /** A picker choice: saved without a chat turn; the executor's feedback reports a refusal or unknown result. */
+    /** A picker choice: saved without a chat turn; command feedback reports a refusal, an unknown result or a failed read before dispatch. */
     async choose(preference: AssistantModelPreference) {
       if (retired) return;
       const owner = binding, signal = new AbortController().signal;
-      await savePreference(preference, owner, signal, () => !retired && binding === owner);
+      const current = () => !retired && binding === owner;
+      try { await savePreference(preference, owner, signal, current); }
+      catch (cause) {
+        if (current()) owner.commands?.feedback({ kind: 'failed', commandId: '', cause,
+          feedback: formatErrorCatalogFailure(createErrorCatalogFailure('COMMAND_DISPATCH_FAILED', {})) });
+      }
     },
     bind(next: Binding) {
       if (retired) return;
@@ -260,20 +265,6 @@ export function createAssistantController(client: AssistantQueries, initialBindi
 
 export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true, chatId = "default", commands?: DashboardCommandBinding, options?: { history?: AssistantHistory; preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void; readModels?: boolean }) {
   const { history, preferenceChanged, readModels = true } = options ?? {};
-  const [launcherBottom, setLauncherBottom] = useState<string>();
-  useLayoutEffect(() => {
-    if (!shellMounted) return;
-    const panel = document.querySelector('[aria-label="Session Panel"]');
-    const bar = panel?.querySelector('[aria-label="Session actions"]');
-    if (!(panel instanceof HTMLElement) || !(bar instanceof HTMLElement)) throw new Error('ASSISTANT_UNAVAILABLE');
-    const measure = () => {
-      const extra = panel.getBoundingClientRect().height - bar.getBoundingClientRect().height;
-      if (!Number.isFinite(extra) || extra < 0) throw new Error('ASSISTANT_UNAVAILABLE');
-      setLauncherBottom(`calc(var(--ds-space-section) + var(--ds-toast-inset-bottom) + ${extra}px)`);
-    };
-    const observer = new ResizeObserver(measure); observer.observe(panel); observer.observe(bar); measure();
-    return () => observer.disconnect();
-  }, [shellMounted]);
   const accountPort = useContext(ChatGptAccountContext);
   const account = useChatGptAccount(accountPort);
   const bindingAuthority = useMemo(() => ({ authority, account, shellMounted, commandScope: commands?.scope, commandExecutor: commands?.executor, commandFeedback: commands?.feedback }), [authority, account, shellMounted, commands?.scope, commands?.executor, commands?.feedback]);
@@ -306,7 +297,7 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
     client.assistantModels(request.signal).then(catalog => { if (!request.signal.aborted) setModels(catalog.models); }, () => { if (!request.signal.aborted) setModels(undefined); });
     return () => request.abort();
   }, [readModels, accountAvailable, sessions.client]);
-  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
+  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
     accountAction: (account.state === 'loading' ? undefined : accountReadFailed ? 'retry' : account.state === 'connected' || account.state === 'unavailable' || account.state === 'signing-in' ? 'settings' : 'sign-in'),
     accountRetry: () => { void accountPort.refresh?.(); },

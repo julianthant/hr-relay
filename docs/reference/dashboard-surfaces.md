@@ -21,7 +21,7 @@ All source paths in this table are relative to `src/dashboard/`.
 | Logs | `surfaces/run-detail/log-panel.tsx`, `logs/log-sample.tsx` | Served ordered logs; the harness injects sample logs through `DashboardHarness.LogPreview` from `tests/support/fixtures/dashboard/log-preview/` |
 | OCR Records | `surfaces/run-detail/review/review.tsx` | Authenticated review revisions, edit/gate authority and source-page manifest; explicit previews supply local records |
 | Run and Rerun | `surfaces/run-start/run-launch.tsx` | Catalog and planner/client for served launches |
-| Notifications | `surfaces/notifications/notifications-view.tsx`, workspace rail | App preview destinations with rail-local read state |
+| Notifications | `surfaces/notifications/notifications-popover.tsx`, opened from the workspace rail bell | App preview destinations with rail-local read state |
 | Sessions | `surfaces/sessions/session-panel.tsx`, `sessions-view.tsx` | The served day through `createSessionPreviewPort`; the harness supplies `sessionsSampleHarness` |
 | Settings | `surfaces/settings/settings.tsx` | Typed editor, protected authority, readiness, storage, and local preferences |
 | ChatGPT account | `surfaces/settings/general/chatgpt-account.tsx` | `ChatGptAccountContext` default memory preview port |
@@ -43,13 +43,13 @@ bootstrap shows The dashboard could not start and the client's error. Invalid vi
 show Invalid navigation link with Open dashboard. Missing destinations show Destination unavailable.
 
 The workspace rail contains the product heading, notification bell, search entry, and workflow
-rail. Opening notifications replaces the workflow list within that rail. The main region has
+rail. The bell opens notifications in a popover anchored to it; the rail keeps the workflow list. The main region has
 `id="dashboard-main-region"` and programmatic focus; Skip to content bypasses navigation.
 The shell includes `StorageBanner` above the main content on dashboard and takeover views. It
 appears for unavailable authority and links to Settings rather than performing repair.
 
 Sessions stays at the bottom across views. Its Settings gear opens the guarded Settings page.
-Toasts clear the Sessions bar through `--ds-toast-inset-bottom`. Command recovery, bulk feedback,
+Toasts sit top centre, 12px from the top. Command recovery, bulk feedback,
 and the result feed sit above the Queue/Logs region and retain results when a target changes.
 
 The desktop canvas never changes into a phone layout. Queue stays beside Logs; below the minimum,
@@ -382,9 +382,11 @@ workflow, and age. Empty inbox, no failures, nothing needing attention, and all 
 separate filtered states.
 
 The rail reads one `InboxWiring`; the harness supplies sample notifications derived from current queue rows by `useNotificationsSampleInbox`, with read flags in memory. Read is separate from urgency resolution. Opening a valid target marks read and
-closes the inbox; a missing target reports refusal without navigating to an approximate workflow.
-Escape returns focus to the bell unless an inner dialog/menu owns it. A removed read control
-restores focus to a reachable filter. A ping uses the shared toast; the bell opens the inbox.
+closes the popover; a target that cannot open raises a toast without navigating to an approximate workflow, and a deleted run says so
+on its own row. A storage notice opens Settings > General. Repeats fold into one row with a count: a failure folds across runs for the
+same workflow, person and failure text, with its repeating notice; every other event folds per run. Unread failures and waits sit under
+Needs you and fall into their day once read. Escape or a click outside closes the popover and returns focus to the bell. A ping uses
+the shared toast; the bell opens the inbox.
 
 Durable delivery, read state, and full cross-day search still need producer replacement. The typed
 notification snapshot/status/target queries and command families exist, but the mounted inbox does
@@ -394,16 +396,16 @@ not use them as its default producer.
 
 `SessionPanel` mounts `SessionsView` with the served day and `createSessionPreviewPort`; a harness may replace both through `sessionsHarness`.
 Catalog IDs resolve worker labels. Unknown worker workflows throw. Loading, unavailable, ready
-with no workers, and ready workers are distinct states. The expandable strip contains horizontally
-scrolling worker cards and an Add workers dialog.
+with no workers, and ready workers are distinct states. The open panel holds one row of
+worker cards, one per worker, that scrolls sideways and is as tall as one card; Add workers is a dialog from the bar.
 
-Cards show workflow/state, browser systems and availability, current action or idle message,
-timeline, and footer controls. Running offers Pause, paused offers Resume, failed offers Retry,
+Cards show workflow/state, subject, browser systems and availability, and footer controls. Running offers Pause, paused offers Resume, failed offers Retry,
 non-idle offers Stop, and idle offers Remove worker. Pending operations lock duplicate
 commands; Relay reads an unsettled result back itself and no card shows a check control. Removing a card returns focus to the strip toggle.
 
-Add workers progress and confirmed success appear only as toast notifications. A refusal is a short toast. Pending progress
-toasts stay until settlement or panel unmount.
+A pending Add is one "Starting" card first in the strip and a pending Remove reads "Removing" on its card's status word, both
+until settlement; one hidden status line in the panel announces them, and neither is a toast. The result of an Add, confirmed
+or refused, and a failed Remove are one short toast each; an Add confirmed only by reading back shows as the new worker alone.
 
 Add workers selects workflow and count with increment/decrement controls. The count is bounded
 from 1 to 20 in this preview. The dialog and strip are presentation, not evidence of backend pool

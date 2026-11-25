@@ -9,18 +9,18 @@ import type { NotificationCollectionTarget } from "../../models/notifications/no
 import type { NotificationTarget } from "../../models/notifications/notification-target.js";
 import type { NotificationTriggerEvent } from "../../rules/notifications/notification-triggers.js";
 import { NotificationCommandRequestSchema } from "../../rules/commands/commands.js";
-import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure, shortFailureText } from "../../models/failures/error-catalog.js";
 import { verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import { notificationAge, type NotificationControl, type NotificationDestination, type NotificationItem, type NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
 import { formatLocalDay, formatMonthDay, formatWeekday } from "../lib/date-format.js";
 
 const policies = {
   "run-failed": { trigger: "failed", tone: "danger", detail: "Review the failed run before continuing." },
-  "subject-mismatch": { trigger: "failed", tone: "danger", detail: "The subject identity did not match. Review the failure before continuing." },
+  "subject-mismatch": { trigger: "failed", tone: "danger", detail: "The subject identity did not match." },
   "gate-opened": { trigger: "gate-waiting", tone: "warning", detail: "This run is waiting for your review." },
-  "write-parked": { trigger: "write-parked", tone: "warning", detail: "A write is parked. Review its evidence before continuing." },
-  "repeating-failure": { trigger: "repeating", tone: "danger", detail: "A failure crossed its repetition threshold. Review the failure." },
-  "storage-degraded": { trigger: "storage", tone: "warning", detail: "Relay could not save everything. Reopen Relay before starting more work." },
+  "write-parked": { trigger: "write-parked", tone: "warning", detail: "A write is parked." },
+  "repeating-failure": { trigger: "repeating", tone: "danger", detail: "This failure keeps repeating." },
+  "storage-degraded": { trigger: "storage", tone: "warning", detail: "Relay could not save everything." },
   "verified-done": { trigger: "verified-done", tone: "positive", detail: "Completed with the required verification evidence." },
   "backfill-gap": { trigger: "backfill-gap", tone: "warning", detail: "Notification history is incomplete. Reconcile the affected work." },
   "command-refused": { trigger: "command", tone: "warning", detail: "Relay did not do this, so nothing changed." },
@@ -48,7 +48,9 @@ export function notificationTargetMatches(row: NotificationWire, target: Notific
   if (row.kind !== "notification") return false;
   const link = row.link;
   if (target.kind === "storage") return link?.kind === "storage";
-  if (target.kind === "run") return link?.kind === "run" && link.runId === target.runId;
+  // The server sends a delegated run to its host run and names the linked run beside it.
+  if (target.kind === "run") return target.linkedRunId === undefined ? link?.kind === "run" && link.runId === target.runId
+    : (link?.kind === "run" || link?.kind === "failure") && link.runId === target.linkedRunId;
   if (target.kind === "failure") return link?.kind === "failure" && link.runId === target.runId && link.failureId === target.failureId;
   return false;
 }
@@ -65,15 +67,44 @@ function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap
   if (row.kind === "command") return row.summary;
   const source = row.sourceEvent;
   if (row.summary !== undefined && (source?.state === "available" ? source.kind === "run-failed"
-    : row.trigger === "failed" && Object.values(ERROR_CATALOG).some(entry => entry.text === row.summary))) return row.summary;
+    : row.trigger === "failed" && Object.values(ERROR_CATALOG).some(entry => shortFailureText(entry.text) === row.summary))) return row.summary;
   return notificationPolicy(row)?.detail;
 }
 
-/** Repeats of one event for one run (or for storage) fold into one item: its latest time, unread while any repeat is unread, the sum of its counts. */
-function foldKey(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): string | undefined {
+type ListedRow = Exclude<NotificationWire, { kind: "backfill-gap" }>;
+const linkedRun = (row: ListedRow) => row.kind === "notification" && row.link !== undefined && "runId" in row.link ? row.link.runId : undefined;
+const repeatingNotice = (row: ListedRow) => row.kind === "notification" && row.trigger === "repeating";
+const historyKey = (row: ListedRow, key: string) => row.readOnlyHistory === true ? `history\u0000${key}` : key;
+
+/** Repeats fold into one item. A failure repeats across runs: the same workflow, person and failure text. Every other event repeats
+ * for one run, or for storage. */
+function foldKey(row: ListedRow): string | undefined {
   if (row.kind !== "notification" || row.link === undefined) return undefined;
-  const subject = row.link.kind === "storage" ? "storage" : "runId" in row.link ? row.link.runId : undefined;
-  return subject === undefined ? undefined : `${row.trigger}\u0000${row.title}\u0000${subject}`;
+  if (row.link.kind === "storage") return `${row.trigger}\u0000${row.title}\u0000storage`;
+  if (row.trigger === "failed" && row.context.state === "available") return `failed\u0000${row.title}\u0000${row.context.workflow}\u0000${row.context.subject}\u0000${notificationDetail(row) ?? ""}`;
+  return `${row.trigger}\u0000${row.title}\u0000${row.link.runId}`;
+}
+
+/** The rows each item stands for, newest item first; an item shows its first row. A "Repeating failure" notice joins the failure of
+ * the run it names instead of standing beside it. */
+export function foldRows(served: readonly NotificationWire[]): readonly (readonly ListedRow[])[] {
+  const rows = served.flatMap(row => row.kind === "backfill-gap" ? [] : [row]);
+  const failures = new Map<string, string>();
+  for (const row of rows) {
+    const run = linkedRun(row), key = foldKey(row);
+    if (run !== undefined && key !== undefined && row.kind === "notification" && row.trigger === "failed") failures.set(historyKey(row, run), key);
+  }
+  const byKey = new Map<string, ListedRow[]>(), groups: ListedRow[][] = [];
+  for (const row of rows.sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt))) {
+    const run = linkedRun(row);
+    const fold = (repeatingNotice(row) && run !== undefined ? failures.get(historyKey(row, run)) : undefined) ?? foldKey(row);
+    const key = fold === undefined ? undefined : historyKey(row, fold);
+    const group = key === undefined ? undefined : byKey.get(key);
+    if (group === undefined) { const made = [row]; if (key !== undefined) byKey.set(key, made); groups.push(made); }
+    else if (repeatingNotice(group[0]) && !repeatingNotice(row)) group.unshift(row);
+    else group.push(row);
+  }
+  return groups;
 }
 
 function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" }>, nowIso: string): NotificationItem {
@@ -91,26 +122,22 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
       ...(row.kind === "notification" && row.count > 1 ? { count: row.count } : {}),
       age: notificationAge(row.occurredAt, nowIso), at: row.occurredAt,
       day: notificationDay(row.occurredAt, nowIso),
+      ...(row.readOnlyHistory === true ? { readOnlyHistory: true } : {}),
       read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },
     };
 }
 
-export function inboxProjection(rows: readonly NotificationWire[], nowIso: string): { state: NotificationsState; notice: string; needsYou: number } {
-  const notices = new Set<string>();
-  const items: NotificationItem[] = [];
-  const folded = new Map<string, number>();
-  const newestFirst = [...rows].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
-  for (const row of newestFirst) {
-    if (row.kind === "backfill-gap") { notices.add(inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE")); continue; }
-    const item = notificationItem(row, nowIso), key = foldKey(row);
-    const at = key === undefined ? undefined : folded.get(key);
-    if (at === undefined) { if (key !== undefined) folded.set(key, items.length); items.push(item); continue; }
-    const kept = items[at];
-    items[at] = { ...kept, read: kept.read && item.read, count: (kept.count ?? 1) + (item.count ?? 1) };
-  }
+export function inboxProjection(rows: readonly NotificationWire[], nowIso: string, gone: ReadonlySet<string> = new Set()): { state: NotificationsState; notice: string; needsYou: number } {
+  const notice = rows.some(row => row.kind === "backfill-gap") ? inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") : "";
+  const items = foldRows(rows).map((group): NotificationItem => {
+    const shown = notificationItem(group[0], nowIso);
+    // A repeating notice says the failure repeats; it is not one more failure.
+    const counted = group.filter(row => row === group[0] || !repeatingNotice(row)).reduce((sum, row) => sum + (row.kind === "notification" ? row.count : 1), 0);
+    return { ...shown, read: group.every(row => row.readState === "read"), ...(counted > 1 ? { count: counted } : {}), ...(group.some(row => gone.has(row.notificationId)) ? { gone: true } : {}) };
+  });
   const needsYou = items.filter(item => !item.read && (item.tone === "danger" || item.tone === "warning")).length;
-  return { state: { state: "ready", items, pinned: [] }, notice: [...notices].join(" "), needsYou };
+  return { state: { state: "ready", items, pinned: [] }, notice, needsYou };
 }
 
 export type InboxArrival = Readonly<{ sourceId: string; item: NotificationItem }>;
@@ -176,6 +203,8 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   const [upserts, setUpserts] = useState<{ request: typeof request; overlays: readonly Overlay[] }>();
   const [commandNotice, setCommandNotice] = useState<{ request: typeof request; text: string }>();
   const [publicationNotice, setPublicationNotice] = useState<{ request: typeof request; text: string }>();
+  /** Items whose run the server answered as deleted when the operator opened them. */
+  const [gone, setGone] = useState<{ request: typeof request; ids: ReadonlySet<string> }>();
   const held = upserts?.request === request ? upserts.overlays : NO_UPSERTS;
   const rows = useMemo(() => dayRows === undefined ? undefined
     : standingOverlays(held, dayView).reduce<readonly NotificationWire[]>((next, overlay) => upsertListedRow(next, overlay.row), dayRows), [dayRows, dayView, held]);
@@ -216,10 +245,11 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     if (!enabled || current.current.request !== request || !current.current.usable) return false;
     const row = rowsRef.current?.find(row => row.notificationId === id);
     if (row?.kind !== "notification" || row.actorId !== request.scope.actorId) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
+    if (row.readOnlyHistory === true) return false;
     const owner = current.current.binding;
-    const key = foldKey(row);
-    const repeats = action === "read" && key !== undefined ? (rowsRef.current ?? []).flatMap(other => other.kind === "notification" && other.notificationId !== id && other.readState !== "read" && foldKey(other) === key
-      ? [{ notificationId: other.notificationId, revision: other.revision }] : []) : [];
+    // Marking an item read marks every unread row it stands for.
+    const group = action === "read" ? foldRows(rowsRef.current ?? []).find(members => members.includes(row)) ?? [] : [];
+    const repeats = group.flatMap(other => other.kind === "notification" && other !== row && other.readState !== "read" ? [{ notificationId: other.notificationId, revision: other.revision }] : []);
     const members = [...(row.group?.members ?? [{ notificationId: id, revision: row.revision }]), ...repeats];
     for (const member of members) {
       const retained = owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
@@ -262,7 +292,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   const projection = rows === undefined
     ? { state: day.state === "failed" ? { state: "unavailable" as const, reason: inboxMessage("DASHBOARD_READ_FAILED") } : { state: "loading" as const }, notice: "" }
     : !consistent ? { state: { state: "unavailable" as const, reason: statusNotice }, notice: "" }
-    : inboxProjection(rows, binding.authority.now());
+    : inboxProjection(rows, binding.authority.now(), gone?.request === request ? gone.ids : undefined);
   const pending = enabled && consistent && status === undefined ? inboxMessage("NOTIFICATION_REFRESH_PENDING") : "";
   return { state: projection.state, notice: [pending, projection.notice, enabled ? statusNotice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
     control,
@@ -296,8 +326,12 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       void client.notificationTarget(item.id).then(target => {
         if (current.current.request !== request || !current.current.usable) return;
         const row = rowsRef.current?.find(row => row.notificationId === item.id);
+        if (row !== undefined && target.kind === "refused" && (target.reason === "run-unavailable" || target.reason === "failure-unavailable")) {
+          setGone(previous => ({ request, ids: new Set([...(previous?.request === request ? previous.ids : []), item.id]) }));
+          return;
+        }
         if (row === undefined || (target.kind !== "refused" && target.kind !== "archive" && !notificationTargetMatches(row, target))) { refused(inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE")); return; }
-        navigate(target, () => { if (current.current.request !== request) return; opened(); if (row.kind === "notification" && row.readState !== "read") void control(item.id, "read"); }, refused);
+        navigate(target, () => { if (current.current.request !== request) return; opened(); if (row.kind === "notification" && !item.read) void control(item.id, "read"); }, refused);
       }).catch(() => { if (current.current.request === request) refused(inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE")); });
     },
   };
