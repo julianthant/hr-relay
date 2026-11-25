@@ -16,18 +16,6 @@ type RowReject = z.infer<typeof RowRejectSchema>;
 type Suggestion = z.infer<typeof SuggestionSchema>;
 export type RerunMembershipRow = IntakeManifestWire["validRows"][number];
 
-/** The dropzone's own three strings, in ONE place because TWO surfaces now draw
- * that zone: the workspace's empty state, and the Run Modal's */
-export const INTAKE_ACCEPT = ".csv,.xlsx,.xls";
-
-export const INTAKE_DROPZONE_HINT =
-  "A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects.";
-
-/** The zone names the workflow the file will be mapped ONTO, never "a workflow". */
-export function intakeDropzoneLabel(workflowLabel: string): string {
-  return `Drop a spreadsheet of people for ${workflowLabel}`;
-}
-
 /** Keep rejection editors and outcomes on one vocabulary; affordance and durable request remain distinct. */
 export const INTAKE_REVIEW_COPY = Object.freeze({
   tableLabel: "Rejected rows",
