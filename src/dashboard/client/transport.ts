@@ -3,7 +3,7 @@
 import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import { PublicProfileStateSchema } from "../../models/profiles/public-profile.js";
 import { debugFailureOutcome, debugFailureOutcomes, diagnosticRequestRoute } from "../../models/events/debug-report.js";
-import { DashboardClientError, httpError,networkError,markDashboardErrorReported } from "./errors.js";
+import { DashboardClientError, WIRE_ERROR_BODY, httpError,networkError,markDashboardErrorReported } from "./errors.js";
 import { CHATGPT_ACCOUNT_READ_DEADLINE_MS, CHATGPT_COMPLETION_READ_DEADLINE_MS, SETTINGS_READ_DEADLINE_MS, readWithDeadline } from "./read-deadline.js";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -57,8 +57,18 @@ export interface DashboardTransport {
   ): StreamHandle;
 }
 
+/** Every request names its tab, the owner of the server's latest-wins read slots. */
+export const DASHBOARD_TAB_HEADER = "x-relay-tab";
+
+/** A newer read from this tab replaced the request; it is the caller's expected outcome, not a failure. */
+export function isReadSuperseded(error: unknown): boolean {
+  return error instanceof DashboardClientError && error.kind === "http" && error.status === 409 && error.code === "READ_SUPERSEDED";
+}
+
 export function createDashboardTransport(input: Readonly<{
   baseUrl: string;
+  /** This tab's identity; one per page load unless the caller supplies it. */
+  tabId?: string;
   fetchImpl?: FetchLike;
   profileHeaders?: (path: string) => Record<string, string>;
   onFailure?: (failure: NonNullable<ReturnType<typeof debugFailureOutcome>> & { route: string }) => void;
@@ -66,12 +76,13 @@ export function createDashboardTransport(input: Readonly<{
 }>): DashboardTransport {
   const baseUrl = input.baseUrl.replace(/\/$/, "");
   const baseOrigin = new URL(baseUrl).origin;
+  const tabId = input.tabId ?? globalThis.crypto.randomUUID();
   const sendRequest: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
   const fetchImpl: FetchLike = (url, init) => {
     const destination = new URL(url);
     if (destination.origin !== baseOrigin || destination.username || destination.password) throw new Error("Dashboard request origin mismatch");
     return sendRequest(url, { ...init, credentials: "omit", redirect: "error", mode: "same-origin",
-      headers: { ...Object.fromEntries(new Headers(init?.headers)), ...input.profileHeaders?.(destination.pathname) } });
+      headers: { ...Object.fromEntries(new Headers(init?.headers)), ...input.profileHeaders?.(destination.pathname), [DASHBOARD_TAB_HEADER]: tabId } });
   };
   const observeProfileSession = (path: string, status: number, body: unknown, notify: (() => void) | undefined): void => {
     if (status !== 401 || /^\/api\/v1\/profile\//u.test(path) || path === "/api/v1/debug/errors") return;
@@ -130,8 +141,13 @@ export function createDashboardTransport(input: Readonly<{
       });
   };
 
+  const superseded = (status: number, body: unknown): boolean => {
+    if (status !== 409) return false;
+    const parsed = WIRE_ERROR_BODY.safeParse(body);
+    return parsed.success && parsed.data.code === "READ_SUPERSEDED";
+  };
   const reportFailure = (path: string, body: unknown, status = 200, method = "GET"): void => {
-    if (path === "/api/v1/debug/errors") return;
+    if (path === "/api/v1/debug/errors" || superseded(status, body)) return;
     if (EXPECTED_REFUSALS[`${method.toUpperCase()} ${path.split("?")[0] ?? path}`]?.includes(status) === true) return;
     for (const failure of debugFailureOutcomes(body, status)) input.onFailure?.({ ...failure, route: diagnosticRequestRoute(path) });
   };

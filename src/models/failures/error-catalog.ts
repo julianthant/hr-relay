@@ -563,6 +563,8 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   DASHBOARD_PAGE_FAILED: catalogEntry("This page could not be shown. Open the dashboard again.", EmptyParametersSchema),
+  READ_SUPERSEDED: catalogEntry("A newer request from this tab replaced this one.", EmptyParametersSchema),
+  READ_LANE_RESTARTED: catalogEntry("The dashboard reader restarted. Try again.", EmptyParametersSchema),
   DASHBOARD_READ_FAILED: catalogEntry(
     "This could not load. Try again.",
     EmptyParametersSchema,

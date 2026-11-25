@@ -1,3 +1,4 @@
+import { ReadLaneRestartedError, ReadSupersededError } from "../../../storage/sqlite/dashboard-read-host.js";
 import { ERROR_CATALOG,createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { CredentialMaintenanceHold } from "../../../storage/configuration/canonical-credential-store.js";
 import { PreflightAdmissionRefusal, PreflightObservationChangedError } from "../../../../rules/preflight/preflight-admission.js";
@@ -48,6 +49,8 @@ export function failureStatus(
   };
   if (error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof ProfileRuntimeStartFailedError) return { status: 500, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  if (error instanceof ReadSupersededError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  if (error instanceof ReadLaneRestartedError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, true) };
   if (error instanceof DashboardReadFailedError) return { status: 500, body: wireError("DASHBOARD_READ_FAILED", ERROR_CATALOG.DASHBOARD_READ_FAILED.text, false) };
   if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, message, false) };

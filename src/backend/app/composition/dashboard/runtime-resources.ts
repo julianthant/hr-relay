@@ -31,6 +31,7 @@ import { createTrustNotifications } from "./notifications.js";
 import { ownedDiagnostics } from "./notification-health.js";
 import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeInput,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
 import { composeSettings } from "./settings.js";
+import { createDashboardReadHost } from "../../../storage/sqlite/dashboard-read-host.js";
 
 
 export function prepareDashboardEnvironment(input: DashboardComposeInput, custody: StartupCustody) {
@@ -124,6 +125,9 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     await profile.runtime.close();
     databaseClosed = true;
   });
+  // Read lanes boot on their own threads while the rest of startup runs; they close before the store they read.
+  const readLanes = createDashboardReadHost({ admission, database, clock });
+  startupCleanups.push(requiredClosure(() => readLanes.close()));
   importLocalDebugLog(stateRoot, database.authority.timelineEvents);
   importLocalDebugLog(machineAdmission.stateRoot, database.authority.timelineEvents);
   database.sweepOrdinaryDiagnostics(clock.now().toISOString());
@@ -137,7 +141,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   const { persistedSettings, resolved } = bootConfig;
   const protectedSettingsAuthority = context.credentials;
   const protectedSecrets = { read: () => { assertCurrent(); const result = context.protectedSecrets.read(); assertCurrent(); return result; } };
-  const settingsBoundary = composeSettings({ database, hostFacts, clock, active: activeSettingsRuntimeIdentity,
+  const settingsBoundary = composeSettings({ database, readLanes, hostFacts, clock, active: activeSettingsRuntimeIdentity,
     environment: env, credentials: protectedSettingsAuthority,
     runtimeStoragePair,
     resolveSettings: settings => { assertCurrent(); const result = context.resolveSettings(settings); assertCurrent(); return result; }, assertCurrent });
@@ -237,5 +241,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }
