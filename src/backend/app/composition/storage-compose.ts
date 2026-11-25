@@ -589,7 +589,13 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
       catch (error) { throw retainAuthoritySourceClosure(logoutFailure === undefined ? [error] : [logoutFailure.error, error], { admission: { logoutMachine, logoutRuntime } }); }
       if (logoutFailure !== undefined) throw logoutFailure.error;
     }
-    const registrationProofs = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? undefined : machine.captureStartupRegistrationProofs());
+    const { registrationProofs, readyReenrolCommits } = await withStoppedMachineStorage(workspace, lifetime, async machine => {
+      if (machine.requiresFlatStoreMigration()) return { registrationProofs: undefined, readyReenrolCommits: [] };
+      const registrationProofs = await machine.captureStartupRegistrationProofs();
+      // Onboarding may change the operations directory. In that case read it after recovery.
+      const readyReenrolCommits = registrationProofs.length === 0 ? machine.readDuoReenrolCommitProfileIds() : undefined;
+      return { registrationProofs, readyReenrolCommits };
+    });
     if (registrationProofs !== undefined && registrationProofs.length !== 0) {
       const recoveryMachine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
       let recovery: ReturnType<typeof createProfileSession> | undefined;
@@ -604,7 +610,7 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
       catch (error) { throw retainAuthoritySourceClosure(recoveryFailure === undefined ? [error] : [recoveryFailure.error, error], { admission: { recoveryMachine, recovery } }); }
       if (recoveryFailure !== undefined) throw recoveryFailure.error;
     }
-    const reenrolCommits = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? [] : machine.readDuoReenrolCommitProfileIds());
+    const reenrolCommits = readyReenrolCommits ?? await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? [] : machine.readDuoReenrolCommitProfileIds());
     if (reenrolCommits.length !== 0) {
       const commitMachine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
       let commits: ReturnType<typeof createProfileSession> | undefined;
@@ -621,13 +627,14 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
       catch (error) { throw retainAuthoritySourceClosure(commitFailure === undefined ? [error] : [commitFailure.error, error], { admission: { commitMachine, commits } }); }
       if (commitFailure !== undefined) throw commitFailure.error;
     }
-    const registered = await withStoppedMachineStorage(workspace, lifetime, async machine => {
-      if (machine.requiresFlatStoreMigration()) return [];
-      const pending = new Set(machine.readPendingLogoutProfileIds());
-      return machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready" && !pending.has(row.profileId) && !isStartupHeld(standings, row.profileId)).map(row => row.profileId);
-    });
+    let upgradeStarted = false;
     try {
-      await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
+      return await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
+        if (machine.requiresFlatStoreMigration()) return [];
+        const pending = new Set(machine.readPendingLogoutProfileIds());
+        const registered = machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready"
+          && !pending.has(row.profileId) && !isStartupHeld(standings, row.profileId)).map(row => row.profileId);
+        upgradeStarted = true;
         const { upgradeProtectedSettings } = await import("../../storage/maintenance/protected-settings-upgrade.js");
         const operation = machine.maintenanceOperation(), processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
         for (const profileId of registered) {
@@ -646,9 +653,12 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
           }
           advanceStartupStanding(standings, profileId, { type: "settings-upgraded" });
         }
+        return registered.filter(profileId => !isStartupHeld(standings, profileId));
       });
-    } catch (error) { throw new RegisteredPersonUpgradeRefusedError(error); }
-    return registered.filter(profileId => !isStartupHeld(standings, profileId));
+    } catch (error) {
+      if (upgradeStarted) throw new RegisteredPersonUpgradeRefusedError(error);
+      throw error;
+    }
   } catch (error) {
     if (error instanceof RegisteredPersonUpgradeRefusedError) throw error;
     throw new AutomaticPersonRepairRefusedError(error);
@@ -657,7 +667,8 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
 
 export async function initializeRegisteredPersonStores(workspace: string, lifetime: RuntimeLifetimeLock,
   hostFacts: HostConfigFacts, clock: Clock = systemClock): Promise<void> {
-  await AuthorityDatabase.withUpgradeInspections(() => initializePersonStores(workspace, lifetime, hostFacts, clock));
+  await AuthorityDatabase.withUpgradeInspections(() => withReusableReadonlyAuthoritySnapshots(
+    () => initializePersonStores(workspace, lifetime, hostFacts, clock)));
 }
 
 async function initializePersonStores(workspace: string, lifetime: RuntimeLifetimeLock,
