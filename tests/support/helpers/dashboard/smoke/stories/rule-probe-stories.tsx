@@ -26,7 +26,7 @@ function ToastOverSessions() {
   }, [toast]);
   return <>
     <style>{'[data-slot="toast-viewport"] { top: auto !important; bottom: 24px !important; left: 25% !important; }'}</style>
-    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} workflows={[]} />
   </>;
 }
 
@@ -39,7 +39,7 @@ function ToastBelowTop() {
   }, [toast]);
   return <>
     <style>{'[data-slot="toast-viewport"] { top: 66px !important; }'}</style>
-    <SessionsView data={{ state: "ready", workers: [] }} open={false} onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+    <SessionsView data={{ state: "ready", workers: [] }} open={false} onOpenChange={() => undefined} onControl={() => undefined} workflows={[]} />
   </>;
 }
 
@@ -49,7 +49,7 @@ function RaiseToasts() {
   const [raised, setRaised] = useState(0);
   return <>
     <div><Button onClick={() => { toast({ tone: "success", sticky: true, title: `Result ${String(raised + 1)}` }); setRaised(raised + 1); }}>Raise toast</Button></div>
-    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} workflows={[]} />
   </>;
 }
 

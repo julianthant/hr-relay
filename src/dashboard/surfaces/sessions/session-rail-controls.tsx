@@ -1,8 +1,7 @@
 import { Terminal } from "lucide-react";
 import { IconButton, Tooltip } from "../../ds/ui.js";
 import { AddWorkers } from "./add-workers.js";
-import { useSessionsState } from "./session-panel.js";
-import { SESSIONS_CONSOLE_ID } from "./sessions-view.js";
+import { SESSIONS_CONSOLE_ID, useSessionsState } from "./sessions-context.js";
 
 /** The sidebar footer's right end: the Sessions console toggle, dotted while workers wait or run, and Add workers. */
 export function SessionRailControls({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {

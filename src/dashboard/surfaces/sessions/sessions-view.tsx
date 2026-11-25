@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEven
 import { ChevronDown, ChevronUp, UsersRound, X } from "lucide-react";
 import { BareButton, dsFocus, IconButton, Skeleton, useSkeletonWait } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
+import { SESSIONS_CONSOLE_ID } from "./sessions-context.js";
 import { SESSION_STATE_LABELS, sessionTallies, type SessionControl, type SessionsViewState } from "./sessions-view-model.js";
 import type { SessionPreviewOperation } from "./session-preview-command-model.js";
 import { StartingCard, WorkerCard } from "./worker-card.js";
@@ -31,7 +32,6 @@ function SessionsSkeleton() {
   </div>)}</LoadingRegion>;
 }
 
-export const SESSIONS_CONSOLE_ID = "sessions-console";
 const MIN_HEIGHT = 120;
 const DEFAULT_HEIGHT = 320;
 const RESIZE_STEP = 24;
@@ -67,10 +67,11 @@ export function SessionsView({ data, open, onOpenChange, onControl, workflows = 
   const workers = data.state === "ready" ? data.workers : [];
   const onWorkerControl = (id: string, control: SessionControl) => { onControl(id, control); if (control === "remove") toggleRef.current?.focus(); };
   const pendingAdd = operations.add?.state === "pending" && operations.add.request.action === "add" ? operations.add.request : undefined;
+  const adding = pendingAdd !== undefined;
   const pendingAddLabel = pendingAdd && (workflows.find(item => item.id === pendingAdd.workflow)?.label ?? pendingAdd.workflow);
   const stripRef = useRef<HTMLDivElement>(null);
   // The Starting card is first, so a strip scrolled away from it comes back.
-  useLayoutEffect(() => { if (pendingAdd !== undefined && stripRef.current !== null) stripRef.current.scrollLeft = 0; }, [pendingAdd !== undefined]);
+  useLayoutEffect(() => { if (adding && stripRef.current !== null) stripRef.current.scrollLeft = 0; }, [adding]);
   const announcement = [
     pendingAdd && `Starting ${pendingAdd.count > 1 ? `${String(pendingAdd.count)} workers` : "a worker"} for ${pendingAddLabel ?? ""}.`,
     ...workers.filter(worker => operations[worker.id]?.state === "pending" && operations[worker.id]?.request.action === "remove").map(worker => `Removing ${worker.label}, ${worker.workflow}.`),

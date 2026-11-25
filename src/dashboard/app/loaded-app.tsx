@@ -759,6 +759,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [shownDay, dataSources]);
   const setLaunchOpen = launch.setOpen;
   const onRailSelect = useCallback((id: string) => { selectWorkflow(id); }, [selectWorkflow]);
+  const railAccount = useMemo(() => accountPage === undefined ? undefined : { name: accountPage.values.name, initials: accountPage.values.initials, email: accountPage.values.username }, [accountPage]);
+  const onRailSettings = useCallback(() => openSettings(), [openSettings]);
+  const onRailLogout = useCallback(() => setLogoutOpen(true), []);
+  const railSessionControls = useMemo(() => <SessionRailControls open={sessionsOpen} onOpenChange={setSessionsOpen} />, [sessionsOpen, setSessionsOpen]);
   const harness = workflowComposition.harness;
   const LogPreview = harness?.LogPreview;
   const harnessSearch = (harness?.useSearch ?? noHarnessSearch)({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf });
@@ -921,9 +925,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} active={activeWorkflowId}
         onSelect={onRailSelect} settingsOpen={settingsOpen} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction}
-        account={accountPage === undefined ? undefined : { name: accountPage.values.name, initials: accountPage.values.initials, email: accountPage.values.username }}
-        onSettings={() => openSettings()} onLogout={() => setLogoutOpen(true)}
-        sessionControls={<SessionRailControls open={sessionsOpen} onOpenChange={setSessionsOpen} />}
+        account={railAccount} onSettings={onRailSettings} onLogout={onRailLogout} sessionControls={railSessionControls}
         onStartRun={openStartFor} canStartRun={canStartRun} />
 
       <main

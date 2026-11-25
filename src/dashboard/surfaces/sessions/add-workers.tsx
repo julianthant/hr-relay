@@ -22,16 +22,6 @@ export function AddWorkers({ data, workflows, operations = {}, onAdd, onAdded }:
   const addLocked = operations.add?.state === "pending";
   // Why Add workers cannot act now; the dimmed button keeps its place and says so.
   const addOff = data.state === "loading" ? "Sessions are loading" : data.state === "unavailable" ? "Sessions are unavailable" : data.stale ? "Sessions are out of date" : !workflows.length ? "No workflow can start workers" : undefined;
-  const pendingAdd = operations.add?.state === "pending" && operations.add.request.action === "add" ? operations.add.request : undefined;
-  const pendingAddLabel = pendingAdd && (workflows.find(item => item.id === pendingAdd.workflow)?.label ?? pendingAdd.workflow);
-  const adding = pendingAdd !== undefined;
-  const stripRef = useRef<HTMLDivElement>(null);
-  // The Starting card is first, so a strip scrolled away from it comes back.
-  useLayoutEffect(() => { if (adding && stripRef.current !== null) stripRef.current.scrollLeft = 0; }, [adding]);
-  const announcement = [
-    pendingAdd && `Starting ${pendingAdd.count > 1 ? `${String(pendingAdd.count)} workers` : "a worker"} for ${pendingAddLabel ?? ""}.`,
-    ...workers.filter(worker => operations[worker.id]?.state === "pending" && operations[worker.id]?.request.action === "remove").map(worker => `Removing ${worker.label}, ${worker.workflow}.`),
-  ].filter(Boolean).join(" ");
   const selectedWorkflow = workflows.find(item => item.id === workflow) ?? workflows[0];
   const selectedWorkflowId = selectedWorkflow?.id ?? "";
   const validWorkflow = selectedWorkflow !== undefined;

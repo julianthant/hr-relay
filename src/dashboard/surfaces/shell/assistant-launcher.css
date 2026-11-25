@@ -6,7 +6,7 @@
 .session-body { display: flex; min-height: 0; flex-direction: column; border-top: 1px solid var(--ui-stroke); }
 .session-body-cards { min-height: 0; overflow-y: auto; padding: 12px; }
 .session-rail-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 9999px; background: var(--ui-positive); box-shadow: 0 0 0 2px var(--ds-surface-1); pointer-events: none; }
-.session-rail-dot[data-sessions-dot="running"] { background: #4c8dff; }
+.session-rail-dot[data-sessions-dot="running"] { background: var(--ds-switch-on); }
 .session-toggle { display: inline-flex; height: 28px; min-width: 0; flex: none; align-items: center; gap: 8px; padding: 0 4px; border: 0; border-radius: 8px; background: transparent; color: var(--ui-primary); font-size: 13px; line-height: 18px; cursor: pointer; box-shadow: none; }
 .session-toggle svg { width: 16px; height: 16px; flex: none; color: var(--ui-muted); }
 .session-divider { width: 1px; height: 14px; flex: none; background: var(--ui-stroke); }
@@ -14,7 +14,7 @@
 .session-pill-counts { color: var(--ui-secondary); }
 .session-toggle:focus-visible, .assistant-launcher:focus-visible { outline: 2px solid var(--ui-info); outline-offset: 1px; }
 .assistant-launcher { display: inline-flex; flex: none; height: 28px; width: 28px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ui-primary); cursor: pointer; }
-.assistant-launcher:hover, .assistant-launcher[aria-expanded="true"] { background: #26262b; }
+.assistant-launcher:hover, .assistant-launcher[aria-expanded="true"] { background: var(--ui-hover); }
 .assistant-launcher svg { flex: none; color: var(--ui-secondary); }
 }
 @media (prefers-reduced-motion: reduce) { .assistant-launcher { transition: none; } }

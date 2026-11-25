@@ -1036,7 +1036,8 @@ body[data-demo-theme="light"] {
 /* Two-way switch: track a clear step above the card, thumb a step above the track, unselected label in the secondary text colour (AA on the track). */
 /* On-state fill of the toggle switch. */
 :root, [data-demo-theme="light"] {
-  --ds-switch-on: var(--ui-info);
+  --ds-switch-on: #4c8dff;
+  --ds-on-signal: #ffffff;
   --ds-settings-section-gap: 48px;
   --ds-settings-card-gap: 40px;
 }

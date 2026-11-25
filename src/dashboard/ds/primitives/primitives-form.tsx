@@ -515,7 +515,7 @@ export function Switch({
         <HeroSwitch.Control onClick={event => { event.preventDefault(); event.stopPropagation(); if (!disabled) onCheckedChange(!checked); }} className={cn(
         "ds-switch-control relative inline-flex shrink-0 cursor-pointer items-center rounded-full border",
         checked
-          ? "ds-switch-control-checked border-transparent bg-[#4c8dff]"
+          ? "ds-switch-control-checked border-transparent bg-[var(--ds-switch-on)]"
           : "border-transparent bg-[var(--ui-stroke-control)]",
         dsFocus,
         dsMotion.fast,
