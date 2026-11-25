@@ -23,6 +23,7 @@ import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safe
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { rerunInputFieldAccepts, rerunTargetAccepts } from "../../../models/validation/rerun-values.js";
 import { workbookInputBinding } from "../workbooks.js";
+import { parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
 
 export interface RerunValuesDependencies {
   readonly reader: { read(runId: string): RunExistence };
@@ -403,10 +404,18 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
             sourceInput = { state: "available", value: JsonValueSchema.parse(binding.sourceToIngress(canonical.data)) };
         }
       }
+      const spreadsheets = (run.input.workbookReferences ?? []).flatMap((bound) => {
+        const { request: picked, snapshot } = parseRunWorkbookReference(bound);
+        return "versionId" in snapshot && snapshot.versionId !== undefined ? snapshot.worksheets.map(({ sheetId }) => ({ typeId: picked.typeId,
+          libraryId: snapshot.libraryId, versionId: snapshot.versionId, sheetId,
+          ...("selectedRow" in picked && picked.selectedRow?.sheetId === sheetId ? { selectedRow: picked.selectedRow } : {}) })) : [];
+      });
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
         sourceInput,
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,
-          descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, outcome: lifecycle.outcome },
+          descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, outcome: lifecycle.outcome,
+          dryRun: run.envelope.dryRun, priority: run.envelope.priority, ...(run.envelope.browserMode === undefined ? {} : { browserMode: run.envelope.browserMode }) },
+        ...(spreadsheets.length === 0 ? {} : { spreadsheets }),
         steps, values, transactions,
         ...(children.length === 0 ? {} : { children }),
         ...(typed.length === 0 ? {} : { typed }),

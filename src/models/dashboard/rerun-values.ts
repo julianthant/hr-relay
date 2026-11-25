@@ -5,6 +5,8 @@ import { FingerprintSchema, IsoInstantSchema, NodeIdSchema, PositiveIntSchema, R
 import { FactProvenanceSchema } from "../workflow/checkpoint.js";
 import { RerunValueMappingSchema } from "../workflow/rerun-values.js";
 import { StepOmissionsSchema } from "../workflow/step-omission.js";
+import { BrowserPresentationModeSchema, RunPrioritySchema } from "../run/envelope.js";
+import { WorkbookIdSchema } from "./workbooks.js";
 
 export const RerunValuesRequestSchema = z.strictObject({ runId: RunIdSchema, expectedVersion: PositiveIntSchema });
 const CompletionStateSchema = z.enum(["completed", "failed", "unfinished"]);
@@ -43,7 +45,12 @@ export const RerunValuesSnapshotSchema = z.strictObject({
     runId: RunIdSchema, version: PositiveIntSchema, workflow: WorkflowIdSchema,
     descriptorVersion: PositiveIntSchema, contractFingerprint: FingerprintSchema,
     outcome: z.enum(["done", "failed", "interrupted"]),
+    /** How the source ran; a rerun keeps it. */
+    dryRun: z.boolean(), priority: RunPrioritySchema, browserMode: BrowserPresentationModeSchema.optional(),
   }),
+  /** The spreadsheets the source run was started with, one entry per picked worksheet. */
+  spreadsheets: z.array(z.strictObject({ typeId: WorkbookIdSchema, libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema, sheetId: WorkbookIdSchema,
+    selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional() })).optional(),
   steps: z.array(StepCompletionSchema),
   /** Each delegated child workflow a Start row shows: per node, or per phase of a transaction node, the least advanced child run of that workflow. */
   children: z.array(z.strictObject({ workflow: WorkflowIdSchema, steps: z.array(StepCompletionSchema) })).optional(),

@@ -1,4 +1,4 @@
-/** The run launcher's two-step path: Input, then Start. Step customization and the checks are sections of Start. */
+/** The launcher's two-page path: a run walks Input then Start, a rerun Steps then Start. The checks are a section of Start. */
 
 import type { RunStartStage } from "./run-dialog-model.js";
 
@@ -9,18 +9,13 @@ export interface RunStartStageSpec {
   readonly number: number;
 }
 
-export function runStartStages(): readonly RunStartStageSpec[] {
-  return Object.freeze((["Input", "Start"] as const).map((label, index) => Object.freeze({ label, number: index + 1 })));
+export function runStartStages(rerun: boolean): readonly RunStartStageSpec[] {
+  return Object.freeze(([rerun ? "Steps" : "Input", "Start"] as const).map((label, index) => Object.freeze({ label, number: index + 1 })));
 }
 
-/** A stage the path does not have falls back to Input; Warning exists only in a rerun. */
-export function reconcileRunStartStage(
-  stages: readonly RunStartStageSpec[],
-  current: RunStartStage,
-  rerun: boolean,
-): RunStartStage {
-  if (stages.some((stage) => stage.label === current) || (current === "Warning" && rerun)) return current;
-  return "Input";
+/** A stage the path does not have falls back to its first page. */
+export function reconcileRunStartStage(stages: readonly RunStartStageSpec[], current: RunStartStage): RunStartStage {
+  return stages.find((stage) => stage.label === current)?.label ?? stages[0]?.label ?? "Start";
 }
 
 export function adjacentRunStartStage(

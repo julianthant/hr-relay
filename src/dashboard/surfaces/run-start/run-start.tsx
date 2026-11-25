@@ -48,15 +48,6 @@ import { pdfRunLaunchFields, pdfRunOcrFooter, pdfRunSelectValue, pdfRunSwitchVal
 
 /** What the app composes from the descriptor and bootstrap projections. The
  * dialog reads exactly this and imports no workflow module. */
-/** Why a previous value cannot be reused, in the operator's words. */
-const RERUN_VALUE_UNAVAILABLE_TEXT = Object.freeze({
-  "not-completed": "The earlier run did not get far enough to record this.",
-  "not-recorded": "The earlier run did not record this.",
-  "provenance-unavailable": "Where this came from is no longer available.",
-  protected: "This is protected and is not copied.",
-  "target-invalid": "This no longer fits the workflow.",
-} as const);
-
 export interface RunStartWorkflow {
   readonly uploadRun?: UploadRunSurface;
   readonly workflowId: string;
@@ -166,6 +157,7 @@ export function RunStartDialog({
   onFixCheck,
   rerunSource,
   rerunInputText,
+  rerunInOneClick = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -185,6 +177,8 @@ export function RunStartDialog({
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;
   rerunInputText?: string;
+  /** Rerun was pressed on a successful run: it queues without the dialog unless something needs the operator. */
+  rerunInOneClick?: boolean;
 }) {
   const workflows = useMemo(() => servedLaunchWorkflows(catalog), [catalog]);
   const navigation = useViewNavigation();
@@ -223,9 +217,14 @@ export function RunStartDialog({
   const selectedWorkflow = workflows.find(workflow => workflow.workflowId === workflowId);
   const workbookReference = selectedWorkflow?.workbookReference;
   const requiredTypes = useMemo(() => workbookReference === undefined ? [] : [workbookReference.id], [workbookReference]);
-  const selectedReferences = referenceSelections;
   const referenceId = workbookReference?.id;
-  const selectedDraft = referenceId === undefined ? undefined : referenceDrafts[referenceId];
+  /** A rerun writes to the current version of the original spreadsheet; every other start keeps the version picked. */
+  const writtenVersion = isRerun && (workbookReference?.writableFields.length ?? 0) > 0
+    ? library.catalog.find(entry => referenceId !== undefined && entry.libraryId === referenceDrafts[referenceId]?.libraryId)?.state.selectedVersionId : undefined;
+  const atWrittenVersion = <T extends object>(picks: Readonly<Record<string, T>>): Readonly<Record<string, T>> => referenceId === undefined || writtenVersion === undefined || picks[referenceId] === undefined
+    ? picks : { ...picks, [referenceId]: { ...picks[referenceId], versionId: writtenVersion } };
+  const selectedReferences = atWrittenVersion(referenceSelections);
+  const selectedDraft = referenceId === undefined ? undefined : atWrittenVersion(referenceDrafts)[referenceId];
   const selectedLibrary = library.catalog.find(entry => entry.libraryId === selectedDraft?.libraryId && entry.state.origin.kind === 'local' && !entry.state.removed);
   const selectedVersion = selectedLibrary?.state.versions.find(version => version.id === selectedDraft?.versionId);
   const sourceProjection = library.compatibility?.workflows.find(entry => entry.workflowId === workflowId);
@@ -313,23 +312,18 @@ export function RunStartDialog({
     ? "Fill and check every step without submitting or saving."
     : "Fill and check every step without submitting.";
   const dryRun = supportsDryRun && dryRunRequested;
-  const launchStages = useMemo(() => runStartStages(), []);
+  const launchStages = useMemo(() => runStartStages(isRerun), [isRerun]);
 
   useEffect(() => {
-    setCurrentStage((current) => reconcileRunStartStage(launchStages, current, isRerun));
-  }, [launchStages, setCurrentStage, isRerun]);
+    setCurrentStage((current) => reconcileRunStartStage(launchStages, current));
+  }, [launchStages, setCurrentStage]);
 
   /** Plans and results expire when any request-shaping fact changes. */
   /** Lock forced omissions using the descriptor cascade; the planner owns the rule. */
   const steps = workflow?.steps ?? EMPTY_STEPS;
   const forcedByStep = useMemo(() => forcedStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
   const rows = useMemo(() => startRowsOf({ steps, rows: workflow?.rows }), [steps, workflow?.rows]);
-  /** A step the typed input decides (its control sits on the Input stage or is unavailable) is neither switched nor typed here. */
-  const inputDriven = useCallback((row: StepRow): boolean => {
-    const control = row.stepKey === undefined ? undefined : steps.find(step => step.key === row.stepKey)?.control;
-    return typedDeclaration !== undefined && control?.state === "selectable"
-      && (typedDeclaration.controls.some(field => field.field === control.inputField && field.placement === "input") || !typedControlAvailable(typedDeclaration, typedValues, control.inputField));
-  }, [steps, typedDeclaration, typedValues]);
+  const inputDriven = useCallback((row: StepRow): boolean => launchDraft.rowInputDriven(workflow, typedValues, row), [workflow, typedValues]);
   const openRows: readonly OpenStepRow[] = useMemo(() => customizeSteps ? rows.flatMap(row => {
     if (row.form === undefined || inputDriven(row) || !rowFieldsOpen(row, selectedStepKeys, manualRows)) return [];
     return [rowOpenFold(row, row.form, stepDrafts[row.key] ?? initialStepOmissionDraft(row.form))];
@@ -377,6 +371,11 @@ export function RunStartDialog({
       restoreSource: restored => {
         const sourceWorkflow = workflowsRef.current.find(entry => entry.workflowId === restored.source.workflow);
         if (sourceWorkflow === undefined) throw new Error("RERUN_WORKFLOW_UNAVAILABLE");
+        if (sourceWorkflow.uploadRun?.pdfInput !== undefined) {
+          const pdfs = restored.sourceInput.state === "available" ? restorePdfRun(sourceWorkflow.uploadRun, restored.sourceInput.value) : null;
+          if (pdfs === null) throw new Error(RERUN_INPUT_GONE);
+          pdfInput.restore(pdfs);
+        }
         const next = launchDraft.restoreRerunDraft(draftRef.current, restored, sourceWorkflow, rerunInputText);
         setWorkflowId(sourceWorkflow.workflowId);
         draftRef.current = next;
@@ -402,7 +401,7 @@ export function RunStartDialog({
       applied: (applied, count, _workerStartup, runId) => onApplied?.(applied, count, runId),
       closeDialog: () => onOpenChange(false),
       refusalToast: () => toast(runStartRefusalToast(formatErrorCatalogFailure(createErrorCatalogFailure("RUN_START_READINESS_UNAVAILABLE", {})).text)),
-      autoStart: () => submitRef.current?.(),
+      autoStart: () => { submitRef.current?.(); send({ type: "attend" }); },
     },
   });
   const fingerprint = heldFingerprint(machine, requestFingerprint);
@@ -415,7 +414,7 @@ export function RunStartDialog({
   const load = view.source.kind === "rerun" ? view.source.load : undefined;
   const snapshot = load?.state === "ready" ? load.snapshot : null;
   const sourceError = load?.state === "failed" ? load.message : null;
-  const warning = load?.state === "ready" ? load.warning ?? null : null;
+  const warning = shownRepeatWarning(view, fingerprint) ?? null;
   const acknowledgment = load?.state === "ready" ? load.acknowledgment : undefined;
   const busy = view.activity.kind !== "idle";
   const error = requestProblem ?? view.problem ?? null;
@@ -430,6 +429,16 @@ export function RunStartDialog({
     update(current => launchDraft.changeWorkflow(current, workflows.find(entry => entry.workflowId === next), commandBinding?.authority.today));
     if (!preserveStage) { setCurrentStage("Input"); setCustomizeSteps(false); }
   }, [workflows, update, setCurrentStage, setCustomizeSteps, setWorkflowId, resetPdfs, commandBinding?.authority.today]);
+
+  /** The rerun this dialog is open for, and whether its one click is still going. */
+  const openedFor = useRef<RerunLaunchSource | undefined>(undefined);
+  const [opened, setOpened] = useState<RerunLaunchSource>();
+  const unattended = useRef(view.unattended);
+  unattended.current = view.unattended;
+  const fromRerun = useRef(false);
+  useEffect(() => { if (!open) { openedFor.current = undefined; setOpened(undefined); } }, [open]);
+  /** Nothing is drawn while a one-click rerun goes on by itself. */
+  const drawn = open && !hidden && view.unattended === undefined && !(rerunInOneClick && opened !== rerunSource);
 
   // Opening lands on the panel you are standing in, every time — including the
   // second time, which is why this keys on `open` rather than running once.
@@ -446,11 +455,17 @@ export function RunStartDialog({
       recoveryState = retained === null ? { state: "none" } : { state: "retained", command: retained };
     } catch { recoveryState = { state: "unreadable", message: "Relay cannot send the saved start again. Check the queue first." }; }
     if (rerunSource !== undefined) setCustomizeSteps(true);
+    else if (fromRerun.current) update(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === selectedWorkflowRef.current), commandBindingRef.current?.authority.today));
+    fromRerun.current = rerunSource !== undefined;
     // A start keeps the routed stage; only a rerun opens on its own first stage.
     suppressStage.current = rerunSource === undefined;
-    try { send({ type: "open", recovery: recoveryState, ...(rerunSource === undefined ? {} : { rerun: rerunSource }) }); }
+    try { send({ type: "open", recovery: recoveryState, ...(rerunSource === undefined ? {} : { rerun: rerunSource,
+      // A dialog already open for this rerun starts over by itself only while nothing was asked for.
+      unattended: rerunInOneClick && (openedFor.current !== rerunSource || unattended.current === "waiting") }) }); }
     finally { suppressStage.current = false; }
-  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, actorId, launchService, routed, setCustomizeSteps, resetPdfs, update, send]);
+    openedFor.current = rerunSource;
+    setOpened(rerunSource);
+  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, rerunInOneClick, actorId, launchService, routed, setCustomizeSteps, resetPdfs, update, send]);
 
   const pickWorkflow = useCallback((id: string) => {
     if (selectedWorkflowRef.current === id || sending) return;

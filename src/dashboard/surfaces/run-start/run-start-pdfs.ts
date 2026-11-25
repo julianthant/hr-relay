@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { z } from "zod";
 import { OcrSourceUploadSchema } from "../../../models/ocr/review.js";
 import type { UploadRunSurface } from "../../../models/workflow/ingress.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
@@ -8,7 +9,8 @@ import { DashboardClientError } from "../../client/errors.js";
 import type { DashboardCommandBinding } from "../../app/dashboard-app-model.js";
 import type { RunInputPreview } from "./run-start-model.js";
 
-type Pdf = { source: ReturnType<typeof OcrSourceUploadSchema.parse>; readingId: string };
+const PdfSourceSchema = OcrSourceUploadSchema.pick({ artifact: true, fileName: true });
+type Pdf = { source: z.infer<typeof PdfSourceSchema>; readingId: string };
 export type PdfRunDraft = { files: readonly Pdf[]; asOf: string; reviewer: string };
 /** The operator's choice for each declared launch field of a PDF workflow, keyed by input field; a select with no entry is unpicked, a switch with no entry holds its declared initial value. */
 export type PdfRunPicks = Readonly<Record<string, string | boolean>>;
@@ -58,6 +60,22 @@ export function previewPdfRun(surface: UploadRunSurface, draft: PdfRunDraft | nu
     })] };
 }
 
+/** The PDFs, date, reviewer and picks of an earlier run's input, each PDF under a new reading; null when they cannot be read back. */
+export function restorePdfRun(surface: UploadRunSurface, value: unknown): { draft: PdfRunDraft; picks: PdfRunPicks } | null {
+  const input = surface.pdfInput, record = z.record(z.string(), z.unknown()).safeParse(value).data;
+  if (input === undefined || record === undefined) return null;
+  const documents = "documentField" in input ? [{ document: record[input.documentField], fileName: record[input.fileNameField] }]
+    : z.array(z.object({ document: z.unknown(), fileName: z.unknown() })).min(1).safeParse(record[input.documentsField]).data;
+  const files = z.array(PdfSourceSchema).safeParse(documents?.map(({ document, fileName }) => ({ artifact: document, fileName }))).data;
+  const about = z.object({ asOf: z.string(), reviewer: z.string() }).safeParse("documentField" in input ? { asOf: "", reviewer: "" } : { asOf: record[input.asOfField], reviewer: record[input.reviewerField] }).data;
+  if (files === undefined || about === undefined) return null;
+  const picks = Object.fromEntries(pdfRunLaunchFields(surface).flatMap(({ field }) => {
+    const pick = record[field];
+    return typeof pick === "string" || typeof pick === "boolean" ? [[field, pick]] : [];
+  }));
+  return { draft: { files: files.map(source => ({ source, readingId: crypto.randomUUID() })), ...about }, picks };
+}
+
 export function usePdfRunInput(client: DashboardClient, binding: DashboardCommandBinding | undefined) {
   const [draft, setDraft] = useState<PdfRunDraft | null>(null);
   const draftRef = useRef(draft); draftRef.current = draft;
@@ -96,7 +114,8 @@ export function usePdfRunInput(client: DashboardClient, binding: DashboardComman
       }
     } finally { if (current.current === operation) { current.current = null; setLoading(false); } }
   }, [client]);
-  return { draft, picks, pick: (field: string, value: string | boolean) => setPicks(previous => ({ ...previous, [field]: value })), loading, error, reset, choose, retryable: error !== null && failed.current !== null, retry: () => { const last = failed.current; if (last !== null) void choose(last.surface, last.files); }, clear: () => { setError(null); setDraft(previous => previous === null ? null : { ...previous, files: [] }); }, remove: (index: number) => {
+  const restore = useCallback((restored: { draft: PdfRunDraft; picks: PdfRunPicks }) => { reset(); setDraft(restored.draft); setPicks(restored.picks); }, [reset]);
+  return { draft, picks, restore, pick: (field: string, value: string | boolean) => setPicks(previous => ({ ...previous, [field]: value })), loading, error, reset, choose, retryable: error !== null && failed.current !== null, retry: () => { const last = failed.current; if (last !== null) void choose(last.surface, last.files); }, clear: () => { setError(null); setDraft(previous => previous === null ? null : { ...previous, files: [] }); }, remove: (index: number) => {
     setError(null);
     setDraft(previous => previous === null ? null : { ...previous, files: previous.files.filter((_file, position) => position !== index) });
   } };

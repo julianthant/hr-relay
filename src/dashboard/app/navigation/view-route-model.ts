@@ -6,7 +6,7 @@ import { RerunValuesRequestSchema } from "../../../models/dashboard/rerun-values
 import type { AppRouteState } from "./url-state.js";
 
 const identity = z.string().max(200);
-const stage = z.enum(["Input", "Start", "Warning"]);
+const stage = z.enum(["Input", "Steps", "Start"]);
 export const ViewRouteSchema = z.object({
   queueMember: QueueMemberSelectionSchema.optional(),
   logFailure: z.strictObject({ runId: RunIdSchema, failureId: FailureIdSchema }).optional(),
