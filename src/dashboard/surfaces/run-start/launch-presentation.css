@@ -68,7 +68,7 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start borde
 .launch-design .launch-step-status { @apply h-5 min-w-20 justify-end rounded-none border-0 bg-transparent px-0 py-0 text-[13px] font-normal; }
 .launch-design .launch-step-status[data-status="completed"] { @apply text-ui-positive; }
 .launch-design .launch-step-status[data-status="failed"] { @apply text-ui-danger; }
-.launch-design .launch-step-status[data-status="unfinished"] { @apply text-ui-muted; }
+.launch-design .launch-step-status[data-status="cancelled"] { @apply text-ui-muted; }
 
 .launch-design [data-slot="label"],
 .launch-design .ds-field-label,
