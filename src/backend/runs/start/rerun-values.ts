@@ -125,7 +125,8 @@ function preparedBySpan(repositories: AuthorityDatabase["authority"], run: RunRe
 function unitKey(nodeId: string, phase?: "prepare" | "commit"): string { return phase === undefined ? nodeId : `${nodeId}#${phase}`; }
 
 /** One child run's states per node, and per phase of a transaction node, from what it recorded; display only, so nothing here refuses the source. */
-function childUnitFacts(repositories: AuthorityDatabase["authority"], descriptor: AnyWorkflowDescriptor, run: RunRecord): ReadonlyMap<string, NodeFact> {
+function childUnitFacts(repositories: AuthorityDatabase["authority"], descriptor: AnyWorkflowDescriptor, run: RunRecord,
+  executions: ReturnType<NonNullable<RerunValuesDependencies["executions"]>>): ReadonlyMap<string, NodeFact> {
   // A child run of an older descriptor reports every current step unfinished, as an older source does.
   if (run.envelope.descriptorVersion !== descriptor.version || run.envelope.contractFingerprint !== descriptor.contractFingerprint) return new Map();
   const runId = run.envelope.runId;
@@ -161,12 +162,16 @@ function childUnitFacts(repositories: AuthorityDatabase["authority"], descriptor
       facts.set(unitKey(nodeId, "commit"), { nodeId: node.id, phase: "commit", ...commit });
       continue;
     }
+    const observed = executions.filter((execution) => String(execution.nodeId) === nodeId).sort((a, b) =>
+      a.attempt - b.attempt || (a.startedAt ?? a.endedAt ?? "").localeCompare(b.startedAt ?? b.endedAt ?? "")).at(-1);
     const fact: Pick<NodeFact, "state" | "reason"> = checkpoint?.assertion !== undefined ? { state: "unfinished", reason: "operator-asserted" }
       : failed === nodeId ? { state: "failed", reason: "failure" }
         : checkpoint !== undefined ? { state: "completed", reason: "checkpoint" }
           : gates.has(nodeId) ? { state: "completed", reason: "gate-result" }
-            : delegationSettled(repositories, runId, node) ? { state: "completed", reason: "delegation-settled" }
-              : { state: "unfinished", reason: "not-recorded" };
+            : observed?.outcome === "skipped" ? { state: "completed", reason: "condition-skipped" }
+              : observed !== undefined && observed.outcome !== "done" ? { state: "unfinished", reason: "incomplete-execution" }
+                : delegationSettled(repositories, runId, node) ? { state: "completed", reason: "delegation-settled" }
+                  : { state: "unfinished", reason: "not-recorded" };
     facts.set(nodeId, { nodeId: node.id, ...fact });
   }
   return facts;
@@ -370,7 +375,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           const known = latest.get(member.envelope.itemId);
           if (known === undefined || member.envelope.attempt > known.envelope.attempt) latest.set(member.envelope.itemId, member);
         }
-        return { workflow, steps: leastAdvancedSteps(child, older ? [] : [...latest.values()].map((member) => childUnitFacts(repositories, child, member))) };
+        return { workflow, steps: leastAdvancedSteps(child, older ? [] : [...latest.values()].map((member) => childUnitFacts(repositories, child, member, deps.executions?.(member.envelope.runId) ?? []))) };
       });
       // The source's typed facts refill a step it had typed, its own or a child's a row targets; they stay typed by hand.
       const typed = (run.envelope.stepOmissions ?? []).filter((entry) => (entry.workflow === undefined

@@ -12,6 +12,7 @@ import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/wo
 import { bindWorkflowDelegationTargets, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { rerunsInOneClick } from "../../../../src/dashboard/surfaces/run-start/run-start-rerun-model.js";
+import { sourceBadge, type StepRow } from "../../../../src/dashboard/surfaces/run-start/run-steps-model.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { plan1Contract, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, WRITE_FIXTURE_EID, WriteFixtureCommit, WriteFixturePrepare } from "../../../support/fixtures/write-sequencer-fixtures.js";
@@ -155,6 +156,30 @@ describe("child step facts over a transaction's phases and several child runs", 
     const [child] = children(h, run) ?? [];
     assert.deepEqual(child?.steps.map(({ key, state }) => [key, state]), [["pair", "failed"]]);
     assert.deepEqual(child?.steps[0]?.nodes.map(({ nodeId, state }) => [nodeId, state]), [["first", "failed"], ["second", "unfinished"]]);
+  });
+
+  it("reads a cancelled parent's child from the child's own executions: skipped finished, an opened gate begun", async () => {
+    const rows: readonly StartRowDeclaration[] = [members, { key: "pair", label: "Pair", members: [{ workflow: pairChild.id, step: "pair" }] }];
+    const h = await harness(pairChild, Pair, [EID_A], rows);
+    const root = h.start(h.proposal(undefined, undefined, false));
+    await h.execute(root);
+    const [member] = h.database.authority.runs.listChildren(root.envelope.runId);
+    assert.ok(member !== undefined);
+    const waiting = h.fresh(root);
+    assert.equal(h.kernel.execute({ commandId: h.ids.uuid(), family: "run", type: "cancel", source: "dashboard", requestedBy: "local-operator", reason: "Stopped at the approval",
+      requestedAt: h.clock.now().toISOString(), target: { runId: waiting.envelope.runId, expectedVersion: waiting.version } }).state, "applied");
+    const run = h.fresh(root);
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled", JSON.stringify(run.lifecycle));
+    // The member skipped its first node and stopped with the second opened, as a child waiting at an approval does.
+    const executions = (runId: string) => runId !== member.envelope.runId ? [] : [
+      { nodeId: "first", attempt: 1, startedAt: "2026-11-25T12:00:00.000Z", endedAt: "2026-11-25T12:00:01.000Z", outcome: "skipped" as const },
+      { nodeId: "second", attempt: 1, startedAt: "2026-11-25T12:00:02.000Z" }];
+    const response = readRerunValues({ ...rerunValuesDeps(h), executions }, { runId: run.envelope.runId, expectedVersion: run.version });
+    assert.ok(response.state === "available", JSON.stringify(response));
+    assert.deepEqual(response.snapshot.children?.[0]?.steps[0]?.nodes.map(({ nodeId, state, reason }) => [nodeId, state, reason]),
+      [["first", "completed", "condition-skipped"], ["second", "unfinished", "incomplete-execution"]]);
+    const row = { key: "pair", label: "Pair", kind: "switch", includedByDefault: true, members: [{ workflow: pairChild.id, step: "pair" }] } as unknown as StepRow;
+    assert.equal(sourceBadge(row, response.snapshot), "cancelled");
   });
 
   describe("the failed members of a finished batch", () => {
