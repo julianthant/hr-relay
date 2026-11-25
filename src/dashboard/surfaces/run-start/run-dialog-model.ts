@@ -11,7 +11,7 @@ import type { LaunchFinalCommand, LaunchVerificationPlan } from "./run-launch-re
 import type { RerunLaunchSource } from "./run-launch-model.js";
 import { rerunsInOneClick } from "./run-start-rerun-model.js";
 
-/** The Run and Rerun dialog stages: a run walks Input then Start, a rerun Steps then Start. Start is the last stage; it plans and submits. */
+/** The Run and Rerun dialog stages: a run walks Input then Start (then Steps when it customizes them), a rerun Steps then Start. The last stage plans and submits. */
 export type RunStartStage = "Input" | "Steps" | "Start";
 
 export type RunDialogState = Readonly<{
@@ -215,6 +215,8 @@ function continueRefusal(state: RunDialogState, gates: LaunchGates): RunDialogRe
   if (state.source.kind === "rerun" && state.source.load.state !== "ready") return "blocked";
   if (state.stage === "Input" && gates.inputBlocked) return "blocked";
   if (state.stage === "Steps" && (gates.rerunInputBlocked || gates.stepsBlocked)) return "blocked";
+  // Start comes before Steps in a customized start; its picks and checks are settled before leaving it.
+  if (state.stage === "Start" && (gates.optionsBlocked || gates.checksBlocked)) return "blocked";
   return undefined;
 }
 
@@ -349,7 +351,7 @@ function dialogTransition(state: RunDialogState, event: RunDialogEvent, fingerpr
         return previous === null || previous !== event.stage ? { refused: "not-here" } : step({ ...state, stage: previous });
       }
       if (state.activity.kind !== "idle") return { refused: "busy" };
-      const order = stageOrder(state.source);
+      const order = event.path ?? stageOrder(state.source);
       if (!order.includes(event.stage) || order.indexOf(event.stage) >= order.indexOf(state.stage)) return { refused: "not-here" };
       if (state.recovery.state === "retained") return { refused: "blocked" };
       return step({ ...state, stage: event.stage });

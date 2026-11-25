@@ -14,7 +14,8 @@ describe("Start run wording and defaults match the approved mock", () => {
     await dialog.type(h.TYPED);
     await dialog.press("Continue");
     await dialog.press("Customize steps");
-    assert.equal(dialog.stage(), "Start");
+    await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Steps");
     const text = dialog.text();
     assert.match(text, /Steps\d+ of \d+ included/u);
     assert.match(text, /Replace reading steps with manual values\. Form actions stay included\./u);

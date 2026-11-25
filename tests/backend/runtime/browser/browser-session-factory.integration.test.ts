@@ -538,6 +538,7 @@ describe("worker browser session factory", () => {
       const launch = harness.launches()[0];
       assert.ok(launch);
       assert.equal(launch.headless, false);
+      assert.equal(launch.viewport, null);
       assert.match(String(launch.profileDirectory), /w1\/ucpath$/u);
       assert.equal((resource as { browserMode?: unknown }).browserMode, "headed");
       await resource.close({ reason: "worker-stop" });

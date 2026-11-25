@@ -152,11 +152,12 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Lint root package
+      - name: Lint root with Oxlint
         run: npm run lint
       - run: npm ci
         working-directory: fast-duo
-      - run: npm run lint
+      - name: Lint Fast Duo with Oxlint
+        run: npm run lint
         working-directory: fast-duo
 
   static:
@@ -178,6 +179,8 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: node scripts/ci/allowed-workflows.ts "$PR_BASE_SHA" "$PR_LABELS"
+      - name: Print typecheck compiler version
+        run: npm run typecheck -- --version
       - run: npm run typecheck
       - run: npm ci
         working-directory: fast-duo

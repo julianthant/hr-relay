@@ -180,7 +180,7 @@ export function createBrowserSessionFactoryFixtures(
       launcher: {
         async launch(input) {
           mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 });
-          await page.setViewportSize(input.viewport);
+          if (input.viewport !== null) await page.setViewportSize(input.viewport);
           launches.push({ ...input });
           return context as unknown as BrowserContext;
         },

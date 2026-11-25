@@ -19,6 +19,7 @@ it("uses bundled full Chromium for extension sessions and native closure probes"
       assert.ok(options);
       assert.equal(options.channel, "chromium");
       assert.equal(options.headless, nativeOnly);
+      assert.deepEqual(options.viewport, { width: 1100, height: 800 });
       assert.deepEqual(options.args, nativeOnly ? ["--disable-extensions"]
         : ["--disable-extensions-except=synthetic-extension", "--load-extension=synthetic-extension"]);
     }

@@ -375,8 +375,10 @@ or `change` sent on that connection, and may carry one queue-row replacement or 
 A change at or below the held cursor is ignored. A change whose `after` is above the held cursor is
 a gap. Missing baseline, gaps, and invalid row application trigger a resnapshot. A reconnect is
 resumable while every retained change above the presented cursor is still held; the server then
-replays them and closes with a `change` that carries no day part. Malformed envelopes or non-network stream failures stop
-with visible error. Network loss resumes using `lastEventId` and `lastProjectionGeneration`.
+replays them and closes with a `change` that carries no day part. Malformed envelopes and HTTP stream failures stop
+with visible error, except a retryable 503 such as `STORAGE_SNAPSHOT_CHANGED`, which reconnects like network loss;
+`GET /api/v1/dashboard` makes three attempts in total on the same refusal: the first and up to two retries, 250 ms apart.
+Network loss resumes using `lastEventId` and `lastProjectionGeneration`.
 Superseded stream completions cannot reconnect the new stream.
 
 Every `snapshot` and `change` also carries `rows`: whole read-model values for the connection's
@@ -590,7 +592,10 @@ keep their constructor name and a well-formed own `code` (else `INTERNAL_FAILURE
 `cause-unavailable`, non-errors become `UnknownCause`, chains stop at 16 rows with a fixed truncation row,
 and frames keep only build-relative `src/`, `scripts/`, `node_modules/` or `assets/` positions.
 Unexpected inner API failures emit one event per cause row with one correlation id for that failure,
-after the request's outcome event.
+after the request's outcome event. Each `request-cause` row's `code` names its cause: the error's own code,
+else its closed reason, else its constructor name; message text never reaches it.
+On a copy that serves imported history, a dashboard read pins the native store first and reads history only at
+that same commit, starting over when a worker commits between the two; after five tries it answers 503 `STORAGE_SNAPSHOT_CHANGED`.
 Screenshot verification exceptions share `sessionId`. Worker supervisor and transfer faults emit one
 event per cause row with one correlation id, and their stderr lines carry the same name, code and
 reason. Profile-request rows go through `appendEmergencyFault` and do not carry a correlation id.

@@ -224,7 +224,9 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
   function current(input: BrowserRootLaunchInput, cleanup = false): BrowserRootOwner {
     if (input.owner.kind === 'command' && commandCapabilities.get(input.owner.capability)?.profileRoot !== input.profileRoot) throw new BrowserRootUnavailableError();
     const owner = ownerOf(input.owner, input.profileId, input.profileDirectory, cleanup), captured = admission.captureBrowserRegistryContext();
-    if (!(cleanup && (owner.kind === "signup" || owner.kind === "command")) && !same(captured, binding)) throw new BrowserRootUnavailableError();
+    // A setup browser belongs to its sign-up or Duo operation, which ownerOf proves current; sign-in and resume advance the session meanwhile.
+    const expected = owner.kind === "signup" ? { ...binding, sessionGeneration: captured.sessionGeneration } : binding;
+    if (!(cleanup && (owner.kind === "signup" || owner.kind === "command")) && !same(captured, expected)) throw new BrowserRootUnavailableError();
     return owner;
   }
   function assertRow(document: StoppedBrowserRootsDocument, expected: StoppedBrowserRoot): StoppedBrowserRoot {
@@ -266,7 +268,7 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
           && !(commandRotation && fileStatus(input.profileDirectory, true) === undefined))) throw new BrowserRootUnavailableError();
       if (prior === undefined && fileStatus(input.profileDirectory, true) !== undefined) throw new BrowserRootUnavailableError();
       const row = BrowserRootSchema.parse({ handle: prior?.handle ?? document.nextHandle, profileId: input.profileId, profileRoot, directory: root, owner,
-        sessionGeneration: binding.sessionGeneration, credentialFingerprint: input.credentialFingerprint,
+        sessionGeneration: admission.captureBrowserRegistryContext().sessionGeneration, credentialFingerprint: input.credentialFingerprint,
         launch: { launchId: randomUUID(), generation: document.nextGeneration, state: "launching" } });
       return { document: { ...document, nextHandle: prior === undefined ? increment(document.nextHandle) : document.nextHandle,
         nextGeneration: increment(document.nextGeneration), roots: prior === undefined
