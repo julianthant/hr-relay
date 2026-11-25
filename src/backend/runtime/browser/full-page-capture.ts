@@ -34,7 +34,7 @@ type CaptureWindow = Window & { __relayCapture?: CaptureState; __relayCaptureSec
 
 async function captureWithNativeMasks(page: Page, mask: (frame: Frame) => Locator[], capture: () => Promise<Buffer>): Promise<Buffer> {
   const applied: JSHandle<NativeCaptureMasks>[] = [];
-  let failure: { cause: unknown } | undefined;
+  let outcome: { state: "captured"; result: Buffer } | { state: "failed"; cause: unknown };
   const assertMasked = async () => {
     for (const handle of applied) {
       if (!await handle.evaluate(masks => masks.intact())) throw new FullPageCaptureRefusedError("secret-controls-present");
@@ -42,13 +42,14 @@ async function captureWithNativeMasks(page: Page, mask: (frame: Frame) => Locato
   };
   try {
     for (const frame of page.frames()) {
-      const elements: ElementHandle<HTMLElement | SVGElement>[] = [];
+      const elements: ElementHandle<Node>[] = [];
       try {
         for (const locator of mask(frame)) elements.push(...await locator.elementHandles());
         if (elements.length === 0) continue;
         applied.push(await frame.evaluateHandle(nodes => {
           const hidden = [["transition-property", "none"], ["opacity", "0"]] as const;
           const entries = [...new Set(nodes)].map(element => {
+            if (!(element instanceof HTMLElement || element instanceof SVGElement)) throw new Error("capture mask target has no inline style");
             const { left, top, width, height } = element.getBoundingClientRect();
             const overlay = document.createElement("div");
             overlay.style.cssText = `all:initial;position:fixed;pointer-events:none;z-index:2147483647;background:#f0f;left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
@@ -67,7 +68,7 @@ async function captureWithNativeMasks(page: Page, mask: (frame: Frame) => Locato
               observer.disconnect();
               for (const { element, overlay, before, hadStyle } of entries) {
                 overlay.remove();
-                for (const { name, value, prior, priority } of before) {
+                for (const { name, value, prior, priority } of before.toReversed()) {
                   if (element.style.getPropertyValue(name) === value && element.style.getPropertyPriority(name) === "important") {
                     element.style.setProperty(name, prior, priority);
                   }
@@ -93,18 +94,21 @@ async function captureWithNativeMasks(page: Page, mask: (frame: Frame) => Locato
     await assertMasked();
     const result = await capture();
     await assertMasked();
-    return result;
+    outcome = { state: "captured", result };
   } catch (cause) {
-    failure = { cause };
-    throw cause;
-  } finally {
-    const cleanup = await Promise.allSettled(applied.map(async handle => {
-      try { await handle.evaluate(masks => masks.restore()); }
-      finally { await handle.dispose(); }
-    }));
-    const errors = cleanup.flatMap(result => result.status === "rejected" ? [result.reason] : []);
-    if (errors.length) throw new FullPageCaptureRestoreError([...(failure === undefined ? [] : [failure.cause]), ...errors]);
+    outcome = { state: "failed", cause };
   }
+  const cleanup = await Promise.allSettled(applied.map(async handle => {
+    try { await handle.evaluate(masks => masks.restore()); }
+    finally { await handle.dispose(); }
+  }));
+  const errors: unknown[] = [];
+  for (const result of cleanup) {
+    if (result.status === "rejected") errors.push(result.reason);
+  }
+  if (errors.length) throw new FullPageCaptureRestoreError([...(outcome.state === "failed" ? [outcome.cause] : []), ...errors]);
+  if (outcome.state === "failed") throw outcome.cause;
+  return outcome.result;
 }
 
 function bandGeometryChange(before: BandGeometry, after: BandGeometry): string | undefined {
