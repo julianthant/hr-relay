@@ -32,6 +32,7 @@ const reviewed = new Map([
   ["src/backend/storage/maintenance/session-backups.ts#start", "Checks whether the authority generation needs a session backup."],
   ["src/backend/runs/lifecycle/application-lifecycle.ts#observeQuit", "Waits for run custody to settle after the operator requests quit."],
   ["src/backend/logs/loop-delay.ts#timer", "Samples the event-loop delay histogram."],
+  ["src/backend/storage/sqlite/dashboard-read-host.ts#scheduleRetry", "Spaces WAL checkpoint retries until the WAL resets or the read host closes."],
   ["src/backend/processing/providers/nominatim-owner.ts#wait", "Waits for the provider's rate-limit slot."],
   ["src/backend/processing/providers/nominatim-owner.ts#stop", "Waits for the provider queue to drain during shutdown."],
   ["src/backend/runtime/browser/onboarding-duo-provider.ts#timedOut", "Bounds each Duo screen capture used by the browser observation loop."],

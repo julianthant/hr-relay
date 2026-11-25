@@ -200,7 +200,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   let dispatchSeq = 0, messageId = 0, restarts = 0, walPeakBytes = 0;
   let paused = false, closing = false;
   let checkpointState: "idle" | "draining" | "running" = "idle";
-  let retryTimer: ReturnType<typeof setTimeout> | undefined, retryDelayMs = policy.minRetryMs;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined, retryDelayMs: number = policy.minRetryMs;
   const readyWaits: Promise<void>[] = [];
 
   const admit = (start: ReadLaneStart) => {
@@ -377,10 +377,16 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       startCheckpointWhenIdle();
       pumpAll();
     }));
-    ready.promise.catch(() => undefined);
+    // A restarted lane's readiness has no awaiting caller; its failure reaches waiters through the lane.
+    ready.promise.catch(() => {});
     return ready.promise;
   };
 
+  const abandonStart = (error: unknown): never => {
+    closing = true;
+    for (const lane of lanes.values()) void lane.worker?.terminate();
+    throw error;
+  };
   try {
     for (const name of names) {
       const lane: Lane = { name, worker: undefined, ready: false, interactive: [], background: [], running: undefined,
@@ -388,11 +394,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       lanes.set(name, lane);
       readyWaits.push(launch(lane));
     }
-  } catch (error) {
-    closing = true;
-    for (const lane of lanes.values()) void lane.worker?.terminate();
-    throw error;
-  }
+  } catch (error) { abandonStart(error); }
 
   return Object.freeze({
     ready: Promise.all(readyWaits).then(() => undefined),

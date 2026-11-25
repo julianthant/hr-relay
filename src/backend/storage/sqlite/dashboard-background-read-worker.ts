@@ -30,7 +30,7 @@ const snapshotQueries = new WeakMap<AuthorityDatabase, ReturnType<typeof createD
  */
 const dashboardTimelinePage = defineLaneRead(import.meta.url, "dashboard-timeline-page", {
   lane: "navigation", priority: "background", args: RequestSchema,
-  run(context, request): DashboardBackgroundReadResult {
+  run(context, request) {
     let query = snapshotQueries.get(context.native);
     if (query === undefined) {
       const connection = openReadOnlyDatabase(context.start.path, 250);
