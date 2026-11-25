@@ -120,12 +120,15 @@ export const RUN_DIALOG_RERUN_CATALOG = catalogOf(flow => ({ ...flow, steps: flo
   ? { ...step, control: { state: "omittable" as const, form: { fields: [] }, forces: [] } } : step) }));
 
 /** What a Person Lookup run offers a rerun: the typed input it ran on, each step's state (a failed run stops at its last step), and one value to copy. */
-export function runDialogRerunSnapshot(outcome: "failed" | "done" = "failed"): RerunValuesResponse {
+/** A cancelled source stopped in its third step: the first two completed, the rest never finished. */
+export function runDialogRerunSnapshot(outcome: "failed" | "done" | "cancelled" = "failed"): RerunValuesResponse {
   return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
     sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED } },
     source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome, dryRun: false, priority: "interactive", browserMode: "headless" },
-    steps: STEPS.map((key, index) => { const ok = outcome === "done" || index < 2; return { key, state: ok ? "completed" : "failed",
-      nodes: [{ nodeId: key, state: ok ? "completed" : "failed", reason: ok ? "checkpoint" : "failure" }] }; }),
+    steps: STEPS.map((key, index) => { const ok = outcome === "done" || index < 2;
+      const state = ok ? "completed" : outcome === "cancelled" ? "unfinished" : "failed";
+      const reason = ok ? "checkpoint" : outcome === "failed" ? "failure" : index === 2 ? "incomplete-execution" : "not-recorded";
+      return { key, state, nodes: [{ nodeId: key, state, reason }] }; }),
     values: [{ state: "available", sourceStepKey: "searching", nodeId: "searching", fieldPath: "emplId", label: "Employee ID", targetFieldPath: "emplId", value: RUN_DIALOG_TYPED,
       checkpoint: { attempt: 1, writtenAt: "2026-08-26T20:00:00.000Z" },
       provenance: { path: "emplId", source: "live", observedAt: "2026-08-26T20:00:00.000Z", originalObservedAt: "2026-08-26T20:00:00.000Z" } }],

@@ -65,7 +65,7 @@ const PASS: ServedCheck = { check: PreflightCheckIdSchema.parse("config.valid"),
 const WARN: ServedCheck = { check: PreflightCheckIdSchema.parse("fiscal.current"), status: "warning", summary: "The fiscal year ends soon." };
 const FIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("secrets.ucpath-sso"), status: "fail", summary: "The UCPath password is missing." };
 const UNFIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("filesystem.health"), status: "fail", summary: "Relay is out of disk space." };
-const rerunClient = (served: Partial<DashboardClient> = {}, outcome: "failed" | "done" = "failed") => () => runDialogClient({ rerunValues: async () => runDialogRerunSnapshot(outcome), previewRerunWarnings: async () => runDialogRerunWarning(false), ...served });
+const rerunClient = (served: Partial<DashboardClient> = {}, outcome: "failed" | "done" | "cancelled" = "failed") => () => runDialogClient({ rerunValues: async () => runDialogRerunSnapshot(outcome), previewRerunWarnings: async () => runDialogRerunWarning(false), ...served });
 const planning = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ submitStartPlan: async () => runDialogPlan(), executeCommand: async () => RUN_DIALOG_APPLIED, ...served });
 const start = (page: Page) => press(page, "Start run");
 
@@ -78,6 +78,9 @@ const STAGE = {
     then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
   Start: stage("Start, options, steps and checks, every check ready", reading(PASS), "Start"),
   RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
+  CancelledSteps: stage("A cancelled run's rerun, picking up from the step the cancel stopped", rerunClient({}, "cancelled"), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
+  CancelledWarning: stage("A write run cancelled after it filed, warned that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }, "cancelled"), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG,
+    then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
 } satisfies Record<string, Story>;
 
 const CHECKS = {

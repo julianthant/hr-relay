@@ -44,6 +44,26 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await mount(h, source);
     for (const label of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(label).matches(":checked"), true);
   });
+  it("opens Rerun on a run cancelled mid-run with the steps a run failed at the same step gets", async () => {
+    const rows = ["Read employee", "Check employee", "File transaction"];
+    const picked = async (stop: "failed" | "cancelled") => {
+      const h = await setup(); const queued = h.start(h.proposal()); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+      h.world.onPrepare = () => {
+        if (stop === "failed") throw new Error("synthetic prepare failure");
+        const run = h.fresh(queued); h.lifecycle.transition({ commandId: h.ids.uuid(), runId: run.envelope.runId, expectedVersion: run.version,
+          lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() } });
+      };
+      await h.execute(queued); delete h.world.onPrepare;
+      const source = h.fresh(queued);
+      assert.ok(source.lifecycle.state === "terminal" && source.lifecycle.outcome === stop, JSON.stringify(source.lifecycle));
+      await mount(h, source);
+      const checked = rows.map(label => checkbox(label).matches(":checked"));
+      await cleanup(); return checked;
+    };
+    const cancelled = await picked("cancelled");
+    assert.equal(cancelled.at(-1), true);
+    assert.deepEqual(cancelled, await picked("failed"));
+  });
   it("submits an earlier source as a new current run with repeat consent and fresh evidence", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
     h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));
