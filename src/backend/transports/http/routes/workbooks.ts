@@ -14,14 +14,6 @@ const LibraryPathSchema = z.strictObject({ libraryId: WorkbookIdSchema });
 const OperationPathSchema = LibraryPathSchema.extend({ operationId: WorkbookIdSchema });
 const VersionPathSchema = LibraryPathSchema.extend({ versionId: WorkbookIdSchema });
 const RevisionPathSchema = LibraryPathSchema.extend({ version: PositiveIntegerTextSchema.pipe(WorkbookRevisionSchema) });
-const EncodedPathSchema = z.string().refine(path => {
-  try {
-    decodeURIComponent(path);
-    return true;
-  } catch {
-    return false;
-  }
-});
 
 export interface WorkbooksRouteDeps {
   readonly workbooks?: Readonly<{ library: WorkbookLibraryService; intake: ReturnType<typeof createWorkbookIntakeBridge>; workflows: readonly WorkbookReferenceWorkflow[] }>;
@@ -33,7 +25,8 @@ function workbookRequest<Value>(schema: z.ZodType<Value>, value: unknown): Value
 }
 function workbookPath<Value>(schema: z.ZodType<Value>, request: HonoRequest): Value {
   // Hono leaves malformed escapes in path params, where opaque IDs would accept them.
-  workbookRequest(EncodedPathSchema, new URL(request.url).pathname);
+  try { decodeURIComponent(new URL(request.url).pathname); }
+  catch (cause) { throw new WorkbookLibraryError("WORKBOOK_INVALID", { cause }); }
   return workbookRequest(schema, request.param());
 }
 

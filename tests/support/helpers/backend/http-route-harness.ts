@@ -15,7 +15,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { createProtectedSettingsRuntimeReader } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createBoundProfileFixture, boundProfileCredentials, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema as PublicationActorIdSchema, ConfigSnapshotIdSchema } from "../../../../src/rules/identity/ids.js";
 import { seedInitialSettingsRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { sqliteRunReader } from "../canonical-run-reader.js";
 
@@ -400,7 +400,7 @@ export async function harness(options: {
     runtime: {
       currentScope(workflowId) {
         if (workflowId !== undefined) throw new Error("workflow preflight is not wired in the HTTP harness");
-        return { configFingerprint: HASH_B, configSnapshotId: UUID_4,
+        return { configFingerprint: HASH_B, configSnapshotId: ConfigSnapshotIdSchema.parse(UUID_4),
           descriptorFingerprint: fixtureDescriptor.contractFingerprint, requestedCapabilities: ["dashboard.serve"] };
       },
       admission: {

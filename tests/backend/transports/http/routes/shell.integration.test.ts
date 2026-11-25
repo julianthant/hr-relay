@@ -393,6 +393,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const timeline = h.database.authority.timelineEvents;
     fillDiagnosticBudget(DatabaseSync, join(h.stateRoot, "state.db"), timeline, h.clock);
     const before = timeline.highWaterMark();
+    // The hello carries the cursor from before the connection takes its own.
+    const cursor = h.projection.cursor();
     const response = await h.app.request(`http://localhost/events/v1?topics=dashboard-day:${DAY}`, { headers: { host: "localhost" } });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "text/event-stream");
@@ -401,7 +403,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     try {
       const first = await reader.read();
       assert.equal(first.done, false);
-      const cursor = h.projection.cursor();
       const descriptorHash = h.projection.descriptorSetHash();
       const generation = h.projection.generation();
       assert.equal(new TextDecoder().decode(first.value),
