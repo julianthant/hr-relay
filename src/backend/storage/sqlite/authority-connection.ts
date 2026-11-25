@@ -53,7 +53,6 @@ export const MetaRowSchema = z.strictObject({
   profile_id: z.uuid().optional(),
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
-export const TableColumnRowSchema = z.object({ name: z.string() });
 export const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
 
 export const PageCountRowSchema = z.strictObject({ page_count: z.number().int().positive() });

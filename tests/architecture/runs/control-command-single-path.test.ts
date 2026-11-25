@@ -1130,11 +1130,13 @@ describe("control-command-single-path", () => {
       "src/backend/storage/sqlite/authority-database.ts",
     ]);
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
-    const movedAuthorityCalls = new Map<string, Readonly<Record<string, number>>>([
+    const storageAuthorityReads = new Map<string, Readonly<Record<string, number>>>([
       ["src/backend/storage/sqlite/authority-repositories.ts", { "commandAudits: CommandAuditRepository;": 1 }],
       ["src/backend/storage/sqlite/authority-run-evidence.ts", {
         '"commandAudits">': 1, "commandAudits.get(recheck.auditId)": 1, "commandAudits: {get(id:string)": 1,
       }],
+    ]);
+    const movedAuthorityCalls = new Map<string, Readonly<Record<string, number>>>([
       [REPLAY_PATH, { "commandAudits.findByCommand(": 2, "startPlans.consume(": 1 }],
       [SETTINGS_COMMAND_PATH, { ".commands.insert(": 1, "commandAudits.insert(": 1 }],
       ["src/backend/runs/commands/start-command.ts", { "startPlans.consume(": 1 }],
@@ -1160,7 +1162,7 @@ describe("control-command-single-path", () => {
       if (path !== KERNEL_PATH && path !== WORKER_COMMANDS_PATH && path !== "src/backend/storage/sqlite/command-record-row.ts"
         && /\bwithCanonicalRunCommandScope\b/u.test(raw)) violations.push(`${path} references private synchronous run command custody outside the kernel`);
       if (allowed.has(path)) continue;
-      for (const [call, count] of Object.entries(movedAuthorityCalls.get(path) ?? {})) {
+      for (const [call, count] of Object.entries(storageAuthorityReads.get(path) ?? movedAuthorityCalls.get(path) ?? {})) {
         if (content.split(call).length - 1 !== count) violations.push(`${path} changed its command authority calls to ${call}`);
         content = content.replaceAll(call, "");
       }

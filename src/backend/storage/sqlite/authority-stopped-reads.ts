@@ -32,12 +32,14 @@ import { WriteIntentRecordSchema } from "../../../rules/write-safety/write-safet
 import { exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, WORKER_CUSTODY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion } from "./migrations.js";
 import { SpanAuthorityReadSnapshotSchema, SpanAuthorityRunResolutionSchema, SpanAuthorityRunRootSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot } from "./recovery-contracts.js";
-import { readIntPragma, inspectionTableNames, readMetaRow, TableColumnRowSchema } from "./authority-connection.js";
+import { readIntPragma, inspectionTableNames, readMetaRow } from "./authority-connection.js";
 import type { AuthorityDatabase } from "./authority-database.js";
 import { AuthoritySchemaVersionError } from "./authority-errors.js";
 import { inspectNativeAuthority, inspectOpenDatabase, authorityContentFingerprint, assertPublishedAssistantNumbering, assertNativeSchema } from "./authority-inspection.js";
 import { inspectionRunReader, readRunPages } from "./authority-run-evidence.js";
 import { readAuthorityUpgradeRecords } from "./authority-upgrades.js";
+
+const TableColumnRowSchema = z.object({ name: z.string() });
 
 export function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion: number) {
   const convert = inspectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow : (_table: string, row: unknown) => row;

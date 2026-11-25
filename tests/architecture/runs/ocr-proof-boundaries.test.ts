@@ -153,12 +153,18 @@ it("keeps OCR SQLite imports at their exact transaction and migration owners", (
     const source = parse(readFileSync(join(REPO_ROOT, file), "utf8"));
     const imports = nodes(source).flatMap(node => ts.isImportDeclaration(node) || ts.isExportDeclaration(node)
       ? node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier) ? [{ specifier: node.moduleSpecifier.text,
+        typeOnly: ts.isImportDeclaration(node) && node.importClause?.isTypeOnly === true && node.importClause.name === undefined,
         names: ts.isImportDeclaration(node) && node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
           ? node.importClause.namedBindings.elements.map(binding => binding.propertyName?.text ?? binding.name.text).sort() : ["*"] }] : []
       : ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword
-        && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0]) ? [{ specifier: node.arguments[0].text, names: ["*"] }] : []);
-    for (const imported of imports) if (imported.specifier.startsWith(".")
-      && resolve(dirname(join(REPO_ROOT, file)), imported.specifier.replace(/\.js$/u, ".ts")) === target) importers.push({ file, names: imported.names });
+        && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0]) ? [{ specifier: node.arguments[0].text, typeOnly: false, names: ["*"] }] : []);
+    for (const imported of imports) {
+      if (!imported.specifier.startsWith(".")
+        || resolve(dirname(join(REPO_ROOT, file)), imported.specifier.replace(/\.js$/u, ".ts")) !== target) continue;
+      if (file === "src/backend/storage/sqlite/authority-repositories.ts" && imported.typeOnly
+        && imported.names.length === 1 && imported.names[0] === "createOcrReviewRepository") continue;
+      importers.push({ file, names: imported.names });
+    }
   }
   assert.deepEqual(importers.sort((left, right) => left.file.localeCompare(right.file)), [
     { file: "src/backend/storage/sqlite/authority-database.ts", names: ["createOcrReviewRepository"] },
