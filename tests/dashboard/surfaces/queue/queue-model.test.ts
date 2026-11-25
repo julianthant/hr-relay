@@ -181,8 +181,8 @@ describe_m2("attentionQueueKeys — the band and the key cannot disagree", () =>
       surface({ runId: runId(4), status: "blocked" }),
       surface({ runId: runId(5), status: "failed", endedAt: { state: "present", value: NOW } }),
     ];
-    // Waiting, then failed, then parked: failed sits in Needs you with them.
-    assert_m2.deepEqual(attentionQueueKeys_m2(rows, "attention", NOW), [runId(2), runId(5), runId(4)]);
+    // Failed sits in Needs you with waiting and parked; equal start times keep the served order.
+    assert_m2.deepEqual(attentionQueueKeys_m2(rows, "attention", NOW), [runId(2), runId(4), runId(5)]);
   });
 
   it_m2("sends a changed name, clears with an empty draft, and skips an unchanged title", () => {
