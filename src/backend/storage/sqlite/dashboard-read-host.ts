@@ -201,7 +201,9 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   /** The workers to start; a read whose lane has no worker runs on navigation (shape A). Both lanes by default (shape B). */
   lanes?: readonly ReadLaneName[]; checkpoint?: Partial<typeof WAL_CHECKPOINT_DEFAULTS>;
   /** The module each lane worker runs: it imports its read modules and calls runReadLaneWorker. Relay's lane entry by default. */
-  entry?: URL }>): DashboardReadLanes {
+  entry?: URL;
+  /** staggered (the default) boots the other lanes once navigation is first ready, so lane boots never compete for CPU. */
+  start?: "staggered" | "parallel" }>): DashboardReadLanes {
   const owner = requireRuntimeAdmission(input.admission);
   const { database, clock } = input;
   const policy = { ...WAL_CHECKPOINT_DEFAULTS, ...input.checkpoint };
@@ -221,6 +223,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   let retryTimer: ReturnType<typeof setTimeout> | undefined, retryDelayMs = policy.minRetryMs;
   const readyWaits: Promise<void>[] = [];
   let releaseCustody: (() => void) | undefined, walWatch: ReturnType<typeof setInterval> | undefined;
+  const deferred = new Map<Lane, PromiseWithResolvers<void>>();
 
   const admit = (start: ReadLaneStart) => {
     owner.assertProfileRuntime();
@@ -348,7 +351,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     const reply: LaneReply = ReplySchema.parse(message);
     if (reply.kind === "ready") {
       lane.ready = true;
-      if (lane.name === "navigation") takeCheckpointCustody();
+      if (lane.name === "navigation") { takeCheckpointCustody(); startDeferredLanes(); }
       pumpAll();
       return;
     }
@@ -376,9 +379,30 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     pumpAll();
   };
 
+  function startDeferredLanes() {
+    for (const [lane, started] of deferred) {
+      deferred.delete(lane);
+      if (closing) { started.reject(new ReadLaneClosedError()); continue; }
+      try { started.resolve(launch(lane)); }
+      catch (error) { failDeferredLane(lane, started, error); }
+    }
+  }
+  function failDeferredLane(lane: Lane, started: PromiseWithResolvers<void>, error: unknown) {
+    const failure = error instanceof Error ? error : new Error("read-lane-start-failed", { cause: error });
+    failLane(lane, failure);
+    started.reject(failure);
+  }
+  /** A navigation lane that never comes up takes the lanes waiting to boot after it down with it. */
+  function failDeferredLanes(failure: Error) {
+    for (const [lane, started] of deferred) {
+      deferred.delete(lane);
+      failLane(lane, failure);
+      started.reject(failure);
+    }
+  }
   const failLane = (lane: Lane, failure: Error) => {
     lane.failure = failure;
-    if (lane.name === "navigation") returnCheckpointCustody();
+    if (lane.name === "navigation") { returnCheckpointCustody(); failDeferredLanes(failure); }
     for (const read of [...lane.interactive.splice(0), ...lane.background.splice(0)]) {
       for (const waiter of [...read.waiters]) settleWaiter(waiter, { error: failure });
     }
@@ -457,7 +481,13 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       const lane: Lane = { name, worker: undefined, ready: false, interactive: [], background: [], running: undefined,
         consecutiveFailures: 0, failure: undefined, exited: Promise.resolve() };
       lanes.set(name, lane);
-      readyWaits.push(launch(lane));
+    }
+    const startNow = (lane: Lane) => lane.name === "navigation" || input.start === "parallel";
+    for (const lane of lanes.values()) {
+      if (startNow(lane)) { readyWaits.push(launch(lane)); continue; }
+      const started = Promise.withResolvers<void>();
+      deferred.set(lane, started);
+      readyWaits.push(started.promise);
     }
   } catch (error) { abandonStart(error); }
 
@@ -510,6 +540,8 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       if (!closing) {
         closing = true;
         returnCheckpointCustody();
+        for (const started of deferred.values()) started.reject(new ReadLaneClosedError());
+        deferred.clear();
         if (retryTimer !== undefined) clearTimeout(retryTimer);
         retryTimer = undefined;
         for (const lane of lanes.values()) {
