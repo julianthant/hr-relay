@@ -24,15 +24,15 @@ function StepCard({ stage, label }: { stage: LogTimelineStage; label: string }) 
 
 export function LogTimeline({ stages, onJump }: { stages: readonly LogTimelineStage[]; onJump: (stepId: string) => void }) {
   return <TooltipProvider delayDuration={200} disableHoverableContent><nav aria-label="Run timeline" className="shrink-0 border-b border-ui-stroke bg-ui-panel px-4 py-2">
-    <ol className="m-0 grid list-none gap-1 p-0 [grid-template-columns:repeat(auto-fit,minmax(6rem,1fr))]">
+    <ol className="m-0 flex list-none gap-1 p-0">
       {stages.map(stage => {
         const style = LOG_TIMELINE_STYLES[stage.state];
         const label = stage.statusLabel ?? style.label;
-        return <li key={stage.id} className="min-w-0">
+        return <li key={stage.id} className="min-w-0 flex-1">
           <Tooltip side="bottom" variant="card" content={<StepCard stage={stage} label={label} />}><button type="button" aria-label={`${stage.label} · ${label}${stage.time ? ` · ${stage.time}` : ""}${stage.durationLabel ? ` · ${stage.durationLabel}` : ""}`} aria-disabled={!stage.stepId || undefined}
             onClick={() => { if (stage.stepId) onJump(stage.stepId); }}
             className="group flex w-full flex-col gap-1 rounded-sm bg-transparent px-0.5 py-1 text-left cursor-pointer hover:bg-ui-hover aria-disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-info">
-            <span className="flex min-h-12 min-w-0 items-start gap-1.5 text-caption text-ui-secondary"><span aria-hidden className={cn("mt-1 size-1.5 shrink-0 rounded-full", style.color, stage.state === "pending" ? "border border-ui-stroke-control" : "bg-current")} /><span className="min-w-0 [overflow-wrap:anywhere]">{stage.label}</span></span>
+            <span className="flex min-w-0 items-center gap-1.5 text-caption text-ui-secondary"><span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", style.color, stage.state === "pending" ? "border border-ui-stroke-control" : "bg-current")} /><span data-one-line className="min-w-0 truncate">{stage.label}</span></span>
             <span aria-hidden className={cn("block h-2.5 w-full rounded-sm", style.bar)} />
             {stage.state !== "pending" && (stage.state !== "completed" || stage.durationLabel !== undefined) && <span className={cn("text-caption tabular-nums", stage.state === "completed" ? "text-ui-muted" : style.color)}>{stage.state === "completed" ? stage.durationLabel : label}</span>}
           </button></Tooltip>
