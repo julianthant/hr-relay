@@ -58,8 +58,8 @@ import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m5 } from "../../../support/helper
 describe_m0('Relay presentation models', () => {
   it_m0('orders a drawn Attention band by the chosen order alone, whatever the statuses in it', () => {
     const [base] = FIXTURE_DAY_WIRE_m0.queueSurfaces;
-    const waiting = { ...base, status: 'awaiting-approval' as const, startedAt: '2026-08-03T10:00:00Z' };
-    const failed = { ...base, status: 'failed' as const, startedAt: '2026-08-03T12:00:00Z' };
+    const waiting = { ...base, status: 'awaiting-approval' as const, startedAt: '2026-08-03T10:00:00Z' } as typeof base;
+    const failed = { ...base, status: 'failed' as const, startedAt: '2026-08-03T12:00:00Z' } as typeof base;
     const band = (order: 'newest' | 'oldest') => queueDisplayGroups_m0([waiting, failed], 'attention', '2026-08-03T18:00:00Z', order)[0].rows.map(row => row.status);
     assert_m0.deepEqual(band('newest'), ['failed', 'awaiting-approval']);
     assert_m0.deepEqual(band('oldest'), ['awaiting-approval', 'failed']);
