@@ -510,7 +510,11 @@ export const ERROR_CATALOG = Object.freeze({
     z.strictObject({ source: BoundarySourceSchema }),
   ),
   RERUN_SOURCE_INPUT_PROTECTED: catalogEntry(
-    "This input is protected and cannot be copied. Start a new run.",
+    "The original input can't be reused; use Start run.",
+    EmptyParametersSchema,
+  ),
+  RERUN_BROWSER_MODE_UNKNOWN: catalogEntry(
+    "The original browser mode is unknown; use Start run.",
     EmptyParametersSchema,
   ),
   QUEUE_READ_UNAVAILABLE: catalogEntry(

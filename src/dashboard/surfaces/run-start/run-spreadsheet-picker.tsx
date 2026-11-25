@@ -64,9 +64,9 @@ function versionLine(versions: readonly SheetVersion[], versionId: string): stri
 }
 
 /** One picked spreadsheet: name and version line left; worksheets, version and remove right. */
-export function SpreadsheetRow({ name, versions, versionId, note, worksheets, picked, mode, busy, worksheetsReady, onVersion, onWorksheets, onRemove }: {
+export function SpreadsheetRow({ name, versions, versionId, note, worksheets, picked, mode, busy, locked = false, worksheetsReady, onVersion, onWorksheets, onRemove }: {
   name: string; versions: readonly SheetVersion[]; versionId: string; note?: string | undefined;
-  worksheets: readonly SheetWorksheet[]; picked: readonly string[]; mode: "one" | "many"; busy: boolean; worksheetsReady: boolean;
+  worksheets: readonly SheetWorksheet[]; picked: readonly string[]; mode: "one" | "many"; busy: boolean; locked?: boolean; worksheetsReady: boolean;
   onVersion: (versionId: string) => void; onWorksheets: (sheetIds: readonly string[]) => void; onRemove: () => void;
 }) {
   return <RunListRow title={name} description={note ?? versionLine(versions, versionId)}>
@@ -74,7 +74,7 @@ export function SpreadsheetRow({ name, versions, versionId, note, worksheets, pi
     <Select aria-label={`${name} version`} variant="toolbar" className="max-w-36 min-w-20" disabled={busy} value={versionId} onChange={event => onVersion(event.target.value)}>
       {versions.map(version => <option key={version.id} value={version.id}>{version.name}</option>)}
     </Select>
-    <IconButton size="xs" label={`Remove ${name}`} icon={<X aria-hidden className={dsIcon.md} />} onClick={onRemove} />
+    <IconButton size="xs" label={`Remove ${name}`} disabled={locked} icon={<X aria-hidden className={dsIcon.md} />} onClick={onRemove} />
   </RunListRow>;
 }
 

@@ -9,7 +9,7 @@ export function RunLaunchHost({ controller, ...props }: Omit<ComponentProps<type
 }) {
   const { toast } = useToasts();
   const setOpen = controller.setOpen;
-    return <RunStartSurfaces {...props} rerunSource={controller.rerunSource} rerunInputText={controller.rerunInputText} open={controller.open} onOpenChange={setOpen} onCloseAutoFocus={controller.closeFocus}
+    return <RunStartSurfaces {...props} rerunSource={controller.rerunSource} rerunInputText={controller.rerunInputText} rerunInOneClick={controller.rerunInOneClick} open={controller.open} onOpenChange={setOpen} onCloseAutoFocus={controller.closeFocus}
     onApplied={(workflowId, count, runId) => {
       toast(runLaunchAppliedToast({ label: props.catalog.find(workflow => workflow.id === workflowId)?.label ?? workflowId,
         count, rerun: controller.rerunSource !== undefined }));

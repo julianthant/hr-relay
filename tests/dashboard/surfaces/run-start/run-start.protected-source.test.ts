@@ -16,15 +16,15 @@ it("explains how to start again when retained source input is protected without 
   const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
   const snapshot = RerunValuesSnapshotSchema.parse({
     source: { runId: source.runId, version: source.expectedVersion, workflow: workflow.workflowId,
-      descriptorVersion: workflow.version, contractFingerprint: h.HASH, outcome: "done" },
+      descriptorVersion: workflow.version, contractFingerprint: h.HASH, outcome: "done", dryRun: false, priority: "interactive", browserMode: "headless" },
     sourceInput: { state: "unavailable", reason: "protected" },
     steps: workflow.steps.map(step => ({ key: step.key, state: "completed", nodes: [{ nodeId: step.key, state: "completed", reason: "checkpoint" }] })),
     values: [], transactions: [],
   });
   const dialog = await h.openDialog(h.stubClient({ rerunValues: async () => ({ state: "available", snapshot }) }),
     { workflows: [workflow], panelWorkflowId: workflow.workflowId, rerunSource: source });
-  assert.match(dialog.text(), /This input is protected and cannot be copied/u);
-  assert.match(dialog.text(), /Start a new run\./u);
+  assert.match(dialog.text(), /The original input can't be reused; use Start run\./u);
+  assert.equal(dialog.stage(), "Steps");
   assert.equal(dialog.disabled("Continue"), true);
-  assert.equal(document.querySelector("textarea") === null, true);
+  assert.equal(document.querySelector(".launch-dialog textarea") === null, true);
 });
