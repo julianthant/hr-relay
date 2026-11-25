@@ -120,19 +120,44 @@ export const RUN_DIALOG_RERUN_CATALOG = catalogOf(flow => ({ ...flow, steps: flo
   ? { ...step, control: { state: "omittable" as const, form: { fields: [] }, forces: [] } } : step) }));
 
 /** What a Person Lookup run offers a rerun: the typed input it ran on, each step's state (a failed run stops at its last step), and one value to copy. */
-/** A cancelled source stopped in its third step: the first two completed, the rest never finished. */
-export function runDialogRerunSnapshot(outcome: "failed" | "done" | "cancelled" = "failed"): RerunValuesResponse {
+export function runDialogRerunSnapshot(outcome: "failed" | "done" = "failed"): RerunValuesResponse {
   return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
     sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED } },
     source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome, dryRun: false, priority: "interactive", browserMode: "headless" },
-    steps: STEPS.map((key, index) => { const ok = outcome === "done" || index < 2;
-      const state = ok ? "completed" : outcome === "cancelled" ? "unfinished" : "failed";
-      const reason = ok ? "checkpoint" : outcome === "failed" ? "failure" : index === 2 ? "incomplete-execution" : "not-recorded";
-      return { key, state, nodes: [{ nodeId: key, state, reason }] }; }),
+    steps: STEPS.map((key, index) => { const ok = outcome === "done" || index < 2; return { key, state: ok ? "completed" : "failed",
+      nodes: [{ nodeId: key, state: ok ? "completed" : "failed", reason: ok ? "checkpoint" : "failure" }] }; }),
     values: [{ state: "available", sourceStepKey: "searching", nodeId: "searching", fieldPath: "emplId", label: "Employee ID", targetFieldPath: "emplId", value: RUN_DIALOG_TYPED,
       checkpoint: { attempt: 1, writtenAt: "2026-08-26T20:00:00.000Z" },
       provenance: { path: "emplId", source: "live", observedAt: "2026-08-26T20:00:00.000Z", originalObservedAt: "2026-08-26T20:00:00.000Z" } }],
     transactions: [],
+  } });
+}
+
+/** The entry as a write workflow that files one UCPath transaction and then verifies it; every step can be left off. */
+const WRITE_STEPS = [["sign-in", "Sign in to UCPath"], ["submit", "Submit work-study transaction"], ["verify", "Verify the saved transaction"]] as const;
+export const RUN_DIALOG_WRITE_RERUN_CATALOG = catalogOf(flow => {
+  const [template] = flow.steps; if (template === undefined) throw new Error("the fixture workflow has no step");
+  return { ...flow, label: "Work-Study", steps: WRITE_STEPS.map(([key, label]) => ({ ...template, key, label,
+    control: { state: "omittable" as const, form: { fields: [] }, forces: [] } })) };
+});
+const WRITE_RECEIPT = { nodeId: "submit", taskId: "ucpath/work-study-submit", writeIntentId: "20000000-0000-4000-8000-000000000002", evidenceDigest: HASH } as const;
+
+/** A Work-Study run cancelled while verifying: it signed in and filed its transaction, and the filing's receipt is the source's own. */
+export function runDialogWriteRerunSnapshot(): RerunValuesResponse {
+  return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
+    sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED } },
+    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome: "cancelled", dryRun: false, priority: "interactive", browserMode: "headless" },
+    steps: WRITE_STEPS.map(([key], index) => { const state = index < 2 ? "completed" : "unfinished";
+      return { key, state, nodes: [{ nodeId: key, state, reason: key === "submit" ? "settled-transaction" : index < 2 ? "checkpoint" : "incomplete-execution" }] }; }),
+    values: [], transactions: [{ stepKey: "submit", ...WRITE_RECEIPT, disposition: "committed" }],
+  } });
+}
+
+/** The repeat warning for that Work-Study source once its filing step is switched back on. */
+export function runDialogWriteRerunWarning(): RerunWarningWire {
+  return RerunWarningWireSchema.parse({ workflowId: RUN_DIALOG_WORKFLOW, rerun: {
+    source: { runId: RUN_ID, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["submit", "verify"] },
+    warnings: [{ ...WRITE_RECEIPT, system: "ucpath", businessKeyDigest: HASH }], warningDigest: HASH,
   } });
 }
 

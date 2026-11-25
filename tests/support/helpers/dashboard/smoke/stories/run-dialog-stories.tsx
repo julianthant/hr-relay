@@ -13,7 +13,7 @@ import type { StartRefusalCode } from "../../../../../../src/models/run/start-re
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
   RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
-  never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, type ServedCheck,
+  never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, runDialogWriteRerunSnapshot, runDialogWriteRerunWarning, RUN_DIALOG_WRITE_RERUN_CATALOG, type ServedCheck,
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
 import { RUN_DIALOG_REFERENCE_READS } from "../../../../fixtures/dashboard/run-dialog-reference-fixtures.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
@@ -65,7 +65,8 @@ const PASS: ServedCheck = { check: PreflightCheckIdSchema.parse("config.valid"),
 const WARN: ServedCheck = { check: PreflightCheckIdSchema.parse("fiscal.current"), status: "warning", summary: "The fiscal year ends soon." };
 const FIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("secrets.ucpath-sso"), status: "fail", summary: "The UCPath password is missing." };
 const UNFIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("filesystem.health"), status: "fail", summary: "Relay is out of disk space." };
-const rerunClient = (served: Partial<DashboardClient> = {}, outcome: "failed" | "done" | "cancelled" = "failed") => () => runDialogClient({ rerunValues: async () => runDialogRerunSnapshot(outcome), previewRerunWarnings: async () => runDialogRerunWarning(false), ...served });
+const rerunClient = (served: Partial<DashboardClient> = {}, outcome: "failed" | "done" = "failed") => () => runDialogClient({ rerunValues: async () => runDialogRerunSnapshot(outcome), previewRerunWarnings: async () => runDialogRerunWarning(false), ...served });
+const writeRerunClient = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ rerunValues: async () => runDialogWriteRerunSnapshot(), previewRerunWarnings: async () => runDialogRerunWarning(false), ...served });
 const planning = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ submitStartPlan: async () => runDialogPlan(), executeCommand: async () => RUN_DIALOG_APPLIED, ...served });
 const start = (page: Page) => press(page, "Start run");
 
@@ -78,9 +79,11 @@ const STAGE = {
     then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
   Start: stage("Start, options, steps and checks, every check ready", reading(PASS), "Start"),
   RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
-  CancelledSteps: stage("A cancelled run's rerun, picking up from the step the cancel stopped", rerunClient({}, "cancelled"), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
-  CancelledWarning: stage("A write run cancelled after it filed, warned that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }, "cancelled"), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG,
-    then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
+  CancelledSteps: stage("A Work-Study run cancelled after it filed: Steps picks up at the step the cancel stopped", writeRerunClient(), "Steps", { rerun: true, catalog: RUN_DIALOG_WRITE_RERUN_CATALOG }),
+  CancelledReceipts: stage("That rerun's Start, naming the receipt the source already filed", writeRerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_WRITE_RERUN_CATALOG }),
+  CancelledWarning: stage("That rerun with the filing switched back on, warned before it files again", writeRerunClient({ previewRerunWarnings: async () => runDialogWriteRerunWarning() }), "Steps", { rerun: true, catalog: RUN_DIALOG_WRITE_RERUN_CATALOG,
+    then: async page => { await dialog(page).getByRole("switch", { name: "Submit work-study transaction" }).click(); await press(page, "Continue");
+      await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
 } satisfies Record<string, Story>;
 
 const CHECKS = {
