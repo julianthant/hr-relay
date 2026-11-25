@@ -5,14 +5,14 @@ import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/life
 import { runtimeProfiles } from "../../../src/models/config/define-runtime-isolation.js";
 import { chatGptFixture, completedOcrStream } from "../../support/helpers/chatgpt-account-fixtures.js";
 
-for (const state of ["near-expiry", "expired", "restart"] as const) it(`renews ${state} account reads through the stored rotating refresh token`, async () => {
+for (const state of ["near-expiry", "expired", "restart"] as const) it(`renews a ${state} account through its stored rotating refresh token when it is checked`, async () => {
   const f = await chatGptFixture();
   let restarted: ReturnType<typeof createChatGptAccountService> | undefined;
   try {
     await f.connected(); f.clock.advanceWall(state === "near-expiry" ? 3_540_000 : 3_600_000);
     if (state === "restart") restarted = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock, fetch: f.transport });
     const service = restarted ?? f.service;
-    const account = await service.refreshAccount();
+    const { account } = await service.checkStatus();
     assert.equal(account.state, "connected");
     if (account.state !== "connected") throw new Error("renewed account required");
     assert.equal(account.planUsage, "enabled"); assert.equal(Date.parse(account.expiresAt), f.clock.nowMs() + 3_600_000);
@@ -20,8 +20,8 @@ for (const state of ["near-expiry", "expired", "restart"] as const) it(`renews $
     const refreshes = f.calls.filter(call => call.url.endsWith("/oauth/token") && call.init.body instanceof URLSearchParams && call.init.body.get("grant_type") === "refresh_token");
     assert.equal(refreshes.length, 1); assert.ok(refreshes[0].init.body instanceof URLSearchParams);
     assert.equal(refreshes[0].init.body.get("refresh_token"), "synthetic-refresh-1");
-    assert.equal(f.calls.filter(call => call.url.endsWith("/responses") || call.url.endsWith("/models")).length, 0);
-    await service.refreshAccount(); assert.equal(f.repository.read()?.session?.refreshToken, "synthetic-refresh-2");
+    assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
+    await service.checkStatus(); assert.equal(f.repository.read()?.session?.refreshToken, "synthetic-refresh-2");
   } finally { await restarted?.close(); await f.cleanup(); }
 });
 
@@ -35,23 +35,23 @@ it.each(["staging", "development"] as const)("refuses credential renewal in the 
     assert.ok(lifetime instanceof RuntimeLifetimeLock);
     const port = vi.spyOn(lifetime, "port", "get").mockReturnValue(runtimeProfiles[profile].lockPort);
     try {
-      await assert.rejects(f.service.refreshAccount(), { code: "CHATGPT_AUTH_UNAVAILABLE" });
+      assert.equal((await f.service.checkStatus()).connection.failureCode, "CHATGPT_AUTH_UNAVAILABLE");
       assert.equal(f.calls.length, requestCount);
       assert.deepEqual(f.repository.read(), before);
     } finally { port.mockRestore(); }
   } finally { await f.cleanup(); }
 });
 
-it("coalesces concurrent account reads into one locked rotation", async () => {
+it("coalesces concurrent account checks into one locked rotation", async () => {
   const f = await chatGptFixture(), entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   try {
     await f.connected(); f.clock.advanceWall(3_600_000);
     f.setTokenHook(async () => { entered.resolve(); await release.promise; });
-    const first = f.service.refreshAccount(); await entered.promise;
-    const second = f.service.refreshAccount(); assert.equal(first, second);
+    const first = f.service.checkStatus(); await entered.promise;
+    const second = f.service.checkStatus();
     assert.deepEqual(f.service.readAccount(), { state: "expired" });
     release.resolve();
-    const [a, b] = await Promise.all([first, second]); assert.deepEqual(a, b); assert.equal(a.state, "connected");
+    const [a, b] = await Promise.all([first, second]); assert.deepEqual(a, b); assert.equal(a.account.state, "connected");
     assert.equal(f.calls.filter(call => call.url.endsWith("/oauth/token")).length, 2);
   } finally { release.resolve(); await f.cleanup(); }
 });
@@ -63,7 +63,7 @@ it("keeps quota authority across renewal until a completed inference proves usag
     await f.connected(); f.setSse('data: {"type":"response.failed","response":{"error":{"code":"subscription_sharing_usage_limit_exceeded"}}}\n\n');
     await assert.rejects(f.service.extractText(image), { code: "CHATGPT_USAGE_LIMIT" });
     f.clock.advanceWall(3_600_000);
-    const account = await f.service.refreshAccount(); assert.equal(account.state, "connected");
+    const { account } = await f.service.checkStatus(); assert.equal(account.state, "connected");
     if (account.state !== "connected") throw new Error("renewed account required");
     assert.equal(account.planUsage, "limit-reached"); assert.equal(f.repository.read()?.session?.usage, "limit-reached");
     f.setSse(completedOcrStream("Synthetic")); await f.service.extractText(image);
@@ -76,20 +76,20 @@ it("preserves credentials on temporary renewal failure and forgets the account o
   try {
     await f.connected(); f.clock.advanceWall(3_600_000); const before = f.repository.read();
     f.setTokenStatus(503);
-    await assert.rejects(f.service.refreshAccount(), { code: "CHATGPT_AUTH_UNAVAILABLE" });
+    assert.equal((await f.service.checkStatus()).connection.failureCode, "CHATGPT_AUTH_UNAVAILABLE");
     assert.deepEqual(f.repository.read(), before);
     f.setTokenStatus(400, "invalid_grant");
-    assert.deepEqual(await f.service.refreshAccount(), { state: "signed-out" });
+    assert.deepEqual((await f.service.checkStatus()).account, { state: "signed-out" });
     assert.equal(f.repository.read()?.session, null); assert.equal(f.repository.read()?.clientId, null); assert.equal(f.repository.read()?.registration, null);
   } finally { await f.cleanup(); }
 });
 
-it("honors earliest refresh time without asking the operator to reconnect a renewable session", async () => {
+it("honors earliest refresh time without a token exchange or a credential change", async () => {
   const f = await chatGptFixture();
   try {
     f.setToken({ earliest_refresh_at: Math.floor(f.clock.nowMs() / 1000) + 7200 });
     await f.connected(); f.clock.advanceWall(3_600_000); const before = f.repository.read();
-    await assert.rejects(f.service.refreshAccount(), { code: "CHATGPT_AUTH_UNAVAILABLE" });
+    assert.deepEqual((await f.service.checkStatus()).account, { state: "expired" });
     assert.deepEqual(f.repository.read(), before); assert.equal(f.calls.filter(call => call.url.endsWith("/oauth/token")).length, 1);
   } finally { await f.cleanup(); }
 });
@@ -98,9 +98,9 @@ it("does not enable plan use while renewing an identity-only session", async () 
   const f = await chatGptFixture();
   try {
     await f.connected(false); f.clock.advanceWall(3_600_000);
-    const account = await f.service.refreshAccount(); assert.equal(account.state, "connected");
+    const { account } = await f.service.checkStatus(); assert.equal(account.state, "connected");
     if (account.state !== "connected") throw new Error("renewed account required");
-    assert.equal(account.planUsage, "disabled");
+    assert.equal(account.planUsage, "disabled"); assert.equal(Date.parse(account.expiresAt), f.clock.nowMs() + 3_600_000);
   } finally { await f.cleanup(); }
 });
 
@@ -109,7 +109,7 @@ it("does not resurrect credentials when sign-out supersedes a pending account re
   try {
     await f.connected(); f.clock.advanceWall(3_600_000);
     f.setTokenHook(async () => { entered.resolve(); await release.promise; });
-    const reading = assert.rejects(f.service.refreshAccount(), { code: "CHATGPT_OCR_CANCELLED" });
+    const reading = assert.rejects(f.service.checkStatus(), { code: "CHATGPT_CONNECTION_CANCELLED" });
     await entered.promise;
     const signingOut = f.service.signOut(); release.resolve();
     await reading; await signingOut;

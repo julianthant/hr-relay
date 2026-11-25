@@ -16,7 +16,7 @@ it("serves no assistant permission route", async () => {
 it("serves the account model catalog uncached and refuses without the service", async () => {
   const catalog = { models: [{ slug: "gpt-6.1-sol", displayName: "GPT-6.1 Sol" }] };
   const app: DashboardApp = new Hono();
-  registerAssistantRoutes(app, { async respond() { throw new Error("unexpected inference"); }, async models() { return catalog; } });
+  registerAssistantRoutes(app, { async respond() { throw new Error("unexpected inference"); }, models() { return catalog; } });
   const response = await app.request("http://127.0.0.1:4310/api/v1/assistant/models");
   assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
   assert.deepEqual(await response.json(), catalog);

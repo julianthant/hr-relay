@@ -10,7 +10,7 @@ import { chatGptFixture } from "../../support/helpers/chatgpt-account-fixtures.j
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
 
-it("reads one account record for the post-probe projection and rechecks authority on the next status read", async () => {
+it("reads one account record for the post-probe projection and one for each later status read", async () => {
   const createRepository = credentials.createChatGptCredentialRepository;
   const reads = vi.fn();
   const repository = vi.spyOn(credentials, "createChatGptCredentialRepository").mockImplementation(input => {
@@ -21,13 +21,17 @@ it("reads one account record for the post-probe projection and rechecks authorit
     const f = await chatGptFixture(undefined, profiles.create);
     try {
       reads.mockClear();
-      const cold = await f.service.readStatus();
+      assert.deepEqual(f.service.readStatus(), { account: { state: "signed-out" }, connection: { state: "unchecked", checkedAt: null, failureCode: null },
+        usage: { state: "unavailable", reason: "signed-out" } });
+      assert.equal(reads.mock.calls.length, 1);
+      reads.mockClear();
+      const cold = await f.service.checkStatus();
       assert.deepEqual(cold.account, { state: "signed-out" });
       assert.deepEqual(cold.usage, { state: "unavailable", reason: "signed-out" });
       // Admission, inference entry and authority, post-probe status, and the post-await check.
       assert.equal(reads.mock.calls.length, 5);
       reads.mockClear();
-      assert.deepEqual(await f.service.readStatus(), cold);
+      assert.deepEqual(f.service.readStatus(), cold);
       assert.equal(reads.mock.calls.length, 1);
     } finally { await f.cleanup(); }
   } finally { repository.mockRestore(); }
@@ -37,7 +41,6 @@ it("checks the remote authenticated catalog only on explicit invocation without 
   const f = await chatGptFixture(undefined, profiles.create);
   try {
     await f.connected();
-    await f.service.refreshAccount();
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 0);
     for (let check = 1; check <= 2; check++) {
       assert.deepEqual(await f.service.checkConnection(), { checkedAt: f.clock.now().toISOString() });
@@ -130,45 +133,49 @@ it("propagates diagnostics failure after a failed remote check", async () => {
 });
 
 
-it("automatically checks on read and caches success through exactly five minutes", async () => {
+it("reuses a completed check through exactly five minutes and serves it to reads at any age", async () => {
   const f = await chatGptFixture(undefined, profiles.create);
   try {
     await f.connected();
-    const first = await f.service.readStatus();
+    const first = await f.service.checkStatus();
     assert.equal(first.connection.state, "completed");
     assert.deepEqual(first.usage, { state: "available", resetAt: null });
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 1);
     f.clock.advanceWall(300_000);
-    assert.deepEqual(await f.service.readStatus(), first);
+    assert.deepEqual(await f.service.checkStatus(), first);
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 1);
     f.clock.advanceWall(1);
-    await f.service.readStatus();
+    assert.deepEqual(f.service.readStatus(), first);
+    assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 1);
+    await f.service.checkStatus();
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 2);
     f.clock.advanceWall(-1);
-    await f.service.readStatus();
+    await f.service.checkStatus();
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 3);
     assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
   } finally { await f.cleanup(); }
 });
 
-it("caches known failures but refresh failure never falls back to cached success", async () => {
+it("serves a failed check to reads, checks it again, and never falls back to an earlier success", async () => {
   const f = await chatGptFixture(undefined, profiles.create);
   try {
     await f.connected();
-    await f.service.readStatus();
+    await f.service.checkStatus();
     f.setModels({ data: [] }); f.clock.advanceWall(300_001);
-    const failed = await f.service.readStatus();
+    const failed = await f.service.checkStatus();
     assert.deepEqual(failed.connection, { state: "refused", checkedAt: f.clock.now().toISOString(), failureCode: "CHATGPT_CONNECTION_FAILED" });
-    assert.deepEqual(await f.service.readStatus(), failed);
+    assert.deepEqual(f.service.readStatus(), failed);
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 2);
+    assert.deepEqual(await f.service.checkStatus(), failed);
+    assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 3);
     await f.service.signOut();
-    const signedOut = await f.service.readStatus();
+    const signedOut = await f.service.checkStatus();
     assert.deepEqual(signedOut.account, { state: "signed-out" });
     assert.deepEqual(signedOut.usage, { state: "unavailable", reason: "signed-out" });
     await f.connected();
     f.setModels({ models: [] });
-    assert.equal((await f.service.readStatus()).connection.state, "completed");
-    assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 3);
+    assert.equal((await f.service.checkStatus()).connection.state, "completed");
+    assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 4);
   } finally { await f.cleanup(); }
 });
 
@@ -178,13 +185,13 @@ it("shares an in-flight status check while one cancelled reader leaves other rea
   try {
     await f.connected();
     f.setModelsHook(async () => { entered.resolve(); await release.promise; return Response.json({ models: [] }); });
-    const first = f.service.readStatus(abort.signal), cancelled = assert.rejects(first, { code: "CHATGPT_CONNECTION_CANCELLED" });
-    const second = f.service.readStatus();
+    const first = f.service.checkStatus(abort.signal), cancelled = assert.rejects(first, { code: "CHATGPT_CONNECTION_CANCELLED" });
+    const second = f.service.checkStatus();
     await entered.promise; abort.abort(); await cancelled;
     release.resolve();
     assert.equal((await second).connection.state, "completed");
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 1);
-    await f.service.readStatus();
+    await f.service.checkStatus();
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 1);
   } finally { release.resolve(); await f.cleanup(); }
 });
@@ -194,9 +201,9 @@ it("does not cache abandoned checks and never settles an old account after sign-
   try {
     await f.connected();
     f.setModelsHook(async () => { entered.resolve(); await release.promise; return Response.json({ models: [] }); });
-    const read = f.service.readStatus(), rejected = assert.rejects(read, { code: "CHATGPT_CONNECTION_CANCELLED" });
+    const read = f.service.checkStatus(), rejected = assert.rejects(read, { code: "CHATGPT_CONNECTION_CANCELLED" });
     await entered.promise; await f.service.signOut(); release.resolve(); await rejected;
-    assert.deepEqual((await f.service.readStatus()).account, { state: "signed-out" });
+    assert.deepEqual((await f.service.checkStatus()).account, { state: "signed-out" });
   } finally { release.resolve(); await f.cleanup(); }
 });
 
@@ -204,11 +211,13 @@ it("retains a renewed status under its post-refresh authority and rechecks live 
   const profile = await profiles.create(), f = await chatGptFixture(profile.admission);
   try {
     await f.connected(); f.clock.advanceWall(3_600_000);
-    assert.equal((await f.service.readStatus()).connection.state, "completed");
-    await f.service.readStatus();
+    assert.equal((await f.service.checkStatus()).connection.state, "completed");
+    await f.service.checkStatus();
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 1);
     createProfileRegistry(profile.machine).advanceSession(null);
-    await assert.rejects(f.service.readStatus());
+    await assert.rejects(f.service.checkStatus());
+    assert.throws(() => f.service.readStatus());
+    assert.throws(() => f.service.readAssistantModels());
   } finally { await f.cleanup(); await profile.close(); }
 });
 
@@ -221,13 +230,13 @@ it("aborts the shared request after its last reader leaves and checks again on t
       assert.ok(init?.signal); entered.resolve(init.signal);
       await release.promise; return Response.json({ models: [] });
     });
-    const cancelled = assert.rejects(f.service.readStatus(abort.signal), { code: "CHATGPT_CONNECTION_CANCELLED" });
+    const cancelled = assert.rejects(f.service.checkStatus(abort.signal), { code: "CHATGPT_CONNECTION_CANCELLED" });
     const sharedSignal = await entered.promise;
     abort.abort(); await cancelled;
     assert.equal(sharedSignal.aborted, true);
     release.resolve();
     f.setModelsHook(async () => Response.json({ models: [] }));
-    assert.equal((await f.service.readStatus()).connection.state, "completed");
+    assert.equal((await f.service.checkStatus()).connection.state, "completed");
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 2);
   } finally { release.resolve(); await f.cleanup(); }
 });
@@ -235,11 +244,11 @@ it("aborts the shared request after its last reader leaves and checks again on t
 it("reports persisted limit-reached usage locally without guessing reset time or doing inference", async () => {
   const f = await chatGptFixture(undefined, profiles.create);
   try {
-    await f.connected(); await f.service.readStatus();
+    await f.connected(); await f.service.checkStatus();
     f.setSse('data: {"type":"response.failed","response":{"error":{"code":"subscription_sharing_usage_limit_exceeded"}}}\n\n');
     await assert.rejects(f.service.extractText({ model: "gpt-6.1-sol", instruction: "Read synthetic form", input: { kind: "image", mediaType: "image/png", base64: "aGVsbG8=" } }), { code: "CHATGPT_USAGE_LIMIT" });
     const inferenceCalls = f.calls.filter(call => call.url.endsWith("/responses")).length;
-    const status = await f.service.readStatus();
+    const status = await f.service.checkStatus();
     assert.deepEqual(status.usage, { state: "limit-reached", resetAt: null });
     assert.equal(status.connection.state, "completed");
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 2);
@@ -251,24 +260,26 @@ it("does not serve cached success after a separate check leaves response closure
   const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
   const entered = Promise.withResolvers<void>(), abort = new AbortController();
   try {
-    await f.connected(); await f.service.readStatus();
+    await f.connected(); await f.service.checkStatus();
     f.setModelsHook(async () => new Response(new ReadableStream<Uint8Array>({
       pull() { entered.resolve(); }, cancel() { throw new ChatGptAccountError("CHATGPT_OCR_CANCELLED"); },
     })));
     const refused = assert.rejects(f.service.checkConnection(abort.signal), { code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" });
     await entered.promise; await setImmediate(); abort.abort(); await refused;
-    await assert.rejects(f.service.readStatus(), { code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" });
+    await assert.rejects(f.service.checkStatus(), { code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" });
+    assert.throws(() => f.service.readStatus(), { code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" });
+    assert.throws(() => f.service.readAssistantModels(), { code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" });
     await assert.rejects(f.cleanup(), { code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" });
   } finally { await profile.close(); }
 });
 
-it("caches a catalog failure under the authority produced by its own token renewal", async () => {
+it("serves a catalog failure under the authority produced by its own token renewal", async () => {
   const f = await chatGptFixture(undefined, profiles.create);
   try {
     await f.connected(); f.clock.advanceWall(3_600_000); f.setModels({ data: [] });
-    const failed = await f.service.readStatus();
+    const failed = await f.service.checkStatus();
     assert.equal(failed.connection.failureCode, "CHATGPT_CONNECTION_FAILED");
-    assert.deepEqual(await f.service.readStatus(), failed);
+    assert.deepEqual(f.service.readStatus(), failed);
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 1);
     assert.equal(f.calls.filter(call => call.url.endsWith("/oauth/token")).length, 2);
   } finally { await f.cleanup(); }
@@ -278,12 +289,12 @@ it("serves pending and disabled local authority explicitly without checking remo
   const f = await chatGptFixture(undefined, profiles.create);
   try {
     const attempt = await f.service.signIn({ usePlan: true });
-    const pending = await f.service.readStatus();
+    const pending = await f.service.checkStatus();
     assert.deepEqual(pending.usage, { state: "unavailable", reason: "pending" });
     assert.equal(pending.connection.failureCode, "CHATGPT_AUTH_BUSY");
     await attempt.cancel(); await assert.rejects(attempt.completion, { code: "CHATGPT_AUTH_CANCELLED" });
     await f.connected(false);
-    const disabled = await f.service.readStatus();
+    const disabled = await f.service.checkStatus();
     assert.deepEqual(disabled.usage, { state: "unavailable", reason: "disabled" });
     assert.equal(disabled.connection.failureCode, "CHATGPT_PLAN_DISABLED");
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 0);
@@ -307,33 +318,60 @@ it("does not cache a prior catalog failure under a same-generation credential re
         });
       });
     } });
-    await assert.rejects(f.service.readStatus(), { code: "CHATGPT_CONNECTION_CANCELLED" });
+    await assert.rejects(f.service.checkStatus(), { code: "CHATGPT_CONNECTION_CANCELLED" });
     assert.ok(revised); await revised;
     const after = await f.service.readAuthority();
     assert.equal(after.attemptGeneration, before.attemptGeneration);
     assert.notEqual(after.revision, before.revision);
     f.service.setDebugEvents({ emit() {} });
     f.setModels({ models: [] });
-    assert.equal((await f.service.readStatus()).connection.state, "completed");
+    assert.equal((await f.service.checkStatus()).connection.state, "completed");
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 2);
   } finally { await revised; await f.cleanup(); }
 });
 
 
 for (const status of [401, 403])
-  it(`caches its own ${status} catalog refusal without adopting another credential revision`, async () => {
+  it(`serves its own ${status} catalog refusal without adopting another credential revision`, async () => {
     const f = await chatGptFixture(undefined, profiles.create);
     try {
       await f.connected();
       const before = await f.service.readAuthority();
       f.setModelsHook(async () => Response.json({ detail: "withheld" }, { status }));
-      const refused = await f.service.readStatus();
+      const refused = await f.service.checkStatus();
       assert.equal(refused.connection.failureCode, status === 401 ? "CHATGPT_ACCOUNT_EXPIRED" : "CHATGPT_PLAN_DISABLED");
       assert.deepEqual(refused.usage, { state: "unavailable", reason: status === 401 ? "expired" : "unavailable" });
       const after = await f.service.readAuthority();
       assert.equal(after.revision, before.revision);
       assert.equal(after.attemptGeneration, before.attemptGeneration);
-      assert.deepEqual(await f.service.readStatus(), refused);
+      assert.deepEqual(f.service.readStatus(), refused);
       assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 1);
     } finally { await f.cleanup(); }
   });
+
+it("serves the model list a check observed until the account it belongs to changes", async () => {
+  const f = await chatGptFixture(undefined, profiles.create);
+  const unavailable = () => assert.throws(() => f.service.readAssistantModels(), { code: "CHATGPT_MODELS_UNAVAILABLE" });
+  try {
+    unavailable();
+    await f.connected(); unavailable();
+    await f.service.checkStatus();
+    const catalog = { models: [{ slug: "gpt-6.1-sol", displayName: "GPT-6.1 Sol" }] };
+    assert.deepEqual(f.service.readAssistantModels(), catalog);
+    // A renewal keeps the sign-in, and a failed check keeps the list it could not replace.
+    f.clock.advanceWall(3_600_000); unavailable();
+    f.setModels({ data: [] });
+    assert.equal((await f.service.checkStatus()).connection.state, "refused");
+    assert.deepEqual(f.service.readAssistantModels(), catalog);
+    f.setModels({ models: [{ slug: "other", display_name: "Other", visibility: "list" }] });
+    await f.service.checkStatus();
+    assert.deepEqual(f.service.readAssistantModels(), { models: [{ slug: "other", displayName: "Other" }] });
+    const calls = f.calls.length; f.service.readAssistantModels(); assert.equal(f.calls.length, calls);
+    await f.connected(); unavailable();
+    await f.service.listAssistantModels();
+    assert.deepEqual(f.service.readAssistantModels(), { models: [{ slug: "other", displayName: "Other" }] });
+    await f.service.signOut(); unavailable();
+    await f.service.close();
+    assert.throws(() => f.service.readAssistantModels(), { code: "CHATGPT_SERVICE_CLOSED" });
+  } finally { await f.cleanup(); }
+});

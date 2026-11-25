@@ -36,6 +36,8 @@ it("keeps an attempt held when its settle cannot close the listener", async () =
     const attempt = await f.service.signIn({ usePlan: true });
     await f.callback(attempt, { error: "access_denied" });
     await assert.rejects(attempt.completion, { code: "CHATGPT_AUTH_UNAVAILABLE" });
+    assert.equal(attempt.held, true); assert.equal(attempt.signingIn, false);
+    assert.throws(() => f.service.readStatus(), { code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" });
     await assert.rejects(f.service.signIn({ usePlan: true }), { code: "CHATGPT_AUTH_BUSY" });
     await assert.rejects(attempt.cancel(), f.reports);
     await assert.rejects(f.service.signIn({ usePlan: true }), { code: "CHATGPT_AUTH_BUSY" });
