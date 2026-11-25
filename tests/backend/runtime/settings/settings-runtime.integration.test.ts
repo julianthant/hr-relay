@@ -379,7 +379,7 @@ it("persists each person's appearance and shell settings across a database reope
     const a = await fixture(); const b = await fixture();
     const run = a.create(); const original = selectActiveRunSettings(a.database.authority);
     const result = a.save({ "preferences.theme": { set: "light" }, "preferences.animations": { set: false },
-      "preferences.workflowPanelMode": { set: "sidebar" }, "preferences.selectedWorkflowId": { set: "separations" },
+      "preferences.selectedWorkflowId": { set: "separations" },
       "preferences.shortcuts.bindings.search": { set: ["g"] } });
     assert.equal(result.state, "applied");
     const accepted = selectActiveRunSettings(a.database.authority);

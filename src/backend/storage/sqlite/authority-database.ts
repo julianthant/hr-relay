@@ -10,7 +10,7 @@ import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { deriveEvidenceReceiptId } from "../../../models/trust/evidence-identity.js";
 import { CURRENT_RUN_SETTLEMENT_SQL, readRunSettlementRow, runSettlementContext, runSettlementColumns } from "./run-settlement-row.js";
-import { SETTINGS_RECORD_CONVERSION_VERSION, convertSettingsRecordRow, isSettingsRecordConversionMarker } from "./settings-record-conversion.js";
+import { SETTINGS_RECORD_CONVERSION_VERSION, convertSettingsRecordRow, isSettingsRecordConversionMarker, readSettingsRecordConversion } from "./settings-record-conversion.js";
 import { readContinuationGate, validateRunContinuation } from "./run-continuation.js";
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
 import type { ChildProcess } from "node:child_process";
@@ -1406,8 +1406,9 @@ type StoredRowContext = Readonly<{ database: DatabaseSync; read: StoredReaders; 
 function storedRowContext(database: DatabaseSync, expectedSchemaVersion: number): StoredRowContext {
   const predecessorCustody = expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const read: StoredReaders = { ...(predecessorCustody ? PREDECESSOR_CUSTODY_READERS : CURRENT_READERS), run: inspectionRunReader(expectedSchemaVersion) };
+  const readSettings = expectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? readSettingsRecordConversion(database) : undefined;
   const convertPreferences = (table: string, row: unknown) => {
-    const person = expectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow(table, row) : row;
+    const person = readSettings === undefined ? row : readSettings(table, row);
     const effort = expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
     const state = expectedSchemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState(table, effort) : effort;
     return expectedSchemaVersion < FAILURE_NOTE_REMOVAL_SCHEMA_VERSION ? convertFailureNoteRow(table, state) : state;
@@ -2581,7 +2582,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
 }
 
 function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion: number) {
-  const convert = inspectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow : (_table: string, row: unknown) => row;
+  const convert = inspectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? readSettingsRecordConversion(database) : (_table: string, row: unknown) => row;
   const settings = readAppSettings(database, convert);
   const settingsAuthority = settings === undefined
     ? Object.freeze({ state: "never-initialized" as const })

@@ -1,5 +1,4 @@
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
-import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { FIXTURE_EXPLORER_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-explorer.js";
@@ -70,7 +69,7 @@ async function key(value: string) {
 }
 async function mount(overrides: Partial<DashboardClient_m0> = {}) {
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE_m0.day}`);
-  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "icon" });
+  const preview = createPersonPreferences("preview");
   const { app } = createFixtureBff_m0();
   library = await backendHarness();
   const client: DashboardClient_m0 = {
@@ -210,9 +209,8 @@ function workflowButton(name: string): HTMLButtonElement {
 }
 async function click(node: HTMLElement) { await act_m1(async () => node.click()); await settle(); }
 let shellPreferences = createPersonPreferences("preview");
-async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}, panelMode: "icon" | "sidebar" = "icon", workflowComposition = MOCK_WORKFLOW_COMPOSITION_m1) {
+async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}, workflowComposition = MOCK_WORKFLOW_COMPOSITION_m1) {
   window.history.replaceState(null, "", `/${search}`);
-  await shellPreferences.change({ "preferences.workflowPanelMode": { set: panelMode } });
   const { app } = createFixtureBff_m1();
   const days: DashboardClient_m1 = {
     ...createDashboardClient_m1({baseUrl:"http://fixture",fetchImpl: async (url, init) => app.request(String(url), init)}),
@@ -239,7 +237,7 @@ afterEach_m1(_afterEachFixture0);
     const first = FIXTURE_BOOTSTRAP_m1.workflows[0]; assert_m1.ok(first);
     const workflows = [first, { ...first, id: "separations", code: "sp", label: "Separations" }];
     const bootstrap = async () => ({ ...FIXTURE_BOOTSTRAP_m1, workflows });
-    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, { bootstrap }, "sidebar");
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, { bootstrap });
     await click(workflowButton("Separations"));
     assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
     assert_m1.equal(workflowButton("Separations").querySelector(".workflow-rail-running")?.textContent, "");
@@ -251,11 +249,11 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
 
     await act_m1(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
-    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, { bootstrap }, "sidebar");
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, { bootstrap });
     assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
 
     await act_m1(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
-    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, {}, "sidebar");
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`);
     assert_m1.equal(workflowButton("Person Lookup").getAttribute("aria-current"), "page");
   });
   it_m1("refuses a linked mock workflow outside the served selection without throwing or navigating", async () => {
@@ -265,7 +263,7 @@ afterEach_m1(_afterEachFixture0);
           workflowId: "separations", label: "Unavailable mock link", panelKind: "run", status: "queued" }] } : surface) });
     await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, {
       subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { select() {}, close() {} }; },
-    }, "sidebar");
+    });
     const link = document.querySelector<HTMLButtonElement>(`[data-demo-row-id="${FIXTURE_IDS_m1.queuedRun}"] button[data-demo-row-link]`);
     assert_m1.ok(link);
     const before = window.location.search;
@@ -301,7 +299,7 @@ afterEach_m1(_afterEachFixture0);
         if (id === parent.runId) { const ownerDetail = FIXTURE_RUN_DETAILS[id]; assert_m1.ok(ownerDetail); return ownerDetail; }
         assert_m1.equal(id, child.runId);
         return { ...detail, panelKind: target.panelKind, header: { ...detail.header, workflowId: target.workflowId } }; },
-    }, "sidebar");
+    });
     const preference = shellPreferences.snapshot().value.selectedWorkflowId;
     const chip = document.querySelector<HTMLButtonElement>(`[data-demo-row-id="${parent.runId}"] button[data-demo-row-link]`); assert_m1.ok(chip);
     await click(chip);
@@ -535,7 +533,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     const search = `?day=${FIXTURE_DAY_WIRE_m1.day}&run=${FIXTURE_IDS_m1.openGateRun}&section=logs`;
     const client = await mount(search, {
       runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", retryable: true, message: "private transport detail" }); },
-    }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
+    }, workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.ok(reads > 0);
     assert_m1.ok(document.body.textContent?.includes("Couldn't load logs."));
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Is this the right person\?|private transport detail/);
@@ -570,7 +568,7 @@ it_m1("passes the app client to a served Explorer read", async () => {
     let calls = 0;
     await mount("?explore=person-lookup&view=%7B%22explorerWorkflow%22%3A%22person-lookup%22%7D", {
       workflowExplorer: async () => { calls++; return { ...explorer, workflows: explorer.workflows.map(workflow => workflow.id === "person-lookup" ? { ...workflow, version: parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows).find(entry => entry.id === workflow.id)!.start.version } : workflow) }; },
-    }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
+    }, workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.equal(calls, 1);
     assert_m1.ok(document.body.textContent?.includes("Search UCPath by employee ID or name and read the matching person records."), document.body.textContent ?? "");
     assert_m1.ok(document.body.textContent?.includes("Anything not listed stops the run with a failure card."));
@@ -604,7 +602,7 @@ it_m1("an empty catalog is not a fabricated workflow queue",async()=>{
 try {
 
 
-  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), servedDay: true }));
+  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), servedDay: true }));
   assert_m1.match(document.body.textContent??"",/No workflows available/);
 
 } finally {
