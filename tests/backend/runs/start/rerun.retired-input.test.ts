@@ -161,7 +161,8 @@ function repositoriesOf(source: Source, start: Readonly<Record<string, unknown>>
     if (typeof key === "string" && Object.hasOwn(start, key)) return start[key];
     switch (key) {
       case "deletedRuns": return { get: () => undefined };
-      case "runs": return { get: () => source.run };
+      case "runs": return { get: () => source.run, listChildren: () => [] };
+      case "configSnapshots": return { get: () => undefined };
       // As production: a run lists only the intents it owns; a live-probe observation owns none.
       case "writeIntents": return { listAttemptingByItem: () => [],
         listByRun: (runId: unknown) => intents.filter(intent => "runId" in intent && intent.runId === runId),

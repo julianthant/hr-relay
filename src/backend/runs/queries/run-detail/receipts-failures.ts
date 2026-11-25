@@ -1,6 +1,7 @@
 import { failureCodeFromTaskCode } from "../../../../models/failures/error-catalog.js";
 import { StartPlanRequestSchema, type StartPlanRequest } from "../../../../models/dashboard/start-plan.js";
 import { RerunRefusedError, previewRerunWarnings } from "../../start/rerun.js";
+import { sourceBrowserMode } from "../../start/rerun-values.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
 import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
 import { FailureRetryWireSchema, projectFailureDisplay } from "../../../../models/dashboard/failure-display.js";
@@ -240,8 +241,10 @@ export function correctionStartRequest(canonical: NonNullable<RunDetailQueryDeps
     if (error instanceof RerunRefusedError) return undefined;
     throw error;
   }
+  const browserMode = sourceBrowserMode(canonical.database.authority, run);
+  if (browserMode === undefined) return undefined;
   return StartPlanRequestSchema.parse({ workflowId: descriptor.id, rerunSource: source, submissions: [{}],
-    selectedStepKeys: source.selectedStepKeys, dryRun: run.envelope.dryRun, browserMode: run.envelope.browserMode ?? "headless",
+    selectedStepKeys: source.selectedStepKeys, dryRun: run.envelope.dryRun, browserMode,
     captureBrowserScreenshots: run.envelope.captureBrowserScreenshots ?? false, priority: run.envelope.priority,
     ...(run.envelope.requestedInstance === undefined ? {} : { requestedInstance: run.envelope.requestedInstance }) });
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
-import { childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
+import { childWorkflowModuleOf, DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 import { readOcrReviewAuthority } from "../../../src/backend/runs/lifecycle/ocr-review-authority.js";
 import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
@@ -122,7 +122,7 @@ it.each([false, true])("starts Emergency Contact without OCR, reviews every page
     const session = persistence.session();
     return createDeterministicUcpathPersonOrgDriver(undefined, undefined, session.port, session.save);
   }, crm: healthyCrmDriver });
-  const f = await world.fixture({ coordinator: true, extractWithOcr: false, pageCount: 2, onbaseFiling: "skip", dryRun,
+  const f = await world.fixture({ coordinator: true, extractWithOcr: false, pageCount: 2, onbaseFiling: "skip", dryRun, fileName: "source.pdf",
     sessions, operatorEvidence: true, member: childWorkflowModuleOf("emergency-contact", "emergency-contact-member") });
   assert.equal(EmergencyContactInputSchema.parse(f.parentRun.input.parsed.value).extractWithOcr, false);
   assert.equal(OcrInputSchema.parse(f.run.input.parsed.value).extractWithOcr, false);
@@ -174,6 +174,19 @@ it.each([false, true])("starts Emergency Contact without OCR, reviews every page
     const result = f.database.authority.runResults.get(f.parentRun.envelope.runId); assert.ok(result);
     assert.equal(RunDelegatedDryRunPreviewResultSchema.parse(result.result.value).externalCommit, "none");
     assert.deepEqual(f.database.authority.writeIntents.listByRun(member.envelope.runId), []);
+    // The rerun resubmits the original PDF (same stored document, new reading) and the OCR child is admitted past its first checkpoint.
+    const descriptor = DESCRIPTORS.find(entry => entry.id === "emergency-contact"); assert.ok(descriptor);
+    const original = EmergencyContactInputSchema.parse(f.parentRun.input.parsed.value);
+    assert.equal(original.fileName, "source.pdf");
+    const source = f.database.authority.runs.get(f.parentRun.envelope.runId); assert.ok(source);
+    const rerun = f.canonical.start(descriptor, { ...original, roster: null, readingId: randomUUID() }, { dryRun: true,
+      ...(f.workbookReferences === undefined ? {} : { workbookReferences: f.workbookReferences }),
+      rerunSource: { runId: source.envelope.runId, expectedVersion: source.version, intent: "rerun", selectedStepKeys: descriptor.timeline.map(step => step.key) } });
+    await f.canonical.execute(rerun, new AbortController().signal);
+    const child = f.database.authority.runs.listChildren(rerun.envelope.runId).find(run => run.envelope.workflow === "ocr"); assert.ok(child);
+    assert.deepEqual(OcrInputSchema.parse(child.input.parsed.value).document, original.document);
+    assert.ok(child.lifecycle.state === "parked-gate" && child.lifecycle.gateId === "approve-records", JSON.stringify(child.lifecycle));
+    assert.deepEqual(f.database.authority.runs.get(source.envelope.runId), source);
   }
   assert.equal(f.ocrCalls(), 0);
 });

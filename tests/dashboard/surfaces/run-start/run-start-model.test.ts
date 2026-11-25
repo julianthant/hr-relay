@@ -14,6 +14,7 @@ runControlGroups,
 startRequestFingerprint,
 toggleStepSelection,
 previewRunInput,
+planRefusalNotice,
 typedInputDefaults,
 typedInputMode,
 typedControlAvailable,
@@ -406,5 +407,18 @@ describe("Separations launch input", () => {
     const preview = previewRunInput(surface, "1234567; nope; 7654321");
     assert.notEqual(preview.problem, null);
     assert.deepEqual(preview.refusedIndexes, [1]);
+  });
+});
+
+describe("planRefusalNotice", () => {
+  const refused = (code: string) => [{ entry: 1, code, message: "" }] as unknown as Parameters<typeof planRefusalNotice>[0];
+  it("sends a rerun with a protected input or no dry run to Start run", () => {
+    assert.equal(planRefusalNotice(refused("input-invalid"), undefined, true)?.sentence, "The original input can't be reused; use Start run.");
+    assert.equal(planRefusalNotice(refused("dry-run-unsupported"), undefined, true)?.sentence, "No dry run here; use Start run.");
+    assert.equal(planRefusalNotice(refused("input-invalid"))?.sentence, "Relay could not use This item. Fix it, then try again.");
+    assert.equal(planRefusalNotice(refused("dry-run-unsupported"))?.sentence, "No dry run here. Turn Dry run off.");
+  });
+  it("leaves the other codes the same on rerun", () => {
+    for (const code of ["preflight-failed", "other"]) assert.deepEqual(planRefusalNotice(refused(code), undefined, true), planRefusalNotice(refused(code)));
   });
 });
