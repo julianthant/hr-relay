@@ -12,7 +12,7 @@ import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-li
 import { withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import assert from "node:assert/strict";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect } from "@playwright/test";
@@ -32,17 +32,26 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const FORM = `<!doctype html><form action="${SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="username"><label for="ssopassword">Password</label><input id="ssopassword" name="password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
 
-// The runner's first load of the staged MV3 extension is slow; paying it here keeps it out of each test's 5 s launch window.
+// Warm the owned Chromium launch path before the provider's 5 s launch window.
 beforeAll(async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "onboarding-warm-"))), extension = join(root, "extension");
-  stageFastDuoExtension(realpathSync("fast-duo"), extension, PROFILE_ENROLLMENT_EXTENSION_MODE);
-  const context = await chromium.launchPersistentContext(join(root, "profile"), { channel: "chromium", headless: true,
-    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
+  const profileDirectory = realpathSync(mkdtempSync(join(tmpdir(), "onboarding-warm-")));
+  const extensionDirectory = join(profileDirectory, "relay-extension");
+  let owned: OwnedBrowserProcess | undefined;
+  let context: BrowserContext | undefined;
   try {
+    stageFastDuoExtension(realpathSync("fast-duo"), extensionDirectory, PROFILE_ENROLLMENT_EXTENSION_MODE);
+    context = await DEFAULT_BROWSER_LAUNCHER.launch({
+      profileDirectory, extensionDirectory, headless: true, acceptDownloads: false,
+      downloadsPath: profileDirectory, viewport: null, timeoutMs: 15_000, ownedProcess: process => { owned = process; },
+    });
+    assert.ok(owned);
     const worker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js"))
-      ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js") });
+      ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js"), timeout: 5000 });
     assert.ok(worker);
-  } finally { await context.close(); }
+  } finally {
+    await owned?.stop(5000, context === undefined ? undefined : true);
+    rmSync(profileDirectory, { recursive: true, force: true });
+  }
 });
 
 for (const pendingClose of [false, true]) it(pendingClose
