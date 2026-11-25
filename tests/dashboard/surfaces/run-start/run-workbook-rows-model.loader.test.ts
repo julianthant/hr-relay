@@ -97,4 +97,3 @@ it("keeps malformed typed responses classified as boundary failures", async () =
   await render({ client: { workbookLibraryVersion: async () => { throw schemaError("GET /api/v1/workbooks/private-roster", new Error("private-version schema mismatch")); } } });
   expect(observed?.state).toBe("error"); expect(observed?.error).toBe(ERROR_CATALOG.BOUNDARY_VALIDATION_FAILED.text);
 });
-

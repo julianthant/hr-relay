@@ -1,5 +1,4 @@
 import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
-import { readWithDeadline } from "../client/read-deadline.js";
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { DashboardClient } from '../client/index.js';
 import { DashboardClientError } from '../client/errors.js';
@@ -89,9 +88,9 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       publish({ catalogRefreshing: true, catalogError: '', compatibility: undefined });
       try {
         const [catalogRead, compatibilityRead, typesRead] = await Promise.allSettled([
-          readWithDeadline(() => client.workbookCatalog(), 'DASHBOARD_READ_FAILED'),
-          readWithDeadline(() => client.workbookCompatibility(), 'DASHBOARD_READ_FAILED'),
-          readWithDeadline(() => client.workbookTypes(), 'DASHBOARD_READ_FAILED'),
+          client.workbookCatalog(),
+          client.workbookCompatibility(),
+          client.workbookTypes(),
         ]);
         if (request !== catalogRequest) return;
         if (catalogRead.status === 'rejected') throw catalogRead.reason;
@@ -115,7 +114,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         }
       }
       try {
-        const types = await readWithDeadline(() => client.workbookTypes(), 'DASHBOARD_READ_FAILED');
+        const types = await client.workbookTypes();
         if (authority !== readAuthority || !types.some(current => canonicalJsonStringify(current) === canonicalJsonStringify(type))) return { state: 'uncertain', message: 'The type change is unconfirmed. Check its result before editing it again.' };
         typeIntents.delete(type.id); publish({ types, typesError: '', pendingTypes: [...typeIntents.values()] });
         return { state: 'confirmed' };
@@ -128,18 +127,18 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       const request = ++catalogRequest;
       try {
         if (record === undefined) {
-          const status = await readWithDeadline(() => client.workbookLibraryActionStatus(libraryId, action.operationId), 'DASHBOARD_READ_FAILED');
+          const status = await client.workbookLibraryActionStatus(libraryId, action.operationId);
           if (status.state === 'absent') return { state: 'uncertain', message: 'The library change is not yet confirmed. Check its result before changing this file again.' };
           if (status.state === 'retired') return { state: 'refused', message: status.message };
           record = status.record;
         }
         if (record.libraryId !== libraryId || canonicalJsonStringify(record.action) !== canonicalJsonStringify(action)) return { state: 'uncertain', message: 'The library result does not match the retained change.' };
         if (action.change.kind === 'create-version' && action.change.from.kind === 'values') {
-          const saved = await readWithDeadline(() => client.workbookLibraryVersion(libraryId, action.operationId), 'DASHBOARD_READ_FAILED');
+          const saved = await client.workbookLibraryVersion(libraryId, action.operationId);
           if (saved.version.id !== action.operationId || saved.libraryId !== libraryId || canonicalJsonStringify(saved.workbook) !== canonicalJsonStringify(action.change.from.workbook)) return { state: 'uncertain', message: 'The values-only version readback does not match the saved draft.' };
         }
-        const [catalogRead, compatibilityRead, typesRead] = await Promise.allSettled([readWithDeadline(() => client.workbookCatalog(), 'DASHBOARD_READ_FAILED'), readWithDeadline(() => client.workbookCompatibility(), 'DASHBOARD_READ_FAILED'),
-          readWithDeadline(() => client.workbookTypes(), 'DASHBOARD_READ_FAILED')]);
+        const [catalogRead, compatibilityRead, typesRead] = await Promise.allSettled([client.workbookCatalog(), client.workbookCompatibility(),
+          client.workbookTypes()]);
         if (authority !== readAuthority || request !== catalogRequest) return { state: 'uncertain', message: 'Library authority changed. Check the result from the current library.' };
         if (catalogRead.status === 'rejected') throw catalogRead.reason;
         if (compatibilityRead.status === 'rejected') throw compatibilityRead.reason;
@@ -172,7 +171,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       catch (error) {
         if (error instanceof DashboardClientError && error.kind === 'http' && error.status !== undefined && error.status >= 400 && error.status < 500 && error.code) {
           try {
-            const status = await readWithDeadline(() => client.workbookLibraryActionStatus(entry.libraryId, action.operationId), 'DASHBOARD_READ_FAILED');
+            const status = await client.workbookLibraryActionStatus(entry.libraryId, action.operationId);
             if (status.state === 'recorded') return adapter.settleLibrary(entry.libraryId, status.record);
             if (status.state === 'retired') return { state: 'refused', message: status.message };
             libraryIntents.delete(entry.libraryId); publish({ pendingLibraries: pendingLibraryIds() });
@@ -210,7 +209,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       const listingNow = (async () => {
         const request = ++listing; readReady = false; publish({ loading: !listed, refreshing: true, error: '' });
         try {
-          const records = await readWithDeadline(() => client.workbookList(), "DASHBOARD_READ_FAILED");
+          const records = await client.workbookList();
           if (request !== listing) return;
           const files = records.map(record => { const key = keyFor(record.libraryId); const draft = drafts.get(key); return draft ? rowFor(key, draft) : withOrigin(summaryRow(key, record), record.libraryId); });
           for (const [key, draft] of drafts) if (!files.some(file => file.id === key)) files.unshift(rowFor(key, draft));
@@ -227,7 +226,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       if (drafts.has(key)) { publish({ opening: undefined, openError: '' }); return; }
       publish({ opening: id, openError: '' });
       try {
-        const opened = await readWithDeadline(() => client.workbookOpen(id), "DASHBOARD_READ_FAILED");
+        const opened = await client.workbookOpen(id);
         if (request !== opening) return;
         readReady = true;
         if (!drafts.has(key)) { move(key, { type: 'opened', opened }); publish({ openError: '', opening: undefined }); }
@@ -236,13 +235,13 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
     async history(id: string) {
       const draft = drafts.get(keyFor(id));
       const libraryId = draft?.opened?.libraryId ?? id;
-      return readWithDeadline(() => client.workbookHistory(libraryId), "DASHBOARD_READ_FAILED");
+      return client.workbookHistory(libraryId);
     },
     async readVersion(libraryId: string, version: number) {
-      return readWithDeadline(() => client.workbookRevision(libraryId, version), "DASHBOARD_READ_FAILED");
+      return client.workbookRevision(libraryId, version);
     },
     async readNamedVersion(libraryId: string, versionId: string) {
-      return readWithDeadline(() => client.workbookLibraryVersion(libraryId, versionId), 'DASHBOARD_READ_FAILED');
+      return client.workbookLibraryVersion(libraryId, versionId);
     },
     markRegistered(id: string, version: number, status: "Attached" | "Generated" | "Updated") {
       const key = keyFor(id), draft = drafts.get(key);
@@ -302,7 +301,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         }
         intent.libraryId = libraryId;
         try {
-          const opened = await readWithDeadline(() => client.workbookOpen(libraryId), "DASHBOARD_READ_FAILED");
+          const opened = await client.workbookOpen(libraryId);
           const expected = { ...intent.draft, libraryId };
           const result: SpreadsheetSaveResult = { state: 'confirmed', version: opened.version, readback: opened.workbook };
           if (opened.libraryId !== libraryId || opened.version !== intent.expectedVersion + 1 || !spreadsheetSaveMatches(expected, result)) { move(key, { type: 'readback-mismatch' }); return { state: 'uncertain', reason: 'The library readback does not match the saved draft.' }; }
