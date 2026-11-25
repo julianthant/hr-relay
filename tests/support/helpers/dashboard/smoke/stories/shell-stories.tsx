@@ -95,7 +95,7 @@ const HEADER = {
 
 type ToggleState = "off" | "on" | "off-hover" | "on-hover" | "focus" | "locked-on" | "disabled-off" | "disabled-on";
 const toggle = (title: string, checked: boolean, disabled: boolean, play?: Story["play"], locked = false): Story => ({ title, ready: '[role="switch"]', ...(play === undefined ? {} : { play }),
-  render: () => <StoryFrame><Panel><PanelBody><Switch label="Dry run" checked={checked} disabled={disabled} locked={locked} onCheckedChange={noop} /></PanelBody></Panel></StoryFrame> });
+  render: () => <StoryFrame><Panel><PanelBody className="p-[var(--ds-space-base)]"><Switch label="Dry run" checked={checked} disabled={disabled} locked={locked} onCheckedChange={noop} /></PanelBody></Panel></StoryFrame> });
 const point: Story["play"] = page => page.locator(".ds-switch-row").hover();
 const TOGGLE = {
   off: toggle("A toggle that is off", false, false), on: toggle("A toggle that is on: blue track, white knob", true, false),
