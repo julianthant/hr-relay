@@ -64,7 +64,7 @@ export function createTrustNotifications(input: { admission?: RuntimeAdmission; 
 }
 
 export function startNotificationPolling(database: AuthorityDatabase, clock: Clock, observation: ReturnType<typeof createTrustNotifications>["observer"]) {
-  const revision = database.trackAuthorityTables(["runs", "deleted_runs", "run_failures", "run_receipts", "notifications"]);
+  const revision = database.trackAuthorityTables(["runs", "deleted_runs", "run_failures", "run_receipts", "notifications"], "poll-hint");
   let observed = revision();
   const changed = () => {
     const current = revision();

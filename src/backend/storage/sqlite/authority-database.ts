@@ -4267,6 +4267,11 @@ export class AuthorityDatabase implements Disposable {
     } catch (error) { reader.close(); throw error; }
   }
 
+  timelineCursorOffset(): number {
+    this.#assertOpen();
+    return this.#historyCursorOffset;
+  }
+
   /** Proves this open store is the person's own state.db, opened by exactly this live, exclusive admission. */
   assertOpenedByExclusive(admission: RuntimeAdmission): void {
     if (this.#admission !== admission) throw new Error("authority-database-owner-mismatch");
@@ -4418,15 +4423,27 @@ export class AuthorityDatabase implements Disposable {
   }
 
   /** An independent revision for a reader's authority sources, backed by the retained change log. */
-  trackAuthorityTables(tables: readonly AuthorityTableName[]): () => number | undefined {
+  trackAuthorityTables(tables: readonly AuthorityTableName[], mode: "validated" | "poll-hint" = "validated"): () => number | undefined {
     const selected = JSON.stringify(z.array(AuthorityTableNameSchema).min(1).parse(tables));
     let cursor: number | undefined;
     let revision = 0;
+    let schemaCookie: number | undefined;
     return () => {
       if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
+      if (mode === "poll-hint") {
+        const key = this.capturedChangeKey();
+        if (cursor === key.changeLogSeq && schemaCookie === key.schemaCookie) return revision;
+      }
       return this.#withReadSnapshot(() => {
-        this.#validateExternalQuerySources();
+        if (mode === "validated") this.#validateExternalQuerySources();
         const through = changeLogHighWater(this.#database);
+        if (mode === "poll-hint") {
+          const cookie = readIntPragma(this.#database, "schema_version");
+          // Schema changes and large tails wake the observer without scanning the full log here.
+          const uncertain = cursor !== undefined && (cookie !== schemaCookie || through < cursor || through - cursor > 256);
+          schemaCookie = cookie;
+          if (uncertain) { cursor = through; return ++revision; }
+        }
         if (cursor === through) return revision;
         if (cursor !== undefined) {
           const first = z.strictObject({ seq: z.number().int().positive().nullable() }).parse(
@@ -4478,7 +4495,7 @@ export class AuthorityDatabase implements Disposable {
         table_name IN ('run_batches','run_delegations','delegation_dependencies','run_checkpoints',
           'gate_results','run_failures','run_receipts','write_intents','write_attempts','dryrun_results',
           'worker_pools','worker_slots','auth_leases','ocr_review_revisions','ocr_approved_snapshots','ocr_source_uploads',
-          'notifications','settings','settings_snapshots')
+          'notifications','notification_states','settings','settings_snapshots')
         OR (table_name = 'run_results' AND (
           NOT EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%')
           OR EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%' AND substr(value,5) NOT IN (SELECT id FROM changed_runs))
@@ -6462,11 +6479,12 @@ export class AuthorityDatabase implements Disposable {
           if (Date.parse(request.seenAt) < Date.parse(existing.lastSeenAt)) {
             throw new Error(`notification ${existing.notificationId} cannot fold an observation older than its last seen instant`);
           }
+          const { clearedAt: _cleared, ...uncleared } = existing;
           const folded = NotificationRecordSchema.parse({
-            ...existing,
+            ...uncleared,
             title: request.title,
             summary: request.summary,
-            // A repeat is news again: the operator has not seen this occurrence.
+            // A repeat is news again: the operator has not seen this occurrence, even one they cleared.
             status: "unread",
             snooze: existing.snooze,
             count: existing.count + 1,
@@ -6494,6 +6512,7 @@ export class AuthorityDatabase implements Disposable {
             ...existing,
             status: request.status,
             snooze: request.snooze,
+            ...(request.clearedAt === undefined ? {} : { clearedAt: request.clearedAt }),
             version: existing.version + 1,
             updatedAt: request.updatedAt,
           });

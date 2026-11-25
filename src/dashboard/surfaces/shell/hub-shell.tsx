@@ -53,6 +53,9 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
     return () => document.removeEventListener("keydown", toggle);
   }, [settingsOpen, panelPosition, revealed]);
   const [list, setList] = useState(false);
+  // Opening History hides the pressed button; the heading takes the focus, so the next Tab reaches the list header.
+  const listHeading = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => { if (list) listHeading.current?.focus(); }, [list]);
   const [tab, setTab] = useState<"chats" | "activity">("chats");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<{ kind: "rename" | "delete"; id: string }>();
@@ -88,7 +91,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
       <section ref={panelPosition.element} id="hub-shell-assistant" className="hub-slot" aria-label={list ? "Relay assistant" : "Assistant panel"} data-source={model.source} hidden={settingsOpen || !opened} inert={settingsOpen || !opened} aria-hidden={settingsOpen || !opened} onKeyDown={event => {
         if (event.key === "Escape" && !event.defaultPrevented && !editing) { event.preventDefault(); if (list) setList(false); else { assistantOpen.set(false); panelPosition.reset(); focusAssistantLauncher(); } }
       }}>
-        {list && <header className="hub-slot-header"><div className="hub-slot-title"><span>History</span></div><div className="hub-header-actions">
+        {list && <header className="hub-slot-header"><div className="hub-slot-title" ref={listHeading} tabIndex={-1}><span>History</span></div><div className="hub-header-actions">
           {icon("History", <History aria-hidden />, () => { setList(value => !value); })}{icon("New chat", <Plus aria-hidden />, () => { void model.create(); setList(false); })}{icon("Close assistant", <X aria-hidden />, closePanel)}
         </div></header>}
         {list ? <div className="hub-history"><div className="hub-history-bar"><SearchInput variant="sidebar" aria-label={tab === "chats" ? "Search chats" : "Search activity"} placeholder={tab === "chats" ? "Search chats" : "Search activity"} value={query} onChange={event => setQuery(event.target.value)} />

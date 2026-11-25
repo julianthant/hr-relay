@@ -42,6 +42,7 @@ interface DashboardStreamProjection {
   onChange(listener: (change: RunQueueProjectionChange) => void): () => void;
   health(): { readonly state: "live" | "degraded" };
   buildDashboardDayWire(day: string): ReturnType<RunQueueProjection["buildDashboardDayWire"]>;
+  recordPublishedDay: RunQueueProjection["recordPublishedDay"];
   generation(): number;
   cursor(): ChangeEnvelope["cursor"];
   /** Advances the projection's sequence for one envelope the hub mints. */
@@ -451,6 +452,7 @@ export class DashboardStreamHub {
         }
         byDay.set(day, snapshot);
       }
+      for (const snapshot of byDay.values()) this.#projection.recordPublishedDay(snapshot.payload);
       const reads = this.#readsFor([...this.#subscribers]);
       const rows = this.#syncRowsFor([...this.#subscribers]);
       for (const subscriber of this.#subscribers) {
