@@ -3,7 +3,7 @@ import { isMainThread, parentPort, Worker, workerData, type MessagePort } from "
 import { z } from "zod";
 import type { AuthorityTableName } from "../../../models/config/authority.js";
 import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
-import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
@@ -107,7 +107,6 @@ type LaneRequest = z.infer<typeof RequestSchema>;
 const CheckpointRowSchema = z.strictObject({ busy: z.number().int(), log: z.number().int(), checkpointed: z.number().int() });
 /** When the lane started and finished the checkpoint, on the wall clock both threads share. */
 const CheckpointSpanSchema = z.strictObject({ startedAtMs: z.number(), finishedAtMs: z.number() });
-const laneWallMs = () => performance.timeOrigin + performance.now();
 const ReplySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("ready") }),
   z.strictObject({ kind: z.literal("read"), id: z.number().int().positive(), body: z.string(), position: ReadPositionSchema, cached: z.boolean() }),
@@ -578,9 +577,9 @@ function runReadLane(port: MessagePort, data: unknown) {
       try {
         if (checkpoint === undefined) throw new Error("read-lane-checkpoint-unowned");
         lane.assertSource();
-        const startedAtMs = laneWallMs();
+        const startedAtMs = systemClock.nowMs();
         const row = CheckpointRowSchema.parse(checkpoint.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get());
-        reply = { kind: "checkpoint", id: message.id, ...row, startedAtMs, finishedAtMs: laneWallMs() };
+        reply = { kind: "checkpoint", id: message.id, ...row, startedAtMs, finishedAtMs: systemClock.nowMs() };
       } catch (error) { reply = { kind: "checkpoint-failed", id: message.id, message: error instanceof Error ? error.message : "read-lane-checkpoint-failed" }; }
     } else {
       try {

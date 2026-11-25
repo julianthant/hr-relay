@@ -68,7 +68,6 @@ function frames(lanes: DashboardReadLanes) {
 
 /** A lane read's own start and finish on the shared wall clock. */
 const SpanSchema = z.object({ startedAt: z.number(), finishedAt: z.number() });
-const wallMs = () => performance.timeOrigin + performance.now();
 /** Lane time spent on other work while a click waited from `from` to `to`: the click goes first, so all of it ran ahead. */
 const aheadOf = (from: number, to: number, spans: readonly z.infer<typeof SpanSchema>[]) =>
   spans.reduce((sum, span) => sum + Math.max(0, Math.min(span.finishedAt, to) - Math.max(span.startedAt, from)), 0);
@@ -97,7 +96,7 @@ it("G1-WAL: bounds the WAL under a continuous writer, a held peer read and a fai
       background.push(lanes.read(laneTimedBackground, { tag: `scan-${String(clicks.length)}`, ms: BACKGROUND_MS })
         .then(reply => { spans.push(SpanSchema.parse(JSON.parse(reply.body))); }));
     }
-    const dispatchedAt = wallMs();
+    const dispatchedAt = systemClock.nowMs();
     const span = SpanSchema.parse(JSON.parse((await lanes.read(laneTimedSleep, { tag: `click-${String(clicks.length)}`, ms: INTERACTIVE_MS })).body));
     spans.push(span);
     clicks.push({ dispatchedAt, startedAt: span.startedAt, afterRestart });

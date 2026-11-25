@@ -3,6 +3,7 @@ import { z } from "zod";
 import "../../../../src/backend/storage/sqlite/dashboard-background-read-worker.js";
 import { defineLaneRead, runReadLaneWorker } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { openReadOnlyDatabase } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { systemClock } from "../../../../src/rules/time/clock.js";
 
 const SleepSchema = z.strictObject({ tag: z.string().min(1), ms: z.number().int().nonnegative() });
 const pause = new Int32Array(new SharedArrayBuffer(4));
@@ -23,11 +24,10 @@ export const laneSleep = defineLaneRead(import.meta.url, "lane-sleep", { lane: "
 export const laneBackground = defineLaneRead(import.meta.url, "lane-background", { lane: "navigation", priority: "background", args: SleepSchema,
   run: (_context, args) => sleep(args) });
 
-/** The lane's wall clock, comparable across the host and lane threads. */
-const wallMs = () => performance.timeOrigin + performance.now();
+/** Started and finished on the wall clock, which the host and lane threads share. */
 const timed = (args: z.infer<typeof SleepSchema>) => {
-  const startedAt = wallMs();
-  return { ...sleep(args), startedAt, finishedAt: wallMs() };
+  const startedAt = systemClock.nowMs();
+  return { ...sleep(args), startedAt, finishedAt: systemClock.nowMs() };
 };
 
 /** laneSleep that also reports when the lane started and finished it. */
