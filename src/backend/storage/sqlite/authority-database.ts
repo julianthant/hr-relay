@@ -1549,7 +1549,8 @@ export class AuthorityDatabase implements Disposable {
     try {
       // The native connection opened read-only. TEMP views over both histories need query_only off on this connection alone.
       reader.#database.exec("PRAGMA query_only=OFF; PRAGMA trusted_schema=OFF");
-      reader.#historyCursorOffset = attachHistoryArchive(reader.#database, archive.path, owner.profileBinding);
+      // A lane never writes the archive: one that is stale or missing an index is refused, not upgraded.
+      reader.#historyCursorOffset = attachHistoryArchive(reader.#database, archive.path, owner.profileBinding, "validate");
       admitArchive();
       if (reader.#historyCursorOffset !== archive.cursorOffset) throw new Error("read-lane-history-cursor-mismatch");
       reader.#historyOwner = this;

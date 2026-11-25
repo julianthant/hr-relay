@@ -242,9 +242,13 @@ function assertArchiveFile(path: string) {
   if (!stat.isFile() || stat.nlink !== 1 || privatePathRejects(path, stat, "private")) throw new Error("isolated-history-unsafe");
 }
 
-function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
+/** `upgrade` lifts a stale archive in place; `validate` refuses it and opens the archive read-only only. */
+type ArchiveAttach = "upgrade" | "validate";
+
+function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding, mode: ArchiveAttach = "upgrade") {
   assertArchiveFile(path);
-  upgradeHistoryArchive(database, path, binding);
+  if (mode === "upgrade") upgradeHistoryArchive(database, path, binding);
+  else if (!archiveIsCurrent(database, path, binding)) throw new Error("isolated-history-upgrade-required");
   const url = pathToFileURL(path);
   url.search = "mode=ro&immutable=1";
   database.prepare("ATTACH DATABASE ? AS history").run(url.href);
@@ -280,14 +284,19 @@ function readArchiveVersion(archive: DatabaseSync, binding: ProfileDatabaseBindi
   return header;
 }
 
-/** Upgrades an archive's schema, format and native indexes in one transaction. */
-function upgradeHistoryArchive(native: DatabaseSync, path: string, binding: ProfileDatabaseBinding): void {
+/** Whether an archive is at the current schema and format with every native index, read through a read-only probe. */
+function archiveIsCurrent(native: DatabaseSync, path: string, binding: ProfileDatabaseBinding): boolean {
   const probe = new DatabaseSync(path, { readOnly: true });
   try {
     const header = readArchiveVersion(probe, binding);
-    if (header.schema_version === CURRENT_AUTHORITY_SCHEMA_VERSION && header.format === archiveFormat
-      && missingNativeIndexes(native, probe).length === 0) return;
+    return header.schema_version === CURRENT_AUTHORITY_SCHEMA_VERSION && header.format === archiveFormat
+      && missingNativeIndexes(native, probe).length === 0;
   } finally { probe.close(); }
+}
+
+/** Upgrades an archive's schema, format and native indexes in one transaction. */
+function upgradeHistoryArchive(native: DatabaseSync, path: string, binding: ProfileDatabaseBinding): void {
+  if (archiveIsCurrent(native, path, binding)) return;
   const archive = new DatabaseSync(path);
   try {
     archive.exec("BEGIN IMMEDIATE");
@@ -312,8 +321,8 @@ function upgradeHistoryArchive(native: DatabaseSync, path: string, binding: Prof
   } finally { archive.close(); }
 }
 
-export function attachHistoryArchive(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding) {
-  attach(database, path, binding);
+export function attachHistoryArchive(database: DatabaseSync, path: string, binding: ProfileDatabaseBinding, mode: ArchiveAttach = "upgrade") {
+  attach(database, path, binding, mode);
   const { offset } = z.strictObject({ offset: z.number().int().nonnegative() }).parse(
     database.prepare("SELECT coalesce(max(cursor),0) AS offset FROM history.timeline_events").get());
   for (const [name] of tables) {
