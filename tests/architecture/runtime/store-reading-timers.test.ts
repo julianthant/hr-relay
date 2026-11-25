@@ -17,6 +17,8 @@ const reviewed = new Map([
   ["src/backend/logs/loop-delay.ts#timer", "Samples the event-loop delay histogram."],
   ["src/backend/processing/providers/nominatim-owner.ts#wait", "Waits for the provider's rate-limit slot."],
   ["src/backend/processing/providers/nominatim-owner.ts#stop", "Waits for the provider queue to drain during shutdown."],
+  ["src/backend/runtime/browser/onboarding-duo-provider.ts#timedOut", "Bounds each Duo screen capture used by the browser observation loop."],
+  ["src/backend/runtime/browser/onboarding-duo-provider.ts#close", "Bounds the memoized Duo session close reached from the browser poll."],
   ["src/backend/runtime/browser/onboarding-duo-provider.ts#waitForManualUcsdSignIn", "Waits for the Duo sign-in page within its deadline."],
   ["src/backend/runtime/browser/onboarding-duo-provider.ts#enrollCopy", "Waits for the Duo key-enrollment receipt."],
   ["src/backend/systems/browser-shared/ucsd-sso.ts#observeDuoTerminalRefusal", "Watches browser frames during the admitted Duo wait."],
