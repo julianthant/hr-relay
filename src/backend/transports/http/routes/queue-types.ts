@@ -8,6 +8,7 @@ export interface QueueDayRequest {
 }
 
 export interface QueueRouteDeps {
-  readonly queue: { day(day: string, request: QueueDayRequest): DashboardDayWire | Promise<DashboardDayWire> };
+  /** The day wire, or its JSON body as main stamped it around the lane's build. */
+  readonly queue: { day(day: string, request: QueueDayRequest): DashboardDayWire | string | Promise<DashboardDayWire | string> };
   readonly startPlans: StartPlanService;
 }
