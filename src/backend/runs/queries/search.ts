@@ -184,12 +184,20 @@ const SearchSelectionIssueSchema = z.strictObject({
 });
 const SEARCH_SELECTION_REFUSAL = "search-selection-refusal:";
 
+function searchSelectionRefusal(field: "cursor" | "snapshotToken", message: string): never {
+  const refusal = z.string().superRefine((_value, context) => {
+    context.addIssue({ code: "custom", path: [field], message });
+  }).safeParse(field);
+  if (refusal.success) throw new Error("search selection refusal schema accepted its deliberate issue");
+  throw refusal.error;
+}
+
 function cursorRefusal(message: string): never {
-  throw new z.ZodError([{ code: "custom", path: ["cursor"], message }]);
+  return searchSelectionRefusal("cursor", message);
 }
 
 function snapshotTokenRefusal(message: string): never {
-  throw new z.ZodError([{ code: "custom", path: ["snapshotToken"], message }]);
+  return searchSelectionRefusal("snapshotToken", message);
 }
 
 /** The host carries messages for lane errors. Preserve the HTTP validation contract for selection refusals. */
@@ -207,7 +215,7 @@ export function withSearchSelectionRefusals<Result>(read: () => Result): Result 
 export function rethrowSearchLaneError(error: unknown): never {
   if (error instanceof ReadLaneReadError && error.message.startsWith(SEARCH_SELECTION_REFUSAL)) {
     const issue = SearchSelectionIssueSchema.parse(JSON.parse(error.message.slice(SEARCH_SELECTION_REFUSAL.length)));
-    throw new z.ZodError([issue]);
+    return searchSelectionRefusal(issue.path[0], issue.message);
   }
   throw error;
 }
