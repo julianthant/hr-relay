@@ -1,8 +1,10 @@
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
+import { copyFileSync, cpSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { readNotificationSources } from "../../../../../src/backend/app/composition/dashboard/notification-sources.js";
+import { createLaneNotificationSourceReader, readNotificationSources } from "../../../../../src/backend/app/composition/dashboard/notification-sources.js";
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createNotificationObserver } from "../../../../../src/backend/runs/notifications/observation.js";
@@ -11,7 +13,17 @@ import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fi
 import { seedPersonLookupExitRun } from "../../../../support/fixtures/receipt-run-fixtures.js";
 import { cleanReceiptOf, failureRecordOf, runRecordOf } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
-import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
+import { createDashboardReadHost } from "../../../../../src/backend/storage/sqlite/dashboard-read-host.js";
+import { sha256Hex } from "../../../../../src/rules/validation/sha256.js";
+import { measureNotificationScan } from "../../../../../scripts/bench/notification-scan.js";
+import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
+import { writeDashboardBuildIdentity } from "../../../../../src/backend/app/composition/dashboard/build-identity.js";
+import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
+import { CONFIG_SNAPSHOT } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { scaledMs } from "../../../../support/time-scale.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -66,6 +78,90 @@ describe("canonical notification producers", () => {
       seedRun(f, runRecordOf({ seed: 2, lifecycle: { state: "parked-gate", gateId: "confirm", parkedAt: f.clock.now().toISOString(), resumeAt: "collect" } }));
       expect(readNotificationSources(f.db, f.reader).observations).toHaveLength(2);
       expect(list.mock.calls.length).toBeGreaterThan(reads);
+    } finally { await f.close(); }
+  });
+  it("reuses the scan across its own health writes and unrelated generation changes", async () => {
+    const f = await fixture();
+    try {
+      seedRun(f, runRecordOf({ seed: 1, lifecycle: { state: "parked-gate", gateId: "confirm",
+        parkedAt: f.clock.now().toISOString(), resumeAt: "collect" } }));
+      const list = vi.spyOn(f.reader, "list");
+      expect(readNotificationSources(f.db, f.reader).observations).toHaveLength(1);
+      const generation = f.db.getMeta().authorityGeneration;
+      const now = f.clock.now().toISOString();
+      f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false,
+        occurrence: 0, observedAt: now, createdAt: now, samples: [] }));
+      expect(f.db.getMeta().authorityGeneration).toBeGreaterThan(generation);
+      expect(readNotificationSources(f.db, f.reader)).toEqual({ observations: [], diagnostics: [] });
+      expect(list).toHaveBeenCalledTimes(1);
+    } finally { await f.close(); }
+  });
+  it("fails the whole scan if a later canonical page refuses its cursor and starts over on the next tick", async () => {
+    const f = await fixture();
+    try {
+      for (const seed of [1, 2]) seedRun(f, runRecordOf({ seed, lifecycle: { state: "parked-gate", gateId: "confirm",
+        parkedAt: f.clock.now().toISOString(), resumeAt: "collect" } }));
+      const list = f.reader.list.bind(f.reader);
+      const expected = list({ disposition: "live", limit: 2 });
+      if (expected.state !== "listed") throw new Error("fixture run list refused");
+      const pages = vi.spyOn(f.reader, "list")
+        .mockImplementationOnce(input => list({ ...input, limit: 1 }))
+        .mockImplementationOnce(input => {
+          if (input.cursor === undefined) throw new Error("fixture expected a continuation cursor");
+          return list({ ...input, cursor: { ...input.cursor, generation: input.cursor.generation + 1 } });
+        });
+      expect(() => readNotificationSources(f.db, f.reader)).toThrow("notification-scan-cursor-stale");
+      expect(pages).toHaveBeenCalledTimes(2);
+      expect(readNotificationSources(f.db, f.reader).observations.map(item => item.event)).toEqual(
+        expected.rows.map(run => ({ kind: "gate-opened", runId: run.envelope.runId, workflowId: run.envelope.workflow, gateId: "confirm" })),
+      );
+    } finally { await f.close(); }
+  });
+  it("reuses the lane scan after an unrelated commit and delivers an intervening publication in failure order", async () => {
+    const f = await fixture();
+    try {
+      for (const seed of [1, 2, 3]) {
+        f.clock.advanceWall(1000);
+        failRun(f, seed, "REPEATED_TEST_FAILURE");
+      }
+      const lanes = createDashboardReadHost({ admission: syntheticStateRoot(f.root), database: f.db, clock: f.clock, lanes: ["navigation"],
+        entry: new URL("../../../../../src/backend/app/composition/dashboard/read-lane-entry.js", import.meta.url) });
+      try {
+        const read = createLaneNotificationSourceReader(lanes);
+        const first = await read();
+        expect(first.observations.map(item => item.event.kind)).toEqual(["run-failed", "run-failed", "run-failed", "repeating-failure"]);
+
+        const now = f.clock.now().toISOString();
+        const generation = f.db.getMeta().authorityGeneration;
+        f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false,
+          occurrence: 0, observedAt: now, createdAt: now, samples: [] }));
+        expect(f.db.getMeta().authorityGeneration).toBeGreaterThan(generation);
+        expect(await read()).toEqual({ observations: [], diagnostics: [] });
+
+        const earlier = first.observations[0], repeated = first.observations[3].event;
+        if (earlier.event.kind !== "run-failed" || repeated.kind !== "repeating-failure") throw new Error("fixture failure observations missing");
+        const { failureId, runId } = earlier.event;
+        const event = { ...repeated, failureId, runId };
+        const source = { identity: sha256Hex(`notification-occurrence:repeating-failure:${failureId}`), occurredAt: earlier.source.occurredAt };
+        await f.inbox.publish(event, source);
+        expect((await read()).observations).toEqual([earlier, { event, source }, ...first.observations.slice(1)]);
+      } finally { await lanes.close(); }
+    } finally { await f.close(); }
+  });
+  it("measures the G2-4 lane scenario with real seeded evidence and a queued interactive read", async () => {
+    const f = await fixture();
+    try {
+      failRun(f, 1, "REPEATED_TEST_FAILURE");
+      const { run } = seedPersonLookupExitRun(f.db);
+      f.db.authority.evidenceReceipts.insert(receiptOf(run, 3));
+      const [failed] = readNotificationSources(f.db, f.reader).observations.filter(item => item.event.kind === "run-failed");
+      if (failed === undefined) throw new Error("fixture failure observation missing");
+      await f.inbox.publish(failed.event, failed.source);
+
+      const report = await measureNotificationScan(syntheticStateRoot(f.root), f.db, 1);
+      expect(report.counts).toEqual({ runs: 2, failures: 1, receipts: 1, publications: 1 });
+      expect(report.samples).toEqual([{ scanMs: expect.any(Number), clickMs: expect.any(Number), order: ["scan", "click", "rerun"] }]);
+      expect(report.samples[0].scanMs).toBeGreaterThan(0);
     } finally { await f.close(); }
   });
   it("crosses the third-failure threshold and publishes each captured native observation", async () => {
@@ -203,3 +299,33 @@ it("does not report a missing completion receipt for queued or dry-run success",
     expect(f.db.getMeta()).toEqual(before);
   } finally { await f.close(); }
 });
+
+it("publishes through the real app lane entry in built-bundle dashboard composition", async () => {
+  const world = createDashboardPortTestWorld(() => {}, () => {});
+  const clock = manualClock(new Date("2026-09-10T20:00:00.000Z"));
+  try {
+    const f = await world.createProfileFixture(clock);
+    const repoRoot = f.workspace;
+    cpSync("src", join(repoRoot, "src"), { recursive: true });
+    mkdirSync(join(repoRoot, "config"));
+    for (const file of ["vite.dashboard.config.ts", "tsconfig.json", "config/dashboard-workflow-sources.json"]) copyFileSync(file, join(repoRoot, file));
+    const distDir = join(repoRoot, "dist", "dashboard");
+    mkdirSync(distDir, { recursive: true });
+    writeFileSync(join(distDir, "index.html"), "<!doctype html><title>Built dashboard</title>");
+    writeDashboardBuildIdentity({ repoRoot, distDir });
+
+    const { profile } = f.dashboardInput;
+    const { database } = profile.runtime.selectedContext(profile.token);
+    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    const { run } = seedPersonLookupExitRun(database);
+    database.authority.evidenceReceipts.insert(receiptOf(run, 5));
+    expect(database.authority.notificationPublications.list()).toEqual([]);
+
+    const dashboard = await world.composeDashboardRuntime({ ...f.dashboardInput, lifetimeLock: f.lifetime, repoRoot,
+      isolation: rebuildRuntimeIsolation, env: {}, frontend: "built-bundle", preflightRunnerFactory: healthyRuntimePreflightRunners });
+    try {
+      await expect.poll(() => database.authority.notificationPublications.list().map(row => row.event), { timeout: scaledMs(10_000) })
+        .toContainEqual({ kind: "verified-done", runId: run.envelope.runId, workflowId: run.envelope.workflow });
+    } finally { await dashboard.stop(); }
+  } finally { await world.cleanup(); }
+}, scaledMs(20_000));
