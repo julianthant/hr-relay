@@ -1,14 +1,14 @@
 import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
 import { default as assert } from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { createContentAddressedArtifactWriter, pendingDiagnosticArtifacts, reclaimDiagnosticStages } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter, decodeStoredArtifact, inspectArtifactDeletionFile, pendingDiagnosticArtifacts, reclaimDiagnosticStages, removeArtifactDeletionFile } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
+import { ArtifactRefSchema, type ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
 
 {
 
@@ -106,4 +106,81 @@ it.skipIf(process.platform !== "linux")("refuses an adjacent high-ID diagnostic 
     assert.deepEqual(readdirSync(f.admission.artifactRoot).sort(), before);
     substituted = false; stage.publish(); stage.dispose();
   } finally { restore(); await f.close(); }
+});
+
+function legacyVerdict(stored: Buffer, digest: string): string {
+  try { decodeStoredArtifact(JSON.parse(stored.toString("utf8")) as unknown, digest); }
+  catch (error) { return error instanceof Error ? error.message : String(error); }
+  throw new Error("legacy decode accepted a corrupt fixture");
+}
+
+function replacePayloadText(stored: Buffer, offset: number, text: string): Buffer {
+  const copy = Buffer.from(stored);
+  copy.write(text, stored.indexOf(",\"payloadBase64\":\"") + 18 + offset, "latin1");
+  return copy;
+}
+
+it("proves a deletion file from one streamed hash without parsing its payload and keeps every Base64, digest and reference check", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "artifact-deletion-proof-")));
+  const admission = RuntimeAdmission.syntheticRoots(join(root, "state"), join(root, "artifacts"));
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission });
+    const ref = await writer.put(Buffer.alloc(3 * 1024 * 1024 + 1, 7), { mediaType: "application/pdf" });
+    const path = join(admission.artifactRoot, `${ref.sha256}.artifact`), stored = readFileSync(path);
+    const parse = vi.spyOn(JSON, "parse");
+    try {
+      assert.deepEqual(inspectArtifactDeletionFile(admission, ref),
+        { ref, storedSha256: createHash("sha256").update(stored).digest("hex"), storedBytes: stored.byteLength });
+      assert.equal(parse.mock.calls.some(([text]) => typeof text === "string" && text.length > 64 * 1024), false);
+    } finally { parse.mockRestore(); }
+    for (const other of [{ id: "00000000-0000-4000-8000-000000000001" }, { bytes: ref.bytes + 1 }, { mediaType: "application/json" }]) {
+      assert.throws(() => inspectArtifactDeletionFile(admission, ArtifactRefSchema.parse({ ...ref, ...other })), /artifact-deletion-reference-mismatch/u);
+    }
+    const header = stored.subarray(0, stored.indexOf(",\"payloadBase64\":\""));
+    for (const [corrupt, error] of [[Buffer.concat([stored.subarray(0, stored.byteLength - 6), Buffer.from("\"}")]), /content digest does not match/u],
+      [Buffer.concat([stored.subarray(0, stored.byteLength - 2), Buffer.from("\"")]), /JSON/u],
+      [Buffer.from("{\"ref\":{}}"), /payloadBase64/u],
+      [Buffer.concat([header, Buffer.from(",\"payloadBase64\":\"\"}")]), /content digest does not match/u],
+      [replacePayloadText(stored, 1_000_000, "!"), /invalid base64 payload/u],
+      [replacePayloadText(stored, 1_000_000, "C"), /content digest does not match/u],
+      [replacePayloadText(stored, stored.byteLength - stored.indexOf(",\"payloadBase64\":\"") - 18 - 5, "x"), /invalid base64 payload/u]] as const) {
+      writeFileSync(path, corrupt);
+      assert.throws(() => inspectArtifactDeletionFile(admission, ref), error);
+      assert.throws(() => inspectArtifactDeletionFile(admission, ref), { message: legacyVerdict(corrupt, ref.sha256) });
+    }
+    writeFileSync(path, stored);
+    assert.equal(removeArtifactDeletionFile(admission, inspectArtifactDeletionFile(admission, ref)), "removed");
+    assert.equal(existsSync(path), false);
+  } finally { admission.release(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it("keeps the stored envelope grammar: padding only at the payload's end, large writer refs and reordered envelopes", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "artifact-deletion-grammar-")));
+  const admission = RuntimeAdmission.syntheticRoots(join(root, "state"), join(root, "artifacts"));
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission });
+    const proof = (ref: ArtifactRef, bytes: Buffer) => ({ ref, storedSha256: createHash("sha256").update(bytes).digest("hex"), storedBytes: bytes.byteLength });
+    // The first streamed chunk is exactly first's padded Base64, so only a whole-payload check sees the early padding.
+    const first = Buffer.alloc(1024 * 1024 / 4 * 3 - 2, 1), second = Buffer.alloc(300_000, 2), content = Buffer.concat([first, second]);
+    const padded = ArtifactRefSchema.parse({ id: randomUUID(), sha256: createHash("sha256").update(content).digest("hex"), bytes: content.byteLength, mediaType: "application/pdf" });
+    const paddedFile = Buffer.from(JSON.stringify({ ref: padded, payloadBase64: first.toString("base64") + second.toString("base64") }));
+    assert.equal(first.toString("base64").endsWith("=="), true);
+    assert.equal(paddedFile.byteLength - JSON.stringify({ ref: padded, payloadBase64: content.toString("base64") }).length, 0);
+    await writer.put(Buffer.from("creates the artifact root"), { mediaType: "application/json" });
+    writeFileSync(join(admission.artifactRoot, `${padded.sha256}.artifact`), paddedFile, { mode: 0o600 });
+    assert.throws(() => inspectArtifactDeletionFile(admission, padded), { message: legacyVerdict(paddedFile, padded.sha256) });
+    assert.throws(() => inspectArtifactDeletionFile(admission, padded), /invalid base64 payload/u);
+    const large = await writer.put(Buffer.from("large media type"), { mediaType: `application/${"x".repeat(1_100_000)}` });
+    assert.deepEqual(inspectArtifactDeletionFile(admission, large), proof(large, readFileSync(join(admission.artifactRoot, `${large.sha256}.artifact`))));
+    const body = Buffer.from("reordered envelope"), reordered = ArtifactRefSchema.parse({ id: randomUUID(),
+      sha256: createHash("sha256").update(body).digest("hex"), bytes: body.byteLength, mediaType: "application/json" });
+    const reorderedFile = Buffer.from(` ${JSON.stringify({ payloadBase64: body.toString("base64"), ref: reordered }, null, 2)}\n`);
+    writeFileSync(join(admission.artifactRoot, `${reordered.sha256}.artifact`), reorderedFile, { mode: 0o600 });
+    assert.deepEqual(inspectArtifactDeletionFile(admission, reordered), proof(reordered, reorderedFile));
+    const nestedFile = Buffer.from(JSON.stringify({ ref: { ...reordered, nested: { first: 1, payloadBase64: "z" } }, payloadBase64: body.toString("base64") }));
+    assert.equal(nestedFile.indexOf(",\"payloadBase64\":\"") < nestedFile.lastIndexOf(",\"payloadBase64\":\""), true);
+    writeFileSync(join(admission.artifactRoot, `${reordered.sha256}.artifact`), nestedFile, { mode: 0o600 });
+    assert.throws(() => inspectArtifactDeletionFile(admission, reordered), { message: legacyVerdict(nestedFile, reordered.sha256) });
+    assert.throws(() => inspectArtifactDeletionFile(admission, reordered), /nested/u);
+  } finally { admission.release(); rmSync(root, { recursive: true, force: true }); }
 });
