@@ -78,12 +78,13 @@ it("restores a Work Study rerun: the single mode applies, the stored ISO date sh
 });
 
 it("reruns in one click only when the run is done and nothing failed, children included", () => {
-  const done = { ...snapshot.source, outcome: "done" as const };
+  const variant = (change: Record<string, unknown>) => RerunValuesSnapshotSchema.parse({ ...clean, ...change });
+  const done = { ...snapshot.source, outcome: "done" };
   const clean = RerunValuesSnapshotSchema.parse({ ...snapshot, source: done,
     steps: snapshot.steps.map(step => ({ ...step, state: "completed", nodes: step.nodes.map(node => ({ ...node, state: "completed", reason: "checkpoint" })) })) });
   assert.equal(rerunsInOneClick(clean), true);
   assert.equal(rerunsInOneClick(snapshot), false);
-  assert.equal(rerunsInOneClick({ ...clean, source: { ...done, outcome: "failed" } }), false);
-  assert.equal(rerunsInOneClick({ ...clean, steps: [{ ...clean.steps[0], nodes: [{ nodeId: "read", state: "failed", reason: "failure" }] }] }), false);
-  assert.equal(rerunsInOneClick({ ...clean, children: [{ workflow: "rerun-proof", steps: [snapshot.steps[1]] }] }), false);
+  assert.equal(rerunsInOneClick(variant({ source: { ...done, outcome: "failed" } })), false);
+  assert.equal(rerunsInOneClick(variant({ steps: [{ ...clean.steps[0], nodes: [{ nodeId: "read", state: "failed", reason: "failure" }] }] })), false);
+  assert.equal(rerunsInOneClick(variant({ children: [{ workflow: "rerun-proof", steps: [snapshot.steps[1]] }] })), false);
 });
