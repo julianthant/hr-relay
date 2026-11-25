@@ -63,6 +63,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.deepEqual(h.database.authority.gateResults.listByRun(run.envelope.runId), []);
     const reads = h.world.events.filter(event => event.startsWith("read:")).length;
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+    h.world.commitOutput = { transactionId: "T234567" };
     assert.equal((await h.execute(run)).state, "done");
     assert.ok(h.world.events.filter(event => event.startsWith("read:")).length > reads);
     assert.equal(sourceBytes(h, source), bytes);
@@ -113,6 +114,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const run = h.database.authority.runs.get(queued.runId); assert.ok(run); assert.equal(run.envelope.dryRun, false);
     const reads = h.world.events.filter((event) => event.startsWith("read:")).length;
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+    h.world.commitOutput = { transactionId: "T234567" };
     const executed = await h.execute(run); assert.equal(executed.state, "done", JSON.stringify(executed.state === "failed" ? h.database.authority.failures.get(executed.failureId) : executed));
     assert.ok(h.world.events.filter((event) => event.startsWith("read:")).length > reads); assert.equal(sourceBytes(h, source), bytes);
   });
