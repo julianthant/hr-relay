@@ -319,6 +319,17 @@ describe("rerun restore", () => {
     assert.equal(sourceBadge(row("write"), neverBegun), "not-started");
     assert.deepEqual(selectedStepKeys(restoreRerunDraft(cancelled(), ran), ran), selectedStepKeys(restoreRerunDraft(neverBegun, ran), ran));
   });
+  it("picks steps from the evidence it read before a condition-skipped step badged Completed", () => {
+    const ran = { ...plain, steps: plain.steps.slice(0, 3) };
+    for (const outcome of ["interrupted", "cancelled"] as const) {
+      const source = (write: Record<string, unknown>) => withTyped({ source: { ...snapshot.source, outcome },
+        steps: [snapshot.steps[0], { key: "write", state: write.state, nodes: [{ nodeId: "write", ...write }] },
+          { key: "finish", state: "unfinished", nodes: [{ nodeId: "finish", state: "unfinished", reason: "not-recorded" }] }] });
+      const skipped = source({ state: "completed", reason: "condition-skipped" }), before = source({ state: "unfinished", reason: "incomplete-execution" });
+      assert.equal(sourceBadge(row("write"), skipped), "completed");
+      assert.deepEqual(selectedStepKeys(restoreRerunDraft(skipped, ran), ran), selectedStepKeys(restoreRerunDraft(before, ran), ran), outcome);
+    }
+  });
   it("keeps the source's mode, priority, browser and spreadsheets, and nothing of the draft before it", () => {
     const reading: RunStartWorkflow = { ...plain, workbookReference: { id: "roster", keyFieldId: "eid", mode: "keys", writableFields: [] }, workbookCheck: { id: "check", keyFieldId: "eid" } };
     const pick = (typeId: string, libraryId: string, sheetId: string) => ({ typeId, libraryId, versionId: "v1", sheetId });
