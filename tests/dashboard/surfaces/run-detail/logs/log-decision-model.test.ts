@@ -24,7 +24,21 @@ const type = async (input: HTMLInputElement, value: string) => act(async () => {
 
 describe("served log decisions", () => {
   it("serves every approved example as a valid decision", () => {
-    for (const { entry } of logDecisionExamples as readonly { entry: LogEntry }[]) if (entry.kind === "decision" && entry.decision.served !== undefined) RunDecisionWireSchema.parse(entry.decision.served);
+    const approvedIds = [
+      "parked", "parked-read-back", "parked-kuali", "write-absent", "park-unavailable",
+      "failure-no-write", "employee-not-found", "document-not-found", "failure-prepared",
+      "failure-attempting", "failure-committed", "failure-verified", "failure-unknown",
+      "identity-mismatch", "implementation", "failure-unavailable", "review-identity",
+      "review-candidates", "review-employment", "review-fields", "review-held",
+      "authority-changed", "transport-unknown", "screenshot-unavailable", "screenshot-person",
+    ];
+    for (const id of approvedIds) RunDecisionWireSchema.parse(served(id));
+
+    const examples: readonly { entry: LogEntry }[] = logDecisionExamples;
+    const servedIds = examples
+      .filter(({ entry }) => entry.kind === "decision" && entry.decision.served !== undefined)
+      .map(({ entry }) => entry.id);
+    assert.deepEqual(servedIds.sort(), approvedIds.sort());
   });
   it("preselects the served recommended option and keeps Cancel run out of the choices", () => {
     assert.equal(recommendedOption(served("employee-not-found"))?.id, "employee-not-found-enter");
