@@ -201,6 +201,74 @@ jobs:
       - run: npm ci
       - run: npm run privacy:check
 
+  trial-903:
+    name: "#903 trial / ${{ matrix.case }}"
+    if: github.event_name == 'push' && github.ref_name == 'task/tests-reliability/full-flakes-1125'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: headed capture
+            os: macos-15
+            file: tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts
+            title: keeps headed evidence independent of native window size
+          - case: profile restart
+            os: macos-15
+            file: tests/backend/app/composition/dashboard/profile-session-routes.restart.integration.test.ts
+            title: keeps the selected profile after (signin|resume) fails at (username|password|missing)
+          - case: startup custody
+            os: macos-15
+            file: tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts
+            title: retains actual startup source custody after (service-inspection|closed-publication-refusal)
+          - case: identity gate
+            os: ubuntu-latest
+            file: tests/backend/runs/queries/run-detail.identity-gate-section.integration.test.ts
+            title: serves the typed row and the one-field rerun request
+          - case: queue projection
+            os: ubuntu-latest
+            file: tests/backend/runs/queries/run-detail.run-queue-projection.integration.test.ts
+            title: folds another SQLite connection
+    steps:
+      - if: runner.os == 'macOS'
+        run: sudo mdutil -a -i off
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - if: matrix.case == 'headed capture'
+        run: npx playwright install chromium
+      - run: npm run web:build
+      - name: Prepare the same temporary storage as Full
+        run: |
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
+            sudo mdutil -i off "$(dirname "$dir")"
+          else
+            dir=$(mktemp -d /dev/shm/relay-trial.XXXXXX)
+          fi
+          printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
+      - name: Run ten independent trials
+        env:
+          FILE: ${{ matrix.file }}
+          TITLE: ${{ matrix.title }}
+        run: |
+          failed=0
+          for trial in {1..10}; do
+            echo "::group::Trial $trial of 10"
+            if npm run test:integration -- "$FILE" -t "$TITLE" --reporter=verbose --maxWorkers=1; then
+              echo "Trial $trial: passed"
+            else
+              echo "Trial $trial: failed"
+              failed=$((failed + 1))
+            fi
+            echo "::endgroup::"
+          done
+          echo "$((10 - failed))/10 trials passed"
+          test "$failed" -eq 0
+
   ubuntu:
     needs: changes
     name: ubuntu ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
