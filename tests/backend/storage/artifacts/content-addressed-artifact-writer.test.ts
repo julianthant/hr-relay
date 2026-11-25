@@ -122,7 +122,7 @@ it("proves a deletion file from one streamed hash without parsing its payload an
       assert.equal(parse.mock.calls.some(([text]) => typeof text === "string" && text.length > 64 * 1024), false);
     } finally { parse.mockRestore(); }
     for (const other of [{ id: "00000000-0000-4000-8000-000000000001" }, { bytes: ref.bytes + 1 }, { mediaType: "application/json" }]) {
-      assert.throws(() => inspectArtifactDeletionFile(admission, { ...ref, ...other }), /artifact-deletion-reference-mismatch/u);
+      assert.throws(() => inspectArtifactDeletionFile(admission, ArtifactRefSchema.parse({ ...ref, ...other })), /artifact-deletion-reference-mismatch/u);
     }
     const header = stored.subarray(0, stored.indexOf(",\"payloadBase64\":\""));
     for (const [corrupt, error] of [[Buffer.concat([stored.subarray(0, stored.byteLength - 6), Buffer.from("\"}")]), /byte length does not match/u],
