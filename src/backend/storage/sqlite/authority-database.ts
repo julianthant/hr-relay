@@ -4268,6 +4268,11 @@ export class AuthorityDatabase implements Disposable {
     } catch (error) { reader.close(); throw error; }
   }
 
+  timelineCursorOffset(): number {
+    this.#assertOpen();
+    return this.#historyCursorOffset;
+  }
+
   /** Proves this open store is the person's own state.db, opened by exactly this live, exclusive admission. */
   assertOpenedByExclusive(admission: RuntimeAdmission): void {
     if (this.#admission !== admission) throw new Error("authority-database-owner-mismatch");
@@ -4419,15 +4424,27 @@ export class AuthorityDatabase implements Disposable {
   }
 
   /** An independent revision for a reader's authority sources, backed by the retained change log. */
-  trackAuthorityTables(tables: readonly AuthorityTableName[]): () => number | undefined {
+  trackAuthorityTables(tables: readonly AuthorityTableName[], mode: "validated" | "poll-hint" = "validated"): () => number | undefined {
     const selected = JSON.stringify(z.array(AuthorityTableNameSchema).min(1).parse(tables));
     let cursor: number | undefined;
     let revision = 0;
+    let schemaCookie: number | undefined;
     return () => {
       if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
+      if (mode === "poll-hint") {
+        const key = this.capturedChangeKey();
+        if (cursor === key.changeLogSeq && schemaCookie === key.schemaCookie) return revision;
+      }
       return this.#withReadSnapshot(() => {
-        this.#validateExternalQuerySources();
+        if (mode === "validated") this.#validateExternalQuerySources();
         const through = changeLogHighWater(this.#database);
+        if (mode === "poll-hint") {
+          const cookie = readIntPragma(this.#database, "schema_version");
+          // Schema changes and large tails wake the observer without scanning the full log here.
+          const uncertain = cursor !== undefined && (cookie !== schemaCookie || through < cursor || through - cursor > 256);
+          schemaCookie = cookie;
+          if (uncertain) { cursor = through; return ++revision; }
+        }
         if (cursor === through) return revision;
         if (cursor !== undefined) {
           const first = z.strictObject({ seq: z.number().int().positive().nullable() }).parse(
