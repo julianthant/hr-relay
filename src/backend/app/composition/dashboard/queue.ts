@@ -1,75 +1,243 @@
-import type { DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
+import { readFileSync } from "node:fs";
+import { z } from "zod";
+import { defineLaneRead, type DashboardReadLanes, type LaneWarmContext } from "../../../storage/sqlite/dashboard-read-host.js";
 import { aggregateMemberRetryAvailable, batchMemberRetryAvailable } from "../../../runs/queries/run-retry.js";
 import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
+import { WorkerActivitySchema, WorkerDirectiveSchema, WorkerParentMessageSchema } from "../../../runtime/workers/worker-messages.js";
+import { WorkerBrowserObservationSchema, WorkerSetupRefusalCodeSchema } from "../../../../models/run/worker-control.js";
+import { WorkerPoolMemberSchema } from "../../../../models/run/worker-slot.js";
+import { ErrorCatalogCodeSchema } from "../../../../models/failures/error-catalog.js";
+import { BrowserSystemIdSchema, FingerprintSchema, LocalDateSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
+import { systemIdFactory } from "../../../../rules/identity/identifiers.js";
+import { capturedInstantClock, systemClock, type Clock } from "../../../../rules/time/clock.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 
 import {
   AuthorityDatabase,
 } from "../../../storage/sqlite/authority-database.js";
 
-import { createRunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
+import { createRunQueueProjection, type DashboardDayLane, type RunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
 import { endedUnfinished, hostedOcrRun, offeredOcrReview, readQueueRecordMembers } from "../../../runs/queries/ocr-record-members.js";
-import { workflowQueueCapabilities } from "../../registries/workflow-registry.js";
+import { DESCRIPTORS, descriptorSetHash, READABLE_WORKFLOW_MODULES, SERVER_REGISTRY, workflowQueueCapabilities } from "../../registries/workflow-registry.js";
 import { queryAssistantUsage } from "../../../assistant/usage-counts.js";
+import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
+import { composeQueueSummaries } from "./queue-summaries.js";
+import { composeNotificationReads } from "./notification-wiring.js";
+import { PackageVersionSchema } from "./runtime-contracts.js";
 
-export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline" | "assistantUsage"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
-  workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
-  listNotifications?: Parameters<typeof createRunQueueProjection>[0]["authority"]["listNotifications"];
-  /** Seam for the queue-day lane read. */
-  readLanes?: DashboardReadLanes }) {
-  const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
+type ProjectionInput = Parameters<typeof createRunQueueProjection>[0];
+type ProjectionAuthority = ProjectionInput["authority"];
+
+/** The store reads and process facts a queue projection reads, over one connection. */
+function operatorAuthority(input: Readonly<{ database: AuthorityDatabase; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
+  descriptors: ProjectionInput["descriptors"]; listNotifications: ProjectionAuthority["listNotifications"];
+  workerMembers?: () => readonly WorkerMemberView[]; workerStartupPending?: (workflowId: string) => boolean }>): ProjectionAuthority {
+  const { database, descriptors } = input;
   const changeKey = database.trackAuthorityTables(["runs", "run_batches", "worker_pools"]);
+  return {
+    batchMemberRetryAvailable: run => batchMemberRetryAvailable(database.authority, run, descriptors.resolve(run.envelope.workflow), workflowQueueCapabilities(run.envelope.workflow)),
+    aggregateMemberRetryAvailable: run => aggregateMemberRetryAvailable(database.authority, input.reader, run, id => descriptors.resolve(id)),
+    queueParents: envelopes => database.authority.dependencies.parents(envelopes),
+    recordMembers: (run, children) => database.withAuthorityReadSnapshot(() => readQueueRecordMembers(database.authority, input.reader,
+      run, children, id => descriptors.resolve(id))),
+    reviewAvailable: runId => database.withAuthorityReadSnapshot(() => {
+      const current = input.reader.read(runId);
+      if (current.state !== "present" || current.disposition !== "live") return false;
+      const ocr = current.run.envelope.workflow === "ocr" ? current.run : hostedOcrRun(database.authority, current.run);
+      return ocr !== undefined && !endedUnfinished(current.run) && offeredOcrReview(database.authority, input.reader, ocr) !== undefined;
+    }),
+    listNotifications: input.listNotifications,
+    command: (commandId) => database.authority.commands.get(commandId),
+    latestNotificationSource: (notificationId) => database.authority.notificationPublications.latest(notificationId),
+    notificationConcernActive: concern => database.authority.notificationHealth.get(concern)?.active,
+    notificationCommandSettled: id => { const read = database.authority.commands.readForNotice(id); return read === undefined ? undefined : read.result !== undefined; },
+    listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
+    listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
+    listGateResults: runId => database.authority.gateResults.listByRun(runId),
+    listWorkerSlots: () => database.authority.workerSlots.list(),
+    listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
+    ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
+    ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }),
+    heldDuoLeases: workerId => database.heldDuoLeases(workerId),
+    listWorkerPools: () => database.authority.workerPools.list(),
+    listRunBatches: () => database.authority.runSessions.list(),
+    getRunBatch: (id) => database.authority.runSessions.get(id),
+    getFailure: (failureId) => database.authority.failures.get(failureId),
+    writeInFlight: runId => database.authority.writeIntents.listByRun(runId).some(intent => intent.status === "attempting"),
+    changeKey,
+    checkDaySources: (day, previous) => database.checkQueueDaySources(day, previous),
+    nextDuoLeaseExpiry: nowMs => database.nextDuoLeaseExpiry(nowMs),
+    delegationWait: runId => database.authority.dependencies.waitState(runId),
+    getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
+    canonicalPerson: (runId) => database.canonicalPerson(runId),
+    // Ref dashboard-surfaces: the one stored node output a queue row reads — the
+    // subject's name, at the leaf the descriptor declares.
+    latestCheckpoint: (workflowId, itemId, nodeId) =>
+      database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+  };
+}
+
+const readableDescriptors: ProjectionInput["descriptors"] = { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor };
+const WORKFLOW_IDS = Object.freeze(READABLE_WORKFLOW_MODULES.map(module => module.descriptor.id));
+
+/* ── process facts ───────────────────────────────────────────────────────── */
+
+const exitBase = { code: z.number().int().nullable(), signal: z.string().nullable(), at: z.string().min(1), settlement: z.enum(["settled", "failed"]) };
+const WorkerExitFactSchema = z.discriminatedUnion("outcome", [
+  z.strictObject({ ...exitBase, outcome: z.literal("stopped"), reason: WorkerParentMessageSchema.options[0].shape.reason.optional() }),
+  z.strictObject({ ...exitBase, outcome: z.literal("crashed"), failureCode: ErrorCatalogCodeSchema.optional() }),
+  z.strictObject({ ...exitBase, outcome: z.literal("setup-refused"), failureCode: WorkerSetupRefusalCodeSchema }),
+]);
+
+const WorkerMemberViewSchema = z.strictObject({
+  member: WorkerPoolMemberSchema,
+  lifetimeId: z.string().min(1),
+  version: z.number().int().nonnegative(),
+  state: z.enum(["starting", "running", "stopping", "exited"]),
+  directive: WorkerDirectiveSchema,
+  pid: z.number().int().positive().optional(),
+  startedAt: z.string().min(1),
+  activity: WorkerActivitySchema.optional(),
+  browsers: z.array(WorkerBrowserObservationSchema),
+  browserSystems: z.array(BrowserSystemIdSchema).optional(),
+  exit: WorkerExitFactSchema.optional(),
+  held: z.enum(["exit-unobserved", "kill-undelivered"]).optional(),
+});
+/** What main alone knows: its worker pool's members and which workflows are still starting them. */
+const ProcessFactsSchema = z.strictObject({ workers: z.array(WorkerMemberViewSchema), startupPending: z.array(WorkflowIdSchema) });
+type ProcessFacts = Readonly<{ workers: readonly WorkerMemberView[]; startupPending: readonly string[] }>;
+
+function exitOf(exit: z.infer<typeof WorkerExitFactSchema> | undefined): WorkerMemberView["exit"] {
+  if (exit === undefined) return undefined;
+  const base = { code: exit.code, signal: exit.signal, at: exit.at, settlement: exit.settlement };
+  switch (exit.outcome) {
+    case "stopped": return { ...base, outcome: exit.outcome, ...(exit.reason === undefined ? {} : { reason: exit.reason }) };
+    case "crashed": return { ...base, outcome: exit.outcome, ...(exit.failureCode === undefined ? {} : { failureCode: exit.failureCode }) };
+    case "setup-refused": return { ...base, outcome: exit.outcome, failureCode: exit.failureCode };
+  }
+}
+
+/** The facts main sent, admitted back into the views the projection reads. */
+function admitProcessFacts(input: unknown): ProcessFacts {
+  const parsed = ProcessFactsSchema.parse(input);
+  const workers = parsed.workers.map((view): WorkerMemberView => ({ member: view.member, lifetimeId: view.lifetimeId, version: view.version,
+    state: view.state, directive: view.directive, pid: view.pid, startedAt: view.startedAt, activity: view.activity, browsers: view.browsers,
+    ...(view.browserSystems === undefined ? {} : { browserSystems: view.browserSystems }), exit: exitOf(view.exit), held: view.held }));
+  return { workers, startupPending: parsed.startupPending };
+}
+
+/* ── the lane's replica ──────────────────────────────────────────────────── */
+
+const LANE_APP_VERSION = PackageVersionSchema.parse(JSON.parse(readFileSync(new URL("../../../../../package.json", import.meta.url), "utf8"))).version;
+const LANE_DESCRIPTOR_SET_HASH = descriptorSetHash(DESCRIPTORS.map(descriptor => descriptor.contractFingerprint));
+
+interface LaneReplica {
+  readonly projection: RunQueueProjection;
+  readonly state: {
+    /** The read's instant: the replica folds and builds at main's dispatch time. */
+    at: Clock;
+    facts: ProcessFacts;
+  };
+}
+const replicas = new WeakMap<AuthorityDatabase, LaneReplica>();
+
+/** One projection per lane connection, folded from the timeline pages that connection reads. */
+function laneReplica(context: LaneWarmContext): LaneReplica {
+  const held = replicas.get(context.history);
+  if (held !== undefined) return held;
+  const { history, native } = context;
+  const noFacts: ProcessFacts = { workers: [], startupPending: [] };
+  const state: LaneReplica["state"] = { at: capturedInstantClock(new Date(context.nowMs).toISOString()), facts: noFacts };
+  const clock: Clock = Object.freeze({
+    now: () => state.at.now(), nowMs: () => state.at.nowMs(), monotonicMs: () => systemClock.monotonicMs(), todayLocal: () => state.at.todayLocal(),
+    timeOfDayCode: (at?: Date) => state.at.timeOfDayCode(at), fiscalYear: (at?: Date) => state.at.fiscalYear(at),
+  });
+  const reader = new RunRecordService({ database: history, clock, ids: systemIdFactory,
+    publishQueued: () => { throw new Error("read-lane-write-refused"); }, resolveDescriptor: id => SERVER_REGISTRY[id]?.descriptor });
+  const summaries = { ...composeQueueSummaries(history), activity: () => { throw new Error("read-lane-activity-unserved"); } };
+  const projection = createRunQueueProjection({
+    assistantUsage: (from, to, generatedAt) => queryAssistantUsage(history, { from, to, generatedAt }),
+    timeline: history.authority.timelineEvents, stateRoot: context.start.stateRoot, clock, appVersion: LANE_APP_VERSION,
+    descriptorSetHash: LANE_DESCRIPTOR_SET_HASH, ledger: createTransactionHistory(history.authority), queueCapabilities: workflowQueueCapabilities,
+    descriptors: readableDescriptors, replica: true,
+    reader: { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries },
+    authority: operatorAuthority({ database: history, reader, descriptors: readableDescriptors, listNotifications: composeNotificationReads(native, history).list,
+      workerMembers: () => state.facts.workers, workerStartupPending: workflowId => state.facts.startupPending.includes(workflowId) }),
+  });
+  const replica: LaneReplica = { projection, state };
+  replicas.set(history, replica);
+  return replica;
+}
+
+const QueueDayArgsSchema = z.strictObject({
+  day: LocalDateSchema,
+  /** Source ids of publications main retained at dispatch; the reply names those its snapshot does not hold. */
+  publications: z.array(FingerprintSchema).max(1024),
+});
+
+/**
+ * Queue day, Sessions and the stream snapshot, built on the navigation lane from its replica. The body is the day without
+ * main's stamp, plus the facts main frames it with; the replica folds the timeline once before the lane is ready.
+ */
+const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day", {
+  lane: "navigation", priority: "interactive", processFacts: true, args: QueueDayArgsSchema,
+  warm(context) { laneReplica(context).projection.ingestFromTimeline(); },
+  run(context, { day, publications }) {
+    const replica = laneReplica(context);
+    replica.state.at = capturedInstantClock(new Date(context.nowMs).toISOString());
+    replica.state.facts = admitProcessFacts(context.processFacts);
+    replica.projection.ingestFromTimeline();
+    const body = replica.projection.buildLaneDay(day);
+    const heldSources = publications.length === 0 ? new Set<string>()
+      : new Set(context.history.authority.notificationPublications.list().map(record => record.sourceId));
+    return { d: body.d, f: { ...body.f, missingPublications: publications.filter(sourceId => !heldSources.has(sourceId)) } };
+  },
+});
+
+/** Main's side of the lane day: the process facts it sends, under a revision that moves whenever they change. */
+function createDayLane(lanes: DashboardReadLanes, workerMembers: () => readonly WorkerMemberView[], workerStartupPending: (workflowId: string) => boolean): DashboardDayLane {
+  let revision = 0, held: string | undefined;
+  const facts = (): Readonly<{ revision: number; facts: ProcessFacts }> => {
+    const current: ProcessFacts = { workers: workerMembers(), startupPending: WORKFLOW_IDS.filter(workflowId => workerStartupPending(workflowId)) };
+    const key = JSON.stringify(current);
+    if (key !== held) { held = key; revision += 1; }
+    return { revision, facts: current };
+  };
+  return {
+    processRevision: () => facts().revision,
+    async read(day, request) {
+      const reply = await lanes.read(queueDayRead, { day, publications: [...request.publications] }, {
+        processFacts: facts(), ...(request.slot === undefined ? {} : { slot: request.slot }), ...(request.signal === undefined ? {} : { signal: request.signal }) });
+      return { body: reply.body, processRevision: reply.position.processRevision };
+    },
+  };
+}
+
+export function createOperatorProjection(input: Omit<ProjectionInput, "authority" | "timeline" | "assistantUsage" | "dayLane" | "replica"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
+  workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
+  listNotifications?: ProjectionAuthority["listNotifications"];
+  /** With lanes, the day is built on the navigation lane from its replica; the pool's members are then required. */
+  readLanes?: DashboardReadLanes }) {
+  const { stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors } = input;
+  let dayLane: DashboardDayLane | undefined;
+  if (input.readLanes !== undefined) {
+    if (input.workerMembers === undefined) throw new Error("queue-day-lane-worker-members-required");
+    dayLane = createDayLane(input.readLanes, input.workerMembers, input.workerStartupPending ?? (() => false));
+  }
   return createRunQueueProjection({
     assistantUsage: (from, to, generatedAt) => queryAssistantUsage(database, { from, to, generatedAt }),
     timeline: database.authority.timelineEvents,
     stateRoot,
     clock,
     appVersion,
-    descriptorSetHash,
+    descriptorSetHash: setHash,
     ledger,
     reader: input.reader,
     queueCapabilities: workflowQueueCapabilities,
-    authority: {
-      batchMemberRetryAvailable: run => batchMemberRetryAvailable(database.authority, run, descriptors.resolve(run.envelope.workflow), workflowQueueCapabilities(run.envelope.workflow)),
-      aggregateMemberRetryAvailable: run => aggregateMemberRetryAvailable(database.authority, input.reader, run, id => descriptors.resolve(id)),
-      queueParents: envelopes => database.authority.dependencies.parents(envelopes),
-      recordMembers: (run, children) => database.withAuthorityReadSnapshot(() => readQueueRecordMembers(database.authority, input.reader,
-        run, children, id => descriptors.resolve(id))),
-      reviewAvailable: runId => database.withAuthorityReadSnapshot(() => {
-        const current = input.reader.read(runId);
-        if (current.state !== "present" || current.disposition !== "live") return false;
-        const ocr = current.run.envelope.workflow === "ocr" ? current.run : hostedOcrRun(database.authority, current.run);
-        return ocr !== undefined && !endedUnfinished(current.run) && offeredOcrReview(database.authority, input.reader, ocr) !== undefined;
-      }),
-      listNotifications: input.listNotifications ?? database.authority.notifications.listByActor,
-      command: (commandId) => database.authority.commands.get(commandId),
-      latestNotificationSource: (notificationId) => database.authority.notificationPublications.latest(notificationId),
-      notificationConcernActive: concern => database.authority.notificationHealth.get(concern)?.active,
-      notificationCommandSettled: id => { const read = database.authority.commands.readForNotice(id); return read === undefined ? undefined : read.result !== undefined; },
-      listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
-      listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
-      listGateResults: runId => database.authority.gateResults.listByRun(runId),
-      listWorkerSlots: () => database.authority.workerSlots.list(),
-      listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
+    authority: operatorAuthority({ database, reader: input.reader, descriptors, listNotifications: input.listNotifications ?? database.authority.notifications.listByActor,
       ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
-      ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }),
-      heldDuoLeases: workerId => database.heldDuoLeases(workerId),
-      listWorkerPools: () => database.authority.workerPools.list(),
-      listRunBatches: () => database.authority.runSessions.list(),
-      getRunBatch: (id) => database.authority.runSessions.get(id),
-      getFailure: (failureId) => database.authority.failures.get(failureId),
-      writeInFlight: runId => database.authority.writeIntents.listByRun(runId).some(intent => intent.status === "attempting"),
-      changeKey,
-      checkDaySources: (day, previous) => database.checkQueueDaySources(day, previous),
-      nextDuoLeaseExpiry: nowMs => database.nextDuoLeaseExpiry(nowMs),
-      delegationWait: runId => database.authority.dependencies.waitState(runId),
-      getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
-      canonicalPerson: (runId) => database.canonicalPerson(runId),
-      // Ref dashboard-surfaces: the one stored node output a queue row reads — the
-      // subject's name, at the leaf the descriptor declares.
-      latestCheckpoint: (workflowId, itemId, nodeId) =>
-        database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
-    },
+      ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }) }),
     descriptors,
+    ...(dayLane === undefined ? {} : { dayLane }),
   });
 }

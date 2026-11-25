@@ -127,7 +127,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   });
   // Read lanes boot on their own threads while the rest of startup runs; they close before the store they read.
   const readLanes = (() => {
-    try { return createDashboardReadHost({ admission, database, clock }); }
+    try { return createDashboardReadHost({ admission, database, clock, entry: new URL("./read-lane-entry.js", import.meta.url) }); }
     catch (error) {
       // Lanes that did start still hold the store: the unwind joins them before it closes the database.
       if (error instanceof ReadLaneStartError) startupCleanups.push(requiredClosure(() => error.exited));
