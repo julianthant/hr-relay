@@ -29,6 +29,7 @@ import type { DuoKeyChange, DuoReenrolCommitIntent } from "../../models/config/d
 import type { DuoKeyChangeResult } from "../../models/profiles/public-profile.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { systemClock,type Clock } from "../../rules/time/clock.js";
+import type { TimelineRepository } from "../../models/events/timeline.js";
 import { noSymlinkAncestry,withOperationProof,type DirectoryIdentity } from "../storage/configuration/credential-safe-file.js";
 import { createDuoCredentialStore,DuoCredentialError } from "../storage/configuration/duo-credential-store.js";
 import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
@@ -613,11 +614,17 @@ export function createProfileSession(input: {
     return refusal("PROFILE_LOGOUT_BLOCKED", operation.operationId);
   }
 
+  function onboardingTimeline(profileId: string, clock: Clock, write: (repository: TimelineRepository) => void): void {
+    const capability = admittedProfile(profileId);
+    // A ready profile's database belongs to its runtime, so a Duo re-enrolment's events stay in the machine Duo log.
+    if (capability.isProfileInitialization()) AuthorityDatabase.withProfileOnboardingTimeline(capability, clock, write);
+  }
+
   const onboarding = createProfileOnboarding({
     onEvent: (draft, event) => {
       const clock = input.clock ?? systemClock;
       appendDuoDiagnostic(machineRoot, clock.now(), event);
-      AuthorityDatabase.withProfileOnboardingTimeline(admittedProfile(draft.profileId), clock, repository => {
+      onboardingTimeline(draft.profileId, clock, repository => {
         const build = z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"))).version;
         createDebugEventWriter({ repository, clock, build }).emit({ category: "duo",
           phase: event.stage === "refused" || event.stage === "aborted" ? "failed" : event.stage === "timed-out" ? "expired" : event.stage === "replied" ? "settled" : "started",
@@ -629,7 +636,7 @@ export function createProfileSession(input: {
     failureDiagnostic: error => error instanceof ProfileOnboardingDuoProviderError ? { kind: error.kind, causeTag: error.reason } : { kind: "unknown", causeTag: "provider" }, clock: input.clock ?? systemClock,
     onFailure: (attempt, failure) => {
       const clock = input.clock ?? systemClock;
-      AuthorityDatabase.withProfileOnboardingTimeline(admittedProfile(attempt.profileId), clock, repository => {
+      onboardingTimeline(attempt.profileId, clock, repository => {
         const build = z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"))).version;
         createDebugEventWriter({ repository, clock, build }).emit({ category: "duo", phase: "failed", correlationId: attempt.attemptId,
           area: "profile-onboarding", reason: failure.causeTag,
