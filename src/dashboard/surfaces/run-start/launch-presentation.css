@@ -23,11 +23,12 @@
 }
 .launch-dialog.launch-rerun { grid-template-columns: minmax(0, 1fr); }
 .launch-dialog > header, .launch-dialog > footer { grid-column: 1 / -1; }
-div.launch-dialog[data-size="lg"][data-band] > header { @apply items-center gap-3 border-b border-ui-stroke bg-ui-panel; }
-div.launch-dialog[data-size="lg"][data-band] > header > div { @apply gap-0.5; }
-div.launch-dialog[data-size="lg"][data-band] > footer { @apply gap-3 border-t border-ui-stroke bg-ui-table; }
-.launch-dialog > footer > span:last-child { @apply gap-2; }
-.launch-dialog > footer > span:last-child > button { @apply w-32 justify-center; }
+div.launch-dialog[data-size="lg"][data-band] { --ds-dialog-pad: 20px; }
+div.launch-dialog[data-size="lg"][data-band] > header { @apply relative h-auto border-b border-ui-stroke bg-ui-panel py-3 pr-12; }
+div.launch-dialog[data-size="lg"][data-band] > header > div { @apply gap-0; }
+div.launch-dialog[data-size="lg"][data-band] > header p { @apply text-ui-secondary; }
+.launch-dialog .ds-dialog-close { position: absolute; top: 14px; right: 14px; }
+div.launch-dialog[data-size="lg"][data-band] > footer { @apply border-t border-ui-stroke bg-ui-table; }
 .launch-dialog > footer > span:first-child,
 .launch-dialog > footer > span:first-child > span { @apply font-ui; }
 
@@ -62,10 +63,6 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply gap-3 border-t bo
 .launch-dialog .ds-choice-picker { @apply gap-2; }
 .launch-dialog .ds-choice-picker > button { @apply font-normal; }
 
-.launch-dialog .launch-values-fields { @apply grid-cols-1; }
-.launch-dialog .launch-values-fields > div { @apply max-w-[var(--ds-w-body-control-wide)]; }
-.launch-dialog .launch-values-fields > div > div { @apply gap-2; }
-.launch-dialog .launch-values-fields input { @apply h-8; }
 
 .launch-dialog aside.launch-workflow-rail { @apply pb-5; }
 .launch-dialog aside.launch-workflow-rail > div:first-child { @apply text-caption font-medium; }

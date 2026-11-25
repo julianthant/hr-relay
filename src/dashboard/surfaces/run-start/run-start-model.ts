@@ -563,7 +563,7 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
 }
 
 /** The one plain sentence for the first refused entry of a plan, shown in the dialog's notice slot; no code, trace id or server text. */
-export function planRefusalNotice(refused: StartPlanWire["refused"], sources?: RunInputPreview["entries"]): { sentence: string; goesToQueue: boolean } | null {
+export function planRefusalNotice(refused: StartPlanWire["refused"], sources?: RunInputPreview["entries"], rerun = false): { sentence: string; goesToQueue: boolean } | null {
   const entry = refused[0];
   if (entry === undefined) return null;
   const source = sources?.find(candidate => candidate.index + 1 === entry.entry)?.sourceText;
@@ -572,8 +572,9 @@ export function planRefusalNotice(refused: StartPlanWire["refused"], sources?: R
     if (entry.message.includes("already in this plan")) return { sentence: `${name} is listed twice. Remove the repeat.`, goesToQueue: false };
     return { sentence: `${name} already has a run in progress.`, goesToQueue: true };
   }
+  if (rerun && entry.code === "input-invalid") return { sentence: formatErrorCatalogFailure(createErrorCatalogFailure("RERUN_SOURCE_INPUT_PROTECTED", {})).text, goesToQueue: false };
   if (entry.code === "input-invalid") return { sentence: `Relay could not use ${name}. Fix it, then try again.`, goesToQueue: false };
-  if (entry.code === "dry-run-unsupported") return { sentence: "No dry run here. Turn Dry run off.", goesToQueue: false };
+  if (entry.code === "dry-run-unsupported") return { sentence: rerun ? "No dry run here. Use Start run." : "No dry run here. Turn Dry run off.", goesToQueue: false };
   if (entry.code === "preflight-failed") return { sentence: "A check failed. Fix it in Checks.", goesToQueue: false };
   return { sentence: "Relay can't run this now. Try later.", goesToQueue: false };
 }
