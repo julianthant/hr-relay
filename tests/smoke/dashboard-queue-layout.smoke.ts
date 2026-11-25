@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, SEEDED_PREFERENCE_WRITE, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 
-const FRAMES = join(import.meta.dirname, ".output/queue-layout-frames");
+const FRAMES = join(import.meta.dirname, ".output/states/queue-layout-frames");
 const VIEWPORTS = [{ width: 1280, height: 720 }, { width: 1600, height: 900 }] as const;
 
 for (const viewport of VIEWPORTS) {
