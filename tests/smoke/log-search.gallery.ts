@@ -1,0 +1,43 @@
+/** Log search in real Chromium: the count is what is painted, one match is current, and moving to a match shows it. jsdom has no CSS.highlights. */
+import { expect, test } from "../support/helpers/dashboard/smoke/gallery-fixtures.js";
+import type { Page } from "@playwright/test";
+
+/** How many ranges are painted, and whether the current one is inside the log's visible box. */
+const painted = (page: Page) => page.evaluate(() => {
+  const current = [...(CSS.highlights.get("log-match-current") ?? [])] as Range[];
+  const box = current[0]?.getBoundingClientRect();
+  const view = document.querySelector('[role="region"][aria-label="Run logs"]')?.getBoundingClientRect();
+  return {
+    current: current.length,
+    total: current.length + (CSS.highlights.get("log-match")?.size ?? 0),
+    inView: box !== undefined && view !== undefined && box.top >= view.top && box.bottom <= view.bottom,
+  };
+});
+
+for (const [query, presses] of [["employ", 8], ["09/01", 1], ["UCPath", 6]] as const) {
+  test(`log search for "${query}" counts, paints and shows each match`, async ({ mount, page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await mount("run-panel/log-header/default");
+    await page.getByRole("button", { name: "Search logs" }).click();
+    const input = page.getByRole("textbox", { name: "Search logs" });
+    await input.fill(query);
+    const status = page.getByRole("search").getByRole("status");
+    await expect(status).toHaveText(/^1 of \d+$/u);
+    const total = Number((await status.textContent())?.split(" of ")[1]);
+    for (let press = 0; press <= presses; press += 1) {
+      await expect(status).toHaveText(`${String((press % total) + 1)} of ${String(total)}`);
+      await expect.poll(() => painted(page)).toEqual({ current: 1, total, inView: true });
+      await input.press("Enter");
+    }
+  });
+}
+
+test("the run menu closes on Escape and returns focus to its button", async ({ mount, page }) => {
+  await mount("run-panel/log-header/default");
+  const more = page.getByRole("button", { name: "More actions" });
+  await more.press("Enter");
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toBeHidden();
+  await expect(more).toBeFocused();
+});

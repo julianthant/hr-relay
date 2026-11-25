@@ -1,10 +1,10 @@
 import { LogSkeleton } from "../../shared/loading/loading.js";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ContextType, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ContextType, type ReactNode } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { ArrowDownToLine } from "lucide-react";
 import { Button, EmptyState } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
-import { findLogMatches, logPlainText, visualLogSteps, type LogEntry, type LogHit, type LogStep } from "./log-feed-model.js";
+import { logPlainText, matchRanges, visualLogSteps, type LogEntry, type LogStep } from "./log-feed-model.js";
 import { LogDecisionBlock, type DecisionAnswerHandler } from "./log-decision.js";
 import { ServedDraftsContext } from "./log-decision-model.js";
 import { LogScreenshots, RequiredCaptureStatus } from "./log-screenshots.js";
@@ -53,20 +53,9 @@ export type LogTools = Readonly<{
   download: (name: string) => void;
 }>;
 
-/** Text of `container` that matches `needle`, in document order. */
-function matchRanges(container: Element, needle: string): Range[] {
-  const ranges: Range[] = [];
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
-    const text = (node.textContent ?? "").toLocaleLowerCase();
-    for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length)) {
-      const range = document.createRange();
-      range.setStart(node, at); range.setEnd(node, at + needle.length);
-      ranges.push(range);
-    }
-  }
-  return ranges;
-}
+/** The matches on screen and the steps that hold one. */
+type Found = Readonly<{ ranges: readonly Range[]; stepIds: ReadonlySet<string> }>;
+const NOTHING_FOUND: Found = { ranges: [], stepIds: new Set() };
 
 /** Below this distance from the newest action the log counts as at the end. */
 const AT_END_SLACK = 48;
@@ -110,7 +99,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a log that grows past the window must not jump back to the initial step
   }, [initialStepId]);
   useEffect(() => () => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); }, []);
-  const jump = (stepId: string, entryId?: string, focus = true) => {
+  const jump = (stepId: string, entryId?: string) => {
     const order = visualLogSteps(steps);
     const index = order.findIndex(step => step.id === stepId);
     const step = order[index];
@@ -132,39 +121,57 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
       const style = getComputedStyle(viewport);
       const scrollTarget = targetEntryId && step.header === false ? target : section;
       viewport.scrollTop += scrollTarget.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop || "0");
-      if (focus) (target.querySelector<HTMLElement>("form[aria-label][tabindex=\"-1\"]") ?? target).focus({ preventScroll: true });
+      (target.querySelector<HTMLElement>("form[aria-label][tabindex=\"-1\"]") ?? target).focus({ preventScroll: true });
       jumpFrame.current = undefined;
     }); };
     land(JUMP_FRAMES);
   };
   const visual = useMemo(() => visualLogSteps(steps), [steps]);
-  const { hits, stepIds } = useMemo(() => findLogMatches(visual, query), [visual, query]);
-  const position = hits.length === 0 ? 0 : Math.min(active, hits.length - 1) + 1;
-  const reveal = (hit: LogHit | undefined) => { if (hit) jump(hit.stepId, hit.entryId, false); };
-  // Typing or stepping moves to the match; a log that grows while it is searched leaves the view where it is.
-  useEffect(() => { reveal(hits[position - 1]); }, [query, position]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const root = scroller.current, needle = query.trim().toLocaleLowerCase();
-    if (!root || !needle || typeof CSS === "undefined" || !("highlights" in CSS)) return;
-    const paint = () => {
-      const hit = hits[position - 1];
-      const container = hit && (hit.entryId === undefined ? headings.current.get(hit.stepId) : entryTargets.current.get(JSON.stringify([hit.stepId, hit.entryId])));
-      const current = container ? matchRanges(container, needle)[hit.nth] : undefined;
-      const others = matchRanges(root, needle).filter(range => range.startContainer !== current?.startContainer || range.startOffset !== current.startOffset);
-      CSS.highlights.set("log-match", new Highlight(...others));
-      CSS.highlights.set("log-match-current", new Highlight(...(current ? [current] : [])));
+  const needle = query.trim();
+  const [found, setFound] = useState<Found>(NOTHING_FOUND);
+  // A search mounts every step, so what is counted, painted and scrolled to is the same drawn text.
+  // shortcut: typing slows on very long logs, and closing the search remounts the window; keep a match index if that bites.
+  const windowed = !embedded && visual.length > LOG_WINDOW_FROM && !needle;
+  const position = found.ranges.length === 0 ? 0 : Math.min(active, found.ranges.length - 1) + 1;
+  const reveal = (range: Range | undefined) => {
+    const view = scroller.current, match = range?.startContainer.parentElement;
+    if (!view || !match || embedded) return;
+    if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current);
+    const box = match.getBoundingClientRect();
+    view.scrollTop += box.top - view.getBoundingClientRect().top - (view.clientHeight - box.height) / 2;
+  };
+  const revealed = useRef("");
+  useLayoutEffect(() => {
+    const root = scroller.current;
+    const search = () => {
+      const ranges = root && needle ? matchRanges(root, needle) : [];
+      const stepIds = new Set([...headings.current].filter(([, heading]) => {
+        const section = heading.closest("section");
+        return ranges.some(range => section?.contains(range.startContainer));
+      }).map(([stepId]) => stepId));
+      setFound(ranges.length ? { ranges, stepIds } : NOTHING_FOUND);
+      return ranges;
     };
-    let frame = requestAnimationFrame(paint);
-    // A windowed log mounts steps as they scroll in.
-    const observer = new MutationObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(paint); });
-    observer.observe(root, { childList: true, subtree: true });
-    return () => { observer.disconnect(); cancelAnimationFrame(frame); CSS.highlights.delete("log-match"); CSS.highlights.delete("log-match-current"); };
-  }, [hits, position, query, viewport]);
-  const dimming = query.trim() !== "" && hits.length > 0;
-  const windowed = !embedded && visual.length > LOG_WINDOW_FROM;
+    const ranges = search();
+    // A new search moves to its first match; a log that grows while it is searched leaves the view where it is.
+    if (revealed.current !== needle) { revealed.current = needle; reveal(ranges[0]); }
+    if (!root || !needle) return;
+    let frame: number | undefined;
+    const observer = new MutationObserver(() => { if (frame !== undefined) cancelAnimationFrame(frame); frame = requestAnimationFrame(search); });
+    observer.observe(root, { childList: true, subtree: true, characterData: true });
+    return () => { observer.disconnect(); if (frame !== undefined) cancelAnimationFrame(frame); };
+  }, [needle, viewport]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (typeof CSS === "undefined" || !("highlights" in CSS) || !found.ranges.length) return;
+    const current = found.ranges[position - 1];
+    CSS.highlights.set("log-match", new Highlight(...found.ranges.filter(range => range !== current)));
+    CSS.highlights.set("log-match-current", new Highlight(...(current ? [current] : [])));
+    return () => { CSS.highlights.delete("log-match"); CSS.highlights.delete("log-match-current"); };
+  }, [found, position]);
+  const dimming = needle !== "" && found.ranges.length > 0;
   const stepNode = (step: LogStep, index: number) => <StepFrame key={step.id} leading={step.time} title={step.title} system={step.system} titleId={`${id}-${step.id}`} headerHidden={step.header === false}
     titleRef={node => { if (node) headings.current.set(step.id, node); else headings.current.delete(step.id); }}
-    className={cn(index < visual.length - 1 && "border-b", windowed && index > 0 && "first:pt-5", dimming && !stepIds.has(step.id) && "opacity-45")}
+    className={cn(index < visual.length - 1 && "border-b", windowed && index > 0 && "first:pt-5", dimming && !found.stepIds.has(step.id) && "opacity-45")}
     after={afterStep?.(step.id)}>
     {step.entries.map((entry, index) => <div key={entry.id}
       ref={node => { const key = JSON.stringify([step.id, entry.id]); if (node) entryTargets.current.set(key, node); else entryTargets.current.delete(key); }}
@@ -185,8 +192,14 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
   const measureEnd = () => { const node = scroller.current; if (node) setAtEnd(node.scrollHeight - node.scrollTop - node.clientHeight <= AT_END_SLACK); };
   useEffect(measureEnd, [steps]);
   const goLatest = () => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); jumpFrame.current = undefined; if (embedded) end.current?.scrollIntoView({ block: "end", behavior: "instant" }); else { list.current?.scrollToIndex({ index: "LAST", align: "end" }); scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "instant" }); } };
-  const tools: LogTools = { query, setQuery: next => { setQuery(next); setActive(0); setCopyState("idle"); }, position, total: hits.length,
-    step: delta => setActive(hits.length === 0 ? 0 : (position - 1 + delta + hits.length) % hits.length), copyState, canCopy: visual.length > 0, copy: () => void copy(), download };
+  const tools: LogTools = { query, setQuery: next => { setQuery(next); setActive(0); setCopyState("idle"); }, position, total: found.ranges.length,
+    step: delta => {
+      const total = found.ranges.length;
+      if (!total) return;
+      const next = (position - 1 + delta + total) % total;
+      setActive(next);
+      reveal(found.ranges[next]);
+    }, copyState, canCopy: visual.length > 0, copy: () => void copy(), download };
   return <ServedDraftsContext.Provider value={drafts}><div className={cn("ui-theme-scope flex min-h-0 min-w-0 flex-1 flex-col bg-ui-panel font-ui text-body text-ui-primary", embedded && "relative flex-none")}>
     {navigation?.(jump, tools)}
     <div className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col", embedded && "flex-none")}>

@@ -82,28 +82,25 @@ export function logEntryText(entry: LogEntry): string {
   }
 }
 
-/** One occurrence of the search text: in a step's heading (no `entryId`) or in one of its entries. `nth` counts occurrences inside that heading or entry. */
-export type LogHit = Readonly<{ stepId: string; entryId?: string; nth: number }>;
+/** Text no one can see: screen-reader copies, hidden or collapsed content, and form control values. */
+const UNSEARCHED = ".sr-only, [hidden], textarea, select, details:not([open]) > :not(summary)";
 
-const occurrences = (text: string, needle: string) => {
-  let count = 0;
-  for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length)) count += 1;
-  return count;
-};
-
-/** Every occurrence of `query` in log order, and the steps holding any; an empty query matches nothing. */
-export function findLogMatches(steps: readonly LogStep[], query: string): { readonly hits: readonly LogHit[]; readonly stepIds: ReadonlySet<string> } {
+/** Every occurrence of `query` in the text drawn inside `container`, in document order. A match never spans two text nodes. */
+export function matchRanges(container: Element, query: string): Range[] {
   const needle = query.trim().toLocaleLowerCase();
-  const hits: LogHit[] = [];
-  if (!needle) return { hits, stepIds: new Set() };
-  const add = (stepId: string, entryId: string | undefined, text: string) => {
-    for (let nth = 0, total = occurrences(text.toLocaleLowerCase(), needle); nth < total; nth += 1) hits.push(entryId === undefined ? { stepId, nth } : { stepId, entryId, nth });
-  };
-  for (const step of steps) {
-    if (step.header !== false) add(step.id, undefined, `${step.title} ${step.system ?? ""}`);
-    for (const entry of step.entries) add(step.id, entry.id, logEntryText(entry));
+  const ranges: Range[] = [];
+  if (!needle) return ranges;
+  const walker = container.ownerDocument.createTreeWalker(container, 4 /* NodeFilter.SHOW_TEXT */);
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    if (node.parentElement?.closest(UNSEARCHED)) continue;
+    const text = (node.textContent ?? "").toLocaleLowerCase();
+    for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length)) {
+      const range = container.ownerDocument.createRange();
+      range.setStart(node, at); range.setEnd(node, at + needle.length);
+      ranges.push(range);
+    }
   }
-  return { hits, stepIds: new Set(hits.map(hit => hit.stepId)) };
+  return ranges;
 }
 
 export function logPlainText(steps: readonly LogStep[]): string {
