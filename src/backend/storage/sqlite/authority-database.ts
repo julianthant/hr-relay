@@ -5299,6 +5299,13 @@ export class AuthorityDatabase implements Disposable {
       listNonTerminal: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`SELECT * FROM runs ${runIndex(this.#database, "runs_nonterminal_idx")}
         WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'
         ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id`).all().map(runRecordFromRow))),
+      // Active is the listNonTerminal predicate, so a row whose state column and lifecycle JSON disagree counts as active.
+      countByTerminal: () => this.#withReadSnapshot(() => {
+        const one = (row: unknown): number => z.strictObject({ n: z.number().int() }).parse(row).n;
+        const active = one(this.#database.prepare(`SELECT count(*) AS n FROM runs ${runIndex(this.#database, "runs_nonterminal_idx")}
+          WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'`).get());
+        return Object.freeze({ finished: one(this.#database.prepare("SELECT count(*) AS n FROM runs").get()) - active, active });
+      }),
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE workflow = ? ORDER BY created_at, id
       `).all(workflow).map((row) => runRecordFromRow(row))),
