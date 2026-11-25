@@ -17,7 +17,11 @@ const reviewed = new Map([
   ["src/backend/runtime/workers/worker-loop.ts#startHeartbeat", "Arms the initial claim heartbeat for each claimed run."],
   ["src/backend/runtime/execution/run-execution-task.ts#handle", "Spaces task retries during workflow execution."],
   ["src/backend/runtime/execution/run-execution-task.ts#deadline", "Enforces the immutable task deadline for each invocation."],
-  ["src/backend/runtime/workers/worker-pool.ts#after", "Schedules bounded worker IPC and lifecycle deadlines."],
+  ["src/backend/runtime/workers/worker-pool.ts#observeExit", "Bounds OS exit observation for each worker during drain."],
+  ["src/backend/runtime/workers/worker-pool.ts#deadline", "Bounds the stop message send while a worker exits during drain."],
+  ["src/backend/runtime/workers/worker-pool.ts#window", "Waits briefly for exit after a closed worker channel during drain."],
+  ["src/backend/runtime/workers/worker-pool.ts#escalate (timeouts.gracefulMs)", "Bounds the graceful stop window during worker drain."],
+  ["src/backend/runtime/workers/worker-pool.ts#escalate (timeouts.sigtermMs)", "Bounds the SIGTERM window before the final worker stop escalation."],
   ["src/backend/runtime/workers/worker-sessions.ts#handle", "Bounds closure of each pending browser acquisition during worker shutdown."],
   ["src/backend/runtime/browser/browser-session-factory.ts#timer", "Spaces exclusive-session lease acquisition attempts."],
   ["src/backend/runtime/gates/duo-ceremony-gate.ts#handle", "Spaces acquisition attempts for a held Duo ceremony lease."],
@@ -65,7 +69,7 @@ function registrationKind(expression: ts.Expression, checker: ts.TypeChecker, se
   seen.add(expression);
   if (ts.isIdentifier(expression)) {
     const declaration = declarationOf(expression, checker);
-    if (declaration === undefined) return timerName(expression.text);
+    if (declaration === undefined || declaration.getSourceFile().isDeclarationFile) return timerName(expression.text);
     if (ts.isImportSpecifier(declaration) && timersModule(declaration.parent.parent.parent.moduleSpecifier)) {
       return timerName((declaration.propertyName ?? declaration.name).text);
     }
@@ -76,7 +80,8 @@ function registrationKind(expression: ts.Expression, checker: ts.TypeChecker, se
       && ts.isVariableDeclaration(declaration.parent.parent)) {
       const initializer = declaration.parent.parent.initializer;
       const member = declaration.propertyName ?? declaration.name;
-      if (initializer !== undefined && isGlobalReceiver(initializer) && ts.isIdentifier(member)) return timerName(member.text);
+      if (initializer !== undefined && isGlobalReceiver(initializer)
+        && (ts.isIdentifier(member) || ts.isStringLiteral(member))) return timerName(member.text);
     }
   }
   if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
@@ -112,18 +117,39 @@ function isLoop(node: ts.Node): boolean {
     || ts.isWhileStatement(node) || ts.isDoStatement(node);
 }
 
-function forwardingParameter(call: ts.CallExpression, checker: ts.TypeChecker): ts.ParameterDeclaration | undefined {
-  const callback = call.arguments[0];
+function forwardingParameter(call: ts.CallExpression, index: number, checker: ts.TypeChecker): ts.ParameterDeclaration | undefined {
+  const callback = call.arguments[index];
   const parameter = callback === undefined ? undefined : declarationOf(callback, checker);
   if (parameter === undefined || !ts.isParameter(parameter)) return undefined;
   const wrapper = parameter.parent;
   if (!ts.isFunctionDeclaration(wrapper) && !ts.isMethodDeclaration(wrapper)
-    && !(ts.isArrowFunction(wrapper) && (ts.isVariableDeclaration(wrapper.parent)
-      || ts.isPropertyAssignment(wrapper.parent) || ts.isPropertyDeclaration(wrapper.parent)))) return undefined;
+    && !((ts.isArrowFunction(wrapper) || ts.isFunctionExpression(wrapper))
+      && (ts.isVariableDeclaration(wrapper.parent) || ts.isPropertyAssignment(wrapper.parent)
+        || ts.isPropertyDeclaration(wrapper.parent)))) return undefined;
   for (let node: ts.Node = call.parent; !ts.isSourceFile(node); node = node.parent) {
     if (ts.isFunctionLike(node)) return node === wrapper ? parameter : undefined;
+    if (isLoop(node)) return undefined;
   }
   return undefined;
+}
+
+function includeForwardingSites(
+  timeouts: Map<ts.CallExpression, number>,
+  callers: ReadonlyMap<ts.Node, readonly ts.CallExpression[]>,
+  checker: ts.TypeChecker,
+): void {
+  const backingCalls = new Set<ts.CallExpression>();
+  // Map iteration visits the appended registrations, so wrappers can compose.
+  for (const [call, callbackIndex] of timeouts) {
+    const parameter = forwardingParameter(call, callbackIndex, checker);
+    if (parameter === undefined) continue;
+    const sites = callers.get(parameter.parent);
+    if (sites === undefined || sites.includes(call)) continue;
+    backingCalls.add(call);
+    const index = parameter.parent.parameters.indexOf(parameter);
+    for (const site of sites) if (!timeouts.has(site)) timeouts.set(site, index);
+  }
+  for (const call of backingCalls) timeouts.delete(call);
 }
 
 function callable(expression: ts.Expression, checker: ts.TypeChecker, seen = new Set<ts.Node>()): ts.FunctionLikeDeclaration | undefined {
@@ -230,7 +256,7 @@ function assertReviewedTimers(overlay: ReadonlyMap<string, string> = new Map()):
   const files = walkFiles(join(REPO_ROOT, "src/backend"))
     .filter(path => /\b(?:setInterval|setTimeout|schedule|MonotonicDeadlineScheduler)\b/u.test(overlay.get(path) ?? readFileSync(path, "utf8")));
   const program = createGuardProgram(files, {
-    noResolve: true, lib: ["lib.es5.d.ts"], types: [], moduleResolution: ts.ModuleResolutionKind.Node10,
+    lib: ["lib.es2024.d.ts"], types: [], module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler,
   }, overlay);
   const checker = program.getTypeChecker();
   const scheduler = program.getSourceFile(join(REPO_ROOT, "src/backend/runtime/scheduling/deadline-scheduler.ts"));
@@ -244,7 +270,6 @@ function assertReviewedTimers(overlay: ReadonlyMap<string, string> = new Map()):
     const calls: ts.CallExpression[] = [];
     const intervals: ts.CallExpression[] = [];
     const timeouts = new Map<ts.CallExpression, number>();
-    const forwarders = new Map<ts.Node, number>();
     const injected = new Map<ts.Declaration, ts.Expression>();
     const loops: ts.Node[] = [];
     function collect(node: ts.Node): void {
@@ -259,18 +284,12 @@ function assertReviewedTimers(overlay: ReadonlyMap<string, string> = new Map()):
         calls.push(node);
         const kind = registrationKind(node.expression, checker);
         if (kind === "setInterval") intervals.push(node);
-        if (kind === "setTimeout") {
-          const parameter = forwardingParameter(node, checker);
-          if (parameter !== undefined) {
-            forwarders.set(parameter.parent, parameter.parent.parameters.indexOf(parameter));
-          } else {
-            timeouts.set(node, 0);
-          }
-        }
+        if (kind === "setTimeout") timeouts.set(node, 0);
       }
       ts.forEachChild(node, collect);
     }
     collect(source);
+    const callers = new Map<ts.Node, ts.CallExpression[]>();
     for (const call of calls) {
       const declaration = declarationOf(call.expression, checker);
       if (declaration !== undefined && ts.isMethodSignature(declaration)
@@ -282,13 +301,22 @@ function assertReviewedTimers(overlay: ReadonlyMap<string, string> = new Map()):
       }
       const fallback = declaration === undefined ? undefined : injected.get(declaration);
       const wrapper = callable(fallback ?? call.expression, checker);
-      const index = wrapper === undefined ? undefined : forwarders.get(wrapper);
-      if (index !== undefined) timeouts.set(call, index);
+      if (wrapper === undefined) continue;
+      const sites = callers.get(wrapper);
+      if (sites === undefined) callers.set(wrapper, [call]);
+      else sites.push(call);
     }
+    includeForwardingSites(timeouts, callers, checker);
 
     const repeated = findRepeatedTimeouts(timeouts, loops, checker);
-    for (const call of [...intervals, ...calls.filter(call => repeated.has(call))]) {
-      const site = `${repoRelative(path)}#${timerSite(call)}`;
+    const registrations = [...intervals, ...calls.filter(call => repeated.has(call))]
+      .map(call => ({ call, name: timerSite(call) }));
+    for (const { call, name } of registrations) {
+      const callbackIndex = timeouts.get(call);
+      const delay = call.arguments[callbackIndex === 1 ? 0 : 1];
+      const label = registrations.some(other => other.call !== call && other.name === name) && delay !== undefined
+        ? `${name} (${delay.getText()})` : name;
+      const site = `${repoRelative(path)}#${label}`;
       if (remaining.delete(site)) continue;
       const line = source.getLineAndCharacterOfPosition(call.getStart(source)).line + 1;
       unreviewed.push(`${site}:${String(line)} unreviewed recurring ${timeouts.has(call) ? "setTimeout" : "setInterval"}`);
@@ -325,9 +353,10 @@ describe("backend store-reading timer boundary", () => {
       export function plantedRearms(database: AuthorityDatabase) {
         const read = () => database.authority.timelineEvents.highWaterMark();
         function schedule(ms: number, task: () => void) { return setTimeout(task, ms); }
+        const postpone = (ms: number, task: () => void) => schedule(ms, task);
         function wrapped() {
           read();
-          schedule(1, wrapped);
+          postpone(1, wrapped);
         }
         class ArrowTimer {
           tick = () => { read(); setTimeout(this.tick, 1); };
@@ -336,7 +365,7 @@ describe("backend store-reading timer boundary", () => {
           fire: () => { read(); setTimeout(propertyTimer.fire, 1); },
         };
         class BoundTimer {
-          tick() { read(); setTimeout(this.tick.bind(this), 1); }
+          boundTick() { read(); setTimeout(this.boundTick.bind(this), 1); }
         }
         async function awaited() {
           read();
@@ -382,7 +411,7 @@ describe("backend store-reading timer boundary", () => {
         `${escapedPath}#wrapped:\\d+ unreviewed recurring setTimeout`,
         `${escapedPath}#tick:\\d+ unreviewed recurring setTimeout`,
         `${escapedPath}#fire:\\d+ unreviewed recurring setTimeout`,
-        `${escapedPath}#tick:\\d+ unreviewed recurring setTimeout`,
+        `${escapedPath}#boundTick:\\d+ unreviewed recurring setTimeout`,
         `${escapedPath}#awaited:\\d+ unreviewed recurring setTimeout`,
         `${escapedPath}#chained:\\d+ unreviewed recurring setTimeout`,
         `${escapedPath}#reschedule:\\d+ unreviewed recurring setTimeout$`,
