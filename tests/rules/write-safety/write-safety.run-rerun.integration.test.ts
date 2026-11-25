@@ -1,13 +1,12 @@
 import { createMountedRerunWorld } from "../../support/helpers/dashboard/mounted-rerun-world.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act } from "react";
 import { afterEach,describe,it } from "vitest";
-import { StartPlanRequestSchema } from "../../../src/models/dashboard/start-plan.js";
+import { RerunWarningWireSchema } from "../../../src/models/dashboard/rerun-warning.js";
 import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
 import { absentProbeEvidence } from "../../support/fixtures/write-sequencer-fixtures.js";
 
-const { setup, press, pressOnce, checkbox, field, fill, mount, cleanup } = createMountedRerunWorld();
+const { setup, press, pressOnce, mount, unmount, cleanup } = createMountedRerunWorld();
 afterEach(cleanup);
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
@@ -18,18 +17,30 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     h.world.probeResults.push({ ...absence, evidence: { ...absence.evidence,
       idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", "10812346|fixture-termination") } });
     assert.equal((await h.execute(other)).state, "done");
-    await mount(h, source); assert.equal(field("Employee ID").value, "10812345");
-    await fill(field("Employee ID"), "10812346"); await press("Continue"); await act(async () => checkbox("Dry run").click()); await pressOnce("Start dry run");
+    await mount(h, source); await press("Continue"); await pressOnce("Start live run");
     assert.ok(document.querySelector('[aria-label="Repeat transaction warning"]'), "the source's warning is read before any plan");
-    assert.equal(h.submissions.length, 0); await pressOnce("Confirm");
-    await pressOnce("Start dry run");
-    assert.ok(document.querySelector('[aria-label="Repeat transaction warning"]'), "the changed business key renews the warning at planning");
-    assert.equal(h.finalCommands.length, 0); assert.equal(h.queueRoots.length, 2);
-    const first = StartPlanRequestSchema.parse(h.submissions.at(-1)); await pressOnce("Confirm");
-    await pressOnce("Start dry run");
-    const second = StartPlanRequestSchema.parse(h.submissions.at(-1));
-    assert.notEqual(first.warningAcknowledgment, second.warningAcknowledgment); assert.deepEqual(second.submissions[0], { eid: "10812346" });
-    assert.equal(typeof second.warningAcknowledgment, "string", "the confirmed warning rides the second plan"); assert.equal(h.finalCommands.length, 1, "a clean plan with the confirmed warning submits at once");
+    assert.equal(h.submissions.length, 0); assert.equal(h.finalCommands.length, 0); assert.equal(h.queueRoots.length, 2);
+    // The dialog keeps the source's own key, so a changed key goes through the launch door it plans with.
+    await unmount();
+    const selectedStepKeys = h.descriptor.timeline.map(step => step.key);
+    const rerunSource = { runId: source.envelope.runId, expectedVersion: source.version, intent: "rerun" as const, selectedStepKeys };
+    const shown = RerunWarningWireSchema.parse(await h.launch.previewWarnings({ workflowId: h.descriptor.id, source: rerunSource }));
+    assert.equal(shown.rerun.warnings.length, 1);
+    const plan = (changed: object) => h.launch.preview({ workflowId: h.descriptor.id, submissions: [{ eid: "10812346" }], dryRun: false, browserMode: "headless",
+      captureBrowserScreenshots: false, selectedStepKeys, rerunSource: { ...rerunSource, copiedFrom: [] }, ...changed });
+    const first = await plan({ warningAcknowledgment: shown.rerun.warningDigest });
+    assert.ok(first.rerun); assert.notEqual(first.rerun.warningDigest, shown.rerun.warningDigest, "the changed business key renews the warning at planning");
+    const start = (proposed: typeof first) => h.kernel.executeStart(h.launch.prepareFinal(proposed));
+    assert.equal((await start(first)).state, "confirmation-required");
+    assert.equal(h.queueRoots.length, 2);
+    const second = await plan({ warningAcknowledgment: first.rerun.warningDigest });
+    assert.equal(second.rerun?.warningDigest, first.rerun.warningDigest);
+    assert.equal(second.rerun?.acknowledgment, first.rerun.warningDigest, "the confirmed warning rides the second plan");
+    const memo = await plan({ submissions: [{ eid: "10812346", memo: "edited" }], warningAcknowledgment: first.rerun.warningDigest });
+    assert.equal(memo.rerun?.warningDigest, first.rerun.warningDigest, "an edited memo preserves the warning");
+    assert.equal((await start(second)).state, "applied", "a clean plan with the confirmed warning submits at once");
+    assert.equal(h.queueRoots.length, 3);
+    const run = h.database.authority.runs.get(h.queueRoots.at(-1)?.runId ?? ""); assert.deepEqual(run?.input.parsed.value, { eid: "10812346" });
   });
 
 });
