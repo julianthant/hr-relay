@@ -1234,14 +1234,15 @@ function validateWorkbookPayload(raw: unknown) {
 /** Payloads and references read in one transaction see the same immutable image. Keep every envelope check. */
 function workbookInspectionReaders(database: DatabaseSync) {
   type NativeWorkbook = ReturnType<typeof decodeEditableWorkbook>;
-  const cache = storedSizeCache<ReturnType<typeof validateWorkbookPayload> & { native?: NativeWorkbook }>(workbookCacheCharacters);
+  type InspectedPayload = ReturnType<typeof validateWorkbookPayload> & { native?: NativeWorkbook };
+  const cache = storedSizeCache<InspectedPayload>(workbookCacheCharacters);
   const wireProofs = new WeakSet<object>(), nativeProofs = new WeakSet<object>();
   const wireSchema = z.custom<EditableWorkbookWire>(value => typeof value === 'object' && value !== null && wireProofs.has(value));
   const savedWire = SavedWorkbookWireSchema.safeExtend({ workbook: wireSchema });
   const savedNative = SavedWorkbookSchema.safeExtend({ workbook: z.custom<NativeWorkbook>(value => typeof value === 'object' && value !== null && nativeProofs.has(value)) });
   const snapshot = WorkbookLibrarySnapshotSchema.safeExtend({ workbook: wireSchema });
   const rowByDigest = database.prepare('SELECT digest,payload_json FROM workbook_payloads WHERE digest=?');
-  const remember = (raw: unknown) => {
+  const remember = (raw: unknown): InspectedPayload => {
     const entry = validateWorkbookPayload(raw);
     wireProofs.add(entry.workbook);
     cache.set(entry.digest, entry);
