@@ -77,7 +77,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const revision = database.trackAuthorityTables(["timeline_events", ...workerTables], "poll-hint");
   const workerRevision = database.trackAuthorityTables(workerTables, "poll-hint");
   const startupTimelineRevision = database.trackAuthorityTables(["timeline_events"], "poll-hint");
-  let key: string | { state: "retry" } = JSON.stringify(database.capturedChangeKey());
+  let key: ReturnType<AuthorityDatabase["capturedChangeKey"]> | { state: "retry" } = database.pollCapturedChangeKey();
   const startupWorkers = workerRevision();
   let startupTimeline = startupTimelineRevision();
   let observed = revision();
@@ -121,19 +121,20 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   function check() {
     if (stopped) return;
     try {
-      const current = JSON.stringify(database.capturedChangeKey());
       const now = clock.nowMs(), elapsed = clock.monotonicMs();
       const safety = elapsed >= safetyAt;
       const leaseDue = now >= leaseExpiry || now < lastWall;
       const degraded = projection.health().state === "degraded";
-      if (current === key && !safety && !leaseDue && !degraded) {
+      const current = safety || leaseDue || degraded ? database.capturedChangeKey() : database.pollCapturedChangeKey();
+      const unchanged = !("state" in key) && key.changeLogSeq === current.changeLogSeq && key.schemaCookie === current.schemaCookie;
+      if (unchanged && !safety && !leaseDue && !degraded) {
         lastWall = now;
         return;
       }
       if (pending !== undefined) {
         checkAfterRead = true;
         // Initial worker validation can take longer than the timeline's publication deadline.
-        if (initialRead && !degraded && current !== key) {
+        if (initialRead && !degraded && !unchanged) {
           const nextTimeline = startupTimelineRevision();
           if (nextTimeline === undefined || nextTimeline !== startupTimeline) projection.ingestFromTimeline();
           startupTimeline = nextTimeline;
@@ -142,7 +143,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       }
       lastWall = now;
       const next = revision();
-      if (safety || leaseDue || degraded || typeof key !== "string" || next === undefined || next !== observed) void startRead(now, workerRevision());
+      if (safety || leaseDue || degraded || "state" in key || next === undefined || next !== observed) void startRead(now, workerRevision());
       key = current;
       observed = next;
       if (safety) safetyAt = elapsed + 60_000;
