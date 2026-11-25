@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, copyFileSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
@@ -203,6 +203,11 @@ it("reuses a verified stopped image across a fresh copy of the same source bytes
       writeFileSync(f.profile.path, readFileSync(f.profile.path));
       expect(scansRuns(() => expect(read()).toMatchObject({ authorityContentFingerprint: first.authorityContentFingerprint }))).toBe(false);
 
+      // A clean close removes the WAL; opening the store again can leave an empty one.
+      expect(existsSync(f.profile.path + "-wal")).toBe(false);
+      writeFileSync(f.profile.path + "-wal", "", { mode: 0o600 });
+      expect(scansRuns(() => expect(read()).toMatchObject({ authorityContentFingerprint: first.authorityContentFingerprint }))).toBe(false);
+
       copyFileSync(f.profile.path, f.profile.path + ".copy");
       renameSync(f.profile.path + ".copy", f.profile.path);
       expect(scansRuns(() => expect(read()).toMatchObject({ authorityContentFingerprint: first.authorityContentFingerprint }))).toBe(true);
@@ -210,6 +215,11 @@ it("reuses a verified stopped image across a fresh copy of the same source bytes
       AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
       f.edit("UPDATE runs SET id=id");
       expect(scansRuns(read)).toBe(true);
+
+      AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
+      writeFileSync(f.profile.path, readFileSync(f.profile.path));
+      const serialize = vi.spyOn(DatabaseSync.prototype, "serialize").mockReturnValueOnce(Buffer.from("different private copy"));
+      try { expect(scansRuns(read)).toBe(true); } finally { serialize.mockRestore(); }
     }));
   } finally { machine.release(); }
 });
