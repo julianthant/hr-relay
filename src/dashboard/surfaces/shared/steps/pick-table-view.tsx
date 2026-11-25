@@ -32,7 +32,7 @@ export function PickTableView({ title, columns, rows, typed, chosen, onChoose, o
     </TR>;
   };
   return <PageCard title={title} mode="Pick">
-    <Table label={title}>
+    <div role="region" tabIndex={0} aria-label={`${title} table`} className="overflow-x-auto rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ui-info"><Table label={title}>
       <THead><TR><TH className="w-9 pl-3"><span className="sr-only">Choose</span></TH>{columns.map((column, index) => <TH key={column.id} align={index === last ? "right" : "left"} title={column.label} className={cn("text-caption font-normal normal-case whitespace-nowrap", index === flex && "w-full max-w-0 truncate")}>{column.label}</TH>)}</TR></THead>
       <TBody>
         {rows.map(item => row(item.id, item.label, columns.map((column, index) => {
@@ -46,6 +46,6 @@ export function PickTableView({ title, columns, rows, typed, chosen, onChoose, o
             onChange={event => onText(event.target.value)} className="ml-auto h-7 w-36 text-right font-medium text-ui-info tabular-nums" /></TD>
         </>)}
       </TBody>
-    </Table>
+    </Table></div>
   </PageCard>;
 }

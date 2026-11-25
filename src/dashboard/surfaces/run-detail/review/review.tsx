@@ -101,7 +101,7 @@ function ReviewRecordCard({ runId, subject, record, name, original, pages, readO
       <Card role="group" aria-label="Record selection">
         <CardBody className="space-y-2 p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Checkbox className="min-w-0 flex-1" label={<><span className="sr-only">Include </span><span data-ocr-review-heading role="heading" aria-level={3} tabIndex={-1} className={cn("inline-block min-w-0 break-words rounded-sm text-body font-medium", dsFocus)}>{name}</span></>} checked={record.selected} disabled={disabled || selectionDisabled || readOnly || record.unknown} onCheckedChange={selected => onChange?.({ ...record, selected: selected === true })} />
+            <Checkbox className="min-w-0 flex-1" label={<><span className="sr-only">Include </span><span data-ocr-review-heading role="heading" aria-level={3} tabIndex={readOnly ? 0 : -1} className={cn("inline-block min-w-0 break-words rounded-sm text-body font-medium", dsFocus)}>{name}</span></>} checked={record.selected} disabled={disabled || selectionDisabled || readOnly || record.unknown} onCheckedChange={selected => onChange?.({ ...record, selected: selected === true })} />
             {record.unconfirmed !== undefined && <Badge tone="warning">Unconfirmed</Badge>}
             {disposition && <Badge tone={disposition.tone}>{disposition.label}</Badge>}
           </div>
