@@ -322,6 +322,13 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     pumpAll();
   };
 
+  const failLane = (lane: Lane, failure: Error) => {
+    lane.failure = failure;
+    for (const read of [...lane.interactive.splice(0), ...lane.background.splice(0)]) {
+      for (const waiter of [...read.waiters]) settleWaiter(waiter, { error: failure });
+    }
+  };
+
   const launch = (lane: Lane) => {
     const start = prepareReadLaneStart(owner, database, lane.name);
     const original = starts.get(lane.name);
@@ -361,17 +368,14 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       if (closing) return;
       lane.consecutiveFailures += 1;
       if (lane.consecutiveFailures > LANE_RESTART_LIMIT) {
-        lane.failure = cause;
-        for (const read of [...lane.interactive.splice(0), ...lane.background.splice(0)]) {
-          for (const waiter of [...read.waiters]) settleWaiter(waiter, { error: cause });
-        }
+        failLane(lane, cause);
         startCheckpointWhenIdle();
         pumpAll();
         return;
       }
       restarts += 1;
       try { launch(lane); }
-      catch (error) { lane.failure = error instanceof Error ? error : new Error("read-lane-restart-failed", { cause: error }); }
+      catch (error) { failLane(lane, error instanceof Error ? error : new Error("read-lane-restart-failed", { cause: error })); }
       startCheckpointWhenIdle();
       pumpAll();
     }));

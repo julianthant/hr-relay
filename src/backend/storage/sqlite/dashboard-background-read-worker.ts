@@ -4,7 +4,7 @@ import { BrowserSystemIdSchema, FingerprintSchema, IsoInstantSchema, PositiveInt
   WorkerIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 import type { AuthorityDatabase } from "./authority-database.js";
 import { createDashboardSnapshotQuery } from "./authority-dashboard-snapshot.js";
-import { defineLaneRead, type DashboardReadLanes } from "./dashboard-read-host.js";
+import { defineLaneRead, ReadLaneRestartedError, type DashboardReadLanes } from "./dashboard-read-host.js";
 import { openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
 
 const WorkerCursorSchema = z.strictObject({ offset: PositiveIntSchema, digest: FingerprintSchema });
@@ -61,7 +61,13 @@ const dashboardTimelinePage = defineLaneRead(import.meta.url, "dashboard-timelin
 export function createDashboardBackgroundReader(lanes: DashboardReadLanes) {
   return {
     async read(input: DashboardBackgroundReadRequest, signal?: AbortSignal): Promise<DashboardBackgroundReadResult> {
-      const reply = await lanes.read(dashboardTimelinePage, RequestSchema.parse(input), signal === undefined ? {} : { signal });
+      let reply;
+      try { reply = await lanes.read(dashboardTimelinePage, RequestSchema.parse(input), signal === undefined ? {} : { signal }); }
+      catch (error) {
+        if (!(error instanceof ReadLaneRestartedError)) throw error;
+        const cause: unknown = error.cause;
+        throw new Error(`dashboard-background-worker-exited: ${cause instanceof Error ? cause.message : "unknown"}`, { cause: error });
+      }
       return ResultSchema.parse(JSON.parse(reply.body));
     },
   };
