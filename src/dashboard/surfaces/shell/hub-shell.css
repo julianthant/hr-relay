@@ -2,7 +2,7 @@
 .hub-icon svg { width:16px;height:16px; }
 .hub-icon:hover,.hub-chat-title:hover { background:var(--ds-surface-3);color:var(--ui-primary); }
 .hub-icon:active { transform:translateY(1px); }
-.hub-slot { --assistant-h:max(360px,min(560px,70dvh,calc(100dvh - var(--session-dock-h, 46px) - 20px - var(--logs-top, 70px))));position:fixed;right:12px;bottom:min(calc(var(--session-dock-h, 46px) + 20px),calc(100dvh - var(--logs-top, 70px) - var(--assistant-h)));box-shadow:0 10px 32px rgb(0 0 0 / .22),0 1px 3px rgb(0 0 0 / .12);width:480px;height:var(--assistant-h);max-width:calc(100vw - 24px);overflow:hidden;border:1px solid var(--ui-stroke);border-radius:16px;display:flex;flex-direction:column;background:var(--ui-panel);color:var(--ui-primary);z-index:var(--ds-layer-assistant); }
+.hub-slot { --assistant-h:max(360px,min(560px,70dvh,calc(100dvh - 20px - var(--logs-top, 70px))));position:fixed;right:12px;bottom:min(20px,calc(100dvh - var(--logs-top, 70px) - var(--assistant-h)));box-shadow:0 10px 32px rgb(0 0 0 / .22),0 1px 3px rgb(0 0 0 / .12);width:480px;height:var(--assistant-h);max-width:calc(100vw - 24px);overflow:hidden;border:1px solid var(--ui-stroke);border-radius:16px;display:flex;flex-direction:column;background:var(--ui-panel);color:var(--ui-primary);z-index:var(--ds-layer-assistant); }
 .hub-slot[hidden] { display:none; }
 .hub-slot-header,#hub-panel-assistant>.hub-panel-header { display:flex;flex:none;padding:10px 12px 10px 16px;min-height:52px;align-items:center;gap:8px;border:0;background:transparent; }
 .hub-slot-title { min-width:0;flex:1;display:flex;overflow:hidden;font-size:14px;line-height:20px;color:var(--ui-primary); }

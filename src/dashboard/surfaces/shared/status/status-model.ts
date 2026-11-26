@@ -77,7 +77,6 @@ export function stepInterruptLabel(interrupt: StepInterruptWire | undefined): st
   return undefined;
 }
 
-export const PAUSE_ALL_PENDING_STATUS = "Pauses are not yet confirmed. A save in progress finishes first.";
 export const PAUSE_ALL_EFFECT = "A save in progress finishes first. Other steps restart on Resume.";
 
 export type { QueueBusinessOutcome } from "../../../../models/dashboard/projection.js";

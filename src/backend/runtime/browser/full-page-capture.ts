@@ -10,7 +10,10 @@ export class FullPageCaptureRestoreError extends AggregateError {
 }
 
 export class FullPageCaptureRefusedError extends Error {
-  constructor(readonly reason: "secret-controls-present" | "page-changed") { super(reason); this.name = "FullPageCaptureRefusedError"; }
+  constructor(readonly reason: "secret-controls-present" | "page-changed", options?: ErrorOptions) {
+    super(reason, options);
+    this.name = "FullPageCaptureRefusedError";
+  }
 }
 
 /** A capture the page's geometry or safety observer could not complete, named for the operator. */
@@ -33,20 +36,35 @@ interface NativeCaptureMasks {
 type CaptureWindow = Window & { __relayCapture?: CaptureState; __relayCaptureSecrets?: { observer: MutationObserver; seen: boolean; restore: () => void } };
 
 async function captureWithNativeMasks(page: Page, mask: (frame: Frame) => Locator[], capture: () => Promise<Buffer>): Promise<Buffer> {
-  const applied: JSHandle<NativeCaptureMasks>[] = [];
+  const frames = new Set(page.frames());
+  const navigatedFrames = new Set<Frame>();
+  let frameSetChanged = false;
+  const frameChanged = () => { frameSetChanged = true; };
+  const frameNavigated = (frame: Frame) => { navigatedFrames.add(frame); frameChanged(); };
+  const frameSetIsCurrent = () => {
+    const current = page.frames();
+    return !frameSetChanged && current.length === frames.size && current.every(frame => frames.has(frame));
+  };
+  const assertFrameSet = () => {
+    if (!frameSetIsCurrent()) throw new FullPageCaptureRefusedError("page-changed");
+  };
+  const applied: { frame: Frame; handle: JSHandle<NativeCaptureMasks> }[] = [];
   let outcome: { state: "captured"; result: Buffer } | { state: "failed"; cause: unknown };
   const assertMasked = async () => {
-    for (const handle of applied) {
+    for (const { handle } of applied) {
       if (!await handle.evaluate(masks => masks.intact())) throw new FullPageCaptureRefusedError("secret-controls-present");
     }
   };
+  page.on("frameattached", frameChanged);
+  page.on("framedetached", frameChanged);
+  page.on("framenavigated", frameNavigated);
   try {
-    for (const frame of page.frames()) {
+    for (const frame of frames) {
       const elements: ElementHandle<Node>[] = [];
       try {
         for (const locator of mask(frame)) elements.push(...await locator.elementHandles());
         if (elements.length === 0) continue;
-        applied.push(await frame.evaluateHandle(nodes => {
+        const handle = await frame.evaluateHandle(nodes => {
           const hidden = [["transition-property", "none"], ["opacity", "0"]] as const;
           const entries = [...new Set(nodes)].map(element => {
             if (!(element instanceof HTMLElement || element instanceof SVGElement)) throw new Error("capture mask target has no inline style");
@@ -88,18 +106,33 @@ async function captureWithNativeMasks(page: Page, mask: (frame: Frame) => Locato
             masks.restore();
             throw cause;
           }
-        }, elements));
+        }, elements);
+        applied.push({ frame, handle });
       } finally { await Promise.all(elements.map(element => element.dispose())); }
     }
     await assertMasked();
+    assertFrameSet();
     const result = await capture();
+    assertFrameSet();
     await assertMasked();
+    assertFrameSet();
     outcome = { state: "captured", result };
   } catch (cause) {
-    outcome = { state: "failed", cause };
+    outcome = { state: "failed", cause: frameSetIsCurrent() || (cause instanceof FullPageCaptureRefusedError && cause.reason === "page-changed")
+      ? cause : new FullPageCaptureRefusedError("page-changed", { cause }) };
+  } finally {
+    page.off("frameattached", frameChanged);
+    page.off("framedetached", frameChanged);
+    page.off("framenavigated", frameNavigated);
   }
-  const cleanup = await Promise.allSettled(applied.map(async handle => {
-    try { await handle.evaluate(masks => masks.restore()); }
+  const cleanup = await Promise.allSettled(applied.map(async ({ frame, handle }) => {
+    try {
+      if (!frame.isDetached()) await handle.evaluate(masks => masks.restore());
+    } catch (error) {
+      // A replaced document no longer owns live mask styles. Same-document navigation still needs restoration.
+      if (!navigatedFrames.has(frame) || !(error instanceof Error)
+        || !/^jsHandle\.evaluate: Execution context was destroyed, most likely because of a navigation\.?$/u.test(error.message)) throw error;
+    }
     finally { await handle.dispose(); }
   }));
   const errors: unknown[] = [];

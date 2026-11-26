@@ -114,8 +114,8 @@ export function useLogsTop(active: boolean) {
     if (!active) return;
     const root = document.documentElement;
     const measure = () => {
-      const column = document.querySelector(".dashboard-log-column"), card = column?.children[1] ?? column?.children[0];
-      if (card) root.style.setProperty("--logs-top", `${String(Math.round(card === column?.children[0] ? card.getBoundingClientRect().bottom + 12 : card.getBoundingClientRect().top))}px`);
+      const column = document.querySelector(".dashboard-log-column"), card = column?.firstElementChild;
+      if (card) root.style.setProperty("--logs-top", `${String(Math.round(card.getBoundingClientRect().top))}px`);
     };
     measure();
     const observer = new ResizeObserver(measure), column = document.querySelector(".dashboard-log-column");

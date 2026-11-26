@@ -11,6 +11,8 @@ import { DUO_SECURITY_TARGET } from "../preflight/preflight-remedy-model.js";
 import type { DuoKeyChangeResult, DuoKeysSnapshot } from "../../../../models/profiles/public-profile.js";
 
 export interface AccountValues {
+  /** The stored UCPath sign-in email, separate from the Relay username. */
+  readonly ucpathUsername?: string;
   readonly name: string;
   readonly initials: string;
   readonly timekeeper: string;

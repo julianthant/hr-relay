@@ -192,11 +192,12 @@ it("applies a notification change at once without a card, and refuses with nothi
   await assert.rejects(change.invoke({ action: "read", target: "all" }, o.context), refusedWith("ASSISTANT_PROPOSAL_REFUSED"), "already read: nothing to change");
 });
 
-it("refuses reruns of cancelled, moved, parked and attempting sources through the proposal owner", async () => {
+it("proposes a rerun of a cancelled source and refuses moved, parked and attempting sources through the proposal owner", async () => {
   const cancelledOwner = await owners(), queued = cancelledOwner.h.start(cancelledOwner.h.proposal());
   assert.equal(cancelledOwner.h.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: cancelledOwner.clock.now().toISOString(), requestedBy: "local-operator",
     source: "queue-row", family: "run", type: "cancel", target: { runId: queued.envelope.runId, expectedVersion: queued.version } })).state, "applied");
-  await assert.rejects(rerunCard(cancelledOwner, cancelledOwner.h.fresh(queued)), refusedWith("ASSISTANT_PROPOSAL_REFUSED"));
+  const cancelledCard = await rerunCard(cancelledOwner, cancelledOwner.h.fresh(queued));
+  assert.ok(cancelledCard.effect === "workflow-start" && cancelledCard.source === "rerun");
 
   const movedOwner = await owners(), moved = await movedOwner.done();
   await assert.rejects(movedOwner.tool("propose_rerun").propose({ run: movedOwner.references.issue("R", moved.envelope.runId, "the selected run", moved.envelope.runId, moved.version + 1) },

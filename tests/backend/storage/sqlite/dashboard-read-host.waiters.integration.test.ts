@@ -3,7 +3,7 @@ import { afterEach, it } from "vitest";
 import { z } from "zod";
 import { createDashboardReadHost, ReadLaneRestartedError, ReadSupersededError, type DashboardReadLanes } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { LANE_READS_ENTRY, laneFacts, laneMismatchedReply, laneOwnSnapshot, laneSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { LANE_READS_ENTRY, laneFacts, laneForgedBatch, laneMismatchedReply, laneOwnSnapshot, laneSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -98,6 +98,23 @@ it("restarts the lane on a reply for a read it never sent and settles the runnin
   await assert.rejects(lanes.read(laneMismatchedReply, {}), (error: unknown) => error instanceof ReadLaneRestartedError);
   assert.equal(lanes.status().restarts, 1);
   assert.deepEqual(await run(lanes.read(laneSleep, { tag: "after", ms: 0 })), { tag: "after", run: 1 });
+});
+
+it("refuses a whole reply batch of known in-flight ids that spans read keys or begins before a message it answers", async () => {
+  const restarted = (error: unknown) => error instanceof ReadLaneRestartedError;
+  // A fresh host numbers its messages from 1: the forging read is 1 and the queued read of another key is 2.
+  const crossKey = await host();
+  const forger = crossKey.read(laneForgedBatch, { ids: [1, 2], beginSeq: 2 });
+  const other = crossKey.read(laneSleep, { tag: "other", ms: 0 });
+  await assert.rejects(forger, restarted);
+  await assert.rejects(other, restarted, "a body for another read key never reaches this waiter");
+  assert.equal(crossKey.status().restarts, 1);
+
+  // Its own id, but a begin position before the message was posted.
+  const stale = await host();
+  await assert.rejects(stale.read(laneForgedBatch, { ids: [1], beginSeq: 0 }), restarted);
+  assert.equal(stale.status().restarts, 1);
+  assert.deepEqual(await run(stale.read(laneSleep, { tag: "after", ms: 0 })), { tag: "after", run: 1 });
 });
 
 it("carries the position a read reports from its own snapshot", async () => {

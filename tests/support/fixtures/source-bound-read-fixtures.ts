@@ -36,7 +36,7 @@ export function sourceBoundReadStores(world: WriteFixtureWorld, failOnCall?: num
     calls += 1;
     if ((typeof failOnCall === "number" ? calls === failOnCall : failOnCall?.includes(calls)) || failedReadCalls.get(world)?.includes(calls)) throw new Error("fixture downstream failure");
     ctx.recordData({ direction: "read", field: "eid", value: input.eid });
-    onRead?.();
+    onRead?.(); world.onRead?.();
     world.events.push(`read:${input.memo ?? "absent"}`); return { eid: input.eid };
   } });
   return defineTaskStoreRegistry([defineServiceStore("ocr", { read: task })], {

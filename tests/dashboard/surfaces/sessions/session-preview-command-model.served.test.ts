@@ -14,7 +14,7 @@ import { act, createElement, type ComponentProps } from "react";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { createRoot } from "react-dom/client";
 import { vi } from "vitest";
-import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
+import { SessionPanel } from "../../../support/helpers/dashboard/sessions-host.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";

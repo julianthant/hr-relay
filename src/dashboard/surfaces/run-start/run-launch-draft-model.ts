@@ -14,7 +14,7 @@ import {
 import type { RerunLaunchSource } from "./run-launch-model.js";
 import type { PdfRunDraft, PdfRunPicks } from "./run-start-pdfs.js";
 import type { WorkbookRowChoice } from "./run-workbook-rows-model.js";
-import { factDraft, includedRowCount, rowFieldsOpen, rowIncluded, sourceBadge, sourceTypedFacts, startRowsOf, type ManualRows, type StepRow } from "./run-steps-model.js";
+import { factDraft, includedRowCount, rowFieldsOpen, rowIncluded, preselectionBadge, sourceTypedFacts, startRowsOf, type ManualRows, type StepRow } from "./run-steps-model.js";
 
 export type ReferenceSelection = Readonly<{ libraryId: string; versionId: string; sheetId: string }>;
 export type CheckPick = Readonly<{ versionId: string; sheetIds: readonly string[] }>;
@@ -268,7 +268,7 @@ export function rowInputDriven(workflow: RunStartWorkflow | undefined, typedValu
 /** A rerun picks up from the first row that did not complete: completed rows before it are off and rows the source skipped stay skipped.
  * A row stays on when switching it off would take a later row with it, or leave a value nobody recorded to type. */
 function preselectRerunSteps(draft: LaunchDraft, snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow): LaunchDraft {
-  const rows = startRowsOf(workflow), badges = rows.map(row => sourceBadge(row, snapshot));
+  const rows = startRowsOf(workflow), badges = rows.map(row => preselectionBadge(row, snapshot));
   const failed = badges.indexOf("failed"), restart = failed >= 0 ? failed : rerunsInOneClick(snapshot) ? 0 : Math.max(0, badges.indexOf("not-started"));
   const leavesOut = (index: number) => badges[index] === "skipped" || badges[index] === "completed" && index < restart;
   let next = draft;

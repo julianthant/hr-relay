@@ -13,7 +13,7 @@ import type { StartRefusalCode } from "../../../../../../src/models/run/start-re
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
   RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
-  never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, type ServedCheck,
+  never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, runDialogWriteRerunSnapshot, runDialogWriteRerunWarning, RUN_DIALOG_WRITE_RERUN_CATALOG, RUN_DIALOG_WORK_STUDY, type ServedCheck,
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
 import { RUN_DIALOG_REFERENCE_READS } from "../../../../fixtures/dashboard/run-dialog-reference-fixtures.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
@@ -22,10 +22,10 @@ import { StoryFrame } from "./story-frame.js";
 
 const noop = () => undefined;
 
-function DialogScene({ client, rerun, before, catalog = RUN_DIALOG_CATALOG }: { client: DashboardClient; rerun?: boolean; before?: () => void; catalog?: typeof RUN_DIALOG_CATALOG }) {
+function DialogScene({ client, rerun, before, catalog = RUN_DIALOG_CATALOG, workflowId = RUN_DIALOG_WORKFLOW }: { client: DashboardClient; rerun?: boolean; before?: () => void; catalog?: typeof RUN_DIALOG_CATALOG; workflowId?: string }) {
   before?.();
   return <StoryFrame><DashboardClientProvider client={client}><SceneBinding>
-    <RunStartDialog open onOpenChange={noop} catalog={catalog} panelWorkflowId={RUN_DIALOG_WORKFLOW} actorId={RUN_DIALOG_ACTOR}
+    <RunStartDialog open onOpenChange={noop} catalog={catalog} panelWorkflowId={workflowId} actorId={RUN_DIALOG_ACTOR}
       onOpenIntake={noop} onFixCheck={noop} {...(rerun === true ? { rerunSource: RUN_DIALOG_RERUN_SOURCE } : {})} />
   </SceneBinding></DashboardClientProvider></StoryFrame>;
 }
@@ -52,10 +52,10 @@ async function reach(page: Page, stage: RunStartStage, rerun: boolean): Promise<
   }
 }
 
-interface SceneOptions { readonly catalog?: typeof RUN_DIALOG_CATALOG; readonly rerun?: boolean; readonly then?: (page: Page) => Promise<void>; readonly before?: () => void }
+interface SceneOptions { readonly catalog?: typeof RUN_DIALOG_CATALOG; readonly workflowId?: string; readonly rerun?: boolean; readonly then?: (page: Page) => Promise<void>; readonly before?: () => void }
 const scene = (title: string, client: () => DashboardClient, stage: RunStartStage, extra: Partial<Story> & SceneOptions = {}): Story => {
-  const { rerun = false, then, before, catalog, ...story } = extra;
-  return { title, render: () => <DialogScene client={client()} rerun={rerun} {...(catalog === undefined ? {} : { catalog })} {...(before === undefined ? {} : { before })} />, ready: '[role="dialog"]',
+  const { rerun = false, then, before, catalog, workflowId, ...story } = extra;
+  return { title, render: () => <DialogScene client={client()} rerun={rerun} {...(catalog === undefined ? {} : { catalog })} {...(workflowId === undefined ? {} : { workflowId })} {...(before === undefined ? {} : { before })} />, ready: '[role="dialog"]',
     play: async page => { await reach(page, stage, rerun); await then?.(page);
       // The pointer rests on the button just pressed, which would draw its hover fill.
       await page.mouse.move(0, 0); }, ...story };
@@ -66,10 +66,12 @@ const WARN: ServedCheck = { check: PreflightCheckIdSchema.parse("fiscal.current"
 const FIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("secrets.ucpath-sso"), status: "fail", summary: "The UCPath password is missing." };
 const UNFIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("filesystem.health"), status: "fail", summary: "Relay is out of disk space." };
 const rerunClient = (served: Partial<DashboardClient> = {}, outcome: "failed" | "done" = "failed") => () => runDialogClient({ rerunValues: async () => runDialogRerunSnapshot(outcome), previewRerunWarnings: async () => runDialogRerunWarning(false), ...served });
+const writeRerunClient = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ rerunValues: async () => runDialogWriteRerunSnapshot(), previewRerunWarnings: async () => runDialogRerunWarning(false), ...served });
 const planning = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ submitStartPlan: async () => runDialogPlan(), executeCommand: async () => RUN_DIALOG_APPLIED, ...served });
 const start = (page: Page) => press(page, "Start run");
 
 const stage = scene;
+const WORK_STUDY_RERUN = { catalog: RUN_DIALOG_WRITE_RERUN_CATALOG, workflowId: RUN_DIALOG_WORK_STUDY } as const;
 
 const customizeSteps = (page: Page) => dialog(page).getByRole("switch", { name: "Customize steps" }).click();
 
@@ -83,6 +85,10 @@ const STAGE = {
   StartSteps: stage("A customized start's Steps, the last page", reading(PASS), "Start", {
     then: async page => { await customizeSteps(page); await press(page, "Continue"); await at(page, "Steps"); } }),
   RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
+  CancelledSteps: stage("A Work-Study run cancelled after it filed: every served step is required, so all run again", writeRerunClient(), "Steps", { rerun: true, ...WORK_STUDY_RERUN }),
+  CancelledReceipts: stage("That rerun's Start, naming the receipt the source already filed", writeRerunClient(), "Start", { rerun: true, ...WORK_STUDY_RERUN }),
+  CancelledWarning: stage("That rerun warned before its filing step files again", writeRerunClient({ previewRerunWarnings: async () => runDialogWriteRerunWarning() }), "Start", { rerun: true, ...WORK_STUDY_RERUN,
+    then: async page => { await press(page, "Start live run"); await dialog(page).getByText("already submitted").waitFor(); } }),
 } satisfies Record<string, Story>;
 
 const CHECKS = {
