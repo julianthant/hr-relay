@@ -13,6 +13,8 @@ import { projectActivityPopulation, projectActivityBrowse, useActivityWiring, ty
 import { ActivityView } from "../../../src/dashboard/surfaces/activity/activity-view.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
+import { noteRunData } from "../../../src/dashboard/state/run-data-changes.js";
+import type { DashboardDayWire } from "../../../src/models/dashboard/projection.js";
 import { createActivityReportFixtures } from "../../support/helpers/dashboard/activity-report-fixtures.js";
 
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
@@ -47,6 +49,13 @@ function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ sta
   const identity = { from: report.from, to: report.to, generatedAt: report.generatedAt, expiresAt: "2026-08-07T12:15:00.000Z", sourceIdentity: "a".repeat(64), authorityGeneration: 1, reportDigest: sha256Hex(canonicalJsonStringify(report)) };
   const successfulTiming = population.length ? [{ workflowId: "fixture", totalMs: timed.length ? timed.reduce((sum, n) => sum + n, 0) : null, measured: timed.length, unmeasured: timing.length - timed.length }] : [];
   return ActivityPopulationSelectionSchema.parse({ report: { ...report, snapshot: { ...identity, token: "as1.fixture.signature" } }, population, successfulTiming, snapshot: { ...identity, reportToken: "as1.fixture.signature", populationDigest: sha256Hex(canonicalJsonStringify({ population, successfulTiming })), token: "ap1.fixture.signature" } });
+}
+const monthCounts = new WeakMap<object, Map<string, number>>();
+/** What the day stream does when a run on `day` moves: a frame whose month count for that day grew. The first call only sets the baseline. */
+function changeRunData(client: object, day: string): void {
+  const counts = monthCounts.get(client) ?? new Map<string, number>(); monthCounts.set(client, counts);
+  counts.set(day, (counts.get(day) ?? 0) + 1);
+  noteRunData(client, { day, queueSurfaces: [], monthCounts: [...counts].map(([day, count]) => ({ day, count })) } as unknown as DashboardDayWire);
 }
 function browseResult(selected: ActivityPopulationSelection, browse: ActivityPopulationBrowse): ActivityPopulationBrowseResult {
   const all = selected.population.filter(row => browse.metric === "completed" ? row.status === "done" : browse.metric === "timed" ? row.status === "done" && row.parentRunId === null && row.durationMs !== null : browse.metric === "failed" ? row.status === "failed" : ["queued", "running", "cancelling", "blocked", "awaiting-approval"].includes(row.status));
@@ -291,26 +300,66 @@ it("never paints unknown or warning completion evidence as verified", async () =
   }
 });
 
-it("retains the exact served Analytics values on revisit and reports a failed refresh with export gated", async () => {
+it("serves a revisit from the kept report; a run change inside the range refreshes it behind the same numbers, and a failed refresh gates export", async () => {
   const selected = selection(), client = clientOf(selected);
   const held = Promise.withResolvers<ActivityPopulationSelection>();
   let state: ReturnType<typeof useActivityWiring> | undefined;
   function Probe() { state = useActivityWiring(client, { from: selected.report.from, to: selected.report.to }, null, sources, true); return null; }
   const current = () => state;
   const root = createRoot(document.createElement("div"));
+  changeRunData(client, "2026-08-31");
   try {
     await act(async () => root.render(createElement(Probe)));
     const first = current()?.data; assert.ok(first?.state === "loaded");
     await act(async () => root.render(null));
-    vi.mocked(client.activityPopulation).mockImplementationOnce(() => held.promise);
     await act(async () => root.render(createElement(Probe)));
     const revisit = current()?.data; assert.ok(revisit?.state === "loaded"); assert.deepEqual(revisit.report, first.report);
+    assert.equal(vi.mocked(client.activityPopulation).mock.calls.length, 1);
+    assert.equal(current()?.reading, false); assert.equal(current()?.exportReady, true);
+    await act(async () => root.render(null));
+    changeRunData(client, selected.report.from);
+    vi.mocked(client.activityPopulation).mockImplementationOnce(() => held.promise);
+    await act(async () => root.render(createElement(Probe)));
+    const refreshing = current()?.data; assert.ok(refreshing?.state === "loaded"); assert.deepEqual(refreshing.report, first.report);
     assert.equal(vi.mocked(client.activityPopulation).mock.calls.length, 2);
+    assert.equal(current()?.reading, true);
     await assert.rejects(current()!.exportCsv());
     await act(async () => held.reject(new Error("synthetic offline")));
     const failed = current()?.data; assert.ok(failed?.state === "loaded"); assert.deepEqual(failed.report, first.report);
+    assert.equal(current()?.reading, false);
     assert.equal(current()?.notice, ERROR_CATALOG.DASHBOARD_READ_FAILED.text); await assert.rejects(current()!.exportCsv());
   } finally { act(() => root.unmount()); }
+});
+
+it("reads each range once: A, B, A makes two reads, and a change on a day re-reads only the ranges holding it", async () => {
+  const wide = selection(), narrow = selection([{ status: "done", durationMs: 0 }], "2026-08-02");
+  const client = clientOf(wide);
+  client.activityPopulation = vi.fn(async (from: string) => from === wide.report.from ? wide : narrow);
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring>;
+  function Scene({ range }: { range: { from: string; to: string } }) { state = useActivityWiring(client, range, null, sources, true); return null; }
+  const calls = () => vi.mocked(client.activityPopulation).mock.calls.length;
+  const total = () => { const data = state.data; if (data.state !== "loaded") throw new Error(`loaded expected, got ${data.state}`); return data.report.total; };
+  const A = wide.report, B = { from: "2026-08-02", to: wide.report.to };
+  changeRunData(client, "2026-08-31");
+  try {
+    await act(async () => root.render(createElement(Scene, { range: A })));
+    await act(async () => root.render(createElement(Scene, { range: B })));
+    assert.equal(calls(), 2); assert.equal(total(), 1);
+    await act(async () => root.render(createElement(Scene, { range: A })));
+    assert.equal(calls(), 2); assert.equal(total(), 3); assert.equal(state!.reading, false);
+    await act(async () => root.render(createElement(Scene, { range: B })));
+    assert.equal(calls(), 2);
+    await act(async () => changeRunData(client, A.from));
+    assert.equal(calls(), 2);
+    await act(async () => root.render(createElement(Scene, { range: A })));
+    assert.equal(calls(), 3);
+    await act(async () => root.render(createElement(Scene, { range: B })));
+    await act(async () => changeRunData(client, B.to));
+    assert.equal(calls(), 4);
+    await act(async () => root.render(createElement(Scene, { range: A })));
+    assert.equal(calls(), 5);
+  } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
 it("keeps the exact report rendered while the first browse is held and gates export", async () => {
@@ -383,6 +432,7 @@ it("retains a coherent completed report and browse across population refresh, fa
     ? { selection: a, browse: browseResult(a, browse) }
     : ++bCalls === 1 ? held.promise : { selection: b, browse: browseResult(b, browse) });
   const host = document.createElement("div"); const root = createRoot(host);
+  changeRunData(client, "2026-08-31");
   let state: ReturnType<typeof useActivityWiring>;
   function Probe() {
     state = useActivityWiring(client, a.report, browse, sources, true);
@@ -395,6 +445,7 @@ it("retains a coherent completed report and browse across population refresh, fa
     assert.equal(firstReport.state, "loaded"); assert.ok(firstBrowse?.state === "loaded");
     const text = host.querySelector("table")?.textContent;
     await act(async () => root.render(render(false)));
+    changeRunData(client, a.report.from);
     await act(async () => root.render(render(true)));
     assert.equal(bCalls, 1);
     assert.deepEqual(state!.data, firstReport); assert.deepEqual(state!.browse, firstBrowse);
