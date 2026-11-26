@@ -5,6 +5,7 @@ import { afterEach, it, vi } from "vitest";
 import { MOCK_WORKFLOW_COMPOSITION } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { DAY, runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { disposeHttpRouteHarness, harness } from "../../../support/helpers/backend/http-route-harness.js";
+import { chatGptStatusFixture } from "../../../support/helpers/chatgpt-status-fixture.js";
 import { STARTUP_READ_DEADLINE_MS } from "../../../../src/dashboard/app/startup/first-screen.js";
 import { ASSISTANT_FAILURES } from "../../../../src/models/dashboard/assistant.js";
 import { assistantOpen } from "../../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
@@ -58,6 +59,23 @@ it("fails reads still pending at the startup deadline into their notices, then s
     const notices = [...app.host.querySelectorAll('.dashboard-shell [role="alert"]')].map(notice => notice.textContent);
     assert.ok(notices.some(text => /chat history/u.test(text ?? "")), `the assistant shows its notice: ${notices.join(" | ")}`);
     assert.ok(notices.length >= 2, `the queue shows its notice too: ${notices.join(" | ")}`);
+  } finally { await app.stop(); }
+}, STARTUP_READ_DEADLINE_MS + 20_000);
+
+it("fails a cold General Settings link whose account check stalls at the startup deadline", async () => {
+  const server = dashboardServer();
+  const connected = chatGptStatusFixture({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" });
+  const app = await start({}, (url, init) => {
+    const path = new URL(url).pathname;
+    return path === "/api/v1/profile/state" ? Response.json(active) : path === "/api/v1/settings/chatgpt-account" ? Response.json(connected)
+      : path === "/api/v1/settings/chatgpt-account/check" ? never() : server(url, init);
+  }, "/?settings=general");
+  try {
+    await vi.waitFor(() => assert.ok(app.paths.includes("/api/v1/settings/chatgpt-account/check")), { timeout: 10_000, interval: 50 });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, STARTUP_READ_DEADLINE_MS - 1_000)); });
+    assert.deepEqual(app.frames, ["loading"], "the loader holds while the account check is pending");
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 5_000, interval: 50 });
+    assert.deepEqual(app.frames, ["loading", "dashboard"]);
   } finally { await app.stop(); }
 }, STARTUP_READ_DEADLINE_MS + 20_000);
 
