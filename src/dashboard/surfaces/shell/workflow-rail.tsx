@@ -4,7 +4,7 @@ import { workflowNavigationGroups } from "./workflow-rail-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { WorkflowNavigation } from "./workflow-navigation.js";
 
-/** Each workflow shows one number: its runs running now, as a pill at the row's far right (a corner badge on the minimized tile); nothing at 0. */
+/** A workflow's running count is only its accessible description ("N running"); no visible pill. */
 export function WorkflowRail({ workflows, counts, active, onSelect, collapsed, onStart, canStart }: {
   onStart?: (id: string) => void; canStart?: (id: string) => boolean;
   collapsed?: boolean;
@@ -16,11 +16,6 @@ export function WorkflowRail({ workflows, counts, active, onSelect, collapsed, o
   const running = useCallback((id: string) => {
     return counts ? statusCount(workflowStatusCounts(counts, id), "running") : 0;
   }, [counts]);
-  const metadata = useCallback((id: string) => {
-    const count = running(id);
-    return <span className="workflow-rail-running">{count > 0 && <span title="Running now" className="inline-flex h-5 items-center gap-1 rounded-full bg-ui-positive/15 px-1.5 text-caption font-medium tabular-nums text-ui-positive">
-      <span aria-hidden className="size-1.5 rounded-full bg-current motion-safe:animate-pulse" />{count}</span>}</span>;
-  }, [running]);
   const description = useCallback((id: string) => { const count = running(id); return count > 0 ? `${count} running` : undefined; }, [running]);
-  return <WorkflowNavigation label="Workflows" groups={groups} active={active} onSelect={onSelect} metadata={metadata} description={description} collapsed={collapsed} onStart={onStart} canStart={canStart} />;
+  return <WorkflowNavigation label="Workflows" groups={groups} active={active} onSelect={onSelect} description={description} collapsed={collapsed} onStart={onStart} canStart={canStart} />;
 }

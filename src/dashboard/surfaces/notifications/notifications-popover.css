@@ -1,10 +1,10 @@
 /* The bell's popover: a fixed header over one scrolling list. Rows keep one shape whatever is hovered; every line is one line and a long one truncates. */
-/* The bell is a rail button like Collapse sidebar and Search (size, resting, hover and focus come from the rail header); it only grows to fit the count at its lower right under the unread dot. */
-.workspace-rail-header .notice-bell.notice-bell { width: auto; gap: 1px; padding: 0 5px; }
+/* The bell is a rail button like Collapse sidebar and Search (size, resting, hover and focus come from the rail header); the count sits at its lower right and never changes the icon's box. */
+.workspace-rail-header .notice-bell.notice-bell { position: relative; }
 .workspace-rail-header .notice-bell.notice-bell[aria-expanded="true"] { background: var(--rail-hover-fill); color: var(--ui-primary); }
-.notice-bell-status { position: relative; display: flex; align-self: stretch; align-items: flex-end; padding-bottom: 1px; }
-.notice-bell-dot { position: absolute; top: 3px; left: calc(50% - 2px); width: 4px; height: 4px; border-radius: 9999px; background: var(--ui-warning); }
-.notice-bell-count { color: var(--ui-primary); font-size: 11px; font-weight: 600; line-height: 11px; letter-spacing: -0.04em; }
+.notice-bell-status { position: absolute; inset: 0; pointer-events: none; }
+.notice-bell-dot { position: absolute; top: 4px; right: 5px; width: 4px; height: 4px; border-radius: 9999px; background: var(--ui-warning); }
+.notice-bell-count { position: absolute; right: 1px; bottom: 1px; color: var(--ui-primary); font-size: 11px; font-weight: 600; line-height: 11px; letter-spacing: -0.04em; }
 
 .notice-popover { display: flex; width: 440px; max-height: min(640px, calc(100vh - 88px)); flex-direction: column; overflow: hidden; }
 .notice-popover > div { display: flex; min-height: 0; flex: 1; flex-direction: column; }
