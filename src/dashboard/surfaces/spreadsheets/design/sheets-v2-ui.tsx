@@ -69,7 +69,7 @@ export function TagMenu({ name, tags, bank, onChange }: { name: string; tags: re
         <SearchInput variant="menu" aria-label="Find or create a tag" placeholder="Find or create a tag" maxLength={MAX_TAG_LENGTH} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} /></div>
       <div className={`min-h-0 ${MENU}`}>
         {shown.map(tag => <DropdownMenuCheckboxItem key={tag} checked={tags.includes(tag)} onCheckedChange={toggle(tag)} onSelect={event => event.preventDefault()}>{tag}</DropdownMenuCheckboxItem>)}
-        {creatable && <DropdownMenuItem onSelect={event => { event.preventDefault(); create(); }}>Create “{text}”</DropdownMenuItem>}
+        {creatable && <DropdownMenuItem closeOnClick={false} onSelect={create}>Create “{text}”</DropdownMenuItem>}
         {!shown.length && !creatable && <div className={`px-2 py-1.5 ${dsText.body} text-ui-muted`}>No tags match.</div>}
       </div>
     </DropdownMenuContent>

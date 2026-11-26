@@ -104,7 +104,7 @@ it('keeps the Clone dialog open and says why when the name is refused', async ()
 it('offers From this computer and SharePoint link from the Import menu, with no import dialog', async () => {
   await render();
   await click(byText('button', 'Import'));
-  assert.equal(document.body.querySelector('[role="dialog"]'), null);
+  assert.ok(!document.body.querySelector('[role="dialog"]'));
   assert.deepEqual(items(), ['From this computer.xlsx or .csv', 'SharePoint linkStays in sync']);
 });
 

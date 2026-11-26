@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
-import { SearchInput, dsFocus, dsIcon, useToasts } from '../../../ds/ui.js';
+import { SearchInput, dsFocus, dsIcon, dsLayer, useToasts } from '../../../ds/ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../../ds/primitives/dropdown-menu.js';
 import { matchedCount, samplesOf, type Cell, type Dataset, type Field, type Mapping } from './sheets-v2-model.js';
 import { Grey, Picker, V2Button } from './sheets-v2-ui.js';
@@ -104,7 +104,7 @@ export function MappingGrid({ fields, dataset, mapping, onMap, worksheets, copy 
     <div className="grid grid-cols-[minmax(0,1fr)_304px] items-start gap-3">
       <div ref={wrap} className="max-h-[min(70vh,640px)] overflow-auto sv2-card border border-ui-stroke">
         <table className="sv2-grid w-full select-none border-collapse ds-text-body">
-          <thead className="sticky top-0 z-[1] bg-ui-table"><tr><th className="w-9 px-2 py-1.5" />{dataset.headers.map((header, c) => <th key={header} ref={element => { heads.current[c] = element; }} data-marked={c === marked || undefined}
+          <thead className={`sticky top-0 ${dsLayer.sticky} bg-ui-table`}><tr><th className="w-9 px-2 py-1.5" />{dataset.headers.map((header, c) => <th key={header} ref={element => { heads.current[c] = element; }} data-marked={c === marked || undefined}
             className="whitespace-nowrap px-2.5 py-1.5 text-left ds-text-meta font-medium text-ui-muted">{header}</th>)}</tr></thead>
           <tbody>{view.length === 0 && <tr><td /><td colSpan={Math.max(dataset.headers.length, 1)} className="px-2.5 py-2 text-ui-muted">No rows match.</td></tr>}{view.map(({ row, i }, r) => <tr key={i} className="border-t border-ui-stroke"><td className="px-2 py-1 text-right ds-text-meta tabular-nums text-ui-muted">{i + 1}</td>
             {row.map((cell, c) => { const on = inside(r, c); return <td key={c} onMouseDown={event => { setDragging(true); setSelection(event.shiftKey && selection ? { ...selection, r1: r, c1: c } : { r0: r, c0: c, r1: r, c1: c }); }} onMouseEnter={() => { if (dragging) setSelection(current => current && { ...current, r1: r, c1: c }); }}
