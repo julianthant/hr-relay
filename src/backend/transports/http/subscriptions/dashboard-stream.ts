@@ -25,6 +25,7 @@ import type { NotificationTarget } from "../../../../models/notifications/notifi
 import type { NotificationWire } from "../../../../models/dashboard/projection.js";
 import type { BackfillGapNotifier } from "../../../runs/notifications/backfill-gap.js";
 import { failureStatus } from "../routes/failure-status.js";
+import { errorText } from "../../../runs/lifecycle/support.js";
 import { DashboardSnapshotOvertakenError } from "../../../runs/commands/refusals.js";
 import { systemClock, type Clock } from "../../../../rules/time/clock.js";
 
@@ -255,8 +256,9 @@ export function framedEnvelopeText(envelope: DashboardStreamEnvelope): string | 
 }
 
 /** The refusal its route would have answered; a server failure is read again, a refusal is a value.
- * An error the route's mapper cannot describe is a failed read. */
+ * An error with no text, or one the route's mapper cannot describe, is a failed read. */
 function refusedRow(key: RunId, error: unknown): { row: RunPanelRow; retry: boolean } {
+  if (errorText(error) === "") return { row: failedRow(key), retry: true };
   try {
     const { status, body } = failureStatus(error);
     const wire = WireErrorSchema.parse({ state: "error", code: body.code, message: body.message, retryable: body.retryable });
