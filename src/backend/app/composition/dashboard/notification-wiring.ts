@@ -3,7 +3,7 @@ import { compareNotificationRows, notificationListProjection, notificationProjec
 import { upsertListedRow, type NotificationWire } from "../../../../models/dashboard/projection.js";
 import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import type { NotificationCollectionOperation } from "../../../../models/notifications/notifications.js";
-import { notificationStandingSources } from "../../../../rules/notifications/notification-triggers.js";
+import { NotificationTriggerEventSchema, notificationStandingSources } from "../../../../rules/notifications/notification-triggers.js";
 import { createNotificationDisplayContext } from "../../../runs/queries/notification-display.js";
 import type { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
 import type { createDashboardApp } from "../../../transports/http/routes/api.js";
@@ -90,7 +90,9 @@ export function composeNotificationPublications(input: NotificationWiringInput &
         : notificationListProjection(database.authority.notifications.listByActor(actorId).filter(record => {
           if (record.trigger !== "storage" || record.clearedAt !== undefined) return false;
           const source = deps.source(record.notificationId)?.event;
-          return source?.kind === "storage-degraded" && source.concern === event.concern;
+          if (source === undefined) return false;
+          const parsed = NotificationTriggerEventSchema.parse(source);
+          return parsed.kind === "storage-degraded" && parsed.concern === event.concern;
         }), now, deps).find(row => row.notificationId === notificationId
           || (row.kind === "notification" && row.group?.members.some(member => member.notificationId === notificationId) === true));
       if (listed === undefined) throw new Error(`NOTIFICATION_PUBLICATION_NOT_LISTED: ${notificationId}`);

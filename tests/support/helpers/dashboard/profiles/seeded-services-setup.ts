@@ -186,7 +186,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }];
     const strictDescriptors = { resolve: (id: string) => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } };
     const trustNotifications = productWorkflows === true ? createTrustNotifications({ database, clock, ids: sequentialIdFactory("b"), reader: lifecycle }) : undefined;
-    const productAppDeps = ({ observer }: NonNullable<typeof trustNotifications>): Pick<DashboardAppDeps, "notifications" | "workbooks" | "assistant"> => {
+    const productAppDeps = ({ observer }: NonNullable<typeof trustNotifications>) => {
       const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
         host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)),
         command: commandId => database.authority.commands.readForNotice(commandId),

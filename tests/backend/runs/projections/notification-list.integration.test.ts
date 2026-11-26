@@ -30,7 +30,7 @@ function project(w: DashboardWorld, source: Parameters<typeof notificationListPr
     display: record => notificationDisplayContext(record, {
       read: id => w.runReader.read(id), descriptor: () => personLookupDescriptor,
       receipt: id => w.authority.getReceipt(id), presentation: w,
-      checkpoints: { listByAttempt: w.authority.listNotificationCheckpoints }, command: () => undefined,
+      checkpoints: { listByAttempt: (...args) => w.authority.listNotificationCheckpoints(...args) }, command: () => undefined,
     }),
     standing: { noticePark: () => undefined, runPark: () => undefined, storageConcern: () => undefined,
       concernActive: () => undefined, commandSettled: () => undefined },

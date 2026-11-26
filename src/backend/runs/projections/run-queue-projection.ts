@@ -40,7 +40,6 @@ import {
   LocalDateSchema,
   EidSchema,
   ProjectionCursorSchema,
-  FingerprintSchema,
   IsoInstantSchema,
   RunIdSchema,
   type Fingerprint,

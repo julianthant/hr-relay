@@ -84,7 +84,9 @@ it("serves the same storage group through the inbox route and stream row, keepin
       startPlans: { plan: unexpected, previewWarnings: unexpected } });
     const dayResponse = await app.request(`/api/v1/dashboard?day=${DAY}`);
     assert.equal(dayResponse.status, 200);
-    assert.equal(Object.hasOwn(await dayResponse.json(), "notifications"), false);
+    const dayPayload: unknown = await dayResponse.json();
+    assert.ok(dayPayload !== null && typeof dayPayload === "object");
+    assert.equal(Object.hasOwn(dayPayload, "notifications"), false);
     const hub = createDashboardStreamHub({ projection: queue, notificationList: routes.streamList, notificationPublications: publications,
       backfillGaps: { detected: () => Promise.reject(new Error("unexpected gap")) } });
     try {

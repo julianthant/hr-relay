@@ -203,11 +203,11 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   const current = useRef({ request, binding, usable, clearsNow }); current.current = { request, binding, usable, clearsNow };
   const rowsRef = useRef(rows); rowsRef.current = rows;
   const baseRowsRef = useRef(baseRows); baseRowsRef.current = baseRows;
-  const overlay = useCallback((row: NotificationWire): void => {
-    rowsRef.current = upsertListedRow(rowsRef.current ?? [], row);
+  const overlay = useCallback((rows: readonly NotificationWire[]): void => {
+    rowsRef.current = rows.reduce(upsertListedRow, rowsRef.current ?? NO_UPSERTS);
     const base = baseRowsRef.current;
-    setUpserts(previous => ({ request, rows: upsertListedRow(
-      previous?.request === request ? previous.rows.filter(held => base !== undefined && listedAhead(base, held, true)) : NO_UPSERTS, row) }));
+    setUpserts(previous => ({ request, rows: rows.reduce(upsertListedRow,
+      previous?.request === request ? previous.rows.filter(held => base !== undefined && listedAhead(base, held, true)) : NO_UPSERTS) }));
   }, [request]);
   const subscribePublications = dayState.subscribePublications;
   const arrivalListeners = useRef(new Set<(arrival: InboxArrival) => void>());
@@ -288,7 +288,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
         publish: outcome => {
           if (current.current.request !== request) return;
           if (outcome.kind === "confirmed") {
-            overlay(NotificationWireSchema.parse(outcome.readback));
+            overlay([NotificationWireSchema.parse(outcome.readback)]);
             setCommandNotice({ request, text: "" });
           }
           else {
@@ -354,7 +354,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
         publish: outcome => {
           if (current.current.request !== request) return;
           if (outcome.kind === "confirmed") {
-            overlay(NotificationWireSchema.array().parse(outcome.readback), { source: "readback" });
+            overlay(NotificationWireSchema.array().parse(outcome.readback));
             setCommandNotice({ request, text: "" });
           } else { setCommandNotice({ request, text: outcome.feedback.text }); owner.feedback(outcome); }
         } });

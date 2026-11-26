@@ -385,8 +385,8 @@ export class DashboardStreamHub {
       if (!includeInbox && source.model === "notification-list") continue;
       const read = this.#syncRowOf(source, recipients);
       if (read === undefined) continue;
-      if ("model" in read) rows.push(read);
-      else sync.push(read);
+      if ("settled" in read) sync.push(read);
+      else rows.push(read);
     }
     return { rows, sync };
   }
@@ -473,8 +473,8 @@ export class DashboardStreamHub {
     }
     const read = this.#syncRowOf(source, owed);
     const change = this.#unstamped({ cursor: this.#projection.takeCursor(), position: this.#projection.position() });
-    const answered = read !== undefined && "model" in read ? [read] : [];
-    const pending = read !== undefined && !("model" in read) ? [read] : [];
+    const answered = read !== undefined && !("settled" in read) ? [read] : [];
+    const pending = read !== undefined && "settled" in read ? [read] : [];
     for (const subscriber of owed) this.#push(subscriber, { kind: "change", change, rows: answered, sync: pending, reads: [] });
   }
 
