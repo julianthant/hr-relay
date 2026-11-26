@@ -1,6 +1,6 @@
 import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
-import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, PageHeading, SegmentedChoice, StatusDot, dsIcon, dsText, type DsStatus } from "../../ds/ui.js";
+import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, PageHeading, SegmentedChoice, Spinner, StatusDot, useSkeletonWait, dsIcon, dsText, type DsStatus } from "../../ds/ui.js";
 import { ChartHeading, SmallLine, StackedBars } from "./analytics-charts.js";
 import { isActivityCalendarDate, type ActivityDateRange } from "./activity-model.js";
 import { analyticsBuckets, analyticsClock, analyticsPeriodLabel, bucketCounts, finished, rowTypicalSeconds, shiftDate, shiftRange, type AnalyticsData, type AnalyticsWorkflow } from "./analytics-model.js";
@@ -16,11 +16,21 @@ const OUTCOMES: readonly { key: "done" | "failed" | "attention"; label: string; 
 ];
 const share = (count: number, total: number) => total === 0 ? "—" : `${Math.round(count / total * 100)}%`;
 
+function DelayedSpinner() {
+  const waiting = useSkeletonWait();
+  return <span className={waiting ? "invisible" : undefined}><Spinner /></span>;
+}
+
+/** A small spinner beside the date while a read is in flight, after the skeleton wait; the slot keeps its room so nothing shifts. */
+function ReadingSpinner({ reading }: { reading: boolean }) {
+  return <span aria-hidden data-analytics-reading={reading ? "" : undefined} className="inline-flex size-4 items-center justify-center">{reading && <DelayedSpinner />}</span>;
+}
+
 /** The Analytics heading: the title, then one row that sets the period and the workflow for the whole page and holds Export. */
-export function AnalyticsToolbar({ range, shown = range, today, onRange, workflows, workflow, onWorkflow, exportButton }: {
+export function AnalyticsToolbar({ range, shown = range, reading = false, today, onRange, workflows, workflow, onWorkflow, exportButton }: {
   range: ActivityDateRange; today: string;
   /** The period of the report on screen, when it is still an earlier one than the chosen range. */
-  shown?: ActivityDateRange; onRange: (range: ActivityDateRange) => void;
+  shown?: ActivityDateRange; /** A read for the chosen period is in flight. */ reading?: boolean; onRange: (range: ActivityDateRange) => void;
   workflows: readonly AnalyticsWorkflow[]; workflow: string; onWorkflow: (id: string) => void; exportButton: ReactNode;
 }) {
   const quick = QUICK.find(option => { const candidate = quickRange(option.value, today); return candidate.from === range.from && candidate.to === range.to; })?.value;
@@ -31,6 +41,7 @@ export function AnalyticsToolbar({ range, shown = range, today, onRange, workflo
       {isActivityCalendarDate(shown.from) && isActivityCalendarDate(shown.to) && shown.from <= shown.to && <span className="flex items-center gap-1">
         <IconButton size="xs" label="Previous period" icon={<ChevronLeft aria-hidden className={dsIcon.md} />} onClick={() => onRange(shiftRange(range, -1))} />
         <span data-analytics-period className="text-control tabular-nums text-ui-primary">{analyticsPeriodLabel(shown)}</span>
+        <ReadingSpinner reading={reading} />
         <IconButton size="xs" label="Next period" disabled={range.to >= today} icon={<ChevronRight aria-hidden className={dsIcon.md} />} onClick={() => onRange(shiftRange(range, 1))} />
       </span>}
       <span className="ml-auto flex items-center gap-2"><DropdownMenu>

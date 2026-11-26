@@ -233,8 +233,11 @@ export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
     }).extend({
       browserMode: StartPlanWireSchema.shape.browserMode.unwrap(), captureBrowserScreenshots: z.literal(true),
       planned: z.array(AssistantProposalRowSchema).min(1).max(ASSISTANT_START_ROWS_MAX),
+      /** The descriptor's step a dry run stops before; only a dry run has one. */
+      stopBefore: z.string().min(1).max(160).optional(),
     }),
   }).refine(value => value.startPlan.workflowId === value.workflowId && value.startPlan.dryRun === value.dryRun
+    && (value.dryRun || value.startPlan.stopBefore === undefined)
     && (value.source === "entries" || value.startPlan.planned.length === 1)
     && Date.parse(value.expiresAt) <= Date.parse(value.startPlan.expiresAt), "assistant start must bind one accepted current plan"),
   z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("run-action"), action: z.enum(["pause", "resume", "cancel"]),

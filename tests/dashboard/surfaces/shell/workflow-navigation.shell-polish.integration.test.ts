@@ -77,3 +77,10 @@ it("takes initials from the first two words, or the first two letters of one wor
   assert.equal(workflowInitials("Work-Study Intake Form"), "WS");
   assert.equal(workflowInitials("OnBase"), "ON");
 });
+
+it("shows the start-run plus on hover or keyboard focus only, so a click never leaves it stuck", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync("src/dashboard/surfaces/shell/permanent-shell.css", "utf8");
+  assert.ok(!css.includes("focus-within .workflow-rail-start"));
+  assert.ok(css.includes(".workflow-rail-item:has(:focus-visible) .workflow-rail-start"));
+});

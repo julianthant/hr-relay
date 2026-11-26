@@ -12,7 +12,7 @@ import type { ActivityDateRange } from "./activity-model.js";
 
 /** What the report reads; the product passes useActivityWiring and a harness may pass a hook with the same shape. */
 export interface ActivityReportWiring {
-  readonly data: ActivityViewState; readonly browse?: ActivityDrilldownData; readonly pending: boolean; readonly exportReady: boolean; readonly notice: string;
+  readonly data: ActivityViewState; readonly browse?: ActivityDrilldownData; readonly pending: boolean; readonly reading?: boolean; readonly exportReady: boolean; readonly notice: string;
   readonly exportCsv: (signal?: AbortSignal) => ReturnType<ActivityClient["exportActivityPopulationCsv"]>;
 }
 export type ActivityReportHook = (client: ActivityClient | undefined, range: ActivityDateRange, browse: ActivityBrowse | null, sources: WorkflowSourcePolicy, enabled: boolean) => ActivityReportWiring;
@@ -45,7 +45,7 @@ function ActivityReportBody({ range, onRange, client, today = "", useReport = us
   const badRange = { state: "unavailable" as const, reason: "That date range is not valid. Pick a period above." };
   if (resolved.refusal && parseActivityRange("", today).refusal) return <section aria-label="Analytics report" className="settings-reference-page settings-data-section"><PageHeading title="Analytics" description="Report unavailable" /><p role="alert" className="text-body text-ui-danger">That date range is not valid.</p></section>;
   return <ActivityView data={resolved.refusal ? badRange : wire.data} onRetry={resolved.refusal ? undefined : onRetry} range={resolved} today={today}
-    selection={selection} onSelection={onSelection} browse={wire.browse} pending={wire.pending} blocked={!wire.exportReady}
+    selection={selection} onSelection={onSelection} browse={wire.browse} pending={wire.pending} reading={wire.reading} blocked={!wire.exportReady}
     onRange={next => { setNotice(undefined); setSelection(null); onRange(activityRangeValue(next)); }}
     onExport={wire.exportReady ? onExport : undefined}
     notice={notice?.scope === scope ? notice.text : wire.notice}
