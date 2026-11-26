@@ -1731,7 +1731,9 @@ export class RunQueueProjection {
         const authority = this.#readRun(context, summary.runId);
         const children = summary.children.map(child => this.#readRun(context, child.runId));
         const surface = this.#surface(this.#foldState.rows.get(summary.runId), authority, children, context);
-        if (surface.status !== summary.status) throw new ProjectionDegradedError("run-summary-status-stale");
+        // A running run whose worker holds a Duo lease reads awaiting-approval; the stored summary cannot see the lease.
+        const duoWait = summary.status === "running" && surface.status === "awaiting-approval" && surface.operatorWait.state === "present";
+        if (surface.status !== summary.status && !duoWait) throw new ProjectionDegradedError("run-summary-status-stale");
         surfaces.push(surface);
       }
       return page;
