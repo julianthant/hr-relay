@@ -10,6 +10,9 @@ import { activityReportCsv, activityReportCsvFileName } from "../../../runs/quer
 import type { DashboardApp } from "./api-types.js";
 import type { ActivityRouteDeps } from "./activity-types.js";
 
+const reportBound = z.iso.date({ error: (issue) => issue.input === undefined ? "an activity report requires both from= and to= as YYYY-MM-DD" : undefined });
+const reportRange = { from: reportBound, to: reportBound };
+
 function populationParameters(url: string): Record<string, string> {
   const parameters = [...new URL(url).searchParams];
   if (new Set(parameters.map(([key]) => key)).size !== parameters.length) throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
@@ -23,28 +26,18 @@ function populationFailure(error: unknown): never {
 
 export function registerActivityRoutes(app: DashboardApp, deps: ActivityRouteDeps): void {
   app.get("/api/v1/reports/activity", (c) => {
-    const from = c.req.query("from");
-    const to = c.req.query("to");
-    if (from === undefined || to === undefined) {
-      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
-    }
     const parameters=[...new URL(c.req.url).searchParams];
     if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-report-duplicate-query");
-    z.strictObject({from:z.iso.date(),to:z.iso.date()}).parse(Object.fromEntries(parameters));
+    const {from,to}=z.strictObject(reportRange).parse(Object.fromEntries(parameters));
     return c.json(deps.activity.read(from, to));
   });
 
 
   app.get("/api/v1/reports/activity.csv", (c) => {
-    const from = c.req.query("from");
-    const to = c.req.query("to");
-    if (from === undefined || to === undefined) {
-      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
-    }
     const parameters=[...new URL(c.req.url).searchParams];
     if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-export-duplicate-query");
-    const selection=z.strictObject({from:z.iso.date(),to:z.iso.date(),snapshot:ActivitySnapshotTokenSchema}).parse(Object.fromEntries(parameters));
-    const report = deps.activity.readSelected(from, to, selection.snapshot);
+    const selection=z.strictObject({...reportRange,snapshot:ActivitySnapshotTokenSchema}).parse(Object.fromEntries(parameters));
+    const report = deps.activity.readSelected(selection.from, selection.to, selection.snapshot);
     return selectionDownload(activityReportCsv(report),activityReportCsvFileName(report),"text/csv; charset=utf-8",selection.snapshot);
   });
 

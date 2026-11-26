@@ -48,7 +48,7 @@ import { CanonicalCrashRecoveryRequestSchema,RunClaimTokenSchema } from "../../.
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
 import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import { CommandRowStateSchema } from "../../../rules/commands/command-lifecycle.js";
-import { AuthorityCommandAuditRecordSchema, AuthorityCommandRecordSchema, BulkParentCommandRecordSchema, BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, CommandIdentityConflictError, CommandRequestSchema, RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema, type StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
+import { AuthorityCommandAuditRecordSchema, AuthorityCommandRecordSchema, BulkParentCommandRecordSchema, BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, CommandIdentityConflictError, CommandIdReusedError, CommandRequestSchema, RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema, type StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
 import { interruptTransition } from "../../../rules/runs/run-interrupt.js";
@@ -2344,7 +2344,7 @@ export class AuthorityDatabase implements Disposable {
     const row = this.#database.prepare("SELECT request_json AS payload_json FROM commands WHERE id = ?").get(record.commandId);
     if (row !== undefined && canonicalJsonStringify(JSON.parse(JsonRowSchema.parse(row).payload_json) as unknown) !== canonicalJsonStringify(record)) {
       if ("family" in record && (record.family === "settings" || record.family === "failure-resolution" || record.family === 'assistant-model-preference' || record.family === "ocr-review")) throw new CommandIdentityConflictError();
-      throw new Error(`command id ${record.commandId} was reused with different content`);
+      throw new CommandIdReusedError(record.commandId);
     }
   }
 
@@ -4192,7 +4192,7 @@ export class AuthorityDatabase implements Disposable {
             this.#assertCommandIdentity(record, parentCommandId);
             const existing = this.#readRecord("commands", record.commandId, CommandRequestSchema);
             if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) throw new Error(`command id ${record.commandId} was reused with different content`);
+              if (canonicalJsonStringify(existing) !== json) throw new CommandIdReusedError(record.commandId);
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             const result = { changes: insertNativeCommand(this.#database, record, parentCommandId) };
@@ -4465,7 +4465,7 @@ export class AuthorityDatabase implements Disposable {
             const existing = this.#readRecord("commands", record.commandId, AuthorityCommandRecordSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(`command id ${record.commandId} was reused with different content`);
+                throw new CommandIdReusedError(record.commandId);
               }
               return {
                 result: Object.freeze({ state: "existing" as const, record }),
