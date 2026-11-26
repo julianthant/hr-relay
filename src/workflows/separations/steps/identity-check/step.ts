@@ -341,8 +341,10 @@ export const IDENTITY_CHECK_OMISSION: StepManualDeclaration = {
     },
   },
   skips: [NAME_SEARCH_NODE, JOB_SUMMARY_NODE],
-  refine: (facts) => kualiDepartmentOptionCode(String(facts["department"])) === "" || kualiDepartmentOptionDescription(String(facts["department"])) === ""
-    ? [{ field: "department", message: "Enter code - name." }] : [],
+  refine: (facts) => {
+    const option = typeof facts["department"] === "string" ? facts["department"] : "";
+    return kualiDepartmentOptionCode(option) === "" || kualiDepartmentOptionDescription(option) === "" ? [{ field: "department", message: "Enter code - name." }] : [];
+  },
 };
 
 const IdentityReviewFactsSchema = z.strictObject({ emplId: EidSchema, ucpathName: z.string().min(1) });

@@ -81,7 +81,7 @@ describe("separations: every step can be switched off", () => {
 
   it("classifies each omission over the real graph: reads, gates and writes omitted, folds asserted", () => {
     const view = graphView();
-    const plan = (step: string, facts: Record<string, unknown>) => planStepOmissions(view, [{ step, facts }]);
+    const plan = (step: string, facts: Parameters<typeof planStepOmissions>[1][number]["facts"]) => planStepOmissions(view, [{ step, facts }]);
     const kronos = plan("kronos-timecard", KRONOS);
     assert.deepEqual(kronos.refusals, []);
     assert.deepEqual([...kronos.omitted.keys()], ["timecard-search", "timecard"]);
