@@ -98,16 +98,20 @@ function holdsNode(checker: ts.TypeChecker, type: ts.Type, node: ts.Type, seen =
   return false;
 }
 
-export function findDomNodeAssertions(roots: readonly string[], virtual: ReadonlyMap<string, string> = new Map()): string[] {
-  const sources = new Map([...virtual, [NODE_PROBE, "export type DomNode = Node;"]]);
-  const files = [...new Set([...roots, ...virtual.keys()])];
-  const program = createGuardProgram([...files, NODE_PROBE], compilerOptions(), sources);
+function domNodeProgram(files: readonly string[], virtual: ReadonlyMap<string, string>): ts.Program {
+  return createGuardProgram([...files, NODE_PROBE], compilerOptions(), new Map([...virtual, [NODE_PROBE, "export type DomNode = Node;"]]));
+}
+
+/** Checks `only` (default: every file) inside one program, so slices of a large scan share its parse and binding. */
+export function findDomNodeAssertions(roots: readonly string[], virtual: ReadonlyMap<string, string> = new Map(),
+  program = domNodeProgram([...new Set([...roots, ...virtual.keys()])], virtual),
+  only: readonly string[] = [...new Set([...roots, ...virtual.keys()])]): string[] {
   const checker = program.getTypeChecker();
   const probe = program.getSourceFile(NODE_PROBE)?.statements.find(ts.isTypeAliasDeclaration);
   assert.ok(probe, "the DOM Node probe must compile");
   const node = checker.getTypeAtLocation(probe);
   const violations: string[] = [];
-  for (const root of files) {
+  for (const root of only) {
     const source = program.getSourceFile(root);
     assert.ok(source, `${repoRelative(root)} must be in the guard program`);
     const visit = (child: ts.Node): void => {
@@ -129,10 +133,18 @@ export function findDomNodeAssertions(roots: readonly string[], virtual: Readonl
 }
 
 describe("DOM node assertions", () => {
-  it("compares jsdom nodes by identity, never through node:assert equality", () => {
-    const roots = scanRoots();
-    assert.ok(roots.includes(resolve(REPO_ROOT, "tests/dashboard/app/startup/startup-gate.test.ts")), "helper-fed DOM tests are scanned");
-    assert.deepEqual(findDomNodeAssertions(roots), []);
+  // Type-checking every assert argument takes minutes under V8 coverage; slices of one shared program keep each test in budget.
+  const SLICES = 4;
+  let scan: { roots: string[]; program: ts.Program } | undefined;
+  const scanned = () => { if (scan === undefined) { const roots = scanRoots(); scan = { roots, program: domNodeProgram(roots, new Map()) }; } return scan; };
+
+  it("scans helper-fed DOM tests", () => {
+    assert.ok(scanned().roots.includes(resolve(REPO_ROOT, "tests/dashboard/app/startup/startup-gate.test.ts")), "helper-fed DOM tests are scanned");
+  }, 120_000);
+
+  it.each(Array.from({ length: SLICES }, (_, slice) => slice))("compares jsdom nodes by identity, never through node:assert equality (slice %i)", (slice) => {
+    const { roots, program } = scanned();
+    assert.deepEqual(findDomNodeAssertions(roots, new Map(), program, roots.filter((_, index) => index % SLICES === slice)), []);
   }, 120_000);
 
   it("catches the original search palette focus assertion and its namespace, named, default-alias and strict forms", () => {
