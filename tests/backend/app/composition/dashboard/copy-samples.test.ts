@@ -102,8 +102,10 @@ it("refuses a sample rerun source before its Start plan runs preflight or reads 
     previewWarnings: () => { calls.push("warnings"); throw new Error("warnings-reached"); },
   };
   const plans = samples.guardStartPlans(served);
-  const prepare = plans.prepare;
-  assert.ok(prepare !== undefined);
+  const prepare = async (input: unknown, signal: AbortSignal) => {
+    assert.ok(plans.prepare !== undefined);
+    await plans.prepare(input, signal);
+  };
   const sample = { workflowId: "person-lookup", rerunSource: { runId: sampleRun } };
   await assert.rejects(prepare(sample, new AbortController().signal), { name: "SampleRunRefusedError", message: "Sample run: nothing runs." });
   assert.throws(() => plans.plan(sample), { name: "SampleRunRefusedError" });
