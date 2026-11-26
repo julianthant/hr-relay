@@ -11,7 +11,7 @@ import { workerExecArgv } from "../../../../src/backend/storage/sqlite/backup-in
 import { prepareReadLaneStart } from "../../../../src/backend/storage/sqlite/read-lane-admission.js";
 import { workerBootstrapEnvironment } from "../../../../src/models/config/secrets.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { LANE_READS_ENTRY, laneBackground, laneBackgroundBarrier, laneSearch, laneSleep, laneStuck } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { LANE_READS_ENTRY, laneBackground, laneBackgroundBarrier, laneSearch, laneSleep, laneStuck, laneTimedSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -54,6 +54,22 @@ it("dispatches a queued click before the next background message after a backgro
   const click = lanes.read(laneSleep, { tag: "click", ms: 0 });
   release();
   assert.deepEqual(await Promise.all([run(scan), run(click), run(nextScan)]), [1, 2, 3]);
+});
+
+it("starts a click queued behind a background read while the main thread is still held, with no host handoff", async () => {
+  const { lanes } = await host();
+  const { dir, release } = barrierDir();
+  const scan = lanes.read(laneBackgroundBarrier, { tag: "scan", dir });
+  await until(() => existsSync(join(dir, "started")));
+  const click = lanes.read(laneTimedSleep, { tag: "click", ms: 0 });
+  // The main thread releases the scan and then stays blocked: it cannot take the scan's reply or post anything until it wakes.
+  const heldFrom = systemClock.nowMs();
+  release();
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+  const heldTo = systemClock.nowMs();
+  const started = z.object({ startedAt: z.number() }).parse(JSON.parse((await click).body)).startedAt;
+  assert.equal(await run(scan), 1);
+  assert.ok(started >= heldFrom && started < heldTo, `the click started at ${String(started)}, inside the main-thread hold ${String(heldFrom)}–${String(heldTo)}`);
 });
 
 it("runs a queued checkpoint first, then the interactive request before the background one", async () => {
