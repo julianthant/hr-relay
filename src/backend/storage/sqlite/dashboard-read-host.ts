@@ -66,7 +66,7 @@ export interface LaneReadDefinition<Args, Result> {
   run(context: LaneReadContext, args: Args): Result;
   /** Runs once in its lane's read snapshot before the lane reports ready; a throw fails the lane's boot. */
   readonly warm: ((context: LaneWarmContext) => void) | undefined;
-  /** Runs once after every warm step, in its own read snapshot; a refusal of that snapshot or a throw only skips it. */
+  /** Runs once after the lane reports ready, before its first read, in its own read snapshot; a refusal of that snapshot or a throw only skips it. */
   readonly prebuild: ((context: LaneWarmContext) => void) | undefined;
   /** per-statement (the default) proves the store's source on every statement; per-read, once at the snapshot and once before the result. */
   readonly sourceProof: "per-statement" | "per-read";
@@ -809,6 +809,9 @@ function runReadLane(port: MessagePort, data: unknown) {
       if (warm !== undefined) history.withAuthorityReadSnapshot(() => proved(definition, () => { warm(warmContext()); }));
     }
   } catch (error) { close(); throw error; }
+  if (leftInTransaction()) process.exit(LANE_TRANSACTION_EXIT_CODE);
+  send({ kind: "ready" });
+  // Ready waits only for the warm steps. The optional prebuilds run in this turn, so before any read is accepted.
   for (const definition of laneDefinitions) {
     const prebuild = definition.prebuild;
     if (prebuild === undefined) continue;
@@ -817,7 +820,6 @@ function runReadLane(port: MessagePort, data: unknown) {
     } catch { /* optional: the read that follows builds its own */ }
   }
   if (leftInTransaction()) process.exit(LANE_TRANSACTION_EXIT_CODE);
-  send({ kind: "ready" });
 }
 
 /** A lane entry calls this after importing its read modules; on the main thread it does nothing. */

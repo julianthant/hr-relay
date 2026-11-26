@@ -25,6 +25,7 @@ import type { NotificationTarget } from "../../../../models/notifications/notifi
 import type { NotificationWire } from "../../../../models/dashboard/projection.js";
 import type { BackfillGapNotifier } from "../../../runs/notifications/backfill-gap.js";
 import { failureStatus } from "../routes/failure-status.js";
+import { DashboardSnapshotOvertakenError } from "../../../runs/commands/refusals.js";
 import { systemClock, type Clock } from "../../../../rules/time/clock.js";
 
 const CURSOR_PATTERN = /^pc:([1-9]\d*)$/;
@@ -639,9 +640,13 @@ export class DashboardStreamHub {
     return baseline < this.#lastSnapshotChange ? undefined : baseline;
   }
 
-  /** Asks again, at most SNAPSHOT_ATTEMPTS times in a row; then each connection resubscribes. */
+  /**
+   * Asks again, at most SNAPSHOT_ATTEMPTS times in a row. Then a handoff's connect is refused by name, so its client asks
+   * again only after its reconnect delay; a connection already streaming resubscribes.
+   */
   #retrySnapshot(request: SnapshotRequest): void {
     if (request.attempts < SNAPSHOT_ATTEMPTS) { this.#dispatchSnapshot(request); return; }
+    if (request.origin === "handoff") { this.#snapshotFailed(request, new DashboardSnapshotOvertakenError()); return; }
     this.#snapshotGap(request);
   }
 

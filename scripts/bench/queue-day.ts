@@ -16,7 +16,7 @@ import type { DashboardApp } from "../../src/backend/transports/http/routes/api-
 /** G1: main-thread stall per SSE snapshot and per GET, and the lane's whole-day build against the request thread's. */
 const STALL_LIMIT_MS = 20;
 const BUILD_RATIO_LIMIT = 1.3;
-/** The design's bound on navigation readiness, which the replica's fold and the warm step hold up. */
+/** The design's bound on navigation readiness, which the replica's fold holds up. */
 const READY_LIMIT_MS = 5000;
 const SAMPLES = 5;
 const SETTLE_MS = 300;
@@ -123,9 +123,9 @@ async function measure(workspace: string, lockPort: number, requestedDay: string
                 const inSnapshot = <T>(read: () => T): T => opened.history.withAuthorityReadSnapshot(() => lane.withProvedSource(read));
                 const folding = performance.now();
                 inSnapshot(() => queueDayRead.warm?.(context));
-                // As the lane boots: the optional prebuild after the fold, skipped on a refusal.
-                try { inSnapshot(() => queueDayRead.prebuild?.(context)); } catch { /* skipped */ }
                 const foldMs = performance.now() - folding;
+                // As the lane boots: ready follows the fold, then the optional prebuild runs before the first read, skipped on a refusal.
+                try { inSnapshot(() => queueDayRead.prebuild?.(context)); } catch { /* skipped */ }
                 const building = performance.now();
                 const body = inSnapshot(() => queueDayRead.run(context, queueDayRead.args.parse({ day: readDay, publications: [] })));
                 const buildMs = performance.now() - building;
