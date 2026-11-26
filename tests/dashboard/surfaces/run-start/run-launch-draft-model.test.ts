@@ -67,7 +67,8 @@ describe("the launch request fingerprint", () => {
   const sheet = { libraryId: "l", versionId: "v", sheetId: "s" };
   /** One change per draft field and per input; a field added without one fails to typecheck here. */
   const DRAFT = {
-    text: "x", typed: { workflowId: "plain", draft: { mode: "match" } }, sourceInputUnchanged: true, stepSelection: { workflowId: "plain", keys: ["read"] },
+    text: "x", typed: { workflowId: "plain", draft: { mode: "match" } }, sourceInputUnchanged: true, interruptedRerun: true,
+    stepSelection: { workflowId: "plain", keys: ["read"] },
     stepDrafts: { read: { reason: "r" } }, manualRows: ["kid"], priority: "bulk", dryRunRequested: true, browserMode: "headless",
     referenceSelections: { ref: sheet }, referenceDrafts: { ref: { libraryId: "l" } }, checkPicks: { l: { versionId: "v", sheetIds: ["s"] } },
     selectedWorkbookRows: { source: "s", choices: [] }, launchFields: { fileToOnBase: "yes" }, valueDrafts: { 0: { text: "t", copied: false } }, copiedOmissions: { 0: true },
@@ -108,7 +109,7 @@ describe("the launch request fingerprint", () => {
 describe("the fresh draft", () => {
   it("starts empty with the resting options", () => {
     assert.deepEqual(freshLaunchDraft(plain), {
-      text: "", typed: { workflowId: "plain", draft: {} }, sourceInputUnchanged: false, stepSelection: undefined,
+      text: "", typed: { workflowId: "plain", draft: {} }, sourceInputUnchanged: false, interruptedRerun: undefined, stepSelection: undefined,
       stepDrafts: {}, manualRows: [], priority: undefined, dryRunRequested: false, browserMode: "headed",
       referenceSelections: {}, referenceDrafts: {}, checkPicks: {}, selectedWorkbookRows: undefined, launchFields: {}, valueDrafts: {}, copiedOmissions: {},
     });

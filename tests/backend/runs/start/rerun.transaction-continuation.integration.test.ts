@@ -169,9 +169,9 @@ it("retains a completed write on an interrupted rerun and requires confirmation 
 function operatorRecover(h: Fixture, run = h.failed, replay = false) {
   const command = { commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
     source: "dashboard", family: "run", type: "recover-run", target: { runId: run.envelope.runId, expectedVersion: run.version } };
-  const result = recordHistoricalRecover(h, h.descriptor, command);
+  const result = recordHistoricalRecover(h, h.descriptors.resolve, command);
   if (replay) {
-    const repeated = recordHistoricalRecover(h, h.descriptor, command); assert.ok(repeated.state === "already-applied");
+    const repeated = recordHistoricalRecover(h, h.descriptors.resolve, command); assert.ok(repeated.state === "already-applied");
     assert.ok(result.state === "applied"); assert.deepEqual(repeated.affectedTargets, result.affectedTargets);
   }
   assert.equal(result.state, "applied"); assert.ok(result.state === "applied");

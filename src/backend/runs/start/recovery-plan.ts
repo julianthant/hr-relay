@@ -11,7 +11,7 @@ import { readRunCheckpoint, readContinuationGate, retainedCheckpoint, validateRu
 import { captureRunContinuation, continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
-import { RerunRefusedError, validateRerunSourcePlan } from "./rerun.js";
+import { RerunRefusedError, validateRerunSourcePlan } from "./rerun-source.js";
 import { RunRecoveryPlanSchema } from "../../../models/run/recovery-plan.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { RunContinuation } from "../../../models/run/continuation.js";

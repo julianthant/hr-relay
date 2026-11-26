@@ -4,7 +4,7 @@ import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 import type { Clock } from "../../../../src/rules/time/clock.js";
 import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
-import { CommandRefusal, reject } from "../../../../src/backend/runs/commands/command-refusal.js";
+import { CommandRefusal } from "../../../../src/backend/runs/commands/command-refusal.js";
 import { replay } from "../../../../src/backend/runs/commands/command-replay.js";
 import { lifecycleRun, requireRun } from "../../../../src/backend/runs/commands/run-command-context.js";
 import { runTarget, type VersionChange } from "../../../../src/backend/runs/lifecycle/run-fan-out.js";

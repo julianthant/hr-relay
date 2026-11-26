@@ -98,7 +98,7 @@ export function launchRequestFingerprint(inputs: LaunchRequestInputs): string {
 export function freshLaunchDraft(workflow: RunStartWorkflow | undefined, today?: string): LaunchDraft {
   return {
     text: "", typed: { workflowId: workflow?.workflowId ?? "", draft: typedDefaultsOf(workflow, today) }, sourceInputUnchanged: false,
-    stepSelection: undefined, stepDrafts: {}, manualRows: [],
+    interruptedRerun: undefined, stepSelection: undefined, stepDrafts: {}, manualRows: [],
     priority: undefined, dryRunRequested: false, browserMode: "headed",
     referenceSelections: {}, referenceDrafts: {}, checkPicks: {}, selectedWorkbookRows: undefined, launchFields: {},
     valueDrafts: {}, copiedOmissions: {},
