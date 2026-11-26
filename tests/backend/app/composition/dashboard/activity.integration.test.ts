@@ -131,20 +131,20 @@ async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean
   const lanes=options.lanes?createComposedDashboardReadHost({admission:profile.admission,database,clock}):undefined;
   // Registered after the store's own cleanup, so the lanes close before the store they read.
   if(lanes!==undefined)cleanup.unshift(()=>lanes.close());
-  const { activityPopulation, activity: composedActivity } = lanes===undefined
-    ? composeActivity({database,clock,descriptors,ledger}) : composeActivity({database,clock,descriptors,ledger,readLanes:lanes});
+  const { activityPopulation, activity: composedActivity } = composeActivity({database,clock,descriptors,ledger});
   const activity=options.dynamicVolumeSeries
     ?createActivitySelectionService({database,clock,read:readSummary})
     :composedActivity;
+  const served=lanes===undefined?{activity,activityPopulation}:composeActivity({database,clock,descriptors,ledger,readLanes:lanes});
   const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(42),
     authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:input=>database.authority.runs.search(input)}))}});
   const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(scratch, ".tracker"), join(scratch, ".tracker/data/artifacts"))});
   const withSearchSnapshot = <Result>(read: () => Result) => database.withAuthorityReadSnapshot(read);
   const xlsx=createOperatorXlsxExportService({clock,ids:{uuid:randomUUID},sourceIdentity,artifacts,authority:database.authority.operatorXlsxExports,
-    search,withSearchSnapshot,activityReport:(from,to,token)=>activity.readSelected(from,to,token)});
+    search,withSearchSnapshot,activityReport:(from,to,token)=>served.activity.readSelected(from,to,token)});
   const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));
   app.use("*",(c,next)=>{c.set("requestActorId",ActorIdSchema.parse("synthetic-operator"));return next();});
-  registerActivityRoutes(app,{activity,activityPopulation});
+  registerActivityRoutes(app,served);
   registerShellRoutes(app,{bootstrap:{} as ShellRouteDeps["bootstrap"],search,xlsxExports:xlsx,hub:{} as ShellRouteDeps["hub"]});
   return {database,clock,activity,activityPopulation,search,withSearchSnapshot,xlsx,artifacts,sourceIdentity,app,activityDays,setShiftVolumeSeries:(value:boolean)=>{shiftVolumeSeries=value;}};
 }

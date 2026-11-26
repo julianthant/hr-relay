@@ -438,7 +438,7 @@ describe("bootstrap storage summary", () => {
         try {
           const getMeta = vi.spyOn(world.database, "getMeta").mockImplementation(() => { throw new Error("main-connection read"); });
           try {
-            const wire = await buildBootstrap({ ...depsOf(world), authorityMeta: laneAuthorityMeta(lanes) });
+            const wire = await buildBootstrap({ ...depsOf(world, { authorityReachable: true }), authorityMeta: laneAuthorityMeta(lanes) });
             assert.deepEqual(wire.storage, { authority: "healthy" });
             assert.equal(getMeta.mock.calls.length, 0);
           } finally { getMeta.mockRestore(); }

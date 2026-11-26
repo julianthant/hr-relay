@@ -16,6 +16,9 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createComposedDashboardReadHost } from "../../../../src/backend/app/composition/dashboard/runtime-resources.js";
 import { createRunHistoryService } from "../../../../src/backend/runs/commands/run-history-service.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import { createContentAddressedArtifactWriter, removeArtifactDeletionFile } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { RunHistoryCommandSchema } from "../../../../src/models/dashboard/run-history.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -48,11 +51,14 @@ async function fixture() {
   let refreshed = 0;
   const lifecycle = () => new RunRecordService({ database, clock: capturedInstantClock(NOW), ids: sequentialIdFactory(), publishQueued() {} });
   const service = () => createRunHistoryService({ database, lifecycle: lifecycle(), afterClear() { refreshed++; } });
-  const seed = (id = randomUUID(), parent?: ReturnType<typeof RunRecordSchema.parse>, terminal = true) => {
+  // queuedSpan records the run.queued span a served enqueue writes, which the read lane's queue fold requires.
+  const seed = (id = randomUUID(), parent?: ReturnType<typeof RunRecordSchema.parse>, terminal = true, queuedSpan = false) => {
     const run = RunRecordSchema.parse({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId: id, itemId: id,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint,
       ...(parent === undefined ? {} : { parent: { runId: parent.envelope.runId, tracePrefix: parent.envelope.traceId, edgeId: "child-probe" } }) } });
     database.authority.runs.enqueue(run);
+    if (queuedSpan) createTimelineEmitter({ repository: database.authority.timelineEvents, clock: capturedInstantClock(NOW), pid: 4242 })
+      .emit(runQueuedSpanEvent({ run, title: "History probe", actorId: ActorIdSchema.parse("synthetic-operator") }));
     if (!terminal) return run;
     const result = lifecycle().transition({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version,
       lifecycle: { state: "terminal", outcome: "discarded", endedAt: NOW } });
@@ -447,7 +453,7 @@ it("keeps read-only inspection passive and never sweeps unowned files during rec
 
 it("reads the run-history counts on a read lane with the main read connection disabled", async () => {
   const f = await fixture();
-  f.seed(); f.seed(undefined, undefined, false);
+  f.seed(undefined, undefined, true, true); f.seed(undefined, undefined, false, true);
   const lanes = createComposedDashboardReadHost({ admission: f.profile.admission, database: f.database, clock: manualClock(new Date(NOW)) });
   try {
     const service = createRunHistoryService({ database: f.database, lifecycle: f.lifecycle(), readLanes: lanes, afterClear() {} });
