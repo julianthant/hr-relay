@@ -492,10 +492,13 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     groupable.add(event.noteId);
     order.set(event.noteId, requireNative(event.native).order); node.set(event.noteId, requireNative(event.native).nodeId);
     const state = { failed: "Failed", blocked: "Waiting", cancelled: "Cancelled", skipped: "Skipped" }[event.state];
-    const replacedReading = event.state === "skipped" && event.notRun.state === "present" && event.notRun.reason === "operator-asserted"
-      && detail.timeline.steps?.some(category => category.key === event.categoryKey && category.typedValues !== undefined) === true;
+    const reason = event.notRun.state === "present" ? event.notRun.reason : undefined;
+    const typedFields = detail.timeline.steps?.find(category => category.key === event.categoryKey)?.typedValues?.fields.length ?? 0;
+    const replacedReading = event.state === "skipped" && reason === "operator-asserted" && typedFields > 0;
+    // Only a step whose form types nothing was done outside Relay; a read or gate turned off was replaced by typed values.
+    const why = reason === "step-omitted" && typedFields > 0 ? "operator-asserted" : reason;
     steps.push({ id: event.noteId, time, title: plainStepLabel(event.label), entries: [{ kind: "note", id: event.noteId, time,
-      message: replacedReading ? REPLACED_READING : reasoned(state, event.notRun.state === "present" ? event.notRun.reason : undefined) }] });
+      message: replacedReading ? REPLACED_READING : reasoned(state, why) }] });
   }
   if (new Set(steps.map(step => step.id)).size !== steps.length) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_DUPLICATE");
   const orderOf = (id: string): number => {

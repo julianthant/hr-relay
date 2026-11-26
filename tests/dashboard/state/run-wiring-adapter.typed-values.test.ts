@@ -62,6 +62,14 @@ describe("typed values in Logs", () => {
     assert.ok(step.entries[1].kind === "fields");
   });
 
+  it("calls a step turned off with typed values manual, and only a step with nothing typed done outside Relay", () => {
+    const read = logPlainText(projectRunLogs(snapshot(group(typedFields), {}, "step-omitted"), client).steps);
+    assert.match(read, /Skipped · Manual values/u);
+    assert.doesNotMatch(read, /Done outside Relay/u);
+    const byHand = logPlainText(projectRunLogs(snapshot(group([]), {}, "step-omitted"), client).steps);
+    assert.match(byHand, /Skipped · Done outside Relay/u);
+  });
+
   it("draws a run with nothing typed as before", () => {
     const steps = projectRunLogs(snapshot({}, {}), client).steps;
     const text = logPlainText(steps);
