@@ -79,6 +79,25 @@ it("fails a cold General Settings link whose account check stalls at the startup
   } finally { await app.stop(); }
 }, STARTUP_READ_DEADLINE_MS + 20_000);
 
+it("gives a loader that returns for the same profile its own startup deadline", async () => {
+  const server = dashboardServer();
+  let stalled = false;
+  const app = await start({}, (url, init) => new URL(url).pathname === "/api/v1/profile/state" ? Response.json(active)
+    : stalled && url.includes("/events/v1?") ? never() : server(url, init));
+  const button = (name: string) => [...app.host.querySelectorAll("button")].find(item => item.textContent === name);
+  try {
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
+    await act(async () => { window.history.pushState(window.history.state, "", "/?settings=activity&activityPreview=missing"); window.dispatchEvent(new PopStateEvent("popstate", { state: window.history.state })); });
+    await vi.waitFor(() => assert.ok(button("Open dashboard")), { timeout: 5_000, interval: 50 });
+    stalled = true;
+    const returning = app.frames.length;
+    await act(async () => { button("Open dashboard")?.click(); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, STARTUP_READ_DEADLINE_MS - 1_000)); });
+    assert.deepEqual(app.frames.slice(returning), ["loading"], "the returning loader holds while the day stream is pending");
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 5_000, interval: 50 });
+  } finally { await app.stop(); }
+}, STARTUP_READ_DEADLINE_MS + 30_000);
+
 const servedSessions: typeof MOCK_WORKFLOW_COMPOSITION = workflows => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows), sessionsHarness: undefined });
 const sessionsOpen = `&view=${encodeURIComponent(JSON.stringify({ sessions: true }))}`;
 for (const [sessions, composition, view] of [["sample", MOCK_WORKFLOW_COMPOSITION, ""], ["served", servedSessions, ""], ["served, expanded", servedSessions, sessionsOpen]] as const)

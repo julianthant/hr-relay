@@ -10,11 +10,11 @@ import "./startup-loading.css";
  * One loader from app start to the finished first screen: the dashboard mounts hidden beneath it
  * and appears once it has its data. The 1fr/auto/1fr grid keeps the lockup still while the bar loops.
  */
-/** `deadline` is shared with ports built above the loader, so their first-screen reads expire with it. */
-export function StartupLoading({ children, deadline }: { children?: ReactNode; deadline?: StartupDeadline }) {
+/** `startDeadline` opens each mount's deadline, shared with ports built above the loader so their first-screen reads expire with it. */
+export function StartupLoading({ children, startDeadline }: { children?: ReactNode; startDeadline?: () => StartupDeadline }) {
   const screen = useRef<HTMLDivElement>(null);
   const mounted = children !== undefined;
-  const { revealed, slow, client } = useFirstScreen(screen, mounted, useDashboardClient(), deadline);
+  const { revealed, slow, client } = useFirstScreen(screen, mounted, useDashboardClient(), startDeadline);
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {!revealed && <main data-startup-loading role="status" aria-label="Starting Relay" aria-busy="true"

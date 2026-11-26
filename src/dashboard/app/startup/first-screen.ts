@@ -22,10 +22,10 @@ export const FirstScreenRevealedContext = createContext(true);
  * lifts in one step. Reads still pending at the startup deadline fail into their own part's notice
  * (startupDeadlineClient), so the loader always ends on a settled screen.
  */
-export function useFirstScreen(screen: RefObject<HTMLElement | null>, mounted: boolean, client: DashboardClient, shared?: StartupDeadline) {
+export function useFirstScreen(screen: RefObject<HTMLElement | null>, mounted: boolean, client: DashboardClient, startDeadline?: () => StartupDeadline) {
   const [revealed, setRevealed] = useState(false);
   const [slow, setSlow] = useState(false);
-  const deadline = useMemo(() => shared ?? startupDeadlineClient(client), [shared, client]);
+  const deadline = useMemo(() => startDeadline?.() ?? startupDeadlineClient(client), [startDeadline, client]);
   useEffect(() => {
     const timer = setTimeout(() => setSlow(true), SLOW_STARTUP_MS);
     return () => clearTimeout(timer);
@@ -90,5 +90,7 @@ export function startupDeadlineClient(client: DashboardClient) {
     client: proxy as DashboardClient,
     expire: () => { open = false; for (const expire of [...expiries]) expire(); expiries.clear(); },
     end: () => { open = false; expiries.clear(); },
+    /** True until `expire` or `end`. */
+    pending: () => open,
   };
 }
