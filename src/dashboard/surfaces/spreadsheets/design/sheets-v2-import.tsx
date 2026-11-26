@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Link2, Plus, Upload } from 'lucide-react';
-import { Dialog, DialogBody, DialogContent, DialogFooter, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Field as FormField, Input, PageBreadcrumbs, PageHeading, dsFocus, dsIcon } from '../../../ds/ui.js';
+import { Dialog, DialogBody, DialogContent, DialogFooter, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Field as FormField, Input, PageBreadcrumbs, PageHeading, dsIcon } from '../../../ds/ui.js';
 import type { EditableWorkbook } from '../../../../rules/spreadsheets/workbook-io.js';
 import { copyColumnMapping } from '../../../../rules/spreadsheets/column-mapping.js';
 import { SheetDetailGridSkeleton, WorkbookGrid } from './sheets-v2-detail.js';
@@ -12,11 +12,11 @@ const Option = ({ icon, title, note }: { icon: ReactNode; title: string; note: s
   <span className="flex items-start gap-2.5">{icon}<span className="grid"><span>{title}</span><Grey>{note}</Grey></span></span>;
 
 /** Import is a menu: a file from this computer opens a draft page, a SharePoint link opens its small dialog. */
-export function ImportMenu({ disabled, onFile, onSharePoint }: { disabled: boolean; onFile: (file: File) => void; onSharePoint: () => void }) {
+export function ImportMenu({ onFile, onSharePoint }: { onFile: (file: File) => void; onSharePoint: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   return <>
     <input ref={input} hidden type="file" accept=".xlsx,.csv" aria-label="Spreadsheet file" onChange={event => { const picked = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (picked) onFile(picked); }} />
-    <DropdownMenu><DropdownMenuTrigger render={<V2Button disabled={disabled} icon={<Plus aria-hidden className={dsIcon.md} />} iconAfter={<ChevronDown aria-hidden className={`${dsIcon.md} text-ui-muted`} />}>Import</V2Button>} />
+    <DropdownMenu><DropdownMenuTrigger render={<V2Button icon={<Plus aria-hidden className={dsIcon.md} />} iconAfter={<ChevronDown aria-hidden className={`${dsIcon.md} text-ui-muted`} />}>Import</V2Button>} />
       <DropdownMenuContent align="end" className="w-[260px]">
         <DropdownMenuItem onSelect={() => input.current?.click()}><Option icon={<Upload aria-hidden className={`${dsIcon.lg} mt-0.5 shrink-0`} />} title="From this computer" note=".xlsx or .csv" /></DropdownMenuItem>
         <DropdownMenuItem onSelect={onSharePoint}><Option icon={<Link2 aria-hidden className={`${dsIcon.lg} mt-0.5 shrink-0`} />} title="SharePoint link" note="Stays in sync" /></DropdownMenuItem>
@@ -33,7 +33,7 @@ export function DraftDetail({ draft, bank, fields, adding, onChange, onDiscard, 
   return <div className="min-w-0">
     <PageBreadcrumbs items={[{ label: 'Spreadsheets', onClick: onDiscard }, { label: draft.name || 'New spreadsheet' }]} />
     <PageHeading className="mb-[var(--ds-space-page-heading-content)]"
-      title={<input aria-label="Name" value={draft.name} placeholder="Name" onChange={event => onChange({ ...draft, name: event.target.value })} className={`w-full min-w-0 rounded-sm bg-transparent font-[inherit] text-[length:inherit] leading-[inherit] outline-none placeholder:text-ui-muted ${dsFocus}`} />}
+      title={<input aria-label="Name" value={draft.name} placeholder="Name" onChange={event => onChange({ ...draft, name: event.target.value })} className="w-full min-w-0 rounded-sm border border-transparent bg-transparent font-[inherit] text-[length:inherit] leading-[inherit] outline-none placeholder:text-ui-muted focus-visible:border-[color:var(--ds-field-focus-edge)]" />}
       description={<span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
         {draft.tags.map(tag => <Tag key={tag} onRemove={() => onChange({ ...draft, tags: draft.tags.filter(item => item !== tag) })}>{tag}</Tag>)}
         <TagMenu name={draft.name || 'the new spreadsheet'} tags={draft.tags} bank={bank} onChange={tags => onChange({ ...draft, tags })} />

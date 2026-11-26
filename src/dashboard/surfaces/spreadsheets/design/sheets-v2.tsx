@@ -152,7 +152,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const target = dialog && get(dialog.id);
   const open = openId ? get(openId) : undefined;
 
-  const importMenu = <ImportMenu disabled={catalogLoading || !!catalogError} onFile={file => void pickFile(file)} onSharePoint={() => setSharePoint(true)} />;
+  const importMenu = <ImportMenu onFile={file => void pickFile(file)} onSharePoint={() => setSharePoint(true)} />;
   const pending = pendingLibraries.map(id => catalog.find(item => item.libraryId === id)).filter(Boolean);
   return <section aria-label="Spreadsheets" className="hub-sheets-library settings-compact-page min-w-0">
     {importDraft ? <DraftDetail draft={importDraft} bank={bank} fields={fields} adding={adding} onChange={setImportDraft} onDiscard={discardDraft} onAdd={() => addDraft(importDraft)} />
