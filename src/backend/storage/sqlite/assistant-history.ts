@@ -4,7 +4,7 @@ import {
   AssistantAcceptedTurnSchema, AssistantHistoryOperationSchema, AssistantM1MessageRecordSchema, AssistantM1ConversationViewSchema, AssistantM1SettlementSchema, assistantReplyDisplayUnits,
   type AssistantM1MessageRecord, type AssistantM1ConversationView, type AssistantM1Settlement, type AssistantAcceptedTurn,
   ASSISTANT_CHATS_MAX, ASSISTANT_CHAT_TTL_MS, type AssistantAttachmentMediaType, type AssistantAttachmentRecord, ASSISTANT_HISTORY_METADATA_MAX_UNITS, ASSISTANT_MESSAGES_MAX, AssistantConversationRecordSchema, AssistantMessageRecordSchema, AssistantM1MessagePayloadSchema, type AssistantM1MessagePayload,
-  type AssistantConversationRecord, type AssistantConversationView, type AssistantDeliverySchema, type AssistantFailureCode, type AssistantHistoryOperation,
+  type AssistantConversationRecord, type AssistantDeliverySchema, type AssistantFailureCode, type AssistantHistoryOperation,
   type AssistantHistoryResult, type AssistantHistoryView, type AssistantMessageRecord,
 } from "../../../models/dashboard/assistant.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";

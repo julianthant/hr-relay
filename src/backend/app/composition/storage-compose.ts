@@ -14,7 +14,6 @@ import type { ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo
 import { ProfileSessionRefusedError } from "../../profiles/profile-errors.js";
 import { createProfileSession } from "../../profiles/profile-session.js";
 import { createProfileRegistry } from "../../profiles/registry.js";
-import type { CommandKernel } from "../../runs/commands/command-kernel.js";
 import { requireLifecycleApplied,RunRecordService } from "../../runs/lifecycle/run-record-service.js";
 import { reconcileExitedWorker,reconcileStoppedLogout,reconcileStoppedStartupCrash,StartupCrashRecoveryRefusedError } from "../../runs/lifecycle/startup-crash-recovery.js";
 import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";

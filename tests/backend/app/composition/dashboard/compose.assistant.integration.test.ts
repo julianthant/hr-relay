@@ -45,7 +45,6 @@ type Door = { history(operation: AssistantHistoryOperation): Promise<unknown>; r
 const clientDoor = (client: ReturnType<typeof createDashboardClient>): Door => ({
   history: operation => { if (client.assistantHistoryWrite === undefined) throw new Error('assistant history owner required'); return client.assistantHistoryWrite(operation); },
   respond: request => client.assistantRespond(request) });
-const postDoor = (post: (path: string, value: unknown) => Promise<unknown>): Door => ({ history: operation => post('assistant/history', operation), respond: request => post('assistant/respond', request) });
 /** One message in a new served chat. Returns the settled result. */
 async function send(door: Door, input: Omit<AssistantM1Request, 'conversationId' | 'expectedRevision' | 'messageId'>) {
   const conversationId = randomUUID();

@@ -27,7 +27,7 @@ it("fits the full served tool set (13 tools) exactly at the cap", () => {
   for (const tool of registry.namespace.tools) assert.doesNotMatch(JSON.stringify(tool.parameters), /"oneOf"/u, tool.name);
   assert.deepEqual(proposals.plugin.tools.map(tool => tool.name), ["propose_workflow_start", "propose_rerun", "propose_run_action"]);
   const [first] = plugins(); assert.ok(first);
-  assert.throws(() => assistantToolRegistry([...plugins(), proposals.plugin, sessionsPlugin(), { domain: "extra", tools: [{ ...first.tools[0]!, name: "extra_read" }] }]),
+  assert.throws(() => assistantToolRegistry([...plugins(), proposals.plugin, sessionsPlugin(), { domain: "extra", tools: [{ ...first.tools[0], name: "extra_read" }] }]),
     /assistant-tool-registry-invalid/u, "a fourteenth tool refuses");
 });
 
