@@ -555,7 +555,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     let claimedRun: RunId | undefined;
     let standing: WorkerActivity["refusal"];
     const activityNow = (): WorkerActivity => {
-      const base: WorkerActivity = browserActivities.size !== 0 ? { state: "waiting", waiting: [...browserActivities.values()].at(-1) }
+      // A worker signing in for its claimed run still holds that run, so both panels show it.
+      const base: WorkerActivity = browserActivities.size !== 0 ? { state: "waiting", waiting: [...browserActivities.values()].at(-1), ...(claimedRun === undefined ? {} : { runId: claimedRun }) }
         : claimedRun !== undefined ? { state: "busy", runId: claimedRun } : { state: paused() ? "paused" : "idle" };
       return standing === undefined || base.state !== "idle" ? base : { ...base, refusal: standing };
     };
