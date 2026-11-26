@@ -106,7 +106,7 @@ type NotificationListSource = NonNullable<Parameters<typeof composeShell>[0]["no
 export function composeNotificationRoutes(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "assertCurrent" | "notificationObserver"> & {
   notificationTarget: ReturnType<typeof createNotificationTargetQuery>;
   notificationReads?: ReturnType<typeof composeNotificationReads>;
-}): NotificationRoutes & { streamList: NotificationListSource; pollList(): void } {
+}): NotificationRoutes & { streamList: NotificationListSource; pollList: () => void } {
   const { database, clock, assertCurrent, notificationObserver, notificationTarget } = input;
   const { list, collection } = input.notificationReads ?? composeNotificationReads(database);
   const projectionDependencies = createProjectionDependencies(input);
