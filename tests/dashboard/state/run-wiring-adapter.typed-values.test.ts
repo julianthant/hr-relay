@@ -70,6 +70,16 @@ describe("typed values in Logs", () => {
     assert.match(byHand, /Skipped · Done outside Relay/u);
   });
 
+  it("calls a form action its typed receipt stands for done outside Relay, and still shows the receipt", () => {
+    const filed = { typedValues: { ...group(typedFields).typedValues, doneByHand: ["crm"] } };
+    const steps = projectRunLogs(snapshot(filed, {}, "step-omitted"), client).steps;
+    assert.match(logPlainText(steps), /Skipped · Done outside Relay/u);
+    assert.doesNotMatch(logPlainText(steps), /Manual values/u);
+    const first = steps.find(candidate => candidate.title === "Read CRM")?.entries[0];
+    assert.ok(first?.kind === "fields");
+    assert.deepEqual(first.fields.map(field => field.label), ["Process stage", "First day of service"]);
+  });
+
   it("draws a run with nothing typed as before", () => {
     const steps = projectRunLogs(snapshot({}, {}), client).steps;
     const text = logPlainText(steps);
