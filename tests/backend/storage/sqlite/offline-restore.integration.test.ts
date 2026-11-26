@@ -10,10 +10,9 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { AssistantM2ProposalSnapshotSchema, assistantM2ProposalDigest, type AssistantReplyPart } from "../../../../src/models/dashboard/assistant.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { assistantM1HistoryFixture } from "../../../support/helpers/assistant-m1-history-fixture.js";
+import { seedAssistantPhaseOne } from "../../../support/helpers/assistant-m1-history-fixture.js";
 
 {
 
@@ -60,39 +59,6 @@ describe("corruption → degraded → automatic restore → rebuild", () => {
 {
 
 describe("assistant history through backup and restore", () => {
-  function seedAssistantPhaseOne(path: string, profileId: string, now: string) {
-    using database = new DatabaseSync(path);
-    const storage = assistantM1HistoryFixture({ now, acceptedAt: now, profileId }, database);
-    const conversationId = storage.create(), proposals = storage.proposals();
-    const turn = storage.history.accept(storage.input(conversationId));
-    if (turn.state !== "accepted") assert.fail("fixture turn was not accepted");
-    const renderedMessageId = randomUUID();
-    const parts: AssistantReplyPart[] = [{ kind: "text", runs: [{ kind: "plain", text: "Ready to start" }] }];
-    const usage = { state: "measured", callCount: 1, inputTokens: 2, outputTokens: 3, totalTokens: 5 } as const;
-    assert.ok(storage.history.settle(turn, { delivery: "answered", usage,
-      reply: { id: renderedMessageId, kind: "answer", parts, modelText: "Ready to start" } }, now));
-    const rowId = randomUUID(), fingerprint = "a".repeat(64);
-    const draft = { id: randomUUID(), profileId, conversationId, renderedMessageId, revision: 1, sourceMessageId: turn.acceptedTurn.messageId,
-      label: "Start Person Lookup", dryRun: true, createdAt: now, options: { browserMode: "headless", captureBrowserScreenshots: true, priority: "interactive" } as const,
-      rows: [{ id: rowId, ordinal: 1, title: "Synthetic row", display: { kind: "request" } as const,
-        operation: { kind: "workflow-start", workflowId: "person-lookup", submission: {}, reviewed: fingerprint } as const }] };
-    const shown = AssistantM2ProposalSnapshotSchema.parse({ ...draft, renderedDigest: assistantM2ProposalDigest(draft) });
-    proposals.issue(shown);
-    const binding = { proposalId: shown.id, proposalRevision: shown.revision, renderedMessageId, renderedDigest: shown.renderedDigest };
-    const answer = storage.history.accept({ ...storage.input(conversationId, "Yes"), proposalAnswer: binding });
-    if (answer.state !== "accepted") assert.fail("fixture answer was not accepted");
-    assert.equal(proposals.claimAnswer({ ...binding, attempt: answer, now }), true);
-    assert.equal(proposals.claimRow(shown.id, rowId, randomUUID()), true);
-    assert.equal(proposals.sessions.claim({ actionId: randomUUID(), approvalMode: "full-access", dryRun: true, contractFingerprint: fingerprint,
-      requestDigest: fingerprint, claimedAt: now, acceptedTurn: answer.acceptedTurn,
-      command: { commandId: randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "assistant", family: "start", type: "start-run",
-        target: { workflowId: "person-lookup", startPlanId: randomUUID(), expectedVersion: 1 },
-        payload: { descriptorFingerprint: fingerprint, configFingerprint: fingerprint, ingressSchemaHash: fingerprint,
-          canonicalInputSchemaHash: fingerprint, inputFingerprint: fingerprint } } }), true);
-    assert.ok(storage.history.settle(answer, { delivery: "answered", usage }, now));
-    return conversationId;
-  }
-
   function phaseOneRows(path: string, conversationId: string) {
     using raw = new DatabaseSync(path, { readOnly: true });
     return {
@@ -109,6 +75,12 @@ describe("assistant history through backup and restore", () => {
     try {
       const open = () => AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "assistant-history-restore" }, clock,
         undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+      open().close();
+      // Seed the prepared owner before legacy messages enter its profile-wide budget.
+      const phaseOneChat = (() => {
+        using raw = new DatabaseSync(profile.path);
+        return seedAssistantPhaseOne(raw, admission.profileBinding.profileId, now);
+      })();
       let db = open();
       const history = db.authority.assistantHistory, id = randomUUID(), messageId = randomUUID();
       assert.equal(history.apply({ operation: "create", conversationId: id, title: "Kept chat" }, now).state, "saved");
@@ -118,7 +90,6 @@ describe("assistant history through backup and restore", () => {
       assert.equal(typeof history.settle(id, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Answer for 10812345", modelText: "Answer for [[E1.g1]]" } }, now), "number");
       const expected = { conversation: history.conversation(id, now), replay: history.replay(id, 99) };
       db.close();
-      const phaseOneChat = seedAssistantPhaseOne(profile.path, admission.profileBinding.profileId, now);
       const expectedRows = phaseOneRows(profile.path, phaseOneChat);
       assert.deepEqual(Object.values(expectedRows).map(rows => rows.length), [3, 1, 1, 1]);
       const backupDb = open();

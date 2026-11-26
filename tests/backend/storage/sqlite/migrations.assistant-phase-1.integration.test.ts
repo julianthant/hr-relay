@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { upgradeProfileAtStartup } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
@@ -17,13 +18,14 @@ import { boundProfileCredentials, createBoundProfileFixture } from "../../../sup
 it("upgrades populated schema-42 history, verifies its backup and keeps legacy settlements working", async () => {
   const profile = await createBoundProfileFixture();
   const profileId = profile.admission.profileBinding.profileId;
-  const open = (admission = profile.admission) => AuthorityDatabase.open(admission, {
+  const options = {
     path: profile.path, busyTimeoutMs: 250, migrationOwner: "assistant-storage-upgrade",
-  }, systemClock, undefined, undefined, undefined, boundProfileCredentials(admission));
+  };
   const tables = ["assistant_proposals", "assistant_proposal_rows", "assistant_session_claims"];
   const conversationId = randomUUID(), messageId = randomUUID(), now = systemClock.now().toISOString();
   try {
-    const fresh = open();
+    const fresh = AuthorityDatabase.open(profile.admission, options, systemClock, undefined, undefined, undefined,
+      boundProfileCredentials(profile.admission));
     try {
       const history = fresh.authority.assistantHistory;
       assert.equal(history.apply({ operation: "create", conversationId, title: "Retained chat" }, now).state, "saved");
@@ -63,7 +65,8 @@ it("upgrades populated schema-42 history, verifies its backup and keeps legacy s
       assert.equal(backup.manifest.schemaVersion, 42);
       assert.equal(backup.manifest.authorityContentFingerprint, original.authorityContentFingerprint);
 
-      const reopened = open(admission);
+      const reopened = AuthorityDatabase.open(admission, options, systemClock, undefined, undefined, undefined,
+        createCredentialStore({ admission, stateRoot: profile.stateRoot }));
       try {
         const reply = { id: randomUUID(), kind: "answer" as const, text: "Explanation", modelText: "Explanation" };
         assert.equal(typeof reopened.authority.assistantHistory.settle(conversationId, messageId, { delivery: "answered", reply }, now), "number");

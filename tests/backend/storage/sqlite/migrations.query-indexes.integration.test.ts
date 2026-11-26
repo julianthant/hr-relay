@@ -4,6 +4,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { applyAuthorityMigrationsAfter } from "../../../../src/backend/storage/sqlite/authority-upgrades.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
+import { ASSISTANT_PHASE_ONE_TABLES } from "../../../../src/models/config/authority.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, LIST_INDEXES, QUERY_INDEXES, QUERY_INDEX_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { restoreSchema36QueryIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
@@ -52,7 +53,8 @@ describe("query index migration 37", () => {
       migrateTo36(database);
       const after = schemaObjects(database);
       const laterTableChanges = new Set(["delegation_dependencies", "run_search"]);
-      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && !(object.name in LIST_INDEXES) && !["workbook_payloads", "debug_events"].includes(object.tbl_name) && !laterTableChanges.has(object.name)),
+      const laterAssistantTables = new Set<string>(ASSISTANT_PHASE_ONE_TABLES);
+      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && !(object.name in LIST_INDEXES) && !["workbook_payloads", "debug_events"].includes(object.tbl_name) && !laterTableChanges.has(object.name) && !laterAssistantTables.has(object.tbl_name)),
         prior.filter(object => object.name !== "checkpoints_replay_idx" && !laterTableChanges.has(object.name)));
       assert.deepEqual(after.filter(object => object.name in QUERY_INDEXES).map(object => [object.name, object.sql]).sort(),
         Object.entries(QUERY_INDEXES).map(([name, index]) => [name, `CREATE INDEX ${name} ON ${index.on}`]).sort());
