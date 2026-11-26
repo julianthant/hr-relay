@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act, createElement } from "react";
+import { act, createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
+import { TooltipProvider } from "../../../src/dashboard/ds/ui.js";
 import { createDashboardClient, createRowStore, type DashboardClient, type RowStore, type RowStoreWriter } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
 import { CommandExecutor } from "../../../src/dashboard/app/commands/command-executor.js";
@@ -96,6 +97,8 @@ function commandBindingFixture(client: DashboardClient) {
 let root: Root | undefined;
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0)); vi.stubGlobal("cancelAnimationFrame", clearTimeout); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); vi.unstubAllGlobals(); });
+// LogActionButton's Tooltip needs the app's provider; the bare renders here have none.
+const TipClient = (props: ComponentProps<typeof DashboardClientProvider>) => createElement(TooltipProvider, null, createElement(DashboardClientProvider, props));
 async function mount(element: ReturnType<typeof createElement>) { const host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(async () => root?.render(element)); }
 
 describe("Logs of a run that failed in its first step", () => {
@@ -118,7 +121,7 @@ describe("Logs of a run that failed in its first step", () => {
     const client = servedClient();
     const h = commandBindingFixture(client);
     await serveRows(h.binding.authority.dayState.rows, client, RUN);
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
+    await mount(createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
       children: createElement(LogSample, { selection: { row: failedRow(), workflowLabel: "Onboarding" } }) }) }));
     const text = document.body.textContent ?? "";
     for (const [, label] of PLANNED) assert.match(text, new RegExp(label, "u"));

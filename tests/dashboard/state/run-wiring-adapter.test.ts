@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act, createElement, StrictMode } from "react";
+import { act, createElement, StrictMode, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TooltipProvider } from "../../../src/dashboard/ds/ui.js";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
@@ -100,6 +100,8 @@ function commandBindingFixture() {
 let root: Root | undefined;
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0)); vi.stubGlobal("cancelAnimationFrame", clearTimeout); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); window.history.replaceState(null, "", "/"); vi.unstubAllGlobals(); });
+// LogActionButton's Tooltip needs the app's provider; the bare renders here have none.
+const TipClient = (props: ComponentProps<typeof DashboardClientProvider>) => createElement(TooltipProvider, null, createElement(DashboardClientProvider, props));
 async function mount(element: ReturnType<typeof createElement>) { const host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(async () => root?.render(element)); }
 
 
@@ -123,7 +125,7 @@ describe("served Logs wiring", () => {
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
     await serveRows(h.binding.authority.dayState.rows, client, RUN);
     let pending: Promise<CommandOutcome> | undefined;
-    const render = () => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+    const render = () => createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected, onAction: (action, target) => {
         assert.equal(action.kind, "command");
         assert.deepEqual(target, { runId: selected.row.runId, expectedVersion: selected.row.rowRevision });
@@ -209,7 +211,7 @@ describe("served Logs wiring", () => {
     });
     const h = commandBindingFixture();
     await serveRows(h.binding.authority.dayState.rows, client, row.runId);
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
+    await mount(createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
       children: createElement(LogSample, { selection: { row, workflowLabel: "Person Lookup" } }) }) }));
     assert.match(document.body.textContent ?? "", /Searching UCPath directory for Morrow, Bea/);
     assert.doesNotMatch(document.body.textContent ?? "", /Capture availability not supplied/);
@@ -244,7 +246,7 @@ describe("served Logs wiring", () => {
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : served);
     const sent: string[] = [];
     await serveRows(h.binding.authority.dayState.rows, client, RUN);
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
+    await mount(createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
       children: createElement(LogSample, { selection: withActions, onAction: action => { sent.push(action.key); } }) }) }));
     const button = (label: string) => { const found = [...document.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === label); assert.ok(found, label); return found; };
     await act(async () => button("Resume").click());
@@ -264,7 +266,7 @@ describe("served Logs wiring", () => {
     if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.deepEqual(entry.decision.served?.options.map(option => option.label), ["Saved", "Not saved, write it again"]); assert.equal(entry.decision.footer, undefined); }
     const h = commandBindingFixture();
     await serveRows(h.binding.authority.dayState.rows, client, RUN);
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
+    await mount(createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
       children: createElement(LogSample, { selection: selection() }) }) }));
     assert.match(document.body.textContent ?? "", /Did the write save\?/);
     assert.equal(document.querySelector('form[aria-label="Did the write save?"]')?.querySelectorAll("button").length, 2);
@@ -440,7 +442,7 @@ describe("served Logs wiring", () => {
     const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
     await serveRows(binding.authority.dayState.rows, client, RUN);
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+    await mount(createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected }) }) }));
     const block = document.querySelector('form[aria-label="Is this the right person?"]'); assert.ok(block);
     const text = block.textContent ?? "";
@@ -466,7 +468,7 @@ describe("served Logs wiring", () => {
       assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 0); assert.deepEqual(sent[1], envelope);
       // A replacement authority takes the editor before the row arrives: the settled command's timeout reopens nothing for it.
       const replacement: DashboardCommandBinding = { ...binding, scope: { ...scope } };
-      await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: replacement,
+      await act(async () => root?.render(createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding: replacement,
         children: createElement(LogSample, { selection: selected }) }) })));
       await act(async () => { vi.advanceTimersByTime(ROW_REVISION_WAIT_MS * 2); });
       assert.equal(refreshed, 0);
@@ -491,7 +493,7 @@ describe("served Logs wiring", () => {
     const scope = { ...h.binding.scope, client };
     const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-    const panel = (next: LogSelection, currentBinding = binding) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
+    const panel = (next: LogSelection, currentBinding = binding) => createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
       children: createElement(LogSample, { selection: next, key: transition === "keyed-run-roundtrip" ? next.row.runId : undefined }) }) });
     await serveRows(binding.authority.dayState.rows, client, RUN);
     await mount(panel(selected));
@@ -560,7 +562,7 @@ describe("served Logs wiring", () => {
     const scope = { ...h.binding.scope, client };
     const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-    const panel = (index: number) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+    const panel = (index: number) => createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected[index] }) }) });
     const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gates[0].decision!.options[0].label); assert.ok(control); return control; };
     await serveRows(binding.authority.dayState.rows, client, RUN);
@@ -588,7 +590,7 @@ describe("served Logs wiring", () => {
     const scope = { ...h.binding.scope, client };
     const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-    const panel = (next: LogSelection) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+    const panel = (next: LogSelection) => createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: next }) }) });
     await serveRows(binding.authority.dayState.rows, client, RUN);
     await mount(panel(selected));
@@ -638,7 +640,7 @@ describe("served Logs wiring", () => {
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...page(), rows: [], notes: [] } } : detail());
     const h = commandBindingFixture();
     await serveRows(h.binding.authority.dayState.rows, client, RUN);
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
+    await mount(createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
       children: createElement(LogSample, { selection: selection() }) }) }));
     assert.match(document.body.textContent ?? "", /No actions yet/);
   });
@@ -659,7 +661,7 @@ describe("served Logs wiring", () => {
       const scope = { ...h.binding.scope, client };
       const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
       await serveRows(binding.authority.dayState.rows, client, RUN);
-      await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+      await mount(createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding,
         children: createElement(LogSample, { selection: selected }) }) }));
       assert.match(document.body.textContent ?? "", /Authoritative note 0/);
       if (omitted === "node") assert.match(document.body.textContent ?? "", /Identity decision join not supplied/);
@@ -685,7 +687,7 @@ describe("served Logs wiring", () => {
     const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { throw new Error("refusal must not invent changed authority"); } } } };
     await serveRows(binding.authority.dayState.rows, client, RUN);
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+    await mount(createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected }) }) }));
     const approve = () => { const node = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.decision!.options[0].label); assert.ok(node); return node; };
     async function choose(index: number) {
@@ -725,7 +727,7 @@ describe("served Logs wiring", () => {
     const scope = { ...h.binding.scope, client };
     const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-    const panel = (next: LogSelection) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+    const panel = (next: LogSelection) => createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: next }) }) });
     const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === firstGate.decision!.options[0].label); assert.ok(control); return control; };
     await serveRows(binding.authority.dayState.rows, client, RUN);
@@ -759,7 +761,7 @@ describe("served Logs wiring", () => {
     const scope = { ...h.binding.scope, client };
     const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-    const panel = (next: LogSelection, currentBinding = binding) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
+    const panel = (next: LogSelection, currentBinding = binding) => createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
       children: createElement(LogSample, { key: next.row.runId, selection: next }) }) });
     const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.decision!.options[0].label); assert.ok(control); return control; };
     async function choose(index: number) {
@@ -802,7 +804,7 @@ describe("served Logs wiring", () => {
     await act(async () => root?.render(panel(next, binding)));
     assert.doesNotMatch(document.body.textContent ?? "", /That was refused|Pending/); assert.equal(sent.length, 2);
   });
-  const bound = (client: DashboardClient, binding: DashboardCommandBinding, selected: LogSelection) => createElement(DashboardClientProvider, { client,
+  const bound = (client: DashboardClient, binding: DashboardCommandBinding, selected: LogSelection) => createElement(TipClient, { client,
     children: createElement(DashboardCommandBindingProvider, { binding, children: createElement(LogSample, { selection: selected }) }) });
   const refused = (code: string, retryable: boolean) => ({ state: "refused" as const, error: WireErrorSchema.parse({ state: "error", code, message: "private native mismatch", retryable }) });
   const unreadable = () => { const reads: string[] = []; return { reads, client: clientFor(path => { reads.push(path); throw new Error("the panel is streamed; no read is made"); }) }; };
@@ -875,8 +877,8 @@ describe("served Logs wiring", () => {
     const { client, reads } = unreadable();
     await serveRows(h.binding.authority.dayState.rows, client, RUN, refused("DASHBOARD_READ_FAILED", true));
     const selected = selection();
-    const panel = (preview?: true) => createElement(TooltipProvider, null, createElement(DashboardClientProvider, { client,
-      children: createElement(DashboardCommandBindingProvider, { binding: h.binding, children: createElement(preview ? LogPreview : LogSample, { selection: selected }) }) }));
+    const panel = (preview?: true) => createElement(TipClient, { client,
+      children: createElement(DashboardCommandBindingProvider, { binding: h.binding, children: createElement(preview ? LogPreview : LogSample, { selection: selected }) }) });
     await mount(panel());
     assert.match(document.body.textContent ?? "", /Couldn't load logs\./);
     assert.doesNotMatch(document.body.textContent ?? "", /Separation request verified/);
