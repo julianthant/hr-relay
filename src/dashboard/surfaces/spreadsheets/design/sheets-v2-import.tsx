@@ -31,14 +31,14 @@ export function DraftDetail({ draft, bank, fields, adding, onChange, onDiscard, 
   const { document } = draft;
   const edit = (next: EditableWorkbook) => onChange({ ...draft, document: next });
   return <div className="min-w-0">
-    <PageBreadcrumbs items={[{ label: 'Spreadsheets', onClick: onDiscard }, { label: draft.name || 'New spreadsheet' }]} />
+    <PageBreadcrumbs items={[{ label: 'Spreadsheets', onClick: adding ? undefined : onDiscard }, { label: draft.name || 'New spreadsheet' }]} />
     <PageHeading className="mb-[var(--ds-space-page-heading-content)]"
       title={<input aria-label="Name" value={draft.name} placeholder="Name" onChange={event => onChange({ ...draft, name: event.target.value })} className="w-full min-w-0 rounded-sm border border-transparent bg-transparent font-[inherit] text-[length:inherit] leading-[inherit] outline-none placeholder:text-ui-muted focus-visible:border-[color:var(--ds-field-focus-edge)]" />}
       description={<span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
         {draft.tags.map(tag => <Tag key={tag} onRemove={() => onChange({ ...draft, tags: draft.tags.filter(item => item !== tag) })}>{tag}</Tag>)}
         <TagMenu name={draft.name || 'the new spreadsheet'} tags={draft.tags} bank={bank} onChange={tags => onChange({ ...draft, tags })} />
         <span aria-hidden>·</span><span>Not in the library yet</span></span>}
-      actions={<><V2Button look="plain" onClick={onDiscard}>Discard</V2Button><V2Button look="primary" disabled={!document || !draft.name.trim() || adding} onClick={onAdd}>Add to library</V2Button></>} />
+      actions={<><V2Button look="plain" disabled={adding} onClick={onDiscard}>Discard</V2Button><V2Button look="primary" disabled={!document || !draft.name.trim() || adding} onClick={onAdd}>Add to library</V2Button></>} />
     {document ? <WorkbookGrid document={document} fields={fields}
       onMap={(worksheet, patch) => edit({ ...document, sheets: document.sheets.map(item => item.id === worksheet ? withMapping(item, patch) : item) })}
       onCopy={worksheet => edit(copyColumnMapping(document, worksheet))} />

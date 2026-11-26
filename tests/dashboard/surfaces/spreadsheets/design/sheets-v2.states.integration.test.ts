@@ -120,6 +120,31 @@ it('maps a draft\'s columns in the side panel, copies them to the worksheets wit
   assert.ok(host.querySelector('li[aria-label="Roster.xlsx"]'), 'back on the library');
 });
 
+it('locks Discard while Add saves, and adds the next file as itself after an unconfirmed add was discarded', async () => {
+  const sheet = { id: 'people', name: 'People', width: 1, hidden: [], rows: [{ id: 'h', cells: [{ value: 'Email' }] }, { id: 'r', cells: [{ value: 'avery@example.test' }] }] };
+  wiring.read = async () => ({ name: 'file', themes: [], hasFormulas: false, sheets: [sheet] });
+  let release!: (result: { state: string; reason?: string }) => void;
+  wiring.adapter.create = vi.fn((document: EditableWorkbook) => document.name);
+  wiring.adapter.save = vi.fn(() => new Promise(resolve => { release = resolve; }));
+  wiring.adapter.draft = vi.fn(() => ({ opened: { libraryId: 'added' } }));
+  wiring.adapter.close = vi.fn();
+  await render();
+  await pick('A.csv');
+  await click(button('Add to library'));
+  assert.equal(button('Discard')?.disabled, true, 'a discarded draft cannot still join the library');
+  assert.equal(button('Spreadsheets'), undefined, 'nor leave through the breadcrumb');
+  await act(async () => { release({ state: 'uncertain', reason: 'lost' }); });
+  assert.match(document.body.textContent ?? '', /Still confirming A/u);
+  await click(button('Discard'));
+  assert.deepEqual(wiring.adapter.close.mock.calls, [['A']]);
+  await pick('B.csv');
+  await click(button('Add to library'));
+  await act(async () => { release({ state: 'confirmed' }); });
+  assert.deepEqual(wiring.adapter.create.mock.calls.map(([document]) => (document as EditableWorkbook).name), ['A', 'B']);
+  assert.match(document.body.textContent ?? '', /Added B/u);
+  assert.doesNotMatch(document.body.textContent ?? '', /Added A/u);
+});
+
 it('shows a failure notice with one Retry button when the list cannot be read', async () => {
   wiring.error = 'down'; await render();
   assert.match(host.textContent ?? '', /Couldn't load spreadsheets\./);

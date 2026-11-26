@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { closeDraft, copyMapping, editMapping, importWorkbook, pendingImportName } from './sheets-v2-writes.js';
+import { closeDraft, copyMapping, dropImport, editMapping, importWorkbook, pendingImportName } from './sheets-v2-writes.js';
 import { EmptyState, FailureNotice, PageHeading, SearchInput, dsIcon, useToasts } from '../../../ds/ui.js';
 import { useSpreadsheetWiringAdapter, type LibraryChangeResult } from '../../../state/spreadsheet-wiring-adapter.js';
 import { decodeEditableWorkbook } from '../../../../models/dashboard/workbooks.js';
@@ -88,8 +88,8 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
       if (result && result.state !== 'confirmed' && latest) toast({ tone: 'danger', title: "Couldn't save the columns", description: result.reason });
     });
   };
-  const add = async (document: EditableWorkbook, tags: readonly string[]) => {
-    const outcome = await importWorkbook(adapter, document);
+  const add = async (draft: number, document: EditableWorkbook, tags: readonly string[]) => {
+    const outcome = await importWorkbook(adapter, draft, document);
     if (outcome.state === 'added') {
       const created = outcome.libraryId;
       if (tags.length && created) {
@@ -106,7 +106,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   };
   const pickFile = async (file: File) => {
     const token = ++reading.current;
-    setImportDraft({ name: file.name.replace(/\.(xlsx|csv)$/iu, ''), tags: [] });
+    setImportDraft({ id: token, name: file.name.replace(/\.(xlsx|csv)$/iu, ''), tags: [] });
     try {
       const document = prepareSpreadsheetColumns(await importSpreadsheetInWorker(file.name, await file.arrayBuffer()));
       if (token === reading.current) setImportDraft(current => current && { ...current, document });
@@ -116,11 +116,11 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
       toast({ tone: 'danger', title: "Couldn't read that file", description: 'Choose an .xlsx or .csv file.' });
     }
   };
-  const discardDraft = () => { reading.current++; setImportDraft(undefined); };
+  const discardDraft = () => { reading.current++; setImportDraft(undefined); dropImport(adapter); };
   const addDraft = (draft: ImportDraft) => {
     if (!draft.document) return;
     setAdding(true);
-    void add({ ...draft.document, name: draft.name.trim() }, draft.tags).then(added => { setAdding(false); if (added) setImportDraft(undefined); });
+    void add(draft.id, { ...draft.document, name: draft.name.trim() }, draft.tags).then(added => { setAdding(false); if (added) setImportDraft(current => current?.id === draft.id ? undefined : current); });
   };
   const copyAll = (worksheet: string) => {
     if (!openId) return;
