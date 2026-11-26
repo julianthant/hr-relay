@@ -3,7 +3,7 @@
 // Publications are retained at their own cursors and replayed on resume, after `health: live`.
 // A snapshot is read on the navigation lane: the connection's outbox holds its place, and every change made after the
 // read was asked queues behind it until main frames the lane's day at the baseline cursor its fold names. A snapshot framed
-// at a cursor holds every publication at or below it and none above: a read a publication overtook is asked again.
+// at a cursor includes the inbox through that cursor on handoff. Later queue snapshots leave the inbox alone.
 import { z } from "zod";
 import {
   DashboardStreamEnvelopeSchema,
@@ -81,6 +81,11 @@ export interface DashboardStreamHubDeps {
     readonly read: () => NotificationObservationStatus | Promise<NotificationObservationStatus>;
     readonly onChange: (listener: () => void) => () => void;
   };
+  readonly notificationList?: {
+    readonly read: () => NotificationWire[] | Promise<NotificationWire[]>;
+    readonly onChange: (listener: () => void) => () => void;
+    readonly notePublication?: (row: NotificationWire) => void;
+  };
   /** The document `GET /settings/editable` serves; its row rides every snapshot and handoff, and a change after each ordinary settings commit.
    * A source may answer later, from a lane: its row then waits in the outbox like a run panel, under the same deadline. */
   readonly settings?: {
@@ -104,7 +109,7 @@ type ProjectionCursor = z.infer<typeof ProjectionCursorSchema>;
 type ChangeEnvelope = Extract<DashboardStreamEnvelope, { type: "change" }>;
 type SnapshotEnvelope = Extract<DashboardStreamEnvelope, { type: "snapshot" }>;
 type RunPanelRow = Extract<StreamRow, { model: "run-panel" }>;
-type SyncRowModel = Extract<StreamRow, { model: "notification-status" | "settings" }>["model"];
+type SyncRowModel = Exclude<StreamRow, { model: "run-panel" }>["model"];
 
 /** A row read by the query its route serves, now or later. Each connection whose last value of it was unavailable is owed the next good one. */
 interface SyncRowSource {
@@ -151,6 +156,7 @@ interface SnapshotRequest {
 
 /** A sync row whose source answers later; every connection it was read for waits on it. */
 interface SyncRead {
+  readonly model: SyncRowModel;
   readonly owners: Set<Subscriber>;
   row?: StreamRow;
   settled: boolean;
@@ -330,11 +336,16 @@ export class DashboardStreamHub {
         target = { kind: "refused", reason: "target-unavailable" };
       }
       this.#publish({ wire, listed, target });
+      deps.notificationList?.notePublication?.(listed);
     });
     const status = deps.notificationStatus;
     if (status !== undefined) this.#addSyncRow("notification-status", status.onChange,
       () => rowOf(status.read(), value => ({ model: "notification-status", key: LOCAL_OPERATOR_ACTOR_ID, value: { state: "available", value } })),
       () => ({ model: "notification-status", key: LOCAL_OPERATOR_ACTOR_ID, value: { state: "unavailable", error: readFailed() } }));
+    const list = deps.notificationList;
+    if (list !== undefined) this.#addSyncRow("notification-list", list.onChange,
+      () => rowOf(list.read(), value => ({ model: "notification-list", key: LOCAL_OPERATOR_ACTOR_ID, value: { state: "available", value } })),
+      () => ({ model: "notification-list", key: LOCAL_OPERATOR_ACTOR_ID, value: { state: "unavailable", error: readFailed() } }));
     const settings = deps.settings;
     if (settings !== undefined) this.#addSyncRow("settings", settings.onChange,
       () => rowOf(settings.read(), value => ({ model: "settings", key: "editable", value: { state: "available", value } })),
@@ -348,8 +359,8 @@ export class DashboardStreamHub {
   }
 
   /**
-   * A publication takes its cursor at once and is retained once. A connection holding a snapshot place is queued nothing:
-   * its read is asked again until the day holds the publication, so it is counted nowhere and handed out by the snapshot alone.
+   * A publication takes its cursor at once and is retained once. A fresh handoff takes its inbox from the list;
+   * a connection already open receives arrivals even while a queue snapshot is being read.
    */
   #publish({ wire, listed, target }: Readonly<{ wire: NotificationPublicationWire; listed: NotificationWire; target: NotificationTarget }>): void {
     const cursor = this.#projection.takeCursor();
@@ -362,15 +373,16 @@ export class DashboardStreamHub {
     this.#lastPublication = cursorValue;
     this.#retain({ cursorNumber: cursorValue, kind: "publication", publication: unstamped });
     for (const subscriber of this.#subscribers) {
-      if (subscriber.phase.state === "open" && subscriber.phase.outbox.some(entry => entry.kind === "pending-snapshot")) continue;
+      if (subscriber.phase.state === "open" && subscriber.phase.outbox.some(entry => entry.kind === "pending-snapshot" && entry.request.origin === "handoff")) continue;
       this.#push(subscriber, { kind: "ready", envelope: publicationFor(unstamped, subscriber.day) });
     }
   }
 
   /** Every sync row for these connections: the rows read now, and the reads still answering. */
-  #syncRowsFor(recipients: readonly Subscriber[]): Pick<RowsOf, "rows" | "sync"> {
+  #syncRowsFor(recipients: readonly Subscriber[], includeInbox = true): Pick<RowsOf, "rows" | "sync"> {
     const rows: StreamRow[] = [], sync: SyncRead[] = [];
     for (const source of this.#syncRows) {
+      if (!includeInbox && source.model === "notification-list") continue;
       const read = this.#syncRowOf(source, recipients);
       if (read === undefined) continue;
       if ("model" in read) rows.push(read);
@@ -392,7 +404,7 @@ export class DashboardStreamHub {
       return this.#admitSyncRow(source, recipients, source.unavailable(), seq);
     }
     if (!(value instanceof Promise)) return this.#admitSyncRow(source, recipients, this.#syncRowValue(source, value), seq);
-    const read: SyncRead = { owners: new Set(recipients), settled: false };
+    const read: SyncRead = { model: source.model, owners: new Set(recipients), settled: false };
     const startedAt = this.#clock.monotonicMs();
     const settle = (row: StreamRow): void => {
       if (read.settled) return;
@@ -555,10 +567,9 @@ export class DashboardStreamHub {
   #dispatchSnapshot(request: SnapshotRequest): void {
     if (request.subscribers.size === 0) return;
     request.attempts += 1;
-    const publications = this.#retained.flatMap(entry => entry.kind === "publication" ? [entry.publication.publication.sourceId] : []);
     let read: DashboardDayRead | Promise<DashboardDayRead>;
     try {
-      read = this.#projection.requestDashboardDay(request.day, { signal: request.controller.signal, publications });
+      read = this.#projection.requestDashboardDay(request.day, { signal: request.controller.signal });
     } catch (error) {
       // A day built here fails in the turn that drove the change: its connections resubscribe and the failure reaches that caller.
       if (request.origin === "change") { this.#snapshotGap(request); throw error; }
@@ -585,7 +596,7 @@ export class DashboardStreamHub {
         (error: unknown) => { if (!request.controller.signal.aborted) this.#snapshotFailed(request, error); });
       return;
     }
-    const baseline = this.#baseline(read);
+    const baseline = this.#baseline(read, request.origin);
     if (baseline === undefined) { this.#retrySnapshot(request); return; }
     for (const subscriber of request.subscribers) {
       if (subscriber.phase.state !== "open") continue;
@@ -608,7 +619,10 @@ export class DashboardStreamHub {
     const owners = [...request.subscribers];
     request.subscribers.clear();
     const reads = this.#readsFor(owners);
-    const syncRows = this.#syncRowsFor(owners);
+    const includeInbox = request.origin === "handoff" || owners.some(subscriber => subscriber.phase.state === "open"
+      && subscriber.phase.outbox.some(entry => entry.kind === "change" && (cursorNumber(entry.change.cursor) ?? 0) <= baseline
+        && (entry.rows.some(row => row.model === "notification-list") || entry.sync.some(read => read.model === "notification-list"))));
+    const syncRows = this.#syncRowsFor(owners, includeInbox);
     for (const subscriber of owners) {
       const phase = subscriber.phase;
       if (phase.state !== "open") continue;
@@ -626,15 +640,14 @@ export class DashboardStreamHub {
   }
 
   /**
-   * The cursor a day read is framed at. Undefined when main's fold cannot name it, when the day lacks a retained publication
-   * or may lack one made after its dispatch, and when a projection snapshot change is above it.
+   * A fresh handoff reads the inbox at a baseline that includes publications it skipped while framing.
    */
-  #baseline(read: DashboardDayRead): number | undefined {
-    if (this.#lastPublication > read.dispatchCursor) return undefined;
+  #baseline(read: DashboardDayRead, origin: SnapshotRequest["origin"]): number | undefined {
+    if (origin === "handoff" && this.#lastPublication > read.dispatchCursor) return undefined;
     let baseline = read.dispatchCursor;
     if (!read.foldedHere) {
       const fold = this.#projection.foldCursor(read.facts.position);
-      if (fold.state !== "at" || read.facts.missingPublications.length > 0) return undefined;
+      if (fold.state !== "at") return undefined;
       baseline = Math.max(fold.cursor, baseline);
     }
     return baseline < this.#lastSnapshotChange ? undefined : baseline;

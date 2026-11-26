@@ -224,6 +224,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       ...(trustNotifications === undefined || notificationRoutes === undefined ? {} : {
         notificationPublications: composeNotificationPublications({
           database, clock, lifecycle, descriptors: strictDescriptors, runDetailDeps, notificationInbox: trustNotifications.inbox, target: notificationRoutes.target }),
+        notificationList: notificationRoutes.streamList,
         notificationStatus: { read: () => notificationRoutes.status(), onChange: listener => trustNotifications.observer.onStatusChange(listener) },
       }),
       ...(liveSettings === true ? { settings: { read: () => buildSettingsEditor(settingsEditor),

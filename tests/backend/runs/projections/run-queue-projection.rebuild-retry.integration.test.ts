@@ -5,6 +5,7 @@ import { createOperatorProjection } from "../../../../src/backend/app/compositio
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createNotificationDisplayContext } from "../../../../src/backend/runs/queries/notification-display.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createRunQueueProjection } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
@@ -96,7 +97,7 @@ it("keeps a connected day cursor contiguous across a log-only poll", async () =>
   }
 });
 
-it.each(["data.observed", "transaction.fenced"] as const)("refreshes a warm notice only when %s belongs to a run whose timeline it reads", async type => {
+it.each(["data.observed", "transaction.fenced"] as const)("refreshes a warm notice when %s changes its run evidence without rebuilding the day", async type => {
   const w = await world();
   const descriptor = personLookupDescriptor;
   const retained = { ...descriptor, version: descriptor.version - 1 };
@@ -136,20 +137,30 @@ it.each(["data.observed", "transaction.fenced"] as const)("refreshes a warm noti
         ] },
       ] });
   };
-  const noticeContext = (projection: ReturnType<typeof makeProjection>) => {
-    const row = projection.buildDashboardDayWire(DAY).notifications.find(row => row.notificationId === notice.notificationId);
-    assert.ok(row?.kind === "notification");
-    return row.context;
-  };
+  const evidence = w.database.trackAuthorityTables(["timeline_events"]);
+  const read = runReader.read.bind(runReader);
+  const noticeDisplay = createNotificationDisplayContext({
+    read, descriptor: workflow => workflow === descriptor.id ? descriptor : undefined,
+    receipt: id => w.database.authority.evidenceReceipts.findByRun(id),
+    presentation: { timeline: w.database.authority.timelineEvents, authority: {
+      listCheckpoints: (workflow, item) => w.database.authority.runCheckpoints.listByItem(workflow, item),
+      listGateResults: id => w.database.authority.gateResults.listByRun(id),
+    } },
+    checkpoints: { listByAttempt: (workflow, item, node, attempt) => w.database.authority.runCheckpoints.listByAttempt(workflow, item, node, attempt) },
+    command: id => w.database.authority.commands.get(id),
+  });
+  const noticeContext = () => w.database.withAuthorityReadSnapshot(() => noticeDisplay(notice, evidence(), read));
   const projection = makeProjection();
   const cursor = projection.cursor();
   const visible = { state: "available", workflow: descriptor.label, subject: "Synthetic older run" };
-  assert.deepEqual(noticeContext(projection), visible);
+  projection.buildDashboardDayWire(DAY);
+  assert.deepEqual(noticeContext(), visible);
   assert.equal(queueReads, 1);
 
   append(unrelated);
   projection.ingestFromTimeline();
-  assert.deepEqual(noticeContext(projection), visible);
+  projection.buildDashboardDayWire(DAY);
+  assert.deepEqual(noticeContext(), visible);
   assert.equal(queueReads, 1, "log evidence for another same-day run reuses the warm day");
 
   const unrelatedRun = w.database.authority.runs.get(unrelated.runId);
@@ -160,21 +171,23 @@ it.each(["data.observed", "transaction.fenced"] as const)("refreshes a warm noti
       spanPath: `${unrelated.traceId}/searching#1.1` } }, unrelatedRun);
   projection.ingestFromTimeline();
   assert.equal(projection.cursor(), cursor);
-  assert.deepEqual(noticeContext(projection), visible);
+  projection.buildDashboardDayWire(DAY);
+  assert.deepEqual(noticeContext(), visible);
   assert.equal(queueReads, 1, "a standalone note for an unread timeline reuses the warm day");
 
   assert.equal(w.database.authority.runs.updatePresentation({ runId: unrelated.runId, expectedVersion: unrelatedRun.version,
     displayName: "Renamed other run", now: unrelated.ts }).state, "applied");
-  assert.deepEqual(noticeContext(projection), visible);
+  projection.buildDashboardDayWire(DAY);
+  assert.deepEqual(noticeContext(), visible);
   assert.equal(queueReads, 2, "a row patch retains the notice's timeline observation");
 
   append(relevant);
   projection.ingestFromTimeline();
   assert.equal(projection.cursor(), cursor);
   const hidden = { state: "workflow-only", workflow: descriptor.label };
-  assert.deepEqual(noticeContext(makeProjection()), hidden, "fresh reads withhold the incompatible subject");
-  assert.deepEqual(noticeContext(projection), hidden, "warm reads also withhold the incompatible subject");
-  assert.equal(queueReads, 4);
+  assert.deepEqual(noticeContext(), hidden, "a warm cache withholds the incompatible subject");
+  projection.buildDashboardDayWire(DAY);
+  assert.equal(queueReads, 2, "notice display evidence does not invalidate the day");
 });
 
 it.each(["empty", "previous claim"] as const)("refreshes a worker's %s lookup before polling an off-month claim", async previous => {

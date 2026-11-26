@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { serveNotificationList } from "../../support/helpers/dashboard/serve-run-panel.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -47,8 +48,7 @@ function targetOf(notification: NotificationWire, refused = false): Notification
 }
 function publication(notification: NotificationWire, n = 1, listed: NotificationWire = notification, target: NotificationTarget = targetOf(notification)): NotificationArrival {
   // The harness stamps the cursor of the snapshot the stream holds when it delivers the arrival.
-  return { publication: NotificationPublicationWireSchema.parse({ sourceId: String(n).repeat(64), actorId: notification.actorId, durable: "created", notification }), listed, target,
-    snapshotCursor: FIXTURE_DAY_WIRE.snapshotCursor };
+  return { publication: NotificationPublicationWireSchema.parse({ sourceId: String(n).repeat(64), actorId: notification.actorId, durable: "created", notification }), listed, target };
 }
 const ERROR = WireErrorSchema.parse({ state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true });
 async function harness(enabled = true, initiallyFailed = false, statusDelivered = true) {
@@ -102,23 +102,26 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
   const status = (value: { state: "available"; value: { state: "ready" | "failed"; code?: "NOTIFICATION_OBSERVATION_FAILED"; pending: number } } | { state: "unavailable"; error: typeof ERROR }) =>
     act(async () => { store.apply([{ model: "notification-status", key: ActorIdSchema.parse("local-operator"), value }]); });
   if (enabled && statusDelivered) await status(initiallyFailed ? { state: "unavailable", error: ERROR } : { state: "available", value: { state: "ready", pending: 0 } });
+  serveNotificationList(store, rows);
   let dayServed = rows, dayRows = dayServed, refreshes = 0, snapshots = 1, reloading = false;
   let connection: SubscriptionState = { state: "live" };
-  let day = { state: "loaded" as const, value: { ...FIXTURE_DAY_WIRE, notifications: [...dayRows] } };
+  let day = { state: "loaded" as const, value: { ...FIXTURE_DAY_WIRE } };
   const scope = { client, authority: epoch, actorId: "local-operator", dayRequest };
   let activeScope: CommandExecutionScope = scope;
   const executor = new CommandExecutor(() => activeScope);
   const binding: DashboardCommandBinding = { executor, scope, feedback: outcome => { feedbacks.push(outcome.kind); }, authority: { epoch, now: () => now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
-    dayState: { rows: store, request: dayRequest, get day() { if (dayRows !== dayServed) { dayRows = dayServed; day = { state: "loaded", value: { ...FIXTURE_DAY_WIRE, snapshotCursor: ProjectionCursorSchema.parse(`pc:${snapshots += 1}`), notifications: [...dayServed] } }; } return reloading ? loadingWith({ value: day.value, at: day.value.snapshotCursor }) : day; },
+    dayState: { rows: store, request: dayRequest, get day() { if (dayRows !== dayServed) { dayRows = dayServed; day = { state: "loaded", value: { ...FIXTURE_DAY_WIRE, snapshotCursor: ProjectionCursorSchema.parse(`pc:${snapshots += 1}`) } }; } return reloading ? loadingWith({ value: day.value, at: day.value.snapshotCursor }) : day; },
       get connection() { return connection; }, refresh() { refreshes += 1; }, subscribePublications: listener => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; } } } };
   let value: InboxWiring | undefined;
   function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding }); return null; }
   root = createRoot(document.createElement("div"));
-  const render = async (served = enabled, currentBinding = binding, currentClient = client) => { activeScope = currentBinding.scope; await act(async () => { root?.render(createElement(Probe, { served, currentBinding, currentClient })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
+  const render = async (served = enabled, currentBinding = binding, currentClient = client) => { activeScope = currentBinding.scope; await act(async () => { if (dayRows !== dayServed) serveNotificationList(store, dayServed); root?.render(createElement(Probe, { served, currentBinding, currentClient })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   await render();
   /** Each subscriber, delivering an arrival on the snapshot the stream holds now: a day the harness next serves is a new snapshot. */
-  const publishers = () => listeners.map(listener => (arrival: NotificationArrival) => listener({ ...arrival, snapshotCursor: binding.authority.dayState.day.state === "loaded"
-    ? binding.authority.dayState.day.value.snapshotCursor : FIXTURE_DAY_WIRE.snapshotCursor }));
+  const publishers = () => listeners.map(listener => (arrival: NotificationArrival) => {
+    store.applyNotification(arrival.listed);
+    listener(arrival);
+  });
   return { client, binding, requests, commands, get listeners() { return publishers(); }, render, status, get refreshes() { return refreshes; }, get value() { assert(value); return value; },
     /** The rows the server serves, and the day the stream next delivers. */
     setRows: (next: readonly NotificationWire[]) => { rows = next; dayServed = next; },

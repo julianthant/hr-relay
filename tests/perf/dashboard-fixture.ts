@@ -704,8 +704,6 @@ export async function seedDashboardPerfFixture(): Promise<PerfFixture> {
     ledger: createTransactionHistory(database.authority),
     authority: {
       queueParents: envelopes => database.authority.dependencies.parents(envelopes),
-      listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
-      listNotificationCheckpoints: (workflowId: string, itemId: string, nodeId: string, attempt: number) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
       listWorkerPools: () => database.authority.workerPools.list(),

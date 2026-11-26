@@ -21,7 +21,7 @@ import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-mode
 import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { createRowStore } from "../../../src/dashboard/client/index.js";
-import { serveReadyNotificationStatus } from "../../support/helpers/dashboard/serve-run-panel.js";
+import { serveNotificationList, serveReadyNotificationStatus } from "../../support/helpers/dashboard/serve-run-panel.js";
 import { LocalDateSchema } from "../../../src/rules/identity/ids.js";
 
 // LoadedApp resolves the date selection once per render, so this counts its renders.
@@ -88,7 +88,7 @@ it("ten minutes of ticks re-render LoadedApp never, while the open inbox's age a
     context: { state: "available", subject: "Canonical history", workflow: "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId } });
   const client = { ...transport, bootstrap: async () => boot,
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
-      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: [notification] }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" });
+      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day) }); serveNotificationList(input.rows, [notification]); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" });
       return { select() {}, close() {} };
     } };
   fakeClock();

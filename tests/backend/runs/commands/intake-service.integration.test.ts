@@ -162,8 +162,6 @@ async function surface(parserFor?: (artifacts: Surface["artifacts"]) => Prepared
     ledger: createTransactionHistory(database.authority),
     authority: {
       queueParents: envelopes => database.authority.dependencies.parents(envelopes),
-      listNotifications: () => [],
-      listNotificationCheckpoints: () => [],
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
       listWorkerPools: () => database.authority.workerPools.list(),

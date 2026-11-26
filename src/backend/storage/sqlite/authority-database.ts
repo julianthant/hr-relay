@@ -1814,7 +1814,6 @@ export class AuthorityDatabase implements Disposable {
     runIds: readonly string[];
     timelineRunIds: readonly string[];
     lastWorkerClaims: readonly { workerId: string; cursor: number | null }[];
-    commandIds: readonly string[];
     relationships: readonly { runId: string; parentId: string | null; workflowId: string; itemId: string; day: string }[];
     month: { from: string; to: string; counts: readonly { day: string; count: number }[] };
   }>): { through: number; kind: "full" | "unchanged" } | { through: number; kind: "runs"; runIds: readonly string[]; dayRunIds: readonly string[]; countDays: readonly string[] } | undefined {
@@ -1834,7 +1833,7 @@ export class AuthorityDatabase implements Disposable {
         ), new_journal_rows(table_name,row_key) AS (
           SELECT table_name,row_key FROM ${CHANGE_LOG_TABLE}
           WHERE seq > ? AND op='insert' AND table_name IN ('commands','command_audits')
-        ), observed_commands(key) AS (SELECT 'command:' || value FROM json_each(?)),
+        ),
         observed_runs(id) AS (SELECT value FROM json_each(?)),
         observed_timelines(key) AS (SELECT 'run:' || value FROM json_each(?)),
         observed_claims(worker_id, cursor) AS (
@@ -1844,7 +1843,7 @@ export class AuthorityDatabase implements Disposable {
         table_name IN ('run_batches','run_delegations','delegation_dependencies','run_checkpoints',
           'gate_results','run_failures','run_receipts','write_intents','write_attempts','dryrun_results',
           'worker_pools','worker_slots','auth_leases','ocr_review_revisions','ocr_approved_snapshots','ocr_source_uploads',
-          'notifications','notification_states','settings','settings_snapshots')
+          'settings','settings_snapshots')
         OR (table_name = 'run_results' AND (
           NOT EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%')
           OR EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%' AND substr(value,5) NOT IN (SELECT id FROM changed_runs))
@@ -1856,8 +1855,7 @@ export class AuthorityDatabase implements Disposable {
           OR EXISTS (SELECT 1 FROM json_each(change.keys_json) key
             LEFT JOIN commands command ON command.id = substr(key.value, length('command:') + 1)
             WHERE key.value LIKE 'command:%' AND (
-              key.value IN (SELECT key FROM observed_commands)
-              OR command.target_id IN (SELECT id FROM observed_runs)
+              command.target_id IN (SELECT id FROM observed_runs)
               OR (command.family = 'application' AND json_extract(command.request_json, '$.type') = 'pause-all-and-quit')
               OR (command.family = 'run-lifecycle' AND json_extract(command.request_json, '$.operation') = 'application-admission')
             ))
@@ -1866,7 +1864,6 @@ export class AuthorityDatabase implements Disposable {
               AND reference.run_id IN (SELECT id FROM observed_runs))
         ) AND NOT (op <> 'delete' AND (table_name,row_key) IN (SELECT table_name,row_key FROM new_journal_rows)
           AND (SELECT count(DISTINCT value) FROM json_each(change.keys_json) WHERE value LIKE 'command:%') = 1
-          AND NOT EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value IN (SELECT key FROM observed_commands))
           AND NOT EXISTS (SELECT 1 FROM ${RUN_REFERENCES_TABLE} ref WHERE ref.table_name = change.table_name
             AND ref.row_key = change.row_key AND ref.run_id NOT IN (SELECT id FROM changed_runs))
           AND EXISTS (SELECT 1 FROM json_each(change.keys_json) key JOIN commands c ON key.value = 'command:' || c.id
@@ -1885,7 +1882,7 @@ export class AuthorityDatabase implements Disposable {
               AND event.kind = 'run.claimed' AND event.cursor > COALESCE(claim.cursor, 0)
           )
         ))
-      ) LIMIT 1`).get(previous.through, previous.through, JSON.stringify(previous.commandIds), JSON.stringify(previous.runIds), JSON.stringify(previous.timelineRunIds),
+      ) LIMIT 1`).get(previous.through, previous.through, JSON.stringify(previous.runIds), JSON.stringify(previous.timelineRunIds),
         JSON.stringify(previous.lastWorkerClaims), previous.through);
       if (sharedChange !== undefined) return { through, kind: "full" };
 

@@ -28,7 +28,6 @@ const EMPTY_DAY: DashboardDayWire = DashboardDayWireSchema.parse({
   queueSurfaces: [],
   workerCards: [], workerAuthority: { state: "present", members: [] },
   workerPools: [],
-  notifications: [],
 });
 
 let mounted: Root | undefined;
@@ -135,7 +134,7 @@ it("isolates A -> B -> A days and actor epochs while retaining disconnected rows
     subscriptions.push(input); return { select: (_run: string | undefined) => undefined, close: () => undefined };
   } } as DashboardClient;
   const seen: DashboardDayState[] = [];
-  function Probe({ day, epoch }: { day: string; epoch: object }) { seen.push(useDashboardDay(day, undefined, epoch)); return null; }
+  function Probe({ day, epoch }: { day: string; epoch: object }) { seen.push(useDashboardDay(day, epoch)); return null; }
   const root = createRoot(document.createElement("div"));
   mounted = root;
   const render = async (day: string, epoch: object) => { await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe, { day, epoch }) }))); };
@@ -183,7 +182,7 @@ it("forwards only live publication callbacks belonging to the current day, actor
   const subscriptions: Parameters<DashboardClient["subscribeDay"]>[0][] = [];
   const client = { subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => { subscriptions.push(input); return { select: (_run: string | undefined) => undefined, close() {} }; } } as DashboardClient;
   let state: DashboardDayState | undefined;
-  function Probe({ day, epoch, actor }: { day: string; epoch: object; actor: string }) { state = useDashboardDay(day, undefined, epoch, actor); return null; }
+  function Probe({ day, epoch, actor }: { day: string; epoch: object; actor: string }) { state = useDashboardDay(day, epoch, actor); return null; }
   const root = createRoot(document.createElement("div")); mounted = root;
   const epoch = {};
   const render = async (day: string, currentEpoch = epoch, currentClient = client, actor = "local-operator") => {
@@ -246,7 +245,7 @@ describe("useDashboardDay — the last known day first", () => {
     const renders: { day: string; state: DashboardDayState }[] = [];
     let duringRender: (() => void) | undefined;
     function Probe({ day, epoch }: { day: string; epoch: object }) {
-      renders.push({ day, state: useDashboardDay(day, undefined, epoch, "local-operator") });
+      renders.push({ day, state: useDashboardDay(day, epoch, "local-operator") });
       const during = duringRender; duringRender = undefined; during?.();
       return null;
     }

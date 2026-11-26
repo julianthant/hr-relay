@@ -130,7 +130,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   let snapshotWorkers: () => readonly WorkerMemberView[] = () => [];
   const workerMembers = (): readonly WorkerMemberView[] => snapshotWorkers();
   let startupPending: (workflowId: string) => boolean = () => false;
-  const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database: history, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader, listNotifications: notificationReads.list, readLanes });
+  const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database: history, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader, readLanes });
 
   const { noteWriter, stopTimeline, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, readLanes, lifecycle, debugEvents });
 
@@ -363,6 +363,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox, target: notifications.target }),
+    notificationList: notifications.streamList,
     notificationStatus: { read: () => notifications.status(), onChange: listener => notificationObserver.onStatusChange(listener) },
     runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
     settings: { read: settingsBoundary.editable, onChange: listener => { settingsChanges.add(listener); return () => { settingsChanges.delete(listener); }; } },
