@@ -51,6 +51,8 @@ function world() {
     const scope = { client, actorId: "local-operator", authority: epoch, dayRequest: {} };
     currentScope = scope;
     const stream: { rows: RowStoreWriter; connection: SubscriptionState } = { rows: createRowStore(), connection: { state: "live" } };
+    // A streamed binding boots from the stream's settings row, never a read.
+    if (streamed) { const saved = people.get(id) ?? { settings: {}, revision: 1 }; stream.rows.apply([{ model: "settings", key: "editable", value: { state: "available", value: fixtureSettingsDocument(saved.settings, saved.revision) } }]); }
     const binding = () => ({ scope, executor, authority: { epoch, now: () => FIXTURE_BOOTSTRAP.serverClock.now,
       ...(streamed ? { dayState: { request: scope.dayRequest, day: LOADING, ...stream, subscribePublications: () => () => undefined, refresh: () => undefined } } : {}) } });
     const close = owner.connect(client, binding(), binding);

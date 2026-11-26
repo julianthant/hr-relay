@@ -137,7 +137,7 @@ export function SettingsPage({
   onSaveProblem?: SettingsSaveProblemListener;
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
-  const editor = useEditableSettings({ actorId, descriptorFingerprint, view: section, onSaved, onSaveProblem });
+  const editor = useEditableSettings({ actorId, descriptorFingerprint, onSaved, onSaveProblem });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const settingsDocument = editor.editor.state === "loaded" ? editor.editor.document : undefined;
