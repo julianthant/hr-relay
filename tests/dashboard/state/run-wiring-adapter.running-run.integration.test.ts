@@ -119,20 +119,20 @@ it("shows a running run's logs while worker heartbeats move its revision, and ke
     heartbeat();
     await frame();
     assert.equal(skeleton(), false, `cycle ${String(cycle)}: the running run keeps its last logs`);
-    assert.match(panelText(), /Refreshing.*Search for person.*In progress/u);
-    assert.match(panelText(), /Deterministic, Person.*[1-9]\d* actions$/u);
+    assert.match(panelText(), /Search for person · In progress.*Refreshing.*Search for person/u);
+    assert.match(panelText(), /Refreshing.*Deterministic, Person/u);
     await serve();
     await frame();
     assert.equal(skeleton(), false, `cycle ${String(cycle)}: the running run's logs stay`);
     assert.doesNotMatch(panelText(), /Refreshing/u);
-    assert.match(panelText(), /Search for person.*In progress.*[1-9]\d* actions$/u);
+    assert.match(panelText(), /Search for person · In progress.*Search for person.*Deterministic, Person/u);
   }
   // A panel ahead of the row is shown without asking the day to catch up.
   heartbeat();
   await serve();
   assert.equal(skeleton(), false);
   assert.doesNotMatch(panelText(), /Refreshing/u);
-  assert.match(panelText(), /Search for person.*In progress.*[1-9]\d* actions$/u);
+  assert.match(panelText(), /Search for person · In progress.*Search for person.*Deterministic, Person/u);
   await frame();
   assert.doesNotMatch(panelText(), /Refreshing/u);
   assert.deepEqual(pageReads, [], "the page sends no run-detail or section reads");

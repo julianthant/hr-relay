@@ -189,7 +189,7 @@ describe('compact run headers', () => {
     assert.match(markup, /Review the new values/);
   });
 
-  it('opens Review records as a dialog over the Logs panel and closes back to Logs', () => {
+  it('opens Review records as a dialog over the Logs panel and closes back to Logs', async () => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
     useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Native OCR' }, availableSections: ['logs', 'review'], ocrRecordCount: 2 }, logs: {}, unavailableEvidence: [] } });
@@ -198,15 +198,17 @@ describe('compact run headers', () => {
     vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
     const sample = (open?: boolean) => createElement(TooltipProvider, null, createElement(LogSample, { selection: { row, workflowLabel: 'OCR' }, reviewOpen: open, onReview, onLogs }));
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
-    const records = () => host.querySelector<HTMLButtonElement>('button[aria-label="Records 2"]');
+    const menu = () => host.querySelector<HTMLButtonElement>('button[aria-label="More actions"]');
+    const records = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Records (2)');
     try {
       act(() => root.render(sample()));
       assert.equal(document.querySelector('[role="dialog"]') === null, true);
-      act(() => records()!.click()); assert.equal(onReview.mock.calls.length, 1);
+      await act(async () => { menu()!.click(); await new Promise(resolve => setTimeout(resolve, 0)); });
+      await act(async () => { records()!.click(); }); assert.equal(onReview.mock.calls.length, 1);
       act(() => root.render(sample(true)));
       const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
       assert.match(dialog.textContent ?? '', /Review records/);
-      assert.ok(records(), 'the Logs panel stays behind the dialog');
+      assert.ok(menu(), 'the Logs panel stays behind the dialog');
       act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
       assert.equal(onLogs.mock.calls.length, 1);
     } finally { act(() => root.unmount()); host.remove(); }
