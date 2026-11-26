@@ -26,6 +26,7 @@ import {
 import { formatTime } from "../../lib/date-format.js";
 import type { StartPlanResponse } from "../../client/index.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
+import { newestWorksheet } from "./run-start-spreadsheets-model.js";
 import { FailureNotice } from "../../ds/primitives/failure-notice.js";
 import { RunList, RunListRow, RunSection } from "../../ds/primitives/run-list.js";
 import { RunChoice } from "./run-launch-layout.js";
@@ -436,10 +437,6 @@ export interface RunReferenceSheet {
   readonly onPick: (libraryId: string, versionId: string) => void; readonly onVersion: (versionId: string) => void; readonly onWorksheet: (sheetId: string) => void; readonly onRemove: () => void;
 }
 
-const SPREADSHEETS_BOTH = (requiredLabel: string) => `Where this run looks people up, and extra spreadsheets to check each person against. Needs ${requiredLabel}.`;
-const SPREADSHEETS_REFERENCE = (requiredLabel: string) => `Spreadsheets this run looks people up in. Needs ${requiredLabel}.`;
-const SPREADSHEETS_CHECK = "Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.";
-
 /** The served Run and Rerun dialogs' one Spreadsheets field: the reference spreadsheet the run looks people up in and the optional extra spreadsheets it checks each person against. One Add spreadsheet button: it fills the reference first, then adds checks; with no check available it changes the reference. */
 export function RunSpreadsheets({ reference, check, busy: reading, locked = false, catalogError, onRefresh }: {
   reference?: RunReferenceSheet | undefined; check?: { readonly sheets: readonly CheckSheet[] } & CheckCallbacks | undefined;
@@ -454,16 +451,17 @@ export function RunSpreadsheets({ reference, check, busy: reading, locked = fals
   const missingSheet = chosenSheetId !== "" && !worksheets.some(sheet => sheet.sheetId === chosenSheetId);
   const onWorksheet = reference?.onWorksheet;
   useEffect(() => {
-    if (onWorksheet !== undefined && chosenSheetId === "" && worksheetsState === "ready" && worksheets.length > 0) onWorksheet(worksheets[0].sheetId);
+    const newest = newestWorksheet(worksheets);
+    if (onWorksheet !== undefined && chosenSheetId === "" && worksheetsState === "ready" && newest !== undefined) onWorksheet(newest.sheetId);
   }, [chosenSheetId, worksheetsState, worksheets, onWorksheet]);
-  const title = "Spreadsheets";
-  const description = reference === undefined ? SPREADSHEETS_CHECK : check === undefined ? SPREADSHEETS_REFERENCE(reference.requiredLabel) : SPREADSHEETS_BOTH(reference.requiredLabel);
+  const title = "References";
+  const description = reference === undefined ? "Optional." : `Needs ${reference.requiredLabel}.`;
   if (catalogError) return <div className="flex min-w-0 flex-col gap-3"><RunSection title={title} description={description}><ReferenceFailure locked={locked} onRefresh={onRefresh} /></RunSection></div>;
   const addsCheck = check !== undefined && (reference === undefined || chosen !== undefined);
   const referenceOptions = reference === undefined ? [] : reference.sheets.map((sheet): PickerOption => {
     const uncoverable = sheet.worksheets.length === 0 && sheet.versions.length < 2;
-    return { libraryId: sheet.libraryId, name: sheet.name, names: sheet.worksheets, pinned: sheet.pinned === true, disabled: uncoverable,
-      description: sheet.worksheets.length > 0 ? sheet.worksheets.join(", ") : uncoverable ? `No worksheet has ${reference.requiredLabel}` : `No current worksheet has ${reference.requiredLabel}. Pick an earlier version.` };
+    return { libraryId: sheet.libraryId, name: sheet.name, pinned: sheet.pinned === true, disabled: uncoverable,
+      ...(sheet.worksheets.length > 0 ? {} : { description: uncoverable ? `No worksheet has ${reference.requiredLabel}` : `No current worksheet has ${reference.requiredLabel}. Pick an earlier version.` }) };
   });
   const picker = addsCheck
     ? <SpreadsheetPicker label="Add spreadsheet" options={checkOptions(check.sheets)} busy={busy} onPick={check.onAdd} />
@@ -472,10 +470,12 @@ export function RunSpreadsheets({ reference, check, busy: reading, locked = fals
   const note = missingSheet ? "Previous worksheet unavailable; choose again" : worksheetsState === "loading" ? "Loading worksheets…" : undefined;
   return <div className="flex min-w-0 flex-col gap-3">
     <SpreadsheetSection title={title} description={description} picker={picker}>
+      {(reference !== undefined && chosen !== undefined || check?.sheets.some(sheet => sheet.pickedSheetIds !== undefined)) && <>
       {reference !== undefined && chosen && <SpreadsheetRow name={chosen.name} versions={chosen.versions} versionId={reference.chosenVersionId ?? chosen.currentVersionId} note={note}
         worksheets={worksheets} picked={chosenSheetId === "" ? [] : [chosenSheetId]} mode="one" busy={busy} locked={locked} worksheetsReady={worksheetsState === "ready"}
         onVersion={reference.onVersion} onWorksheets={ids => { if (ids[0] !== undefined) reference.onWorksheet(ids[0]); }} onRemove={reference.onRemove} />}
       {check !== undefined && <CheckPickedRows busy={busy} locked={locked} {...check} />}
+      </>}
     </SpreadsheetSection>
     {reference !== undefined && worksheetsState === "error" && <p role="alert" className="m-0 text-caption text-ui-danger">{reference.worksheetsError}</p>}
     {reference !== undefined && chosen && worksheetsState === "ready" && worksheets.length === 0 && <p role="status" className="m-0 text-caption text-ui-muted">No worksheets in this version have {reference.requiredLabel}.</p>}
@@ -487,10 +487,8 @@ interface CheckCallbacks {
   onSheets: (libraryId: string, sheetIds: readonly string[]) => void; onRemove: (libraryId: string) => void;
 }
 
-const checkOptions = (sheets: readonly CheckSheet[]): PickerOption[] => sheets.filter(sheet => sheet.pickedSheetIds === undefined).map(sheet => {
-  const names = sheet.worksheets.map(worksheet => worksheet.sheetName);
-  return { libraryId: sheet.libraryId, name: sheet.name, names, pinned: sheet.pinned, disabled: false, description: names.join(", ") };
-});
+const checkOptions = (sheets: readonly CheckSheet[]): PickerOption[] => sheets.filter(sheet => sheet.pickedSheetIds === undefined)
+  .map(sheet => ({ libraryId: sheet.libraryId, name: sheet.name, pinned: sheet.pinned, disabled: false }));
 
 /** The picked spreadsheets of the optional check, one row each. */
 function CheckPickedRows({ sheets, busy, locked, onVersion, onSheets, onRemove }: { sheets: readonly CheckSheet[]; busy: boolean; locked: boolean } & Omit<CheckCallbacks, "onAdd">) {

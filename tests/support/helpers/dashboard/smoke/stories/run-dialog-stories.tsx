@@ -35,10 +35,10 @@ const press = (page: Page, name: string) => dialog(page).getByRole("button", { n
 const current = (page: Page) => dialog(page).locator('[aria-current="step"]');
 const at = (page: Page, stage: string) => current(page).filter({ hasText: stage }).waitFor();
 
-/** Where each kind of dialog goes by Continue, in order. */
+/** Where each kind of dialog goes by Next, in order. */
 const START_PATH = ["Input", "Start"] as const;
 const RERUN_PATH = ["Steps", "Start"] as const;
-/** Types the input of a start, then presses Continue until `stage` is current. */
+/** Types the input of a start, then presses Next until `stage` is current. */
 async function reach(page: Page, stage: RunStartStage, rerun: boolean): Promise<void> {
   const path: readonly string[] = rerun ? RERUN_PATH : START_PATH;
   if (!rerun && stage !== "Input") await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED);
@@ -46,7 +46,7 @@ async function reach(page: Page, stage: RunStartStage, rerun: boolean): Promise<
   for (const next of path.slice(1)) {
     if (stage === path[0]) return;
     if (path.indexOf(next) > path.indexOf(stage)) return;
-    await press(page, "Continue");
+    await press(page, "Next");
     await at(page, next);
     if (next === stage) return;
   }
@@ -79,11 +79,11 @@ const STAGE = {
   Input: stage("Input, nothing typed", () => runDialogClient(), "Input"),
   RerunSteps: stage("A rerun's Steps, each step as the source ended", rerunClient(), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
   Warning: stage("A succeeded write run's rerun, warned that the source already filed", rerunClient({ previewRerunWarnings: async () => runDialogRerunWarning() }, "done"), "Steps", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG,
-    then: async page => { await press(page, "Continue"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
+    then: async page => { await press(page, "Next"); await press(page, "Start run"); await dialog(page).getByText("already submitted").waitFor(); } }),
   Start: stage("Start, options and checks, every check ready", reading(PASS), "Start"),
-  StartCustomized: stage("Start with Customize steps on, Continue to Steps", reading(PASS), "Start", { then: customizeSteps }),
+  StartCustomized: stage("Start with Customize steps on, Next to Steps", reading(PASS), "Start", { then: customizeSteps }),
   StartSteps: stage("A customized start's Steps, the last page", reading(PASS), "Start", {
-    then: async page => { await customizeSteps(page); await press(page, "Continue"); await at(page, "Steps"); } }),
+    then: async page => { await customizeSteps(page); await press(page, "Next"); await at(page, "Steps"); } }),
   RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
   CancelledSteps: stage("A Work-Study run cancelled after it filed: every served step is required, so all run again", writeRerunClient(), "Steps", { rerun: true, ...WORK_STUDY_RERUN }),
   CancelledReceipts: stage("That rerun's Start, naming the receipt the source already filed", writeRerunClient(), "Start", { rerun: true, ...WORK_STUDY_RERUN }),
@@ -92,7 +92,7 @@ const STAGE = {
 } satisfies Record<string, Story>;
 
 const CHECKS = {
-  checking: stage("Checks still being read", () => runDialogClient({ readPreflight: never }), "Start", { slowFetch: { region: '[aria-label="Checking"]' } }),
+  checking: stage("Checks still being read", () => runDialogClient({ readPreflight: never }), "Start"),
   ready: stage("Checks with a warning", reading(PASS, WARN), "Start"),
   unavailable: stage("Checks that could not be read", () => runDialogClient({ readPreflight: async () => ({ state: "unavailable", reason: "The runtime is restarting." }) }), "Start"),
 } satisfies Record<RunChecksState["state"], Story>;
@@ -113,7 +113,7 @@ const RERUN_LOAD = {
 
 const ACTIVITY = {
   planning: stage("Start pressed, the plan being built", planning({ submitStartPlan: never }), "Start", { then: start }),
-  "checking-warnings": stage("A rerun looking for repeat warnings", rerunClient({ previewRerunWarnings: never }), "Steps", { rerun: true, then: async page => { await press(page, "Continue"); await press(page, "Start run"); } }),
+  "checking-warnings": stage("A rerun looking for repeat warnings", rerunClient({ previewRerunWarnings: never }), "Steps", { rerun: true, then: async page => { await press(page, "Next"); await press(page, "Start run"); } }),
   submitting: stage("The plan sent, waiting on the answer", planning({ executeCommand: never }), "Start", { then: start }),
   replanning: stage("An expired plan being built again", planning({ executeCommand: async () => CommandResultSchema.parse({ state: "rejected", commandId: "3a000000-0000-4000-8000-000000000003",
     code: "RUN_START_PLAN_EXPIRED", message: "The plan expired." }), submitStartPlan: never }), "Start", { then: start }),
@@ -168,13 +168,13 @@ const PDF = {
   "wrong-type": pdfStage("A file that is not a PDF", {}, "Input", afterAttach(pdfFile("notes.txt"))),
   refused: pdfStage("A PDF the server side refuses (empty)", {}, "Input", afterAttach(pdfFile("empty.pdf", ""))),
   "upload-failed": pdfStage("A PDF whose upload failed", { uploadOcrSource: async () => { throw new DashboardClientError({ kind: "network", message: "offline", retryable: true }); } }, "Input", afterAttach(pdfFile("first.pdf"))),
-  "choice-unpicked": pdfStage("Options, the required form choice not made", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Continue"); await at(page, "Start"); }),
-  "choice-picked": pdfStage("Options, OCR off and a form chosen", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Continue"); await at(page, "Start");
+  "choice-unpicked": pdfStage("Options, the required form choice not made", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Next"); await at(page, "Start"); }),
+  "choice-picked": pdfStage("Options, OCR off and a form chosen", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Next"); await at(page, "Start");
     await dialog(page).getByRole("switch", { name: "Read with OCR" }).click(); await dialog(page).getByText("I-9", { exact: true }).click(); }),
 } satisfies Record<PdfInputState, Story>;
 
 /** What the dialog shows when the reference spreadsheets a workflow reads cannot be read or checked. */
-type ReferenceState = "loading" | "catalog-failed" | "compatibility-failed" | "unchecked" | "check-loading" | "check-failed" | "chosen" | "start";
+type ReferenceState = "loading" | "catalog-failed" | "compatibility-failed" | "unchecked" | "check-loading" | "check-failed" | "chosen" | "worksheet-menu" | "start";
 const unreadable = () => { throw new Error("The spreadsheets could not be read."); };
 const reference = (title: string, served: Partial<DashboardClient>, catalog = RUN_DIALOG_REFERENCE_CATALOG, extra: Partial<Story> & SceneOptions = {}): Story =>
   stage(title, () => runDialogClient({ workbookTypes: async () => [], ...served }), "Input", { catalog, ...extra });
@@ -193,7 +193,9 @@ const REFERENCE = {
   "check-loading": reference("The optional check still loading", { workbookCatalog: never, workbookCompatibility: never }, RUN_DIALOG_CHECK_CATALOG, READING),
   "check-failed": reference("The optional check's list could not be read", { workbookCatalog: async () => unreadable(), workbookCompatibility: async () => ({ workflows: [], libraries: [] }) }, RUN_DIALOG_CHECK_CATALOG),
   chosen: reference("A saved spreadsheet chosen for the reference field", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: chooseRoster }),
-  start: reference("Start, with the chosen spreadsheet", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page); await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED); await press(page, "Continue"); await at(page, "Start"); } }),
+  "worksheet-menu": reference("The chosen spreadsheet's worksheet menu open", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page);
+    await dialog(page).getByRole("button", { name: /worksheet, /u }).click(); await page.getByRole("searchbox", { name: "Find a worksheet" }).waitFor(); } }),
+  start: reference("Start, with the chosen spreadsheet", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page); await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED); await press(page, "Next"); await at(page, "Start"); } }),
 } satisfies Record<ReferenceState, Story>;
 
 export const RUN_DIALOG_STORIES = defineSurface("run-dialog", {

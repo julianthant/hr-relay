@@ -53,21 +53,22 @@ async function add(region: string, name: string) {
   const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(node => node.textContent?.includes(name)); assert.ok(item, `no spreadsheet ${name}`);
   await act(async () => { item.click(); }); await h.settle();
 }
-async function start(dialog: Awaited<ReturnType<typeof h.openDialog>>) { await dialog.type(h.TYPED); await dialog.press("Continue"); await dialog.press("Start run"); }
+async function start(dialog: Awaited<ReturnType<typeof h.openDialog>>) { await dialog.type(h.TYPED); await dialog.press("Next"); await dialog.press("Start run"); }
 
 it("offers the library spreadsheets that fit in the picker and leaves out one without the key column; a picked row shows its version and update date", async () => {
   await h.openDialog(h.stubClient({ ...served }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
   await h.settle();
-  assert.match(text(), /Spreadsheets/u);
+  assert.match(text(), /References/u);
   assert.equal(text().includes("Reference spreadsheets"), false);
   assert.ok(h.buttons().some(button => button.textContent?.trim() === "Add spreadsheet"));
   await click("Add spreadsheet");
   const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(node => node.textContent ?? "");
-  assert.match(items().join(" "), /Contact roster.*First, Second/u);
+  assert.match(items().join(" "), /Contact roster/u);
+  assert.equal(items().join(" ").includes("First"), false, "the menu lists spreadsheets only");
   assert.equal(text().includes("Notes"), false);
   await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-  await add("Spreadsheets", "I-9 tracker");
-  assert.match(text(), /I-9 tracker/u); assert.match(text(), /v6 · Updated /u);
+  await add("References", "I-9 tracker");
+  assert.match(text(), /I-9 tracker/u); assert.match(text(), /v6 · [A-Z][a-z]{2} \d/u);
   assert.equal(text().includes("Sheet1 · v6"), false, "the worksheet list lives in the picker, not the row");
 });
 
@@ -76,13 +77,13 @@ it("picks and removes a row in place; the optional check starts with no pick and
   const dialog = await h.openDialog(h.stubClient({ ...served, submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }),
     { workflows: [lookup], panelWorkflowId: lookup.workflowId });
   await h.settle();
-  await dialog.type(h.TYPED); assert.equal(dialog.disabled("Continue"), false, "no pick is valid");
-  await add("Spreadsheets", "Contact roster"); await add("Spreadsheets", "I-9 tracker");
+  await dialog.type(h.TYPED); assert.equal(dialog.disabled("Next"), false, "no pick is valid");
+  await add("References", "Contact roster"); await add("References", "I-9 tracker");
   assert.ok(h.buttons().some(button => h.buttonName(button) === "Remove Contact roster"));
   await click("Remove I-9 tracker");
   assert.equal(h.buttons().some(button => h.buttonName(button) === "Remove I-9 tracker"), false);
-  await dialog.press("Continue"); await dialog.press("Start run");
-  assert.deepEqual(planned?.workbookReferences, [{ typeId: "reference-check", entry: 1, libraryId: "roster", versionId: "v", sheetId: "First", expectedVersion: 2 }]);
+  await dialog.press("Next"); await dialog.press("Start run");
+  assert.deepEqual(planned?.workbookReferences, [{ typeId: "reference-check", entry: 1, libraryId: "roster", versionId: "v", sheetId: "Second", expectedVersion: 2 }]);
 });
 
 it("plans again without a check removed after its expired plan was rebuilt", async () => {
@@ -98,11 +99,11 @@ it("plans again without a check removed after its expired plan was rebuilt", asy
     executeCommand: async input => { commands.push(input); return commands.length > 1 ? new Promise<CommandResult>(() => undefined)
       : CommandResultSchema.parse({ state: "rejected", commandId: "3a000000-0000-4000-8000-000000000001", code: "RUN_START_PLAN_EXPIRED", message: "Expired." }); },
   }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
-  await h.settle(); await dialog.type(h.TYPED); await add("Spreadsheets", "Contact roster");
-  await dialog.press("Continue"); await dialog.press("Start run");
+  await h.settle(); await dialog.type(h.TYPED); await add("References", "Contact roster");
+  await dialog.press("Next"); await dialog.press("Start run");
   for (let wait = 0; wait < 10; wait += 1) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
   assert.equal(commands.length, 1); assert.equal(planned.length, 2, "the expired plan was rebuilt"); assert.ok(h.planIsDrawn());
-  await dialog.press("Back"); await click("Remove Contact roster"); await dialog.press("Continue");
+  await dialog.press("1 Input"); await click("Remove Contact roster"); await dialog.press("Next");
   assert.equal(h.planIsDrawn(), false, "the rebuilt plan went with its spreadsheet");
   await dialog.press("Start run");
   assert.equal(planned.length, 3, "Start planned again");
@@ -114,13 +115,13 @@ it("offers the version select on a picked row and sends the named version's work
   let planned: StartPlanRequest | undefined;
   const dialog = await h.openDialog(h.stubClient({ ...served, submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }),
     { workflows: [lookup], panelWorkflowId: lookup.workflowId });
-  await h.settle(); await add("Spreadsheets", "Contact roster");
+  await h.settle(); await add("References", "Contact roster");
   const trigger = h.buttons().find(button => h.buttonName(button) === "Contact roster version"); assert.ok(trigger);
   await act(async () => { trigger.click(); });
   const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes("v5")); assert.ok(option);
   await act(async () => { option.click(); }); await h.settle(); await h.settle();
   assert.match(text(), /Earlier/u);
-  await dialog.type(h.TYPED); await dialog.press("Continue"); await dialog.press("Start run");
+  await dialog.type(h.TYPED); await dialog.press("Next"); await dialog.press("Start run");
   assert.deepEqual(planned?.workbookReferences, [{ typeId: "reference-check", entry: 1, libraryId: "roster", versionId: "old", sheetId: "Earlier", expectedVersion: 2 }]);
 });
 
@@ -128,13 +129,13 @@ it("picks several worksheets of one spreadsheet as separate references", async (
   let planned: StartPlanRequest | undefined;
   const dialog = await h.openDialog(h.stubClient({ ...served, submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }),
     { workflows: [lookup], panelWorkflowId: lookup.workflowId });
-  await h.settle(); await add("Spreadsheets", "Contact roster");
-  await click("Contact roster worksheets, First");
-  const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].find(node => node.textContent?.includes("Second")); assert.ok(item);
+  await h.settle(); await add("References", "Contact roster");
+  await click("Contact roster worksheets, Second");
+  const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].find(node => node.textContent?.includes("First")); assert.ok(item);
   await act(async () => { item.click(); }); await h.settle();
   assert.ok(h.buttons().some(button => h.buttonName(button) === "Contact roster worksheets, 2 worksheets"));
   await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-  await dialog.type(h.TYPED); await dialog.press("Continue"); await dialog.press("Start run");
+  await dialog.type(h.TYPED); await dialog.press("Next"); await dialog.press("Start run");
   assert.deepEqual(planned?.workbookReferences?.map(reference => [reference.libraryId, reference.sheetId]), [["roster", "First"], ["roster", "Second"]]);
 });
 
@@ -178,14 +179,14 @@ it("opens Onboarding with its required reference unpicked, the check rows beside
   assert.equal(text().includes("Selected rows need attention"), false);
   assert.equal(text().includes("Fix the refused entry first."), false);
   assert.equal(text().includes("Also check"), false);
-  assert.equal(dialog.disabled("Continue"), true, "the required reference keeps Continue off until picked");
+  assert.equal(dialog.disabled("Next"), true, "the required reference keeps Continue off until picked");
 });
 
-it("merges the required roster and the optional check picks into one Spreadsheets field with one Add spreadsheet button", async () => {
+it("merges the required roster and the optional check picks into one References field with one Add spreadsheet button", async () => {
   await h.openDialog(h.stubClient({ ...reads([roster, tracker], [source("roster", { First: ["eid", "email"] }), source("tracker", { Sheet1: ["eid"] })], [onboarding]) }),
     { workflows: [onboardingFlow], panelWorkflowId: onboarding.id });
   await h.settle();
-  const lists = [...document.querySelectorAll<HTMLElement>('[role="region"][aria-label="Spreadsheets"]')];
+  const lists = [...document.querySelectorAll<HTMLElement>('[role="region"][aria-label="References"]')];
   assert.equal(lists.length, 1, "one list");
   assert.equal(text().includes("Also check"), false);
   assert.equal(text().includes("Reference spreadsheets"), false);
@@ -197,19 +198,19 @@ const rosterLookup: RunStartWorkflow = { ...h.WORKFLOWS[0], requiredWorkbookFiel
 const rosterLookupReads = () => reads([roster, tracker], [source("roster", { First: ["eid"] }), source("tracker", { Sheet1: ["eid"] })],
   [{ id: rosterLookup.workflowId, label: rosterLookup.label, requiredWorkbookFields: ["eid"], workbookReference: rosterLookupReference }]);
 
-it("sends the lookup roster and the extra check picks the two old fields sent, from the one Spreadsheets field", async () => {
+it("sends the lookup roster and the extra check picks the two old fields sent, from the one References field", async () => {
   let planned: StartPlanRequest | undefined;
   const dialog = await h.openDialog(h.stubClient({ ...rosterLookupReads(), submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }),
     { workflows: [rosterLookup], panelWorkflowId: rosterLookup.workflowId });
   await h.settle();
   await dialog.type(h.TYPED);
-  assert.equal(dialog.disabled("Continue"), true, "the required roster keeps Continue off until picked");
-  await add("Spreadsheets", "Contact roster");
-  assert.equal(dialog.disabled("Continue"), false);
-  await add("Spreadsheets", "I-9 tracker");
+  assert.equal(dialog.disabled("Next"), true, "the required roster keeps Continue off until picked");
+  await add("References", "Contact roster");
+  assert.equal(dialog.disabled("Next"), false);
+  await add("References", "I-9 tracker");
   assert.ok(h.buttons().some(button => h.buttonName(button) === "Remove Contact roster"));
   assert.ok(h.buttons().some(button => h.buttonName(button) === "Remove I-9 tracker"));
-  await dialog.press("Continue"); await dialog.press("Start run");
+  await dialog.press("Next"); await dialog.press("Start run");
   assert.deepEqual(planned?.workbookReferences, [
     { entry: 1, libraryId: "roster", versionId: "v", sheetId: "First", expectedVersion: 2 },
     { typeId: "reference-check", entry: 1, libraryId: "tracker", versionId: "v", sheetId: "Sheet1", expectedVersion: 2 },
@@ -221,11 +222,11 @@ it("keeps the extra check and holds Continue when the required lookup sheet is r
     { workflows: [rosterLookup], panelWorkflowId: rosterLookup.workflowId });
   await h.settle();
   await dialog.type(h.TYPED);
-  await add("Spreadsheets", "Contact roster");
-  await add("Spreadsheets", "I-9 tracker");
-  assert.equal(dialog.disabled("Continue"), false);
+  await add("References", "Contact roster");
+  await add("References", "I-9 tracker");
+  assert.equal(dialog.disabled("Next"), false);
   await click("Remove Contact roster");
   assert.ok(h.buttons().some(button => h.buttonName(button) === "Remove I-9 tracker"), "the check stays selected");
-  assert.equal(dialog.disabled("Continue"), true);
+  assert.equal(dialog.disabled("Next"), true);
   assert.ok(text().includes("Add a reference spreadsheet first."));
 });

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
+import { newestWorksheet } from "../../../../src/dashboard/surfaces/run-start/run-start-spreadsheets-model.js";
 import { RunSpreadsheets } from "../../../../src/dashboard/surfaces/run-start/run-start-kit.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -47,4 +48,9 @@ it("refuses a spreadsheet with no compatible worksheet and no earlier version", 
   await act(async () => { item.click(); });
   expect(onPick).not.toHaveBeenCalled();
   await close();
+});
+
+it("lands a new spreadsheet on its last worksheet tab", () => {
+  expect(newestWorksheet(["July 6", "Nov. 30"])).toBe("Nov. 30");
+  expect(newestWorksheet([])).toBeUndefined();
 });
