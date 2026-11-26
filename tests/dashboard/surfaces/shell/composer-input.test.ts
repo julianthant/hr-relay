@@ -9,7 +9,7 @@ import { NEUTRAL_PERSON_PREFERENCES } from '../../../../src/models/config/person
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from '../../../../src/dashboard/app/commands/command-executor.js';
 import { createAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { publishAssistantModelChoice } from '../../../../src/dashboard/surfaces/shell/assistant-approval-model.js';
-import { AssistantModelPreferenceViewSchema, type AssistantRespondEnvelope } from '../../../../src/models/dashboard/assistant.js';
+import { AssistantModelPreferenceViewSchema, type AssistantM1RespondEnvelope } from '../../../../src/models/dashboard/assistant.js';
 import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type CommandResult } from '../../../../src/rules/commands/commands.js';
 import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
 
@@ -119,7 +119,7 @@ function preferenceServer() {
   const feedback: CommandOutcome[] = [];
   const held = { gate: undefined as Promise<void> | undefined, refuse: false, unreadable: false };
   const client = {
-    async assistantRespond(): Promise<AssistantRespondEnvelope> { throw new Error('a pick sends no chat turn'); },
+    async assistantRespond(): Promise<AssistantM1RespondEnvelope> { throw new Error('a pick sends no chat turn'); },
     async assistantModelPreference() { if (held.unreadable) throw new TypeError('Failed to fetch'); return view; },
     async executeCommand(input: unknown): Promise<CommandResult> {
       const command = AssistantModelPreferenceCommandRequestSchema.parse(input);
