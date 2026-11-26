@@ -1,10 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { availableParallelism, loadavg } from "node:os";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
-import { RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
+import { probePrimaryDisplay } from "../../src/backend/app/host/primary-display.js";
+import { hostConfigFacts } from "../../src/models/config/host-display.js";
+import { hostAwareResolutionEnvironment, RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
 import { systemClock, type Clock } from "../../src/rules/time/clock.js";
 
 const percentile = (values: readonly number[], p: number) => {
@@ -29,7 +32,8 @@ async function benchmark(profile: "staging" | "development", repetitions: number
   try {
     const admission = acquireEntrypointAdmission(applicationDataWorkspace(undefined, profile), "exclusive", lock);
     try {
-      const hostFacts = { primaryDisplay: null };
+      // The dashboard's own resolution environment, so the resolved fingerprint matches the copy's persisted one.
+      const environment = hostAwareResolutionEnvironment(probePrimaryDisplay), hostFacts = hostConfigFacts(environment);
       const owner = composeProfileRuntime({ admission, clock: systemClock, hostFacts });
       try {
         const selected = owner.session.resumeSignedInProfile({ at: systemClock.now().toISOString() });
@@ -41,8 +45,13 @@ async function benchmark(profile: "staging" | "development", repetitions: number
           let read = 0;
           const fiscalYear = systemClock.fiscalYear();
           const clock: Clock = { ...systemClock, fiscalYear: (at?: Date) => at === undefined ? fiscalYear + (read % 2) : systemClock.fiscalYear(at) };
-          const { editable } = composeSettings({ database: context.database, readLanes: lanes, hostFacts, clock, active: activeSettingsRuntimeIdentity,
-            environment: {}, credentials: context.credentials, resolveSettings: context.resolveSettings });
+          // The pair the dashboard resolves with (runtime-resources.ts), so the resolved fingerprint matches the persisted one.
+          const selectedId = admission.readProfileRegistry().activeProfileId;
+          if (selectedId === null) throw new Error("settings-editor-bench-profile-missing");
+          const stateRoot = join(admission.stateRoot, "profiles", selectedId);
+          const runtimeStoragePair = Object.freeze({ stateRoot, artifactRoot: join(stateRoot, "artifacts") });
+          const { editable } = composeSettings({ database: context.database, readLanes: lanes, hostFacts, clock, active: activeSettingsRuntimeIdentity, runtimeStoragePair,
+            environment, credentials: context.credentials, resolveSettings: context.resolveSettings });
           await editable();
           const samples = [];
           for (; read < repetitions; read++) {
