@@ -119,9 +119,11 @@ function planLiveRuns(now: Date, descriptors: readonly AnyWorkflowDescriptor[]) 
       sessions.push({ session, state, workflow });
     }
   }
+  // Spare cards go to workflows with browsers, so each card shows its sign-in and last browsers.
+  const browsered = descriptors.filter(workflow => workflowProjections(workflow).systems.length > 0);
   for (const [index, state] of spareWorkers.entries()) {
-    sessions.push({ session: { workflow: descriptors[index % descriptors.length].id, ordinal: ++ordinal, state, startedAt: now.toISOString() },
-      state, workflow: descriptors[index % descriptors.length] });
+    const workflow = browsered[index % browsered.length];
+    sessions.push({ session: { workflow: workflow.id, ordinal: ++ordinal, state, startedAt: now.toISOString() }, state, workflow });
   }
   return { slots, sessions };
 }

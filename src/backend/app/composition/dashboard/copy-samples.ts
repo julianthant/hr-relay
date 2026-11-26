@@ -101,7 +101,7 @@ export function createCopySamples(input: Readonly<{ stored: StoredSamples; realS
   return Object.freeze({
     slots: (): readonly WorkerSlotRecord[] => [...samples.values()].map(sample => sample.slot),
     views: (): readonly WorkerMemberView[] => [...samples.values()].map(sample => sample.view),
-    leases: (workerId: string) => samples.get(workerId)?.leases,
+    leases: (workerId: string) => samples.get(WorkerIdSchema.parse(workerId))?.leases,
     rerunValues: (request: unknown): RerunValuesResponse | undefined => {
       const parsed = z.object({ runId: RunIdSchema }).safeParse(request);
       return parsed.success && runIds.has(parsed.data.runId) ? { state: "refused", code: "sample-run" } : undefined;
