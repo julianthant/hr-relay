@@ -57,6 +57,30 @@ for (const width of [1100, 1280, 1600]) {
   });
 }
 
+test("with search open at 1024 Tab runs from Back to More actions in drawn order", async ({ mount, page }) => {
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await mount("run-panel/log-header/search-child");
+  await page.getByRole("button", { name: "Search logs" }).click();
+  const panel = page.getByRole("region", { name: "Selected run logs" });
+  await panel.getByRole("button", { name: "Back to Emergency Contact batch" }).focus();
+  const stops: { name: string; row: number; x: number }[] = [];
+  for (let step = 0; step < 14; step++) {
+    const stop = await page.evaluate(() => {
+      const node = document.activeElement as HTMLElement;
+      const box = node.getBoundingClientRect();
+      return { name: node.getAttribute("aria-label") ?? node.textContent ?? "", row: Math.round(box.top / 20), x: box.left };
+    });
+    stops.push(stop);
+    if (stop.name === "More actions") break;
+    await page.keyboard.press("Tab");
+  }
+  expect(stops[0]!.name).toBe("Back to Emergency Contact batch");
+  expect(stops.at(-1)!.name).toBe("More actions");
+  expect(stops.some(stop => stop.name === "Search logs")).toBe(true);
+  const drawn = [...stops].sort((a, b) => a.row - b.row || a.x - b.x);
+  expect(stops.map(stop => stop.name)).toEqual(drawn.map(stop => stop.name));
+});
+
 test("a focused header button keeps focus while the header re-measures", async ({ mount, page }) => {
   await page.setViewportSize({ width: 1600, height: 720 });
   await mount("run-panel/log-header/search-child");

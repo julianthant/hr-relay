@@ -3,6 +3,7 @@ import { vi } from "vitest";
 import assert_m0 from 'node:assert/strict';
 import { readFileSync as readFileSync_m1 } from "node:fs";
 import { resolve as resolve_m1 } from "node:path";
+import { TooltipProvider as TooltipProvider_m0 } from '../../../../src/dashboard/ds/ui.js';
 import { act as act_m0,createElement as createElement_m0 } from 'react';
 import { createRoot as createRoot_m0 } from 'react-dom/client';
 import { afterEach as afterEach_m0,beforeEach as beforeEach_m0,describe as describe_m0,describe as describe_m1,expect as expect_m1,it as it_m0,it as it_m1 } from 'vitest';
@@ -34,7 +35,7 @@ afterEach_m0(_afterEachFixture1);
     const scroll = vi.fn(); Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scroll });
     try {
       const hiddenHeadingSteps = [{ ...steps[0], header: false, entries: [{ kind: 'note' as const, id: 'before-match', time: '09:09:00', message: 'Identity read finished.' }, ...steps[0].entries] }];
-      await act_m0(async () => root.render(createElement_m0(LogPanel_m0, { title: 'Jordan', steps: hiddenHeadingSteps, timeline: [], onDecision: decision })));
+      await act_m0(async () => root.render(createElement_m0(TooltipProvider_m0, null, createElement_m0(LogPanel_m0, { title: 'Jordan', steps: hiddenHeadingSteps, timeline: [], onDecision: decision }))));
       const typeInto = async (input: HTMLInputElement, text: string) => act_m0(async () => {
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, text);
         input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -66,7 +67,7 @@ afterEach_m0(_afterEachFixture1);
       assert_m0.equal(host.querySelector('[aria-label="Run context"]') === null, true);
       assert_m0.equal(host.querySelector('h2')?.textContent, 'Jordan');
       assert_m0.doesNotMatch(host.querySelector('header')?.textContent ?? '', /PL00000001|Attempt #|Elapsed/);
-      await act_m0(async () => root.render(createElement_m0(LogPanel_m0, { title: 'Jordan', steps, timeline: [], content: createElement_m0('div', null, 'Editable records') })));
+      await act_m0(async () => root.render(createElement_m0(TooltipProvider_m0, null, createElement_m0(LogPanel_m0, { title: 'Jordan', steps, timeline: [], content: createElement_m0('div', null, 'Editable records') }))));
       assert_m0.equal([...host.querySelectorAll('button')].filter(button => button.textContent === 'Review').length, 0);
     } finally { await act_m0(async () => root.unmount()); host.remove(); if (descriptor) Object.defineProperty(Element.prototype, 'scrollIntoView', descriptor); else Reflect.deleteProperty(Element.prototype, 'scrollIntoView'); }
   });
