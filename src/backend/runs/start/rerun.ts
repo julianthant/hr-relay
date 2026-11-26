@@ -96,6 +96,12 @@ function recordedGateSkipLookup(repositories: AuthorityRepositories, descriptor:
   };
 }
 
+/** The run omitted the step that skips `dependency`, and the descriptor declares `reader` waits on it only for order. */
+function orderOnlyOmission(descriptor: AnyWorkflowDescriptor, run: RunRecord, reader: string, dependency: string): boolean {
+  return descriptor.stepOmissions.some((spec) => spec.orderOnlyReaders?.includes(reader) === true && spec.skips?.includes(dependency) === true
+    && (run.envelope.stepOmissions ?? []).some((entry) => entry.workflow === undefined && entry.step === spec.step));
+}
+
 export function validateRerunTransactionEvidence(input: Readonly<{
   repositories: AuthorityRepositories; descriptor: AnyWorkflowDescriptor; run: RunRecord;
   node: Extract<RuntimeFlowNode, { kind: "transaction" }>; checkpoint: RunCheckpointRecord;
@@ -125,7 +131,7 @@ export function validateRerunTransactionEvidence(input: Readonly<{
     } else {
       const gate = gates.find(gate => String(gate.gateId) === String(id));
       if (gate === undefined) {
-        if (gateWasSkipped(dependency, checkpoint)) continue;
+        if (gateWasSkipped(dependency, checkpoint) || orderOnlyOmission(descriptor, run, node.id, id)) continue;
         throw new RerunRefusedError("invalid-value", "Rerun transaction dependency is unavailable");
       }
       if (dependency?.kind !== "gate" || (schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate,
@@ -312,7 +318,7 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
             throw new RerunRefusedError("schema-mismatch", "Previous transaction warning evidence is incompatible");
           }
           outputs[String(dependency)] = gate.result.value;
-        } else if (!gateWasSkipped(dependencyNode, transactionCheckpoint)) missingDependency = true;
+        } else if (!gateWasSkipped(dependencyNode, transactionCheckpoint) && !orderOnlyOmission(descriptor, run, node.id, dependency)) missingDependency = true;
       }
     }
     // Missing fresh upstream facts cannot authorize a repeat. Execution must

@@ -5,6 +5,7 @@ import { stepProofModuleOf } from "../../../src/backend/app/registries/step-proo
 import { buildRunGate } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { projectObservedOperatorFields } from "../../../src/backend/runs/queries/run-logs.js";
 import { readRunCheckpoint } from "../../../src/backend/storage/sqlite/run-continuation.js";
+import { previewRerunWarnings } from "../../../src/backend/runs/start/rerun.js";
 import { referenceCheckStop } from "../../../src/models/processing/workbooks/reference-check-stop.js";
 import { MatchIdentityOutputSchema } from "../../../src/models/workflows/separations/match-identity.js";
 import { SeparationsReadReferenceStop } from "../../../src/models/workflows/separations/read-reference-stop.js";
@@ -286,6 +287,17 @@ describe("Separations composition with a reference spreadsheet", () => {
     for (const skipped of ["pending-set", "clear-pending", "file-termination"]) assert.deepEqual(c.nodeSpans(run, skipped), [["skipped", "step-omitted"]], skipped);
     const receipt = c.database.authority.runCheckpoints.listByItem(separationsDescriptor.id, run.envelope.itemId).find(record => record.nodeId === "receipt");
     assert.equal((receipt?.output.value as { effectiveDate?: string } | undefined)?.effectiveDate, "06/22/2026", "the receipt carries the typed filing date, not the plan's 06/20/2026");
+  });
+
+  it("reruns a filed termination whose pending sweep was done by hand, warning of the filed write", async () => {
+    const c = await composition();
+    const omissions = [...OMIT_KRONOS, { step: "pending-termination", facts: {} }];
+    const run = await c.execute(c.begin([], false, omissions));
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(run.lifecycle));
+    assert.deepEqual(c.nodeSpans(run, "clear-pending"), [["skipped", "step-omitted"]]);
+    const plan = previewRerunWarnings(c.database.authority, separationsDescriptor, { runId: run.envelope.runId, expectedVersion: run.version, intent: "rerun",
+      selectedStepKeys: separationsDescriptor.timeline.map(step => step.key).filter(key => !omissions.some(omitted => omitted.step === key)) });
+    assert.ok(plan.warnings.some(warning => warning.nodeId === "file-termination"), JSON.stringify(plan.warnings));
   });
 
   it("refuses a manual approval whose Employee ID is not the run's before any write", async () => {
