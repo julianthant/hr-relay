@@ -77,6 +77,7 @@
   "src/dashboard/surfaces/sessions/session-panel.tsx",
   "src/dashboard/surfaces/sessions/session-rail-controls.tsx",
   "src/dashboard/surfaces/sessions/sessions-view.tsx",
+  "src/dashboard/surfaces/sessions/sessions.css",
   "src/dashboard/surfaces/sessions/worker-card.tsx",
   "src/dashboard/surfaces/settings/account/account-settings.tsx",
   "src/dashboard/surfaces/settings/editor/settings-authorities.tsx",

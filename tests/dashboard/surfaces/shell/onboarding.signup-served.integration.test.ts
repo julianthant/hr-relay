@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { it } from "vitest";
-import { populateGlobal } from "vitest/environments";
+import { populateGlobal } from "vitest/runtime";
 import { composeDashboardApplication } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
@@ -69,7 +69,9 @@ it("signs up through the real form with both pairs, stores the UCPath pair and s
     } finally { owner.release(); machine.release(); }
   } finally {
     await act(async () => root.unmount()); host.remove();
-    for (const key of keys) { const original: unknown = originals.get(key); if (original === undefined) Reflect.deleteProperty(globalThis, key); else Reflect.set(globalThis, key, original); }
+    // Restore properties by descriptor so Node's lazy global getters stay lazy.
+    for (const key of keys) Reflect.deleteProperty(globalThis, key);
+    for (const [key, descriptor] of originals) Object.defineProperty(globalThis, key, descriptor);
     await runtime?.stop(); fixture.machine.release(); rmSync(fixture.root, { recursive: true, force: true });
   }
 });
