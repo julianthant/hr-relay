@@ -1,5 +1,6 @@
 import { useDashboardCommandBinding } from "./client-context.js";
 import { useSettingsRead } from "./settings-read-model.js";
+import { systemClock } from "../../rules/time/clock.js";
 import { createKeptResults } from "./async-resource.js";
 import { runDataVersion, subscribeRunData } from "./run-data-changes.js";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -131,9 +132,9 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
     const owner = [authority];
     const kept = keptRanges.get(client, owner, rangeKey)?.value;
     if (kept !== undefined && resource.snapshot().value !== kept.selection) resource.accept(kept.selection);
-    if (kept !== undefined && kept.version === version && performance.now() - kept.readAt < kept.lifetimeMs) return;
+    if (kept !== undefined && kept.version === version && systemClock.monotonicMs() - kept.readAt < kept.lifetimeMs) return;
     const controller = new AbortController();
-    const readAt = performance.now();
+    const readAt = systemClock.monotonicMs();
     void resource.read(signal => client.activityPopulation(request.from, request.to, signal), "DASHBOARD_READ_FAILED", undefined, controller.signal).then(next => {
       keptRanges.keep(client, owner, rangeKey, { value: { selection: next, version, readAt, lifetimeMs: Date.parse(next.snapshot.expiresAt) - Date.parse(next.snapshot.generatedAt) }, at: version });
     }, () => resource.snapshot());

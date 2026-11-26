@@ -24,7 +24,7 @@ export function noteRunData(client: object, frame: DashboardDayWire): void {
   const before = state.fingerprints.get(frame.day);
   if (before !== undefined && before !== fingerprint) touched.add(frame.day);
   state.fingerprints.set(frame.day, fingerprint);
-  const counts = new Map(frame.monthCounts.map(row => [row.day, row.count]));
+  const counts = new Map<string, number>(frame.monthCounts.map(row => [row.day, row.count]));
   if (state.counts !== undefined) for (const day of new Set([...state.counts.keys(), ...counts.keys()])) if (state.counts.get(day) !== counts.get(day)) touched.add(day);
   state.counts = counts;
   if (touched.size === 0) return;
