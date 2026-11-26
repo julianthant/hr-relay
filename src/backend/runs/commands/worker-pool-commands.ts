@@ -222,14 +222,10 @@ export async function executeWorkerPoolCommand(
       const member = transact(repositories => requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId));
       requireMemberFence(pool, request);
       return await settle(() => pool.remove(member), repositories => {
-        const current = repositories.workerPools.get(member.workflowId);
-        if (current === undefined) throw new Error("worker-pool-missing-for-active-slot");
-        const planned = repositories.workerPools.plan({ workflow: member.workflowId, expectedVersion: current.version,
-          desiredWorkers: Math.max(0, current.desiredWorkers - 1), requestedBy: request.requestedBy, now });
-        if (planned.state !== "applied") throw new Error("worker-pool-plan-conflict-in-transaction");
-        repositories.workerSlots.retire({ workerId: member.workerId, now });
+        // Retires past the plan ceiling so a historical oversized roster can shrink.
+        const retiredPool = repositories.workerPools.retireMember({ workerId: member.workerId, requestedBy: request.requestedBy, now });
         const target = { family: "worker-pool" as const, workflowId: member.workflowId };
-        return applied(request, [target, workerTarget(member.workerId)], [{ target, before: current.version, after: planned.pool.version }]);
+        return applied(request, [target, workerTarget(member.workerId)], [{ target, before: retiredPool.version - 1, after: retiredPool.version }]);
       });
     }
     case "stop-worker": {

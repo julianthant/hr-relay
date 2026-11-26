@@ -3,7 +3,7 @@ import { preflightRunnerTimeout } from "../../../models/preflight/preflight.js";
 import { AssistantActionManifestSchema } from "../../../models/profiles/assistant-permissions.js";
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { deriveSchemaHash, type SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
-import { AssistantModelPreferenceCommandRequestSchema, commandAssistantAvailability, CommandIdentityConflictError, type CommandRequest, CommandRequestSchema, type CommandResult, CommandResultSchema, StartCommandRequestSchema } from "../../../rules/commands/commands.js";
+import { AssistantModelPreferenceCommandRequestSchema, commandAssistantAvailability, CommandAdmissionRequestSchema, CommandIdentityConflictError, type CommandRequest, CommandRequestSchema, type CommandResult, CommandResultSchema, StartCommandRequestSchema } from "../../../rules/commands/commands.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { type PreflightAdmission, PreflightAdmissionRefusal, PreflightEvidenceExpiredError } from "../../../rules/preflight/preflight-admission.js";
@@ -414,7 +414,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       return AssistantActionManifestSchema.parse({ revision, entries });
     },
     execute(input: unknown, parentCommandId?: string): CommandResult {
-      const request = CommandRequestSchema.parse(input);
+      const request = CommandAdmissionRequestSchema.parse(input);
       if (request.family === "assistant-model-preference") {
         if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("Command request exceeds 256 KiB");
         return executeSync(request, parentCommandId);
@@ -479,7 +479,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       return result;
     },
     async executeWorkerPool(input: unknown): Promise<CommandResult> {
-      const request = CommandRequestSchema.parse(input);
+      const request = CommandAdmissionRequestSchema.parse(input);
   if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
       if (request.family !== "worker-browser") {
         throw new Error(

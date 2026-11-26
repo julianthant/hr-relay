@@ -1,10 +1,12 @@
 import { PreflightSelectionSchema, PreflightRerunCommandRequestSchema } from "../../../../models/preflight/preflight-contract.js";
+import { PreflightRerunRefusedError } from "../../../runtime/preflight/report-service.js";
 import { assertRequestActor } from "../request-identity.js";
-import { inspectLoopbackOrigin, isLoopbackHost } from "./loopback.js";
+import type { DashboardApp } from "./api-types.js";
 import { wireError } from "./failure-status.js";
+import { preflightRerunIngressGuard } from "./operator-mutation-ingress.js";
+import type { SettingsPreflightRouteDeps } from "./settings-preflight-types.js";
+
 const PREFLIGHT_RERUN_BODY_MAX_BYTES = 4096;
-const PREFLIGHT_RERUN_WINDOW_MS = 60_000;
-const PREFLIGHT_RERUN_WINDOW_LIMIT = 6;
 
 type PreflightBodyRead = Readonly<
   { state: "parsed"; value: unknown }
@@ -66,33 +68,14 @@ async function readPreflightBody(request: Request): Promise<PreflightBodyRead> {
   }
 }
 
-import type { DashboardApp } from "./api-types.js";
-import type { SettingsPreflightRouteDeps } from "./settings-preflight-types.js";
-
 export function registerSettingsPreflightRoutes(app: DashboardApp, deps: SettingsPreflightRouteDeps): void {
   app.get("/api/v1/preflight", c => {
     const raw = c.req.query("selection");
     const selection = raw === undefined ? undefined : PreflightSelectionSchema.parse(JSON.parse(raw) as unknown);
     return c.json(deps.preflight.read?.(selection) ?? { state: "unavailable", code: "PREFLIGHT_READ_FAILED", reason: "Preflight report reader is unavailable." });
   });
-  const preflightStarts: number[] = [];
-  let preflightActive = false;
+  app.use("/api/v1/preflight/rerun", preflightRerunIngressGuard);
   app.post("/api/v1/preflight/rerun", async (c) => {
-    const origin = inspectLoopbackOrigin(c.req.header("origin"));
-    if (origin.state === "malformed") {
-      return c.json(wireError(
-        "PREFLIGHT_ORIGIN_INVALID",
-        "preflight rerun Origin must be one absolute HTTP(S) origin",
-        false,
-      ), 400);
-    }
-    if (!isLoopbackHost(c.req.header("host")) || origin.state === "forbidden") {
-      return c.json(wireError(
-        "PREFLIGHT_INGRESS_FORBIDDEN",
-        "preflight reruns require a loopback Host and, when present, a loopback Origin",
-        false,
-      ), 403);
-    }
     const body = await readPreflightBody(c.req.raw);
     if (body.state === "too-large") {
       return c.json(wireError(
@@ -119,30 +102,12 @@ export function registerSettingsPreflightRoutes(app: DashboardApp, deps: Setting
     }
     const command = PreflightRerunCommandRequestSchema.safeParse(body.value);
     if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
-    if (preflightActive) {
-      return c.json(wireError(
-        "PREFLIGHT_RERUN_ACTIVE",
-        "one preflight rerun is already active",
-        true,
-      ), 429);
-    }
-    const now = deps.clock.monotonicMs();
-    while (preflightStarts[0] !== undefined
-      && preflightStarts[0] <= now - PREFLIGHT_RERUN_WINDOW_MS) preflightStarts.shift();
-    if (preflightStarts.length >= PREFLIGHT_RERUN_WINDOW_LIMIT) {
-      return c.json(wireError(
-        "PREFLIGHT_RATE_LIMITED",
-        `preflight reruns are limited to ${String(PREFLIGHT_RERUN_WINDOW_LIMIT)} starts per minute`,
-        true,
-      ), 429);
-    }
-    preflightStarts.push(now);
-    preflightActive = true;
     try {
       return c.json(await deps.preflight.execute(body.value, c.req.raw.signal));
-    } finally {
-      preflightActive = false;
+    } catch (error) {
+      if (!(error instanceof PreflightRerunRefusedError)) throw error;
+      const code = error.reason === "active" ? "PREFLIGHT_RERUN_ACTIVE" : "PREFLIGHT_RATE_LIMITED";
+      return c.json(wireError(code, error.message, true), 429);
     }
   });
-
 }

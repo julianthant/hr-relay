@@ -10,6 +10,7 @@ import type { DashboardApp } from '../../../../../src/backend/transports/http/ro
 import { registerWorkbookRoutes } from '../../../../../src/backend/transports/http/routes/workbooks.js';
 import { WorkbookLibraryError } from '../../../../../src/backend/workbooks/workbook-library-error.js';
 import { fixtureDescriptor } from '../../../../support/fixtures/descriptor-fixtures.js';
+import { UNWIRED_INTAKE_SERVICE } from "../../../../support/fixtures/intake-kernel-seams.js";
 import { createWorkbookLibraryQueries } from '../../../../../src/dashboard/client/queries/workbook-library-queries.js';
 import { createDashboardTransport } from '../../../../../src/dashboard/client/transport.js';
 import { DashboardClientError } from '../../../../../src/dashboard/client/errors.js';
@@ -167,10 +168,14 @@ it('retires workbook routes with no mounted consumer', async () => {
 });
 
 it("serves create/list/open/save/conflict/history with exact Date transport and durable CAS", async () => {
-  const h = await harness();
+  const h = await harness({ intake: {
+    ...UNWIRED_INTAKE_SERVICE,
+    upload: async () => ({ state: "refused", code: "unreadable-file", message: "Fixture intake refusal." }),
+  } });
   const created = await h.app.request("http://localhost/api/v1/workbooks", { method: "POST", headers, body: JSON.stringify({ workbook: encodeEditableWorkbook(workbook) }) });
   assert.equal(created.status, 201);
-  const first = decodeSavedWorkbook(await created.json());
+  const firstBody = await created.text();
+  const first = decodeSavedWorkbook(JSON.parse(firstBody));
   const path = `http://localhost/api/v1/workbooks/${first.libraryId}`;
   const list = await h.app.request("http://localhost/api/v1/workbooks/list");
   assert.equal(list.status, 200); assert.equal((await list.json() as unknown[]).length, 1);
@@ -181,11 +186,18 @@ it("serves create/list/open/save/conflict/history with exact Date transport and 
   assert.equal(conflict.status, 409); assert.equal((await conflict.json() as { code: string }).code, "WORKBOOK_VERSION_CONFLICT");
   assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(path)).json()), second);
   assert.deepEqual((await (await h.app.request(`${path}/history`)).json() as unknown[]).map(decodeSavedWorkbook), []);
-  assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(`${path}/revisions/1`)).json()), first);
+  const revision = await h.app.request(`${path}/revisions/1`);
+  assert.equal(revision.status, 200);
+  assert.equal(await revision.text(), firstBody);
   assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(`${path}/revisions/2`)).json()), second);
+  const intake = await h.app.request(`${path}/intake`, {
+    method: "POST", headers, body: JSON.stringify({ expectedVersion: second.version, workflowId: fixtureDescriptor.id }),
+  });
+  assert.equal(intake.status, 422);
+  assert.equal(await intake.text(), '{"state":"refused","code":"unreadable-file","message":"Fixture intake refusal."}');
   const unavailable = await h.app.request(`${path}/revisions/3`);
   assert.equal(unavailable.status, 404); assert.equal((await unavailable.json() as { code: string }).code, 'WORKBOOK_REVISION_UNAVAILABLE');
-  for (const invalid of ['0', '-1', 'NaN', '1.5']) assert.equal((await h.app.request(`${path}/revisions/${invalid}`)).status, 400);
+  for (const invalid of ['0', '-1', 'NaN', '1.5', '1e0', '01', '0x1', '%201']) assert.equal((await h.app.request(`${path}/revisions/${invalid}`)).status, 400);
 });
 it('returns a named conflict and retains the master when formula metadata makes Save unsafe', async () => {
   const h = await harness();
@@ -239,7 +251,7 @@ it('serves persisted types and manual named versions, refusing forged sources an
   };
   const post = (body: unknown) => h.app.request(`${path}/library-actions`, { method: 'POST', headers, body: JSON.stringify(body) });
   const before = await catalog();
-  const request = { operationId: 'reviewed', expectedVersion: first.version, expectedRevision: before.state.revision,
+  const request = { operationId: 'reviewed% final', expectedVersion: first.version, expectedRevision: before.state.revision,
     change: { kind: 'create-version', name: 'Reviewed', from: { kind: 'version', versionId: before.state.selectedVersionId }, useNow: false } };
   assert.equal((await post(request)).status, 200);
   const after = await catalog();
@@ -249,7 +261,7 @@ it('serves persisted types and manual named versions, refusing forged sources an
   ]);
   assert.equal((await post(request)).status, 200);
   assert.deepEqual(await catalog(), after);
-  const view = await h.app.request(`${path}/versions/${request.operationId}`);
+  const view = await h.app.request(`${path}/versions/${encodeURIComponent(request.operationId)}`);
   assert.equal(view.status, 200);
   assert.equal(WorkbookLibraryVersionViewSchema.parse(await view.json()).version.name, 'Reviewed');
   for (const forged of [{ ...request, source: { kind: 'run', runId: 'foreign' } }, { ...request, at: '2099-01-01T00:00:00.000Z' }, { ...request, operationId: 'run', change: { kind: 'patch', key: '001', values: { 'roster.notes': 'forged' } } }])
@@ -361,4 +373,27 @@ it('serves a closed retired status without merge payload and rejects its exact c
     expect(database.prepare('SELECT * FROM workbook_library_actions').all()).toEqual(before);
     expect(repository.libraryActionRecord(record.libraryId, record.action.operationId)).toEqual(record);
   } finally { database.close(); }
+});
+
+it("refuses malformed workbook path encoding across reads and mutations", async () => {
+  const h = await harness();
+  const base = "http://localhost/api/v1/workbooks";
+  const requests = [
+    new Request(`${base}/%zz`),
+    new Request(`${base}/%zz/history`),
+    new Request(`${base}/%zz/revisions/1`),
+    new Request(`${base}/example/versions/%zz`),
+    new Request(`${base}/example/library-actions/%zz`),
+    ...["clone", "library-actions", "save", "intake"].map(action =>
+      new Request(`${base}/%zz/${action}`, { method: "POST", headers, body: "{}" })),
+  ];
+  const responses = await Promise.all(requests.map(async request => {
+    const response = await h.app.request(request);
+    return { url: request.url, status: response.status, body: await response.text(), bodyUsed: request.bodyUsed };
+  }));
+  for (const { url, status, body, bodyUsed } of responses) {
+    assert.equal(status, 400, url);
+    assert.match(body, /"code":"WORKBOOK_INVALID"/u, url);
+    assert.equal(bodyUsed, false, url);
+  }
 });

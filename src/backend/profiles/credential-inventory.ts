@@ -1,3 +1,10 @@
+import { z } from "zod";
+import { FingerprintSchema } from "../../rules/identity/ids.js";
+import { CredentialHistoryEntrySchema } from "../storage/configuration/credential-store.js";
+import {
+  StoppedProtectedSettingsApplyInputSchema,
+  StoppedProtectedStoreRecordSchema,
+} from "../storage/configuration/protected-settings-upgrade.js";
 import { readPrivateFile } from "../storage/configuration/credential-safe-file.js";
 import type { CredentialInventory } from "../storage/configuration/credential-safe-file.js";
 import { lstatSync, readdirSync } from "node:fs";
@@ -13,39 +20,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function holdsUcsd(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  const record = value.record;
-  if (isRecord(record)) {
-    const entries = record.entries;
-    if (isRecord(entries) && (entries.ucpathUserId !== undefined || entries.ucpathPassword !== undefined)) return true;
-  }
-  const history = value.history;
-  if (!Array.isArray(history)) return false;
-  return history.some((entry: unknown) => {
-    if (!isRecord(entry)) return false;
-    const request = entry.request;
-    if (!isRecord(request)) return false;
-    const entries = request.entries;
-    if (!isRecord(entries)) return false;
-    return ["ucpathUserId", "ucpathPassword"].some((name) => {
-      const operation = entries[name];
-      return isRecord(operation) && Object.hasOwn(operation, "set");
-    });
-  });
-}
+const LegacyCredentialCopySchema = z.discriminatedUnion("schemaVersion", [
+  z.strictObject({
+    schemaVersion: z.literal(2),
+    record: StoppedProtectedStoreRecordSchema,
+    history: z.array(z.strictObject({
+      request: StoppedProtectedSettingsApplyInputSchema,
+      setValueIds: CredentialHistoryEntrySchema.shape.setValueIds,
+    })),
+  }),
+  z.strictObject({
+    schemaVersion: z.literal(3),
+    record: StoppedProtectedStoreRecordSchema,
+    history: z.array(CredentialHistoryEntrySchema.extend({
+      receipt: CredentialHistoryEntrySchema.shape.receipt.extend({ requestReceipt: FingerprintSchema }),
+    })),
+  }),
+]);
 
-function classifyBytes(bytes: Uint8Array): Exclude<CopyClass, "absent" | "unreadable"> {
-  let text: string;
-  try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
-  catch { return "plaintext"; }
-  if (text.trim().length === 0) return "plaintext";
-  let decoded: unknown;
-  try { decoded = JSON.parse(text); }
-  catch { return "plaintext"; }
-  if (typeof decoded !== "object" || decoded === null || !("schemaVersion" in decoded)) return "unknown";
-  if (decoded.schemaVersion !== 2 && decoded.schemaVersion !== 3) return "unknown";
-  return holdsUcsd(decoded) ? "holds" : "clean";
+function classifyLegacyCopy(value: unknown): "clean" | "holds" | "unknown" {
+  const copy = LegacyCredentialCopySchema.safeParse(value);
+  if (!copy.success) return "unknown";
+  const { entries } = copy.data.record;
+  if (entries.ucpathUserId !== undefined || entries.ucpathPassword !== undefined) return "holds";
+  if (copy.data.schemaVersion === 2 && copy.data.history.some(({ request }) =>
+    (request.entries.ucpathUserId !== undefined && "set" in request.entries.ucpathUserId)
+    || (request.entries.ucpathPassword !== undefined && "set" in request.entries.ucpathPassword))) return "holds";
+  return "clean";
 }
 
 function readCredentialInventoryBytes(path: string): Buffer {
@@ -61,13 +62,13 @@ function classifyPath(path: string, inspectEncrypted?: (path: string) => Readonl
   try {
     const bytes = readCredentialInventoryBytes(path);
     let decoded: unknown;
-    try { decoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { return classifyBytes(bytes); }
+    try { decoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { return "plaintext"; }
     if (isRecord(decoded) && decoded.schemaVersion === 4) {
       if (inspectEncrypted === undefined) return "unknown";
       const inspected = inspectEncrypted(path);
       return inspected.containsUcsd || inspected.containsCaptured ? "holds" : "clean";
     }
-    return classifyBytes(bytes);
+    return classifyLegacyCopy(decoded);
   }
   catch { return "unreadable"; }
 }

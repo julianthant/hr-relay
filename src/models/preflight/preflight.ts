@@ -270,9 +270,10 @@ interface PreflightAuthority {
 }
 
 /** Keep exact recent replays and release the oldest settled result when admitting a new command. */
-export function createPreflightCommandReplay<Result>(errors: Readonly<{
+export function createPreflightCommandReplay<Result>(options: Readonly<{
   divergent(commandId: string): Error;
   busy(): Error;
+  admit?(): () => void;
 }>) {
   type Replay = Readonly<{ identity: string; result: Promise<Result> }>;
   const pending = new Map<string, Replay>();
@@ -282,17 +283,18 @@ export function createPreflightCommandReplay<Result>(errors: Readonly<{
     const identity = canonicalJsonStringify(command);
     const existing = pending.get(commandId) ?? settled.get(commandId);
     if (existing !== undefined) {
-      if (existing.identity !== identity) throw errors.divergent(commandId);
+      if (existing.identity !== identity) throw options.divergent(commandId);
       return existing.result;
     }
-    if (pending.size + settled.size >= 256) {
-      const oldest = settled.keys().next();
-      if (oldest.done) throw errors.busy();
-      settled.delete(oldest.value);
-    }
+    const oldest = pending.size + settled.size >= 256 ? settled.keys().next() : undefined;
+    if (oldest?.done === true) throw options.busy();
+    // Admit before reserving a replay key so a transient refusal can be retried.
+    const release = options.admit?.();
+    if (oldest?.done === false) settled.delete(oldest.value);
     const result = Promise.resolve().then(run).finally(() => {
       pending.delete(commandId);
       settled.set(commandId, { identity, result });
+      release?.();
     });
     pending.set(commandId, { identity, result });
     return result;

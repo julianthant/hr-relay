@@ -6,13 +6,13 @@ import { ChatGptCredentialError } from "../../../storage/configuration/chatgpt-c
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 import { ChatGptAccountStatusSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptEmptyRequestSchema,
   ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignOutResultSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema,
-  type ChatGptSignInCompletion } from "../../../../models/dashboard/chatgpt-account.js";
+  type ChatGptAccountStatus, type ChatGptSignInCompletion } from "../../../../models/dashboard/chatgpt-account.js";
 import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
 import type { DashboardApp } from "./api-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
 import { wireError } from "./failure-status.js";
 
-export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "refreshAccount" | "signIn" | "signOut" | "readStatus">; readonly chatGptOcrTest?: ChatGptOcrTestService }
+export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "checkStatus" | "signIn" | "signOut" | "readStatus">; readonly chatGptOcrTest?: ChatGptOcrTestService }
 function failure(error: unknown, dispatched = false, unknownCode: ErrorCatalogCode = "CHATGPT_AUTH_UNAVAILABLE") {
   const known = error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError;
   const code: ErrorCatalogCode = known ? error.code : unknownCode;
@@ -46,20 +46,33 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
     if (!ChatGptAttemptIdSchema.safeParse(id).success || latest?.id !== id) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
     return latest;
   };
-  app.get("/api/v1/settings/chatgpt-account", async c => {
-    c.header("Cache-Control", "no-store");
+  const statusBody = async (read: () => ChatGptAccountStatus | Promise<ChatGptAccountStatus>): Promise<ChatGptAccountStatus> => {
     try {
-      const status = await service().readStatus(c.req.raw.signal), account = status.account;
-      return c.json(ChatGptAccountStatusSchema.parse({ ...status, account: latest?.authorization.signingIn === true
-        ? { state: "signing-in", attemptId: latest.id, expiresAt: latest.authorization.expiresAt, authorizationUrl: latest.authorization.authorizationUrl, account } : account }));
+      const status = await read(), account = status.account;
+      return ChatGptAccountStatusSchema.parse({ ...status, account: latest?.authorization.signingIn === true
+        ? { state: "signing-in", attemptId: latest.id, expiresAt: latest.authorization.expiresAt, authorizationUrl: latest.authorization.authorizationUrl, account } : account });
     } catch (error) {
       const result = failure(error, true, "CHATGPT_CONNECTION_FAILED");
-      return c.json(ChatGptAccountStatusSchema.parse({
+      return ChatGptAccountStatusSchema.parse({
         account: { state: "unavailable", code: result.code, message: result.message },
         connection: { state: result.state, checkedAt: deps.clock.now().toISOString(), failureCode: result.code },
         usage: { state: "unavailable", reason: result.code === "CHATGPT_SERVICE_CLOSED" ? "closed" : "unavailable" },
-      }));
+      });
     }
+  };
+  app.get("/api/v1/settings/chatgpt-account", async c => {
+    c.header("Cache-Control", "no-store");
+    return c.json(await statusBody(() => service().readStatus()));
+  });
+  app.use("/api/v1/settings/chatgpt-account/check", operatorMutationIngressGuard);
+  app.post("/api/v1/settings/chatgpt-account/check", async c => {
+    c.header("Cache-Control", "no-store");
+    return c.json(await statusBody(async () => {
+      let input: unknown;
+      try { input = await c.req.json(); } catch { throw new ChatGptAccountError("CHATGPT_AUTH_INVALID"); }
+      if (!ChatGptEmptyRequestSchema.safeParse(input).success) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
+      return service().checkStatus(c.req.raw.signal);
+    }));
   });
   app.post("/api/v1/settings/chatgpt-account/sign-in", async c => {
     c.header("Cache-Control", "no-store");
@@ -92,7 +105,7 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
     try {
       const current = attempt(id), completion = await waitForCompletion(current.completion, c.req.raw.signal);
       if (current.loggingFailure !== undefined) return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
-      return c.json(ChatGptSignInCompletionSchema.parse(completion.state === "completed" ? { ...completion, account: await service().refreshAccount() } : completion));
+      return c.json(completion);
     }
     catch (error) {
       return c.json(failure(error), 400);
@@ -104,7 +117,7 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
     try {
       if (!ChatGptEmptyRequestSchema.safeParse(await c.req.json()).success) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
       const current = attempt(c.req.param("attemptId"));
-      if (!current.authorization.signingIn) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
+      if (!current.authorization.signingIn && !current.authorization.held) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
       dispatched = true;
       await current.authorization.cancel();
       return c.json(ChatGptCancelResultSchema.parse({ state: "cancelled", attemptId: current.id }));

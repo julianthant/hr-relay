@@ -199,11 +199,15 @@ export const ParkedWriteCheckAcknowledgementSchema = z.strictObject({ result: Pa
 });
 export type ParkedWriteCheckAcknowledgement = z.infer<typeof ParkedWriteCheckAcknowledgementSchema>;
 
+const MAX_WORKERS_PER_WORKFLOW = 16;
+const WorkerCountSchema = z.number().int().min(0);
+export const PlannedWorkerCountSchema = WorkerCountSchema.max(MAX_WORKERS_PER_WORKFLOW);
+
 export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("check-parked-write"), target: ParkedWriteCheckTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["remove-worker", "retry-worker"]), target: WorkerMemberControlTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("stop-worker"), target: WorkerMemberControlTargetSchema }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: z.number().int().min(0) }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: WorkerCountSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("spawn-worker"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ workerId: WorkerIdSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["pause-worker", "resume-worker"]), target: WorkerMemberControlTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["refresh-browser", "reopen-browser"]), target: WorkerMemberTargetSchema.extend({ lifetimeId: z.uuid(), browserSessionId: BrowserSessionIdSchema }) }),
@@ -407,6 +411,11 @@ export const CommandRequestSchema = z.union([
   GateCommandRequestSchema,
   NotificationCommandRequestSchema,
 ]);
+
+export const CommandAdmissionRequestSchema = CommandRequestSchema.refine(
+  request => request.type !== "plan-worker-count" || PlannedWorkerCountSchema.safeParse(request.payload.desiredWorkers).success,
+  { path: ["payload", "desiredWorkers"], message: `Worker count must be at most ${MAX_WORKERS_PER_WORKFLOW}` },
+);
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   z.strictObject({ family: z.literal("ocr-review"), runId: RunIdSchema }),

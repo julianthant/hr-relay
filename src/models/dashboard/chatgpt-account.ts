@@ -47,10 +47,15 @@ export type ChatGptSignInStart = z.infer<typeof ChatGptSignInStartSchema>;
 export type ChatGptAccountView = z.infer<typeof ChatGptAccountViewSchema>;
 export type ChatGptSignInCompletion = z.infer<typeof ChatGptSignInCompletionSchema>;
 
-export const ChatGptConnectionStatusSchema = z.discriminatedUnion("state", [
+export const ChatGptCheckedConnectionSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("completed"), checkedAt: IsoInstantSchema, failureCode: z.null() }),
   z.strictObject({ state: z.literal("refused"), checkedAt: IsoInstantSchema, failureCode: ChatGptAccountCodeSchema }),
   z.strictObject({ state: z.literal("uncertain"), checkedAt: IsoInstantSchema, failureCode: ChatGptAccountCodeSchema }),
+]);
+/** `unchecked`: nothing has asked the provider about the account as it is stored now. */
+export const ChatGptConnectionStatusSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("unchecked"), checkedAt: z.null(), failureCode: z.null() }),
+  ...ChatGptCheckedConnectionSchema.options,
 ]);
 export const ChatGptUsageStatusSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("available"), resetAt: z.null() }),

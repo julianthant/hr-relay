@@ -10,7 +10,7 @@ import { inspectOpenDatabase } from "../../../src/backend/storage/sqlite/backup-
 import { CanonicalClaimNextRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 import { deriveBulkChildCommand } from "../../../src/rules/commands/command-groups.js";
-import { BulkRunCommandRequestSchema, CommandRequestSchema, deriveBulkRunCommandFingerprint, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandResultSchema, markSettingsCommand } from "../../../src/rules/commands/commands.js";
+import { BulkRunCommandRequestSchema, CommandAdmissionRequestSchema, CommandRequestSchema, deriveBulkRunCommandFingerprint, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandResultSchema, markSettingsCommand } from "../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
@@ -32,6 +32,21 @@ import { CONFIG_SNAPSHOT, NOW, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../supp
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
+
+it("accepts the worker roster ceiling and refuses a count above it", () => {
+  const request = {
+    commandId: UUID_5,
+    requestedAt: NOW,
+    requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+    source: "dashboard",
+    family: "worker-browser",
+    type: "plan-worker-count",
+    target: { workflowId: "person-lookup", expectedVersion: 0 },
+  };
+
+  assert.equal(CommandAdmissionRequestSchema.safeParse({ ...request, payload: { desiredWorkers: 16 } }).success, true);
+  assert.equal(CommandAdmissionRequestSchema.safeParse({ ...request, payload: { desiredWorkers: 17 } }).success, false);
+});
 
 {
 const profiles: Awaited<ReturnType<typeof profileFixtures.create>>[] = [];

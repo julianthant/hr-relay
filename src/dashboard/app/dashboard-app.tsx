@@ -3,9 +3,11 @@ import { PersonPreferencesContext } from "../lib/person-preferences.js";
 import { PROFILE_ONBOARDING_STATE } from "../../models/profiles/public-profile.js";
 import { PreflightOcrContext, createServedPreflightOcrPort } from "../surfaces/settings/preflight/preflight-ocr-model.js";
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
+import type { ChatGptAccountQueries } from "../client/queries/chatgpt-account-queries.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { StartupLoading } from "../surfaces/shell/startup-loading.js";
 import { useStartupGate } from "./startup/startup-gate.js";
+import { startupDeadlineClient, type StartupDeadline } from "./startup/first-screen.js";
 import { signInProblems, useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import { sameSessionAccount } from "../surfaces/settings/account/account-session.js";
 import { DeleteAccountControl } from "../surfaces/settings/general/ui-settings-records-general-paths.js";
@@ -66,13 +68,16 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
     change: (change: import("../../models/config/duo-credential-store.js").DuoKeyChange) => profileClient.changeProfileDuoKey({ ...profileTarget, change }),
   }, [profileClient, profileTarget]);
   const accountScope = useMemo(() => ({ profileClient, profileId, profileEpoch }), [profileClient, profileId, profileEpoch]);
-  const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort>; ocr: ReturnType<typeof createServedPreflightOcrPort> }>();
+  const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort>; ocr: ReturnType<typeof createServedPreflightOcrPort>; startDeadline: () => StartupDeadline }>();
   const account = accountOwner?.scope === accountScope ? accountOwner.port : undefined;
   useEffect(() => {
     if (profileId === undefined || profileEpoch === undefined) return;
-    const port = createServedChatGptAccountPort(profileClient);
+    // Account reads expire with the showing loader's deadline: the one still open from before it showed, or a fresh one after an earlier loader's ended.
+    let deadline = startupDeadlineClient(profileClient);
+    const startDeadline = () => (deadline = deadline.pending() ? deadline : startupDeadlineClient(profileClient));
+    const port = createServedChatGptAccountPort(new Proxy({}, { get: (_, key): unknown => Reflect.get(deadline.client, key) }) as ChatGptAccountQueries);
     const ocr = createServedPreflightOcrPort(profileClient, port);
-    setAccountOwner({ scope: accountScope, port, ocr });
+    setAccountOwner({ scope: accountScope, port, ocr, startDeadline });
     const close = (event: PageTransitionEvent) => { if (!event.persisted) { ocr.dispose(); port.dispose(); } };
     window.addEventListener("pagehide", close);
     return () => { window.removeEventListener("pagehide", close); ocr.dispose(); port.dispose(); };
@@ -137,7 +142,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       ) : boot === undefined ? (
         <BootFailure />
       ) : (
-        <StartupLoading><ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
+        <StartupLoading startDeadline={accountOwner?.scope === accountScope ? accountOwner.startDeadline : undefined}><ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
           preferences={preferences}
           profileTarget={profileTarget}
           boot={boot}
