@@ -1,0 +1,583 @@
+{
+  "id": "separations",
+  "code": "sp",
+  "label": "Separations",
+  "icon": "ShieldCheck",
+  "categoryId": "separation",
+  "descriptorFingerprint": "4396d7af52f6f4bc749fa3ae16541e31534e549cfde959dc264402224e2abe4f",
+  "availability": {
+    "state": "available"
+  },
+  "role": {
+    "kind": "composition"
+  },
+  "start": {
+    "readiness": {
+      "scope": "workbook-sources",
+      "state": "ready"
+    },
+    "summary": "The composition: ONE Kuali RRSS separation document becomes ONE terminated employee across three systems. It reads Kuali, UCPath and Kronos, reconciles the dates against what the timecard actually shows, establishes identity from supplied-EID read-back or the name-only gate, then clears any pending termination, files the termination, verifies the receipt, and finalizes the Kuali document.",
+    "enqueue": "reject-active",
+    "version": 1,
+    "inputRun": {
+      "placeholder": "Enter Kuali document numbers separated by a semicolon or Shift+Enter (e.g. 4502; 4510)",
+      "parser": {
+        "split": {
+          "kind": "delimited",
+          "delimiters": [
+            ";",
+            "\n"
+          ]
+        },
+        "rules": [
+          {
+            "when": {
+              "kind": "pattern",
+              "pattern": "document-number"
+            },
+            "emit": "documentNumber"
+          }
+        ],
+        "unmatched": "Kuali ID must contain digits."
+      },
+      "examples": [
+        {
+          "key": "one-document",
+          "label": "One document",
+          "text": "4502",
+          "note": "the ordinary case — one run for one Kuali separation document"
+        },
+        {
+          "key": "two-documents",
+          "label": "Two documents",
+          "text": "4502; 4510",
+          "note": "two runs from one box: each document number starts its own separation, and the action id for each is resolved from the Kuali Action List at run time"
+        }
+      ],
+      "supportsDryRun": true
+    },
+    "spreadsheetIntake": false,
+    "requiredWorkbookFields": [],
+    "workbookCheck": {
+      "id": "reference-check",
+      "keyFieldId": "eid"
+    },
+    "steps": [
+      {
+        "key": "kuali-extraction",
+        "label": "Kuali extraction",
+        "includedByDefault": true,
+        "systems": [
+          "kuali"
+        ],
+        "control": {
+          "state": "omittable",
+          "form": {
+            "fields": [
+              {
+                "key": "employeeName",
+                "label": "Employee name",
+                "help": "As on the Kuali document, Last, First.",
+                "kind": "text"
+              },
+              {
+                "key": "lastDayWorked",
+                "label": "Last day worked",
+                "kind": "us-date"
+              },
+              {
+                "key": "separationDate",
+                "label": "Separation date",
+                "kind": "us-date"
+              },
+              {
+                "key": "terminationType",
+                "label": "Termination type",
+                "kind": "enum",
+                "values": [
+                  "Accepted Another Job",
+                  "Attend School",
+                  "Dissatisfied w/Job",
+                  "Look for Another Job",
+                  "Military Service",
+                  "Move out of Area",
+                  "Never Started Employment",
+                  "No Reason Given",
+                  "Personal Reasons",
+                  "Quit without Notice",
+                  "Retirement",
+                  "Self-Employment",
+                  "Transferring to a different UCSD department (outside of RRSS)",
+                  "Transferring to another UC Campus (outside of UCSD)",
+                  "Graduated/No longer a Student",
+                  "Appointment Expired"
+                ]
+              }
+            ]
+          },
+          "forces": [
+            "identity-check",
+            "identity-review",
+            "kuali-finalization"
+          ]
+        }
+      },
+      {
+        "key": "identity-check",
+        "label": "Identity check",
+        "includedByDefault": true,
+        "systems": [
+          "ucpath"
+        ],
+        "control": {
+          "state": "omittable",
+          "form": {
+            "fields": [
+              {
+                "key": "emplId",
+                "label": "Employee ID",
+                "kind": "eid"
+              },
+              {
+                "key": "emplRecord",
+                "label": "Empl record",
+                "help": "The active job's record number, e.g. 0.",
+                "kind": "text"
+              },
+              {
+                "key": "department",
+                "label": "Department",
+                "help": "The Kuali option: code - name.",
+                "kind": "text"
+              },
+              {
+                "key": "payrollTitleCode",
+                "label": "Title code",
+                "kind": "text"
+              },
+              {
+                "key": "payrollTitle",
+                "label": "Title",
+                "kind": "text"
+              }
+            ]
+          },
+          "forces": [
+            "identity-review"
+          ]
+        }
+      },
+      {
+        "key": "kronos-timecard",
+        "label": "Kronos timecard",
+        "includedByDefault": true,
+        "systems": [
+          "new-kronos"
+        ],
+        "control": {
+          "state": "omittable",
+          "form": {
+            "fields": [
+              {
+                "key": "lastDayWorked",
+                "label": "Last day worked",
+                "help": "The employee's last physical day of work, MM/DD/YYYY. Kronos is not read; this stands in for the card's last punch.",
+                "replaces": {
+                  "nodeId": "dates",
+                  "path": "lastDayWorked"
+                },
+                "kind": "us-date"
+              },
+              {
+                "key": "separationDate",
+                "label": "Separation date",
+                "help": "The last day on pay status, MM/DD/YYYY — the same day as the last day worked unless paid leave follows it. The termination is effective the next day.",
+                "replaces": {
+                  "nodeId": "dates",
+                  "path": "separationDate"
+                },
+                "kind": "us-date"
+              }
+            ]
+          },
+          "forces": []
+        }
+      },
+      {
+        "key": "identity-review",
+        "label": "Identity approval",
+        "includedByDefault": true,
+        "systems": [],
+        "control": {
+          "state": "omittable",
+          "form": {
+            "fields": [
+              {
+                "key": "emplId",
+                "label": "Employee ID",
+                "kind": "eid"
+              },
+              {
+                "key": "ucpathName",
+                "label": "Name in UCPath",
+                "help": "Last, First, as UCPath shows it.",
+                "kind": "text"
+              }
+            ]
+          },
+          "forces": []
+        }
+      },
+      {
+        "key": "reference-check",
+        "label": "Check reference spreadsheets",
+        "includedByDefault": true,
+        "systems": [],
+        "control": {
+          "state": "required",
+          "reason": "This workflow requires every node in this step."
+        }
+      },
+      {
+        "key": "pending-termination",
+        "label": "Pending terminations",
+        "includedByDefault": true,
+        "systems": [
+          "ucpath"
+        ],
+        "control": {
+          "state": "omittable",
+          "form": {
+            "fields": []
+          },
+          "forces": []
+        }
+      },
+      {
+        "key": "ucpath-transaction",
+        "label": "UCPath transaction",
+        "includedByDefault": true,
+        "systems": [
+          "ucpath"
+        ],
+        "control": {
+          "state": "omittable",
+          "form": {
+            "fields": [
+              {
+                "key": "transactionNumber",
+                "label": "Transaction number",
+                "help": "T followed by 6–12 digits.",
+                "kind": "text"
+              },
+              {
+                "key": "approvalStatus",
+                "label": "Status",
+                "replaces": {
+                  "nodeId": "receipt",
+                  "path": "approvalStatus"
+                },
+                "kind": "enum",
+                "values": [
+                  "Approved",
+                  "Manually Processed",
+                  "Pending"
+                ]
+              }
+            ]
+          },
+          "forces": []
+        }
+      },
+      {
+        "key": "kuali-finalization",
+        "label": "Kuali finalization",
+        "includedByDefault": true,
+        "systems": [
+          "ucpath",
+          "kuali"
+        ],
+        "control": {
+          "state": "omittable",
+          "form": {
+            "fields": []
+          },
+          "forces": []
+        }
+      }
+    ],
+    "rows": [
+      {
+        "key": "kuali-extraction",
+        "label": "Read Kuali document",
+        "includedByDefault": true,
+        "kind": "switch",
+        "members": [
+          {
+            "step": "kuali-extraction"
+          }
+        ],
+        "target": {
+          "step": "kuali-extraction"
+        },
+        "manual": {
+          "form": {
+            "fields": [
+              {
+                "key": "employeeName",
+                "label": "Employee name",
+                "help": "As on the Kuali document, Last, First.",
+                "kind": "text"
+              },
+              {
+                "key": "lastDayWorked",
+                "label": "Last day worked",
+                "kind": "us-date"
+              },
+              {
+                "key": "separationDate",
+                "label": "Separation date",
+                "kind": "us-date"
+              },
+              {
+                "key": "terminationType",
+                "label": "Termination type",
+                "kind": "enum",
+                "values": [
+                  "Accepted Another Job",
+                  "Attend School",
+                  "Dissatisfied w/Job",
+                  "Look for Another Job",
+                  "Military Service",
+                  "Move out of Area",
+                  "Never Started Employment",
+                  "No Reason Given",
+                  "Personal Reasons",
+                  "Quit without Notice",
+                  "Retirement",
+                  "Self-Employment",
+                  "Transferring to a different UCSD department (outside of RRSS)",
+                  "Transferring to another UC Campus (outside of UCSD)",
+                  "Graduated/No longer a Student",
+                  "Appointment Expired"
+                ]
+              }
+            ]
+          },
+          "forces": [
+            "identity-check",
+            "identity-review",
+            "kuali-finalization"
+          ]
+        }
+      },
+      {
+        "key": "identity-check",
+        "label": "Verify employee identity",
+        "includedByDefault": true,
+        "kind": "switch",
+        "members": [
+          {
+            "step": "identity-check"
+          },
+          {
+            "step": "reference-check"
+          }
+        ],
+        "target": {
+          "step": "identity-check"
+        },
+        "manual": {
+          "form": {
+            "fields": [
+              {
+                "key": "emplId",
+                "label": "Employee ID",
+                "kind": "eid"
+              },
+              {
+                "key": "emplRecord",
+                "label": "Empl record",
+                "help": "The active job's record number, e.g. 0.",
+                "kind": "text"
+              },
+              {
+                "key": "department",
+                "label": "Department",
+                "help": "The Kuali option: code - name.",
+                "kind": "text"
+              },
+              {
+                "key": "payrollTitleCode",
+                "label": "Title code",
+                "kind": "text"
+              },
+              {
+                "key": "payrollTitle",
+                "label": "Title",
+                "kind": "text"
+              }
+            ]
+          },
+          "forces": [
+            "identity-review"
+          ]
+        }
+      },
+      {
+        "key": "kronos-timecard",
+        "label": "Read timecard",
+        "includedByDefault": true,
+        "kind": "switch",
+        "members": [
+          {
+            "step": "kronos-timecard"
+          }
+        ],
+        "target": {
+          "step": "kronos-timecard"
+        },
+        "manual": {
+          "form": {
+            "fields": [
+              {
+                "key": "lastDayWorked",
+                "label": "Last day worked",
+                "help": "The employee's last physical day of work, MM/DD/YYYY. Kronos is not read; this stands in for the card's last punch.",
+                "replaces": {
+                  "nodeId": "dates",
+                  "path": "lastDayWorked"
+                },
+                "kind": "us-date"
+              },
+              {
+                "key": "separationDate",
+                "label": "Separation date",
+                "help": "The last day on pay status, MM/DD/YYYY — the same day as the last day worked unless paid leave follows it. The termination is effective the next day.",
+                "replaces": {
+                  "nodeId": "dates",
+                  "path": "separationDate"
+                },
+                "kind": "us-date"
+              }
+            ]
+          },
+          "forces": []
+        }
+      },
+      {
+        "key": "identity-review",
+        "label": "Approve identity",
+        "includedByDefault": true,
+        "kind": "switch",
+        "members": [
+          {
+            "step": "identity-review"
+          }
+        ],
+        "target": {
+          "step": "identity-review"
+        },
+        "manual": {
+          "form": {
+            "fields": [
+              {
+                "key": "emplId",
+                "label": "Employee ID",
+                "kind": "eid"
+              },
+              {
+                "key": "ucpathName",
+                "label": "Name in UCPath",
+                "help": "Last, First, as UCPath shows it.",
+                "kind": "text"
+              }
+            ]
+          },
+          "forces": []
+        }
+      },
+      {
+        "key": "pending-termination",
+        "label": "Check pending termination",
+        "includedByDefault": true,
+        "kind": "switch",
+        "members": [
+          {
+            "step": "pending-termination"
+          }
+        ],
+        "target": {
+          "step": "pending-termination"
+        },
+        "manual": {
+          "form": {
+            "fields": []
+          },
+          "forces": []
+        }
+      },
+      {
+        "key": "submit-termination",
+        "label": "Submit termination",
+        "includedByDefault": true,
+        "kind": "switch",
+        "members": [
+          {
+            "step": "ucpath-transaction"
+          }
+        ],
+        "target": {
+          "step": "ucpath-transaction"
+        },
+        "manual": {
+          "form": {
+            "fields": [
+              {
+                "key": "transactionNumber",
+                "label": "Transaction number",
+                "help": "T followed by 6–12 digits.",
+                "kind": "text"
+              },
+              {
+                "key": "approvalStatus",
+                "label": "Status",
+                "replaces": {
+                  "nodeId": "receipt",
+                  "path": "approvalStatus"
+                },
+                "kind": "enum",
+                "values": [
+                  "Approved",
+                  "Manually Processed",
+                  "Pending"
+                ]
+              }
+            ]
+          },
+          "forces": []
+        }
+      },
+      {
+        "key": "kuali-finalization",
+        "label": "Finalize Kuali document",
+        "includedByDefault": true,
+        "kind": "switch",
+        "members": [
+          {
+            "step": "kuali-finalization"
+          }
+        ],
+        "target": {
+          "step": "kuali-finalization"
+        },
+        "manual": {
+          "form": {
+            "fields": []
+          },
+          "forces": []
+        }
+      }
+    ]
+  }
+}

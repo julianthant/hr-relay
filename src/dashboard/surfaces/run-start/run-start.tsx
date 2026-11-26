@@ -445,7 +445,7 @@ export function RunStartDialog({
     pdfSurface, preview, selectedStepKeys, customizeSteps, openRows, stepOmissions, dryRun, captureBrowserScreenshots, priority });
   const spreadsheetReadiness = runStartSpreadsheetReadiness(spreadsheets, referenceSelections, isRerun, snapshot);
   const { spreadsheetsError, spreadsheetsReading } = spreadsheetReadiness;
-  const handOff = [...handOffByStep.keys()].map(key => steps.find(step => step.key === key)?.label ?? key);
+  const handOff = [...handOffByStep.keys()].map(key => rows.find(row => row.stepKey === key)?.label ?? steps.find(step => step.key === key)?.label ?? key);
   const handOffReason = handOff.length === 0 ? null : `Turn off ${handOff.join(", ")} if done by hand.`;
   const { gates, blockedReason, launchFields, optionsBlockedReason, multiSubject, stepsFailure, stepsBlockedReason,
     sentOmittedSteps, planOmittedSteps, omissionMismatch, onLastStage, rerunInputGone, dryRunGone } = runStartGates(

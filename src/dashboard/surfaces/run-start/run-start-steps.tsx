@@ -29,7 +29,7 @@ export function RunStartSteps({
   copiedOmissions: launchDraft.LaunchDraft["copiedOmissions"];
   update: (change: (current: launchDraft.LaunchDraft) => launchDraft.LaunchDraft) => void;
 }) {
-  const stepLabels = (keys: readonly string[]): string => keys.map(stepLabel).join(", ");
+  const stepLabels = (keys: readonly string[]): string => keys.map(key => rows.find(row => row.stepKey === key)?.label ?? stepLabel(key)).join(", ");
   /** Use the shared cascade; locked omissions cannot be changed by another checkbox path. */
   const toggleRow = (row: StepRow, next: boolean) => {
     if (workflow !== undefined) update(current => launchDraft.toggleRow(current, workflow, snapshot, row, next));
