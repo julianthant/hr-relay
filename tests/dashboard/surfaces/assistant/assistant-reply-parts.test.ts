@@ -14,13 +14,14 @@ afterEach(async () => { await act(async () => root?.unmount()); root = undefined
 
 const ID = "00000000-0000-4000-8000-000000000001";
 const AT = "2026-11-26T09:31:00.000Z";
-const ATTRIBUTION = { kind: "assistant", requestedBy: "local-operator", profileId: ID, conversationId: ID, acceptedMessageId: ID, binding: { kind: "session", actionId: ID } } as const;
+const ATTRIBUTION = ({ kind: "assistant", requestedBy: "local-operator", profileId: ID, conversationId: ID, acceptedMessageId: ID, binding: { kind: "session", actionId: ID } });
 const TARGET = { kind: "workbook", libraryId: "tracker", revision: 1, location: { kind: "master" } } as const;
-const SESSION = { kind: "session", runId: ID, label: "Checking UCPath…", meta: "Person Lookup · Ortega, Lin" } as const;
+const TEXT = { label: "Checking UCPath…", meta: "Person Lookup · Ortega, Lin" };
+const SESSION = AssistantReplyPartsSchema.parse([{ kind: "session", runId: ID, ...TEXT }])[0];
 
 async function draw(parts: readonly AssistantReplyPart[], view?: Partial<AssistantSessionView>) {
   const opened: AssistantDataTarget[] = [], stopped: string[] = [];
-  const sessions = view && new Map([[ID, { runId: ID, rowRevision: 1, label: SESSION.label, meta: SESSION.meta, state: "running", stop: null, ...view } as AssistantSessionView]]);
+  const sessions = view && new Map([[ID, AssistantSessionViewSchema.parse({ runId: ID, rowRevision: 1, ...TEXT, state: "running", stop: null, ...view })]]);
   const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
   await act(async () => root?.render(createElement(AssistantReplyParts, { parts, sessions, onOpen: target => opened.push(target), onStop: stop => stopped.push(stop.runId) })));
   return { host, opened, stopped };
@@ -45,11 +46,11 @@ it("draws every inline kind in one message with its bullets", async () => {
 
 it("names the run on a keyboard-reachable Stop and spins while the run is live", async () => {
   const stop = { runId: ID, descriptor: { kind: "command", key: "cancel", command: "cancel", label: "Cancel", expectedVersion: 1, intent: "destructive", placement: ["footer"] } };
-  const view = await draw([SESSION], AssistantSessionViewSchema.parse({ runId: ID, rowRevision: 1, label: SESSION.label, meta: SESSION.meta, state: "running", stop }));
+  const view = await draw([SESSION], AssistantSessionViewSchema.parse({ runId: ID, rowRevision: 1, label: TEXT.label, meta: TEXT.meta, state: "running", stop }));
   const button = view.host.querySelector("button")!;
   assert.equal(button.textContent, "Stop");
   assert.equal(button.tabIndex, 0);
-  assert.equal(button.getAttribute("aria-describedby")!.split(" ").map(id => document.getElementById(id)?.textContent).join(" | "), `${SESSION.label} | ${SESSION.meta}`);
+  assert.equal(button.getAttribute("aria-describedby")!.split(" ").map(id => document.getElementById(id)?.textContent).join(" | "), `${TEXT.label} | ${TEXT.meta}`);
   assert(view.host.querySelector(".reply-spinner"));
   await act(async () => button.click());
   assert.deepEqual(view.stopped, [ID]);
@@ -59,17 +60,17 @@ it.each(Object.entries(SESSION_CHIP_STATE))("draws a %s run without Stop unless 
   const view = await draw([SESSION], { state: status as AssistantSessionView["state"] });
   assert.equal(view.host.querySelector(".reply-session")?.getAttribute("data-state"), chip);
   assert.equal(view.host.querySelector(".reply-spinner") !== null, chip === "running" || chip === "stopping");
-  assert.equal(view.host.querySelector("button"), null);
+  assert.equal(view.host.querySelector("button") === null, true);
 });
 
 it("claims no progress for a session the server has not described", async () => {
   const view = await draw([SESSION]);
-  assert.equal(view.host.textContent, SESSION.label + SESSION.meta);
-  assert.equal(view.host.querySelector(".reply-spinner, button"), null);
+  assert.equal(view.host.textContent, TEXT.label + TEXT.meta);
+  assert.equal(view.host.querySelector(".reply-spinner, button") === null, true);
 });
 
 it("records who filed under a typed yes, and nothing for an unrecorded one", async () => {
-  const view = await draw([{ kind: "answered", attribution: ATTRIBUTION, at: AT }, { kind: "answered", attribution: { kind: "unrecorded" }, at: AT }]);
+  const view = await draw(AssistantReplyPartsSchema.parse([{ kind: "answered", attribution: ATTRIBUTION, at: AT }, { kind: "answered", attribution: { kind: "unrecorded" }, at: AT }]));
   assert.equal(view.host.querySelectorAll("p").length, 1);
   assert.match(view.host.textContent ?? "", /^Filed by you · \d{1,2}:31 [AP]M$/u);
 });

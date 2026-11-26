@@ -3,7 +3,7 @@
 import "../../../../../../src/dashboard/surfaces/shell/assistant-panel.css";
 import { AssistantReplyParts } from "../../../../../../src/dashboard/surfaces/assistant/assistant-reply-parts.js";
 import type { SessionChipState } from "../../../../../../src/dashboard/surfaces/assistant/assistant-reply-parts-model.js";
-import type { AssistantDataTarget, AssistantInline, AssistantReplyPart, AssistantSessionView } from "../../../../../../src/models/dashboard/assistant.js";
+import { AssistantReplyPartsSchema, AssistantSessionViewSchema, type AssistantDataTarget, type AssistantInline, type AssistantReplyPart, type AssistantSessionView } from "../../../../../../src/models/dashboard/assistant.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import { StoryFrame } from "./story-frame.js";
 
@@ -13,17 +13,18 @@ const AT = "2026-11-26T09:31:00.000Z";
 const TARGET: AssistantDataTarget = { kind: "workbook", libraryId: "separations-tracker", revision: 1, location: { kind: "master" } };
 
 const plain = (text: string): AssistantInline => ({ kind: "plain", text });
-const say = (...runs: AssistantInline[]): AssistantReplyPart => ({ kind: "text", runs });
-const list = (items: AssistantInline[][]): AssistantReplyPart => ({ kind: "bullets", items });
+const say = (...runs: AssistantInline[]) => ({ kind: "text", runs });
+const list = (items: AssistantInline[][]) => ({ kind: "bullets", items });
 const LINK: AssistantInline = { kind: "link", label: "Ortega, Lin", target: TARGET };
 const SESSION = { kind: "session", runId: ID, label: "Checking UCPath…", meta: "Person Lookup · Ortega, Lin" } as const;
 
-function view(state: AssistantSessionView["state"], label: string = SESSION.label): AssistantSessionView {
-  const stop: AssistantSessionView["stop"] = state === "running" ? { runId: ID, descriptor: { kind: "command", key: "cancel", command: "cancel", label: "Cancel", expectedVersion: 1, intent: "destructive", placement: ["footer"] } } : null;
+function view(state: AssistantSessionView["state"], label: string = SESSION.label) {
+  const stop = state === "running" ? { runId: ID, descriptor: { kind: "command", key: "cancel", command: "cancel", label: "Cancel", expectedVersion: 1, intent: "destructive", placement: ["footer"] } } : null;
   return { runId: ID, rowRevision: 1, label, meta: SESSION.meta, state, stop };
 }
 
-function scene(title: string, parts: readonly AssistantReplyPart[], session?: AssistantSessionView): Story {
+function scene(title: string, authored: readonly unknown[], authoredSession?: unknown): Story {
+  const parts = AssistantReplyPartsSchema.parse(authored), session = authoredSession === undefined ? undefined : AssistantSessionViewSchema.parse(authoredSession);
   return { title, ready: "#hub-panel-assistant", render: () => <StoryFrame>
     <div className="ml-auto flex min-h-0 w-[30rem] flex-1 flex-col">
       <section id="hub-panel-assistant" className="hub-assistant-panel" aria-label="Relay assistant"><div className="hub-panel-content"><div className="hub-thread-wrap"><div className="hub-transcript">
