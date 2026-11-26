@@ -245,6 +245,12 @@ const uniqueSteps = (entries: readonly StepOmissionEntry[], ctx: z.RefinementCtx
   }
 };
 
+/** The run omitted the step that skips `dependency`, and the workflow declares `reader` waits on it only for order. */
+export function orderOnlyOmission(specs: readonly StepOmissionSpec[], omitted: readonly StepOmissionEntry[] | undefined, reader: string, dependency: string): boolean {
+  return specs.some((spec) => spec.orderOnlyReaders?.includes(reader) === true && spec.skips?.includes(dependency) === true
+    && (omitted ?? []).some((entry) => entry.workflow === undefined && entry.step === spec.step));
+}
+
 /** The envelope field: ordered, one entry per step, so fingerprints are stable; absent, never empty. */
 export const StepOmissionsSchema = z.array(StepOmissionEntrySchema).min(1).superRefine(uniqueSteps);
 /** The planner's input: the same entries, where "none" is a legitimate empty list. */

@@ -132,7 +132,7 @@ describe("Separations composition with a reference spreadsheet", () => {
   const REFERENCE_GATE = "reference-check-review";
   const OMIT_KRONOS = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/12/2026", separationDate: "06/19/2026" } }];
 
-  async function composition(options: Readonly<{ documentEid?: string; searchOutcome?: PersonOrgSearchPageOutcome }> = {}) {
+  async function composition(options: Readonly<{ documentEid?: string; searchOutcome?: PersonOrgSearchPageOutcome; kualiDiesAfterFiling?: true }> = {}) {
     const clock = manualClock(new Date(COMPOSITION_NOW));
     const kuali = createKualiFakeWorld({ actionId: COMPOSITION_ACTION_ID, documentNumber: COMPOSITION_DOCUMENT, displayedEid: COMPOSITION_EID });
     kuali.separationForm = { formType: KUALI_SEPARATION_FORM_TYPE, employeeName: COMPOSITION_DOCUMENT_NAME, eid: options.documentEid ?? COMPOSITION_EID, employeeType: "Student",
@@ -151,7 +151,12 @@ describe("Separations composition with a reference spreadsheet", () => {
         const personStates: readonly unknown[] = [UCPATH_PERSON_ORG_SEARCH_READY, UCPATH_PERSON_ORG_DETAIL_READY];
         // The person-org fake owns the search screens; the Smart HR world owns the transaction pages.
         return { ...person, scanTerminationTransactions: filing.scanTerminationTransactions, stageTermination: filing.stageTermination,
-          stagePendingTerminationSweep: filing.stagePendingTerminationSweep, commit: filing.commit,
+          stagePendingTerminationSweep: filing.stagePendingTerminationSweep,
+          commit: async (...args: Parameters<typeof filing.commit>) => {
+            const committed = await filing.commit(...args);
+            if (options.kualiDiesAfterFiling === true) kuali.openThrows = new Error("the Kuali page closed");
+            return committed;
+          },
           searchPersonOrg: (input: typeof searches[number]) => {
             searches.push(input);
             const outcome = options.searchOutcome;
@@ -177,7 +182,7 @@ describe("Separations composition with a reference spreadsheet", () => {
     const missing = () => f.spreadsheet("Badge list", "Issued", ["eid"], [["10000009"]]);
     const renamed = () => f.spreadsheet("Separations roster", "People", ["fullName", "eid"], [[ROW_ONLY_NAME, COMPOSITION_EID]]);
     const parkedAt = (run: RunRecord) => run.lifecycle.state === "parked-gate" ? String(run.lifecycle.gateId) : run.lifecycle.state;
-    return { ...f, commits, begin, writeIntents, holding, missing, renamed, parkedAt, searches, ucpath };
+    return { ...f, commits, begin, writeIntents, holding, missing, renamed, parkedAt, searches, ucpath, kuali };
   }
 
   it("stops before searching UCPath when the Kuali document has no Employee ID", async () => {
@@ -298,6 +303,24 @@ describe("Separations composition with a reference spreadsheet", () => {
     const plan = previewRerunWarnings(c.database.authority, separationsDescriptor, { runId: run.envelope.runId, expectedVersion: run.version, intent: "rerun",
       selectedStepKeys: separationsDescriptor.timeline.map(step => step.key).filter(key => !omissions.some(omitted => omitted.step === key)) });
     assert.ok(plan.warnings.some(warning => warning.nodeId === "file-termination"), JSON.stringify(plan.warnings));
+  });
+
+  it("recovers a run that failed after filing with the pending sweep done by hand, without filing again", async () => {
+    const c = await composition({ kualiDiesAfterFiling: true });
+    const failed = await c.execute(c.begin([], false, [...OMIT_KRONOS, { step: "pending-termination", facts: {} }]));
+    assert.ok(failed.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed", JSON.stringify(failed.lifecycle));
+    assert.deepEqual(c.nodeSpans(failed, "clear-pending"), [["skipped", "step-omitted"]]);
+    assert.deepEqual(c.commits(), ["commit:ucpath.smart-hr.save-and-submit-button"]);
+    delete c.kuali.openThrows;
+    const recovered = c.recover(failed);
+    assert.ok(recovered.state === "applied", JSON.stringify(recovered));
+    const successorId = recovered.affectedTargets.flatMap(target => target.family === "run" && target.runId !== failed.envelope.runId ? [target.runId] : [])[0];
+    const successor = successorId === undefined ? undefined : c.database.authority.runs.get(successorId);
+    assert.ok(successor?.envelope.continuation !== undefined);
+    const done = await c.execute(successor);
+    assert.ok(done.lifecycle.state === "terminal" && done.lifecycle.outcome === "done", JSON.stringify(done.lifecycle));
+    assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button", "commit:ucpath.smart-hr.save-and-submit-button"], "the termination is filed once");
+    assert.deepEqual(c.writeIntents(done).map(intent => intent.system), ["kuali"]);
   });
 
   it("refuses a manual approval whose Employee ID is not the run's before any write", async () => {
