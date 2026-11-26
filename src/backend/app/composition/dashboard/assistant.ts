@@ -3,6 +3,8 @@ import type { AssistantPlugin } from '../../../assistant/plugins/plugin.js';
 import { sessionsPlugin } from '../../../assistant/plugins/sessions/index.js';
 import { createAssistantM1Service, type AssistantM1ServiceOptions } from '../../../assistant/service.js';
 import { createAssistantTypedProposals, type AssistantTypedProposalPorts } from '../../../assistant/typed-proposals.js';
+import type { AssistantReferenceTable } from '../../../assistant/references.js';
+import type { ServerReplyBinding } from '../../../assistant/replies.js';
 import { selectActiveRunSettings } from '../../../runs/settings/run-settings.js';
 import type { CommandRequest } from '../../../../rules/commands/commands.js';
 import { CrossDateSearchQuerySchema, SearchCoverageSchema } from '../../../../models/dashboard/search.js';
@@ -101,6 +103,10 @@ export function startAssistantHistoryCleanup(reclaim: () => void, report: (error
   return timer;
 }
 
+/** Every reference this turn issued renders as its local display text. */
+export const assistantValueBindings = (table: AssistantReferenceTable): readonly ServerReplyBinding[] =>
+  table.issued().map(([reference, entry]) => ({ kind: 'value-only' as const, reference, entry, value: entry.display }));
+
 /** The served assistant: the turn-accounting service over the typed-yes proposal owner and read-only sessions. */
 export function composeAssistant(options: Readonly<{
   service: Omit<AssistantM1ServiceOptions, 'history' | 'proposals' | 'tools'>;
@@ -120,7 +126,7 @@ export function composeAssistant(options: Readonly<{
   const assistant = createAssistantM1Service({ ...service, proposals,
     history: () => { service.assertComposition?.(); return database.authority.assistantHistory; },
     tools: () => ({ plugins: [...options.readPlugins(), proposals.plugin, sessionsPlugin()], sessions,
-      bindings: table => table.issued().map(([reference, entry]) => ({ kind: 'value-only' as const, reference, entry, value: entry.display })) }) });
+      bindings: assistantValueBindings }) });
   return Object.freeze({ assistant,
     /** The command and worker effect hook: an assistant command runs only from its claimed proposal row or session claim. */
     assertEffect(commandId: string, command?: CommandRequest): void {

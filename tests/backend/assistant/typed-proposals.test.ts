@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
 import { createAssistantReferenceTable } from "../../../src/backend/assistant/references.js";
-import { assistantProposalParts, isTypedYes } from "../../../src/backend/assistant/typed-proposals.js";
+import { assistantProposalParts, dryRunStopStep, isTypedYes, plannedRowDisplay } from "../../../src/backend/assistant/typed-proposals.js";
+import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
+import { parseInputRunText, toRawSubmission } from "../../../src/models/workflow/ingress.js";
+import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
+import { workflowPlanning } from "../../../src/workflow-kit/workflow.js";
 import type { AssistantProposalDraft, AssistantToolContext } from "../../../src/backend/assistant/plugins/plugin.js";
-import { AssistantAcceptedTurnSchema, AssistantM2ProposalOperationSchema, type AssistantReplyPart } from "../../../src/models/dashboard/assistant.js";
+import { AssistantAcceptedTurnSchema, AssistantProposalOperationSchema, type AssistantReplyPart } from "../../../src/models/dashboard/assistant.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
@@ -124,8 +128,8 @@ it("keeps each refused command's own category and shows its fixed reason, never 
 });
 
 it("renders the files, people and EIDs Relay resolved, and the reviewed run options", () => {
-  const operation = AssistantM2ProposalOperationSchema.parse({ kind: "run-action", runId: randomUUID(), expectedVersion: 1, action: "pause" });
-  const parts = assistantProposalParts({ label: "Start Emergency Contact", dryRun: true, options: { browserMode: "headed", captureBrowserScreenshots: false, priority: "interactive" }, rows: [
+  const operation = AssistantProposalOperationSchema.parse({ kind: "run-action", runId: randomUUID(), expectedVersion: 1, action: "pause" });
+  const parts = assistantProposalParts({ label: "Start Emergency Contact", dryRun: true, options: { browserMode: "headed", captureBrowserScreenshots: false, priority: "interactive" }, effect: "Stops before the commit.", rows: [
     { title: "Emergency Contact PDF", display: { kind: "file", fileName: "first.pdf", formType: "emergency-contact" }, operation },
     { title: "Emergency Contact PDF", display: { kind: "file", fileName: "second.pdf", formType: "emergency-contact" }, operation },
     { title: "Avery Example", display: { kind: "person", name: "Example, Avery", employeeId: "10000001" }, operation },
@@ -133,7 +137,37 @@ it("renders the files, people and EIDs Relay resolved, and the reviewed run opti
   assert.deepEqual(parts[1], { kind: "bullets", items: [[{ kind: "value", value: "first.pdf" }], [{ kind: "value", value: "second.pdf" }],
     [{ kind: "value", value: "Example, Avery" }, { kind: "plain", text: " · EID " }, { kind: "value", value: "10000001" }]] });
   assert.deepEqual(parts[2], { kind: "text", runs: [{ kind: "plain", text: "Runs in a visible browser, screenshots off." }] });
-  assert.deepEqual(parts[0], { kind: "text", runs: [{ kind: "bold", text: "Start Emergency Contact (dry run)" }] });
+  assert.deepEqual(parts[0], { kind: "text", runs: [{ kind: "plain", text: "Dry run, saves nothing. " }, { kind: "bold", text: "Start Emergency Contact" }] });
+  assert.deepEqual(parts.slice(3), [{ kind: "text", runs: [{ kind: "plain", text: "Stops before the commit." }] },
+    { kind: "text", runs: [{ kind: "plain", text: "Reply yes to save all 3, or tell me which to skip or change." }] }]);
+  const one = assistantProposalParts({ label: "Pause Person Lookup", dryRun: false, options: null, effect: "Changes only this run in the queue.", rows: [{ title: "Lookup", display: { kind: "request" }, operation }] });
+  assert.deepEqual(one.at(-1), { kind: "text", runs: [{ kind: "plain", text: "Reply yes to file it, or tell me what to change." }] });
+});
+
+it("names the step a dry run stops before from the descriptor, and none for a live read", () => {
+  const descriptor = (id: string) => { const found = DESCRIPTORS.find(candidate => candidate.id === id); assert.ok(found); return found; };
+  assert.equal(dryRunStopStep(descriptor("separations")), "Clear Pending Terminations");
+  assert.equal(dryRunStopStep(descriptor("person-lookup")), undefined);
+});
+
+it("shows Separations document identities from the real planned canonical inputs", () => {
+  const descriptor = DESCRIPTORS.find(candidate => candidate.id === "separations"); assert.ok(descriptor?.surfaces.inputRun);
+  const planning = workflowPlanning(descriptor), schemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
+  const rows = parseInputRunText(descriptor.surfaces.inputRun.parser, "4502; 4510").map(entry => {
+    const submission = { ...(toRawSubmission(entry) as Record<string, unknown>), timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST" };
+    return plannedRowDisplay("separations", { schemaHash, value: planning.parseCanonicalInput(planning.parseInput(submission).input) });
+  });
+  assert.deepEqual(rows, [{ kind: "document", documentNumber: "4502" }, { kind: "document", documentNumber: "4510" }]);
+  assert.deepEqual(plannedRowDisplay("separations", { value: { documentNumber: "4502" } }), { kind: "request" });
+});
+
+it("shows an Emergency Contact PDF start row as its attached file, never as a person", () => {
+  const descriptor = DESCRIPTORS.find(candidate => candidate.id === "emergency-contact"); assert.ok(descriptor);
+  const planning = workflowPlanning(descriptor), schemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
+  const document = { id: randomUUID(), sha256: "c".repeat(64), bytes: 21, mediaType: "application/pdf" };
+  const input = { schemaHash, value: planning.parseCanonicalInput(planning.parseInput({ document, readingId: randomUUID(), roster: null, reading: { kind: "subscription" }, onbaseFiling: "file" }).input) };
+  assert.deepEqual(plannedRowDisplay("emergency-contact", input, () => "contact.pdf"), { kind: "file", fileName: "contact.pdf", formType: "emergency-contact" });
+  assert.deepEqual(plannedRowDisplay("emergency-contact", input), { kind: "request" }, "a row with no attached file shows no file name");
 });
 
 it("keeps a row whose submit failed UNKNOWN, never reclaims it and runs the next row", async () => {

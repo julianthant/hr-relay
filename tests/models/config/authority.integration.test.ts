@@ -183,7 +183,8 @@ afterAll(() => profiles.close());
   ];
 
   it("accounts for every authority table with an active writer", () => {
-    const uncomposed = ["assistant_proposals", "assistant_proposal_rows", "assistant_session_claims"];
+    // The retired Confirm card's tables: the served assistant writes proposals and session claims instead.
+    const uncomposed = ["assistant_actions", "assistant_chats"];
     const covered = new Set(cases.map(({ table }) => table));
     assert.deepEqual([...covered].sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority"
