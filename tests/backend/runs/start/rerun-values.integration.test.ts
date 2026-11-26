@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../../support/helpers/backend/record-historical-recover.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { GateResultRecordSchema } from "../../../../src/models/workflow/gates.js";
 import { launchDescriptor, launchHarness as createLaunchHarness } from "../../../support/fixtures/run-launch-fixtures.js";
@@ -878,7 +879,7 @@ describe("source-bound Rerun value read", () => {
       intents: h.database.authority.writeIntents.listByRun(run.envelope.runId), checkpoints: h.database.authority.runCheckpoints.listByItem(h.descriptor.id, run.envelope.itemId).filter(row => row.nodeId === WRITE_FIXTURE_NODE_ID),
       confirmations: h.database.authority.timelineEvents.page({}).filter(row => row.payload.kind === "operation-confirmed") });
     const before = effects();
-    const recovered = h.kernel.execute({ commandId: h.ids.uuid(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+    const recovered = recordHistoricalRecover(h, h.descriptor, { commandId: h.ids.uuid(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
       source: "dashboard", family: "run", type: "recover-run", target: request(run) });
     assert.equal(recovered.state, "applied"); assert.ok(recovered.state === "applied");
     const target = recovered.affectedTargets[0]; assert.ok(target?.family === "run");

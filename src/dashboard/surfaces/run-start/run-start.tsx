@@ -201,13 +201,14 @@ export function RunStartDialog({
   const typedValues = useMemo(() => {
     if (typedDeclaration === undefined) return typedDraft;
     const values = { ...typedInputDefaults(typedDeclaration), ...typedDraft };
+    if (draft.interruptedRerun) return values;
     for (const step of workflow?.steps ?? []) {
       const control = step.control;
       if (control.state === "selectable" && typedDeclaration.controls.some(field => field.field === control.inputField && field.placement === "step"))
         values[control.inputField] = typedControlAvailable(typedDeclaration, values, control.inputField) && (customizeSteps || isRerun ? customizedStepKeys.includes(step.key) : step.includedByDefault);
     }
     return values;
-  }, [typedDeclaration, typedDraft, workflow, customizeSteps, isRerun, customizedStepKeys]);
+  }, [typedDeclaration, typedDraft, workflow, customizeSteps, isRerun, customizedStepKeys, draft.interruptedRerun]);
   const defaultStepKeys = useMemo(() => workflow?.steps.filter(step => {
     const control = step.control;
     return declaredInput && control.state === "selectable"
@@ -232,10 +233,10 @@ export function RunStartDialog({
   const forcedByStep = useMemo(() => forcedStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
   const rows = useMemo(() => startRowsOf({ steps, rows: workflow?.rows }), [steps, workflow?.rows]);
   const inputDriven = useCallback((row: StepRow): boolean => launchDraft.rowInputDriven(workflow, typedValues, row), [workflow, typedValues]);
-  const openRows: readonly OpenStepRow[] = useMemo(() => customizeSteps ? rows.flatMap(row => {
+  const openRows: readonly OpenStepRow[] = useMemo(() => customizeSteps && !draft.interruptedRerun ? rows.flatMap(row => {
     if (row.form === undefined || inputDriven(row) || !rowFieldsOpen(row, selectedStepKeys, manualRows)) return [];
     return [rowOpenFold(row, row.form, stepDrafts[row.key] ?? initialStepOmissionDraft(row.form))];
-  }) : [], [customizeSteps, rows, selectedStepKeys, manualRows, stepDrafts, inputDriven]);
+  }) : [], [customizeSteps, rows, selectedStepKeys, manualRows, stepDrafts, inputDriven, draft.interruptedRerun]);
   const stepOmissions = useMemo(() => stepEntries(openRows), [openRows]);
   const requestFingerprint = runStartRequestFingerprint(draft, spreadsheets, savedRows, pdfInput, rerunSource, workflowId, typedValues,
     customizeSteps, dryRun, captureBrowserScreenshots, selectedStepKeys, openRows);
@@ -648,7 +649,7 @@ export function RunStartDialog({
               tone="faint"
               items={[
                 workflow?.label,
-                workflow === undefined ? undefined : `${includedRowCount(rows, selectedStepKeys, manualRows)} of ${rows.length} steps`,
+                workflow === undefined ? undefined : `${includedRowCount(rows, selectedStepKeys, manualRows, snapshot)} of ${rows.length} steps`,
                 pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.draft, pdfInput.picks),
                 priority === "interactive" ? "Priority" : undefined,
               ].filter((item): item is string => item !== undefined)}

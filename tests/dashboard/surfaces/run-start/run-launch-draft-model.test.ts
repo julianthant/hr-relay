@@ -284,6 +284,16 @@ describe("reference spreadsheet", () => {
 });
 
 describe("rerun restore", () => {
+  it("preselects unfinished work and lets the operator explicitly select a completed required write", () => {
+    const ran = { ...plain, steps: plain.steps.slice(0, 3).map(step => ({ ...step,
+      control: { state: "required" as const, reason: "Required" } })) };
+    const interrupted = RerunValuesSnapshotSchema.parse({ ...snapshot, source: { ...snapshot.source, outcome: "interrupted" },
+      retainedSteps: [{ key: "read", repeatable: true }, { key: "write", repeatable: true }] });
+    const draft = restoreRerunDraft(interrupted, ran);
+    assert.deepEqual(selectedStepKeys(draft, ran), ["finish"]);
+    const write = startRowsOf(ran).find(row => row.key === "write"); assert.ok(write);
+    assert.deepEqual(selectedStepKeys(toggleRow(draft, ran, interrupted, write, true), ran), ["write", "finish"]);
+  });
   it("restores the plain identity text with no value drafts and picks up from the failed step", () => {
     const partial = RerunValuesSnapshotSchema.parse({ ...snapshot, sourceInput: { state: "partial", value: { eid: "10812345" }, identityCopied: true } });
     const ran = { ...plain, steps: plain.steps.slice(0, 3) };

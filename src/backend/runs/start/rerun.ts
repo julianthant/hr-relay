@@ -23,6 +23,8 @@ import { taskSpanPath } from "../../logs/span-emitter.js";
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { projectStartSteps } from "./step-selection.js";
+import { isInterruptedRerunSource, planInterruptedRerun } from "./recovery-plan.js";
+import { RunContinuationSchema } from "../../../models/run/continuation.js";
 
 export class RerunRefusedError extends Error {
   constructor(readonly code: RerunPlanRefusalCode, message: string) {
@@ -214,11 +216,36 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   if (new Set(selectedKeys).size !== selectedKeys.length || selectedKeys.some((key) => !descriptor.timeline.some((step) => step.key === key))) {
     throw new RerunRefusedError("invalid-value", "Rerun selection is not eligible in this descriptor");
   }
-  for (const step of projectStartSteps(descriptor)) {
-    if (!selectedKeys.includes(step.key) && (step.control.state === "required"
-      || (step.control.state === "omittable" && step.control.forces.some((key) => selectedKeys.includes(key))))) {
-      throw new RerunRefusedError("invalid-value", "Rerun selection violates the workflow's required steps or omission cascade");
+  const interrupted = isInterruptedRerunSource(repositories, run);
+  let continuation: RerunPlan["continuation"];
+  if (interrupted) {
+    if (source.failureCorrection !== undefined || source.gateCorrection !== undefined
+      || (entry !== undefined && (entry.itemId !== run.envelope.itemId
+        || canonicalJsonStringify(entry.input.value) !== canonicalJsonStringify(run.input.parsed.value)
+        || canonicalJsonStringify(entry.workbookReferences ?? []) !== canonicalJsonStringify(run.input.workbookReferences ?? [])))) {
+      throw new RerunRefusedError("invalid-value", "Interrupted rerun requires the original run input and workbook references.");
     }
+    const retained = planInterruptedRerun(repositories, descriptor, run, schemaReader);
+    const retainedKeys = new Set(retained.retainedSteps.map(step => step.key));
+    if (descriptor.timeline.some(step => !retainedKeys.has(step.key) && !selectedKeys.includes(step.key))) {
+      throw new RerunRefusedError("invalid-value", "Keep unfinished steps selected to continue this run.");
+    }
+    if (retained.retainedSteps.some(step => !step.repeatable && selectedKeys.includes(step.key))) {
+      throw new RerunRefusedError("invalid-value", "Interrupted rerun keeps completed delegated results.");
+    }
+    const repeat = new Set(retained.retainedSteps.filter(step => selectedKeys.includes(step.key)).map(step => step.key));
+    const nodes = new Set(descriptor.timeline.filter(step => repeat.has(step.key)).flatMap(step => step.nodes.map(node => String(node.id))));
+    continuation = RunContinuationSchema.parse({ ...retained.continuation,
+      checkpoints: retained.continuation.checkpoints.filter(row => !nodes.has(row.nodeId)),
+      gates: retained.continuation.gates.filter(row => !nodes.has(row.nodeId)) });
+  } else {
+    for (const step of projectStartSteps(descriptor)) {
+      if (!selectedKeys.includes(step.key) && (step.control.state === "required"
+        || (step.control.state === "omittable" && step.control.forces.some((key) => selectedKeys.includes(key))))) {
+        throw new RerunRefusedError("invalid-value", "Rerun selection violates the workflow's required steps or omission cascade");
+      }
+    }
+    if (selectedKeys.length === 0) throw new RerunRefusedError("invalid-value", "Select at least one step to rerun.");
   }
   if (!older && ((schemaReader?.({ kind: "run-input", id: run.envelope.runId }, run.input, run.input.parsed.schemaHash, deriveSchemaHash(descriptor.canonicalInput, "output")) ?? run.input.parsed.schemaHash) !== deriveSchemaHash(descriptor.canonicalInput, "output")
     || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)) {
@@ -287,7 +314,8 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   const nodes = new Set(descriptor.timeline.filter((step) => selected.has(step.key)).flatMap((step) => step.nodes.map((node) => String(node.id))));
   const warnings: RepeatWarning[] = [];
   for (const node of descriptorRuntimeNodes(descriptor)) {
-    if (node.kind !== "transaction" || !nodes.has(String(node.id))) continue;
+    if (node.kind !== "transaction" || !nodes.has(String(node.id))
+      || continuation?.checkpoints.some(row => row.nodeId === node.id)) continue;
     const outputs: Record<string, JsonValue> = {};
     const transactionCheckpoint = latest.get(node.id);
     let missingDependency = false;
@@ -343,5 +371,6 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
     runId: source.runId, expectedVersion: source.expectedVersion, descriptorFingerprint: descriptor.contractFingerprint,
     selectedStepKeys: [...selected].sort(), warnings, ...protection,
   }, protectedBindings))}`);
-  return RerunPlanSchema.parse({ source, warnings, warningDigest, ...protection, ...(acknowledgment === undefined ? {} : { acknowledgment }) });
+  return RerunPlanSchema.parse({ source, warnings, warningDigest, ...protection,
+    ...(continuation === undefined ? {} : { continuation }), ...(acknowledgment === undefined ? {} : { acknowledgment }) });
 }

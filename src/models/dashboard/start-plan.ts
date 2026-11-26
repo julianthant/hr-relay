@@ -29,11 +29,14 @@ const SHARED_REQUEST_LEAVES = {
   /** The surface may request `bulk` explicitly; the server stamps the default. */
   priority: RunPrioritySchema.optional(),
   requestedInstance: InstanceSelectionSchema.optional(),
-  selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
+  selectedStepKeys: z.array(z.string().min(1)).optional(),
     /* Typed facts for each omitted step; a request carrying omissions without an explicit `selectedStepKeys` is refused, because which steps run is the operator's statement. */
   stepOmissions: StepOmissionsSchema.optional(),
   workbookReferences: z.array(WorkbookActiveSelectionSchema).optional(),
 } as const;
+
+const hasStartSelection = (request: { rerunSource?: unknown; selectedStepKeys?: string[] | undefined }) =>
+  request.rerunSource !== undefined || request.selectedStepKeys?.length !== 0;
 
 export const StartPlanRequestSchema = z.strictObject({
   ...SHARED_REQUEST_LEAVES,
@@ -50,7 +53,7 @@ export const StartPlanIngressSchema = z.strictObject({
   captureBrowserScreenshots: z.boolean().default(false),
   /** Trusted server stamp; the surface may request `bulk` explicitly. */
   priority: RunPrioritySchema.default("interactive"),
-});
+}).refine(hasStartSelection, { path: ["selectedStepKeys"], message: "Select at least one step to start." });
 export type StartPlanIngress = z.infer<typeof StartPlanIngressSchema>;
 
 export const StartPlanWireSchema = z.strictObject({

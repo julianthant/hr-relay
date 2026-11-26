@@ -157,11 +157,11 @@ it("preserves a completed parallel branch while its differently typed sibling pa
   const parent = f.database.authority.runs.get(f.run.envelope.runId);
   const parked = f.database.authority.runs.get(unknown.run.envelope.runId);
   assert.ok(parent && parked?.lifecycle.state === "parked-write");
-  for (const [type, target] of [["cancel", parent], ["recover-run", parent], ["retry", parked]] as const) {
+  for (const [type, target] of [["cancel", parent], ["retry", parked]] as const) {
     const result = f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type, source: "dashboard", requestedBy: "local-operator",
       requestedAt: f.clock.now().toISOString(), target: { runId: target.envelope.runId, expectedVersion: target.version } });
     assert.ok(result.state === "rejected");
-    assert.equal(result.code, type === "recover-run" ? "RUN_CONTINUATION_REFUSED" : "invalid-state");
+    assert.equal(result.code, "invalid-state");
   }
   assert.deepEqual(f.database.authority.writeIntents.get(intent.writeIntentId), intent);
   assert.deepEqual(f.database.authority.runResults.get(completed.run.envelope.runId), receipt);

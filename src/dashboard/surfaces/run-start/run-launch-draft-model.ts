@@ -14,7 +14,7 @@ import {
 import type { RerunLaunchSource } from "./run-launch-model.js";
 import type { PdfRunDraft, PdfRunPicks } from "./run-start-pdfs.js";
 import type { WorkbookRowChoice } from "./run-workbook-rows-model.js";
-import { factDraft, includedRowCount, rowFieldsOpen, rowIncluded, preselectionBadge, sourceTypedFacts, startRowsOf, type ManualRows, type StepRow } from "./run-steps-model.js";
+import { factDraft, includedRowCount, rowFieldsOpen, rowIncluded, preselectionBadge, retainedRowSteps, sourceTypedFacts, startRowsOf, type ManualRows, type StepRow } from "./run-steps-model.js";
 
 export type ReferenceSelection = Readonly<{ libraryId: string; versionId: string; sheetId: string }>;
 export type CheckPick = Readonly<{ versionId: string; sheetIds: readonly string[] }>;
@@ -26,6 +26,7 @@ export type LaunchDraft = Readonly<{
   /** A typed draft belongs to the workflow that made it. */
   typed: Readonly<{ workflowId: string; draft: TypedInputDraft }>;
   sourceInputUnchanged: boolean;
+  interruptedRerun?: true;
   /** A step selection belongs to the workflow that made it; another workflow shows its own defaults. */
   stepSelection?: Readonly<{ workflowId: string; keys: readonly string[] }>;
   /** Typed fields by row key. */
@@ -155,6 +156,13 @@ function prefillRow(draft: LaunchDraft, snapshot: RerunValuesSnapshot | null, ro
 
 /** A switch row on or off. Off opens its typed fields; on closes them and keeps what was typed. */
 export function toggleRow(draft: LaunchDraft, workflow: RunStartWorkflow, snapshot: RerunValuesSnapshot | null, row: StepRow, next: boolean): LaunchDraft {
+  if (snapshot?.retainedSteps !== undefined) {
+    const retained = retainedRowSteps(row, snapshot);
+    if (!retained.length || retained.some(step => !step.repeatable)) return draft;
+    const keys = new Set(selectedStepKeys(draft, workflow));
+    for (const { key } of retained) if (next) keys.add(key); else keys.delete(key);
+    return withSteps(draft, workflow.workflowId, workflow.steps.map(step => step.key).filter(key => keys.has(key)));
+  }
   if (row.kind !== "switch") return draft;
   let changed: LaunchDraft;
   if (row.stepKey !== undefined) changed = withSteps(draft, workflow.workflowId, toggleStepSelection(workflow.steps, selectedStepKeys(draft, workflow), row.stepKey, next));
@@ -268,6 +276,10 @@ export function rowInputDriven(workflow: RunStartWorkflow | undefined, typedValu
 /** A rerun picks up from the first row that did not complete: completed rows before it are off and rows the source skipped stay skipped.
  * A row stays on when switching it off would take a later row with it, or leave a value nobody recorded to type. */
 function preselectRerunSteps(draft: LaunchDraft, snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow): LaunchDraft {
+  if (snapshot.retainedSteps !== undefined) {
+    const retained = new Set(snapshot.retainedSteps.map(step => step.key));
+    return withSteps(draft, workflow.workflowId, workflow.steps.map(step => step.key).filter(key => !retained.has(key)));
+  }
   const rows = startRowsOf(workflow), badges = rows.map(row => preselectionBadge(row, snapshot));
   const failed = badges.indexOf("failed"), restart = failed >= 0 ? failed : rerunsInOneClick(snapshot) ? 0 : Math.max(0, badges.indexOf("not-started"));
   const leavesOut = (index: number) => badges[index] === "skipped" || badges[index] === "completed" && index < restart;
@@ -290,7 +302,8 @@ export function restoreRerunDraft(snapshot: RerunValuesSnapshot, workflow: RunSt
   const id = workflow.workflowId, { browserMode } = snapshot.source;
   if (browserMode === undefined) throw refusal("RERUN_BROWSER_MODE_UNKNOWN");
   let next = withSteps({ ...freshLaunchDraft(workflow), ...spreadsheetPicks(snapshot, workflow), dryRunRequested: snapshot.source.dryRun, priority: snapshot.source.priority,
-    browserMode, valueDrafts: initialRerunValueDrafts(snapshot, workflow) }, id, defaultRerunSteps(snapshot, workflow));
+    browserMode, ...(snapshot.retainedSteps === undefined ? { valueDrafts: initialRerunValueDrafts(snapshot, workflow) } : { interruptedRerun: true }) },
+  id, defaultRerunSteps(snapshot, workflow));
   if (rerunInputText !== undefined) {
     if (workflow.inputRun.state !== "present" || workflow.inputRun.surface.typedInput !== undefined
       || snapshot.source.outcome !== "failed" || snapshot.transactions.length !== 0) throw refusal("COMMAND_REFUSED");

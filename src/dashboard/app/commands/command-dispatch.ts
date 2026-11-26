@@ -186,7 +186,6 @@ export function composeCommandRequest(
     }
     case "archive":
       return { state: "refused", reason: "Archive page removed" };
-    case "recover-run":
     case "pause":
     case "resume":
     case "cancel":

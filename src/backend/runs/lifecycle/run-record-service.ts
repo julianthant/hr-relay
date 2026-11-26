@@ -333,10 +333,15 @@ export class RunRecordService {
       if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
       if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
       const itemId = deriveItemId(request.workflow, request.matchKey);
+      let buildId = approvalBuildId(repositories, request.parent);
       if (request.retryOf !== undefined) {
         const source = this.read(request.retryOf);
         if (source.state !== "present" || source.run.envelope.workflow !== request.workflow
           || source.run.envelope.itemId !== itemId) return refused({ reason: "retry-of-missing" });
+        if (request.continuation !== undefined && request.sourceBound?.source.runId === request.retryOf) {
+          if (source.disposition !== "live" || source.run.version !== request.sourceBound.source.expectedVersion) return refused({ reason: "invalid-state" });
+          buildId = source.run.envelope.buildId;
+        }
       }
       if (request.sessionId !== undefined) {
         const session = repositories.runSessions.get(request.sessionId);
@@ -352,7 +357,7 @@ export class RunRecordService {
         envelope: {
           ...(configSelection === "retained" ? envelope : selectNewRunIdentity(repositories, envelope)),
           runId, itemId, traceId: deriveTraceId(code, runId, this.dependencies.clock),
-          buildId: approvalBuildId(repositories, envelope.parent),
+          buildId,
           attempt: repositories.runs.nextItemAttempt({ workflow: request.workflow, itemId }),
           enqueuedAt: now,
         },

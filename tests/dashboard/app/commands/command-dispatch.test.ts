@@ -111,7 +111,7 @@ it("verifies a gate-arm answer only against the gate resolved approved by the sa
 });
 
 describe("composeCommandRequest — the run family", () => {
-  for (const verb of ["retry", "recover-run", "pause", "resume", "cancel", "bump"] as const) {
+  for (const verb of ["retry", "pause", "resume", "cancel", "bump"] as const) {
     it(`composes a legal envelope for ${verb}`, () => {
       const composed = composeCommandRequest(
         commandAction({ command: verb }),

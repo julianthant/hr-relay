@@ -24,6 +24,7 @@ import { planStart } from "../start/plan.js";
 import { StartStepOmissionRefusedError, applyStartStepSelection, resolveStartStepOmissions } from "../start/step-selection.js";
 import type { StartPlannerDeps } from "../start/plan.js";
 import { TargetNotFoundError } from "./refusals.js";
+import { isInterruptedRerunSource } from "../start/recovery-plan.js";
 
 export type { StartPlanWire } from "../../../models/dashboard/start-plan.js";
 
@@ -116,6 +117,11 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         const run = repositories.runs.get(rerunSource.runId);
         if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
         validateRerunSourcePlan(repositories, run);
+        if (isInterruptedRerunSource(repositories, run)) {
+          if (ingress.dryRun !== run.envelope.dryRun) throw new RerunRefusedError("invalid-value", "Interrupted rerun keeps the original dry-run setting.");
+          if (ingress.stepOmissions !== undefined) throw new RerunRefusedError("invalid-value", "Interrupted rerun keeps the original manual values.");
+          return { input: run.input.parsed, stepOmissions: run.envelope.stepOmissions, interrupted: true };
+        }
         const correction = rerunSource.failureCorrection;
         if (rerunSource.gateCorrection !== undefined) {
           return { input: run.input.parsed, submissions: [gateCorrectionSubmission(descriptor, run, ingress, sourceBrowserMode(repositories, run))],
@@ -125,7 +131,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         const submission = failureCorrectionSubmission(descriptor, run, repositories.failures.get(correction.failureId), ingress, sourceBrowserMode(repositories, run));
         return { input: run.input.parsed, submissions: [submission], stepOmissions: run.envelope.stepOmissions };
       });
-      const stepOmissions = resolveStartStepOmissions(descriptor, ingress.selectedStepKeys,
+      const stepOmissions = source?.interrupted ? source.stepOmissions : resolveStartStepOmissions(descriptor, ingress.selectedStepKeys,
         source?.stepOmissions ?? ingress.stepOmissions);
       if (rerunSource?.failureCorrection === undefined && rerunSource?.gateCorrection === undefined) {
         for (const submission of ingress.submissions) for (const correction of [...descriptor.failureCorrections ?? [], ...descriptor.gateCorrections ?? []]) {
@@ -153,8 +159,8 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           ...(deps.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: deps.protectedSubmissionBindings }),
           ...(source === undefined ? {} : { retainedInputs: [source.input] }),
           ...(source?.supersedeRunId === undefined ? {} : { supersedeRunId: source.supersedeRunId }),
-          submissions: (source?.submissions ?? ingress.submissions).map((submission) =>
-            applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys, stepOmissions)),
+          submissions: (source?.submissions ?? ingress.submissions).map((submission) => source?.interrupted ? submission
+            : applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys, stepOmissions)),
           ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),
           dryRun: ingress.dryRun,
           browserMode: ingress.browserMode,

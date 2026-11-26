@@ -90,7 +90,20 @@ export function startRowsOf(source: StepRowSource): readonly StepRow[] {
 /** Rows whose fields the operator opened without a step switch: a locked row's Enter manually and a child row switched off. */
 export type ManualRows = readonly string[];
 
-export function rowIncluded(row: StepRow, selectedStepKeys: readonly string[], manualRows: ManualRows): boolean {
+export function retainedRowSteps(row: StepRow, snapshot: RerunValuesSnapshot) {
+  const retained = row.members.map(({ workflow, step }) => {
+    const match = workflow === undefined ? snapshot.retainedSteps?.find(candidate => candidate.key === step) : undefined;
+    return match;
+  });
+  return retained.every(step => step !== undefined) ? retained : [];
+}
+
+export function rowIncluded(row: StepRow, selectedStepKeys: readonly string[], manualRows: ManualRows, snapshot?: RerunValuesSnapshot | null): boolean {
+  if (snapshot?.retainedSteps !== undefined) {
+    const retained = retainedRowSteps(row, snapshot);
+    if (retained.length > 0) return retained.some(({ key }) => selectedStepKeys.includes(key));
+    if (row.members.every(member => member.workflow !== undefined)) return sourceBadge(row, snapshot) !== "completed";
+  }
   if (row.kind !== "switch") return true;
   return row.stepKey === undefined ? !manualRows.includes(row.key) : selectedStepKeys.includes(row.stepKey);
 }
@@ -102,8 +115,8 @@ export function rowFieldsOpen(row: StepRow, selectedStepKeys: readonly string[],
 }
 
 /** The count "N of M included": a switch that is off is left out; a locked row always counts. */
-export function includedRowCount(rows: readonly StepRow[], selectedStepKeys: readonly string[], manualRows: ManualRows): number {
-  return rows.filter(row => rowIncluded(row, selectedStepKeys, manualRows)).length;
+export function includedRowCount(rows: readonly StepRow[], selectedStepKeys: readonly string[], manualRows: ManualRows, snapshot?: RerunValuesSnapshot | null): number {
+  return rows.filter(row => rowIncluded(row, selectedStepKeys, manualRows, snapshot)).length;
 }
 
 /** A run keeps at least one included row, so the last included switch cannot be turned off. */

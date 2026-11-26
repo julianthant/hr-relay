@@ -415,7 +415,7 @@ export const CommandRequestSchema = z.union([
 export const CommandAdmissionRequestSchema = CommandRequestSchema.refine(
   request => request.type !== "plan-worker-count" || PlannedWorkerCountSchema.safeParse(request.payload.desiredWorkers).success,
   { path: ["payload", "desiredWorkers"], message: `Worker count must be at most ${MAX_WORKERS_PER_WORKFLOW}` },
-);
+).refine(request => request.type !== "recover-run", { path: ["type"], message: "Open Rerun to review unfinished steps." });
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   z.strictObject({ family: z.literal("ocr-review"), runId: RunIdSchema }),

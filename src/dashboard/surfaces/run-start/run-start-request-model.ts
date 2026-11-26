@@ -180,7 +180,8 @@ export function runStartGates(
     ? { text: multiSubjectOmissionReason, rowKey: "", fieldKey: "" } : firstStepsFailure(openRows);
   const stepsBlockedReason = stepsFailure?.text ?? null;
   /** A plan retaining different omissions describes another run; refuse its token. */
-  const sentOmittedSteps = customizeSteps && stepOmissions !== null ? stepOmissions.map(({ step }) => step) : [];
+  const sentOmittedSteps = snapshot?.retainedSteps !== undefined ? (snapshot.typed ?? []).map(({ step }) => step)
+    : customizeSteps && stepOmissions !== null ? stepOmissions.map(({ step }) => step) : [];
   const planOmittedSteps = plan?.omittedSteps ?? [];
   const omissionMismatch = plan !== null && !sameStepKeys(planOmittedSteps, sentOmittedSteps);
   const nextStage = adjacentRunStartStage(launchStages, currentStage, "next");

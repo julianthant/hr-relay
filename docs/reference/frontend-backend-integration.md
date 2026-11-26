@@ -9,12 +9,10 @@ Run and item Pause/Resume, exact-membership Pause all, and confirmed Pause all a
 canonical typed command facade. The application lifecycle query supplies runtime generation,
 current target versions and update availability. Application pause commands refresh every affected
 run in the served projection before quit notification. Queue producers retain the orthogonal pause
-state and available pause command. Ordinary Rerun accepts done, failed, interrupted and cancelled
-sources and starts fresh; native Retry retains its lifecycle semantics. A separate server-authored
-Recover completed steps action composes `run/recover-run` through the same client and confirmation
-flow. The server derives its checkpoint recovery plan from an exact failed or interrupted source.
-Readback verifies the new item attempt while the source remains unchanged. Incompatible contracts,
-uncertain writes and unavailable retained evidence show the named recovery refusal. Host updater installation has no
+state and available pause command. Rerun accepts done, failed, interrupted and cancelled sources.
+An interrupted source opens the Rerun dialog with unfinished steps selected. The Start plan
+authenticates the retained work and refuses uncertain writes. Readback verifies the new attempt.
+The command journal can still read recorded Recover outcomes. Host updater installation has no
 production dispatch; its absence remains explicit in the lifecycle query.
 
 ## Client facade and boundaries
@@ -283,7 +281,7 @@ and marker claims for other requests refuse validation.
 A Start's applied result returns once its runs commit and never carries `workerStartup`; worker
 startup runs after the reply. Confirmed readback closes the Start dialog, clears the retained
 submission and shows the started toast. A startup that fails later shows on the workflow's worker
-cards and in the sticky queued-run notice. A queueing Resume, Retry or Recover keeps its applied result
+cards and in the sticky queued-run notice. A queueing Resume or Retry keeps its applied result
 and run targets when worker startup fails; its `workerStartup` field distinguishes refused startup from
 unknown startup without changing enqueue authority. Startup failure remains a terminal diagnostic.
 

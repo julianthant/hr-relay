@@ -160,7 +160,7 @@ test("Person Lookup: Rerun starts one new run, a second press while pending send
   expect(appliedRunIds(await started.result()).filter(id => id !== runId)).toHaveLength(1);
 });
 
-test("Work-Study: Retry after a failed step runs it again and writes once", async ({ dashboard, seeded, page, failures }) => {
+test("Work-Study: Rerun after a failed step opens the dialog and writes once", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
   await dashboard.open();
@@ -174,22 +174,21 @@ test("Work-Study: Retry after a failed step runs it again and writes once", asyn
   await expect(row).toContainText("Failed");
   expect(seeded.scripted.writes()).toHaveLength(0);
 
-  // The failed run's retry control is Recover completed steps: it queues a new run for the unfinished steps.
   await dashboard.clearToasts();
-  const recover = await dashboard.holdCommands("recover-run");
-  await page.getByRole("button", { name: "Recover completed steps" }).click();
-  const confirm = page.getByRole("dialog", { name: "Recover completed steps?" });
-  const recoverButton = confirm.getByRole("button", { name: "Recover", exact: true });
-  await recoverButton.click();
-  await expect.poll(recover.sent, { message: "the held Recover reached the server" }).toBe(1);
-  await dashboard.pressAgain(recoverButton);
-  recover.release();
-  expect(recover.sent(), "a second press while pending sent a second command").toBe(1);
-  await dashboard.expectNoToast();
-  const queuedByRetry = appliedRunIds(await recover.result()).filter(id => id !== runId);
+  const rerun = await dashboard.holdCommands("start-run");
+  await row.getByRole("button", { name: "Rerun", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Rerun", exact: true });
+  await dialog.getByRole("button", { name: "Continue" }).click();
+  const start = dialog.getByRole("button", { name: "Start live run" });
+  await start.click();
+  await expect.poll(rerun.sent, { message: "the held Rerun reached the server" }).toBe(1);
+  await dashboard.pressAgain(start);
+  rerun.release();
+  expect(rerun.sent(), "a second press while pending sent a second command").toBe(1);
+  const queuedByRetry = appliedRunIds(await rerun.result()).filter(id => id !== runId);
   expect(queuedByRetry).toHaveLength(1);
   const [retried] = queuedByRetry;
-  if (retried === undefined) throw new Error("the Recover queued no run");
+  if (retried === undefined) throw new Error("the Rerun queued no run");
   failures.allow(abortedRead(retried), ABORTED_READ_REASON);
   const again = await seeded.scripted.drive(retried);
   await expect(page.locator(`[data-demo-row-id="${retried}"]`)).toContainText("Running");
