@@ -19,7 +19,7 @@ type DisplayDependencies = {
   receipt(runId: string): RunEvidenceReceipt | undefined;
   checkpoints: { listByAttempt(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[] };
   presentation: RunTimelineEvidenceSource;
-  command(id: string): CommandRequest | undefined;
+  command: (id: string) => CommandRequest | undefined;
 };
 
 export function createNotificationDisplayContext(deps: DisplayDependencies) {

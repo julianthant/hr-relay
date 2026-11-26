@@ -160,7 +160,7 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
   };
   const snapshot = (actor: string) => database.withAuthorityReadSnapshot(() => project(actor));
   let streamed: readonly NotificationWire[] | undefined;
-  let pollFailed = false;
+  let pollFailure: Error | undefined;
   const listListeners = new Set<() => void>();
   return {
     withSnapshot: (actor, respond) => database.withAuthorityReadSnapshot(() => {
@@ -191,16 +191,16 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
       if (streamed === undefined || listListeners.size === 0) return;
       const prior = retained.get(LOCAL_OPERATOR_ACTOR_ID);
       try {
-        if (!pollFailed && prior?.rows === streamed && prior.position === position() && within(prior, clock.nowMs())) return;
+        if (pollFailure === undefined && prior?.rows === streamed && prior.position === position() && within(prior, clock.nowMs())) return;
         const rows = snapshot(LOCAL_OPERATOR_ACTOR_ID);
-        const changed = pollFailed || !isDeepStrictEqual(rows, streamed);
-        pollFailed = false;
+        const changed = pollFailure !== undefined || !isDeepStrictEqual(rows, streamed);
+        pollFailure = undefined;
         streamed = rows;
         if (!changed) return;
       } catch (error) {
         if (!(error instanceof Error)) throw error;
-        if (!pollFailed) {
-          pollFailed = true;
+        if (pollFailure === undefined) {
+          pollFailure = error;
           input.reportListReadFailure?.();
         }
       }
