@@ -22,6 +22,7 @@ import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
 import { DashboardReadFailedError,DashboardSnapshotOvertakenError,DiagnosticBundleBytesMissingError,DiagnosticBundleCorruptError,LogDisplayRefusedError,LogIdentityRefusedError,ProjectionDegradedError,RequestIdentityRefusedError,SectionUnavailableError,TargetNotFoundError } from "../../../runs/commands/refusals.js";
+import { CommandIdReusedError } from "../../../../rules/commands/commands.js";
 import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
 
 export type WireError = z.infer<typeof WireErrorSchema>;
@@ -75,6 +76,7 @@ export function failureStatus(
     return { status: 409, body: wireError("PREFLIGHT_TIMEOUT", `${ERROR_CATALOG.PREFLIGHT_TIMEOUT.text} (${timeout.check})`, false) };
   }
   if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, error.message, false) };
+  if (error instanceof CommandIdReusedError) return { status: 400, body: wireError("COMMAND_ID_REUSED", error.message, false) };
   if (error instanceof TargetNotFoundError) {
     return { status: 404, body: wireError("TARGET_NOT_FOUND", error.message, false) };
   }
