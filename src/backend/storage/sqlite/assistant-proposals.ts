@@ -5,7 +5,7 @@ import { ASSISTANT_START_ROWS_MAX, AssistantM2ProposalRecordSchema, AssistantM2P
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { assistantM1MessageFromRow, type AssistantM1Attempt, type AssistantM1HistoryRepository } from "./assistant-history.js";
 
-/** Candidate migration (renumbered when staging merges); installed only by the stopped activation owner. */
+/** Durable proposal and session-claim schema. */
 export const ASSISTANT_M2_PROPOSAL_STATEMENTS = Object.freeze([
   `CREATE TABLE assistant_proposals (
     id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES assistant_conversations(id) ON DELETE CASCADE,

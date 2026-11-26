@@ -27,12 +27,13 @@ import { RunEvidenceReceiptSchema } from "../../../models/trust/evidence.js";
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
-import { assistantConversationFromRow, assistantMessageFromRow } from "./assistant-history.js";
+import { assistantConversationFromRow, assistantM1MessageFromRow, assistantMessageFromRow } from "./assistant-history.js";
 import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow } from "./assistant-effort-migration.js";
 import { FAILURE_NOTE_REMOVAL_SCHEMA_VERSION, convertFailureNoteRow } from "./failure-note-removal-migration.js";
 import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertAssistantHistoryRetirable } from "./assistant-grant-retirement.js";
 import { assistantAttachmentFromRow } from "./assistant-attachments.js";
-import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, COMMAND_ROW_STATE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, type WORKER_CUSTODY_DROPPED_TABLES, WORKER_CUSTODY_SCHEMA_VERSION, isWorkerCustodyDroppedTable, migrationTableNames } from "./migrations.js";
+import { ASSISTANT_PHASE_ONE_SCHEMA_VERSION, BUILD_ID_ENVELOPE_SCHEMA_VERSION, COMMAND_ROW_STATE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, type WORKER_CUSTODY_DROPPED_TABLES, WORKER_CUSTODY_SCHEMA_VERSION, isWorkerCustodyDroppedTable, migrationTableNames } from "./migrations.js";
+import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "./storage-records.js";
 import { readIntPragma, CountRowSchema, errorMessage, readMetaRow } from "./authority-connection.js";
 import { authorityIntegrityError } from "./authority-errors.js";
 import { type StoredReaders, PREDECESSOR_CUSTODY_READERS, CURRENT_READERS, inspectionRunReader, readTimelineRun, assertTimelineOwner, assertTerminalEvidenceOwner, assertRefreshedReceiptSettlement, authenticateStoredWriteResolution, assertConfirmationPublication, authenticateStoredResolutionAudit } from "./authority-run-evidence.js";
@@ -377,8 +378,21 @@ export function validateStoredRow(context: StoredRowContext, table: AuthorityTab
         else if (table === "worker_slots") (predecessorCustody ? predecessorWorkerSlotFromRow : workerSlotFromRow)(raw);
         else if (table === "exclusive_session_leases") exclusiveSessionLeaseFromRow(raw);
         else if (table === "assistant_conversations") assistantConversationFromRow(raw);
-        else if (table === "assistant_messages") assistantMessageFromRow(raw);
+        else if (table === "assistant_messages") {
+          const payload: unknown = expectedSchemaVersion >= ASSISTANT_PHASE_ONE_SCHEMA_VERSION && typeof raw.payload_json === "string" ? JSON.parse(raw.payload_json) : undefined;
+          if (payload !== null && typeof payload === "object" && Object.hasOwn(payload, "recording")) assistantM1MessageFromRow(raw);
+          else assistantMessageFromRow(raw);
+        }
         else if (table === "assistant_attachments") assistantAttachmentFromRow(raw);
+        else if (table === "assistant_proposals") {
+          const row = AUTHORITY_RECORD_SCHEMA_REGISTRY[table].parse(raw);
+          if (row.snapshot_json.profileId !== readMetaRow(database).profile_id) throw authorityIntegrityError("assistant-proposal-profile-mismatch");
+        }
+        else if (table === "assistant_proposal_rows") AUTHORITY_RECORD_SCHEMA_REGISTRY[table].parse(raw);
+        else if (table === "assistant_session_claims") {
+          const row = AUTHORITY_RECORD_SCHEMA_REGISTRY[table].parse(raw);
+          if (row.claim_json.acceptedTurn.profileId !== readMetaRow(database).profile_id) throw authorityIntegrityError("assistant-session-claim-profile-mismatch");
+        }
         else if (table === "timeline_events") assertTimelineOwner(database,(expectedSchemaVersion < DEBUG_EVENTS_MIGRATION.version ? predecessorTimelineEventFromRow : timelineEventFromRow)(raw),false,read,context.timelineOwnerInSnapshot);
         else if (table === "debug_events") assertTimelineOwner(database,debugEventFromRow(raw),false,read,context.timelineOwnerInSnapshot);
         else if (table === "artifacts") {
