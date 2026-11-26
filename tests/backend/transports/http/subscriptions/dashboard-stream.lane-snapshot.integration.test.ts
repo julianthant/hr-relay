@@ -222,6 +222,34 @@ describe("a stream snapshot read on the navigation lane", () => {
     assert.ok((arrivals[0] ?? -1) > snapshotAt, "the arrival follows the snapshot");
   });
 
+  it("replays a publication admitted during the read to a resume from the snapshot, when a later fold moved the baseline past it", async () => {
+    const { w, main, hub, reads, fold, publish } = await laneHarness();
+    queuedEventOf(w, { seed: 1 }); fold();
+    const connecting = hub.connect({ day: DAY });
+    await publish("a");
+    const published = cursorOf(main.cursor());
+    claimEventOf(w, 1);
+    const read = lastRead(reads);
+    const reply = read.capture();
+    // Main folds the peer write after the publication, so the snapshot is framed above the publication's cursor.
+    fold();
+    read.answer(reply);
+    const connection = await connecting;
+    const envelopes = [...connection.initial, ...await drain(connection)];
+    const snapshot = envelopes.find(envelope => envelope.type === "snapshot");
+    assert.ok(snapshot?.type === "snapshot");
+    assert.ok(cursorOf(snapshot.cursor) > published, "the baseline passed the publication");
+    const live = envelopes.filter(envelope => envelope.type === "notification-publication");
+    assert.equal(live.length, 1, "the live connection gets the arrival once");
+    assert.ok(live.every(envelope => cursorOf(envelope.cursor) > cursorOf(snapshot.cursor)), "the arrival is above the snapshot it follows");
+
+    // Disconnect right after the snapshot: the client holds its cursor and never saw the arrival.
+    connection.close();
+    const resumed = await hub.connect({ day: DAY, lastEventId: snapshot.cursor, lastProjectionGeneration: main.generation() });
+    const replayed = [...resumed.initial, ...await drain(resumed)].filter(envelope => envelope.type === "notification-publication");
+    assert.equal(replayed.length, 1, "the resume replays the arrival the snapshot's connection never received");
+  });
+
   it("asks again when the lane's snapshot lacks a publication main retained at dispatch", async () => {
     const { hub, reads, publish, main } = await laneHarness();
     await publish("b");
