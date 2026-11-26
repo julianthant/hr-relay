@@ -44,8 +44,11 @@ it("accepts browser Back from Settings while Duo setup is open", async () => {
   const root = createRoot(host);
   const button = (label: string) => [...host.querySelectorAll("button")].find(control => control.textContent === label);
   const settings = () => host.querySelector('nav[aria-label="Settings sections"]');
-  const errors: unknown[] = [];
-  const captureError = (event: ErrorEvent) => { errors.push(event.error); event.preventDefault(); };
+  const errors: Error[] = [];
+  const captureError = (event: ErrorEvent) => {
+    errors.push(event.error instanceof Error ? event.error : new Error(event.message));
+    event.preventDefault();
+  };
   window.addEventListener("error", captureError);
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client,
@@ -71,8 +74,9 @@ it("accepts browser Back from Settings while Duo setup is open", async () => {
     const cancelSetup = button("Cancel setup");
     assert.ok(cancelSetup);
     await act(async () => cancelSetup.click());
-    await vi.waitFor(() => assert.ok(errors.length > 0 || host.querySelector("#dashboard-main-region")));
-    if (errors.length > 0) throw errors[0];
+    await vi.waitFor(() => assert.ok(errors.length > 0 || host.querySelector('[data-settings-takeover="false"]')));
+    const [error] = errors;
+    if (error !== undefined) throw error;
     assert.equal(settings(), null);
     assert.equal(window.location.search, "");
   } finally {
