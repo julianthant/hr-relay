@@ -65,7 +65,7 @@ const PICK = {
   "range-30d": scene("The last 30 days", { play: period("30d"), story: { ready: 'text="Runs"' } }),
   "range-90d": scene("The last 90 days", { play: period("90d"), story: { ready: 'text="Runs"' } }),
   "range-refused": scene("An address with a date range that is not valid", { range: "later..earlier", story: { ready: 'text="That date range is not valid. Pick a period above."' } }),
-  "period-updating": scene("The next period read while the last one stays", { range: "2026-08-28..2026-09-26", report: { held: true }, story: { ready: '[data-analytics-stale]' } }),
+  "period-updating": scene("The next period read while the last one stays", { range: "2026-08-28..2026-09-26", report: { held: true }, story: { ready: '[data-analytics-reading] > *' } }),
   "one-workflow": scene("One workflow chosen", { play: then(click("All workflows"), click("Separations", "menuitemradio")), story: { ready: 'button:has-text("Separations")' } }),
   "workflow-details": scene("A workflow row opened", { play: click("Show Separations details"), story: { ready: 'text="Open runs"' } }),
 } satisfies Record<View, Story>;
