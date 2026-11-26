@@ -74,8 +74,8 @@ function containsProtected(value: JsonValue, privateValues: readonly string[]): 
 type NodeFact = RerunValuesSnapshot["steps"][number]["nodes"][number];
 type StepFact = RerunValuesSnapshot["steps"][number];
 const ADVANCE = { unfinished: 0, failed: 1, completed: 2 } as const;
-/** A condition-skipped node is completed but less advanced than one that ran, so preselection, which reads it as not run, sees it whatever the child order. */
-function advance(fact: NodeFact): number { return ADVANCE[fact.state] - (fact.reason === "condition-skipped" ? 0.5 : 0); }
+/** Preselection reads a condition-skipped node as not run, as it read one before the badges: it ranks between unfinished and failed, whatever the child order. */
+function advance(fact: NodeFact): number { return fact.reason === "condition-skipped" ? 0.5 : ADVANCE[fact.state]; }
 
 function childWorkflows(descriptor: AnyWorkflowDescriptor): readonly string[] {
   return [...new Set(descriptor.startRows.flatMap(({ members }) => members.flatMap(({ workflow }) => workflow === undefined ? [] : [workflow])))];
