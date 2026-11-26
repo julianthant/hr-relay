@@ -42,7 +42,7 @@ async function benchmark(profile: "staging" | "development", repetitions: number
           const fiscalYear = systemClock.fiscalYear();
           const clock: Clock = { ...systemClock, fiscalYear: (at?: Date) => at === undefined ? fiscalYear + (read % 2) : systemClock.fiscalYear(at) };
           const { editable } = composeSettings({ database: context.database, readLanes: lanes, hostFacts, clock, active: activeSettingsRuntimeIdentity,
-            environment: process.env, credentials: context.credentials, resolveSettings: context.resolveSettings });
+            environment: {}, credentials: context.credentials, resolveSettings: context.resolveSettings });
           await editable();
           const samples = [];
           for (; read < repetitions; read++) {
