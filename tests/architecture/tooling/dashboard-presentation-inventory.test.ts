@@ -126,7 +126,7 @@ describe("dashboard presentation freeze", () => {
     assert.equal(frozenPresentationFiles.length, 154);
 
     const actual = discoverDashboardPresentationFiles(REPO_ROOT);
-    assert.equal(actual.filter((file) => file.endsWith(".tsx")).length, 126);
+    assert.equal(actual.filter((file) => file.endsWith(".tsx")).length, 127);
     assert.equal(
       actual.filter((file) => STYLESHEET_EXTENSIONS.has(extname(file).toLowerCase())).length,
       25,
