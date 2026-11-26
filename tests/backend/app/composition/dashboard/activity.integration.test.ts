@@ -135,13 +135,16 @@ async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean
   const activity=options.dynamicVolumeSeries
     ?createActivitySelectionService({database,clock,read:readSummary})
     :composedActivity;
-  const served=lanes===undefined?{activity,activityPopulation}:composeActivity({database,clock,descriptors,ledger,readLanes:lanes});
+  const laneServed=lanes===undefined?undefined:composeActivity({database,clock,descriptors,ledger,readLanes:lanes});
+  const served=laneServed??{activity,activityPopulation};
   const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(42),
     authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:input=>database.authority.runs.search(input)}))}});
   const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(scratch, ".tracker"), join(scratch, ".tracker/data/artifacts"))});
   const withSearchSnapshot = <Result>(read: () => Result) => database.withAuthorityReadSnapshot(read);
   const xlsx=createOperatorXlsxExportService({clock,ids:{uuid:randomUUID},sourceIdentity,artifacts,authority:database.authority.operatorXlsxExports,
-    search,withSearchSnapshot,activityReport:(from,to,token)=>served.activity.readSelected(from,to,token)});
+    search,withSearchSnapshot,
+    // On a lane the whole document is collected there; main is never handed the selected report.
+    ...(laneServed===undefined?{activityReport:(from:string,to:string,token:string)=>served.activity.readSelected(from,to,token)}:{readActivityDocument:laneServed.readActivityDocument})});
   const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));
   app.use("*",(c,next)=>{c.set("requestActorId",ActorIdSchema.parse("synthetic-operator"));return next();});
   registerActivityRoutes(app,served);

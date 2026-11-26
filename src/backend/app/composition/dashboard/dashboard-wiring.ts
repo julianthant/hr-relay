@@ -122,7 +122,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     return { commandId: request.commandId };
   };
 
-  const { activity, activityPopulation, reports } = composeActivity({ database: history, clock, descriptors, ledger, readLanes });
+  const { activity, activityPopulation, reports, readActivityDocument } = composeActivity({ database: history, clock, descriptors, ledger, readLanes });
   const summaries: ServedSummaryQueries = { ...composeQueueSummaries(history), activity: (from, to) => reports.read(from, to) };
   const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries };
   let snapshotWorkers: () => readonly WorkerMemberView[] = () => [];
@@ -349,7 +349,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     } });
   const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync });
 
-  const shell = composeShell({ workbookCompatibility: workflows => workbookLibrary.compatibility(workflows), database, readLanes, projection, activity, clock, ids, artifacts, descriptors,
+  const shell = composeShell({ workbookCompatibility: workflows => workbookLibrary.compatibility(workflows), database, readLanes, projection, activity, readActivityDocument, clock, ids, artifacts, descriptors,
     actorLabel: () => {
       assertCurrent();
       const person = machineAdmission.readProfileRegistry().profiles.find(row => row.profileId === admission.profileBinding.profileId);
