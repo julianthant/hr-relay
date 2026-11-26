@@ -8,7 +8,7 @@ import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
 import { deriveBulkChildCommandId } from "../../../src/rules/commands/command-groups.js";
-import { BulkRunCommandRequestSchema, CommandRequestSchema, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
+import { BulkRunCommandRequestSchema, BulkRunCommandResponseSchema, CommandRequestSchema, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
 import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { pickedRunWorld } from "../../support/helpers/dashboard/picked-dashboard.js";
@@ -119,7 +119,7 @@ it("with paused and unpaused runs, the strip counts and resumes only the paused 
 
 it("shows the sample-run refusal in the queue bulk action toast and per-run result", async () => {
   const message = "Sample run: nothing runs.";
-  const f = await mount("one-paused", FIXTURE_DAY_WIRE, async request => ({
+  const f = await mount("one-paused", FIXTURE_DAY_WIRE, async request => BulkRunCommandResponseSchema.parse({
     state: "vector", bulkCommandId: request.bulkCommandId, type: request.type, requestedCount: request.targets.length,
     results: request.targets.map(({ runId }) => ({
       runId, commandId: deriveBulkChildCommandId(request.bulkCommandId, runId),
