@@ -8,7 +8,6 @@ import { composeWorkerRuntime } from "../../../../src/backend/app/composition/wo
 import { WORKFLOW_MODULES, workflowQueueCapabilities } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { COPY_HISTORY_SEED_BUILD, historyArchivePath, writeCopyHistorySeed } from "../../../../src/backend/storage/sqlite/isolated-history-store.js";
 import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
-import { SAMPLE_WORKER_ORDINAL_FLOOR } from "../../../../src/models/run/worker-slot.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { createWorkerCompositionTestWorld } from "../../../support/helpers/backend/worker-composition-world.js";
@@ -44,9 +43,9 @@ it("polls an admitted worker beside a seeded copy's live sample runs and claims 
   const operational = reopen(stateRoot, clock);
   assert.deepEqual(before.filter(run => operational.authority.runs.get(run.envelope.runId) !== undefined), []);
 
-  // Real slot allocation stops at the sample floor, so a sample card never shares a real worker's identity.
+  // Real allocation writes only `-worker-` IDs, so a sample card never shares a real worker's identity.
   operational.withAuthorityTransaction(repositories => {
     const slot = repositories.workerSlots.active(WORKFLOW_ID)[0];
-    assert.ok(slot !== undefined && slot.ordinal <= SAMPLE_WORKER_ORDINAL_FLOOR);
+    assert.equal(slot?.workerId, `${WORKFLOW_ID}-worker-${String(slot?.ordinal)}`);
   });
 }, 60_000);

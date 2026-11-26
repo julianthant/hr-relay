@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { RerunValuesResponse } from "../../../../models/dashboard/rerun-values.js";
-import { SAMPLE_WORKER_ORDINAL_FLOOR, workerPoolMember, WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../models/run/worker-slot.js";
+import { workerPoolMember, WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../models/run/worker-slot.js";
 import { WorkerBrowserObservationSchema } from "../../../../models/run/worker-control.js";
 import { CommandResultSchema, type CommandResult } from "../../../../rules/commands/commands.js";
 import { deriveStableUuid } from "../../../../rules/identity/identifiers.js";
@@ -12,6 +12,8 @@ import { SampleRunRefusedError } from "../../../runs/commands/refusals.js";
 import type { StartPlanService } from "../../../runs/commands/start-plan-service.js";
 import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 
+/** Sample cards number from here, so their labels read apart from real workers'. */
+export const SAMPLE_WORKER_ORDINAL_FLOOR = 9000;
 const namespace = "relay-copy-seed-session";
 const fingerprint = sha256Hex(namespace);
 
@@ -21,12 +23,12 @@ export const CopySampleSessionSchema = z.strictObject({
   state: z.enum(["idle", "busy", "waiting", "starting", "stopping", "stopped"]),
   runId: RunIdSchema.optional(), startedAt: IsoInstantSchema,
   browsers: z.array(z.strictObject({ system: BrowserSystemIdSchema, health: z.enum(["starting", "authenticated", "unknown"]), duo: z.boolean() })),
-}).refine(session => (session.state === "busy") === (session.runId !== undefined), "a busy sample worker names its run");
+}).refine(session => (session.state === "busy" || session.state === "stopping") === (session.runId !== undefined), "a busy or stopping sample worker names its run");
 export type CopySampleSession = z.input<typeof CopySampleSessionSchema>;
 
-/** Real slot allocation stops at the floor (worker-slots.ts), so a sample ordinal above it never names a real slot. */
+/** The `-sample-` namespace is one real slot allocation never writes, so a sample never names a real worker. */
 export function sampleWorkerId(session: Readonly<{ workflow: string; ordinal: number }>) {
-  return WorkerIdSchema.parse(`${session.workflow}-worker-${String(session.ordinal)}`);
+  return WorkerIdSchema.parse(`${session.workflow}-sample-${String(session.ordinal)}`);
 }
 
 type Sample = Readonly<{ session: z.output<typeof CopySampleSessionSchema>; poolIndex: number; slot: WorkerSlotRecord; view: WorkerMemberView;
@@ -48,7 +50,8 @@ function sampleOf(raw: unknown, poolIndex: number): Sample {
     lifetimeId: deriveStableUuid(namespace, `${workerId}/${session.state === "stopped" ? "stopped" : "lifetime"}`), version: 1,
     state,
     directive: "run", pid: undefined, startedAt,
-    activity: session.state === "busy" && session.runId !== undefined ? { state: "busy", runId: RunIdSchema.parse(session.runId) }
+    // A stopping worker is still busy on its run until the step's cancellation lands, as a real one is.
+    activity: session.runId !== undefined ? { state: "busy", runId: RunIdSchema.parse(session.runId) }
       : session.state === "waiting" ? { state: "waiting", waiting: "authenticating" } : state === "running" ? { state: "idle" } : undefined,
     browsers, browserSystems: session.browsers.map(browser => browser.system),
     exit: session.state === "stopped" ? { outcome: "stopped", reason: "operator", code: 0, signal: null, at: startedAt, settlement: "settled" } : undefined,
@@ -92,10 +95,9 @@ export function createCopySamples(input: Readonly<{ stored: StoredSamples; realS
     const { commandId, type, target: { workerId } } = parsed.data;
     const sample = samples.get(workerId);
     if (sample === undefined) return undefined;
-    // Stop settles the card as stopped, as a real worker's does; closing it removes the card.
-    if (type === "stop-worker" && sample.session.state !== "stopped") samples.set(workerId, sampleOf({ ...sample.session, state: "stopped", runId: undefined }, sample.poolIndex));
-    else if (type === "remove-worker") samples.delete(workerId);
-    else return refused(commandId);
+    // Stop or close removes the card until the dashboard restarts.
+    if (type !== "stop-worker" && type !== "remove-worker") return refused(commandId);
+    samples.delete(workerId);
     input.changed();
     return CommandResultSchema.parse({ state: "applied", commandId, affectedTargets: [{ family: "worker-browser", workerId }] });
   };

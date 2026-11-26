@@ -29,8 +29,7 @@ import { BrowserSystemIdSchema, LOCAL_OPERATOR_ACTOR_ID, NodeIdSchema } from "..
 import { capturedInstantClock, systemClock } from "../../src/rules/time/clock.js";
 import { sha256Hex } from "../../src/rules/validation/sha256.js";
 import { descriptorRuntimeNodes, workflowProjections, type AnyWorkflowDescriptor } from "../../src/workflow-kit/workflow.js";
-import { CopySampleSessionSchema, sampleWorkerId, type CopySampleSession } from "../../src/backend/app/composition/dashboard/copy-samples.js";
-import { SAMPLE_WORKER_ORDINAL_FLOOR } from "../../src/models/run/worker-slot.js";
+import { CopySampleSessionSchema, SAMPLE_WORKER_ORDINAL_FLOOR, sampleWorkerId, type CopySampleSession } from "../../src/backend/app/composition/dashboard/copy-samples.js";
 import configuredWorkflowSources from "../../config/dashboard-workflow-sources.json" with { type: "json" };
 
 const CopyProfileSchema = z.enum(["development", "staging"]);
@@ -116,8 +115,9 @@ function planSeedRuns(now: Date, existing: readonly RunRecord[], descriptors: re
   return slots;
 }
 
-const workerStates = { running: "busy", cancelling: "busy", "needs-duo": "busy" } as const;
-const spareWorkers = ["idle", "waiting", "starting", "stopping", "stopped"] as const;
+/** The sample worker that holds a claimed state; the one on the cancelling run is stopping. */
+const heldBy = (state: LiveState) => state === "running" || state === "needs-duo" ? "busy" as const : state === "cancelling" ? "stopping" as const : undefined;
+const spareWorkers = ["idle", "waiting", "starting", "stopped"] as const;
 
 type QueueCapabilities = (workflowId: string) => Readonly<{ groupedBatchLayout?: boolean }> | undefined;
 
@@ -133,8 +133,9 @@ function planLiveRuns(now: Date, descriptors: readonly AnyWorkflowDescriptor[], 
     for (const [order, state] of liveStates.entries()) {
       // A Duo wait needs a browser; without one the run reads as a second Running row.
       if (state === "needs-duo" && !browsers) continue;
-      if (!(state in workerStates)) { slots.push({ workflow, state, day, live: { order } }); continue; }
-      const session = { workflow: workflow.id, ordinal: ++ordinal, state: "busy" as const, startedAt: now.toISOString() };
+      const held = heldBy(state);
+      if (held === undefined) { slots.push({ workflow, state, day, live: { order } }); continue; }
+      const session = { workflow: workflow.id, ordinal: ++ordinal, state: held, startedAt: now.toISOString() };
       slots.push({ workflow, state, day, live: { order, workerId: sampleWorkerId(session) } });
       sessions.push({ session, state, workflow });
     }
@@ -158,7 +159,7 @@ function planLiveRuns(now: Date, descriptors: readonly AnyWorkflowDescriptor[], 
 function sampleSession({ session, state, workflow }: ReturnType<typeof planLiveRuns>["sessions"][number], runId: string | undefined): CopySampleSession {
   const systems = BrowserSystemIdSchema.array().parse(workflowProjections(workflow).systems);
   const browsers = systems.map((system, index) => ({ system, duo: state === "needs-duo" && index === 0,
-    health: index > 0 || state === "idle" || state === "stopping" || state === "stopped" ? "authenticated" as const
+    health: index > 0 || state === "idle" || state === "stopped" ? "authenticated" as const
       : state === "needs-duo" || state === "starting" || state === "waiting" ? "starting" as const : "unknown" as const }));
   return CopySampleSessionSchema.parse({ ...session, ...(runId === undefined ? {} : { runId }), browsers });
 }

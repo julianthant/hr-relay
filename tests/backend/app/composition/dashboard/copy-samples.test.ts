@@ -13,7 +13,7 @@ const session = (ordinal: number, state: CopySampleSession["state"], extra: Part
   workflow: "person-lookup", ordinal, state, startedAt, browsers: [{ system: "ucpath", health: "authenticated", duo: false }], ...extra });
 const sessions = [
   session(9001, "busy", { runId: sampleRun, browsers: [{ system: "ucpath", health: "starting", duo: true }] }),
-  session(9002, "idle"), session(9003, "starting"), session(9004, "stopping"), session(9005, "stopped"),
+  session(9002, "idle"), session(9003, "starting"), session(9004, "stopping", { runId: sampleRun }), session(9005, "stopped"),
 ];
 
 function fixture(realSlots: readonly WorkerSlotRecord[] = []) {
@@ -55,7 +55,7 @@ it("refuses Rerun values for a sample run only", () => {
 it("serves each sample worker state, holds the Duo wait, and never forwards a sample worker command", async () => {
   const { samples, guarded, forwarded, changes } = fixture();
   assert.deepEqual(samples.views().map(view => [view.state, view.activity?.state]),
-    [["running", "busy"], ["running", "idle"], ["starting", undefined], ["stopping", undefined], ["exited", undefined]]);
+    [["running", "busy"], ["running", "idle"], ["starting", undefined], ["stopping", "busy"], ["exited", undefined]]);
   const busy = sampleWorkerId(sessions[0]), idle = sampleWorkerId(sessions[1]);
   assert.deepEqual(samples.leases(busy), [{ system: "ucpath", since: startedAt }]);
   assert.deepEqual(samples.leases(idle), []);
@@ -63,14 +63,15 @@ it("serves each sample worker state, holds the Duo wait, and never forwards a sa
 
   const control = (type: string, workerId: string) => ({ ...envelope(), family: "worker-browser", type,
     target: { workerId, workflowId: "person-lookup", lifetimeId: randomUUID(), expectedVersion: 1 } });
-  const before = samples.views().find(view => view.member.workerId === busy)?.lifetimeId;
+  // Stop and close each remove the card.
+  const removed = sampleWorkerId(sessions[2]);
   assert.equal((await guarded.executeWorkerPool(control("stop-worker", busy))).state, "applied");
-  const stopped = samples.views().find(view => view.member.workerId === busy);
-  assert.equal(stopped?.state, "exited");
-  assert.notEqual(stopped?.lifetimeId, before);
-  assert.deepEqual(samples.leases(busy), []);
-  assert.equal((await guarded.executeWorkerPool(control("remove-worker", busy))).state, "applied");
-  assert.equal(samples.slots().some(slot => slot.workerId === busy), false);
+  assert.equal((await guarded.executeWorkerPool(control("remove-worker", removed))).state, "applied");
+  for (const workerId of [busy, removed]) {
+    assert.equal(samples.slots().some(slot => slot.workerId === workerId), false);
+    assert.equal(samples.views().some(view => view.member.workerId === workerId), false);
+  }
+  assert.equal(samples.leases(busy), undefined);
   assert.equal(changes(), 2);
   assert.equal((await guarded.executeWorkerPool(control("pause-worker", idle))).state, "rejected");
   assert.deepEqual(forwarded, []);

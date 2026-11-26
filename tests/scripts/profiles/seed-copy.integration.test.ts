@@ -30,7 +30,6 @@ import { searchPartitionDay } from "../../../src/models/dashboard/search-calenda
 import { NotificationTriggerSchema } from "../../../src/models/notifications/notifications.js";
 import type { ProfileDatabaseBinding } from "../../../src/models/profiles/profile.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
-import { SAMPLE_WORKER_ORDINAL_FLOOR } from "../../../src/models/run/worker-slot.js";
 import { canonicalInputSamples } from "../../../src/models/workflow/canonical-input.js";
 import { WorkStudyCanonicalInput } from "../../../src/models/workflows/work-study/input.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -296,7 +295,7 @@ async function expectLiveSamples(client: ReturnType<typeof createDashboardClient
   const groups = queueBatches(day.queueSurfaces).filter(batch => batch.members.every(member => live.some(run => run.envelope.runId === member.runId)));
   expect(groups.map(batch => [batch.workflowId, batch.status])).toEqual([["person-lookup", "partial"]]);
   const cards = day.workerCards.filter(card => card.sample === true);
-  expect(day.workerCards.filter(card => card.member.ordinal > SAMPLE_WORKER_ORDINAL_FLOOR)).toEqual(cards);
+  expect(day.workerCards.filter(card => card.workerId.includes("-sample-"))).toEqual(cards);
   expect(cards.every(card => served.has(card.workflowId))).toBe(true);
   assert.ok(day.workerAuthority.state === "present");
   expect(day.workerAuthority.members.filter(member => cards.some(card => card.workerId === member.workerId))).toEqual([]);
@@ -306,7 +305,12 @@ async function expectLiveSamples(client: ReturnType<typeof createDashboardClient
   assert.ok(sessions.state === "ready", JSON.stringify(sessions));
   expect(sessions.workers.map(worker => worker.id)).toEqual(expect.arrayContaining(cards.map(card => card.workerId)));
   expect(new Set(cards.map(card => card.state))).toEqual(new Set(["running", "idle", "waiting", "starting", "failed"]));
-  expect(cards.some(card => card.directive === "stop")).toBe(true);
+  // A stopping worker reads as a real one does: still running its cancelled step, with the stop pending.
+  const stopping = cards.filter(card => card.directive === "stop");
+  expect(stopping.length).toBeGreaterThan(0);
+  for (const card of stopping) {
+    expect(sessions.workers.find(worker => worker.id === card.workerId), card.workerId).toMatchObject({ state: "running", note: "This step is cancelled" });
+  }
   expect(new Set(cards.flatMap(card => card.browsers.map(browser => browser.signIn)))).toEqual(new Set(["signed-in", "needs-duo", "signing-in", "unknown"]));
   expect(cards.some(card => card.lastBrowsers?.length)).toBe(true);
   const claimed = live.filter(row => row.lifecycle.state === "running");
@@ -334,15 +338,18 @@ async function expectLiveSamples(client: ReturnType<typeof createDashboardClient
     rerunSource: { runId: running.envelope.runId, expectedVersion: running.version, intent: "rerun", selectedStepKeys: ["all"] } })).rejects.toMatchObject({ status: 409, code: "SAMPLE_RUN_REFUSED" });
   expect(preflight.mock.calls).toHaveLength(preflights);
 
-  const card = cards.find(entry => entry.state === "running");
-  assert.ok(card?.controls?.basis.state === "present");
-  const control = (type: "stop-worker" | "remove-worker", lifetimeId: string | null) => ({ ...envelope("sessions"), family: "worker-browser", type,
-    target: { workerId: card.workerId, workflowId: card.workflowId, lifetimeId, expectedVersion: 1 } });
-  expect((await client.executeCommand(control("stop-worker", card.controls.basis.value.lifetimeId))).state).toBe("applied");
-  const stopped = (await client.dashboardDay(today)).workerCards.find(entry => entry.workerId === card.workerId);
-  expect(stopped).toMatchObject({ state: "failed", stopReason: "operator" });
-  assert.ok(stopped?.controls?.basis.state === "present");
-  expect((await client.executeCommand(control("remove-worker", stopped.controls.basis.value.lifetimeId))).state).toBe("applied");
-  expect((await client.dashboardDay(today)).workerCards.some(entry => entry.workerId === card.workerId)).toBe(false);
+  // Stop on a running card and close on an idle one each remove the card from the served Sessions.
+  const removed = [["stop-worker", cards.find(entry => entry.state === "running" && entry.directive === "run")], ["remove-worker", cards.find(entry => entry.state === "idle")]] as const;
+  for (const [type, card] of removed) {
+    assert.ok(card?.controls?.basis.state === "present", type);
+    const command = { ...envelope("sessions"), family: "worker-browser", type,
+      target: { workerId: card.workerId, workflowId: card.workflowId, lifetimeId: card.controls.basis.value.lifetimeId, expectedVersion: 1 } };
+    expect((await client.executeCommand(command)).state).toBe("applied");
+    const readback = await client.dashboardDay(today);
+    expect(readback.workerCards.some(entry => entry.workerId === card.workerId), type).toBe(false);
+    const view = sessionsFromDay(readback, catalog, clock.now().toISOString());
+    assert.ok(view.state === "ready", JSON.stringify(view));
+    expect(view.workers.some(worker => worker.id === card.workerId), type).toBe(false);
+  }
   expect((await client.runDetail(running.envelope.runId)).runId).toBe(running.envelope.runId);
 }
