@@ -27,6 +27,8 @@ import { completedResponseStream } from "../../../../support/helpers/chatgpt-res
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import type { RuntimePreflightRunnerFactory } from "../../../../../src/backend/app/preflight/runtime-runners.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { DASHBOARD_TAB_HEADER } from "../../../../../src/dashboard/client/transport.js";
+import { RunDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
 import { ScriptedWorkerChild } from "../../../../support/helpers/backend/fake-worker-port.js";
 import { EXECUTOR_EID, personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -181,9 +183,13 @@ function seedAssistantReadRun({ context, clock }: Pick<ServedAssistantFixture, '
 it('serves the read tools through authenticated composition without private provider input or command effects', async () => {
   await withServedAssistant(async fixture => {
     const { context, transport, origin, originalFetch } = fixture, { run, title, subjectRef } = seedAssistantReadRun(fixture);
-    const client = createDashboardClient({ baseUrl: origin });
-    await vi.waitFor(async () => assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12));
-    const detail = await client.runDetail(run.envelope.runId);
+    const tabId = randomUUID();
+    const client = createDashboardClient({ baseUrl: origin, tabId });
+    const response = await originalFetch(`${origin}/api/v1/runs/${run.envelope.runId}`, { headers: { [DASHBOARD_TAB_HEADER]: tabId } });
+    const wire = await response.text();
+    assert.equal(response.status, 200, wire);
+    const detail = RunDetailWireSchema.parse(JSON.parse(wire));
+    assert.equal(detail.timeline.events.length, 12);
     const ask = (message: string, selected?: string) => send(clientDoor(client), { message, ...(selected === undefined ? {} : { subjectRef: selected }) });
     const outputs: unknown[] = [];
     let turns = 0;
