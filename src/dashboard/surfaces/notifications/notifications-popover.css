@@ -44,3 +44,23 @@
 .notice-message { margin: 0; padding: 16px 12px; font-size: 13px; line-height: 20px; color: var(--ds-fg-secondary); }
 .notice-empty { padding-block: 56px; }
 .notice-status { flex: none; margin: 0; padding: 8px 16px; border-top: 1px solid var(--ds-border-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; color: var(--ds-fg-muted); }
+
+/* Design options for #944 (mock harness and gallery only). */
+.notice-group-label { display: flex; justify-content: space-between; gap: 8px; }
+.notice-group-meta { color: var(--ds-fg-muted); font-variant-numeric: tabular-nums; }
+.notice-unread { width: 6px; height: 6px; flex: none; border-radius: 9999px; background: var(--ui-info); margin-left: auto; }
+.notice-unread ~ .notice-age { margin-left: 0; padding-left: 0; }
+.notice-inline { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 20px; color: var(--ds-fg-muted); }
+.notice-popover-rows .notice-detail, .notice-panel .notice-detail, .notice-panel .notice-context { padding-left: 22px; }
+.notice-popover-rows { width: 400px; }
+.notice-popover-rows .notice-main { padding: 6px 12px 8px; gap: 0; }
+.notice-popover-workflows { width: 480px; }
+.notice-popover-workflows .notice-main { padding: 6px 12px; }
+.notice-popover-workflows .notice-title { flex: none; max-width: 45%; }
+.notice-popover-workflows .notice-group-label { color: var(--ds-fg-secondary); font-weight: 500; }
+.notice-panel .notice-popover-head { padding: 8px 12px 8px 20px; }
+.notice-panel .notice-popover-title { font-size: 13px; font-weight: 400; color: var(--ds-fg-muted); }
+.notice-panel .notice-popover-scroll { padding: 0 8px 8px; }
+.notice-panel .notice-main { padding: 10px 12px 12px; }
+.notice-cta { display: inline-flex; align-items: center; gap: 2px; align-self: flex-start; margin: 6px 0 0 22px; height: 24px; padding: 0 6px 0 10px; border: 1px solid var(--ds-border-strong); border-radius: 8px; font-size: 12px; line-height: 16px; color: var(--ds-fg); }
+.notice-row:not([data-read-only-history]):is(:hover, :focus-within) .notice-unread { visibility: hidden; }

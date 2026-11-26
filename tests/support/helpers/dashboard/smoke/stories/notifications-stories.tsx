@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { PanelLeft, Search } from "lucide-react";
 import { EmptyState, IconButton, Panel, PanelBody } from "../../../../../../src/dashboard/ds/ui.js";
-import { NotificationsPopover, type NotificationsShow } from "../../../../../../src/dashboard/surfaces/notifications/notifications-popover.js";
+import { NotificationsPopover, type NoticeVariant, type NotificationsShow } from "../../../../../../src/dashboard/surfaces/notifications/notifications-popover.js";
 import { WorkflowRail } from "../../../../../../src/dashboard/surfaces/shell/workflow-rail.js";
 import { useNotificationAlert } from "../../../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
 import { itemClearable, type NotificationItem, type NotificationKind, type NotificationsState } from "../../../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
@@ -33,7 +33,7 @@ const TOAST = {
 } satisfies Record<NotificationItem["tone"], Story>;
 
 /** The bell's popover over the dashboard: the rail, the bell in its header, and an idle queue and Logs behind it. Clearing removes rows as the served inbox does. */
-function PopoverScene({ state: initialState, show: initial = "all", open = true, notice, collapsed = false }: { state: NotificationsState; show?: NotificationsShow; open?: boolean; notice?: string; collapsed?: boolean }) {
+function PopoverScene({ state: initialState, show: initial = "all", open = true, notice, collapsed = false, variant }: { state: NotificationsState; show?: NotificationsShow; open?: boolean; notice?: string; collapsed?: boolean; variant?: NoticeVariant }) {
   const [show, setShow] = useState(initial);
   const [state, setState] = useState(initialState);
   const keep = (kept: (item: NotificationItem) => boolean) => setState(current => current.state === "ready" ? { ...current, items: current.items.filter(kept) } : current);
@@ -41,7 +41,7 @@ function PopoverScene({ state: initialState, show: initial = "all", open = true,
   return <StoryFrame>
     <aside aria-label="Workspace" className="workspace-rail ui-theme-scope" data-collapsed={collapsed || undefined}><header className="workspace-rail-header"><h2>Relay</h2><div className="workspace-rail-actions">
       <IconButton variant="ghost" size="sm" label="Collapse sidebar" title="" icon={<PanelLeft aria-hidden className="size-4" />} />
-      <NotificationsPopover state={state} open={open} onOpenChange={noop} {...(notice === undefined ? {} : { notice })} show={show} onShow={setShow} onReadAll={noop} onOpen={noop} onControl={noop} canAct={() => true} canClear={() => true}
+      <NotificationsPopover {...(variant === undefined ? {} : { variant })} state={state} open={open} onOpenChange={noop} {...(notice === undefined ? {} : { notice })} show={show} onShow={setShow} onReadAll={noop} onOpen={noop} onControl={noop} canAct={() => true} canClear={() => true}
         onClear={id => keep(item => item.id !== id)} onClearAll={() => keep(item => !itemClearable(item) || (show === "unread" && item.read))} />
       <IconButton variant="ghost" size="sm" label="Search" title="" icon={<Search aria-hidden className="size-4" />} />
     </div></header><div className="workspace-rail-body"><WorkflowRail workflows={SHELL_STORY_WORKFLOWS} counts={SHELL_STORY_COUNTS_IDLE} active="person-lookup" onSelect={noop} collapsed={collapsed} /></div></aside>
@@ -50,6 +50,7 @@ function PopoverScene({ state: initialState, show: initial = "all", open = true,
   </StoryFrame>;
 }
 const POPOVER_SURFACE = '[aria-label="Notifications"][role="dialog"]';
+const OPTION_SURFACE = '[role="dialog"]';
 const popover = (title: string, state: NotificationsState, extra: Partial<Story> = {}, scene: { show?: NotificationsShow; notice?: string } = {}): Story => ({ title, ready: POPOVER_SURFACE, render: () => <PopoverScene state={state} {...scene} />, ...extra });
 const POPOVER_STATE = {
   ready: popover("The popover with a few notifications", POPOVER_FEW),
@@ -104,6 +105,14 @@ const COMBINATION = {
   "history-gap": popover("Notification history is incomplete", POPOVER_FEW, {}, { notice: "Notification history is incomplete. Check the affected work." }),
 } satisfies Record<string, Story>;
 
+/** #944 design options: each on the same week of notices, plus the hovered row. */
+const option = (variant: NoticeVariant, title: string): Record<string, Story> => ({
+  [variant]: { title, ready: OPTION_SURFACE, render: () => <PopoverScene state={POPOVER_MANY} variant={variant} /> },
+  [`${variant}-hover`]: { title: `${title}, a row hovered`, ready: OPTION_SURFACE, render: () => <PopoverScene state={POPOVER_MANY} variant={variant} />, play: page => page.locator(".notice-row").first().hover() },
+  [`${variant}-few`]: { title: `${title}, three notices`, ready: OPTION_SURFACE, render: () => <PopoverScene state={POPOVER_FEW} variant={variant} /> },
+});
+const OPTION = { ...option("rows", "Rows: the person leads, two lines"), ...option("workflows", "Workflows: one line, grouped by workflow"), ...option("panel", "Panel: a side panel with the next step named") };
+
 type BellState = "read" | "unread" | "loading" | "unavailable";
 const BELL_STATE: Readonly<Record<BellState, NotificationsState>> = { read: notificationsReady({ ...NOTICE_BY_TONE.positive, read: true }), unread: POPOVER_FEW, loading: { state: "loading" }, unavailable: { state: "unavailable", reason: "Try again in a moment." } };
 const BELL_LABEL: Readonly<Record<BellState, string>> = { read: "Notifications, 0 unread", unread: "Notifications, 2 unread", loading: "Notifications loading", unavailable: "Notifications unavailable" };
@@ -130,4 +139,4 @@ type BellCount = 1 | 14 | 66 | 140;
 const BELL_COUNT = { 1: counted(1, false), 14: counted(14, false), 66: counted(66, false), 140: counted(140, false) } satisfies Record<BellCount, Story>;
 const BELL_COUNT_COLLAPSED = { 1: counted(1, true), 14: counted(14, true), 66: counted(66, true), 140: counted(140, true) } satisfies Record<BellCount, Story>;
 
-export const NOTIFICATIONS_STORIES = defineSurface("notifications", { popover: POPOVER_STATE, tone: TONE, kind: KIND, combination: COMBINATION, bell: BELL, "bell-count": BELL_COUNT, "bell-count-collapsed": BELL_COUNT_COLLAPSED, toast: TOAST });
+export const NOTIFICATIONS_STORIES = defineSurface("notifications", { option: OPTION, popover: POPOVER_STATE, tone: TONE, kind: KIND, combination: COMBINATION, bell: BELL, "bell-count": BELL_COUNT, "bell-count-collapsed": BELL_COUNT_COLLAPSED, toast: TOAST });
