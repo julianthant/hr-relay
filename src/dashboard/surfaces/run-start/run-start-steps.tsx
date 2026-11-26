@@ -7,7 +7,6 @@ import { StepOmissionFactsForm } from "./run-start-kit.js";
 import type { StepOmissionFactDraft, forcedStepOmissions } from "./run-start-model.js";
 import type { RunStartWorkflow } from "./run-start.js";
 import { includedRowCount, lastIncludedSwitch, rowIncluded, sourceBadge, type OpenStepRow, type ManualRows, type StepRow, type StepsFailure } from "./run-steps-model.js";
-import { LOG_TIMELINE_STYLES } from "../run-detail/logs/log-timeline-model.js";
 
 export function RunStartSteps({
   workflow, snapshot, rows, selectedStepKeys, manualRows, forcedByStep, openRows, isRerun, multiSubject,
@@ -64,7 +63,7 @@ export function RunStartSteps({
                         {...(row.kind === "switch" ? { check: { checked: included, disabled, onChange: next => toggleRow(row, next) } } : { locked: true })}
                         below={open === undefined ? undefined : <StepOmissionFactsForm step={row.label} form={open.form} draft={open.draft} errors={failure}
                           copied={copiedFields(row)} onChange={(field, next) => changeFact(row, open.form, field, next)} disabled={sending} />}>
-                        {badge !== undefined && <Badge tone={badge === "completed" ? "success" : badge === "failed" ? "danger" : "neutral"} className="launch-step-status" data-status={badge}>{badge === "completed" ? "Completed" : badge === "skipped" ? "Skipped" : badge === "failed" ? "Failed" : badge === "cancelled" ? LOG_TIMELINE_STYLES.cancelled.label : "Not started"}</Badge>}
+                        {badge !== undefined && <Badge tone={badge === "completed" ? "success" : badge === "failed" ? "danger" : "neutral"} className="launch-step-status" data-status={badge}>{badge === "completed" ? "Completed" : badge === "skipped" ? "Skipped" : badge === "failed" ? "Failed" : badge === "cancelled" ? "Cancelled" : "Not started"}</Badge>}
                         {row.kind === "locked-manual" && <>
                           <Switch label={<>Enter manually<span className="sr-only"> for {row.label}</span></>} checked={manualRows.includes(row.key)} disabled={sending || multiSubject && !manualRows.includes(row.key)} onCheckedChange={next => toggleManual(row, next)} className="!min-h-0 !w-auto !py-0" /></>}
                       </RunListRow>;

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { applyAuthorityMigrationsAfter } from "../../../../src/backend/storage/sqlite/authority-upgrades.js";
 import { inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { readAppSettings, readSettingsRecordConversion } from "../../../../src/backend/storage/sqlite/settings-storage.js";
 import { PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH, RETIRED_PANEL_MODE } from "../../../../src/models/config/settings-record-conversion.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
@@ -13,6 +14,7 @@ import { CommandAuditRecordSchema, SettingsCommandRequestSchema, deriveSettingsC
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { restorePrePanelModeRetirementSettingsRows } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
+import { restoreSchema42AssistantStorage } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
@@ -44,6 +46,7 @@ it.each([false, true])("upgrades a private schema-41 store with a settled panel-
   const commandQuery = raw.prepare("SELECT * FROM commands WHERE id=?");
   const auditQuery = raw.prepare("SELECT payload_json FROM command_audits WHERE command_id=?");
   try {
+    restoreSchema42AssistantStorage(raw);
     const current = readAppSettings(raw);
     assert.ok(current?.saved && current.active);
     restorePrePanelModeRetirementSettingsRows(raw);
@@ -79,8 +82,8 @@ it.each([false, true])("upgrades a private schema-41 store with a settled panel-
     raw.exec("BEGIN EXCLUSIVE");
     try {
       applyAuthorityMigrationsAfter(raw, 41, { now: "2026-11-24T00:00:00.000Z", captureFile: () => { throw new Error("artifact-unexpected"); } });
-      raw.exec("UPDATE database_states SET schema_version=42; PRAGMA user_version=42");
-      assert.equal(inspectNormalAuthority(raw).schemaVersion, 42);
+      raw.exec(`UPDATE database_states SET schema_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}; PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+      assert.equal(inspectNormalAuthority(raw).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       raw.exec("COMMIT");
     } catch (error) { raw.exec("ROLLBACK"); throw error; }
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AuthorityTableNameSchema, CHANGE_LOG_TABLE, RUN_REFERENCES_TABLE, type AuthorityTableName } from "../../../models/config/authority.js";
+import { ASSISTANT_PHASE_ONE_TABLES, AuthorityTableNameSchema, CHANGE_LOG_TABLE, RUN_REFERENCES_TABLE, type AuthorityTableName } from "../../../models/config/authority.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 
 /**
@@ -60,6 +60,7 @@ export function currentRowKey(table: AuthorityTableName): readonly string[] {
     case "workbook_operations": return ["sequence"];
     case "workbook_payloads": return ["digest"];
     case "auth_leases": return ["credential_key"];
+    case "assistant_session_claims": return ["action_id"];
     case "timeline_events": case "debug_events": return ["cursor"];
     default: return ["id"];
   }
@@ -106,6 +107,9 @@ const TABLE_KEYS = deepFreeze<Record<CapturedTable, (image: Image) => string[]>>
   assistant_conversations: none,
   assistant_messages: none,
   assistant_attachments: none,
+  assistant_proposals: none,
+  assistant_proposal_rows: none,
+  assistant_session_claims: none,
   run_batches: none,
   deleted_runs: columns({ run: "run_id", command: "command_id" }),
   runs: columns({ run: "id", worker: "owner_worker_id" }),
@@ -219,7 +223,7 @@ function runReferenceCaptureTriggers(): string[] {
 
 const SOURCES = RunReferenceSourceSchema.options;
 /** Authority tables created after migration 31. */
-const TABLES_AFTER_CHANGE_LOG: ReadonlySet<AuthorityTableName> = new Set(["workbook_payloads"]);
+const TABLES_AFTER_CHANGE_LOG: ReadonlySet<AuthorityTableName> = new Set(["workbook_payloads", ...ASSISTANT_PHASE_ONE_TABLES]);
 
 /**
  * Migration 31. Adds the change log and the run references with their backfill, the capture and reference triggers, and

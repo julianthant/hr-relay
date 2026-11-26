@@ -1,4 +1,4 @@
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { z } from "zod";
 import { BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, FormGroup, IconButton, Input, PageHeading, ResultRow, SecretField, Skeleton, dsIcon, useToasts } from "../../../ds/ui.js";
@@ -76,7 +76,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
       {details("Name", values.name, next => { const [firstName = "", ...rest] = next.split(/\s+/u); return { name: { firstName, lastName: rest.join(" ") } }; })}
       <RelayLoginRows login={{ ...login, username: read === undefined ? username : read.username }} />
       {details("Initials", values.initials, initials => ({ initials }))}
-      <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-6" /></span>} />
+      <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-[var(--ds-h-sm)]" /></span>} />
     </Group>
     {ucpath}
     <Group label="Workflow configuration" description="Names workflows put on the forms they file.">
@@ -334,8 +334,8 @@ function DuoSecurityKeys({ port, onSetup }: { port?: DuoKeysPort; onSetup?: () =
       return <ResultRow key={key.id} label={<span className="break-words">{name}</span>}
         description={key.name === undefined ? `Duo name unrecorded · ${dates}` : dates}
         value={<span className="inline-flex items-center gap-2">
-          <Button variant="secondary" aria-label={`Rename ${name}`} onClick={event => select({ owner: port, kind: "rename", key, trigger: event.currentTarget })}>Rename</Button>
-          <Button variant="secondary" aria-label={`Remove ${name}`} onClick={event => select({ owner: port, kind: "remove", key, trigger: event.currentTarget })}>Remove</Button>
+          <Button variant="secondary" icon={<Pencil aria-hidden className={dsIcon.md} />} aria-label={`Rename ${name}`} onClick={event => select({ owner: port, kind: "rename", key, trigger: event.currentTarget })}>Rename</Button>
+          <Button variant="secondary" icon={<Trash2 aria-hidden className={dsIcon.md} />} aria-label={`Remove ${name}`} onClick={event => select({ owner: port, kind: "remove", key, trigger: event.currentTarget })}>Remove</Button>
         </span>} />;
     })}
     {dialog !== undefined && snapshot !== undefined && <DuoKeyDialog active={dialog} close={() => select(current => current === dialog ? undefined : current)}

@@ -16,6 +16,8 @@ import {
   RunIdSchema,
 } from "../../rules/identity/ids.js";
 
+export const ASSISTANT_PHASE_ONE_TABLES = Object.freeze(["assistant_proposals", "assistant_proposal_rows", "assistant_session_claims"] as const);
+
 export const AuthorityTableNameSchema = z.enum([
   "assistant_model_preference",
   "database_states",
@@ -68,6 +70,7 @@ export const AuthorityTableNameSchema = z.enum([
   "workbook_library_snapshots",
   "workbook_payloads",
   "debug_events",
+  ...ASSISTANT_PHASE_ONE_TABLES,
 ]);
 
 /** The change log every connection reads after another connection commits; derived, never evidence: outside the registry, fingerprints and inspection lists, and rebaselined at open. */
