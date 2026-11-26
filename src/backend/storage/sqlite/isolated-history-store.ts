@@ -7,6 +7,8 @@ import { SpanEventWireSchema, type SpanEventWire } from "../../../models/events/
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { NotificationRecordSchema, type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
+import { RunSessionRecordSchema, type RunSessionRecord } from "../../../models/run/session.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
 import type { IsoInstant } from "../../../rules/identity/ids.js";
 import type { ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
@@ -119,6 +121,10 @@ export type CopyHistorySeed = Readonly<{
   build(runs: readonly RunRecord[]): Readonly<{
     runs: readonly Readonly<{ run: RunRecord; failure?: FailureRecord; events: readonly SpanEventWire[] }>[];
     notifications: readonly NotificationRecord[];
+    /** Run groups the generated runs belong to; seed-owned, never a real session. */
+    batches: readonly RunSessionRecord[];
+    /** Sample Sessions cards, served beside the pool's members on a copy and never given to it. */
+    sessions: readonly Readonly<{ workerId: string; payload: unknown }>[];
   }>;
 }>;
 
@@ -131,14 +137,22 @@ export async function cloneHistoryArchive(path: string, stage: string): Promise<
 
 const SeedMemberSchema = z.strictObject({ kind: z.enum(["run", "notification"]), id: z.uuid() });
 
+/** A seed member run must still be the seed's own synthetic run; anything else in the membership list is refused. */
+function assertSeedRun(archive: DatabaseSync, id: string): RunRecord {
+  const row = archive.prepare("SELECT * FROM runs WHERE id=?").get(id);
+  const run = row === undefined ? undefined : runRecordFromRow(row);
+  if (run?.envelope.buildId !== COPY_HISTORY_SEED_BUILD || run.displayName?.startsWith("Synthetic ") !== true || !run.envelope.dryRun) throw new Error("copy-seed-run-membership-mismatch");
+  return run;
+}
+
 function removePreviousSeed(archive: DatabaseSync): void {
   archive.exec(`CREATE TABLE IF NOT EXISTS copy_seed_members(kind TEXT NOT NULL CHECK(kind IN ('run','notification')),
-    id TEXT NOT NULL, PRIMARY KEY(kind,id)) STRICT`);
+    id TEXT NOT NULL, PRIMARY KEY(kind,id)) STRICT;
+    CREATE TABLE IF NOT EXISTS copy_seed_batches(id TEXT PRIMARY KEY) STRICT`);
   for (const raw of archive.prepare("SELECT kind,id FROM copy_seed_members").iterate()) {
     const { kind, id } = SeedMemberSchema.parse(raw);
     if (kind === "run") {
-      const run = runRecordFromRow(archive.prepare("SELECT * FROM runs WHERE id=?").get(id));
-      if (run.envelope.buildId !== COPY_HISTORY_SEED_BUILD || run.displayName?.startsWith("Synthetic ") !== true) throw new Error("copy-seed-run-membership-mismatch");
+      assertSeedRun(archive, id);
     } else {
       const row = z.object({ payload_json: z.string() }).parse(archive.prepare("SELECT payload_json FROM notifications WHERE id=?").get(id));
       if (!NotificationRecordSchema.parse(JSON.parse(row.payload_json)).title.startsWith("Synthetic ")) throw new Error("copy-seed-notification-membership-mismatch");
@@ -147,7 +161,14 @@ function removePreviousSeed(archive: DatabaseSync): void {
   for (const table of ["run_search", "timeline_events", "run_failures", "runs"] as const) {
     archive.exec(`DELETE FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"} IN (SELECT id FROM copy_seed_members WHERE kind='run')`);
   }
-  archive.exec("DELETE FROM notifications WHERE id IN (SELECT id FROM copy_seed_members WHERE kind='notification'); DELETE FROM copy_seed_members");
+  // Seed members are gone, so any run still in a seed batch is foreign.
+  const foreignMember = archive.prepare("SELECT 1 FROM runs WHERE batch_id=? LIMIT 1");
+  for (const raw of archive.prepare("SELECT id FROM copy_seed_batches").iterate()) {
+    if (foreignMember.get(z.object({ id: z.string() }).parse(raw).id) !== undefined) throw new Error("copy-seed-batch-membership-mismatch");
+  }
+  archive.exec(`DELETE FROM notifications WHERE id IN (SELECT id FROM copy_seed_members WHERE kind='notification'); DELETE FROM copy_seed_members;
+    DELETE FROM run_batches WHERE id IN (SELECT id FROM copy_seed_batches); DELETE FROM copy_seed_batches`);
+  archive.exec("CREATE TABLE IF NOT EXISTS copy_seed_sessions(worker_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL) STRICT; DELETE FROM copy_seed_sessions");
 }
 
 export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding: ProfileDatabaseBinding, cloned: boolean, seed: CopyHistorySeed) {
@@ -168,10 +189,18 @@ export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding:
       const keys = Object.keys(columns);
       archive.prepare(`INSERT INTO ${table} (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...Object.values(columns));
     };
+    const batches = new Map(population.batches.map(input => RunSessionRecordSchema.parse(input)).map(batch => [batch.sessionId, batch]));
+    for (const batch of batches.values()) {
+      if (archive.prepare("SELECT 1 FROM run_batches WHERE id=?").get(batch.sessionId) !== undefined) throw new Error("copy-seed-id-collision: run_batches");
+      archive.prepare("INSERT INTO run_batches(id,workflow,started_at,payload_json,created_at,group_in_queue,version) VALUES(?,?,?,?,?,?,?)")
+        .run(batch.sessionId, batch.workflow, batch.startedAt, canonicalJsonStringify(batch), batch.createdAt, batch.groupInQueue ? 1 : 0, batch.version);
+      archive.prepare("INSERT INTO copy_seed_batches(id) VALUES(?)").run(batch.sessionId);
+    }
     const byWorkflow: Record<string, number> = {};
     for (const row of population.runs) {
       const run = RunRecordSchema.parse(row.run), { runId, workflow } = run.envelope;
-      if (run.envelope.buildId !== COPY_HISTORY_SEED_BUILD || !run.envelope.dryRun || run.displayName?.startsWith("Synthetic ") !== true || run.envelope.parent !== undefined) throw new Error("copy-seed-run-invalid");
+      if (run.envelope.buildId !== COPY_HISTORY_SEED_BUILD || !run.envelope.dryRun || run.displayName?.startsWith("Synthetic ") !== true || run.envelope.parent !== undefined
+        || run.sessionId !== undefined && batches.get(run.sessionId)?.workflow !== workflow) throw new Error("copy-seed-run-invalid");
       const failure = row.failure === undefined ? undefined : FailureRecordSchema.parse(row.failure);
       if (failure !== undefined && (failure.runId !== runId || run.lifecycle.state !== "terminal" || run.lifecycle.failureId !== failure.failureId)) throw new Error("copy-seed-failure-owner-mismatch");
       insert("runs", runRecordColumns(run));
@@ -199,8 +228,26 @@ export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding:
       insert("notifications", initialNotificationColumns(notice));
       membership.run("notification", notice.notificationId);
     }
+    const session = archive.prepare("INSERT INTO copy_seed_sessions(worker_id,payload_json) VALUES(?,?)");
+    for (const { workerId, payload } of population.sessions) session.run(workerId, JSON.stringify(payload));
     archive.exec("COMMIT");
-    return { runs: population.runs.length, byWorkflow, notifications: population.notifications.length };
+    return { runs: population.runs.length, byWorkflow, notifications: population.notifications.length, batches: batches.size, sessions: population.sessions.length };
+  } finally { archive.close(); }
+}
+
+/** The copy seed's sample run IDs and Sessions cards, read once when a copy dashboard starts; an archive without a seed has none. */
+export function readCopySeedSamples(path: string, binding: ProfileDatabaseBinding) {
+  assertArchiveFile(path);
+  const archive = new DatabaseSync(path, { readOnly: true });
+  try {
+    readArchiveVersion(archive, binding);
+    const has = (table: string) => archive.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table) !== undefined;
+    const runIds = has("copy_seed_members") ? archive.prepare("SELECT id FROM copy_seed_members WHERE kind='run'").all()
+      .map(row => assertSeedRun(archive, z.strictObject({ id: z.uuid() }).parse(row).id).envelope.runId) : [];
+    const sessions = has("copy_seed_sessions") ? archive.prepare("SELECT worker_id,payload_json FROM copy_seed_sessions ORDER BY worker_id").all()
+      .map(row => z.strictObject({ worker_id: z.string(), payload_json: z.string() }).parse(row))
+      .map(row => ({ workerId: row.worker_id, payload: z.unknown().parse(JSON.parse(row.payload_json)) })) : [];
+    return { runIds, sessions };
   } finally { archive.close(); }
 }
 

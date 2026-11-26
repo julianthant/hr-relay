@@ -7,7 +7,8 @@ import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
-import { BulkRunCommandRequestSchema, CommandRequestSchema, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
+import { deriveBulkChildCommandId } from "../../../src/rules/commands/command-groups.js";
+import { BulkRunCommandRequestSchema, BulkRunCommandResponseSchema, CommandRequestSchema, CommandResultSchema, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
 import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { pickedRunWorld } from "../../support/helpers/dashboard/picked-dashboard.js";
@@ -19,7 +20,7 @@ Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} di
 const PAUSED_AT = "2026-08-03T00:00:00.000Z";
 
 async function mount(pause: "running" | "pause-pending" | "paused" | "one-paused" = "running", day: typeof FIXTURE_DAY_WIRE = FIXTURE_DAY_WIRE,
-  bulkReply: () => Promise<BulkRunCommandResponse> = () => new Promise<never>(() => undefined)) {
+  bulkReply: (request: BulkRunCommandRequest) => Promise<BulkRunCommandResponse> = () => new Promise<never>(() => undefined)) {
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   let lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 17, state: "ready", pause: pause === "one-paused" ? "running" : pause, update: "installer-unavailable",
@@ -32,7 +33,11 @@ async function mount(pause: "running" | "pause-pending" | "paused" | "one-paused
     subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) {
       input.onDay(day); input.onState({ state: "live" }); return { select() {}, close() {} };
     },
-    async executeBulkCommand(raw: unknown) { sent.push(BulkRunCommandRequestSchema.parse(raw)); return bulkReply(); },
+    async executeBulkCommand(raw: unknown) {
+      const request = BulkRunCommandRequestSchema.parse(raw);
+      sent.push(request);
+      return bulkReply(request);
+    },
     async executeCommand(raw: unknown) { sent.push(CommandRequestSchema.parse(raw)); return reply.promise; },
   };
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
@@ -89,6 +94,27 @@ it("a pause-pending run shows an enabled Resume from the served command and pres
   } finally { await f.close(); }
 });
 
+it("shows a refused sample Pause as one toast and leaves the bell count alone", async () => {
+  const world = pickedRunWorld("running");
+  const f = await mount("running", world.day);
+  try {
+    const bell = document.querySelector('button[aria-label^="Notifications,"]');
+    assert.ok(bell);
+    const previousCount = bell.getAttribute("aria-label");
+    await act(async () => f.button("Pause after this step").click());
+    const request = f.sent[0];
+    assert.ok(request.family === "run" && request.type === "pause" && !("targets" in request));
+    assert.equal(request.target.runId, world.row.runId);
+    const message = "Sample run: nothing runs.";
+    await act(async () => f.reply.resolve(CommandResultSchema.parse({
+      state: "rejected", commandId: request.commandId, code: "SAMPLE_RUN_REFUSED", message,
+    })));
+    assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent), [message]);
+    assert.doesNotMatch(f.host.textContent ?? "", /Pause after this step: rejected/u);
+    assert.equal(bell.getAttribute("aria-label"), previousCount);
+  } finally { await f.close(); }
+});
+
 it("paused runs offer Resume all above the queue, and it sends one resume for exactly those runs", async () => {
   const running = await mount();
   try { assert.doesNotMatch(running.host.textContent ?? "", /runs? paused/u); } finally { await running.close(); }
@@ -109,6 +135,59 @@ it("with paused and unpaused runs, the strip counts and resumes only the paused 
     await act(async () => f.button("Resume all").click());
     const request = f.sent[0]; assert.ok("targets" in request && request.type === "resume");
     assert.deepEqual(request.targets, [{ runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, expectedVersion: 7 }]);
+  } finally { await f.close(); }
+});
+
+const SAMPLE_REFUSAL_TEXT = "Sample run: nothing runs.";
+const ORDINARY_REFUSAL_TEXT = "That was refused. Review the current state.";
+
+function bulkRefusalVector(request: BulkRunCommandRequest, mixed = false): BulkRunCommandResponse {
+  return BulkRunCommandResponseSchema.parse({
+    state: "vector", bulkCommandId: request.bulkCommandId, type: request.type, requestedCount: request.targets.length,
+    results: request.targets.map(({ runId }, index) => ({
+      runId, commandId: deriveBulkChildCommandId(request.bulkCommandId, runId),
+      outcome: "refused",
+      code: mixed && index === 1 ? "policy-refused" : "SAMPLE_RUN_REFUSED",
+      detail: mixed && index === 1 ? "The policy rejected this command." : SAMPLE_REFUSAL_TEXT,
+    })),
+  });
+}
+
+it.each(["vector", "whole request"] as const)("shows an all-sample bulk %s refusal as one toast and leaves the bell count alone", async shape => {
+  const f = await mount("paused", FIXTURE_DAY_WIRE, async request => shape === "vector" ? bulkRefusalVector(request)
+    : { state: "refused", code: "SAMPLE_RUN_REFUSED", message: SAMPLE_REFUSAL_TEXT });
+  try {
+    const bell = document.querySelector('button[aria-label^="Notifications,"]');
+    assert.ok(bell);
+    const previousCount = bell.getAttribute("aria-label");
+    await act(async () => f.button("Resume all").click());
+    assert.equal(f.sent.length, 1);
+    assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent), [SAMPLE_REFUSAL_TEXT]);
+    assert.equal(bell.getAttribute("aria-label"), previousCount);
+    assert.doesNotMatch(f.host.textContent ?? "", /Resume: (2 refused|nothing was sent)/u);
+  } finally { await f.close(); }
+});
+
+it("shows the ordinary bulk notice and per-run results for a mixed sample and real refusal", async () => {
+  const f = await mount("paused", FIXTURE_DAY_WIRE, async request => bulkRefusalVector(request, true));
+  try {
+    const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]');
+    assert.ok(bell);
+    const previousCount = bell.getAttribute("aria-label");
+    await act(async () => f.button("Resume all").click());
+    assert.equal(f.sent.length, 1);
+    assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent).sort(),
+      ["Resume: 2 refused", ORDINARY_REFUSAL_TEXT].sort());
+    assert.notEqual(bell.getAttribute("aria-label"), previousCount);
+
+    await act(async () => bell.click());
+    const notice = [...document.querySelectorAll("li.notice-row")].find(row => row.querySelector(".notice-title")?.textContent === "Resume: partial result");
+    const review = notice?.querySelector<HTMLButtonElement>("button.notice-main");
+    assert.ok(review);
+    await act(async () => review.click());
+    const result = document.querySelector('[data-queue-bulk-result="vector"]');
+    assert.match(result?.textContent ?? "", /Refused.*Sample run: nothing runs/u);
+    assert.match(result?.textContent ?? "", /Refused.*That was refused\. Review the current state/u);
   } finally { await f.close(); }
 });
 
