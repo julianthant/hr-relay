@@ -1,6 +1,6 @@
 import { forwardRef, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
-import { ChevronDown, Loader2, LogOut, MoreHorizontal, Pin, Plus, Search, UserPlus, Users, type LucideIcon } from 'lucide-react';
-import { Button, Chip, IconButton, SearchInput, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus, dsIcon, dsText } from '../../../ds/ui.js';
+import { Check, ChevronDown, Loader2, LogOut, MoreHorizontal, Pin, Plus, Search, UserPlus, Users, type LucideIcon } from 'lucide-react';
+import { Button, Chip, IconButton, SearchInput, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus, dsIcon, dsRadius, dsText } from '../../../ds/ui.js';
 import { DropdownMenuCheckboxItem } from '../../../ds/primitives/dropdown-menu.js';
 import { type Sheet, addTag, stamp, syncFailureWhy, tagsOf, MAX_TAG_LENGTH } from './sheets-v2-model.js';
 import { MENU } from './sheets-v2-menu.js';
@@ -68,7 +68,10 @@ export function TagMenu({ name, tags, bank, onChange }: { name: string; tags: re
       <div className="mb-1 shrink-0" onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); create(); } if (!['Escape', 'ArrowDown', 'ArrowUp'].includes(event.key)) event.stopPropagation(); }}>
         <SearchInput variant="menu" aria-label="Find or create a tag" placeholder="Find or create a tag" maxLength={MAX_TAG_LENGTH} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} /></div>
       <div className={`min-h-0 ${MENU}`}>
-        {shown.map(tag => <DropdownMenuCheckboxItem key={tag} checked={tags.includes(tag)} onCheckedChange={toggle(tag)} onSelect={event => event.preventDefault()}>{tag}</DropdownMenuCheckboxItem>)}
+        {shown.map(tag => { const on = tags.includes(tag); return <DropdownMenuCheckboxItem key={tag} className="sv2-tag-item" checked={on} onCheckedChange={toggle(tag)} onSelect={event => event.preventDefault()}>
+          {/* The checkbox look, not the ds Checkbox: a button inside a menu item would nest two controls. */}
+          <span aria-hidden className={`ds-checkbox-control inline-flex size-4 shrink-0 items-center justify-center border ${dsRadius.xs} ${on ? 'border-transparent bg-[var(--ds-accent)]' : 'border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]'}`}>
+            {on && <Check className="size-3 text-[color:var(--ds-accent-fg)]" />}</span>{tag}</DropdownMenuCheckboxItem>; })}
         {creatable && <DropdownMenuItem closeOnClick={false} onSelect={create}>Create “{text}”</DropdownMenuItem>}
         {!shown.length && !creatable && <div className={`px-2 py-1.5 ${dsText.body} text-ui-muted`}>No tags match.</div>}
       </div>

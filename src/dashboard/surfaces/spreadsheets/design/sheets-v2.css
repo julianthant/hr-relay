@@ -30,3 +30,7 @@
 
 /* The mock's search is a pill, taller than the default field. */
 .hub-sheets-library .sv2-search [data-slot="search-field-group"] { height: 32px; min-height: 32px; max-height: 32px; border-radius: 9999px; padding-inline: 12px 8px; }
+
+/* Tag menu rows lead with a checkbox, so the menu's trailing check and its room go. */
+.ds-menu-item.sv2-tag-item, .ds-menu-item.sv2-tag-item[data-checked] { padding-right: 8px; }
+.sv2-tag-item [data-slot="dropdown-menu-checkbox-item-indicator"] { display: none; }
