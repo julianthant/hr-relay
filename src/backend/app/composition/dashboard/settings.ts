@@ -78,6 +78,8 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   readLanes?: Pick<DashboardReadLanes, "read">;
   /** The profile's browser-root custody check, run on main for each lane resolution at every editor read. */
   assertBrowserRoot?: (path: string) => void;
+  /** Builds the editor document on main; the G6 bench times it through this. */
+  buildEditor?: typeof buildSettingsEditor;
   /** Runs `task` every `ms` until the returned stop; the fiscal-year watch's timer. */
   every?: (ms: number, task: () => void) => () => void;
 }) {
@@ -157,7 +159,7 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
     const { record, active, activeConfig, activePreferences, resolutions } = SettingsStorePartSchema.parse(JSON.parse(body));
     const browserRoots = [resolutions.record.config.paths.browserProfileRoot, resolutions.defaults.config.paths.browserProfileRoot];
     assertBrowserRoots(browserRoots);
-    const document = buildSettingsEditor({ ...routes.settingsEditor, resolutions,
+    const document = (input.buildEditor ?? buildSettingsEditor)({ ...routes.settingsEditor, resolutions,
       settings: { read: () => ({ record, runtimeStatus: settingsRuntimeStatusOf(record, active, resolutions.record.fingerprint), activeConfig, activePreferences }) },
       // The editor shows an unreadable protected store as unknown; the read's own error is what it sees.
       protectedSettings: { read: () => {

@@ -15,11 +15,11 @@ const percentile = (values: readonly number[], p: number) => {
   return sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)] ?? Number.NaN;
 };
 
-/** Gate G6: the main-thread share of the Settings editor build, with its store part read on the navigation lane and the protected read on main. */
+/** Gate G6: main-thread `buildSettingsEditor`, with the store part read on the navigation lane and the protected read on main. */
 async function benchmark(profile: "staging" | "development", repetitions: number) {
   process.env[RUNTIME_PROFILE_ENV] = profile;
   const [{ applicationDataWorkspace }, { composeProfileRuntime }, { acquireEntrypointAdmission }, { acquireRuntimeLifetimeLock },
-    { createComposedDashboardReadHost }, { composeSettings }, { activeSettingsRuntimeIdentity }] = await Promise.all([
+    { createComposedDashboardReadHost }, { composeSettings }, { activeSettingsRuntimeIdentity }, { buildSettingsEditor }] = await Promise.all([
     import("../../src/backend/app/config/runtime-isolation.js"),
     import("../../src/backend/app/composition/storage-compose.js"),
     import("../../src/backend/storage/admission/bootstrap-admission.js"),
@@ -27,6 +27,7 @@ async function benchmark(profile: "staging" | "development", repetitions: number
     import("../../src/backend/app/composition/dashboard/runtime-resources.js"),
     import("../../src/backend/app/composition/dashboard/settings.js"),
     import("../../src/backend/runtime/settings/settings-runtime.js"),
+    import("../../src/backend/runs/queries/settings-editor.js"),
   ]);
   const lock = await acquireRuntimeLifetimeLock(runtimeProfiles[profile].lockPort);
   try {
@@ -42,7 +43,7 @@ async function benchmark(profile: "staging" | "development", repetitions: number
         const lanes = createComposedDashboardReadHost({ admission: context.admission, database: context.database, clock: systemClock });
         try {
           // Each read alternates the fiscal year, so the main-thread document is built every time rather than reused.
-          let read = 0, protectedCpuMs = 0;
+          let read = 0, protectedCpuMs = 0, buildCpuMs = 0;
           const fiscalYear = systemClock.fiscalYear();
           const clock: Clock = { ...systemClock, fiscalYear: (at?: Date) => at === undefined ? fiscalYear + (read % 2) : systemClock.fiscalYear(at) };
           // The pair the dashboard resolves with (runtime-resources.ts), so the resolved fingerprint matches the persisted one.
@@ -55,24 +56,29 @@ async function benchmark(profile: "staging" | "development", repetitions: number
               // The protected store's read (OS keychain key and file authentication) stays on main by design; timed apart from the build.
               const cpu = process.threadCpuUsage();
               try { return context.credentials.read(); } finally { const used = process.threadCpuUsage(cpu); protectedCpuMs += (used.user + used.system) / 1000; }
-            } }, resolveSettings: context.resolveSettings });
+            } }, resolveSettings: context.resolveSettings, buildEditor: deps => {
+              const cpu = process.threadCpuUsage();
+              try { return buildSettingsEditor(deps); } finally { const used = process.threadCpuUsage(cpu); buildCpuMs += (used.user + used.system) / 1000; }
+            } });
           // The warm-up reads the other fiscal year, so the first sample builds too.
           read = 1;
           await editable();
           const samples = [];
           for (read = 0; read < repetitions; read++) {
-            protectedCpuMs = 0;
+            protectedCpuMs = 0; buildCpuMs = 0;
             const cpu = process.threadCpuUsage(), started = systemClock.monotonicMs();
             await editable();
             const used = process.threadCpuUsage(cpu), mainCpuMs = (used.user + used.system) / 1000;
-            samples.push({ mainCpuMs, protectedReadCpuMs: protectedCpuMs, editorCpuMs: mainCpuMs - protectedCpuMs, wallMs: systemClock.monotonicMs() - started });
+            samples.push({ mainCpuMs, buildCpuMs, protectedReadCpuMs: protectedCpuMs, editorCpuMs: mainCpuMs - protectedCpuMs, wallMs: systemClock.monotonicMs() - started });
           }
           const stats = (values: readonly number[]) => ({ p50: percentile(values, 0.5), p95: percentile(values, 0.95), max: Math.max(...values) });
-          const editor = samples.map(sample => sample.editorCpuMs);
+          const build = samples.map(sample => sample.buildCpuMs);
           return { profile, node: process.version, commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
             host: { cpus: availableParallelism(), loadavg: loadavg() },
             mainCpuMs: stats(samples.map(sample => sample.mainCpuMs)), protectedReadCpuMs: stats(samples.map(sample => sample.protectedReadCpuMs)),
-            editorCpuMs: stats(editor), gate: { measure: "editorCpuMs", limitMs: 5, pass: Math.max(...editor) <= 5 }, samples };
+            // editorCpuMs also holds the lane reply's per-reply admission on main (#986), which G6 does not gate.
+            editorCpuMs: stats(samples.map(sample => sample.editorCpuMs)), buildCpuMs: stats(build),
+            gate: { measure: "buildCpuMs", limitMs: 5, everySampleBuilt: build.every(ms => ms > 0), pass: build.every(ms => ms > 0) && Math.max(...build) <= 5 }, samples };
         } finally { await lanes.close(); }
       } finally { await owner.close(); }
     } finally { admission.release(); }
