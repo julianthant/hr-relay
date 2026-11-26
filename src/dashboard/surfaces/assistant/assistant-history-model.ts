@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { z } from 'zod';
 import {
-  ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, ASSISTANT_HISTORY_METADATA_MAX_UNITS, AssistantModelPreferenceViewSchema, type AssistantConversationView, type AssistantFailureCode,
+  ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, ASSISTANT_HISTORY_METADATA_MAX_UNITS, AssistantModelPreferenceViewSchema, type AssistantM1ConversationWire, type AssistantFailureCode,
   type AssistantHistoryOperation, type AssistantHistoryResult, type AssistantHistoryView, type AssistantModelPreferenceView, type AssistantReceipt,
 } from '../../../models/dashboard/assistant.js';
 import { deriveStableUuid } from '../../../rules/identity/stable-uuid.js';
@@ -9,8 +9,9 @@ import { systemClock } from '../../../rules/time/clock.js';
 import type { AssistantQueries } from '../../client/index.js';
 import type { HubChat, HubChatsPort } from '../shell/hub-shell-model.js';
 import type { AssistantMessage, AssistantState } from './assistant-model.js';
+import { replyText } from './assistant-reply-parts-model.js';
 
-/** The stored caption of a live card; restored history shows that the card is gone instead. */
+/** The stored caption of a card from before typed yes; restored history shows that the card is gone instead. */
 export const ASSISTANT_PROPOSAL_CAPTION = 'Review this proposal. No action has been applied.';
 const RESTORED_PROPOSAL = 'This earlier request is no longer available. Ask again.';
 export const ASSISTANT_UNSAVED_REPLY = 'The reply was not saved. Do not resend it; ask again as a new message.';
@@ -59,28 +60,29 @@ function chatOf(summary: AssistantHistoryView['chats'][number], now: number): Hu
   const days = Math.floor((today.getTime() - new Date(created).setHours(0, 0, 0, 0)) / 86_400_000);
   return { id: summary.id, title: summary.title, minutes: Math.max(0, Math.floor((now - created.getTime()) / 60_000)), group: days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : 'Earlier' };
 }
-/** Restored transcript from served rows: no card, no Confirm, and the delivery of every turn stated. */
-export function restoredState(view: AssistantConversationView): AssistantState | undefined {
+/** Restored transcript from served rows: replies keep their parts, older cards and decisions read as captions, and the delivery of every turn is stated. */
+export function restoredState(view: AssistantM1ConversationWire): AssistantState | undefined {
   const messages: AssistantMessage[] = [];
   const notice = () => { if (view.importNotice !== null) messages.push({ id: `${view.id}-import-notice`, role: 'assistant', text: IMPORT_NOTICES[view.importNotice] }); };
   if (view.importTotal === 0) notice();
   for (const row of view.messages) {
-    if (row.kind === 'proposal' && row.text === ASSISTANT_PROPOSAL_CAPTION) messages.push({ id: row.id, role: 'assistant', text: RESTORED_PROPOSAL });
-    else messages.push({ id: row.id, role: row.role, text: row.text });
+    const text = replyText(row.payload.parts);
+    if (row.kind === 'proposal' && text === ASSISTANT_PROPOSAL_CAPTION) messages.push({ id: row.id, role: 'assistant', text: RESTORED_PROPOSAL });
+    else messages.push({ id: row.id, role: row.role, text, ...(row.payload.recording.kind === 'reply' ? { parts: row.payload.parts } : {}) });
     if (row.kind === 'turn' && row.delivery === 'refused' && row.code !== null) messages.push({ id: `${row.id}-refused`, role: 'assistant', text: ASSISTANT_FAILURES[row.code], code: row.code });
     if (row.kind === 'turn' && row.delivery === 'delivery-unknown') messages.push({ id: `${row.id}-unknown`, role: 'assistant', text: ASSISTANT_UNSAVED_REPLY });
     if (row.kind === 'turn' && row.delivery === 'sending') messages.push({ id: `${row.id}-sending`, role: 'assistant', text: PENDING_REPLY });
     if (row.ordinal === view.importTotal) notice();
   }
   if (messages.length === 0 && !view.draft) return undefined;
-  return { draft: view.draft, messages, sequence: view.messages.length, restored: true, turn: { state: 'idle' } };
+  return { draft: view.draft, messages, sequence: view.messages.length, restored: true, turn: { state: 'idle' }, sessions: view.sessions };
 }
 
 type Client = Required<Pick<AssistantQueries, 'assistantHistory' | 'assistantConversation' | 'assistantHistoryWrite'>>;
 export async function createAssistantHistory(client: Client, storage: Pick<Storage, 'getItem' | 'removeItem'>, profileId: string, signal: AbortSignal) {
   const key = OLD_KEY + z.uuid().parse(profileId);
   let view: AssistantHistoryView = { chats: [], selectedId: null };
-  const conversations = new Map<string, AssistantConversationView>();
+  const conversations = new Map<string, AssistantM1ConversationWire>();
   let notice = '', blocked = false;
   /** The old key stays authoritative and sending pauses until a reload. */
   const block = (text: string) => { notice = text; blocked = true; };
@@ -126,7 +128,7 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
         return served !== undefined && served.title === chat.title && served.draft === (transcript?.draft ?? '') && served.composer === (transcript?.composer ?? '')
           && served.importTotal === expected.length && served.importNotice === importBatches(chat.id, chat.title, transcript)[0]?.notice
           && expected.every((message, index) => { const row = served.messages[index];
-            return row !== undefined && row.id === message.messageId && row.ordinal === index + 1 && row.role === message.role && row.text === message.text; });
+            return row !== undefined && row.id === message.messageId && row.ordinal === index + 1 && row.role === message.role && replyText(row.payload.parts) === message.text; });
       });
       if (!complete) throw Error('ASSISTANT_HISTORY_UNSAVED');
       storage.removeItem(key);
@@ -179,6 +181,8 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
     has: (id: string) => conversations.has(id),
     read: (id: string) => { const conversation = conversations.get(id); return conversation === undefined ? undefined : restoredState(conversation); },
     revision: requireRevision,
+    /** Re-reads one chat, so its session chips show current status and Stop. */
+    refresh: (id: string) => refresh(id),
     /** A send's receipt advances the cached revision; the served rows are re-read in the background. */
     receipt(receipt: AssistantReceipt) {
       const conversation = conversations.get(receipt.conversationId);
@@ -195,8 +199,6 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
         : `${turn.id}-${turn.delivery === 'refused' ? 'refused' : turn.delivery === 'delivery-unknown' ? 'unknown' : 'sending'}`;
       return restoredState(conversation)?.messages.find(message => message.id === reply);
     },
-    /** Re-reads one chat; the decision caption it holds for `actionId`, if any. */
-    async decision(id: string, actionId: string) { await refresh(id); return conversations.get(id)?.messages.find(row => row.kind === 'decision' && row.actionId === actionId)?.text; },
     async local(id: string, text: string) {
       try { await write({ operation: 'local', conversationId: id, expectedRevision: requireRevision(id), messageId: crypto.randomUUID(), text }); await refresh(id); }
       catch { notice = ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNSAVED; changed(); }
