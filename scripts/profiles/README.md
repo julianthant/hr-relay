@@ -45,6 +45,16 @@ thin dates across the last 90 days. The generated history uses synthetic labels 
 outside the worker and gate stores. The command prints counts by workflow, state, and notification
 kind and lists the skipped child-only workflows.
 
+The seed also fills today, from Pacific midnight, with sample runs for every served workflow in
+each live state: queued, running at a mid step, cancelling, needs Duo (only for workflows with a
+browser), waiting at a gate, paused, and a few finished. Person Lookup also gets a finished group
+with one done and one cancelled person, which reads Partial. Hidden workflows get no live runs or
+cards. Sessions gets sample worker and browser cards in every state, with IDs like
+`person-lookup-sample-9001` that real workers never use. The worker on the cancelling run reads
+as stopping. Every action on a sample run is refused with "Sample run: nothing runs." Stop or
+close on a sample card removes it until the dashboard restarts. The executor never sees these runs and no browser starts. The output adds
+`todayByState` and `sessionsByState`.
+
 Run the same command again to replace the synthetic history. A profile refresh replaces the
 imported archive, so run the seed again after importing a newer backup.
 

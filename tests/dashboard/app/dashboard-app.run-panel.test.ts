@@ -10,7 +10,7 @@ import { FIXTURE_IDENTITY_GATE } from '../../support/fixtures/dashboard/run-deta
 import { DashboardClientProvider } from '../../../src/dashboard/state/client-context.js';
 import { RowRevisionSchema } from '../../../src/models/dashboard/primitives.js';
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from '../../support/helpers/dashboard/mock-world/fixture-queue.js';
-import { DashboardCommandRequestSchema, type DashboardCommandRequest } from '../../../src/rules/commands/commands.js';
+import { CommandResultSchema, DashboardCommandRequestSchema, type DashboardCommandRequest } from '../../../src/rules/commands/commands.js';
 import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../support/helpers/dashboard/mock-world/workflow-composition.js';
 import { serveRunPanel, streamingRunPanel } from '../../support/helpers/dashboard/serve-run-panel.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
@@ -44,7 +44,9 @@ it('shows the day-loading failure for a selected run instead of calling the run 
   assert.equal(text.includes('is not in the loaded queue'), false);
 });
 
-for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps a Logs confirmation bound to its mounted run: ${destination}`, async () => {
+for (const destination of ['confirm', 'other-run', 'no-run', 'sample-refused'] as const) it(destination === 'sample-refused'
+  ? 'shows a refused sample approval as one toast without a Logs badge or notification'
+  : `keeps a Logs confirmation bound to its mounted run: ${destination}`, async () => {
   const run = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId === FIXTURE_IDS.openGateRun);
   assert(run);
   const { app } = createFixtureBff();
@@ -56,7 +58,12 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
     runSection: async (runId, section, cursor, signal) => runId === run.runId && section === 'identity-gate'
       ? RunDetailSectionResponseSchema.parse({ section, payload: { state: 'available', value: oneClick } }) : transport.runSection(runId, section, cursor, signal),
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: 'live' }); return streamingRunPanel(input, client); },
-    executeCommand: async (raw: unknown) => { sent.push(DashboardCommandRequestSchema.parse(raw)); return transport.executeCommand(raw); } };
+    executeCommand: async (raw: unknown) => {
+      const request = DashboardCommandRequestSchema.parse(raw);
+      sent.push(request);
+      return destination === 'sample-refused' ? CommandResultSchema.parse({ state: 'rejected', commandId: request.commandId,
+        code: 'SAMPLE_RUN_REFUSED', message: 'Sample run: nothing runs.' }) : transport.executeCommand(raw);
+    } };
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogsComposition }) })));
@@ -72,7 +79,7 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
   assert.ok(dialog.textContent?.includes('Approve this identity'), dialog.textContent ?? '');
   const confirm = [...dialog.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Approve');
   assert(confirm);
-  if (destination !== 'confirm') {
+  if (destination === 'other-run' || destination === 'no-run') {
     const other = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId !== run.runId);
     assert(other);
     const target = destination === 'other-run' ? `&run=${other.runId}` : '';
@@ -88,6 +95,8 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
     assert.equal(sent.length, 0, 'a retained confirmation cannot dispatch after its Logs owner unmounted');
     return;
   }
+  const bell = document.querySelector('button[aria-label^="Notifications,"]');
+  const previousCount = bell?.getAttribute('aria-label');
   await act(async () => { confirm.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
   assert.equal(sent.length, 1);
   const envelope = sent[0];
@@ -95,6 +104,13 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
   if (envelope.family === 'gate') assert.deepEqual(envelope.target, { runId: run.runId, gateId: 'identity-approval', expectedVersion: run.rowRevision });
   assert.deepEqual(envelope.family === 'gate' && envelope.type === 'answer-identity-gate' ? envelope.payload : undefined,
     { decision: 'approved', gateRef: oneClick.gateRef, optionRef: oneClick.options[0]?.ref });
+  if (destination === 'sample-refused') {
+    const message = 'Sample run: nothing runs.';
+    assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent), [message]);
+    assert.ok(!host.querySelector('.dashboard-log-column')?.textContent?.includes(message), 'Logs does not retain the sample refusal');
+    assert.ok(bell);
+    assert.equal(bell.getAttribute('aria-label'), previousCount);
+  }
 });
 
 for (const catchesUp of [false, true]) it(`retains stale Logs while the streamed panel is behind the row and ${catchesUp ? 'loads once the stream catches up' : 'stays stale without a day refresh while it lags'}`, async () => {

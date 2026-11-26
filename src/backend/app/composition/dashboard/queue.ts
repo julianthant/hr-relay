@@ -11,6 +11,7 @@ import { BrowserSystemIdSchema, LocalDateSchema, WorkflowIdSchema } from "../../
 import { systemIdFactory } from "../../../../rules/identity/identifiers.js";
 import { capturedInstantClock, localDatePart, systemClock, type Clock } from "../../../../rules/time/clock.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
+import type { CopySamples } from "./copy-samples.js";
 
 import {
   AuthorityDatabase,
@@ -29,7 +30,8 @@ type ProjectionAuthority = ProjectionInput["authority"];
 /** The store reads and process facts a queue projection reads, over one connection. */
 function operatorAuthority(input: Readonly<{ database: AuthorityDatabase; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
   descriptors: ProjectionInput["descriptors"];
-  workerMembers?: () => readonly WorkerMemberView[]; workerStartupPending?: (workflowId: string) => boolean }>): ProjectionAuthority {
+  workerMembers?: () => readonly WorkerMemberView[]; workerStartupPending?: (workflowId: string) => boolean;
+  samples?: Pick<CopySamples, "slots" | "leases"> }>): ProjectionAuthority {
   const { database, descriptors } = input;
   const changeKey = database.trackAuthorityTables(["runs", "run_batches", "worker_pools"]);
   return {
@@ -47,10 +49,11 @@ function operatorAuthority(input: Readonly<{ database: AuthorityDatabase; reader
     listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
     listGateResults: runId => database.authority.gateResults.listByRun(runId),
     listWorkerSlots: () => database.authority.workerSlots.list(),
+    ...(input.samples === undefined ? {} : { listSampleWorkerSlots: input.samples.slots }),
     listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
     ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
     ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }),
-    heldDuoLeases: workerId => database.heldDuoLeases(workerId),
+    heldDuoLeases: workerId => input.samples?.leases(workerId) ?? database.heldDuoLeases(workerId),
     listWorkerPools: () => database.authority.workerPools.list(),
     listRunBatches: () => database.authority.runSessions.list(),
     getRunBatch: (id) => database.authority.runSessions.get(id),
@@ -239,10 +242,13 @@ function createDayLane(lanes: DashboardReadLanes, workerMembers: () => readonly 
 export function createOperatorProjection(input: Omit<ProjectionInput, "authority" | "timeline" | "assistantUsage" | "dayLane" | "replica"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
   workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
   /** With lanes, the day is built on the navigation lane from its replica; the pool's members are then required. */
-  readLanes?: DashboardReadLanes }) {
+  readLanes?: DashboardReadLanes;
+  /** A copy's sample Sessions cards, served beside the durable worker slots. */
+  samples?: Pick<CopySamples, "slots" | "leases"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors } = input;
   let dayLane: DashboardDayLane | undefined;
-  if (input.readLanes !== undefined) {
+  // The lane replica cannot read main's in-memory sample cards, so a seeded copy builds its day on main.
+  if (input.readLanes !== undefined && input.samples === undefined) {
     if (input.workerMembers === undefined) throw new Error("queue-day-lane-worker-members-required");
     dayLane = createDayLane(input.readLanes, input.workerMembers, input.workerStartupPending ?? (() => false));
   }
@@ -258,7 +264,8 @@ export function createOperatorProjection(input: Omit<ProjectionInput, "authority
     queueCapabilities: workflowQueueCapabilities,
     authority: operatorAuthority({ database, reader: input.reader, descriptors,
       ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
-      ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }) }),
+      ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }),
+      ...(input.samples === undefined ? {} : { samples: input.samples }) }),
     descriptors,
     ...(dayLane === undefined ? {} : { dayLane }),
   });

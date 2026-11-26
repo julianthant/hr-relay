@@ -1,4 +1,5 @@
 // Conflicts and rejections are refusals; settle every result arm before reporting success.
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { commandResultEffect } from "../../../rules/commands/command-lifecycle.js";
 import type { CommandResult } from "../../../rules/commands/commands.js";
 import { DashboardClientError } from "../../client/errors.js";
@@ -102,4 +103,8 @@ export function commandFailureToast(failure: CommandDispatchFailure): CommandFai
 
 export function runStartRefusalToast(description: string) {
   return { tone: "danger" as const, title: "Run not started", description, duration: 6000 };
+}
+
+export function sampleRunRefusalToast() {
+  return { tone: "danger" as const, title: ERROR_CATALOG.SAMPLE_RUN_REFUSED.text };
 }

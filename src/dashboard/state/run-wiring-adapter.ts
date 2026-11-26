@@ -1104,8 +1104,10 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const retainedCommand = useMemo<typeof command>(() => retainedEnvelope === undefined || retainedState === undefined ? undefined
     : { owner: commandOwner, envelope: retainedEnvelope, state: retainedState, feedback: retainedFeedback },
   [commandOwner, retainedEnvelope, retainedState, retainedFeedback]);
-  const currentCommand = command?.owner === commandOwner && command !== undefined && commandApplies(command)
+  const sampleRefusedId = newest?.outcome?.kind === "refused" && newest.outcome.feedback.code === "SAMPLE_RUN_REFUSED" ? newest.request.commandId : undefined;
+  const visibleCommand = command?.owner === commandOwner && command !== undefined && commandApplies(command)
     && (command.state !== "refused" || newest === undefined || newest.request.commandId === command.envelope.commandId) ? command : retainedCommand;
+  const currentCommand = visibleCommand?.envelope.commandId === sampleRefusedId ? undefined : visibleCommand;
   const replayEnvelope = currentCommand?.state === "uncertain" ? currentCommand.envelope : undefined;
   const replay = useCallback(() => { if (replayEnvelope !== undefined) void send(replayEnvelope, true); }, [replayEnvelope, send]);
   return { ...value, onDecision: answerable && binding !== undefined && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onDecision : undefined,
