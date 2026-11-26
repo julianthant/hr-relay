@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { RunIdSchema } from "../../../../rules/identity/ids.js";
 import { PositiveIntegerTextSchema, rawRouteQuery } from "./request-parameters.js";
-import { readRunDetail } from "../../../runs/queries/run-detail.js";
+import { readRunAttemptHistoryBody, readRunDetailBody } from "../../../runs/queries/run-detail.js";
 import { SectionUnavailableError } from "../../../runs/commands/refusals.js";
 import { ItemAttemptHistoryRequestSchema } from "../../../../models/dashboard/item-attempt-history.js";
 
@@ -17,14 +17,15 @@ const AttemptHistoryQuerySchema = z.strictObject({
 export function registerRunDetailRoutes(app: DashboardApp, deps: RunDetailRouteDeps): void {
   app.get("/api/v1/runs/:runId", async (c) => {
     const { runId } = RunPathSchema.parse(c.req.param());
-    return c.json(await readRunDetail(deps.runDetail, runId, c.req.raw.signal));
+    return c.body(await readRunDetailBody(deps.runDetail, runId, c.req.raw.signal, c.req.header("x-relay-tab")), 200, { "Content-Type": "application/json" });
   });
   app.get("/api/v1/runs/:runId/attempt-history", async (c) => {
     const { runId } = RunPathSchema.parse(c.req.param());
     const request = AttemptHistoryQuerySchema.parse(rawRouteQuery(c.req.url));
-    const query = deps.runDetail.itemAttemptHistory;
-    if (query === undefined) throw new SectionUnavailableError("same-item attempt history is not composed");
-    return c.json(query.read(runId, request));
+    if (deps.runDetail.itemAttemptHistory === undefined) throw new SectionUnavailableError("same-item attempt history is not composed");
+    return c.body(await readRunAttemptHistoryBody(
+      deps.runDetail, runId, request, c.req.raw.signal, c.req.header("x-relay-tab"),
+    ), 200, { "Content-Type": "application/json" });
   });
 
 }

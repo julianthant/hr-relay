@@ -4,7 +4,7 @@ import { SectionNameSchema } from "../../../runs/queries/run-read.js";
 import { rawRouteQuery, RunSectionQuerySchema } from "./request-parameters.js";
 import type { TrustRouteDeps } from "./trust-types.js";
 
-import { readRunSection } from "../../../runs/queries/run-detail.js";
+import { readRunSectionBody } from "../../../runs/queries/run-detail.js";
 import {
   readDiagnosticBundle,
   readDiagnosticBundleAttachment,
@@ -125,12 +125,13 @@ export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): vo
   app.get("/api/v1/runs/:runId/:section", async (c) => {
     const { runId, section } = SectionPathSchema.parse(c.req.param());
     const { cursor } = RunSectionQuerySchema.parse(rawRouteQuery(c.req.url));
-    return c.json(await readRunSection(
+    return c.body(await readRunSectionBody(
       deps.runDetail,
       runId,
       section,
       cursor,
       c.req.raw.signal,
-    ));
+      c.req.header("x-relay-tab"),
+    ), 200, { "Content-Type": "application/json" });
   });
 }

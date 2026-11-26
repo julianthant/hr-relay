@@ -1,3 +1,5 @@
+import { existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { parentPort } from "node:worker_threads";
 import { z } from "zod";
 import "../../../../src/backend/storage/sqlite/dashboard-background-read-worker.js";
@@ -38,6 +40,23 @@ export const laneTimedSleep = defineLaneRead(import.meta.url, "lane-timed-sleep"
 /** laneBackground that also reports when the lane started and finished it. */
 export const laneTimedBackground = defineLaneRead(import.meta.url, "lane-timed-background", { lane: "navigation", priority: "background",
   args: SleepSchema, run: (_context, args) => timed(args) });
+
+const BarrierSchema = z.strictObject({ tag: z.string().min(1), dir: z.string().min(1) });
+/** Writes `started` in `dir`, then holds the lane until the test writes `release` there. */
+function barrier(args: z.infer<typeof BarrierSchema>) {
+  runs += 1;
+  writeFileSync(join(args.dir, "started"), "");
+  const deadline = performance.now() + 10_000;
+  while (!existsSync(join(args.dir, "release"))) {
+    if (performance.now() > deadline) throw new Error("fixture barrier never released");
+    Atomics.wait(pause, 0, 0, 5);
+  }
+  return { tag: args.tag, run: runs };
+}
+
+/** Background navigation read held on an explicit barrier the test releases. */
+export const laneBackgroundBarrier = defineLaneRead(import.meta.url, "lane-background-barrier", { lane: "navigation", priority: "background",
+  args: BarrierSchema, run: (_context, args) => barrier(args) });
 
 /** Search-lane read; shape A routes it to the navigation worker. */
 export const laneSearch = defineLaneRead(import.meta.url, "lane-search", { lane: "search", priority: "interactive", args: SleepSchema,
@@ -122,8 +141,17 @@ export const laneRollbackFails = defineLaneRead(import.meta.url, "lane-rollback-
 /** Posts a reply for a read the host never sent before its real reply: the host must restart the lane. */
 export const laneMismatchedReply = defineLaneRead(import.meta.url, "lane-mismatched-reply", { lane: "navigation", priority: "interactive",
   args: z.strictObject({}), run() {
-    parentPort?.postMessage({ kind: "read-failed", id: 2 ** 30, message: "forged-reply" });
+    parentPort?.postMessage({ kind: "read-failed", ids: [2 ** 30], message: "forged-reply" });
     return { forged: true };
+  } });
+
+/** Posts a forged body for known in-flight ids at a chosen begin position before its real reply: the host must refuse the batch. */
+export const laneForgedBatch = defineLaneRead(import.meta.url, "lane-forged-batch", { lane: "navigation", priority: "interactive",
+  args: z.strictObject({ ids: z.array(z.number().int().positive()).min(1), beginSeq: z.number().int().nonnegative() }), run(_context, args) {
+    parentPort?.postMessage({ kind: "read", ids: args.ids, body: JSON.stringify({ forged: true }), cached: false, beginSeq: args.beginSeq,
+      position: { source: "forged", schemaVersion: 1, schemaCookie: 0, authorityGeneration: 0, changeLogSeq: 0, timelineThrough: null,
+        processRevision: null, validUntil: null } });
+    return { forged: false };
   } });
 
 /** A read that reports a position from its own snapshot; the reply must carry it. */
