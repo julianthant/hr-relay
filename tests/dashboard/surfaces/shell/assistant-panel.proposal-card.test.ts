@@ -45,7 +45,7 @@ describe('assistant proposal card rows', () => {
     const { facts } = render(withRows([{ title: 'Separation 4502', display: { kind: 'document', documentNumber: '4502' } }],
       { label: 'Start Separations', targetLabel: '1 document', dryRun: true, startPlan: { ...start.startPlan, workflowId: 'separations', dryRun: true,
         stopBefore: 'Clear Pending Terminations', planned: [{ title: 'Separation 4502', display: { kind: 'document', documentNumber: '4502' } }] } }, 'separations'));
-    expect(facts.at(-1)).toEqual(['Effect', `${START_EFFECT} Stops before Clear Pending Terminations.`]);
+    expect(facts.at(-1)).toEqual(['Effect', `${START_EFFECT} Stops before the commit.`]);
   });
   it('refuses a stop step on a card that is not a dry run', () => {
     expect(() => withRows([person('Sample, Avery', '10101010')], { startPlan: { ...start.startPlan, stopBefore: 'UCPath transaction', planned: [person('Sample, Avery', '10101010')] } })).toThrow();
