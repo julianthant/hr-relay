@@ -3,11 +3,11 @@ import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 import type { DashboardActionHandler } from "../../../../../src/dashboard/surfaces/shared/actions/actions.js";
 import { LogPanel } from "../../../../../src/dashboard/surfaces/run-detail/log-panel.js";
 import { RunStateChips } from "../../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
-import { Pause, RotateCw, Square } from "lucide-react";
+import { Pause, Square } from "lucide-react";
 import { ConfirmDialog } from "../../../../../src/dashboard/ds/ui.js";
 import { queueRowTitle } from "../../../../../src/dashboard/surfaces/queue/queue-model.js";
-import { LogFooterButton } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-action-button.js";
-import { rerunFooterAction } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
+import { LogHeaderButton } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-action-button.js";
+import { rerunAction } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
 import { answeredRow, type LogDecision } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
 import type { LogDecisionHandler } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed.js";
 import type { LogStep } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
@@ -43,12 +43,7 @@ export function LogPreview({ selection, onAction }: { selection?: LogSelection; 
     });
   };
   const cancelPreview = (id: string) => setEdited(current => ({ basis, timeline: current?.basis === basis ? current.timeline : scenario.timeline, steps: answerSteps(current, id, "cancel-run", "Cancel run") }));
-  return <LogPanel key={basis} status={selection === undefined ? undefined : <RunStateChips row={selection.row} />} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : cancelPreview} footerActions={scenarioId === "preview" || scenarioId === "selected" ? <>{selection && <PreviewMemberControls selection={selection} onAction={onAction} />}{previewRerun(selection, onAction)}</> : undefined} />;
-}
-
-function previewRerun(selection: LogSelection | undefined, onAction?: DashboardActionHandler) {
-  const rerun = rerunFooterAction(selection, onAction);
-  return rerun === undefined ? undefined : <LogFooterButton label={rerun.label} icon={<RotateCw aria-hidden className="size-4" />} onClick={rerun.run} />;
+  return <LogPanel key={basis} status={selection === undefined ? undefined : <RunStateChips row={selection.row} />} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : cancelPreview} headerActions={scenarioId === "preview" || scenarioId === "selected" ? selection && <PreviewMemberControls selection={selection} onAction={onAction} /> : undefined} rerun={scenarioId === "preview" || scenarioId === "selected" ? rerunAction(selection, onAction) : undefined} />;
 }
 
 /** A fixture has no clock; the preview answer carries a fixed instant. */
@@ -68,8 +63,8 @@ function PreviewMemberControls({ selection, onAction }: { selection: LogSelectio
   const stop = row.actions.find(action => action.kind === "command" && action.command === "cancel");
   const run = (action: typeof pause) => { if (action !== undefined) void onAction?.(action, target); };
   return <>
-    <LogFooterButton label={`Pause ${title}`} icon={<Pause aria-hidden className="size-4" />} onClick={() => run(pause)} />
-    <LogFooterButton label={`Stop ${title}`} icon={<Square aria-hidden className="size-4" />} onClick={() => setConfirming(true)} />
+    <LogHeaderButton label={`Pause ${title}`} icon={<Pause aria-hidden className="size-4" />} onClick={() => run(pause)} />
+    <LogHeaderButton label={`Stop ${title}`} icon={<Square aria-hidden className="size-4" />} onClick={() => setConfirming(true)} />
     <ConfirmDialog open={confirming} onOpenChange={setConfirming} title={`Stop ${title}?`} description="Relay stops this run after its current step. Nothing already saved is undone." confirmLabel="Stop" destructive
       onConfirm={() => { setConfirming(false); run(stop); }} />
   </>;

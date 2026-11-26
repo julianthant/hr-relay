@@ -1,16 +1,20 @@
 /** Run panel stories: header, timeline, Logs, decision and failure cards, write states, captures, OCR review and the dry-run plan. */
+import type { Page } from "@playwright/test";
+import { ArrowLeft, Pause, Square } from "lucide-react";
 import type { ReactNode } from "react";
 import type { z } from "zod";
 import { WriteStateSchema } from "../../../../../../src/models/trust/failure.js";
 import { projectFailureDisplay } from "../../../../../../src/models/dashboard/failure-display.js";
 import type { RunDecisionType } from "../../../../../../src/models/dashboard/run-decision.js";
-import type { QueueStatusSchema } from "../../../../../../src/models/dashboard/projection.js";
+import { QueueMemberTargetSchema, type QueueStatusSchema } from "../../../../../../src/models/dashboard/projection.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../../src/models/failures/error-catalog.js";
 import { ErrorCodeSchema, IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
 import { Badge, Banner, Notice, FailureNotice } from "../../../../../../src/dashboard/ds/ui.js";
 import { LogPanel } from "../../../../../../src/dashboard/surfaces/run-detail/log-panel.js";
+import { LogActionButton, LogHeaderButton } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-action-button.js";
+import type { LinkedRunEntry } from "../../../../../../src/dashboard/surfaces/run-detail/linked-runs-model.js";
 import { RunStateChips } from "../../../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
-import { LogFeedPadding, LogSkeleton, LogTimelineSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
+import { LogFeedPadding, LogSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
 import { FullDryRunPreview } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
 import type { DryRunPreviewStage } from "../../../../../../src/dashboard/surfaces/run-detail/logs/dry-run-preview-model.js";
 import type { AnsweredKind, LogDecision } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
@@ -48,10 +52,13 @@ interface PanelProps {
   timeline: readonly LogTimelineStage[];
   status?: ReactNode;
   toolbar?: ReactNode;
+  headerActions?: ReactNode;
+  linkedRuns?: readonly LinkedRunEntry[];
   navigation?: ReactNode;
   content?: ReactNode;
   trailingContent?: ReactNode;
   initialStepId?: string;
+  rerun?: { label: string; run: () => void };
 }
 
 /** The Logs column as the dashboard lays it out, beside an empty queue column. */
@@ -98,6 +105,24 @@ const TIMELINE = {
   completed: timelineStory("completed"), active: timelineStory("active"), waiting: timelineStory("waiting"), failed: timelineStory("failed"),
   pending: timelineStory("pending"), skipped: timelineStory("skipped"), cancelled: timelineStory("cancelled"),
 } satisfies Record<LogTimelineState, Story>;
+
+const headerRun = (title: string, play: (page: Page) => Promise<void>, ready: string): Story => ({
+  ...panel(title, { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("done", 40)} />, rerun: { label: "Rerun", run: noop } }), play, ready });
+const search = (text?: string) => async (page: Page): Promise<void> => {
+  await page.getByRole("button", { name: "Search logs" }).click();
+  if (text !== undefined) await page.getByRole("textbox", { name: "Search logs" }).fill(text);
+};
+const LOG_HEADER = {
+  default: panel("The run header: steps, search and the menu", { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("done", 40)} />, rerun: { label: "Rerun", run: noop } }),
+  "search-matches": headerRun("Search with matches", search("employment"), "text=/\\d+ of \\d+/"),
+  "search-none": headerRun("Search with no matches", search("badge"), "text=\"No matches\""),
+  "search-child": { ...panel("Search on a running dry-run child run", { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("running", 41, { dryRun: true })} />,
+    toolbar: <LogActionButton variant="ghost" label="Back to Emergency Contact batch" aria-label="Back to Emergency Contact batch" className="max-w-48" icon={<ArrowLeft aria-hidden className="size-4 shrink-0" />} text={<span className="min-w-0 truncate">Emergency Contact batch</span>} />,
+    headerActions: <><LogHeaderButton label="Pause Alex Morgan" icon={<Pause aria-hidden className="size-4" />} onClick={noop} /><LogHeaderButton label="Stop Alex Morgan" icon={<Square aria-hidden className="size-4" />} onClick={noop} /></>,
+    linkedRuns: [{ relation: "Parent", name: "Emergency Contact batch", workflow: "Emergency Contact", status: "Running", target: QueueMemberTargetSchema.parse({ section: "logs", runId: "00000000-0000-4000-8000-000000000001", partitionDay: "2026-08-03", workflowId: "emergency-contact", label: "Emergency Contact", panelKind: "run", status: "running" }) }] }),
+    play: search("employment"), ready: "text=/\\d+ of \\d+/" },
+  "menu-open": headerRun("The ⋯ menu open", async page => { await page.getByRole("button", { name: "More actions" }).press("Enter"); }, "[role='menu']"),
+} satisfies Record<string, Story>;
 
 const PAUSE = {
   "pause-pending": panel("A run asked to pause at the next step", { steps: readingSteps, timeline: pauseTimeline(reading, "pause-pending") }),
@@ -189,7 +214,7 @@ const ENTRY = {
 const LOGS_READ_FAILED = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_READ_FAILED_TITLE", {})).text;
 const LOGS_UNAVAILABLE = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_UNAVAILABLE_TITLE", {})).text;
 const LOGS = {
-  loading: { ...panel("Logs still loading", { steps: [], timeline: [], navigation: <LogTimelineSkeleton />, content: <LogFeedPadding><LogSkeleton /></LogFeedPadding> }), slowFetch: { region: READY } },
+  loading: { ...panel("Logs still loading", { steps: [], timeline: [], content: <LogFeedPadding><LogSkeleton /></LogFeedPadding> }), slowFetch: { region: READY } },
   refreshing: panel("Logs refreshing", { steps: readingSteps, timeline: reading, toolbar: <Badge tone="neutral">Refreshing</Badge> }),
   "refresh-failed": panel("Logs that could not refresh", { steps: readingSteps, timeline: reading,
     toolbar: <Notice tone="danger" title={LOGS_READ_FAILED} description="Relay could not refresh these logs." /> }),
@@ -227,6 +252,6 @@ const REVIEW = {
 } satisfies Record<ReviewCase, Story>;
 
 export const RUN_PANEL_STORIES = defineSurface("run-panel", {
-  header: HEADER, timeline: TIMELINE, pause: PAUSE, logs: LOGS, decision: DECISION, card: CARD, answered: ANSWERED,
+  header: HEADER, "log-header": LOG_HEADER, timeline: TIMELINE, pause: PAUSE, logs: LOGS, decision: DECISION, card: CARD, answered: ANSWERED,
   write: WRITE, failure: FAILURE, capture: CAPTURE, "capture-problem": CAPTURE_PROBLEM, entry: ENTRY, note: NOTE, "dry-run": DRY_RUN, review: REVIEW,
 });

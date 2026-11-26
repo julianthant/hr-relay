@@ -70,9 +70,9 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const account = accountOwner?.port;
   useEffect(() => {
     if (profileTarget === undefined) return;
-    // Account reads expire with the showing loader's deadline: the one still open from before it showed, or a fresh one after an earlier loader's ended.
+    // Account reads expire with the showing loader's deadline: the one still open from before it showed, or a fresh one after an earlier loader's ended that adopts its pending reads.
     let deadline = startupDeadlineClient(profileClient);
-    const startDeadline = () => (deadline = deadline.pending() ? deadline : startupDeadlineClient(profileClient));
+    const startDeadline = () => (deadline = deadline.pending() ? deadline : startupDeadlineClient(profileClient, deadline));
     const port = createServedChatGptAccountPort(new Proxy({}, { get: (_, key): unknown => Reflect.get(deadline.client, key) }) as ChatGptAccountQueries);
     const ocr = createServedPreflightOcrPort(profileClient, port);
     setAccountOwner({ scope: accountScope, port, ocr, startDeadline, duoKeys: {
