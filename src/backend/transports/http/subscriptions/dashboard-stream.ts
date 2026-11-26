@@ -258,8 +258,8 @@ export function framedEnvelopeText(envelope: DashboardStreamEnvelope): string | 
 /** The refusal its route would have answered; a server failure is read again, a refusal is a value.
  * An error with no text, or one the route's mapper cannot describe, is a failed read. */
 function refusedRow(key: RunId, error: unknown): { row: RunPanelRow; retry: boolean } {
-  if (errorText(error) === "") return { row: failedRow(key), retry: true };
   try {
+    if (errorText(error) === "") return { row: failedRow(key), retry: true };
     const { status, body } = failureStatus(error);
     const wire = WireErrorSchema.parse({ state: "error", code: body.code, message: body.message, retryable: body.retryable });
     return { row: { model: "run-panel", key, value: { state: "refused", error: wire } }, retry: status >= 500 };
