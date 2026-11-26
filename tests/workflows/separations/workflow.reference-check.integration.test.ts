@@ -286,6 +286,18 @@ describe("Separations composition with a reference spreadsheet", () => {
     for (const skipped of ["pending-set", "clear-pending", "file-termination"]) assert.deepEqual(c.nodeSpans(run, skipped), [["skipped", "step-omitted"]], skipped);
   });
 
+  it("refuses a manual approval whose Employee ID is not the run's before any write", async () => {
+    const c = await composition();
+    const review = (emplId: string) => [...OMIT_KRONOS, { step: "identity-review", facts: { emplId, ucpathName: COMPOSITION_UCPATH_NAME } }];
+    const wrong = await c.execute(c.begin([], false, review("10000009")));
+    assert.ok(wrong.lifecycle.state === "terminal" && wrong.lifecycle.outcome !== "done", JSON.stringify(wrong.lifecycle));
+    assert.deepEqual(c.commits(), []);
+    assert.deepEqual(c.writeIntents(wrong), []);
+    assert.deepEqual(c.nodeSpans(wrong, "pending-set"), [], "the run stops at the approval, before UCPath is touched");
+    const bound = await c.execute(c.begin([], false, review(COMPOSITION_EID)));
+    assert.ok(bound.lifecycle.state === "terminal" && bound.lifecycle.outcome === "done", JSON.stringify(bound.lifecycle));
+  });
+
   it("resumes past a skipped identity approval when the document carries the Employee ID and the Kronos timecard is omitted", async () => {
     const c = await composition({ documentEid: COMPOSITION_EID }), started = c.begin([c.missing()]);
     const parked = await c.execute(started);

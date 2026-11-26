@@ -349,7 +349,7 @@ export const IDENTITY_CHECK_OMISSION: StepManualDeclaration = {
 
 const IdentityReviewFactsSchema = z.strictObject({ emplId: EidSchema, ucpathName: z.string().min(1) });
 
-/** Off: no comparison and no approval prompt; the typed Employee ID is the operator's approval. */
+/** Off: no comparison and no approval prompt; typing the bound Employee ID is the operator's approval. */
 export const IDENTITY_REVIEW_OMISSION: StepManualDeclaration = {
   form: {
     fields: [
@@ -362,6 +362,8 @@ export const IDENTITY_REVIEW_OMISSION: StepManualDeclaration = {
       const typed = IdentityReviewFactsSchema.parse(facts);
       const plan = ReadSeparationPlanOutputSchema.parse(scope.outputs["plan"]);
       const employment = MatchActiveEmploymentOutputSchema.parse(scope.outputs[EMPLOYMENT_NODE]);
+      const { emplId } = SeparationsMatchSeparationSubject.output.parse(scope.outputs[SUBJECT_NODE]);
+      if (typed.emplId !== emplId) throw new Error(`the typed Employee ID ${typed.emplId} is not the run's Employee ID ${emplId}; nothing was written`);
       const cell = (value: typeof employment.department) => value.state === "present" ? value.value : `(unreadable: ${value.reason})`;
       return {
         documentNumber: plan.documentNumber,
@@ -565,7 +567,8 @@ export function buildIdentity({ task, gate, group }: Author, extraction: Extract
     },
   );
   const identityGate = gate(identityApprovalGate, [comparison]);
-  const approval = task(approvalNode, [comparison, identityGate, plan, employment], ({ outputs }) => ({
+  // The subject is read only by the manual approval, which must type its Employee ID.
+  const approval = task(approvalNode, [comparison, identityGate, plan, employment, subject], ({ outputs }) => ({
     packet: outputs[COMPARISON_NODE].packet,
     evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
     approval: outputs[GATE_NODE],
