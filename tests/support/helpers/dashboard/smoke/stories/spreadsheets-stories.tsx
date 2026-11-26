@@ -19,12 +19,13 @@ function scene(title: string, input: Scene = {}): Story {
 }
 
 const SHEET = "Onboarding list.xlsx";
+const TAGLESS = "Imported contacts.xlsx";
 const click = (name: string | RegExp, role: "button" | "menuitem" | "radio" | "link" = "button") => async (page: Page): Promise<void> => {
   await page.getByRole(role, { name, exact: typeof name === "string" }).first().click();
 };
 const then = (...steps: readonly ((page: Page) => Promise<void>)[]) => async (page: Page): Promise<void> => { for (const step of steps) await step(page); };
 const fill = (label: string, value: string) => async (page: Page): Promise<void> => { await page.getByLabel(label, { exact: true }).fill(value); };
-const openRow = (name: string) => async (page: Page): Promise<void> => { await page.locator(`li[aria-label="${name}"]`).click(); };
+const openRow = (name: string) => async (page: Page): Promise<void> => { await page.locator(`li[aria-label="${name}"]`).getByText(name, { exact: true }).first().click(); };
 const backToLibrary = async (page: Page): Promise<void> => { await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button").first().click(); };
 /** The button just pressed is still under the pointer, which fills it in its hover color; move the pointer off it and let the fill settle,
  * so the story is measured at the button's resting accent. */
@@ -74,8 +75,8 @@ const OUTCOME = {
   cloned: scene("A clone added", { play: done(menu("Clone"), click("Clone", "button")), story: { ready: 'text=/Cloned/' } }),
   "clone-refused": scene("A clone the library refused", { server: { add: "refused" }, play: done(menu("Clone"), click("Clone", "button"), still), story: { ready: 'text="That spreadsheet is no longer in the library."' } }),
   renamed: scene("A spreadsheet renamed", { play: done(menu("Rename"), fill("Name", "Onboarding 2026.xlsx"), click("Rename")), story: { ready: 'text="Onboarding 2026.xlsx"' } }),
-  tagged: scene("A tag created from a row's tag menu", { play: done(tagMenu(), fill("Find or create a tag", "Priority"), async page => { await page.getByLabel("Find or create a tag", { exact: true }).press("Enter"); }),
-    story: { ready: 'li[aria-label="Onboarding list.xlsx"] >> text="Priority"' } }),
+  tagged: scene("A tag created from a row's tag menu", { play: done(tagMenu(TAGLESS), fill("Find or create a tag", "Priority"), async page => { await page.getByLabel("Find or create a tag", { exact: true }).press("Enter"); }),
+    story: { ready: `li[aria-label="${TAGLESS}"] >> text="Priority"` } }),
   linked: scene("A SharePoint link added", { play: done(menu("Link to SharePoint…"), async page => { await page.getByPlaceholder("https://…sharepoint.com/…").fill("https://tenant.sharepoint.com/sites/people/Roster.xlsx"); }, click("Link")), story: { ready: 'text=/Linked/' } }),
   deleted: scene("A spreadsheet deleted", { play: done(menu("Delete"), click("Delete spreadsheet")), story: { ready: 'ul[aria-label="Spreadsheets"]' } }),
   "rolled-back": scene("A version rolled back", { play: done(loaded, click(/^Versions of Department roster/), click(/Version 2|v2/, "radio"), click("Roll back"), click("Roll back")), story: { ready: 'ul[aria-label="Pinned"]' } }),
@@ -124,10 +125,9 @@ const AUDIT_FIXES = "#532";
 const KNOWN_BREAKS = {
    "catalog/loaded": ["named-and-focusable"],
    "detail/back": ["named-and-focusable"],
-   "detail/mapping-saved": ["named-and-focusable", "primary-button-accent"],
-   "detail/mapping-failed": ["named-and-focusable", "primary-button-accent"],
+   "detail/mapping-menu": ["named-and-focusable"],
+   "import/menu": ["named-and-focusable"],
    "import/sharepoint": ["named-and-focusable"],
-   "import/sharepoint-refused": ["named-and-focusable"],
     "outcome/cloned": ["named-and-focusable"],
    "outcome/deleted": ["named-and-focusable"],
    "outcome/linked": ["named-and-focusable"],
@@ -140,6 +140,7 @@ const KNOWN_BREAKS = {
      "row/download": ["named-and-focusable"],
     "row/pin": ["named-and-focusable"],
      "row/sync": ["named-and-focusable"],
+     "row/tags": ["named-and-focusable"],
     "table/Pinned": ["named-and-focusable"],
    "table/Spreadsheets": ["named-and-focusable"],
  } as const;

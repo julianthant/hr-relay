@@ -8,21 +8,20 @@ test("imports both CSV sizes, opens their saved rows, and picks both as run refe
   await dashboard.openDataPage("Spreadsheets");
   await expect(page.getByText("No spreadsheets yet", { exact: true })).toBeVisible();
 
-  const dialog = page.getByRole("dialog", { name: "Import a spreadsheet" });
+  const file = page.locator('input[type="file"][aria-label="Spreadsheet file"]');
   const inputs = [{ name: "Small smoke roster", rows: 3 }, { name: "Large smoke roster", rows: 5_000 }];
   for (const { name, rows } of inputs) await test.step(`Import and open the ${rows}-row CSV`, async () => {
     const lastEid = String(10_000_000 + rows);
     const csv = ["Employee ID", ...Array.from({ length: rows }, (_, index) => String(10_000_001 + index))].join("\n");
     await page.getByRole("button", { name: "Import", exact: true }).first().click();
-    await dialog.locator('input[type="file"]').setInputFiles({ name: `${name}.csv`, mimeType: "text/csv", buffer: Buffer.from(csv) });
-    await expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue(name);
-    await dialog.getByRole("button", { name: "Next" }).click();
-    const columns = dialog.getByRole("button", { name: "Columns", exact: true });
-    await expect(columns).toHaveAttribute("aria-expanded", "true");
-    await columns.click();
-    await expect(columns).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("menuitem", { name: /From this computer/u })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await file.setInputFiles({ name: `${name}.csv`, mimeType: "text/csv", buffer: Buffer.from(csv) });
+    await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue(name);
+    await expect(page.getByText("Not in the library yet", { exact: true })).toBeVisible();
+    await expect(page.getByRole("listitem", { name, exact: true })).toHaveCount(0);
 
-    const save = dialog.getByRole("button", { name: "Add to library" });
+    const save = page.getByRole("button", { name: "Add to library" });
     await expect(save).toBeEnabled();
     const release = Promise.withResolvers<void>();
     let received = false;
@@ -41,7 +40,7 @@ test("imports both CSV sizes, opens their saved rows, and picks both as run refe
       release.resolve();
     }
 
-    await expect(dialog).toBeHidden();
+    await expect(save).toBeHidden();
     await expect(page.locator('[data-slot="toast-title"]').filter({ hasText: `Added ${name}` })).toBeVisible();
     const entry = page.getByRole("listitem", { name, exact: true });
     await expect(entry).toHaveCount(1);

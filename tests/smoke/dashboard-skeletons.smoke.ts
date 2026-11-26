@@ -9,7 +9,6 @@ import { expect, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.
 
 const SKELETON = '[data-slot="skeleton"]';
 const SHEETS = 'section[aria-label="Spreadsheets"]';
-const FILE_DIALOG = '[role="dialog"]';
 const RUN_PANEL = '[aria-label="Selected run logs"]';
 const QUEUE = '[aria-label="Queue"]';
 const RUN_LOADING = `${RUN_PANEL} div:has(> [aria-label="Loading logs"])`;
@@ -394,19 +393,16 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         }, hold);
       });
 
-      test("a held file read reserves the picked-file row in the import dialog", async ({ dashboard, page }) => {
+      test("a held file read reserves the draft page's grid", async ({ dashboard, page }) => {
         await dashboard.openDataPage("Spreadsheets");
         await expect(page.getByText("No spreadsheets yet", { exact: true })).toBeVisible();
-        await page.getByRole("button", { name: "Import", exact: true }).first().click();
-        const dialog = page.getByRole("dialog", { name: "Import a spreadsheet" });
-        const input = dialog.locator('input[type="file"]');
+        const input = page.locator('input[type="file"][aria-label="Spreadsheet file"]');
         const hold = await holdDashboardSkeletonRead(page, { fileName: FILE_NAME });
-        const loading = `${FILE_DIALOG} [data-loading-layout]`;
-        const fileRow = `${FILE_DIALOG} div:has(> button[aria-label="Remove file"])`;
+        const loading = `${SHEETS} [aria-label="Opening ${SHEET_NAME}"]`;
         await measure(page, input,
           () => input.setInputFiles({ name: FILE_NAME, mimeType: "text/csv", buffer: Buffer.from(CSV) }),
-          () => expect(dialog.getByRole("button", { name: "Remove file" })).toBeVisible(), {
-            pendingRegion: loading, bounds: { pending: loading, settled: fileRow },
+          () => expect(page.getByRole("searchbox", { name: "Search this sheet" })).toBeVisible(), {
+            pendingRegion: loading, bounds: { pending: loading, settled: `${SHEETS} section[aria-label="Preview"]` },
           }, hold, "change");
       });
 

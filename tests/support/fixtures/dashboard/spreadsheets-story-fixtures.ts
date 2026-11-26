@@ -168,6 +168,15 @@ export function sheetsStoryServer(options: SheetsStoryServerOptions = {}): Sheet
       const library = addLibrary(request.name ?? "Imported.xlsx");
       return json({ workbook: saved(library) });
     }
+    if (pathname === "/api/v1/workbooks" && method === "POST") {
+      const { workbook } = body as { workbook: EditableWorkbookWire };
+      if (options.add === "refused") return refusal("WORKBOOK_INVALID", "The library refused the spreadsheet.");
+      const library = addLibrary(workbook.name);
+      const first = library.entry.state.versions[0];
+      library.workbooks.set(first.id, { ...workbook, libraryId: library.entry.libraryId });
+      library.entry = { ...library.entry, updatedAt: first.savedAt };
+      return json(saved(library));
+    }
     const clone = /^\/api\/v1\/workbooks\/([^/]+)\/clone$/u.exec(pathname);
     if (clone !== null && method === "POST") {
       const source = libraries.get(decodeURIComponent(clone[1]));
