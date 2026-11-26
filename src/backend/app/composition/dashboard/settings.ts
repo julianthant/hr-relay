@@ -19,7 +19,11 @@ import type { EditableSettingsWire } from "../../../../models/dashboard/settings
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 
 const SETTINGS_TABLES = ["settings", "settings_snapshots"] as const;
-const SettingsStorePartSchema = z.strictObject({ record: SettingsFileRecordSchema, active: SettingsRuntimeIdentitySchema,
+const fileRecord = SettingsFileRecordSchema.shape;
+/** The store's authenticated record, as `readSettings` returns it: the file form's `lastApplied` is not part of it. */
+const StoredSettingsRecordSchema = z.strictObject({ revision: fileRecord.revision, settingsSchemaHash: fileRecord.settingsSchemaHash,
+  settingsFingerprint: fileRecord.settingsFingerprint, settings: fileRecord.settings });
+const SettingsStorePartSchema = z.strictObject({ record: StoredSettingsRecordSchema, active: SettingsRuntimeIdentitySchema,
   activeConfig: StoredConfigSchema, activePreferences: PersonPreferencesSchema });
 
 /** The store part of the settings editor: the saved record, the active identity and its snapshot. Protected settings never reach a lane. */
