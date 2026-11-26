@@ -291,8 +291,6 @@ describe("asking for a re-check", () => {
     assert.equal(served.reruns(), 1, "returning from Settings asks for no second re-check");
     await dialog.rerender({ open: false });
     await dialog.rerender({ open: true });
-    // A reopen keeps the stage it was closed on.
-    await dialog.press("Back");
     await reachChecks(dialog);
     assert.equal(served.reruns(), 2, "a reopened dialog may ask once more");
   });
