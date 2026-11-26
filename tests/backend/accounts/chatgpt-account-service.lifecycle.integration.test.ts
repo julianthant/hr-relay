@@ -17,7 +17,7 @@ it("walks every lifecycle phase and event against the design table", () => {
   const states: Record<ChatGptLifecycle["phase"], ChatGptLifecycle> = {
     idle: { phase: "idle", epoch: 5 },
     "signing-in": { phase: "signing-in", epoch: 5, attempt: current },
-    "signing-out": { phase: "signing-out", epoch: 5, lifetime: out },
+    "signing-out": { phase: "signing-out", epoch: 5, attempt: current, lifetime: out },
     closed: { phase: "closed", epoch: 5, attempt: other, lifetime: out },
   };
   const events = {
@@ -39,8 +39,8 @@ it("walks every lifecycle phase and event against the design table", () => {
     "signing-in": { "sign-in": "CHATGPT_AUTH_BUSY", release: { phase: "idle", epoch: 5 }, "release-other": "same",
       cancel: { phase: "signing-in", epoch: 6 }, "cancel-stale": "same",
       "sign-out": { phase: "signing-out", epoch: 6 }, "sign-out-done": "same", "sign-out-done-other": "same", close: { phase: "closed", epoch: 6 } },
-    "signing-out": { "sign-in": "CHATGPT_AUTH_BUSY", release: "same", "release-other": "same", cancel: "same", "cancel-stale": "same",
-      "sign-out": "CHATGPT_AUTH_BUSY", "sign-out-done": { phase: "idle", epoch: 5 }, "sign-out-done-other": "same", close: { phase: "closed", epoch: 6 } },
+    "signing-out": { "sign-in": "CHATGPT_AUTH_BUSY", release: { phase: "signing-out", epoch: 5 }, "release-other": "same", cancel: "same", "cancel-stale": "same",
+      "sign-out": "CHATGPT_AUTH_BUSY", "sign-out-done": { phase: "signing-in", epoch: 5 }, "sign-out-done-other": "same", close: { phase: "closed", epoch: 6 } },
     closed: { "sign-in": "CHATGPT_SERVICE_CLOSED", release: "same", "release-other": "same", cancel: "same", "cancel-stale": "same",
       "sign-out": "same", "sign-out-done": "same", "sign-out-done-other": "same",
       // Every close advances the epoch.
@@ -56,11 +56,19 @@ it("walks every lifecycle phase and event against the design table", () => {
       if (expected === "same") { assert.equal(next, state, cell); continue; }
       assert.deepEqual({ phase: next.phase, epoch: next.epoch }, expected, cell);
       if (next.phase === "signing-in") assert.equal(next.attempt, name === "sign-in" ? events["sign-in"].attempt : current, cell);
-      if (next.phase === "signing-out") assert.equal(next.lifetime, events["sign-out"].lifetime, cell);
+      // A sign-out keeps the attempt it drains until that attempt is released.
+      if (next.phase === "signing-out") assert.deepEqual([next.attempt, next.lifetime], name === "release" ? [undefined, out]
+        : [phase === "signing-in" ? current : undefined, events["sign-out"].lifetime], cell);
       // Closed keeps the attempt or sign-out it drains, so an overlapping close waits for it too.
       if (next.phase === "closed") assert.deepEqual([next.attempt, next.lifetime], phase === "signing-in" ? [current, undefined]
-        : phase === "signing-out" ? [undefined, out] : phase === "closed" ? [other, out] : [undefined, undefined], cell);
+        : phase === "signing-out" ? [current, out] : phase === "closed" ? [other, out] : [undefined, undefined], cell);
     }
+});
+
+it("ends a sign-out idle once the attempt it drained is released", () => {
+  const drained = fakeAttempt(5), out = lifetime();
+  const released = nextChatGptLifecycle({ phase: "signing-out", epoch: 6, attempt: drained, lifetime: out }, { kind: "release", attempt: drained });
+  assert.deepEqual(nextChatGptLifecycle(released, { kind: "sign-out-done", lifetime: out }), { phase: "idle", epoch: 6 });
 });
 
 it("walks every attempt step and event against the design table", () => {

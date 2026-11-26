@@ -1,7 +1,7 @@
-import type { PreflightSelection, PreflightReadinessWire } from "../../../../models/preflight/preflight-contract.js";
-import type { createPreflightAuthority } from "../../../../models/preflight/preflight.js";
+import type { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
+
+type PreflightReportService = ReturnType<typeof createPreflightReportService>;
 
 export interface SettingsPreflightRouteDeps {
-  readonly clock: import("../../../../rules/time/clock.js").Clock;
-  readonly preflight: Pick<ReturnType<typeof createPreflightAuthority>, "execute"> & { read?: (selection?: PreflightSelection) => PreflightReadinessWire };
+  readonly preflight: Pick<PreflightReportService, "execute"> & Partial<Pick<PreflightReportService, "read">>;
 }

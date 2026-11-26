@@ -8,6 +8,7 @@ import { schemaError } from "../errors.js";
 
 export interface ChatGptAccountQueries {
   chatGptAccount(): Promise<z.infer<typeof ChatGptAccountStatusSchema>>;
+  checkChatGptAccount(signal?: AbortSignal): Promise<z.infer<typeof ChatGptAccountStatusSchema>>;
   startChatGptSignIn(input: ChatGptSignInRequest): Promise<z.infer<typeof ChatGptSignInStartResultSchema>>;
   completeChatGptSignIn(attemptId: string, signal?: AbortSignal): Promise<z.infer<typeof ChatGptSignInCompletionSchema>>;
   cancelChatGptSignIn(attemptId: string, signal?: AbortSignal): Promise<z.infer<typeof ChatGptCancelResultSchema>>;
@@ -17,6 +18,11 @@ export interface ChatGptAccountQueries {
 export function createChatGptAccountQueries(transport: DashboardTransport): ChatGptAccountQueries {
   return Object.freeze({
     async chatGptAccount() { return parseOrThrow(ChatGptAccountStatusSchema, "GET /api/v1/settings/chatgpt-account", await transport.requestJson("/api/v1/settings/chatgpt-account")); },
+    async checkChatGptAccount(signal?: AbortSignal) {
+      const path = "/api/v1/settings/chatgpt-account/check";
+      return parseOrThrow(ChatGptAccountStatusSchema, `POST ${path}`, await transport.requestJson(path,
+        { method: "POST", body: JSON.stringify(ChatGptEmptyRequestSchema.parse({})), ...(signal === undefined ? {} : { signal }) }));
+    },
     async startChatGptSignIn(input: ChatGptSignInRequest) {
       const path = "/api/v1/settings/chatgpt-account/sign-in";
       return parseOrThrow(ChatGptSignInStartResultSchema, `POST ${path}`, await transport.requestJson(path,

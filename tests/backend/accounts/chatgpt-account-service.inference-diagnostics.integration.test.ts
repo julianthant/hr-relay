@@ -112,7 +112,7 @@ it.each(["discovery", "jwks", "token"] as const)("retains the 64,000-byte %s bud
       return Response.json({ ...body, private: "PRIVATE_AUTH_CANARY".repeat(4000) });
     } });
     service.setDebugEvents(f.debugEvents);
-    await assert.rejects(service.refreshAccount(), { code: "CHATGPT_AUTH_INVALID" });
+    assert.equal((await service.checkStatus()).connection.failureCode, "CHATGPT_AUTH_INVALID");
     assert.deepEqual(f.repository.read(), before); assert.equal(f.records.length, 1);
     const payload = f.records[0].payload; assert.equal(payload.kind, "debug");
     if (payload.kind !== "debug") throw new Error("auth diagnostic required");

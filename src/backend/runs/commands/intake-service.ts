@@ -43,6 +43,7 @@ import { TargetNotFoundError } from "./refusals.js";
 
 
 export const INTAKE_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+export const INTAKE_UPLOAD_SIZE_MESSAGE = `an intake upload may not exceed ${String(INTAKE_UPLOAD_MAX_BYTES)} bytes`;
 
 
 const INTAKE_UPLOAD_MEDIA_TYPES = Object.freeze([
@@ -59,7 +60,7 @@ const IntakeUploadRequestSchema = z.strictObject({
   workbookSource: WorkbookIntakeSourceSchema.optional(),
   byteLength: z.number().int().positive().max(
     INTAKE_UPLOAD_MAX_BYTES,
-    `an intake upload may not exceed ${String(INTAKE_UPLOAD_MAX_BYTES)} bytes`,
+    INTAKE_UPLOAD_SIZE_MESSAGE,
   ),
 });
 

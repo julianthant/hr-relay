@@ -7,9 +7,9 @@ import { STARTUP_READ_DEADLINE_MS } from "../../state/use-bootstrap.js";
 
 export const SLOW_STARTUP_MS = 5_000;
 export { STARTUP_READ_DEADLINE_MS };
-// Reads a first screen can make. Writes are never expired: one may still land after its answer is dropped.
+// Reads a first screen can make, and the account check its next read repeats. Writes are never expired: one may still land after its answer is dropped.
 const FIRST_SCREEN_READS = new Set(["activityPopulation", "activityReport", "applicationLifecycle", "assistantActivity", "assistantConversation", "assistantHistory",
-  "assistantModelPreference", "assistantModels", "calendar", "chatGptAccount", "editableSettings", "intakeSession", "itemAttemptHistory", "notificationCollection",
+  "assistantModelPreference", "assistantModels", "calendar", "chatGptAccount", "checkChatGptAccount", "editableSettings", "intakeSession", "itemAttemptHistory", "notificationCollection",
   "notificationSnapshot", "notificationStatus", "preflightScopes", "readActivityPopulation", "readPreflight", "readiness", "runDetail", "runHistoryStatus", "runSection",
   "settingsFacts", "workbookCatalog", "workbookCompatibility", "workbookHistory", "workbookList", "workbookRevision", "workbookTypes", "workflowExplorer"]);
 const STILL_LOADING = '[data-slot="skeleton"], [data-loading-layout], [aria-busy="true"]:not(button)';
@@ -22,10 +22,10 @@ export const FirstScreenRevealedContext = createContext(true);
  * lifts in one step. Reads still pending at the startup deadline fail into their own part's notice
  * (startupDeadlineClient), so the loader always ends on a settled screen.
  */
-export function useFirstScreen(screen: RefObject<HTMLElement | null>, mounted: boolean, client: DashboardClient) {
+export function useFirstScreen(screen: RefObject<HTMLElement | null>, mounted: boolean, client: DashboardClient, startDeadline?: () => StartupDeadline) {
   const [revealed, setRevealed] = useState(false);
   const [slow, setSlow] = useState(false);
-  const deadline = useMemo(() => startupDeadlineClient(client), [client]);
+  const deadline = useMemo(() => startDeadline?.() ?? startupDeadlineClient(client), [startDeadline, client]);
   useEffect(() => {
     const timer = setTimeout(() => setSlow(true), SLOW_STARTUP_MS);
     return () => clearTimeout(timer);
@@ -45,6 +45,8 @@ export function useFirstScreen(screen: RefObject<HTMLElement | null>, mounted: b
   }, [screen, mounted, revealed, deadline]);
   return { revealed: mounted && revealed, slow, client: deadline.client };
 }
+
+export type StartupDeadline = ReturnType<typeof startupDeadlineClient>;
 
 /** The dashboard client for the first screen: until `end`, a first-screen read still pending at `expire` fails as a read failure and its late answer is dropped. */
 export function startupDeadlineClient(client: DashboardClient) {
@@ -88,5 +90,7 @@ export function startupDeadlineClient(client: DashboardClient) {
     client: proxy as DashboardClient,
     expire: () => { open = false; for (const expire of [...expiries]) expire(); expiries.clear(); },
     end: () => { open = false; expiries.clear(); },
+    /** True until `expire` or `end`. */
+    pending: () => open,
   };
 }

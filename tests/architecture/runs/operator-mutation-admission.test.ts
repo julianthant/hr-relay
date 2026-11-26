@@ -1,189 +1,194 @@
-import { dashboardRouteSource } from "../dashboard/helpers/dashboard-route-source.js";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { REPO_ROOT } from "../support/helpers/guard-files.js";
+import { dirname, resolve } from "node:path";
 import { describe, it } from "vitest";
+import { dashboardRouteRegistrations, publicProfileRouteRegistrations } from "../dashboard/helpers/dashboard-route-source.js";
+import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
-
-
-type Admission =
-  | { readonly guard: "operatorMutationIngressGuard" | "operatorOpaqueIngressGuard" }
-  | { readonly inline: string };
+type Admission = "operatorMutationIngressGuard" | "operatorOpaqueIngressGuard" | "preflightRerunIngressGuard";
 
 const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
-  "/api/v1/storage/run-history/clear": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/storage/run-history/result": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/assistant/respond": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/assistant/action": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/assistant/history": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/assistant/conversations/:conversationId/attachments": { guard: "operatorOpaqueIngressGuard" },
-  "/api/v1/debug/errors": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/preflight/rerun": { inline: "inspectLoopbackOrigin(c.req.header(\"origin\"))" },
-  "/api/v1/exports/xlsx": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/exports/search": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/start-plans": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/rerun-warnings": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/workbooks": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/workbooks/types": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/workbooks/import": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/workbooks/:libraryId/clone": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/workbooks/:libraryId/library-actions": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/workbooks/:libraryId/save": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/workbooks/:libraryId/intake": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/intake/files": { guard: "operatorOpaqueIngressGuard" },
-  "/api/v1/ocr/files": { guard: "operatorOpaqueIngressGuard" },
-  "/api/v1/commands": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/commands/bulk": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/settings/chatgpt-account/sign-in": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/settings/chatgpt-account/sign-out": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/settings/chatgpt-account/test-ocr": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/settings/path-picker": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/storage/run-history/clear": "operatorMutationIngressGuard",
+  "/api/v1/storage/run-history/result": "operatorMutationIngressGuard",
+  "/api/v1/assistant/respond": "operatorMutationIngressGuard",
+  "/api/v1/assistant/action": "operatorMutationIngressGuard",
+  "/api/v1/assistant/history": "operatorMutationIngressGuard",
+  "/api/v1/assistant/conversations/:conversationId/attachments": "operatorOpaqueIngressGuard",
+  "/api/v1/debug/errors": "operatorMutationIngressGuard",
+  "/api/v1/preflight/rerun": "preflightRerunIngressGuard",
+  "/api/v1/exports/xlsx": "operatorMutationIngressGuard",
+  "/api/v1/exports/search": "operatorMutationIngressGuard",
+  "/api/v1/start-plans": "operatorMutationIngressGuard",
+  "/api/v1/rerun-warnings": "operatorMutationIngressGuard",
+  "/api/v1/workbooks": "operatorMutationIngressGuard",
+  "/api/v1/workbooks/types": "operatorMutationIngressGuard",
+  "/api/v1/workbooks/import": "operatorMutationIngressGuard",
+  "/api/v1/workbooks/:libraryId/clone": "operatorMutationIngressGuard",
+  "/api/v1/workbooks/:libraryId/library-actions": "operatorMutationIngressGuard",
+  "/api/v1/workbooks/:libraryId/save": "operatorMutationIngressGuard",
+  "/api/v1/workbooks/:libraryId/intake": "operatorMutationIngressGuard",
+  "/api/v1/intake/files": "operatorOpaqueIngressGuard",
+  "/api/v1/ocr/files": "operatorOpaqueIngressGuard",
+  "/api/v1/commands": "operatorMutationIngressGuard",
+  "/api/v1/commands/bulk": "operatorMutationIngressGuard",
+  "/api/v1/settings/chatgpt-account/check": "operatorMutationIngressGuard",
+  "/api/v1/settings/chatgpt-account/sign-in": "operatorMutationIngressGuard",
+  "/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel": "operatorMutationIngressGuard",
+  "/api/v1/settings/chatgpt-account/sign-out": "operatorMutationIngressGuard",
+  "/api/v1/settings/chatgpt-account/test-ocr": "operatorMutationIngressGuard",
+  "/api/v1/settings/path-picker": "operatorMutationIngressGuard",
 });
 
-const MUTATION_ROUTE = /app\.(post|put|patch|delete)\(\s*"([^"]+)"/g;
-const USE_LINE = /app\.use\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)/g;
+const MUTATION_METHODS = new Set(["post", "put", "patch", "delete"]);
 
-const UNCLASSIFIED_REGISTRATION = /app\.(all|on|route)\(|app\.(post|put|patch|delete)\(\s*[^"\s]/g;
-
-interface Audit {
-  readonly mutations: readonly string[];
-  readonly violations: readonly string[];
-}
-
-export function auditOperatorMutationAdmission(source: string, table: Readonly<Record<string, Admission>>): Audit {
+function auditOperatorMutationAdmission(
+  source: ReturnType<typeof dashboardRouteRegistrations>,
+  table: Readonly<Record<string, Admission>>,
+) {
   const mutations: string[] = [];
-  const violations: string[] = [];
-  const uses = new Map<string, { guard: string; index: number }>();
-  for (const match of source.matchAll(USE_LINE)) {
-    const [, path, guard] = match;
-    if (path === undefined || guard === undefined || match.index === undefined) continue;
-    uses.set(path, { guard, index: match.index });
-  }
-  for (const match of source.matchAll(MUTATION_ROUTE)) {
-    const [, method, path] = match;
-    if (method === undefined || path === undefined || match.index === undefined) continue;
+  const violations = [...source.violations];
+  const { registrations } = source;
+  for (const [index, route] of registrations.entries()) {
+    const { method, path } = route;
+    if (!MUTATION_METHODS.has(method)) continue;
     mutations.push(path);
-    const admission = table[path];
-    if (admission === undefined) {
-      violations.push(`${method.toUpperCase()} ${path} is browser-reachable but has no admission row`);
+    const label = `${method.toUpperCase()} ${path}`;
+    const expected = table[path];
+    if (expected === undefined) {
+      violations.push(`${label} is browser-reachable but has no admission row`);
       continue;
     }
-    if ("inline" in admission) {
-      const handlerStart = match.index;
-      const nextRoute = source.slice(handlerStart + 1).search(/app\.(get|post|put|patch|delete|use)\(/);
-      const handler = source.slice(handlerStart, nextRoute === -1 ? undefined : handlerStart + 1 + nextRoute);
-      if (!handler.includes(admission.inline)) {
-        violations.push(`${method.toUpperCase()} ${path} declares an inline door but its handler does not contain ${admission.inline}`);
-      }
-      continue;
-    }
-    const use = uses.get(path) ?? [...uses.entries()].filter(([pattern]) => pattern.endsWith("/*") && path.startsWith(pattern.slice(0, -1)))
-      .sort(([left], [right]) => right.length - left.length)[0]?.[1];
-    if (use === undefined) {
-      violations.push(`${method.toUpperCase()} ${path} has no app.use("${path}", ${admission.guard}) line`);
-    } else if (use.guard !== admission.guard) {
-      violations.push(`${method.toUpperCase()} ${path} is guarded by ${use.guard}, the table says ${admission.guard}`);
-    } else if (use.index > match.index) {
-      violations.push(`${method.toUpperCase()} ${path} registers its guard AFTER the route; Hono runs middleware in registration order`);
+    const guardedUses = registrations.flatMap((use, position) => {
+      const matches = use.path === "*" || use.path === path || (use.path.endsWith("/*") && path.startsWith(use.path.slice(0, -1)));
+      return use.method === "use" && matches && use.firstGuard !== undefined ? [{ position, guard: use.firstGuard }] : [];
+    });
+    const guard = guardedUses.find(({ position }) => position < index)?.guard ?? route.firstGuard;
+    if (guard === expected) continue;
+    if (guard !== undefined) {
+      violations.push(`${label} is guarded by ${guard}, the table says ${expected}`);
+    } else if (guardedUses.some(use => use.position > index && use.guard === expected)) {
+      violations.push(`${label} registers its guard AFTER the route`);
+    } else {
+      violations.push(`${label} has no leading ${expected} middleware`);
     }
   }
   for (const path of Object.keys(table)) {
     if (!mutations.includes(path)) violations.push(`admission row ${path} names a route the source no longer registers`);
   }
-  for (const match of source.matchAll(UNCLASSIFIED_REGISTRATION)) {
-    const line = source.slice(0, match.index).split("\n").length;
-    violations.push(`line ${String(line)} registers a route with a shape this guard does not classify (${match[0].trim()}); use app.<method>("<literal path>") and add its admission row`);
-  }
-  return Object.freeze({ mutations: Object.freeze(mutations), violations: Object.freeze(violations) });
+  return { mutations, violations };
 }
 
 describe("operator mutation admission", () => {
-  const source = dashboardRouteSource();
-
   it("admits every browser-reachable mutating route through a loopback Host/Origin door registered before it", () => {
-    const audit = auditOperatorMutationAdmission(source, ADMITTED_MUTATIONS);
+    const audit = auditOperatorMutationAdmission(dashboardRouteRegistrations(), ADMITTED_MUTATIONS);
     assert.deepEqual(audit.violations, []);
     assert.deepEqual([...audit.mutations].sort(), Object.keys(ADMITTED_MUTATIONS).sort());
   });
 
   it("admits the public profile routes before request-body effects", () => {
-    const publicSource = readFileSync(resolve(REPO_ROOT, "src/backend/app/composition/dashboard/profile-session-routes.ts"), "utf8");
     const table = Object.fromEntries(["sign-in", "resume", "sign-up", "logout", "delete-account", "onboarding/duo/browser", "onboarding/duo/reopen", "onboarding/duo/portal", "onboarding/duo/start", "onboarding/duo/confirm",
       "onboarding/duo/cancel", "onboarding/cancel", "onboarding/complete", "account/password", "account/username", "account/details", "account/duo-keys",
       "duo/reenrol/begin", "duo/reenrol/read", "duo/reenrol/browser", "duo/reenrol/reopen", "duo/reenrol/portal", "duo/reenrol/start", "duo/reenrol/confirm",
-      "duo/reenrol/cancel-attempt", "duo/reenrol/cancel", "duo/reenrol/commit"].map(path => [`/api/v1/profile/${path}`, { guard: "operatorMutationIngressGuard" as const }]));
-    assert.deepEqual(auditOperatorMutationAdmission(publicSource, table).violations, []);
-  });
-
-  it("catches an unguarded route, a late guard, a wrong guard, a missing inline door, a stale row and every unclassified registration shape", () => {
-    const fixture = [
-      'app.use("/api/v1/guarded", operatorMutationIngressGuard);',
-      'app.post("/api/v1/guarded", handler);',
-      'app.post("/api/v1/naked", handler);',
-      'app.post("/api/v1/late", handler);',
-      'app.use("/api/v1/late", operatorMutationIngressGuard);',
-      'app.use("/api/v1/wrong", operatorOpaqueIngressGuard);',
-      'app.post("/api/v1/wrong", handler);',
-      'app.post("/api/v1/inline", async (c) => { return c.json({}); });',
-      'app.get("/api/v1/read", handler);',
-      'app.on("POST", "/api/v1/listed", handler);',
-      'app.route("/api/v1/mounted", subApp);',
-      'app.all("/api/v1/any", handler);',
-      'app.post(`/api/v1/${prefix}/templated`, handler);',
-    ].join("\n");
-    const audit = auditOperatorMutationAdmission(fixture, {
-      "/api/v1/guarded": { guard: "operatorMutationIngressGuard" },
-      "/api/v1/late": { guard: "operatorMutationIngressGuard" },
-      "/api/v1/wrong": { guard: "operatorMutationIngressGuard" },
-      "/api/v1/inline": { inline: "inspectLoopbackOrigin(" },
-      "/api/v1/gone": { guard: "operatorOpaqueIngressGuard" },
-    });
-    assert.deepEqual(audit.mutations, ["/api/v1/guarded", "/api/v1/naked", "/api/v1/late", "/api/v1/wrong", "/api/v1/inline"]);
-    assert.deepEqual(audit.violations, [
-      "POST /api/v1/naked is browser-reachable but has no admission row",
-      "POST /api/v1/late registers its guard AFTER the route; Hono runs middleware in registration order",
-      "POST /api/v1/wrong is guarded by operatorOpaqueIngressGuard, the table says operatorMutationIngressGuard",
-      "POST /api/v1/inline declares an inline door but its handler does not contain inspectLoopbackOrigin(",
-      "admission row /api/v1/gone names a route the source no longer registers",
-      'line 10 registers a route with a shape this guard does not classify (app.on(); use app.<method>("<literal path>") and add its admission row',
-      'line 11 registers a route with a shape this guard does not classify (app.route(); use app.<method>("<literal path>") and add its admission row',
-      'line 12 registers a route with a shape this guard does not classify (app.all(); use app.<method>("<literal path>") and add its admission row',
-      'line 13 registers a route with a shape this guard does not classify (app.post(`); use app.<method>("<literal path>") and add its admission row',
-    ]);
+      "duo/reenrol/cancel-attempt", "duo/reenrol/cancel", "duo/reenrol/commit"].map(path => [`/api/v1/profile/${path}`, "operatorMutationIngressGuard"] as const));
+    const audit = auditOperatorMutationAdmission(publicProfileRouteRegistrations(), table);
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual([...audit.mutations].sort(), Object.keys(table).sort());
   });
 });
 
+const ENTRY = resolve(REPO_ROOT, "src/backend/transports/http/routes/fixture-api.ts");
+const CHILD = resolve(dirname(ENTRY), "fixture-child.ts");
 
-it("audits imported registrations at the call site and detects relocated unguarded mutations", () => {
-  const entry = resolve("/route-proof/api.ts");
-  const child = resolve("/route-proof/child.ts");
-  const root = `import { attachChild } from "./child.js";
+function fixtureRegistrations(body: string, child?: string) {
+  const root = `
+    import { Hono } from "hono";
+    import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
+    import { register as attachChild } from "./fixture-child.js";
     export function createDashboardApp() {
-      app.use("/guarded", operatorMutationIngressGuard);
-      attachChild(app);
-    }`;
-  const sources = new Map([
-    [entry, root],
-    [child, `export function attachChild(app) {
-      app.post("/guarded", handler);
-      app.post("/unguarded", handler);
-    }`],
+      const app = new Hono();
+      ${body}
+    }
+  `;
+  return dashboardRouteRegistrations(ENTRY, "createDashboardApp", file => {
+    if (file === ENTRY) return root;
+    if (file === CHILD && child !== undefined) return child;
+    throw new Error(`unknown fixture: ${file}`);
+  });
+}
+
+it("checks the ordered middleware arguments and refuses unsupported registration shapes", () => {
+  const source = fixtureRegistrations(`
+    app.use("/guarded", operatorMutationIngressGuard);
+    app.post("/guarded", handler);
+    app.post("/naked", handler);
+    app.post("/late", handler);
+    app.use("/late", operatorMutationIngressGuard);
+    app.use("/wrong", operatorOpaqueIngressGuard);
+    app.post("/wrong", handler);
+    app.post("/inline", operatorMutationIngressGuard, handler);
+    app.post("/late-inline", handler, operatorMutationIngressGuard);
+    app.post("/in-handler", async c => { await c.req.json(); return operatorMutationIngressGuard(c, next); });
+    app.get("/read", handler);
+    const router = app;
+    router.on("POST", "/listed", handler);
+    router.route("/mounted", subApp);
+    router.all("/any", handler);
+    router.post(dynamicPath, handler);
+  `);
+  const audit = auditOperatorMutationAdmission(source, {
+    "/guarded": "operatorMutationIngressGuard",
+    "/late": "operatorMutationIngressGuard",
+    "/wrong": "operatorMutationIngressGuard",
+    "/inline": "operatorMutationIngressGuard",
+    "/late-inline": "operatorMutationIngressGuard",
+    "/in-handler": "operatorMutationIngressGuard",
+    "/gone": "operatorOpaqueIngressGuard",
+  });
+  assert.deepEqual(audit.mutations, ["/guarded", "/naked", "/late", "/wrong", "/inline", "/late-inline", "/in-handler"]);
+  assert.deepEqual(audit.violations.map(violation => violation.replace(/^.* has an unclassified Hono registration: /u, "")), [
+    'router.on("POST", "/listed", handler)',
+    'router.route("/mounted", subApp)',
+    'router.all("/any", handler)',
+    "router.post(dynamicPath, handler)",
+    "POST /naked is browser-reachable but has no admission row",
+    "POST /late registers its guard AFTER the route",
+    "POST /wrong is guarded by operatorOpaqueIngressGuard, the table says operatorMutationIngressGuard",
+    "POST /late-inline has no leading operatorMutationIngressGuard middleware",
+    "POST /in-handler has no leading operatorMutationIngressGuard middleware",
+    "admission row /gone names a route the source no longer registers",
   ]);
-  const read = (file: string): string => {
-    const source = sources.get(file);
-    if (source === undefined) throw new Error(`unknown fixture: ${file}`);
-    return source;
-  };
-  const table = { "/guarded": { guard: "operatorMutationIngressGuard" as const } };
-  assert.deepEqual(auditOperatorMutationAdmission(dashboardRouteSource(entry, read), table).violations,
+});
+
+it("resolves aliased Hono receivers and imported registrars at their call sites", () => {
+  const guard = 'app.use("/guarded", operatorMutationIngressGuard);';
+  const guarded = 'export function register(deps, router) { router.post("/guarded", handler); }';
+  const unguarded = `export function register(deps, router) {
+    const nested = router;
+    function unrelated(router) { router.post("/not-a-hono-route", handler); }
+    nested.post("/guarded", handler);
+    nested.post("/unguarded", handler);
+  }`;
+  const attach = "const alias = app; attachChild(deps, alias);";
+  const table = { "/guarded": "operatorMutationIngressGuard" as const };
+  assert.deepEqual(auditOperatorMutationAdmission(fixtureRegistrations(`${guard} ${attach}`, unguarded), table).violations,
     ["POST /unguarded is browser-reachable but has no admission row"]);
-  sources.set(child, `export function attachChild(app) { app.post("/guarded", handler); }`);
-  assert.deepEqual(auditOperatorMutationAdmission(dashboardRouteSource(entry, read), table).violations, []);
-  sources.set(entry, root.replace('app.use("/guarded", operatorMutationIngressGuard);', "")
-    .replace('attachChild(app);', 'attachChild(app); app.use("/guarded", operatorMutationIngressGuard);'));
-  assert.match(auditOperatorMutationAdmission(dashboardRouteSource(entry, read), table).violations[0] ?? "", /AFTER the route/u);
-  sources.set(child, "export function removed() {}");
-  assert.throws(() => dashboardRouteSource(entry, read), /registrar is missing/u);
+  assert.deepEqual(auditOperatorMutationAdmission(fixtureRegistrations(`${guard} ${attach}`, guarded), table).violations, []);
+  assert.deepEqual(auditOperatorMutationAdmission(fixtureRegistrations(`${attach} ${guard}`, guarded), table).violations,
+    ["POST /guarded registers its guard AFTER the route"]);
+  assert.throws(() => fixtureRegistrations(attach, "export function removed() {}"), /registrar is missing/u);
+  assert.throws(() => fixtureRegistrations(attach, "export function register(deps, { router }) {}"), /expected one Hono binding/u);
+});
+
+it.each([
+  "attachChild({ app });",
+  "attachChild({ router: app });",
+  "attachChild([app]);",
+  "attachChild(...[app]);",
+  "attachChild({ ...app });",
+  "const alias = app; attachChild({ alias });",
+  "return app;",
+])("fails closed when the Hono binding escapes through %s", source => {
+  const { registrations, violations } = fixtureRegistrations(source);
+  assert.deepEqual(registrations, []);
+  assert.equal(violations.length, 1);
+  assert.match(violations[0] ?? "", /unclassified Hono binding use: (app|alias)$/u);
 });

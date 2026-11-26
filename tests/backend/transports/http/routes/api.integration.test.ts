@@ -23,7 +23,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     vi.spyOn(h.projection, "runFold").mockImplementation(() => { throw cause; });
     const response = await h.app.request(`/api/v1/runs/${UUID_4}`);
     assert.equal(response.status, 500);
-    assert.equal((await json(response)).code, "INTERNAL_FAILURE");
+    assert.deepEqual(await json(response), {
+      state: "error", code: "INTERNAL_FAILURE", message: ERROR_CATALOG.INTERNAL_FAILURE.text, retryable: false,
+    });
     const records = h.database.authority.timelineEvents.debugPage({ limit: 1000 });
     const diagnostics = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "request-cause" ? [record.payload.event] : []);
     assert.equal(diagnostics.length, 1);
@@ -32,6 +34,22 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(diagnostics[0]?.stack, "TypeError\n    at src/backend/runs/queries/run-detail.ts:42:7");
     assert.equal(diagnostics[0]?.status, 500);
     assert.equal(/Quillan|Petra|private record/u.test(JSON.stringify(diagnostics)), false);
+  });
+
+  it.each(["/api/v1/commands", "/api/v1/commands/bulk"])("returns fixed text for malformed JSON at %s and logs the private cause", async (path) => {
+    const h = await harness();
+    const response = await h.app.request(path, {
+      method: "POST", headers: OPERATOR_JSON_HEADERS, body: "fixture invalid JSON",
+    });
+
+    assert.equal(response.status, 500);
+    assert.deepEqual(await json(response), {
+      state: "error", code: "INTERNAL_FAILURE", message: "The command request body must be valid JSON.", retryable: false,
+    });
+    const records = h.database.authority.timelineEvents.debugPage({ limit: 1000 });
+    const diagnostics = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "request-cause" ? [record.payload.event] : []);
+    assert.ok(diagnostics.some(event => event.message === "SyntaxError" && event.status === 500));
+    assert.doesNotMatch(JSON.stringify(diagnostics), /fixture invalid JSON/u);
   });
 
   it.each([
@@ -145,5 +163,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 });
 
-import { assertHttpFaultOnly, disposeHttpRouteHarness, faultAuthoritySnapshot, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
+import { assertHttpFaultOnly, disposeHttpRouteHarness, faultAuthoritySnapshot, harness, json, OPERATOR_JSON_HEADERS } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

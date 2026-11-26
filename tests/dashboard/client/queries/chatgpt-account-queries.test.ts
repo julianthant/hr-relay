@@ -74,3 +74,15 @@ it("rejects extra private fields and untrusted OCR failure text without retry", 
   }
 });
 
+
+it("posts exactly one empty account check with its signal and rejects a malformed status", async () => {
+  const calls: { url: string; init: RequestInit | undefined }[] = [], signal = new AbortController().signal;
+  let body: unknown = status;
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => { calls.push({ url, init }); return Response.json(body); } });
+  assert.deepEqual(await client.checkChatGptAccount(signal), status);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "http://127.0.0.1:3938/api/v1/settings/chatgpt-account/check");
+  assert.equal(calls[0].init?.method, "POST"); assert.equal(calls[0].init?.body, "{}"); assert.equal(calls[0].init?.signal, signal);
+  body = { ...status, accessToken: "synthetic-private" };
+  await assert.rejects(client.checkChatGptAccount(), { kind: "schema" });
+});

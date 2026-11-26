@@ -21,6 +21,14 @@ it("expires a pending first-screen read but leaves a pending write to settle on 
   assert.deepEqual(await write, { state: "saved" });
 });
 
+it("expires a pending account check with the first screen that waits for it", async () => {
+  const startup = startupDeadlineClient({ checkChatGptAccount: pending } as unknown as DashboardClient);
+  assert.ok(typeof startup.client.checkChatGptAccount === "function");
+  const check = startup.client.checkChatGptAccount();
+  startup.expire();
+  assert.equal(await settledWithin(check), "rejected");
+});
+
 it("passes reads through untouched once the first screen is shown", async () => {
   const client = { assistantHistory: pending } as unknown as DashboardClient;
   const startup = startupDeadlineClient(client);

@@ -267,6 +267,8 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const { history, preferenceChanged, readModels = true } = options ?? {};
   const accountPort = useContext(ChatGptAccountContext);
   const account = useChatGptAccount(accountPort);
+  const readChecking = () => accountPort.getChecking?.() ?? false;
+  const checking = useSyncExternalStore(accountPort.subscribe, readChecking, readChecking);
   const bindingAuthority = useMemo(() => ({ authority, account, shellMounted, commandScope: commands?.scope, commandExecutor: commands?.executor, commandFeedback: commands?.feedback }), [authority, account, shellMounted, commands?.scope, commands?.executor, commands?.feedback]);
   const sessions = useMemo(() => ({ client, history, controllers: new Map<string, ReturnType<typeof createAssistantController>>() }), [client, history]);
   const controllers = sessions.controllers;
@@ -286,20 +288,25 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const resource = accountPort.mode === 'live' ? accountPort.getResource?.() : undefined;
   // An unreadable usage meter is not a sign-in failure; a turn that gets no reply is the failure signal.
   const usageUnread = resource !== undefined && 'code' in resource && resource.code === 'CHATGPT_USAGE_UNAVAILABLE';
-  const accountAvailable = accountPort.mode === 'live' && (account.state === 'connected' && account.planUsage === 'enabled' || usageUnread);
+  const accountAvailable = accountPort.mode === 'live' && !checking && (account.state === 'connected' && account.planUsage === 'enabled' || usageUnread);
   const accountFailure = resource !== undefined && 'code' in resource ? resource.code === 'CHATGPT_AUTH_UNAVAILABLE' ? ACCOUNT_READ_FAILED : ERROR_CATALOG[resource.code].text : undefined;
   const accountReadFailed = account.state === 'unavailable' && accountPort.refresh !== undefined;
-  const [models, setModels] = useState<AssistantModelCatalog['models']>();
+  const [catalog, setCatalog] = useState<{ account: typeof account; models: AssistantModelCatalog['models'] }>();
+  // A list belongs to the account snapshot it was read for and is withdrawn while a check runs; the next account shows none until its own is read.
+  const models = !checking && catalog?.account === account ? catalog.models : undefined;
   useEffect(() => {
     const client = sessions.client;
     if (!readModels || !accountAvailable || client.assistantModels === undefined) return;
     const request = new AbortController();
-    client.assistantModels(request.signal).then(catalog => { if (!request.signal.aborted) setModels(catalog.models); }, () => { if (!request.signal.aborted) setModels(undefined); });
+    client.assistantModels(request.signal).then(({ models }) => { if (!request.signal.aborted) setCatalog({ account, models }); }, () => { if (!request.signal.aborted) setCatalog(undefined); });
     return () => request.abort();
-  }, [readModels, accountAvailable, sessions.client]);
-  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
+  }, [readModels, accountAvailable, account, sessions.client]);
+  const onAction = (action: AssistantAction) => {
+    if (!readChecking() || action.type !== 'send' && action.type !== 'retry') controller.action(action);
+  };
+  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => readChecking() ? Promise.resolve() : controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, onAction, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
-    accountAction: (account.state === 'loading' ? undefined : accountReadFailed ? 'retry' : account.state === 'connected' || account.state === 'unavailable' || account.state === 'signing-in' ? 'settings' : 'sign-in'),
+    accountAction: (checking || account.state === 'loading' ? undefined : accountReadFailed ? 'retry' : account.state === 'connected' || account.state === 'unavailable' || account.state === 'signing-in' ? 'settings' : 'sign-in'),
     accountRetry: () => { void accountPort.refresh?.(); },
     accountHeading: account.state === 'connected' ? 'ChatGPT plan usage unavailable' : 'ChatGPT connection unavailable',
     accountNotice: accountFailure ?? (account.state === 'loading' ? 'Loading ChatGPT account…' : account.state === 'signing-in' ? 'Finish signing in to ChatGPT in your browser.' : account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : account.state === 'signed-out' ? ACCOUNT_NOT_CONNECTED : account.state === 'unavailable' ? ACCOUNT_READ_FAILED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED), confirmRefusal: state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && client.assistantDecide !== undefined ? undefined : ASSISTANT_CONFIRM_HOLD,
