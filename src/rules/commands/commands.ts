@@ -28,6 +28,7 @@ export const AssistantCommandAttributionSchema = z.discriminatedUnion("kind", [
 
 /** A command id the caller sent again with different content: the caller's mistake, answered by name. */
 export class CommandIdReusedError extends Error {
+  readonly code = "COMMAND_ID_REUSED";
   constructor(commandId: string) {
     super(`command id ${commandId} was reused with different content`);
     this.name = "CommandIdReusedError";
