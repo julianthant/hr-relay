@@ -604,7 +604,8 @@ async function settingsLaneHarness() {
     readLanes: { read: (definition, args, options) => faults.lane ? Promise.reject(new Error("lane read failed")) : lanes.read(definition, args, options) } });
   const listeners = new Set<() => void>();
   const timers: { task: () => void; cancelled: boolean }[] = [];
-  const hub = createDashboardStreamHub({ projection: world.projection,
+  // The row-read deadline runs only on `fire`; a cold lane's start on a slow runner is not a late read.
+  const hub = createDashboardStreamHub({ projection: world.projection, clock: { monotonicMs: () => 0 },
     backfillGaps: { detected: () => { throw new Error("no gap is expected"); } },
     settings: { read: editable, onChange: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; } },
     schedule: (_delayMs, task) => { const timer = { task, cancelled: false }; timers.push(timer); return () => { timer.cancelled = true; }; } });
