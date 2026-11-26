@@ -43,6 +43,21 @@ describe("authored branches", () => {
     assert.equal(workflowExplorerDeclaration(workflow)[0]?.entries[0]?.kind, "branch");
   });
 
+  it("refuses a step omission that skips a branch, even one that may skip gates and transactions", () => {
+    assert.throws(() => compileFixtureWorkflow(fixtureWorkflow("fixture-skipped-branch", author => {
+      const route = author.branch({ id: "route", label: "Choose hire path", cases: { create: ["save-profile"], reuse: ["read-person"] } }, [],
+        ({ input }) => input.mode === "match" ? "create" : "reuse");
+      const save = author.transaction({ id: "save-profile", prepare: I9StageProfile, commit: I9CreateProfile,
+        dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000 }, [route], {
+        prepareBind: () => I9_PROFILE_EXAMPLE, commitBind: () => I9_PROFILE_EXAMPLE,
+      });
+      const read = author.task({ id: "read-person", contract: SearchPersonOrg, replay: "checkpoint" }, [route], lookupInput);
+      const manual = { form: { fields: [] }, produces: {}, skips: ["route", "save-profile", "read-person"], skipsGatesAndTransactions: true as const };
+      return { steps: [[author.group({ key: "hire", label: "Hire" }, { manual }), [route, save, read]]],
+        result: author.result(z.strictObject({ done: z.literal(true) }), [], () => ({ done: true as const })) };
+    })), /skips branch node "route"; only a task, gate or transaction is ever skipped/u);
+  });
+
   it("retains the graph's refusal of empty, missing and multiply-owned targets", () => {
     assert.throws(() => compileFixtureWorkflow(definition("fixture-empty-branch", { create: [], reuse: ["read-person"] })), /joins no node/u);
     assert.throws(() => compileFixtureWorkflow(definition("fixture-missing-branch", { create: ["missing"], reuse: ["read-person"] })), /missing/u);
