@@ -20,7 +20,7 @@ import { buildRunDetail } from "../../../../../src/backend/runs/queries/run-deta
 import { ASSISTANT_WORKFLOW_FACTS_PATH, assistantWorkflowFacts } from "../../../../../src/backend/assistant/plugins/workflows/facts.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { ASSISTANT_FAILURES, AssistantInferenceRequestSchema } from "../../../../../src/models/dashboard/assistant.js";
-import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
+import { CommandAdmissionRequestSchema, CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { chatGptFixture } from "../../../../support/helpers/chatgpt-account-fixtures.js";
 import { completedResponseStream } from "../../../../support/helpers/chatgpt-response-stream.js";
@@ -328,12 +328,19 @@ it('serves preference CAS and replay', async () => {
 });
 
 it('admits no assistant command outside a claimed proposal row or session claim', async () => {
+  using assistantCompose = vi.spyOn(assistantComposition, 'composeAssistant');
   await withServedAssistant(async ({ context, clock, post }) => {
     const { run } = seedAssistantReadRun({ context, clock });
     const command = { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: 'assistant',
-      family: 'run', type: 'cancel', target: { runId: run.envelope.runId, expectedVersion: run.version }, payload: {} };
-    assert.notEqual(CommandResultSchema.parse(await post('commands', command)).state, 'applied');
-    assert.equal(context.database.authority.commandAudits.findByCommand(command.commandId), undefined);
-    assert.deepEqual(context.database.authority.runs.get(run.envelope.runId), run);
+      family: 'run', type: 'cancel', target: { runId: run.envelope.runId, expectedVersion: run.version } };
+    // HTTP cannot mint an assistant command: the operator ingress stamps its own source.
+    assert.equal(CommandResultSchema.parse(await post('commands', command)).state, 'applied');
+    assert.equal(context.database.authority.commands.get(command.commandId)?.source, 'dashboard');
+    // In process, an assistant-source command with no claimed row or session claim is refused before any effect.
+    const composed = assistantCompose.mock.results.at(-1);
+    assert.ok(composed?.type === 'return');
+    const unclaimed = CommandAdmissionRequestSchema.parse({ ...command, commandId: randomUUID() });
+    assert.throws(() => { composed.value.assertEffect(unclaimed.commandId, unclaimed); }, /assistant-effect-not-authorized/);
+    assert.equal(context.database.authority.commands.get(unclaimed.commandId), undefined);
   });
 });
