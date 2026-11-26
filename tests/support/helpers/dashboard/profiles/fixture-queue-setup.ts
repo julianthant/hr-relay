@@ -3,7 +3,6 @@ import { DashboardDayWireSchema, QueueSurfaceWireSchema, type DashboardDayWire, 
 import { isQueueTopLevel } from "../../../../../src/models/dashboard/queue-parent.js";
 import { queueRowActions } from "../../../../../src/backend/runs/projections/queue-row-actions.js";
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
-import type * as FixtureNotificationsTypes from "../../../fixtures/dashboard/fixture-notifications.js";
 
 
 type PipelineState = "pending" | "active" | "done" | "failed" | "skipped" | "blocked";
@@ -28,7 +27,7 @@ interface SurfaceSeed {
   readonly memberStatuses?: readonly Status[];
 }
 
-export function createFixtureQueueSetup({ at, CONFIG_FINGERPRINT, FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH, traceOf, uuidOf, WORKFLOW_ID, FIXTURE_BACKFILL_NOTIFICATIONS, FIXTURE_NOTIFICATIONS }: {
+export function createFixtureQueueSetup({ at, CONFIG_FINGERPRINT, FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH, traceOf, uuidOf, WORKFLOW_ID }: {
 at: typeof FixtureIdentityTypes.at;
 CONFIG_FINGERPRINT: typeof FixtureIdentityTypes.CONFIG_FINGERPRINT;
 FIXTURE_APP_VERSION: typeof FixtureIdentityTypes.FIXTURE_APP_VERSION;
@@ -37,8 +36,6 @@ FIXTURE_DESCRIPTOR_HASH: typeof FixtureIdentityTypes.FIXTURE_DESCRIPTOR_HASH;
 traceOf: typeof FixtureIdentityTypes.traceOf;
 uuidOf: typeof FixtureIdentityTypes.uuidOf;
 WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
-FIXTURE_BACKFILL_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_BACKFILL_NOTIFICATIONS;
-FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
 }) {
   const PIPELINE_NODES = [
     ["searching", "searching"],
@@ -386,12 +383,6 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
         revision: 1,
       },
     ],
-    notifications: FIXTURE_NOTIFICATIONS,
-  });
-
-  const BACKFILL_GAP_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
-    ...FIXTURE_DAY_WIRE,
-    notifications: FIXTURE_BACKFILL_NOTIFICATIONS,
   });
 
   const FIXTURE_IDS = Object.freeze({
@@ -418,5 +409,5 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
     failureId: uuidOf(904),
   });
 
-  return { absent, FIXTURE_DAY_WIRE, BACKFILL_GAP_DAY_WIRE, FIXTURE_IDS };
+  return { absent, FIXTURE_DAY_WIRE,  FIXTURE_IDS };
 }

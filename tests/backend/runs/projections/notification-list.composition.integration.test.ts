@@ -6,13 +6,15 @@ import { ActorIdSchema, CommandIdSchema } from "../../../../src/rules/identity/i
 import { NotificationWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { registerNotificationRoutes } from "../../../../src/backend/transports/http/routes/notifications.js";
 import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
-import { afterAll, afterEach, it } from "vitest";
+import { afterAll, afterEach, it, vi } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
+import { createDashboardStreamHub } from "../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
+import { registerQueueRoutes } from "../../../../src/backend/transports/http/routes/queue.js";
 import { DAY, DESCRIPTOR_SET_HASH, notificationRecordOf, queuedEventOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { composeNotificationPublications, composeNotificationRoutes } from "../../../../src/backend/app/composition/dashboard/notification-wiring.js";
+import { composeNotificationPublications, composeNotificationReads, composeNotificationRoutes } from "../../../../src/backend/app/composition/dashboard/notification-wiring.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
 import { createNotificationObserver } from "../../../../src/backend/runs/notifications/observation.js";
@@ -25,7 +27,7 @@ afterAll(() => profiles.close());
 const { world, cleanup } = createRunQueueProjectionTestWorld(profiles.create);
 afterEach(cleanup);
 
-it("serves the same storage group through canonical inbox and day snapshots, keeping publications individual", async () => {
+it("serves the same storage group through the inbox route and stream row, keeping publications individual", async () => {
   const w = await world();
   const { database, clock } = w;
   let seed = 100;
@@ -77,7 +79,27 @@ it("serves the same storage group through canonical inbox and day snapshots, kee
     assert.equal(rows[0].group?.members.length, 5);
     const queue = createOperatorProjection({ database, reader: lifecycle, clock, stateRoot: w.stateRoot,
       appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, ledger: createTransactionHistory(database.authority), descriptors });
-    assert.deepEqual(queue.buildDashboardDayWire(DAY).notifications, rows);
+    const unexpected = (): never => { throw new Error("unexpected start plan"); };
+    const queueApp: DashboardApp = new Hono();
+    registerQueueRoutes(queueApp, { queue: { day: day => queue.servedDashboardDay(day) },
+      startPlans: { plan: unexpected, previewWarnings: unexpected } });
+    const dayResponse = await queueApp.request(`/api/v1/dashboard?day=${DAY}`);
+    assert.equal(dayResponse.status, 200);
+    const dayPayload: unknown = await dayResponse.json();
+    assert.ok(dayPayload !== null && typeof dayPayload === "object");
+    assert.equal(Object.hasOwn(dayPayload, "notifications"), false);
+    const hub = createDashboardStreamHub({ projection: queue, notificationList: routes.streamList, notificationPublications: publications,
+      backfillGaps: { detected: () => Promise.reject(new Error("unexpected gap")) } });
+    try {
+      const connection = await hub.connect({ day: DAY });
+      const handoff = connection.initial.find(envelope => envelope.type === "snapshot");
+      assert.ok(handoff);
+      assert.equal(Object.hasOwn(handoff.payload, "notifications"), false);
+      assert.deepEqual(handoff.rows.find(row => row.model === "notification-list")?.value, { state: "available", value: rows });
+      connection.close();
+    } finally {
+      hub.close();
+    }
     assert.equal(emitted.length, 5);
     for (const publication of emitted) {
       const { publication: wire, listed } = publications.project(publication);
@@ -115,7 +137,12 @@ it("serves the same storage group through canonical inbox and day snapshots, kee
     clock.setWall(new Date(now));
     assert.equal(await groupState(await read(expiredTag)), "snoozed");
 
-    const linked = queuedEventOf(w, { seed: 1, descriptor: personLookupDescriptor, displayName: "First name" });
+    const linked = queuedEventOf(w, { seed: 1, descriptor: { ...personLookupDescriptor, version: personLookupDescriptor.version - 1 }, displayName: "First name" });
+    const otherRun = queuedEventOf(w, { seed: 2, descriptor: personLookupDescriptor });
+    const appendEvidence = ({ workflow, runId, traceId, attempt, ts }: typeof linked) => {
+      w.writer.emit({ t: "transaction.fenced", ts, workflow, runId, traceId, attempt,
+        spanPath: `${traceId}/removed-node/commit`, node: "removed-node", taskId: "ucpath/search-person-org" });
+    };
     await inbox.publish({ kind: "command-unknown", commandId: CommandIdSchema.parse(uuidOf(900)) });
     const done = emitted.at(-1);
     assert.ok(done !== undefined && done.event.kind === "command-unknown");
@@ -125,26 +152,43 @@ it("serves the same storage group through canonical inbox and day snapshots, kee
     assert.throws(() => publications.project(unlisted), /NOTIFICATION_PUBLICATION_NOT_LISTED/u, "a publication its actor's list does not hold is a named failure");
     const notice = notificationRecordOf({ seed: 1, title: "Run needs attention", lastSeenAt: linked.ts });
     database.authority.notifications.create(notice);
-    const subject = async (response: Response) => {
+    const context = async (response: Response) => {
       assert.equal(response.status, 200);
       const row = z.array(NotificationWireSchema).parse(await response.json()).find(row => row.notificationId === notice.notificationId);
-      assert.ok(row?.kind === "notification" && row.context.state === "available");
-      return row.context.subject;
+      assert.ok(row?.kind === "notification");
+      return row.context;
     };
+    const resolve = vi.spyOn(descriptors, "resolve");
     const beforeRename = await read();
-    assert.equal(await subject(beforeRename), "First name");
+    const beforeContext = { state: "available", workflow: personLookupDescriptor.label, subject: "First name" };
+    assert.deepEqual(await context(beforeRename), beforeContext);
     const linkedTag = beforeRename.headers.get("ETag");
     assert.ok(linkedTag);
+    assert.deepEqual(await context(await read()), beforeContext);
+    assert.equal(resolve.mock.calls.length, 1, "an unchanged list reuses the linked display projection");
+    appendEvidence(otherRun);
+    assert.equal((await read(linkedTag)).status, 304);
+    assert.equal(resolve.mock.calls.length, 1, "another run's evidence keeps the linked display projection warm");
+    await inbox.publish({ kind: "command-unknown", commandId: CommandIdSchema.parse(uuidOf(902)) });
+    const unrelated = emitted.at(-1);
+    assert.ok(unrelated);
+    publications.project(unrelated);
+    assert.equal(resolve.mock.calls.length, 1, "projecting one arrival never reads another notice's run");
     assert.equal(database.authority.runs.updatePresentation({ runId: linked.runId, displayName: "Second name",
       expectedVersion: 1, now: clock.now().toISOString() }).state, "applied");
-    assert.equal(await subject(await read(linkedTag)), "Second name");
+    const renamed = await read(linkedTag);
+    assert.deepEqual(await context(renamed), { ...beforeContext, subject: "Second name" });
+    const renamedTag = renamed.headers.get("ETag");
+    assert.ok(renamedTag);
+    appendEvidence(linked);
+    assert.deepEqual(await context(await read(renamedTag)), { state: "workflow-only", workflow: personLookupDescriptor.label });
   } finally {
     unsubscribe();
     await observer.stop();
   }
 });
 
-it("drops a storage notice's standing from the day snapshot when only its concern's health clears", async () => {
+it("refreshes a streamed storage notice when only its concern's health clears", async () => {
   const w = await world();
   const { database, clock } = w;
   let seed = 300;
@@ -158,11 +202,52 @@ it("drops a storage notice's standing from the day snapshot when only its concer
   };
   health(true);
   await inbox.publish({ kind: "storage-degraded", concern: "disk-space", state: "failed", diagnosticFingerprint: "a".repeat(64) });
-  const queue = createOperatorProjection({ database, reader: lifecycle, clock, stateRoot: w.stateRoot,
-    appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, ledger: createTransactionHistory(database.authority), descriptors });
-  const standing = () => queue.buildDashboardDayWire(DAY).notifications.map(row => row.kind !== "backfill-gap" && row.standing === true);
-  assert.deepEqual(standing(), [true]);
-  clock.advanceWall(1000);
-  health(false);
-  assert.deepEqual(standing(), [false], "a health-only write invalidates the day cache");
+  const observer = {
+    ...createNotificationObserver({ inbox, read: () => ({ observations: [], diagnostics: [] }), health: async () => undefined }),
+    healthDueAt: () => Infinity,
+  };
+  const reads = composeNotificationReads(database);
+  let listFailed = false;
+  const reportListReadFailure = vi.fn();
+  const routes = composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps: createRunDetailTestWorld().depsOf(w),
+    assertCurrent: () => undefined, notificationObserver: observer, notificationTarget: () => ({ kind: "storage" }), reportListReadFailure,
+    notificationReads: { ...reads, list: actor => {
+      if (listFailed) throw new Error("synthetic inbox read failure");
+      return reads.list(actor);
+    } } });
+  const hub = createDashboardStreamHub({ projection: w.projection, notificationList: routes.streamList,
+    backfillGaps: { detected: () => Promise.reject(new Error("unexpected gap")) } });
+  try {
+    const connection = await hub.connect({ day: DAY });
+    const standing = (envelope: typeof connection.initial[number] | undefined) => {
+      assert.ok(envelope?.type === "snapshot" || envelope?.type === "change");
+      const list = envelope.rows.find(row => row.model === "notification-list");
+      assert.ok(list?.value.state === "available");
+      return list.value.value.map(row => row.kind !== "backfill-gap" && row.standing === true);
+    };
+    assert.deepEqual(standing(connection.initial.find(envelope => envelope.type === "snapshot")), [true]);
+    clock.advanceWall(1000);
+    health(false);
+    assert.equal(routes.snapshot("local-operator")[0].kind, "notification", "a GET may read the new state before the stream polls");
+    routes.pollList();
+    assert.equal(connection.pending, 1);
+    const change = await connection.next();
+    assert.ok(change?.type === "change" && change.day === undefined);
+    assert.deepEqual(standing(change), [false]);
+
+    health(true);
+    listFailed = true;
+    routes.pollList();
+    assert.equal(reportListReadFailure.mock.calls.length, 1);
+    const unavailable = await connection.next();
+    assert.ok(unavailable?.type === "change");
+    assert.equal(unavailable.rows.find(row => row.model === "notification-list")?.value.state, "unavailable");
+    listFailed = false;
+    routes.pollList();
+    assert.deepEqual(standing(await connection.next()), [true]);
+    connection.close();
+  } finally {
+    hub.close();
+    await observer.stop();
+  }
 });

@@ -31,11 +31,10 @@ export function keptDayFrame(client: object, authorityEpoch: object | undefined,
 }
 
 /** `run` is the run whose panel rides the stream; changing it reopens the stream once and keeps the day. */
-export function useDashboardDay(day: string | undefined, nowIso?: string, authorityEpoch?: object, actorId?: string, run?: string): DashboardDayState {
+export function useDashboardDay(day: string | undefined, authorityEpoch?: object, actorId?: string, run?: string): DashboardDayState {
   const client = useDashboardClient();
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision(value => value + 1), []);
-  const firedExpiries = useRef(new Set<string>());
   // A new object per request, including A → B → A; the render guard runs before effects. The kept frame is
   // read here, during render, so the frame that switches the day already shows that day's kept copy.
   const request = useMemo(() => {
@@ -105,16 +104,5 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
   }, [client, day, actorId, authorityEpoch, request, refresh, subscribePublications, rows]);
   useEffect(() => { subscriptionRef.current?.select(run); }, [run]);
   const current = result?.request === request ? result.value : { request, day: loadingWith(request.kept), connection: { state: "connecting" as const }, rows, refresh, subscribePublications };
-  useEffect(() => {
-    if (current.day.state !== "loaded" || nowIso === undefined) return;
-    const pending = current.day.value.notifications
-      .flatMap(row => row.kind === "notification" && row.state === "snoozed" && row.snoozedUntil !== undefined
-        ? [{ key: `${row.notificationId}:${row.snoozedUntil}`, until: Date.parse(row.snoozedUntil) }] : [])
-      .filter(entry => !firedExpiries.current.has(entry.key))
-      .sort((a, b) => a.until - b.until)[0];
-    if (pending === undefined) return;
-    const timer = setTimeout(() => { firedExpiries.current.add(pending.key); refresh(); }, Math.max(0, pending.until - Date.parse(nowIso)));
-    return () => clearTimeout(timer);
-  }, [current.day, nowIso, refresh]);
   return current;
 }

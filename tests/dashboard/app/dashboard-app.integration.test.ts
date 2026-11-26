@@ -35,7 +35,7 @@ import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection
 import { LocalDateSchema as LocalDateSchema_m1 } from "../../../src/rules/identity/ids.js";
 import { FIXTURE_BOOTSTRAP as FIXTURE_BOOTSTRAP_m1 } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1,FIXTURE_IDS as FIXTURE_IDS_m1 } from "../../support/fixtures/dashboard/fixture-queue.js";
-import { serveReadyNotificationStatus, streamingRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
+import { serveNotificationList, serveReadyNotificationStatus, streamingRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 import { createFixtureBff as createFixtureBff_m1 } from "../../support/helpers/dashboard/served-fixtures/fixture-bff.js";
 import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
 import { FIXTURE_RUN_DETAILS } from "../../support/fixtures/dashboard/fixture-detail.js";
@@ -341,7 +341,7 @@ afterEach_m1(_afterEachFixture0);
     const linkedDay = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1,
       queueSurfaces: FIXTURE_DAY_WIRE_m1.queueSurfaces.map(item => item === row ? { ...item, workflowId: "separations", title } : item) });
     await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&settings=general`, {
-      subscribeDay(input) { input.onDay({ ...linkedDay, notifications: [NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title, occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: "Separations" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId: row.runId } })] }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} }; },
+      subscribeDay(input) { input.onDay(linkedDay); serveNotificationList(input.rows, [NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title, occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: "Separations" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId: row.runId } })]); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} }; },
       notificationTarget: async () => ({ kind: "run" as const, runId: row.runId, day: linkedDay.day }),
     }, workflows => {
       const composition = MOCK_WORKFLOW_COMPOSITION_m1(workflows);

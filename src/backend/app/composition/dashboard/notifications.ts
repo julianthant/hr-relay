@@ -68,7 +68,8 @@ export function createTrustNotifications(input: { admission?: RuntimeAdmission; 
   return { observer, inbox, backfillGapNotifier: createBackfillGapNotifier({ inbox }), gateParkNotifier: createGateParkNotifier({ inbox }), readParks: () => readGateParks(database, input.reader) };
 }
 
-export function startNotificationPolling(database: AuthorityDatabase, clock: Clock, observation: ReturnType<typeof createTrustNotifications>["observer"]) {
+export function startNotificationPolling(database: AuthorityDatabase, clock: Clock, observation: ReturnType<typeof createTrustNotifications>["observer"],
+  pollList?: () => void) {
   const revision = observation.sourceReadOnLane === true ? undefined : database.trackAuthorityTables(NOTIFICATION_SOURCE_TABLES, "poll-hint");
   let observed = revision?.();
   const changed = revision === undefined ? undefined : () => {
@@ -92,6 +93,7 @@ export function startNotificationPolling(database: AuthorityDatabase, clock: Clo
   };
   safetyPass(true);
   const timer = setInterval(() => {
+    pollList?.();
     if (clock.monotonicMs() >= safetyAt || clock.nowMs() >= healthDueAt) safetyPass();
     else void observation.observeSources(changed);
   }, GATE_PARK_WATCH_MS);
