@@ -1,6 +1,6 @@
 import { resolveWriteCommandTarget } from "../../../runs/commands/write-command-target.js";
 import { randomUUID } from "node:crypto";
-import { emitFaultWithCauses } from "../../../logs/debug-events.js";
+import { emitFaultWithCauses, emitOptionalDiagnostic } from "../../../logs/debug-events.js";
 import { join } from "node:path";
 import { z } from "zod";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
@@ -298,7 +298,9 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     host: run => history.withAuthorityReadSnapshot(() => ocrHostRun(history.authority, run)),
     command: commandId => history.authority.commands.readForNotice(commandId),
     bulk: bulkCommandId => { const acceptance = history.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: history.authority.commands.listBulkChildren(bulkCommandId) }; } });
-  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads });
+  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads,
+    reportListReadFailure: () => { emitOptionalDiagnostic(() => debugEvents.emit({ category: "sse", phase: "failed",
+      correlationId: randomUUID(), area: "notification-list", reason: "poll-read-failed" })); } });
   const dataQueries = composeDataQueries(runDetailDeps);
   const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });
   const assistantProposals = createAssistantProposals({ ocrSources: () => ocrSources, database, authorization: assistantAuthorization, plans: startPlans, commands, runs: lifecycle, descriptors,

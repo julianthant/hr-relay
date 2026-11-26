@@ -1809,6 +1809,47 @@ export class AuthorityDatabase implements Disposable {
     };
   }
 
+  /** Revisions for reads scoped to one run, on tables whose change keys name their owning run. */
+  trackAuthorityRuns(tables: readonly AuthorityTableName[]): () => ((id: string) => number) | undefined {
+    const selected = new Set<string>(tables);
+    const revisions = new Map<string, number>();
+    let previous: ReturnType<AuthorityDatabase["capturedChangeKey"]> | undefined;
+    let revision = 0;
+    const runRevision = (id: string): number => {
+      const held = revisions.get(id);
+      if (held !== undefined) return held;
+      if (revisions.size >= 1024) {
+        const oldest = revisions.keys().next().value;
+        if (oldest !== undefined) revisions.delete(oldest);
+      }
+      revisions.set(id, ++revision);
+      return revision;
+    };
+    return () => {
+      if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
+      return this.#withReadSnapshot(() => {
+        this.#validateExternalQuerySources();
+        const current = this.capturedChangeKey();
+        if (previous !== undefined) {
+          const count = current.changeLogSeq - previous.changeLogSeq;
+          if (current.schemaCookie !== previous.schemaCookie || count < 0 || count > CHANGE_LOG_RETAINED_ENTRIES) revisions.clear();
+          else if (count > 0) {
+            const changes = readAuthorityChanges(this.#database, previous.changeLogSeq, count);
+            if (changes.length !== count) revisions.clear();
+            else for (const change of changes) {
+              if (!selected.has(change.table)) continue;
+              for (const key of change.keys) {
+                if (key.startsWith("run:")) revisions.delete(key.slice(4));
+              }
+            }
+          }
+        }
+        previous = current;
+        return runRevision;
+      });
+    };
+  }
+
   checkQueueDaySources(day: string, previous?: number | Readonly<{
     through: number;
     runIds: readonly string[];

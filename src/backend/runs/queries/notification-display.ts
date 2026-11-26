@@ -23,24 +23,22 @@ type DisplayDependencies = {
 };
 
 export function createNotificationDisplayContext(deps: DisplayDependencies) {
-  const held = new Map<string, { actor: string; notificationVersion: number; runId: string; runVersion: number; context: NotificationDisplayContext }>();
-  let evidence: number | undefined;
-  return (record: NotificationRecord, revision: number | undefined, read: DisplayDependencies["read"]): NotificationDisplayContext =>
-    notificationDisplayContext(record, { ...deps, read }, run => {
-      if (revision === undefined || revision !== evidence) {
-        held.clear();
-        evidence = revision;
-      }
+  const held = new Map<string, { actor: string; notificationVersion: number; runId: string; runVersion: number; evidence: number; context: NotificationDisplayContext }>();
+  return (record: NotificationRecord, revision: (id: string) => number | undefined, read: DisplayDependencies["read"],
+    command: DisplayDependencies["command"] = deps.command): NotificationDisplayContext =>
+    notificationDisplayContext(record, { ...deps, read, command }, run => {
       const prior = held.get(record.notificationId);
       const { version: runVersion, envelope: { runId } } = run;
-      if (prior?.actor === record.actorId && prior.notificationVersion === record.version && prior.runId === runId && prior.runVersion === runVersion) return prior.context;
+      const evidence = revision(runId);
+      if (prior?.actor === record.actorId && prior.notificationVersion === record.version && prior.runId === runId
+        && prior.runVersion === runVersion && prior.evidence === evidence) return prior.context;
       const context = runDisplayContext(run, deps);
-      if (revision !== undefined) {
+      if (evidence !== undefined) {
         if (held.size >= 1024 && prior === undefined) {
           const oldest = held.keys().next().value;
           if (oldest !== undefined) held.delete(oldest);
         }
-        held.set(record.notificationId, { actor: record.actorId, notificationVersion: record.version, runId, runVersion, context });
+        held.set(record.notificationId, { actor: record.actorId, notificationVersion: record.version, runId, runVersion, evidence, context });
       }
       return context;
     });
@@ -50,10 +48,16 @@ export function notificationDisplayContext(record: NotificationRecord, deps: Dis
   projectRun: (run: RunRecord) => NotificationDisplayContext = run => runDisplayContext(run, deps)): NotificationDisplayContext {
   const link = record.links[0];
   if (link === undefined || link.kind === "storage" || link.kind === "bulk-result") return { state: "not-applicable" };
-  const runId = link.kind === "recovery" || link.kind === "command-result" ? commandRunId(deps.command(link.commandId)) : link.runId;
+  const runId = notificationDisplayRunId(record, deps.command);
   if (runId === undefined) return { state: "unavailable" };
   const current = deps.read(runId);
   return current.state === "present" ? projectRun(current.run) : { state: "unavailable" };
+}
+
+export function notificationDisplayRunId(record: NotificationRecord, command: DisplayDependencies["command"]): string | undefined {
+  const link = record.links[0];
+  if (link === undefined || link.kind === "storage" || link.kind === "bulk-result") return undefined;
+  return link.kind === "recovery" || link.kind === "command-result" ? commandRunId(command(link.commandId)) : link.runId;
 }
 
 function runDisplayContext(run: RunRecord, deps: DisplayDependencies): NotificationDisplayContext {

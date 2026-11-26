@@ -4,7 +4,7 @@ import { upsertListedRow, type NotificationWire } from "../../../../models/dashb
 import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import type { NotificationCollectionOperation } from "../../../../models/notifications/notifications.js";
 import { NotificationTriggerEventSchema, notificationStandingSources } from "../../../../rules/notifications/notification-triggers.js";
-import { createNotificationDisplayContext } from "../../../runs/queries/notification-display.js";
+import { createNotificationDisplayContext, notificationDisplayRunId } from "../../../runs/queries/notification-display.js";
 import type { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
 import type { createDashboardApp } from "../../../transports/http/routes/api.js";
 import type { prepareDashboardRuntime } from "./runtime-resources.js";
@@ -13,9 +13,9 @@ import type { composeWriteSafety } from "./write-safety.js";
 import { AuthoritySnapshotChangedError } from "../../../storage/sqlite/authority-errors.js";
 
 type NotificationWiringInput = Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "clock" | "lifecycle" | "descriptors"> & Pick<ReturnType<typeof composeWriteSafety>, "runDetailDeps">;
-const DISPLAY_EVIDENCE = ["run_checkpoints", "run_receipts", "gate_results", "timeline_events"] as const;
-const ROW_EVIDENCE = ["notification_states", "runs", "deleted_runs", "commands", "command_audits", ...DISPLAY_EVIDENCE] as const;
-const LIST_SOURCES = ["notifications", ...ROW_EVIDENCE] as const;
+const RUN_EVIDENCE = ["runs", "deleted_runs", "run_checkpoints", "run_receipts", "gate_results", "timeline_events"] as const;
+const SHARED_ROW_EVIDENCE = ["notification_states", "commands", "command_audits"] as const;
+const LIST_SOURCES = ["notifications", ...SHARED_ROW_EVIDENCE, ...RUN_EVIDENCE] as const;
 
 export function composeNotificationReads(database: NotificationWiringInput["database"], history: NotificationWiringInput["database"] = database) {
   const native = database.authority.notifications;
@@ -34,18 +34,20 @@ export function composeNotificationReads(database: NotificationWiringInput["data
 }
 
 function createProjectionDependencies({ database, lifecycle, descriptors, runDetailDeps }: NotificationWiringInput) {
-  const evidencePosition = database.trackAuthorityTables(DISPLAY_EVIDENCE);
+  const runEvidence = database.trackAuthorityRuns(RUN_EVIDENCE);
+  const commandById = (id: string) => database.authority.commands.get(id);
   const display = createNotificationDisplayContext({
       presentation: runDetailDeps,
       read: id => lifecycle.read(id),
       descriptor: id => descriptors.resolve(id),
       receipt: id => database.authority.evidenceReceipts.findByRun(id),
-      command: id => database.authority.commands.get(id),
+      command: commandById,
       checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
   });
-  return (): Parameters<typeof notificationListProjection>[2] => {
+  return () => {
     const sources = new Map<string, ReturnType<typeof database.authority.notificationPublications.latest>>();
     const runs = new Map<string, ReturnType<typeof lifecycle.read>>();
+    const commands = new Map<string, ReturnType<typeof commandById>>();
     const source = (id: string) => {
       if (!sources.has(id)) sources.set(id, database.authority.notificationPublications.latest(id));
       return sources.get(id);
@@ -57,8 +59,13 @@ function createProjectionDependencies({ database, lifecycle, descriptors, runDet
       runs.set(id, current);
       return current;
     };
-    const revision = evidencePosition();
-    return { display: record => display(record, revision, read), source, standing: notificationStandingSources({
+    const command = (id: string) => {
+      if (!commands.has(id)) commands.set(id, commandById(id));
+      return commands.get(id);
+    };
+    const revision = runEvidence() ?? (() => undefined);
+    return { display: (record: ServedNotificationRecord) => display(record, revision, read, command), source,
+      linkedRunId: (record: ServedNotificationRecord) => notificationDisplayRunId(record, command), revision, standing: notificationStandingSources({
       runs: { get: id => database.authority.runs.get(id) },
       notificationPublications: { latest: source },
       notificationHealth: { get: concern => database.authority.notificationHealth.get(concern) },
@@ -106,14 +113,15 @@ type NotificationListSource = NonNullable<Parameters<typeof composeShell>[0]["no
 export function composeNotificationRoutes(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "assertCurrent" | "notificationObserver"> & {
   notificationTarget: ReturnType<typeof createNotificationTargetQuery>;
   notificationReads?: ReturnType<typeof composeNotificationReads>;
+  reportListReadFailure?: () => void;
 }): NotificationRoutes & { streamList: NotificationListSource; pollList: () => void } {
   const { database, clock, assertCurrent, notificationObserver, notificationTarget } = input;
   const { list, collection } = input.notificationReads ?? composeNotificationReads(database);
   const projectionDependencies = createProjectionDependencies(input);
   const position = database.trackAuthorityTables(LIST_SOURCES, "poll-hint");
-  const evidencePosition = database.trackAuthorityTables(ROW_EVIDENCE);
+  const evidencePosition = database.trackAuthorityTables(SHARED_ROW_EVIDENCE);
   type List = ReturnType<typeof notificationListProjection>;
-  type Member = Readonly<{ version: number; readOnlyHistory: boolean; until: number; row: NotificationWire }>;
+  type Member = Readonly<{ version: number; readOnlyHistory: boolean; until: number; row: NotificationWire; runId: string | undefined; runRevision: number | undefined }>;
   const retained = new Map<string, { position: number; evidence: number | undefined; from: number; until: number; rows: List; members: Map<string, Member> }>();
   const within = (entry: { from: number; until: number }, now: number) => now >= entry.from && now < entry.until;
   const project = (actor: string): List => {
@@ -125,11 +133,13 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
     const evidence = evidencePosition();
     const previous = evidence !== undefined && prior?.evidence === evidence && prior.from <= now ? prior.members : undefined;
     const members = new Map<string, Member>();
+    const deps = projectionDependencies();
     let until = Infinity;
-    const projected = notificationListProjection(records, now, projectionDependencies(), (record, nowMs, deps) => {
+    const projected = notificationListProjection(records, now, deps, (record, nowMs) => {
       const readOnlyHistory = record.readOnlyHistory === true;
       const saved = previous?.get(record.notificationId);
-      if (saved?.version === record.version && saved.readOnlyHistory === readOnlyHistory && nowMs < saved.until) {
+      if (saved?.version === record.version && saved.readOnlyHistory === readOnlyHistory && nowMs < saved.until
+        && (saved.runId === undefined || saved.runRevision === deps.revision(saved.runId))) {
         members.set(record.notificationId, saved);
         until = Math.min(until, saved.until);
         return saved.row;
@@ -137,7 +147,9 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
       const expiry = !readOnlyHistory && record.snooze.state === "snoozed" ? Date.parse(record.snooze.until) : Infinity;
       const validUntil = expiry > nowMs ? expiry : Infinity;
       const row = notificationProjection(record, nowMs, deps);
-      members.set(record.notificationId, { version: record.version, readOnlyHistory, until: validUntil, row });
+      const runId = deps.linkedRunId(record);
+      members.set(record.notificationId, { version: record.version, readOnlyHistory, until: validUntil, row,
+        runId, runRevision: runId === undefined ? undefined : deps.revision(runId) });
       until = Math.min(until, validUntil);
       return row;
     });
@@ -148,6 +160,7 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
   };
   const snapshot = (actor: string) => database.withAuthorityReadSnapshot(() => project(actor));
   let streamed: readonly NotificationWire[] | undefined;
+  let pollFailed = false;
   const listListeners = new Set<() => void>();
   return {
     withSnapshot: (actor, respond) => database.withAuthorityReadSnapshot(() => {
@@ -178,13 +191,18 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
       if (streamed === undefined || listListeners.size === 0) return;
       const prior = retained.get(LOCAL_OPERATOR_ACTOR_ID);
       try {
-        if (prior?.rows === streamed && prior.position === position() && within(prior, clock.nowMs())) return;
+        if (!pollFailed && prior?.rows === streamed && prior.position === position() && within(prior, clock.nowMs())) return;
         const rows = snapshot(LOCAL_OPERATOR_ACTOR_ID);
-        const changed = !isDeepStrictEqual(rows, streamed);
+        const changed = pollFailed || !isDeepStrictEqual(rows, streamed);
+        pollFailed = false;
         streamed = rows;
         if (!changed) return;
       } catch (error) {
         if (!(error instanceof Error)) throw error;
+        if (!pollFailed) {
+          pollFailed = true;
+          input.reportListReadFailure?.();
+        }
       }
       for (const listener of listListeners) listener();
     },

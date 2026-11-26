@@ -14,7 +14,7 @@ import { createDashboardStreamHub } from "../../../../src/backend/transports/htt
 import { registerQueueRoutes } from "../../../../src/backend/transports/http/routes/queue.js";
 import { DAY, DESCRIPTOR_SET_HASH, notificationRecordOf, queuedEventOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { composeNotificationPublications, composeNotificationRoutes } from "../../../../src/backend/app/composition/dashboard/notification-wiring.js";
+import { composeNotificationPublications, composeNotificationReads, composeNotificationRoutes } from "../../../../src/backend/app/composition/dashboard/notification-wiring.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
 import { createNotificationObserver } from "../../../../src/backend/runs/notifications/observation.js";
@@ -137,7 +137,12 @@ it("serves the same storage group through the inbox route and stream row, keepin
     clock.setWall(new Date(now));
     assert.equal(await groupState(await read(expiredTag)), "snoozed");
 
-    const linked = queuedEventOf(w, { seed: 1, descriptor: personLookupDescriptor, displayName: "First name" });
+    const linked = queuedEventOf(w, { seed: 1, descriptor: { ...personLookupDescriptor, version: personLookupDescriptor.version - 1 }, displayName: "First name" });
+    const otherRun = queuedEventOf(w, { seed: 2, descriptor: personLookupDescriptor });
+    const appendEvidence = ({ workflow, runId, traceId, attempt, ts }: typeof linked) => {
+      w.writer.emit({ t: "transaction.fenced", ts, workflow, runId, traceId, attempt,
+        spanPath: `${traceId}/removed-node/commit`, node: "removed-node", taskId: "ucpath/search-person-org" });
+    };
     await inbox.publish({ kind: "command-unknown", commandId: CommandIdSchema.parse(uuidOf(900)) });
     const done = emitted.at(-1);
     assert.ok(done !== undefined && done.event.kind === "command-unknown");
@@ -147,19 +152,23 @@ it("serves the same storage group through the inbox route and stream row, keepin
     assert.throws(() => publications.project(unlisted), /NOTIFICATION_PUBLICATION_NOT_LISTED/u, "a publication its actor's list does not hold is a named failure");
     const notice = notificationRecordOf({ seed: 1, title: "Run needs attention", lastSeenAt: linked.ts });
     database.authority.notifications.create(notice);
-    const subject = async (response: Response) => {
+    const context = async (response: Response) => {
       assert.equal(response.status, 200);
       const row = z.array(NotificationWireSchema).parse(await response.json()).find(row => row.notificationId === notice.notificationId);
-      assert.ok(row?.kind === "notification" && row.context.state === "available");
-      return row.context.subject;
+      assert.ok(row?.kind === "notification");
+      return row.context;
     };
     const resolve = vi.spyOn(descriptors, "resolve");
     const beforeRename = await read();
-    assert.equal(await subject(beforeRename), "First name");
+    const beforeContext = { state: "available", workflow: personLookupDescriptor.label, subject: "First name" };
+    assert.deepEqual(await context(beforeRename), beforeContext);
     const linkedTag = beforeRename.headers.get("ETag");
     assert.ok(linkedTag);
-    assert.equal(await subject(await read()), "First name");
+    assert.deepEqual(await context(await read()), beforeContext);
     assert.equal(resolve.mock.calls.length, 1, "an unchanged list reuses the linked display projection");
+    appendEvidence(otherRun);
+    assert.equal((await read(linkedTag)).status, 304);
+    assert.equal(resolve.mock.calls.length, 1, "another run's evidence keeps the linked display projection warm");
     await inbox.publish({ kind: "command-unknown", commandId: CommandIdSchema.parse(uuidOf(902)) });
     const unrelated = emitted.at(-1);
     assert.ok(unrelated);
@@ -167,7 +176,12 @@ it("serves the same storage group through the inbox route and stream row, keepin
     assert.equal(resolve.mock.calls.length, 1, "projecting one arrival never reads another notice's run");
     assert.equal(database.authority.runs.updatePresentation({ runId: linked.runId, displayName: "Second name",
       expectedVersion: 1, now: clock.now().toISOString() }).state, "applied");
-    assert.equal(await subject(await read(linkedTag)), "Second name");
+    const renamed = await read(linkedTag);
+    assert.deepEqual(await context(renamed), { ...beforeContext, subject: "Second name" });
+    const renamedTag = renamed.headers.get("ETag");
+    assert.ok(renamedTag);
+    appendEvidence(linked);
+    assert.deepEqual(await context(await read(renamedTag)), { state: "workflow-only", workflow: personLookupDescriptor.label });
   } finally {
     unsubscribe();
     await observer.stop();
@@ -192,8 +206,15 @@ it("refreshes a streamed storage notice when only its concern's health clears", 
     ...createNotificationObserver({ inbox, read: () => ({ observations: [], diagnostics: [] }), health: async () => undefined }),
     healthDueAt: () => Infinity,
   };
+  const reads = composeNotificationReads(database);
+  let listFailed = false;
+  const reportListReadFailure = vi.fn();
   const routes = composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps: createRunDetailTestWorld().depsOf(w),
-    assertCurrent: () => undefined, notificationObserver: observer, notificationTarget: () => ({ kind: "storage" }) });
+    assertCurrent: () => undefined, notificationObserver: observer, notificationTarget: () => ({ kind: "storage" }), reportListReadFailure,
+    notificationReads: { ...reads, list: actor => {
+      if (listFailed) throw new Error("synthetic inbox read failure");
+      return reads.list(actor);
+    } } });
   const hub = createDashboardStreamHub({ projection: w.projection, notificationList: routes.streamList,
     backfillGaps: { detected: () => Promise.reject(new Error("unexpected gap")) } });
   try {
@@ -213,6 +234,17 @@ it("refreshes a streamed storage notice when only its concern's health clears", 
     const change = await connection.next();
     assert.ok(change?.type === "change" && change.day === undefined);
     assert.deepEqual(standing(change), [false]);
+
+    health(true);
+    listFailed = true;
+    routes.pollList();
+    assert.equal(reportListReadFailure.mock.calls.length, 1);
+    const unavailable = await connection.next();
+    assert.ok(unavailable?.type === "change");
+    assert.equal(unavailable.rows.find(row => row.model === "notification-list")?.value.state, "unavailable");
+    listFailed = false;
+    routes.pollList();
+    assert.deepEqual(standing(await connection.next()), [true]);
     connection.close();
   } finally {
     hub.close();

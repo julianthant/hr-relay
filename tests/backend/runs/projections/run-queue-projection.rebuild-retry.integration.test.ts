@@ -137,7 +137,7 @@ it.each(["data.observed", "transaction.fenced"] as const)("refreshes a warm noti
         ] },
       ] });
   };
-  const evidence = w.database.trackAuthorityTables(["timeline_events"]);
+  const evidence = w.database.trackAuthorityRuns(["timeline_events"]);
   const read = runReader.read.bind(runReader);
   const noticeDisplay = createNotificationDisplayContext({
     read, descriptor: workflow => workflow === descriptor.id ? descriptor : undefined,
@@ -149,7 +149,11 @@ it.each(["data.observed", "transaction.fenced"] as const)("refreshes a warm noti
     checkpoints: { listByAttempt: (workflow, item, node, attempt) => w.database.authority.runCheckpoints.listByAttempt(workflow, item, node, attempt) },
     command: id => w.database.authority.commands.get(id),
   });
-  const noticeContext = () => w.database.withAuthorityReadSnapshot(() => noticeDisplay(notice, evidence(), read));
+  const noticeContext = () => w.database.withAuthorityReadSnapshot(() => {
+    const revision = evidence();
+    assert.ok(revision);
+    return noticeDisplay(notice, revision, read);
+  });
   const projection = makeProjection();
   const cursor = projection.cursor();
   const visible = { state: "available", workflow: descriptor.label, subject: "Synthetic older run" };
