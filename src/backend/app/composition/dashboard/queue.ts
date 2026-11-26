@@ -180,7 +180,7 @@ const QueueDayArgsSchema = z.strictObject({
  * Queue day, Sessions and the stream snapshot, built on the navigation lane from its replica. The body is the day without
  * main's stamp, plus the facts main frames it with; the replica folds the timeline once before the lane is ready.
  */
-const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day", {
+export const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day", {
   lane: "navigation", priority: "interactive", processFacts: true, args: QueueDayArgsSchema,
   warm(context) { laneReplica(context).projection.ingestFromTimeline(); },
   run(context, { day, publications }) {

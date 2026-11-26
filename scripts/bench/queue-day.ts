@@ -20,6 +20,12 @@ const SETTLE_MS = 300;
 
 const CopyProfileSchema = z.enum(["staging", "development"]);
 const SampleSchema = z.strictObject({ wallMs: z.number().nonnegative(), stallMs: z.number().nonnegative() });
+const BuildPhasesSchema = z.strictObject({ foldMs: z.number().nonnegative(), buildMs: z.number().nonnegative(), serializeMs: z.number().nonnegative() });
+/**
+ * Where each build spends its time. The lane's read path also runs on this thread, over its own admission and connection,
+ * so a gap between it and the request thread is the read path; the rest of the lane build is the worker and the transfer.
+ */
+const PhasesSchema = z.strictObject({ requestThread: BuildPhasesSchema, laneReadPathHere: BuildPhasesSchema, laneWorkerAndTransferMs: z.number() });
 const RunSchema = z.strictObject({
   day: z.iso.date(), dayRuns: z.int().nonnegative(), timelineHighWater: z.int().nonnegative(),
   /** Lane boot to ready, which includes the replica's cold fold; the first lane read reports whether it found the fold done. */
@@ -27,6 +33,7 @@ const RunSchema = z.strictObject({
   /** The whole-day build, first read after the fold: on the lane (round trip) and on the request thread. */
   laneBuildMs: z.number().nonnegative(), requestThreadBuildMs: z.number().nonnegative(),
   stampMs: z.array(z.number().nonnegative()), sse: z.array(SampleSchema), get: z.array(SampleSchema), bodyBytes: z.int().positive(),
+  phases: PhasesSchema,
 });
 type Run = z.infer<typeof RunSchema>;
 
@@ -61,7 +68,8 @@ async function measure(workspace: string, lockPort: number, requestedDay: string
   const { createCredentialStore } = await import("../../src/backend/storage/configuration/credential-store.js");
   const { AuthorityDatabase } = await import("../../src/backend/storage/sqlite/authority-database.js");
   const { createDashboardReadHost } = await import("../../src/backend/storage/sqlite/dashboard-read-host.js");
-  const { createOperatorProjection } = await import("../../src/backend/app/composition/dashboard/queue.js");
+  const { createOperatorProjection, queueDayRead } = await import("../../src/backend/app/composition/dashboard/queue.js");
+  const { admitReadLane, openReadLane, prepareReadLaneStart } = await import("../../src/backend/storage/sqlite/read-lane-admission.js");
   const { composeQueueSummaries } = await import("../../src/backend/app/composition/dashboard/queue-summaries.js");
   const { composeNotificationReads } = await import("../../src/backend/app/composition/dashboard/notification-wiring.js");
   const { RunRecordService } = await import("../../src/backend/runs/lifecycle/run-record-service.js");
@@ -94,6 +102,28 @@ async function measure(workspace: string, lockPort: number, requestedDay: string
             descriptorSetHash: descriptorSetHash(DESCRIPTORS.map(descriptor => descriptor.contractFingerprint)), ledger: createTransactionHistory(history.authority),
             descriptors, reader: servedReader, listNotifications: composeNotificationReads(database, history).list, workerMembers: () => [] };
 
+          /** The lane read's own fold, build and serialization on this thread, through the admission and connection a lane opens. */
+          const laneReadPath = (readDay: string): z.infer<typeof BuildPhasesSchema> => {
+            const lane = admitReadLane(prepareReadLaneStart(admission, database, "navigation"));
+            try {
+              const opened = openReadLane(lane, 5000);
+              try {
+                const context = { start: lane.start, native: opened.native, history: opened.history, nowMs: systemClock.nowMs(),
+                  processFacts: { workers: [], startupPending: [] }, snapshotAt: () => {}, retain: () => { throw new Error("queue-day-bench-retain-unserved"); } };
+                const inSnapshot = <T>(read: () => T): T => opened.history.withAuthorityReadSnapshot(() => lane.withProvedSource(read));
+                const folding = performance.now();
+                inSnapshot(() => queueDayRead.warm?.(context));
+                const foldMs = performance.now() - folding;
+                const building = performance.now();
+                const body = inSnapshot(() => queueDayRead.run(context, queueDayRead.args.parse({ day: readDay, publications: [] })));
+                const buildMs = performance.now() - building;
+                const serializing = performance.now();
+                JSON.stringify(body);
+                return { foldMs, buildMs, serializeMs: performance.now() - serializing };
+              } finally { opened.native.close(); }
+            } finally { lane.admission.release(); }
+          };
+
           // The request thread's cold fold, then its whole-day build of the busiest day: today's GET path.
           const folding = performance.now();
           const local = createOperatorProjection(options);
@@ -103,7 +133,11 @@ async function measure(workspace: string, lockPort: number, requestedDay: string
           const building = performance.now();
           const today = local.buildDashboardDayWire(day);
           const requestThreadBuildMs = performance.now() - building;
+          const serializing = performance.now();
+          JSON.stringify(today);
+          const requestThread = { foldMs: coldFoldMs, buildMs: requestThreadBuildMs, serializeMs: performance.now() - serializing };
           const timelineHighWater = history.authority.timelineEvents.highWaterMark();
+          const laneReadPathHere = laneReadPath(day);
 
           await delay(SETTLE_MS);
           const booting = performance.now();
@@ -156,8 +190,9 @@ async function measure(workspace: string, lockPort: number, requestedDay: string
                 const streamed = await stalled(async () => (await fetch(`http://127.0.0.1:${String(port)}/stream`)).arrayBuffer());
                 sse.push({ wallMs: streamed.wallMs, stallMs: streamed.stallMs });
               }
+              const laneWorkerAndTransferMs = laneBuildMs - laneReadPathHere.buildMs - laneReadPathHere.serializeMs;
               return RunSchema.parse({ day, dayRuns: today.queueSurfaces.length, timelineHighWater, laneReadyMs, coldFoldMs, foldBeforeReady,
-                laneBuildMs, requestThreadBuildMs, stampMs, sse, get, bodyBytes });
+                laneBuildMs, requestThreadBuildMs, stampMs, sse, get, bodyBytes, phases: { requestThread, laneReadPathHere, laneWorkerAndTransferMs } });
             } finally { await new Promise(resolve => server.close(resolve)); }
           } finally { await lanes.close(); }
         } finally { database.close(); }
@@ -195,6 +230,10 @@ export function summarize(runs: readonly Run[]) {
       requestThreadBuildMs: range(runs.map(run => run.requestThreadBuildMs)), laneReadyMs: range(runs.map(run => run.laneReadyMs)),
       coldFoldMs: range(runs.map(run => run.coldFoldMs)), stampMs: range(all(run => run.stampMs)),
       sseWallMs: range(all(run => run.sse.map(sample => sample.wallMs))), getWallMs: range(all(run => run.get.map(sample => sample.wallMs))) },
+    phases: { requestThreadBuildMs: range(runs.map(run => run.phases.requestThread.buildMs)), requestThreadSerializeMs: range(runs.map(run => run.phases.requestThread.serializeMs)),
+      laneReadPathHereFoldMs: range(runs.map(run => run.phases.laneReadPathHere.foldMs)), laneReadPathHereBuildMs: range(runs.map(run => run.phases.laneReadPathHere.buildMs)),
+      laneReadPathHereSerializeMs: range(runs.map(run => run.phases.laneReadPathHere.serializeMs)),
+      laneWorkerAndTransferMs: range(runs.map(run => run.phases.laneWorkerAndTransferMs)) },
     limits: { stallMs: STALL_LIMIT_MS, laneBuildRatio: BUILD_RATIO_LIMIT } };
 }
 
