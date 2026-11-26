@@ -1,7 +1,7 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { COMMAND_ROW_STATE_MIGRATION, CURRENT_AUTHORITY_SCHEMA_VERSION, LIST_INDEXES, SCHEMA_37_QUERY_INDEXES, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
-import { ASSISTANT_HISTORY_MIGRATION } from "../../../../src/backend/storage/sqlite/assistant-history.js";
+import { ASSISTANT_HISTORY_MIGRATION, ASSISTANT_M1_HISTORY_STATEMENTS } from "../../../../src/backend/storage/sqlite/assistant-history.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -72,8 +72,18 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
   }
 }
 
+/** Steps an authority back to schema 43: every unrecorded text-part message is stored as `{text}` again. */
+export function restoreSchema43AssistantPayloads(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 44);
+  database.exec(`DROP TRIGGER assistant_messages_settle_only;
+    UPDATE assistant_messages SET payload_json=json_object('text',COALESCE(json_extract(payload_json,'$.parts[0].runs[0].text'),''))
+      WHERE json_extract(payload_json,'$.recording.kind')='unrecorded';
+    ${ASSISTANT_M1_HISTORY_STATEMENTS[1]}; UPDATE database_states SET schema_version=43; PRAGMA user_version=43`);
+}
+
 /** Removes the empty phase-1 assistant tables and restores the schema-42 message trigger. */
 export function restoreSchema42AssistantStorage(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 44) restoreSchema43AssistantPayloads(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 43);
   for (const table of ["assistant_session_claims", "assistant_proposal_rows", "assistant_proposals"]) {
     assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
@@ -81,12 +91,15 @@ export function restoreSchema42AssistantStorage(database: DatabaseSync): void {
   }
   const trigger = ASSISTANT_HISTORY_MIGRATION.statements.find(statement => statement.startsWith("CREATE TRIGGER assistant_messages_settle_only"));
   assert.ok(trigger);
-  database.exec(`DROP TRIGGER assistant_messages_settle_only; ${trigger}; UPDATE database_states SET schema_version=42; PRAGMA user_version=42`);
+  // Schema 42 stored every message as `{text}`; a turn-accounting row keeps the text of its first run.
+  database.exec(`DROP TRIGGER assistant_messages_settle_only;
+    UPDATE assistant_messages SET payload_json=json_object('text',COALESCE(json_extract(payload_json,'$.parts[0].runs[0].text'),'')) WHERE json_type(payload_json,'$.recording') IS NOT NULL;
+    ${trigger}; UPDATE database_states SET schema_version=42; PRAGMA user_version=42`);
 }
 
 /** Steps an authority back to schema 40, which has no OCR terms in the search projection. */
 export function restoreSchema40OcrSearchTerms(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 43) restoreSchema42AssistantStorage(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 43) restoreSchema42AssistantStorage(database);
   const version = database.prepare("PRAGMA user_version").get()?.user_version;
   assert.ok(version === 41 || version === 42);
   database.exec("ALTER TABLE run_search DROP COLUMN ocr_subject_terms; UPDATE database_states SET schema_version=40; PRAGMA user_version=40");
