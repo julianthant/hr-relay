@@ -66,3 +66,15 @@ runs. A run records the time from host creation until every lane is ready, the p
 one timeline page, and that page's time. Each shape passes G2 on its own when every run is ready within 5 s and adds
 at most 350 MiB. The backend runs under tsx, as `npm run dashboard:prod` runs it, because there is no packaged build.
 The command writes the JSON report in the invoking directory with mode `600`.
+
+# Settings editor benchmark (G6)
+
+Run this from a Relay checkout with its dependencies installed. Stop the copy dashboard first; the copy must be signed in.
+
+```sh
+node --import tsx scripts/bench/settings-editor.ts development --runs 20
+```
+
+It reads the Settings editor as the dashboard does: the store part on the navigation lane, the protected facts and the
+document on main. Each read alternates the fiscal year so the document is built every time. It reports main-thread CPU
+per read (p50, p95, max) and wall time; G6 passes when every read's main-thread CPU is at most 5 ms.
