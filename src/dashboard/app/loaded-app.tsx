@@ -202,10 +202,8 @@ export function LoadedApp({
   const application = lifecycle.resource.state === "loaded" ? lifecycle.resource.value : undefined;
   const [quitRequested, setQuitRequested] = useState(false);
   const clock = useMemo(() => createServedClock(boot.serverClock.now), [boot.serverClock.now]);
-  const snoozes = useRef<readonly string[]>([]);
-  // The app renders on a new day or a passed snooze expiry, never on a plain tick; leaves tick on their own.
+  // The app renders on a new day; timed views tick on their own.
   const today = useClockView(clock, boot.serverClock.now, now => serverLocalDay({ ...boot.serverClock, now }));
-  useClockView(clock, boot.serverClock.now, now => snoozes.current.filter(until => until <= now).length);
   const nowIso = clock.now();
   const dateSelection = resolveDateSelection(route.day, today);
   const day = dateSelection.state === "valid" ? dateSelection.day : dateSelection.requested;
@@ -225,13 +223,11 @@ export function LoadedApp({
   const priorRows = knownRows.current ?? (dayRequested === undefined ? undefined : keptDayFrame(client, authorityEpoch, boot.actor.id, dayRequested)?.queueSurfaces);
   const panelRow = route.run === undefined || logPreview !== "top-level" ? undefined : priorRows?.find(row => row.runId === route.run);
   const panelRun = logPreview === "none" || panelRow !== undefined && panelRow.parent !== null ? route.run : undefined;
-  const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id, panelRun);
+  const dayState = useDashboardDay(dayRequested, authorityEpoch, boot.actor.id, panelRun);
   // A queue date that opens no day stream, such as a future or malformed link, leaves the served inbox a stream of today.
   const inboxDay = dayRequested === undefined && workflowComposition.harness?.useInbox === undefined ? today : undefined;
-  const inboxDayState = useDashboardDay(inboxDay, nowIso, authorityEpoch, boot.actor.id);
+  const inboxDayState = useDashboardDay(inboxDay, authorityEpoch, boot.actor.id);
   const dayResource = dayState.day;
-  snoozes.current = dayResource.state === "loaded" ? dayResource.value.notifications
-    .flatMap(row => row.kind === "notification" && row.state === "snoozed" && row.snoozedUntil !== undefined ? [new Date(row.snoozedUntil).toISOString()] : []) : [];
   const streamDown = dayState.connection.state === "stopped" || dayState.connection.state === "reconnecting";
   const dayFailureText = useMemo(() => {
     if (dayResource.state !== "failed") return undefined;

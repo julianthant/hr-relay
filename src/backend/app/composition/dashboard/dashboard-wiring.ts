@@ -1,6 +1,6 @@
 import { resolveWriteCommandTarget } from "../../../runs/commands/write-command-target.js";
 import { randomUUID } from "node:crypto";
-import { emitFaultWithCauses } from "../../../logs/debug-events.js";
+import { emitFaultWithCauses, emitOptionalDiagnostic } from "../../../logs/debug-events.js";
 import { join } from "node:path";
 import { z } from "zod";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
@@ -130,7 +130,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   let snapshotWorkers: () => readonly WorkerMemberView[] = () => [];
   const workerMembers = (): readonly WorkerMemberView[] => snapshotWorkers();
   let startupPending: (workflowId: string) => boolean = () => false;
-  const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database: history, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader, listNotifications: notificationReads.list, readLanes });
+  const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database: history, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader, readLanes });
 
   const { noteWriter, stopTimeline, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, readLanes, lifecycle, debugEvents });
 
@@ -298,7 +298,9 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     host: run => history.withAuthorityReadSnapshot(() => ocrHostRun(history.authority, run)),
     command: commandId => history.authority.commands.readForNotice(commandId),
     bulk: bulkCommandId => { const acceptance = history.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: history.authority.commands.listBulkChildren(bulkCommandId) }; } });
-  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads });
+  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads,
+    reportListReadFailure: () => { emitOptionalDiagnostic(() => debugEvents.emit({ category: "sse", phase: "failed",
+      correlationId: randomUUID(), area: "notification-list", reason: "poll-read-failed" })); } });
   const dataQueries = composeDataQueries(runDetailDeps);
   const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });
   const assistantProposals = createAssistantProposals({ ocrSources: () => ocrSources, database, authorization: assistantAuthorization, plans: startPlans, commands, runs: lifecycle, descriptors,
@@ -363,6 +365,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox, target: notifications.target }),
+    notificationList: notifications.streamList,
     notificationStatus: { read: () => notifications.status(), onChange: listener => notificationObserver.onStatusChange(listener) },
     runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
     settings: { read: settingsBoundary.editable, onChange: listener => { settingsChanges.add(listener); return () => { settingsChanges.delete(listener); }; } },
@@ -452,7 +455,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
   }));
   dashboardPreflightRunners.markBackendOwned(server.port);
-  const gateParkTimer = startNotificationPolling(database, clock, notificationObserver);
+  const gateParkTimer = startNotificationPolling(database, clock, notificationObserver, notifications.pollList);
   startupCleanups.push(() => clearInterval(gateParkTimer));
   const historyTimer = startAssistantHistoryCleanup(() => { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); }, error => {
     const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "assistant-history-cleanup", code: "ASSISTANT_HISTORY_CLEANUP_FAILED",

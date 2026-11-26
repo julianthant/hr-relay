@@ -1,11 +1,10 @@
-import { NotificationWireSchema, notificationSourceEventOf, notificationWireOf, type NotificationWire } from "../../../models/dashboard/projection.js";
+import { NotificationWireSchema, notificationSourceEventOf, notificationWireOf, type NotificationDisplayContext, type NotificationWire } from "../../../models/dashboard/projection.js";
 import { notificationStanding, type NotificationRecord, type NotificationStandingSources } from "../../../models/notifications/notifications.js";
 import { NotificationTriggerEventSchema } from "../../../rules/notifications/notification-triggers.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { notificationDisplayContext } from "../queries/notification-display.js";
 
 type NotificationProjectionDependencies = {
-  display: Parameters<typeof notificationDisplayContext>[1];
+  display(record: NotificationRecord): NotificationDisplayContext;
   source(id: string): Parameters<typeof notificationSourceEventOf>[1];
   standing: NotificationStandingSources;
 };
@@ -17,15 +16,19 @@ export function notificationProjection(record: ServedNotificationRecord, nowMs: 
   const sourceEvent = notificationSourceEventOf(record, source);
   const event = source === undefined ? undefined : NotificationTriggerEventSchema.parse(source.event);
   const context = event?.kind === "storage-degraded" ? { state: "storage", concern: event.concern } as const
-    : record.trigger === "storage" ? { state: "unavailable" } as const : notificationDisplayContext(record, deps.display);
+    : record.trigger === "storage" ? { state: "unavailable" } as const : deps.display(record);
   const standing = record.readOnlyHistory !== true && notificationStanding(record, deps.standing) ? true : undefined;
   return notificationWireOf(record, nowMs, context, sourceEvent, record.readOnlyHistory, standing);
 }
 
 /** Group only retained source evidence; durable rows and their mutation revisions remain distinct. A cleared row is not listed. */
-export function notificationListProjection(records: readonly ServedNotificationRecord[], nowMs: number, deps: NotificationProjectionDependencies): NotificationWire[] {
-  const rows = records.filter(record => record.clearedAt === undefined).map(record => notificationProjection(record, nowMs, deps))
-    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.notificationId.localeCompare(b.notificationId));
+export function compareNotificationRows(a: NotificationWire, b: NotificationWire): number {
+  return b.occurredAt.localeCompare(a.occurredAt) || a.notificationId.localeCompare(b.notificationId);
+}
+
+export function notificationListProjection(records: readonly ServedNotificationRecord[], nowMs: number, deps: NotificationProjectionDependencies,
+  project: typeof notificationProjection = notificationProjection): NotificationWire[] {
+  const rows = records.filter(record => record.clearedAt === undefined).map(record => project(record, nowMs, deps)).sort(compareNotificationRows);
   const groups = new Map<string, Extract<NotificationWire, { kind: "notification" }>[]>();
   const result: NotificationWire[] = [];
   for (const row of rows) {
@@ -56,5 +59,5 @@ export function notificationListProjection(records: readonly ServedNotificationR
       group: { concern: latest.context.concern, members },
     }));
   }
-  return result.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.notificationId.localeCompare(b.notificationId));
+  return result.sort(compareNotificationRows);
 }

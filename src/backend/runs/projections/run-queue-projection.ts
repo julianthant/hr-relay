@@ -9,9 +9,6 @@ import type { WorkerMemberView } from "../../runtime/workers/worker-pool.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
-import { notificationListProjection, type ServedNotificationRecord } from "./notification-list.js";
-import { lifecyclePark, NotificationTriggerEventSchema, publicationPark } from "../../../rules/notifications/notification-triggers.js";
-import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
@@ -42,9 +39,7 @@ import {
   PositiveIntSchema,
   LocalDateSchema,
   EidSchema,
-  LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
-  FingerprintSchema,
   IsoInstantSchema,
   RunIdSchema,
   type Fingerprint,
@@ -146,7 +141,6 @@ type QueueDaySources = Exclude<Parameters<CheckQueueDaySources>[1], number | und
 interface CachedQueueDay {
   wire: DashboardDayWire;
   sources: QueueDaySources;
-  notificationRecords: ReturnType<RunQueueProjectionDeps["authority"]["listNotifications"]>;
   workerKey: string;
   reusable: ReadonlySet<string>;
   builtAt: number;
@@ -184,15 +178,6 @@ export interface RunQueueProjectionDeps {
     delegationWait?(runId: string): DelegationWaitState | null;
     reviewAvailable?(runId: string): boolean;
     recordMembers?(run: RunRecord, children: readonly RunRecord[]): QueueRecordMembers | undefined;
-    /** Durable inbox rows served by day. */
-    listNotifications(actorId: string): readonly ServedNotificationRecord[];
-    latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
-    /** Whether a storage concern is still active; absent or unknown keeps its notices standing. */
-    notificationConcernActive?(concern: string): boolean | undefined;
-    /** Whether a command has its result; absent or unknown leaves its recovery notice clearable. */
-    notificationCommandSettled?(commandId: string): boolean | undefined;
-    command?(commandId: string): CommandRequest | undefined;
-    listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
     listCheckpoints: RunTimelineEvidenceSource["authority"]["listCheckpoints"];
     listGateResults: RunTimelineEvidenceSource["authority"]["listGateResults"];
 
@@ -249,8 +234,6 @@ const LaneDayFactsSchema = z.strictObject({
   /** The timeline position the day's fold reached, in the snapshot its rows were read in. */
   position: z.number().int().nonnegative(),
   surfaces: z.array(PublishedSurfaceSchema),
-  /** The asked publication source ids that snapshot does not hold. */
-  missingPublications: z.array(FingerprintSchema),
   /** Whether this read built the day, rather than reusing one it had cached. */
   built: z.boolean(),
 });
@@ -287,8 +270,7 @@ export function stampDashboardDay(dayJson: string, stamp: Readonly<{ day: string
 
 /** The navigation lane's day read, as the projection calls it. */
 export interface DashboardDayLane {
-  read(day: string, request: Readonly<{ slot?: Readonly<{ subscriberId: string; slot: string }>; signal?: AbortSignal;
-    publications: readonly string[] }>): Promise<Readonly<{ body: string; processRevision: number | null }>>;
+  read(day: string, request: Readonly<{ slot?: Readonly<{ subscriberId: string; slot: string }>; signal?: AbortSignal }>): Promise<Readonly<{ body: string; processRevision: number | null }>>;
   /** The current process-facts revision; a reply built at another revision is discarded. */
   processRevision(): number;
 }
@@ -1797,20 +1779,14 @@ export class RunQueueProjection {
           patch = { previous, affected, dayRunIds: revision.dayRunIds, countDays: revision.countDays, sameWorkers };
         }
       }
-      const notifications = patch?.previous.notificationRecords ?? this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID);
-      const { wire, sources, reusable } = this.#buildDashboardDayWire(parsedDay, notifications, now, patch);
+      const { wire, sources, reusable } = this.#buildDashboardDayWire(parsedDay, patch);
       if (revision === undefined || wire.workerAuthority.state === "unavailable" || wire.unavailableWorkerCards !== undefined) return { wire };
 
       const workerKey = this.#workerSurfaceKey(wire.workerAuthority.members);
       if (typeof workerKey !== "string") return { wire };
-      let validUntil = this.#deps.authority.nextDuoLeaseExpiry?.(now) ?? Infinity;
-      for (const notice of notifications) {
-        if (notice.readOnlyHistory === true || notice.snooze.state !== "snoozed") continue;
-        const until = Date.parse(notice.snooze.until);
-        if (until > now) validUntil = Math.min(validUntil, until);
-      }
+      const validUntil = this.#deps.authority.nextDuoLeaseExpiry?.(now) ?? Infinity;
       deepFreeze(wire);
-      return { wire, cache: { wire, notificationRecords: notifications, workerKey,
+      return { wire, cache: { wire, workerKey,
         sources: { ...sources, through: revision.through }, reusable, builtAt: now, validUntil,
         cursor: wire.snapshotCursor, refreshedRuns: new Set() } };
     };
@@ -1861,7 +1837,7 @@ export class RunQueueProjection {
   }
 
   #laneFacts(wire: DashboardDayWire, built: boolean): LaneDayFacts {
-    return { position: this.#timelineCursor, missingPublications: [], built,
+    return { position: this.#timelineCursor, built,
       surfaces: wire.queueSurfaces.map(({ runId, status, startedAt }) => ({ runId, status, startedAt })) };
   }
 
@@ -1869,8 +1845,7 @@ export class RunQueueProjection {
    * One read of the day at this dispatch. With a lane it is the lane's reply; without one it is built here, in this turn,
    * so it is current by construction.
    */
-  requestDashboardDay(day: string, request: Readonly<{ slot?: Readonly<{ subscriberId: string; slot: string }>; signal?: AbortSignal;
-    publications?: readonly string[] }> = {}): DashboardDayRead | Promise<DashboardDayRead> {
+  requestDashboardDay(day: string, request: Readonly<{ slot?: Readonly<{ subscriberId: string; slot: string }>; signal?: AbortSignal }> = {}): DashboardDayRead | Promise<DashboardDayRead> {
     if (this.#health.state === "degraded") {
       throw new ProjectionDegradedError(`the run/queue projection is degraded and refuses to serve counts: ${this.#health.lastError ?? "unknown"}`);
     }
@@ -1882,7 +1857,7 @@ export class RunQueueProjection {
       return { dayJson, facts, generation, dispatchCursor, foldedHere: true, wire, current: () => generation === this.#generationValue };
     }
     const revision = lane.processRevision();
-    return lane.read(day, { ...request, publications: request.publications ?? [] }).then(reply => {
+    return lane.read(day, request).then(reply => {
       const { dayJson, facts } = decodeLaneDay(reply.body);
       return { dayJson, facts, generation, dispatchCursor, foldedHere: false, wire: undefined,
         current: () => generation === this.#generationValue && reply.processRevision === revision && lane.processRevision() === revision };
@@ -1983,8 +1958,7 @@ export class RunQueueProjection {
     return surfaces.sort((a, b) => a.runId.localeCompare(b.runId));
   }
 
-  #buildDashboardDayWire(parsedDay: string, notifications: ReturnType<RunQueueProjectionDeps["authority"]["listNotifications"]>, now: number,
-    patch?: QueueDayPatch): {
+  #buildDashboardDayWire(parsedDay: string, patch?: QueueDayPatch): {
     wire: DashboardDayWire; sources: Omit<QueueDaySources, "through">; reusable: ReadonlySet<string>;
   } {
     this.#dayBuilds += 1;
@@ -2090,7 +2064,6 @@ export class RunQueueProjection {
 
     let members: readonly WorkerSlotRecord[] | undefined;
     const sharedRuns = new Set<string>();
-    const notificationCommands = new Set<string>();
     const timelineRunIds = new Set<string>();
     const lastWorkerClaims: { workerId: string; cursor: number | null }[] = [];
     const presentation: RunTimelineEvidenceSource = {
@@ -2152,53 +2125,6 @@ export class RunQueueProjection {
         reason: error instanceof Error ? error.message : "Worker authority could not be verified." };
     }
 
-    const reusedNotices = new Set<string>();
-    const observedTimelines = new Set(patch?.previous.sources.timelineRunIds);
-    const changedNotices = notifications.filter(record => {
-      const link = record.links[0];
-      if (patch === undefined || record.trigger === "storage" || link === undefined || !("runId" in link)
-        || patch.affected.has(link.runId)) return true;
-      reusedNotices.add(record.notificationId);
-      sharedRuns.add(link.runId);
-      if (observedTimelines.has(link.runId)) timelineRunIds.add(link.runId);
-      return false;
-    });
-    const projected = notificationListProjection(changedNotices, now, {
-      display: {
-        read: readSharedRun,
-        descriptor: id => this.#deps.descriptors.resolve(id),
-        receipt: id => this.#deps.authority.getReceipt(id),
-        presentation,
-        checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
-        command: id => {
-          notificationCommands.add(id);
-          return this.#deps.authority.command?.(id);
-        },
-      },
-      source: id => this.#deps.authority.latestNotificationSource?.(id),
-      standing: {
-        runPark: id => { const read = readSharedRun(id); return read.state === "present" ? lifecyclePark(read.run.lifecycle) : undefined; },
-        noticePark: id => publicationPark(this.#deps.authority.latestNotificationSource?.(id)),
-        storageConcern: id => {
-          const event = this.#deps.authority.latestNotificationSource?.(id)?.event;
-          const parsed = event === undefined ? undefined : NotificationTriggerEventSchema.parse(event);
-          return parsed?.kind === "storage-degraded" ? parsed.concern : undefined;
-        },
-        concernActive: concern => this.#deps.authority.notificationConcernActive?.(concern),
-        commandSettled: id => {
-          notificationCommands.add(id);
-          return this.#deps.authority.notificationCommandSettled?.(id);
-        },
-      },
-    });
-    const noticesById = new Map(projected.map(notice => [notice.notificationId, notice]));
-    const noticeRows = patch === undefined || reusedNotices.size === 0 ? projected : patch.previous.wire.notifications.map(notice => {
-      if (reusedNotices.has(notice.notificationId)) return notice;
-      const updated = noticesById.get(notice.notificationId);
-      if (updated === undefined) throw new ProjectionDegradedError("queue-notification-membership-mismatch");
-      return updated;
-    });
-
     const wire = DashboardDayWireSchema.parse({
       day: parsedDay,
       descriptorHash: this.#deps.descriptorSetHash,
@@ -2232,7 +2158,6 @@ export class RunQueueProjection {
         plannedBy: pool.plannedBy,
         plannedAt: pool.plannedAt,
       })),
-      notifications: noticeRows,
     });
     const relationships = new Map<string, QueueDaySources["relationships"][number]>();
     if (patch !== undefined) {
@@ -2263,7 +2188,6 @@ export class RunQueueProjection {
       }
     }
     return { wire, reusable, sources: { relationships: [...relationships.values()], runIds: [...runIds], timelineRunIds: [...timelineRunIds], lastWorkerClaims,
-      commandIds: [...notificationCommands],
       month: { from: monthFrom, to: monthTo, counts: wire.monthCounts } } };
   }
 
