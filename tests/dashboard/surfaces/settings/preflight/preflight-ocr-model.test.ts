@@ -13,12 +13,15 @@ const started = ChatGptSignInStartSchema.parse({ state: "started", attemptId, au
 function setup(overrides: Partial<ChatGptAccountQueries> = {}) {
   const calls: string[] = [];
   let connected = false;
-  const client: ChatGptAccountQueries = { chatGptAccount: async () => chatGptStatusFixture(connected ? account : { state: "signed-out" }),
+  const read = overrides.chatGptAccount ?? (async () => chatGptStatusFixture(connected ? account : { state: "signed-out" }));
+  let status = chatGptStatusFixture({ state: "signed-out" });
+  const client: ChatGptAccountQueries = { checkChatGptAccount: async () => status,
     startChatGptSignIn: async () => started,
     completeChatGptSignIn: async () => { connected = true; return { state: "completed", attemptId, account }; },
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }),
     signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }), testChatGptOcr: async () => { calls.push("ocr"); return { state: "completed", model: "Synthetic OCR" }; },
     ...overrides,
+    chatGptAccount: async () => { status = await read(); return status; },
   };
   const identity = createServedChatGptAccountPort(client, { open: () => ({ navigate() {}, close() {} }) });
   const ocr = createServedPreflightOcrPort(client, identity);

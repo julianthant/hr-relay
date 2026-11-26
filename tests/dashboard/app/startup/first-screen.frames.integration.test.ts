@@ -5,6 +5,7 @@ import { afterEach, it, vi } from "vitest";
 import { MOCK_WORKFLOW_COMPOSITION } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { DAY, runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { disposeHttpRouteHarness, harness } from "../../../support/helpers/backend/http-route-harness.js";
+import { chatGptStatusFixture } from "../../../support/helpers/chatgpt-status-fixture.js";
 import { STARTUP_READ_DEADLINE_MS } from "../../../../src/dashboard/app/startup/first-screen.js";
 import { ASSISTANT_FAILURES } from "../../../../src/models/dashboard/assistant.js";
 import { assistantOpen } from "../../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
@@ -60,6 +61,71 @@ it("fails reads still pending at the startup deadline into their notices, then s
     assert.ok(notices.length >= 2, `the queue shows its notice too: ${notices.join(" | ")}`);
   } finally { await app.stop(); }
 }, STARTUP_READ_DEADLINE_MS + 20_000);
+
+it("fails a cold General Settings link whose account check stalls at the startup deadline", async () => {
+  const server = dashboardServer();
+  const connected = chatGptStatusFixture({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" });
+  const app = await start({}, (url, init) => {
+    const path = new URL(url).pathname;
+    return path === "/api/v1/profile/state" ? Response.json(active) : path === "/api/v1/settings/chatgpt-account" ? Response.json(connected)
+      : path === "/api/v1/settings/chatgpt-account/check" ? never() : server(url, init);
+  }, "/?settings=general");
+  try {
+    await vi.waitFor(() => assert.ok(app.paths.includes("/api/v1/settings/chatgpt-account/check")), { timeout: 10_000, interval: 50 });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, STARTUP_READ_DEADLINE_MS - 1_000)); });
+    assert.deepEqual(app.frames, ["loading"], "the loader holds while the account check is pending");
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 5_000, interval: 50 });
+    assert.deepEqual(app.frames, ["loading", "dashboard"]);
+  } finally { await app.stop(); }
+}, STARTUP_READ_DEADLINE_MS + 20_000);
+
+it("gives a loader that returns for the same profile its own startup deadline", async () => {
+  const server = dashboardServer();
+  let stalled = false;
+  const app = await start({}, (url, init) => new URL(url).pathname === "/api/v1/profile/state" ? Response.json(active)
+    : stalled && url.includes("/events/v1?") ? never() : server(url, init));
+  const button = (name: string) => [...app.host.querySelectorAll("button")].find(item => item.textContent === name);
+  try {
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
+    const entry: unknown = window.history.state;
+    await act(async () => { window.history.pushState(entry, "", "/?settings=activity&activityPreview=missing"); window.dispatchEvent(new PopStateEvent("popstate", { state: entry })); });
+    await vi.waitFor(() => assert.ok(button("Open dashboard")), { timeout: 5_000, interval: 50 });
+    stalled = true;
+    const returning = app.frames.length;
+    await act(async () => { button("Open dashboard")?.click(); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, STARTUP_READ_DEADLINE_MS - 1_000)); });
+    assert.deepEqual(app.frames.slice(returning), ["loading"], "the returning loader holds while the day stream is pending");
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 5_000, interval: 50 });
+  } finally { await app.stop(); }
+}, STARTUP_READ_DEADLINE_MS + 30_000);
+
+it("fails an account check still pending when the loader returns into General Settings at the new loader's deadline, sending it once", async () => {
+  const server = dashboardServer();
+  const connected = chatGptStatusFixture({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" });
+  const app = await start({}, (url, init) => {
+    const path = new URL(url).pathname;
+    return path === "/api/v1/profile/state" ? Response.json(active) : path === "/api/v1/settings/chatgpt-account" ? Response.json(connected)
+      : path === "/api/v1/settings/chatgpt-account/check" ? never() : server(url, init);
+  });
+  const go = async (to: string) => {
+    const entry: unknown = window.history.state;
+    await act(async () => { window.history.pushState(entry, "", to); window.dispatchEvent(new PopStateEvent("popstate", { state: entry })); });
+  };
+  const checks = () => app.paths.filter(path => path === "/api/v1/settings/chatgpt-account/check").length;
+  try {
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
+    await go("/?settings=general");
+    await vi.waitFor(() => assert.equal(checks(), 1), { timeout: 5_000, interval: 50 });
+    await go("/?settings=activity&activityPreview=missing");
+    await vi.waitFor(() => assert.ok([...app.host.querySelectorAll("button")].some(item => item.textContent === "Open dashboard")), { timeout: 5_000, interval: 50 });
+    const returning = app.frames.length;
+    await go("/?settings=general");
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, STARTUP_READ_DEADLINE_MS - 1_000)); });
+    assert.deepEqual(app.frames.slice(returning), ["loading"], "the returning loader holds while the account check is pending");
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 3_000, interval: 50 });
+    assert.equal(checks(), 1, "the guarded check is sent once");
+  } finally { await app.stop(); }
+}, STARTUP_READ_DEADLINE_MS + 30_000);
 
 const servedSessions: typeof MOCK_WORKFLOW_COMPOSITION = workflows => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows), sessionsHarness: undefined });
 const sessionsOpen = `&view=${encodeURIComponent(JSON.stringify({ sessions: true }))}`;

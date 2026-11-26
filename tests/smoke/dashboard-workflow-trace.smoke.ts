@@ -143,12 +143,15 @@ test("Person Lookup: Rerun starts one new run, a second press while pending send
 
   await dashboard.clearToasts();
   const started = await dashboard.holdCommands("start-run");
-  const rerun = dashboard.runPanel.getByRole("button", { name: "Rerun" });
+  const menu = dashboard.runPanel.getByRole("button", { name: "More actions" });
+  const rerun = page.getByRole("menuitem", { name: "Rerun" });
+  await menu.click();
   await rerun.click();
   await expect.poll(started.sent, { message: "the held Rerun reached the server" }).toBe(1);
   // A finished run reruns in one click: no dialog opens, and a second press while it queues is refused.
   await expect(page.getByRole("dialog", { name: "Rerun", exact: true })).toBeHidden();
-  await dashboard.pressAgain(rerun);
+  await menu.click();
+  await rerun.click();
   await expect(page.getByText("Still queuing the last rerun").first()).toBeVisible();
   await dashboard.clearToasts();
   started.release();

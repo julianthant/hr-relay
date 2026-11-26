@@ -1,3 +1,6 @@
+import { createItemAttemptHistoryQuery } from "../../../../src/backend/runs/queries/item-attempt-history.js";
+import { createWorkerCommandResultQuery } from "../../../../src/backend/runs/queries/worker-command-result.js";
+import { createPreflightReportService } from "../../../../src/backend/runtime/preflight/report-service.js";
 import { AUTHORITY_DERIVED_TABLES } from "../../../../src/models/config/authority.js";
 import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "./unused-worker-pool.js";
@@ -12,7 +15,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { createProtectedSettingsRuntimeReader } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createBoundProfileFixture, boundProfileCredentials, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema as PublicationActorIdSchema, ConfigSnapshotIdSchema } from "../../../../src/rules/identity/ids.js";
 import { seedInitialSettingsRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { sqliteRunReader } from "../canonical-run-reader.js";
 
@@ -81,7 +84,7 @@ export interface Harness {
   readonly hub: DashboardStreamHub;
   readonly projection: ReturnType<typeof createRunQueueProjection>;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
-  readonly preflight: ReturnType<typeof createPreflightHarness>;
+  readonly preflight: ReturnType<typeof createPreflightReportService>;
   readonly artifactSourceReads: number[];
 }
 
@@ -391,7 +394,22 @@ export async function harness(options: {
     ...(options.maxPending === undefined ? {} : { maxPending: options.maxPending }),
   });
   cleanups.push(() => hub.close());
-  const preflight = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
+  const { authority, report } = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
+  const preflight = createPreflightReportService({
+    dashboard: authority,
+    clock,
+    runtime: {
+      currentScope(workflowId) {
+        if (workflowId !== undefined) throw new Error("workflow preflight is not wired in the HTTP harness");
+        return { configFingerprint: HASH_B, configSnapshotId: ConfigSnapshotIdSchema.parse(UUID_4),
+          descriptorFingerprint: fixtureDescriptor.contractFingerprint, requestedCapabilities: ["dashboard.serve"] };
+      },
+      admission: {
+        read() { throw new Error("workflow preflight is not wired in the HTTP harness"); },
+        async prepare() { throw new Error("workflow preflight is not wired in the HTTP harness"); },
+      },
+    },
+  });
 
 
   const search = createCrossDateSearchService({
@@ -418,6 +436,7 @@ export async function harness(options: {
     ...(options.ocr === undefined ? {} : { ocr: options.ocr }),
     ...(options.notifications === undefined ? {} : { notifications: options.notifications(database) }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
+    workerCommandResult: createWorkerCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE), workflows: options.workbookWorkflows ?? [fixtureDescriptor] },
     bootstrap: {
       appVersion: "0.1.0",
@@ -429,9 +448,9 @@ export async function harness(options: {
       actorLabel: () => "Fixture Operator",
       authorityMeta: () => database.getMeta(),
       workbookCompatibility: workflows => workbookLibrary.compatibility(workflows),
-      preflightReport: () => preflight.report,
+      preflightReport: () => report,
     },
-    preflight: preflight.authority,
+    preflight,
     projection,
     search,
     activity,
@@ -467,7 +486,7 @@ export async function harness(options: {
             artifactReader,
           },
         }),
-    runDetail: runDetailDeps,
+    runDetail: { ...runDetailDeps, itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runDetailDeps.runReader }) },
     commands,
     startPlans,
     hub,

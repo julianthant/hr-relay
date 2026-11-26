@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterEach, it, vi } from "vitest";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { COMMAND_FIXTURES, UUID_1 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { COMMAND_FIXTURES, NOW, UUID_1, UUID_2 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 
 const boundary = vi.hoisted(() => ({
   beforeOpen: undefined as ((location: string | Buffer | URL) => void) | undefined,
@@ -28,6 +31,38 @@ function open(fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
   return AuthorityDatabase.open(fixture.admission, { path: fixture.path, busyTimeoutMs: 250, migrationOwner: "existing-open-test" },
     undefined, undefined, undefined, undefined, boundProfileCredentials(fixture.admission));
 }
+
+it("opens a store and reads its command and audit for a historical worker count above the ceiling", async () => {
+  const fixture = await createBoundProfileFixture();
+  try {
+    const request = {
+      commandId: UUID_1, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+      family: "worker-browser", type: "plan-worker-count", target: { workflowId: "person-lookup", expectedVersion: 0 },
+      payload: { desiredWorkers: 17 },
+    };
+    const result = { state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: "No process owner" };
+    const audit = { auditId: UUID_2, request, result, completedAt: NOW, versionChanges: [], affectedDependencyIds: [] };
+    const requestJson = canonicalJsonStringify(request);
+    const auditJson = canonicalJsonStringify(audit);
+    const raw = new DatabaseSync(fixture.path);
+    try {
+      raw.prepare(`INSERT INTO commands
+        (id, family, actor_id, target_id, request_digest, request_json, state, outcome_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'refused', ?, ?, ?)`)
+        .run(request.commandId, request.family, request.requestedBy, request.target.workflowId,
+          sha256Hex(requestJson), requestJson, auditJson, NOW, NOW);
+      raw.prepare("INSERT INTO command_audits (id, command_id, code, payload_json, created_at) VALUES (?, ?, ?, ?, ?)")
+        .run(audit.auditId, request.commandId, result.code, auditJson, NOW);
+    } finally { raw.close(); }
+
+    const database = open(fixture);
+    try {
+      assert.deepEqual(database.authority.commands.get(request.commandId), request);
+      assert.deepEqual(database.authority.commandAudits.findByCommand(request.commandId), audit);
+      assert.deepEqual(database.authority.commands.readForNotice(request.commandId), { request, state: "refused", result });
+    } finally { database.close(); }
+  } finally { await fixture.close(); }
+});
 function assertAbsent(path: string) {
   for (const suffix of ["", "-wal", "-shm"]) assert.equal(existsSync(`${path}${suffix}`), false);
 }

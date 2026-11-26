@@ -49,11 +49,12 @@ export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileF
   };
   const repository = createChatGptCredentialRepository({ admission, stateRoot: root });
   const service = createChatGptAccountService({ admission, stateRoot: root, clock, fetch: transport });
-  async function callback(attempt: ChatGptAuthorization, patch: { [key: string]: string | null } = {}) {
+  async function callback(attempt: Pick<ChatGptAuthorization, "authorizationUrl">, patch: { [key: string]: string | null } = {}) {
     const authorize = new URL(attempt.authorizationUrl); nonce = authorize.searchParams.get("nonce") ?? "";
     const callback = new URL(authorize.searchParams.get("redirect_uri") ?? "");
-    callback.searchParams.set("code", "synthetic-code"); callback.searchParams.set("state", authorize.searchParams.get("state") ?? "");
-    if (authorize.searchParams.get("client_id") === "dynamic_agent_client") callback.searchParams.set("client_id", "oaiapp_fixture");
+    if (patch.error === undefined) callback.searchParams.set("code", "synthetic-code");
+    callback.searchParams.set("state", authorize.searchParams.get("state") ?? "");
+    if (patch.error === undefined && authorize.searchParams.get("client_id") === "dynamic_agent_client") callback.searchParams.set("client_id", "oaiapp_fixture");
     for (const [key, value] of Object.entries(patch)) { if (value === null) callback.searchParams.delete(key); else callback.searchParams.set(key, value); }
     return fetch(callback);
   }

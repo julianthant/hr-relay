@@ -375,6 +375,7 @@ export type StartPlanRepository = Readonly<{
 
 export type WorkerPoolRepository = Readonly<{
   plan(input: unknown): WorkerPoolPlanOutcome;
+  retireMember(input: unknown): WorkerPoolRecord;
   get(workflow: string): WorkerPoolRecord | undefined;
   list(): readonly WorkerPoolRecord[];
 }>;

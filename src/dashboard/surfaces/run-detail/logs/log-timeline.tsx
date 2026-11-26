@@ -22,19 +22,21 @@ function StepCard({ stage, label }: { stage: LogTimelineStage; label: string }) 
   </div>;
 }
 
+/** The run's steps as chips in the header row; the dot carries the step's state. */
 export function LogTimeline({ stages, onJump }: { stages: readonly LogTimelineStage[]; onJump: (stepId: string) => void }) {
-  return <TooltipProvider delayDuration={200} disableHoverableContent><nav aria-label="Run timeline" className="shrink-0 border-b border-ui-stroke bg-ui-panel px-4 py-2">
-    <ol className="m-0 flex list-none gap-1 p-0">
+  if (stages.length === 0) return null;
+  return <TooltipProvider delayDuration={200} disableHoverableContent><nav aria-label="Run timeline" tabIndex={0} className="min-w-0 flex-1 overflow-x-auto rounded-full [scrollbar-width:none] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-info">
+    <ol className="m-0 flex list-none items-center gap-2 p-0">
       {stages.map(stage => {
         const style = LOG_TIMELINE_STYLES[stage.state];
         const label = stage.statusLabel ?? style.label;
-        return <li key={stage.id} className="min-w-0 flex-1">
+        const detail = stage.state === "pending" ? undefined : stage.durationLabel ?? (stage.state === "completed" ? undefined : label);
+        return <li key={stage.id} className="shrink-0">
           <Tooltip side="bottom" variant="card" content={<StepCard stage={stage} label={label} />}><button type="button" aria-label={`${stage.label} · ${label}${stage.time ? ` · ${stage.time}` : ""}${stage.durationLabel ? ` · ${stage.durationLabel}` : ""}`} aria-disabled={!stage.stepId || undefined}
             onClick={() => { if (stage.stepId) onJump(stage.stepId); }}
-            className="group flex w-full flex-col gap-1 rounded-sm bg-transparent px-0.5 py-1 text-left cursor-pointer hover:bg-ui-hover aria-disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-info">
-            <span className="flex min-w-0 items-center gap-1.5 text-caption text-ui-secondary"><span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", style.color, stage.state === "pending" ? "border border-ui-stroke-control" : "bg-current")} /><span data-one-line className="min-w-0 truncate">{stage.label}</span></span>
-            <span aria-hidden className={cn("block h-2.5 w-full rounded-sm", style.bar)} />
-            {stage.state !== "pending" && (stage.state !== "completed" || stage.durationLabel !== undefined) && <span className={cn("text-caption tabular-nums", stage.state === "completed" ? "text-ui-muted" : style.color)}>{stage.state === "completed" ? stage.durationLabel : label}</span>}
+            className="flex items-center gap-1.5 rounded-full border border-ui-stroke bg-transparent px-2.5 py-0.5 text-caption text-ui-secondary cursor-pointer hover:bg-ui-hover aria-disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-info">
+            <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", style.color, stage.state === "pending" ? "border border-ui-stroke-control" : "bg-current")} />
+            <span data-one-line className="whitespace-nowrap">{stage.label}{detail === undefined ? "" : ` · ${detail}`}</span>
           </button></Tooltip>
         </li>;
       })}

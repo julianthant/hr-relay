@@ -22,13 +22,19 @@ import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
 import { DashboardReadFailedError,DashboardSnapshotOvertakenError,DiagnosticBundleBytesMissingError,DiagnosticBundleCorruptError,LogDisplayRefusedError,LogIdentityRefusedError,ProjectionDegradedError,RequestIdentityRefusedError,SectionUnavailableError,TargetNotFoundError } from "../../../runs/commands/refusals.js";
-import { errorText } from "../../../runs/lifecycle/support.js";
 import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
 
 export type WireError = z.infer<typeof WireErrorSchema>;
 
 export function wireError(code: string, message: string, retryable: boolean): WireError {
   return WireErrorSchema.parse({ state: "error", code, message, retryable });
+}
+
+export class MalformedCommandJsonError extends Error {
+  constructor(cause: SyntaxError) {
+    super("command-json-invalid", { cause });
+    this.name = "MalformedCommandJsonError";
+  }
 }
 
 // Map status by typed refusal kind, never by substrings in an error message.
@@ -43,7 +49,9 @@ export function failureStatus(
   if (error instanceof z.ZodError) {
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
   }
-  const message = errorText(error);
+  if (error instanceof MalformedCommandJsonError) {
+    return { status: 500, body: wireError("INTERNAL_FAILURE", "The command request body must be valid JSON.", false) };
+  }
   if (error instanceof CommandBrowserError || error instanceof CommandBrowserClosureError) return {
     status: error.code === "COMMAND_BROWSER_CLOSURE_UNPROVED" ? 500 : 409,
     body: wireError(error.code, ERROR_CATALOG[error.code].text, false),
@@ -55,53 +63,53 @@ export function failureStatus(
   if (error instanceof AuthoritySnapshotChangedError) return { status: 503, body: wireError(error.code, ERROR_CATALOG[error.code].text, true) };
   if (error instanceof DashboardSnapshotOvertakenError) return { status: 503, body: wireError(error.code, ERROR_CATALOG[error.code].text, true) };
   if (error instanceof DashboardReadFailedError) return { status: 500, body: wireError("DASHBOARD_READ_FAILED", ERROR_CATALOG.DASHBOARD_READ_FAILED.text, false) };
-  if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, message, false) };
-  if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, message, false) };
-  if (error instanceof WorkbookLibraryError) return { status: error.code === "WORKBOOK_NOT_FOUND" || error.code === "WORKBOOK_REVISION_UNAVAILABLE" ? 404 : error.code === "WORKBOOK_INVALID" ? 400 : error.code === "WORKBOOK_NAME_EXISTS" || error.code === "WORKBOOK_OPERATION_CONFLICT" || error.code === "WORKBOOK_VERSION_CONFLICT" || error.code === "WORKBOOK_VERSION_IN_USE" || error.code === "WORKBOOK_TYPE_IN_USE" || error.code === "WORKBOOK_LIBRARY_IN_USE" || error.code === "WORKBOOK_INTAKE_SOURCE_CONFLICT" || error.code === "WORKBOOK_METADATA_UNSUPPORTED" || error.code === "WORKBOOK_SYNC_LINK_REQUIRED" || error.code === "WORKBOOK_SYNC_CONTEXT_CHANGED" || error.code === "WORKBOOK_SYNC_IMPORT_FAILED" || error.code === "WORKBOOK_SYNC_LAYOUT_CHANGED" ? 409 : 500, body: wireError(error.code, message, false) };
+  if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, error.message, false) };
+  if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, error.message, false) };
+  if (error instanceof WorkbookLibraryError) return { status: error.code === "WORKBOOK_NOT_FOUND" || error.code === "WORKBOOK_REVISION_UNAVAILABLE" ? 404 : error.code === "WORKBOOK_INVALID" ? 400 : error.code === "WORKBOOK_NAME_EXISTS" || error.code === "WORKBOOK_OPERATION_CONFLICT" || error.code === "WORKBOOK_VERSION_CONFLICT" || error.code === "WORKBOOK_VERSION_IN_USE" || error.code === "WORKBOOK_TYPE_IN_USE" || error.code === "WORKBOOK_LIBRARY_IN_USE" || error.code === "WORKBOOK_INTAKE_SOURCE_CONFLICT" || error.code === "WORKBOOK_METADATA_UNSUPPORTED" || error.code === "WORKBOOK_SYNC_LINK_REQUIRED" || error.code === "WORKBOOK_SYNC_CONTEXT_CHANGED" || error.code === "WORKBOOK_SYNC_IMPORT_FAILED" || error.code === "WORKBOOK_SYNC_LAYOUT_CHANGED" ? 409 : 500, body: wireError(error.code, error.message, false) };
   if (error instanceof SharePointDownloadError) return { status: error.code === "SHAREPOINT_LINK_UNSUPPORTED" ? 400 : 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   const loginFailure = browserLoginFailure(error);
   if (loginFailure?.system === "sharepoint") return { status: 409, body: wireError(loginFailure.code, ERROR_CATALOG[loginFailure.code].text, false) };
-  if (error instanceof ProtectedSubjectDisplayRefusedError) return { status: 409, body: wireError(error.code, message, false) };
+  if (error instanceof ProtectedSubjectDisplayRefusedError) return { status: 409, body: wireError(error.code, error.message, false) };
   const timeout = preflightRunnerTimeout(error);
   if (timeout !== undefined) {
     return { status: 409, body: wireError("PREFLIGHT_TIMEOUT", `${ERROR_CATALOG.PREFLIGHT_TIMEOUT.text} (${timeout.check})`, false) };
   }
-  if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, message, false) };
+  if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, error.message, false) };
   if (error instanceof TargetNotFoundError) {
-    return { status: 404, body: wireError("TARGET_NOT_FOUND", message, false) };
+    return { status: 404, body: wireError("TARGET_NOT_FOUND", error.message, false) };
   }
   if (error instanceof RerunRefusedError) {
     return { status: error.code === "target-not-found" ? 404 : 409,
-      body: { ...wireError("RERUN_REFUSED", message, false), refusalCode: error.code } };
+      body: { ...wireError("RERUN_REFUSED", error.message, false), refusalCode: error.code } };
   }
   if (error instanceof StartStepOmissionRefusedError) {
 
-    return { status: 400, body: wireError("START_STEP_OMISSION_REFUSED", message, false) };
+    return { status: 400, body: wireError("START_STEP_OMISSION_REFUSED", error.message, false) };
   }
   if (error instanceof LogIdentityRefusedError || error instanceof LogDisplayRefusedError) {
     return { status: 409, body: wireError(error.code,
       formatErrorCatalogFailure(createErrorCatalogFailure(error.code, {})).text, false) };
   }
   if (error instanceof SectionUnavailableError) {
-    return { status: 409, body: wireError("SECTION_UNAVAILABLE", message, false) };
+    return { status: 409, body: wireError("SECTION_UNAVAILABLE", error.message, false) };
   }
   if (error instanceof RequestIdentityRefusedError) {
-    return { status: 403, body: wireError("REQUEST_IDENTITY_REFUSED", message, false) };
+    return { status: 403, body: wireError("REQUEST_IDENTITY_REFUSED", error.message, false) };
   }
   if (error instanceof ProjectionDegradedError) {
-    return { status: 500, body: wireError("PROJECTION_DEGRADED", message, true) };
+    return { status: 500, body: wireError("PROJECTION_DEGRADED", error.message, true) };
   }
   if (error instanceof DiagnosticBundleBytesMissingError) {
-    return { status: 500, body: wireError("DIAGNOSTIC_BUNDLE_BYTES_MISSING", message, false) };
+    return { status: 500, body: wireError("DIAGNOSTIC_BUNDLE_BYTES_MISSING", error.message, false) };
   }
   if (error instanceof DiagnosticBundleCorruptError) {
-    return { status: 500, body: wireError("DIAGNOSTIC_BUNDLE_CORRUPT", message, false) };
+    return { status: 500, body: wireError("DIAGNOSTIC_BUNDLE_CORRUPT", error.message, false) };
   }
   if (error instanceof AggregateError) {
     const changed = error.errors.find((failure) => failure instanceof PreflightObservationChangedError);
     if (changed instanceof PreflightObservationChangedError) {
-      return { status: 409, body: wireError(`PREFLIGHT_${changed.reason.toUpperCase().replaceAll("-", "_")}`, errorText(changed), false) };
+      return { status: 409, body: wireError(`PREFLIGHT_${changed.reason.toUpperCase().replaceAll("-", "_")}`, changed.message, false) };
     }
   }
-  return { status: 500, body: wireError("INTERNAL_FAILURE", message, false) };
+  return { status: 500, body: wireError("INTERNAL_FAILURE", ERROR_CATALOG.INTERNAL_FAILURE.text, false) };
 }

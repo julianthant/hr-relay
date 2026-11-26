@@ -46,11 +46,11 @@ async function readUpload(request: Request, maxBytes: number, signal: AbortSigna
 const uploadName = (value: string | undefined) => decodeURIComponent(value ?? "");
 
 export function registerAssistantRoutes(app: DashboardApp, service: AssistantService | undefined): void {
-  app.get("/api/v1/assistant/models", async c => {
+  app.get("/api/v1/assistant/models", c => {
     c.header("Cache-Control", "no-store");
     try {
       if (service?.models === undefined) return c.json(wireError("ASSISTANT_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE, false), 503);
-      return c.json(await service.models(c.req.raw.signal));
+      return c.json(service.models());
     } catch { return c.json(wireError("ASSISTANT_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE, false), 503); }
   });
   app.get("/api/v1/assistant/model-preference", c => {

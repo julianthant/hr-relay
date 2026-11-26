@@ -15,8 +15,10 @@ import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.
 import { RunWorkerStartupError, type RunWorkerCapacity } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
 import { assistantProposalDigest } from "../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
 
+import * as assistantComposition from "../../../../../src/backend/app/composition/dashboard/assistant.js";
 import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { buildRunDetail } from "../../../../../src/backend/runs/queries/run-detail.js";
 import { ASSISTANT_WORKFLOW_FACTS_PATH, assistantWorkflowFacts } from "../../../../../src/backend/assistant/plugins/workflows/facts.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { ASSISTANT_FAILURES, AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionDecisionSchema } from "../../../../../src/models/dashboard/assistant.js";
@@ -27,6 +29,8 @@ import { completedResponseStream } from "../../../../support/helpers/chatgpt-res
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import type { RuntimePreflightRunnerFactory } from "../../../../../src/backend/app/preflight/runtime-runners.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { DASHBOARD_TAB_HEADER } from "../../../../../src/dashboard/client/transport.js";
+import { RunDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
 import { ScriptedWorkerChild } from "../../../../support/helpers/backend/fake-worker-port.js";
 import { EXECUTOR_EID, personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -179,11 +183,21 @@ function seedAssistantReadRun({ context, clock }: Pick<ServedAssistantFixture, '
 }
 
 it('serves the read tools through authenticated composition without private provider input or command effects', async () => {
+  using pluginComposition = vi.spyOn(assistantComposition, 'createAssistantPluginDeps');
   await withServedAssistant(async fixture => {
     const { context, transport, origin, originalFetch } = fixture, { run, title, subjectRef } = seedAssistantReadRun(fixture);
+    const tabId = randomUUID();
     const client = createDashboardClient({ baseUrl: origin });
-    await vi.waitFor(async () => assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12));
-    const detail = await client.runDetail(run.envelope.runId);
+    const response = await originalFetch(`${origin}/api/v1/runs/${run.envelope.runId}`, { headers: { [DASHBOARD_TAB_HEADER]: tabId } });
+    const wire = await response.text();
+    assert.equal(response.status, 200, wire);
+    const detail = RunDetailWireSchema.parse(JSON.parse(wire));
+    assert.equal(detail.timeline.events.length, 12, wire);
+
+    const mainRunDetail = pluginComposition.mock.lastCall?.[0].runDetail;
+    assert.ok(mainRunDetail);
+    await vi.waitFor(() => assert.equal(buildRunDetail(mainRunDetail, run.envelope.runId).timeline.events.length, 12));
+
     const ask = (message: string, selected?: string) => send(clientDoor(client), { message, ...(selected === undefined ? {} : { subjectRef: selected }) });
     const outputs: unknown[] = [];
     let turns = 0;

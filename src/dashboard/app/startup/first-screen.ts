@@ -7,10 +7,10 @@ import { STARTUP_READ_DEADLINE_MS } from "../../state/use-bootstrap.js";
 
 export const SLOW_STARTUP_MS = 5_000;
 export { STARTUP_READ_DEADLINE_MS };
-// Reads a first screen can make. Writes are never expired: one may still land after its answer is dropped.
+// Reads a first screen can make, and the account check its next read repeats. Writes are never expired: one may still land after its answer is dropped.
 const FIRST_SCREEN_READS = new Set(["activityPopulation", "activityReport", "applicationLifecycle", "assistantActivity", "assistantConversation", "assistantHistory",
-  "assistantModelPreference", "assistantModels", "calendar", "chatGptAccount", "editableSettings", "intakeSession", "itemAttemptHistory", "notificationCollection",
-  "notificationSnapshot", "notificationStatus", "preflightScopes", "readActivityPopulation", "readPreflight", "readiness", "runDetail", "runHistoryStatus", "runSection",
+  "assistantModelPreference", "assistantModels", "calendar", "chatGptAccount", "checkChatGptAccount", "editableSettings", "intakeSession", "itemAttemptHistory", "notificationCollection",
+  "notificationSnapshot", "notificationStatus", "preflightScopes", "readActivityPopulation", "readPreflight", "readProfileDuoKeys", "readiness", "runDetail", "runHistoryStatus", "runSection",
   "settingsFacts", "workbookCatalog", "workbookCompatibility", "workbookHistory", "workbookList", "workbookRevision", "workbookTypes", "workflowExplorer"]);
 const STILL_LOADING = '[data-slot="skeleton"], [data-loading-layout], [aria-busy="true"]:not(button)';
 
@@ -22,10 +22,10 @@ export const FirstScreenRevealedContext = createContext(true);
  * lifts in one step. Reads still pending at the startup deadline fail into their own part's notice
  * (startupDeadlineClient), so the loader always ends on a settled screen.
  */
-export function useFirstScreen(screen: RefObject<HTMLElement | null>, mounted: boolean, client: DashboardClient) {
+export function useFirstScreen(screen: RefObject<HTMLElement | null>, mounted: boolean, client: DashboardClient, startDeadline?: () => StartupDeadline) {
   const [revealed, setRevealed] = useState(false);
   const [slow, setSlow] = useState(false);
-  const deadline = useMemo(() => startupDeadlineClient(client), [client]);
+  const deadline = useMemo(() => startDeadline?.() ?? startupDeadlineClient(client), [startDeadline, client]);
   useEffect(() => {
     const timer = setTimeout(() => setSlow(true), SLOW_STARTUP_MS);
     return () => clearTimeout(timer);
@@ -46,10 +46,17 @@ export function useFirstScreen(screen: RefObject<HTMLElement | null>, mounted: b
   return { revealed: mounted && revealed, slow, client: deadline.client };
 }
 
-/** The dashboard client for the first screen: until `end`, a first-screen read still pending at `expire` fails as a read failure and its late answer is dropped. */
-export function startupDeadlineClient(client: DashboardClient) {
+export type StartupDeadline = ReturnType<typeof startupDeadlineClient>;
+
+/**
+ * The dashboard client for the first screen: until `end`, a first-screen read still pending at `expire` fails as a read failure and its late answer is dropped.
+ * A deadline opened after `previous` also expires the reads still pending through it, so a shared read is never sent again for the next loader.
+ */
+export function startupDeadlineClient(client: DashboardClient, previous?: { readonly reads: Set<() => void> }) {
   let open = true;
   const expiries = new Set<() => void>();
+  // Pending reads outlive `end`: a later deadline adopts them.
+  const reads = previous?.reads ?? new Set<() => void>();
   const failure = () => new DashboardClientError({ kind: "network", code: "DASHBOARD_READ_FAILED", message: ERROR_CATALOG.DASHBOARD_READ_FAILED.text, retryable: true });
   const wrap = (key: PropertyKey, value: unknown): unknown => {
     if (typeof value !== "function") return value;
@@ -67,12 +74,12 @@ export function startupDeadlineClient(client: DashboardClient) {
       return subscription;
     } : (...args: unknown[]) => {
       const result = call.apply(client, args);
-      if (!open || !(result instanceof Promise)) return result;
+      if (!(result instanceof Promise)) return result;
       return new Promise((resolve, reject) => {
         const expire = () => reject(failure());
-        expiries.add(expire);
-        result.then(value => { expiries.delete(expire); resolve(value); }, (error: unknown) => {
-          expiries.delete(expire);
+        reads.add(expire);
+        result.then(value => { reads.delete(expire); resolve(value); }, (error: unknown) => {
+          reads.delete(expire);
           reject(error instanceof Error ? error : failure());
         });
       });
@@ -86,7 +93,10 @@ export function startupDeadlineClient(client: DashboardClient) {
   });
   return {
     client: proxy as DashboardClient,
-    expire: () => { open = false; for (const expire of [...expiries]) expire(); expiries.clear(); },
+    reads,
+    expire: () => { if (!open) return; open = false; for (const expire of [...expiries, ...reads]) expire(); expiries.clear(); reads.clear(); },
     end: () => { open = false; expiries.clear(); },
+    /** True until `expire` or `end`. */
+    pending: () => open,
   };
 }

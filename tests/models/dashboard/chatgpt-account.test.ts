@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { ChatGptAccountStatusSchema, ChatGptConnectionStatusSchema, ChatGptAccountStateSchema, ChatGptAuthorizationUrlSchema, ChatGptSignInCompletionSchema, ChatGptSignInStartResultSchema } from "../../../src/models/dashboard/chatgpt-account.js";
+import { ChatGptAccountStatusSchema, ChatGptCheckedConnectionSchema, ChatGptConnectionStatusSchema, ChatGptAccountStateSchema, ChatGptAuthorizationUrlSchema, ChatGptSignInCompletionSchema, ChatGptSignInStartResultSchema } from "../../../src/models/dashboard/chatgpt-account.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 const attemptId = "00000000-0000-4000-8000-000000000001";
 it("requires strict status outcomes, canonical failure codes and explicitly unknown usage reset", () => {
@@ -11,6 +11,10 @@ it("requires strict status outcomes, canonical failure codes and explicitly unkn
     assert.equal(ChatGptConnectionStatusSchema.safeParse({ ...connection, ...extra }).success, false);
   assert.equal(ChatGptConnectionStatusSchema.safeParse({ ...connection, state: "refused", failureCode: "CHATGPT_CONNECTION_FAILED" }).success, true);
   assert.equal(ChatGptConnectionStatusSchema.safeParse({ ...connection, state: "refused", failureCode: "WORKBOOK_INVALID" }).success, false);
+  const unchecked = { state: "unchecked", checkedAt: null, failureCode: null };
+  assert.equal(ChatGptConnectionStatusSchema.safeParse(unchecked).success, true);
+  assert.equal(ChatGptConnectionStatusSchema.safeParse({ ...unchecked, checkedAt: connection.checkedAt }).success, false);
+  assert.equal(ChatGptCheckedConnectionSchema.safeParse(unchecked).success, false);
   assert.equal(ChatGptAccountStatusSchema.safeParse({ ...status, usage: { state: "available", resetAt: null } }).success, true);
   assert.equal(ChatGptAccountStatusSchema.safeParse({ ...status, usage: { state: "limit-reached", resetAt: "2026-10-13T00:00:00Z" } }).success, false);
   assert.equal(ChatGptAccountStatusSchema.safeParse({ ...status, usage: { state: "unavailable" } }).success, false);

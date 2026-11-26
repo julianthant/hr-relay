@@ -27,6 +27,7 @@ export function createFixtureSettingsRoutesSetup({ FIXTURE_EDITABLE_SETTINGS, FI
     let account: ChatGptAccountState = { state: "signed-out" };
     const attemptId = "00000000-0000-4000-8000-000000000088";
     app.get("/api/v1/settings/chatgpt-account", c => c.json(chatGptStatusFixture(account)));
+    app.post("/api/v1/settings/chatgpt-account/check", c => c.json(chatGptStatusFixture(account)));
     app.post("/api/v1/settings/chatgpt-account/sign-in", c => {
       account = ChatGptAccountStateSchema.parse({ state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", expiresAt: "2099-10-12T12:00:00.000Z", planUsage: "enabled" });
       return c.json(ChatGptSignInStartSchema.parse({ state: "started", attemptId,

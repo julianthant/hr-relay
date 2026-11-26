@@ -29,9 +29,8 @@ it("mounts only the steps near the viewport and keeps a decision draft scrolled 
     const scroller = host.querySelector<HTMLElement>('[role="region"][aria-label="Run logs"]');
     if (!scroller) throw new Error("log region missing");
     assert.ok(host.querySelectorAll("section").length < 30, "a long log mounts a window, not every step");
-    assert.match(host.querySelector('[role="status"]')?.textContent ?? "", /^300 actions$/u, "the count still reads every step");
 
-    const input = host.querySelector<HTMLInputElement>("input:not([aria-label='Search logs'])");
+    const input = host.querySelector<HTMLInputElement>("input");
     if (!input) throw new Error("decision input missing");
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "1001234");
@@ -43,6 +42,6 @@ it("mounts only the steps near the viewport and keeps a decision draft scrolled 
     assert.ok(host.textContent?.includes("Action 200"));
 
     await scrollTo(scroller, 0);
-    assert.equal(host.querySelector<HTMLInputElement>("input:not([aria-label='Search logs'])")?.value, "1001234", "the draft returns with the step");
+    assert.equal(host.querySelector<HTMLInputElement>("input")?.value, "1001234", "the draft returns with the step");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

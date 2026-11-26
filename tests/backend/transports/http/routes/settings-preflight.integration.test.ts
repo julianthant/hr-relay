@@ -4,6 +4,8 @@ import { afterEach, describe, it } from "vitest";
 import { PreflightRerunCommandResultSchema, requiredPreflightChecks } from "../../../../../src/models/preflight/preflight.js";
 import { PreflightObservationChangedError } from "../../../../../src/rules/preflight/preflight-admission.js";
 
+const SAME_ORIGIN = { host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938" };
+
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("reruns the one strict preflight authority through its command route", async () => {
@@ -19,7 +21,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const response = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
       body: JSON.stringify(command),
     });
 
@@ -33,11 +35,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       "authority.health",
       "ports.available",
     ]);
-    assert.equal(JSON.stringify(h.preflight.authority.readLatest()), JSON.stringify(result.report));
+    assert.equal(JSON.stringify(h.preflight.read()), JSON.stringify({ state: "present", report: result.report }));
 
     const malformed = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
       body: JSON.stringify({ ...command, commandId: "00000000-0000-4000-8000-000000000011", extra: true }),
     });
     assert.equal(malformed.status, 400);
@@ -77,11 +79,47 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(malformedOrigin)).code, "PREFLIGHT_ORIGIN_INVALID");
   });
 
+  it.each([
+    { host: "127.0.0.1:3938" },
+    { host: "127.0.0.1:3938", origin: "http://127.0.0.1:5174" },
+    { host: "127.0.0.1:0", origin: "http://127.0.0.1:0" },
+    { host: "127.0.0.1:65536", origin: "http://127.0.0.1" },
+  ])("refuses preflight ingress before reading the request body (%j)", async headers => {
+    const h = await harness();
+    const requestHeaders = new Headers({ host: headers.host, "content-type": "application/json" });
+    if (headers.origin !== undefined) requestHeaders.set("origin", headers.origin);
+    const request = new Request("http://127.0.0.1:3938/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: requestHeaders,
+      body: "{}",
+    });
+
+    const response = await h.app.request(request);
+
+    assert.equal(response.status, 403);
+    assert.equal((await json(response)).code, "PREFLIGHT_INGRESS_FORBIDDEN");
+    assert.equal(request.bodyUsed, false);
+  });
+
+  it("bounds Host ports at the shared mutation door before the command body is read", async () => {
+    const h = await harness();
+    for (const [port, originPort, status] of [[0, ":0", 403], [65536, "", 403], [1, ":1", 400], [65535, ":65535", 400]] as const) {
+      const request = new Request("http://127.0.0.1:3938/api/v1/commands", {
+        method: "POST",
+        headers: { host: `127.0.0.1:${String(port)}`, origin: `http://127.0.0.1${originPort}`, "content-type": "application/json" },
+        body: "{}",
+      });
+      const response = await h.app.request(request);
+      assert.equal(response.status, status, `Host port ${String(port)}`);
+      assert.equal(request.bodyUsed, status === 400);
+    }
+  });
+
   it("keeps preflight body transport and decoding refusals distinguishable", async () => {
     const h = await harness();
     const wrongType = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "text/plain", host: "127.0.0.1:3938" },
+      headers: { "content-type": "text/plain", ...SAME_ORIGIN },
       body: "{}",
     });
     assert.equal(wrongType.status, 400);
@@ -89,7 +127,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const invalidJson = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
       body: "{",
     });
     assert.equal(invalidJson.status, 400);
@@ -97,7 +135,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const invalidUtf8 = await h.app.request(new Request("http://127.0.0.1:3938/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
       body: new Uint8Array([0xff]),
     }));
     assert.equal(invalidUtf8.status, 400);
@@ -112,7 +150,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         headers: {
           "content-length": contentLength,
           "content-type": "application/json",
-          host: "127.0.0.1:3938",
+          ...SAME_ORIGIN,
         },
         body: "{}",
       });
@@ -122,7 +160,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const missingBody = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
     });
     assert.equal(missingBody.status, 400);
     assert.equal((await json(missingBody)).code, "PREFLIGHT_BODY_MISSING");
@@ -134,7 +172,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     const streamRequestInit: RequestInit & { readonly duplex: "half" } = {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
       body: failedBody,
       duplex: "half",
     };
@@ -150,7 +188,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = await harness();
     const response = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
       body: JSON.stringify({ padding: "x".repeat(4096) }),
     });
 
@@ -160,23 +198,29 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("rate-bounds preflight rerun starts within one monotonic window", async () => {
     const h = await harness();
+    const command = (index: number) => ({
+      commandId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: HASH_B },
+    });
     const request = (index: number) => h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
-      body: JSON.stringify({
-        commandId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-        requestedAt: h.clock.now().toISOString(),
-        requestedBy: "local-operator",
-        source: "settings-surface",
-        type: "rerun-preflight",
-        target: { expectedConfigFingerprint: HASH_B },
-      }),
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
+      body: JSON.stringify(command(index)),
     });
 
-    for (let index = 20; index < 26; index += 1) assert.equal((await request(index)).status, 200);
+    const signal = new AbortController().signal;
+    const first = await h.preflight.execute(command(20), signal);
+    for (let index = 21; index < 26; index += 1) assert.equal((await request(index)).status, 200);
+    assert.deepEqual(await h.preflight.execute(command(20), signal), first, "completed replay does not start detector work");
     const refused = await request(26);
     assert.equal(refused.status, 429);
     assert.equal((await json(refused)).code, "PREFLIGHT_RATE_LIMITED");
+    h.clock.advanceMonotonic(60_000);
+    assert.equal((await request(26)).status, 200, "a refusal does not occupy the replay key");
   });
 
   it("answers the 257th dashboard preflight rerun", async () => {
@@ -185,7 +229,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       const commandId = `00000000-0000-4000-8000-${String(attempt).padStart(12, "0")}`;
       const response = await h.app.request("/api/v1/preflight/rerun", {
         method: "POST",
-        headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+        headers: { "content-type": "application/json", ...SAME_ORIGIN },
         body: JSON.stringify({
           commandId, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
           source: "settings-surface", type: "rerun-preflight", target: { expectedConfigFingerprint: HASH_B },
@@ -206,28 +250,34 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       markStarted();
       await gate;
     } });
-    const request = (commandId: string) => h.app.request("/api/v1/preflight/rerun", {
-      method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
-      body: JSON.stringify({
-        commandId,
-        requestedAt: h.clock.now().toISOString(),
-        requestedBy: "local-operator",
-        source: "settings-surface",
-        type: "rerun-preflight",
-        target: { expectedConfigFingerprint: HASH_B },
-      }),
+    const command = (suffix: string) => ({
+      commandId: `00000000-0000-4000-8000-0000000000${suffix}`,
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: HASH_B },
     });
 
-    const firstPending = request("00000000-0000-4000-8000-000000000030");
+    const signal = new AbortController().signal;
+    const first = h.preflight.execute(command("30"), signal);
     await started;
-    const secondPending = request("00000000-0000-4000-8000-000000000031");
-    release();
-    const [first, second] = await Promise.all([firstPending, secondPending]);
-
-    assert.equal(first.status, 200);
-    assert.equal(second.status, 429);
-    assert.equal((await json(second)).code, "PREFLIGHT_RERUN_ACTIVE");
+    const replay = h.preflight.execute(command("30"), signal);
+    const competing = h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
+      body: JSON.stringify(command("31")),
+    });
+    try {
+      const second = await Promise.race([competing, new Promise<"pending">(resolve => setImmediate(() => resolve("pending")))]);
+      assert.ok(second !== "pending", "a new command is refused while the detector is busy");
+      assert.equal(second.status, 429);
+      assert.equal((await json(second)).code, "PREFLIGHT_RERUN_ACTIVE");
+    } finally {
+      release();
+      await competing;
+      assert.deepEqual(await replay, await first);
+    }
   });
 
   it("keeps rerun admission held after deadlines until all detector callbacks actually settle", async () => {
@@ -245,7 +295,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     const request = (suffix: string) => h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
       body: JSON.stringify({
         commandId: `00000000-0000-4000-8000-0000000000${suffix}`,
         requestedAt: h.clock.now().toISOString(),
@@ -275,7 +325,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = await harness();
     const response = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
       body: JSON.stringify({
         commandId: "00000000-0000-4000-8000-000000000091",
         requestedAt: h.clock.now().toISOString(),
@@ -317,7 +367,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     const request = (commandId: string) => h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
       body: JSON.stringify({
         commandId,
         requestedAt: h.clock.now().toISOString(),
@@ -351,7 +401,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     const response = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN },
       body: JSON.stringify({
         commandId: "00000000-0000-4000-8000-000000000095",
         requestedAt: h.clock.now().toISOString(),

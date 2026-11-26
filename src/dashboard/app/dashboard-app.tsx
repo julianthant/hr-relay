@@ -3,11 +3,14 @@ import { PersonPreferencesContext } from "../lib/person-preferences.js";
 import { PROFILE_ONBOARDING_STATE } from "../../models/profiles/public-profile.js";
 import { PreflightOcrContext, createServedPreflightOcrPort } from "../surfaces/settings/preflight/preflight-ocr-model.js";
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
+import type { ChatGptAccountQueries } from "../client/queries/chatgpt-account-queries.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { StartupLoading } from "../surfaces/shell/startup-loading.js";
 import { useStartupGate } from "./startup/startup-gate.js";
+import { startupDeadlineClient, type StartupDeadline } from "./startup/first-screen.js";
 import { signInProblems, useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import { sameSessionAccount } from "../surfaces/settings/account/account-session.js";
+import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import { DeleteAccountControl } from "../surfaces/settings/general/ui-settings-records-general-paths.js";
 import { OnboardingSetup } from "../surfaces/shell/onboarding-setup.js";
 import { Onboarding } from "../surfaces/shell/onboarding.js";
@@ -61,22 +64,25 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const profileId = session?.state === "active" ? session.profileId : undefined;
   const profileEpoch = session?.state === "active" ? session.epoch : undefined;
   const profileTarget = useMemo(() => profileId === undefined || profileEpoch === undefined ? undefined : { profileId, epoch: profileEpoch }, [profileId, profileEpoch]);
-  const duoKeys = useMemo(() => profileTarget === undefined ? undefined : {
-    read: () => profileClient.readProfileDuoKeys(profileTarget),
-    change: (change: import("../../models/config/duo-credential-store.js").DuoKeyChange) => profileClient.changeProfileDuoKey({ ...profileTarget, change }),
-  }, [profileClient, profileTarget]);
   const accountScope = useMemo(() => ({ profileClient, profileId, profileEpoch }), [profileClient, profileId, profileEpoch]);
-  const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort>; ocr: ReturnType<typeof createServedPreflightOcrPort> }>();
-  const account = accountOwner?.scope === accountScope ? accountOwner.port : undefined;
+  const [storedAccountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort>; ocr: ReturnType<typeof createServedPreflightOcrPort>; startDeadline: () => StartupDeadline; duoKeys: NonNullable<AccountPage["duoKeys"]> }>();
+  const accountOwner = storedAccountOwner?.scope === accountScope ? storedAccountOwner : undefined;
+  const account = accountOwner?.port;
   useEffect(() => {
-    if (profileId === undefined || profileEpoch === undefined) return;
-    const port = createServedChatGptAccountPort(profileClient);
+    if (profileTarget === undefined) return;
+    // Account reads expire with the showing loader's deadline: the one still open from before it showed, or a fresh one after an earlier loader's ended that adopts its pending reads.
+    let deadline = startupDeadlineClient(profileClient);
+    const startDeadline = () => (deadline = deadline.pending() ? deadline : startupDeadlineClient(profileClient, deadline));
+    const port = createServedChatGptAccountPort(new Proxy({}, { get: (_, key): unknown => Reflect.get(deadline.client, key) }) as ChatGptAccountQueries);
     const ocr = createServedPreflightOcrPort(profileClient, port);
-    setAccountOwner({ scope: accountScope, port, ocr });
+    setAccountOwner({ scope: accountScope, port, ocr, startDeadline, duoKeys: {
+      read: () => deadline.client.readProfileDuoKeys(profileTarget),
+      change: change => profileClient.changeProfileDuoKey({ ...profileTarget, change }),
+    } });
     const close = (event: PageTransitionEvent) => { if (!event.persisted) { ocr.dispose(); port.dispose(); } };
     window.addEventListener("pagehide", close);
     return () => { window.removeEventListener("pagehide", close); ocr.dispose(); port.dispose(); };
-  }, [accountScope, profileClient, profileId, profileEpoch]);
+  }, [accountScope, profileClient, profileTarget]);
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const onboardingProfile = useRef<string | undefined>(undefined);
@@ -114,7 +120,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]"
     >
     <ChatGptAccountContext.Provider value={account ?? inheritedAccount}>
-    <PreflightOcrContext.Provider value={accountOwner?.scope === accountScope ? accountOwner.ocr : inheritedOcr}>
+    <PreflightOcrContext.Provider value={accountOwner?.ocr ?? inheritedOcr}>
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
       {route.viewInvalid ? (
@@ -137,7 +143,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       ) : boot === undefined ? (
         <BootFailure />
       ) : (
-        <StartupLoading><ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
+        <StartupLoading startDeadline={accountOwner?.startDeadline}><ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
           preferences={preferences}
           profileTarget={profileTarget}
           boot={boot}
@@ -149,7 +155,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
                 : { state: publicProfile.accountDeletion.state, personName: session.account?.name ?? boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
-          accountPage={session?.state === "active" && session.account !== undefined ? { values: session.account, duoKeys, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), readAccount: async () => sameSessionAccount(await profileClient.readProfileSession(), session), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request), readUsername: async () => sameSessionAccount(await profileClient.readProfileSession(), session)?.username } } : undefined}
+          accountPage={session?.state === "active" && session.account !== undefined ? { values: session.account, duoKeys: accountOwner?.duoKeys, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), readAccount: async () => sameSessionAccount(await profileClient.readProfileSession(), session), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request), readUsername: async () => sameSessionAccount(await profileClient.readProfileSession(), session)?.username } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}

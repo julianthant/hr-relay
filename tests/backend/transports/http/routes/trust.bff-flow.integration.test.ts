@@ -1,3 +1,4 @@
+import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
 
 import assert from "node:assert/strict";
 import { readFileSync,rmSync } from "node:fs";
@@ -375,7 +376,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       assert.equal(response.status, status);
       assert.equal(response.headers.get("cache-control"), "no-store", path);
       assert.equal(response.headers.get("x-content-type-options"), "nosniff", path);
-      await response.body?.cancel();
+      if (path.endsWith("/manifest")) assert.equal(await response.text(), canonicalJsonStringify(bundle));
+      else await response.body?.cancel();
     }
   });
 
@@ -683,3 +685,20 @@ afterAll(() => profiles.close());
 function harness(options?: Parameters<typeof createHarness>[0]) {
   return createHarness({ ...options, profileFixture: profiles.create });
 }
+
+it("admits diagnostic and section parameters before reading their authorities", async () => {
+  const h = await harness({ omitDiagnosticBundles: true });
+  await captureDiagnosticBundle(h);
+  const logs = await h.app.request(`/api/v1/runs/${RUN_ID}/logs`);
+  assert.equal(logs.status, 200);
+  assert.equal((await json(logs)).section, "logs");
+  for (const path of ["/api/v1/diagnostic-bundles/malformed", "/api/v1/diagnostic-bundles/malformed/manifest",
+    "/api/v1/diagnostic-bundles/malformed/attachments/00000000-0000-4000-8000-000000000001",
+    "/api/v1/diagnostic-bundles/00000000-0000-4000-8000-000000000001/attachments/malformed",
+    "/artifacts/v1/malformed", `/api/v1/runs/${RUN_ID}/invalid-section`,
+    `/api/v1/runs/${RUN_ID}/logs?extra=unused`, `/api/v1/runs/${RUN_ID}/logs?cursor=one&cursor=two`]) {
+    const response = await h.app.request(path);
+    assert.equal(response.status, 400, path);
+    assert.equal((await json(response)).code, "SCHEMA_INVALID", path);
+  }
+});

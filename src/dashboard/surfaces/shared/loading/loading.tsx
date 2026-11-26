@@ -75,20 +75,11 @@ export function LogSkeleton() {
   </LoadingRegion>;
 }
 
-/** The pipeline stage strip while a run's logs load: four stage labels over their bars, as the loaded strip draws them. */
-export function LogTimelineSkeleton() {
-  return <nav aria-hidden className="shrink-0 border-b border-ui-stroke bg-ui-panel px-4 py-2">
-    <ol className="m-0 flex list-none gap-1 p-0">{Array.from({ length: 4 }, (_, index) => <li key={index} className="min-w-0 flex-1"><span className="flex w-full flex-col gap-1 px-0.5 py-1">
-      <span className="flex items-center gap-1.5 text-caption"><Skeleton className="size-1.5 rounded-full" /><SkeletonText className="w-16 text-caption" /></span><Skeleton className="h-2.5 w-full" />
-    </span></li>)}</ol>
-  </nav>;
-}
-
-/** The run panel while the queue loads: the loaded panel's header, stage strip and padded feed. */
+/** The run panel while the queue loads: the loaded panel's header and padded feed. */
 export function RunPanelSkeleton() {
   return <section aria-label="Selected run logs" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel">
     <header className="shrink-0 border-b border-ui-stroke bg-ui-table px-4 py-3"><div className="flex min-h-6 min-w-0 items-center"><SkeletonText className="w-60 text-heading" /></div></header>
-    <LogTimelineSkeleton /><div className="min-h-0 flex-1 overflow-hidden"><LogFeedPadding><LogSkeleton /></LogFeedPadding></div>
+    <div className="min-h-0 flex-1 overflow-hidden"><LogFeedPadding><LogSkeleton /></LogFeedPadding></div>
   </section>;
 }
 

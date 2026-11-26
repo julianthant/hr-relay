@@ -10,6 +10,7 @@ import { createDiagnosticCaptureService } from "../../../../../src/backend/logs/
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../../../src/backend/storage/sqlite/storage-records.js";
 import { RunDetailSectionResponseSchema } from "../../../../../src/models/dashboard/run-detail.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { deriveDiagnosticContentDigest } from "../../../../../src/models/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../../../src/models/trust/diagnostic.js";
 import { DiagnosticBundleIdSchema } from "../../../../../src/rules/identity/ids.js";
@@ -167,7 +168,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       assert.equal(response.status, 500);
       assert.equal(body.code, "INTERNAL_FAILURE");
       assert.equal(body.retryable, false);
-      assert.match(String(body.message), /verified artifact storage operation failed/u);
+      assert.equal(body.message, ERROR_CATALOG.INTERNAL_FAILURE.text);
       assert.doesNotMatch(bodyText, new RegExp(h.stateRoot, "u"));
       assert.doesNotMatch(bodyText, /DIAGNOSTIC_BUNDLE_(?:CORRUPT|BYTES_MISSING)/u);
       assert.equal(response.headers.get("content-length"), null);
