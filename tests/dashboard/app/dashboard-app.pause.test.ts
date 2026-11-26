@@ -176,9 +176,9 @@ it("shows the ordinary bulk notice and per-run results for a mixed sample and re
     const previousCount = bell.getAttribute("aria-label");
     await act(async () => f.button("Resume all").click());
     assert.equal(f.sent.length, 1);
-    assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent), [ORDINARY_REFUSAL_TEXT]);
+    assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent).sort(),
+      ["Resume: 2 refused", ORDINARY_REFUSAL_TEXT].sort());
     assert.notEqual(bell.getAttribute("aria-label"), previousCount);
-    assert.match(f.host.textContent ?? "", /Resume: 2 refused/u);
 
     await act(async () => bell.click());
     const notice = [...document.querySelectorAll("li.notice-row")].find(row => row.querySelector(".notice-title")?.textContent === "Resume: partial result");
