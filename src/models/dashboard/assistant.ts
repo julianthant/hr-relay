@@ -488,8 +488,11 @@ export const AssistantM2ProposalOperationSchema = z.discriminatedUnion("kind", [
 export const AssistantM2ProposalRowSchema = AssistantProposalRowSchema.safeExtend({ id: z.uuid(), ordinal: PositiveIntSchema, operation: AssistantM2ProposalOperationSchema });
 export type AssistantM2ProposalRow = z.infer<typeof AssistantM2ProposalRowSchema>;
 /** The reviewed start options every row's fresh plan must use and echo. */
-export const AssistantM2ProposalOptionsSchema = StartPlanRequestSchema.pick({ browserMode: true, captureBrowserScreenshots: true })
-  .extend({ priority: StartPlanWireSchema.shape.priority });
+export const AssistantM2ProposalOptionsSchema = z.strictObject({
+  browserMode: StartPlanRequestSchema.shape.browserMode,
+  captureBrowserScreenshots: StartPlanRequestSchema.shape.captureBrowserScreenshots,
+  priority: StartPlanWireSchema.shape.priority,
+});
 export type AssistantM2ProposalOptions = z.infer<typeof AssistantM2ProposalOptionsSchema>;
 const AssistantM2ProposalShape = z.strictObject({
   id: z.uuid(), profileId: z.uuid(), conversationId: z.uuid(), revision: PositiveIntSchema, renderedMessageId: z.uuid(), renderedDigest: FingerprintSchema,
