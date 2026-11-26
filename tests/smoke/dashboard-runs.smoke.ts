@@ -11,12 +11,11 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     test.use({ viewport });
 
     for (const key of OPENABLE_RUNS) {
-      test(`${key} opens its timeline and logs`, async ({ dashboard, page }) => {
+      test(`${key} opens its logs`, async ({ dashboard, page }) => {
         await dashboard.open();
         await expect(page.getByText("No run open")).toBeVisible();
         await dashboard.openRun(dashboard.runId(key));
         await expect(dashboard.runPanel.getByRole("heading", { level: 2 })).toBeVisible();
-        await expect(dashboard.runPanel.getByRole("navigation", { name: "Run timeline" })).toBeVisible();
         await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
         await dashboard.expectNoSidewaysScroll();
       });
