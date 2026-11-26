@@ -37,6 +37,8 @@
   "src/dashboard/surfaces/activity/analytics-charts.css",
   "src/dashboard/surfaces/activity/analytics-charts.tsx",
   "src/dashboard/surfaces/activity/analytics-view.tsx",
+  "src/dashboard/surfaces/assistant/assistant-reply-parts.css",
+  "src/dashboard/surfaces/assistant/assistant-reply-parts.tsx",
   "src/dashboard/surfaces/explorer/explorer-source.tsx",
   "src/dashboard/surfaces/explorer/explorer-spec-view.tsx",
   "src/dashboard/surfaces/explorer/explorer.tsx",
