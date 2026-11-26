@@ -15,12 +15,10 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
-import { createAssistantService } from "../../../assistant/service.js";
 import { createAssistantActivityQuery } from "../../../assistant/activity.js";
 import { createAssistantPlugins } from "../../../assistant/plugins/registry.js";
-import { createAssistantProposals } from "../../../assistant/proposals.js";
 import { assistantWorkflowFacts, loadAssistantWorkflowFacts, type AssistantWorkflowFacts } from "../../../assistant/plugins/workflows/facts.js";
-import { assistantSurfaceCoverage, createAssistantPluginDeps, startAssistantHistoryCleanup } from "./assistant.js";
+import { assistantSurfaceCoverage, composeAssistant, createAssistantPluginDeps, startAssistantHistoryCleanup } from "./assistant.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
 import { CHATGPT_OCR_MODEL,createChatGptOcrPageReader } from "../../../processing/providers/chatgpt-ocr-adapter.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
@@ -54,7 +52,7 @@ import { createSharePointWorkbookSync } from "../../../workbooks/sharepoint-sync
 import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.js";
 import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import { DESCRIPTORS,READABLE_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
-import { RuntimeCustodyUncertainError,composeProfileAssistantAuthorization } from "../storage-compose.js";
+import { RuntimeCustodyUncertainError } from "../storage-compose.js";
 import { composeActivity } from "./activity.js";
 import { composeDataQueries } from "./data.js";
 import { composeExplorer } from "./explorer.js";
@@ -153,10 +151,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     emitFaultWithCauses(debugEvents, input.workerProcess?.faultSink, error, { category: "http", area: "response-transfer", code: "DASHBOARD_TRANSFER_FAILED",
       reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "transfer-failed" });
   };
-  const assertAssistantEffect = (commandId: string): void => {
-    if (database.authority.assistantAuthorization.actionByCommand(commandId) === undefined) return;
-    assistantAuthorization.assertEffect(commandId);
-  };
+  const assertAssistantEffect = (commandId: string): void => { composedAssistant.assertEffect(commandId); };
   profile.runtime.beginSupervisorConstruction(profile.token);
   const nominatim = createNominatimGeocodeAdapter({clock});
   const workers = composeWorkerPool({
@@ -259,13 +254,9 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       return prepared;
     },
 
-    assistantRevalidate: command => {
-      if (database.authority.assistantAuthorization.actionByCommand(command.commandId) === undefined) return;
-        assistantAuthorization.assertEffect(command.commandId, command);
-    },
+    assistantRevalidate: command => { composedAssistant.assertEffect(command.commandId, command); },
   });
 
-  const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);
 
 
   const startWorkerCapacity = createRunWorkerCapacity({ kernel, authority: database.authority, running: workers.running, ensureRunning: workers.ensureRunning, setupRefusal: workers.setupRefusal,
@@ -301,29 +292,29 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads });
   const dataQueries = composeDataQueries(runDetailDeps);
   const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });
-  const assistantProposals = createAssistantProposals({ ocrSources: () => ocrSources, database, authorization: assistantAuthorization, plans: startPlans, commands, runs: lifecycle, descriptors,
-    rerunValues: request => dataQueries.rerunValues(request), served: workflowId => workflowSources[workflowId] === "served",
-    actorId: resolved.config.actor.id, clock, assertCurrent, kernel, workbooks: () => workbookLibrary,
-    attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
+  const attachment = (conversationId: string, id: string) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString());
   const assistantPluginDeps = createAssistantPluginDeps({ database, runs: lifecycle, runDetail: runDetailDeps, assertCurrent, facts: assistantFacts,
-    search: () => shell.search, notifications: () => notifications,
-    workbooks: () => workbookLibrary, attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
-  const assistant = createAssistantService({ debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },
-    activity: createAssistantActivityQuery({ database, clock, assertCurrent, workflowLabel: workflowId => {
-      const descriptor = descriptors.resolve(workflowId);
-      if (descriptor === undefined) throw new Error(`assistant-activity-workflow-missing:${workflowId}`);
-      return descriptor.label;
-    } }),
-    assertComposition: assertCurrent, actorId: resolved.config.actor.id, facts: assistantFacts,
-    owner: () => { assertCurrent(); return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch }; },
-    plugins: () => [...createAssistantPlugins(assistantPluginDeps), assistantProposals.plugin],
-    runReferenceLabel: (runId, version) => assistantPluginDeps.runReferenceLabel(runId, version),
-    decideAction: (decision, signal) => assistantProposals.decideAction(decision, signal),
-    history: () => { assertCurrent(); return database.authority.assistantHistory; },
-    selectedModel: () => { const captured = captureSelectedModel(); return { preference: captured.view.preference, assertCurrent: captured.assertPreferenceCurrent }; },
-    readModelPreference: () => captureSelectedModel().view,
-    clock,
+    search: () => shell.search, notifications: () => notifications, workbooks: () => workbookLibrary, attachment });
+  database.bindAssistantEpoch(() => context.profileEpoch);
+  const composedAssistant = composeAssistant({ database, readPlugins: () => createAssistantPlugins(assistantPluginDeps),
+    starts: { descriptors, served: workflowId => workflowSources[workflowId] === "served", plans: startPlans, runs: lifecycle,
+      rerunValues: request => dataQueries.rerunValues(request), attachment, ocrSources: () => ocrSources, submit: command => commands.submit(command) },
+    service: { debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },
+      activity: createAssistantActivityQuery({ database, clock, assertCurrent, workflowLabel: workflowId => {
+        const descriptor = descriptors.resolve(workflowId);
+        if (descriptor === undefined) throw new Error(`assistant-activity-workflow-missing:${workflowId}`);
+        return descriptor.label;
+      } }),
+      assertComposition: assertCurrent, actorId: resolved.config.actor.id, facts: assistantFacts,
+      owner: () => { assertCurrent(); return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch }; },
+      runReferenceLabel: (runId, version) => assistantPluginDeps.runReferenceLabel(runId, version),
+      selectedModel: () => { const captured = captureSelectedModel(); return { preference: captured.view.preference, assertCurrent: captured.assertPreferenceCurrent }; },
+      readModelPreference: () => captureSelectedModel().view,
+      readSession: runId => { const read = lifecycle.read(runId), surface = runDetailDeps.projection.queueSurface(runId);
+        return read.state === "present" && surface !== undefined ? { run: read.run, surface } : undefined; },
+      clock },
   });
+  const assistant = composedAssistant.assistant;
 
 
   const intake = composeIntake({ database, artifacts, parser: intakeParser, projections: intakeProjections, descriptors, clock, ids });
@@ -462,5 +453,5 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   startupCleanups.push(() => clearInterval(historyTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, assistantAuthorization, shutdownRequested, noteWriter, stopTimeline, readLanes, diagnosticRetentionTimer, hub, stopWorkerControl, takeWorkerStopFailures: workers.pool.takeShutdownStopFailures, server, gateParkTimer, historyTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, shutdownRequested, noteWriter, stopTimeline, readLanes, diagnosticRetentionTimer, hub, stopWorkerControl, takeWorkerStopFailures: workers.pool.takeShutdownStopFailures, server, gateParkTimer, historyTimer, custody });
 }

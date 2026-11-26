@@ -1,3 +1,10 @@
+import { AssistantAuthorizationError, createAssistantSessionAuthorization } from '../../../assistant/authorization.js';
+import type { AssistantPlugin } from '../../../assistant/plugins/plugin.js';
+import { sessionsPlugin } from '../../../assistant/plugins/sessions/index.js';
+import { createAssistantM1Service, type AssistantM1ServiceOptions } from '../../../assistant/service.js';
+import { createAssistantTypedProposals, type AssistantTypedProposalPorts } from '../../../assistant/typed-proposals.js';
+import { selectActiveRunSettings } from '../../../runs/settings/run-settings.js';
+import type { CommandRequest } from '../../../../rules/commands/commands.js';
 import { CrossDateSearchQuerySchema, SearchCoverageSchema } from '../../../../models/dashboard/search.js';
 import { buildRunDetail, type RunDetailQueryDeps } from '../../../runs/queries/run-detail.js';
 import type { CrossDateSearchQueryService } from '../../../runs/queries/search.js';
@@ -92,4 +99,35 @@ export function startAssistantHistoryCleanup(reclaim: () => void, report: (error
   const timer = setInterval(() => { try { reclaim(); } catch (error) { report(error); } }, intervalMs);
   timer.unref();
   return timer;
+}
+
+/** The served assistant: the turn-accounting service over the typed-yes proposal owner and read-only sessions. */
+export function composeAssistant(options: Readonly<{
+  service: Omit<AssistantM1ServiceOptions, 'history' | 'proposals' | 'tools'>;
+  database: Pick<AuthorityDatabase, 'authority' | 'withAuthorityReadSnapshot'>;
+  starts: Pick<AssistantTypedProposalPorts, 'descriptors' | 'served' | 'plans' | 'runs' | 'rerunValues' | 'attachment' | 'ocrSources' | 'submit'>;
+  readPlugins: () => readonly AssistantPlugin[];
+}>) {
+  const { database, service } = options, store = database.authority.assistantProposals;
+  const browserMode = () => database.withAuthorityReadSnapshot(() => selectActiveRunSettings(database.authority)).config.browser.headless ? 'headless' as const : 'headed' as const;
+  const common = { ...options.starts, current: service.owner, clock: service.clock, actorId: service.actorId, browserMode };
+  const proposals = createAssistantTypedProposals({ ...common, store, plannedInputs: startPlanId => {
+    const record = database.authority.startPlans.get(startPlanId);
+    return record === undefined ? undefined : { capturedAt: record.plannedAt, runs: record.planned };
+  } });
+  // Full access arrives with its own ticket; until then only transaction-free sessions start without a yes.
+  const sessions = createAssistantSessionAuthorization({ ...common, claims: store.sessions, fullAccessAllowed: () => false });
+  const assistant = createAssistantM1Service({ ...service, proposals,
+    history: () => { service.assertComposition?.(); return database.authority.assistantHistory; },
+    tools: () => ({ plugins: [...options.readPlugins(), proposals.plugin, sessionsPlugin()], sessions,
+      bindings: table => table.issued().map(([reference, entry]) => ({ kind: 'value-only' as const, reference, entry, value: entry.display })) }) });
+  return Object.freeze({ assistant,
+    /** The command and worker effect hook: an assistant command runs only from its claimed proposal row or session claim. */
+    assertEffect(commandId: string, command?: CommandRequest): void {
+      proposals.assertEffect(commandId, command);
+      sessions.assertEffect(commandId, command);
+      if (command?.source.startsWith('assistant') === true && !store.hasRowCommand(commandId) && store.sessions.byCommand(commandId) === undefined) {
+        throw new AssistantAuthorizationError('assistant-effect-not-authorized');
+      }
+    } });
 }

@@ -84,6 +84,7 @@ export function createAssistantReferenceTable(generation: number) {
       return segments;
     },
     display: (text: string) => replace(text, entry => entry.display),
+    issued: (): readonly (readonly [string, AssistantReferenceEntry])[] => [...entries],
     /** A tool argument with every token-shaped part resolved strictly; an unknown, expired or wrong-kind reference refuses. */
     expandArgument: (text: string, kinds: readonly AssistantReferenceKind[]) => text.replace(TOKEN_SHAPED, token => resolve(token, kinds).expand),
   });

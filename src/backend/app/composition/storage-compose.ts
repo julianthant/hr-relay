@@ -10,7 +10,6 @@ import { ERROR_CATALOG, ErrorCatalogCodeSchema, type ErrorCatalogCode } from "..
 import { LogoutOperationSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
 import { runClaim } from "../../../models/run/record.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
-import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
 import { ProfileSessionRefusedError } from "../../profiles/profile-errors.js";
 import { createProfileSession } from "../../profiles/profile-session.js";
@@ -1855,14 +1854,3 @@ export async function composeStorageCommand(
   };
 }
 
-export function composeProfileAssistantAuthorization(
-  runtime: ReturnType<typeof composeProfileRuntime>, token: string, kernel: CommandKernel, clock: Clock,
-) {
-  runtime.assertCurrent(token);
-  const context = runtime.selectedContext(token);
-  return createAssistantAuthorization({ database: context.database, kernel, clock, current: () => {
-    runtime.assertCurrent(token);
-    if (runtime.selectedContext(token) !== context) throw new Error("assistant-profile-owner-changed");
-    return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch };
-  } });
-}
