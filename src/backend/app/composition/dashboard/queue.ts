@@ -199,16 +199,18 @@ export function warmDayOf(counts: ReadonlyMap<string, number>): string | undefin
 export const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day", {
   lane: "navigation", priority: "interactive", processFacts: true, args: QueueDayArgsSchema, sourceProof: "per-read",
   warm(context) {
-    const { projection, state } = laneReplica(context);
+    const { projection } = laneReplica(context);
     projection.ingestFromTimeline();
-    // One small day build, so the first read does not pay this isolate's cold build of the day code. Optional: a refusal, a
-    // peer-commit snapshot change among them, only skips it, and the read that follows builds its own day.
-    try {
-      const now = state.at.now();
-      const day = (back: number) => localDatePart(new Date(now.getFullYear(), now.getMonth(), now.getDate() - back));
-      const warmDay = warmDayOf(context.history.readQueueDayCounts(day(WARM_WINDOW_DAYS), day(1)));
-      if (warmDay !== undefined) projection.buildLaneDay(warmDay);
-    } catch { /* the warm is skipped */ }
+    const health = projection.health();
+    if (health.state === "degraded") throw new Error(`queue-day-fold-degraded: ${health.lastError ?? "unknown"}`);
+  },
+  // One small day build, so the first read does not pay this isolate's cold build of the day code.
+  prebuild(context) {
+    const { projection, state } = laneReplica(context);
+    const now = state.at.now();
+    const day = (back: number) => localDatePart(new Date(now.getFullYear(), now.getMonth(), now.getDate() - back));
+    const warmDay = warmDayOf(context.history.readQueueDayCounts(day(WARM_WINDOW_DAYS), day(1)));
+    if (warmDay !== undefined) projection.buildLaneDay(warmDay);
   },
   run(context, { day, publications }) {
     const replica = laneReplica(context);

@@ -17,7 +17,7 @@ export const laneFolded = defineLaneRead(import.meta.url, "lane-folded", { lane:
 
 /** Its optional day build, which asks for that refused snapshot. */
 export const laneBuildRefused = defineLaneRead(import.meta.url, "lane-build-refused", { lane: "navigation", priority: "interactive", args: z.strictObject({}),
-  warm() { built.day = true; },
+  prebuild() { built.day = true; },
   run: () => ({ built: built.day }) });
 
 export const LANE_BUILD_REFUSED_ENTRY = new URL(import.meta.url);

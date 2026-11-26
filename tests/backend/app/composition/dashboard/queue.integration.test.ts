@@ -11,7 +11,7 @@ const cleanups: (() => unknown)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 describe("the queue day read's warm step", () => {
-  it("folds before ready and skips its day build on a peer-commit snapshot refusal", async () => {
+  it("folds before ready, and leaves its optional day build's refusal to the host", async () => {
     const f = await foundationFixture();
     cleanups.push(() => f.dispose());
     const lane = admitReadLane(prepareReadLaneStart(f.profile.admission, f.db, "navigation"));
@@ -20,7 +20,9 @@ describe("the queue day read's warm step", () => {
     cleanups.push(() => opened.native.close());
     const context = { start: lane.start, native: opened.native, history: opened.history, nowMs: f.clock.nowMs(), retain: () => {} };
     Object.defineProperty(opened.history, "readQueueDayCounts", { configurable: true, value: () => { throw new AuthoritySnapshotChangedError(); } });
-    assert.doesNotThrow(() => opened.history.withAuthorityReadSnapshot(() => queueDayRead.warm?.(context)), "the refusal does not fail the lane's boot");
+    assert.doesNotThrow(() => opened.history.withAuthorityReadSnapshot(() => queueDayRead.warm?.(context)), "the fold reads no day counts");
+    assert.throws(() => opened.history.withAuthorityReadSnapshot(() => queueDayRead.prebuild?.(context)), AuthoritySnapshotChangedError,
+      "the day build is a prebuild, which the host skips on a refusal");
     Reflect.deleteProperty(opened.history, "readQueueDayCounts");
 
     const day = searchPartitionDay(new Date(f.run.envelope.enqueuedAt));

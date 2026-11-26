@@ -123,6 +123,8 @@ async function measure(workspace: string, lockPort: number, requestedDay: string
                 const inSnapshot = <T>(read: () => T): T => opened.history.withAuthorityReadSnapshot(() => lane.withProvedSource(read));
                 const folding = performance.now();
                 inSnapshot(() => queueDayRead.warm?.(context));
+                // As the lane boots: the optional prebuild after the fold, skipped on a refusal.
+                try { inSnapshot(() => queueDayRead.prebuild?.(context)); } catch { /* skipped */ }
                 const foldMs = performance.now() - folding;
                 const building = performance.now();
                 const body = inSnapshot(() => queueDayRead.run(context, queueDayRead.args.parse({ day: readDay, publications: [] })));
