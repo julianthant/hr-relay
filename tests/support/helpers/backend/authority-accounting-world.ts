@@ -483,6 +483,7 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     } };
   }
   const phaseOnes = new WeakMap<AuthorityDatabase, ReturnType<typeof phaseOne>>();
+  const sessionTurns = new WeakMap<AuthorityDatabase, ReturnType<ReturnType<typeof phaseOne>["accept"]>>();
   const preparedPhaseOne = (db: AuthorityDatabase) => { const prepared = phaseOnes.get(db); assert.ok(prepared); return prepared; };
   const duoTokens = new WeakMap<AuthorityDatabase, DuoCeremonyLeaseToken>();
   const exclusiveTokens = new WeakMap<AuthorityDatabase, ExclusiveSessionLease>();
@@ -515,8 +516,8 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
       const { proposals, shown, rowId } = preparedPhaseOne(db);
       assert.equal(proposals.claimRow(shown.id, rowId, randomUUID()), true);
     } },
-    { table: "assistant_session_claims", prepare: db => { phaseOnes.set(db, phaseOne(db)); }, mutate: db => {
-      const { proposals, accept } = preparedPhaseOne(db), turn = accept("Look up 10800000");
+    { table: "assistant_session_claims", prepare: db => { const prepared = phaseOne(db); sessionTurns.set(db, prepared.accept("Look up 10800000")); phaseOnes.set(db, prepared); }, mutate: db => {
+      const { proposals } = preparedPhaseOne(db), turn = sessionTurns.get(db); assert.ok(turn);
       assert.equal(proposals.sessions.claim({ actionId: randomUUID(), approvalMode: "ask", dryRun: false, contractFingerprint: HASH_A,
         requestDigest: HASH_A, claimedAt: NOW, acceptedTurn: turn.acceptedTurn,
         command: { commandId: randomUUID(), requestedAt: NOW, requestedBy: "local-operator", source: "assistant", family: "start", type: "start-run",

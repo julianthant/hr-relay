@@ -59,7 +59,7 @@ async function world() {
     selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent() { if (!current) throw new Error("model changed"); } }),
     facts: () => { facts++; return assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup")); }, runReferenceLabel: () => "Lookup",
     tools: () => ({ plugins: [{ domain: "fixture", tools: [tool] }, typed.owner.plugin, ...(sessionTools ? [sessionsPlugin()] : [])], ...(sessions === undefined ? {} : { sessions }), bindings(table) { onBindings?.(); return [...tokens].map(token => assistantPersonBinding(table, token, row)); } }),
-    debugEvents: { emit(event) { usageAttempts++; if (failLog !== undefined) throw failLog; writer.emit(event); } } };
+    debugEvents: { emit(event) { if (event.area === "assistant-usage") usageAttempts++; if (failLog !== undefined) throw failLog; writer.emit(event); } } };
   let service = createAssistantM1Service(options);
   const create = () => { const id = randomUUID(); assert.equal(service.history({ operation: "create", conversationId: id, title: "Chat" }).state, "saved"); return id; };
   const request = (id = create(), text = "Explain") => { const view = service.conversation(id); assert.ok(view); return { conversationId: id, expectedRevision: view.revision, messageId: randomUUID(), message: text }; };
@@ -335,7 +335,7 @@ it("replies with the proposal parts and leaves the chat's proposal open, returni
     const { chat, sent } = propose(w), reply = answered(await sent), open = w.typed().owner.open(chat);
     assert.ok(open); assert.equal(w.counts().posts, 2);
     const kinds = reply.parts.map(part => part.kind); assert.ok(kinds.includes("bullets"));
-    const json = JSON.stringify(reply.parts); assert.ok(json.includes('"kind":"bold"')); assert.ok(json.includes("Reply yes to go ahead.")); assert.equal(open.snapshot.rows.length, 2);
+    const json = JSON.stringify(reply.parts); assert.ok(json.includes('"kind":"bold"')); assert.ok(json.includes("Reply yes to save all 2, or tell me which to skip or change.")); assert.equal(open.snapshot.rows.length, 2);
     assert.equal(w.typed().submitted.length, 0);
   } finally { await w.close(); }
 });
