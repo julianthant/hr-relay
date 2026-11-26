@@ -176,7 +176,7 @@ export function runStartGates(
   const multiSubject = subjectCount > 1;
   const multiSubjectOmissionReason = `Typed values fit one person; ${String(subjectCount)} are entered.`;
   /** The first thing wrong on the Steps stage: more than one person entered with typed values, else the first missing or invalid field. */
-  const stepsFailure = !customizeSteps ? null : multiSubject && openRows.length > 0
+  const stepsFailure = !customizeSteps ? null : multiSubject && openRows.some(({ form }) => form.fields.length > 0)
     ? { text: multiSubjectOmissionReason, rowKey: "", fieldKey: "" } : firstStepsFailure(openRows);
   const stepsBlockedReason = stepsFailure?.text ?? null;
   /** A plan retaining different omissions describes another run; refuse its token. */

@@ -742,6 +742,15 @@ describe("typed facts describe ONE subject", () => {
     );
     assert.ok(dialog.text().includes("One person only."), dialog.text());
   });
+
+  it("lets several people skip a step done by hand, which types nothing", async () => {
+    const dialog = await openSteps(stubClient({}), "4502; 4510");
+    assert.equal(dialog.disabled("Kuali finalization"), false);
+    await dialog.press("Kuali finalization");
+    assert.ok(dialog.text().includes("Done outside Relay."), dialog.text());
+    assert.ok(!dialog.text().includes("Typed values fit one person"), dialog.text());
+    assert.equal(dialog.disabled("Start live run"), false);
+  });
 });
 
 const CASCADING_SEPARATIONS = Object.freeze({
