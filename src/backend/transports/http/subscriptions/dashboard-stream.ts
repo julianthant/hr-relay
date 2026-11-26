@@ -440,8 +440,9 @@ export class DashboardStreamHub {
     }
     const read = this.#syncRowOf(source, owed);
     const change = this.#unstamped({ cursor: this.#projection.takeCursor(), position: this.#projection.position() });
-    const rows = read === undefined || !("model" in read) ? { rows: [], sync: read === undefined ? [] : [read] } : { rows: [read], sync: [] };
-    for (const subscriber of owed) this.#push(subscriber, { kind: "change", change, ...rows, reads: [] });
+    const answered = read !== undefined && "model" in read ? [read] : [];
+    const pending = read !== undefined && !("model" in read) ? [read] : [];
+    for (const subscriber of owed) this.#push(subscriber, { kind: "change", change, rows: answered, sync: pending, reads: [] });
   }
 
   close(): void {
@@ -466,6 +467,13 @@ export class DashboardStreamHub {
   /** Live connections — a diagnostic for tests and the doctor, never a routing input. */
   subscriberCount(): number {
     return this.#subscribers.size;
+  }
+
+  /** Replaces an open connection's outbox, keeping its waiting consumer. */
+  #replaceOutbox(subscriber: Subscriber, outbox: readonly OutboxEntry[]): void {
+    const current = subscriber.phase;
+    if (current.state !== "open") return;
+    subscriber.phase = current.waiter === undefined ? { state: "open", outbox } : { state: "open", outbox, waiter: current.waiter };
   }
 
   #closeSubscriber(subscriber: Subscriber): void {
@@ -582,7 +590,7 @@ export class DashboardStreamHub {
     const owners = [...request.subscribers];
     request.subscribers.clear();
     const reads = this.#readsFor(owners);
-    const rows = this.#syncRowsFor(owners);
+    const syncRows = this.#syncRowsFor(owners);
     for (const subscriber of owners) {
       const phase = subscriber.phase;
       if (phase.state !== "open") continue;
@@ -592,8 +600,9 @@ export class DashboardStreamHub {
         this.#release(subscriber, [entry]);
         return false;
       });
-      const snapshot: OutboxEntry = { kind: "snapshot", frame, ...rows, reads: this.#readOf(reads, subscriber) };
-      subscriber.phase = { ...phase, outbox: [...phase.outbox.slice(0, place), snapshot, ...behind] };
+      const snapshot: OutboxEntry = { kind: "snapshot", frame, rows: syncRows.rows, sync: syncRows.sync, reads: this.#readOf(reads, subscriber) };
+      const outbox = [...phase.outbox.slice(0, place), snapshot, ...behind];
+      this.#replaceOutbox(subscriber, outbox);
       subscriber.framed?.resolve();
       this.#deliver(subscriber);
     }
@@ -633,7 +642,7 @@ export class DashboardStreamHub {
       const phase = subscriber.phase;
       if (phase.state !== "open") continue;
       this.#release(subscriber, phase.outbox);
-      subscriber.phase = { state: "open", outbox: [], ...(phase.waiter === undefined ? {} : { waiter: phase.waiter }) };
+      this.#replaceOutbox(subscriber, []);
       this.#push(subscriber, { kind: "ready", envelope: reset });
       subscriber.framed?.resolve();
     }
@@ -663,7 +672,7 @@ export class DashboardStreamHub {
         const phase = subscriber.phase;
         if (phase.state !== "open") continue;
         this.#release(subscriber, phase.outbox);
-        subscriber.phase = { state: "open", outbox: [], ...(phase.waiter === undefined ? {} : { waiter: phase.waiter }) };
+        this.#replaceOutbox(subscriber, []);
         this.#push(subscriber, { kind: "ready", envelope: reset });
       }
       return;
@@ -906,7 +915,7 @@ export class DashboardStreamHub {
           phase.waiter(this.#resetNow());
           return;
         }
-        subscriber.phase = { state: "open", outbox, ...(phase.waiter === undefined ? {} : { waiter: phase.waiter }) };
+        this.#replaceOutbox(subscriber, outbox);
         this.#deliver(subscriber);
         return;
       }
@@ -1025,15 +1034,15 @@ export class DashboardStreamHub {
     }
     // What is ready now goes out at once; the rest waits in the outbox for its rows.
     const initial: DashboardStreamEnvelope[] = [hello];
-    const phase = subscriber.phase;
-    if (phase.state === "open") {
+    const admitted = subscriber.phase;
+    if (admitted.state === "open") {
       let ready = 0;
-      for (const entry of phase.outbox) {
+      for (const entry of admitted.outbox) {
         if (!entryReady(entry)) break;
         initial.push(this.#handOut(subscriber, entry));
         ready += 1;
       }
-      subscriber.phase = { state: "open", outbox: phase.outbox.slice(ready) };
+      subscriber.phase = { state: "open", outbox: admitted.outbox.slice(ready) };
     }
 
     // A hub closed while the snapshot was read has already closed this connection.
