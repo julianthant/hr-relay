@@ -47,6 +47,27 @@ for (const width of [1024, 1280, 1600]) {
   });
 }
 
+for (const width of [1100, 1280, 1600]) {
+  test(`with search closed the run title is not truncated at ${width}`, async ({ mount, page }) => {
+    await page.setViewportSize({ width, height: 720 });
+    await mount("run-panel/log-header/search-child");
+    const title = page.getByRole("region", { name: "Selected run logs" }).getByRole("heading", { level: 2 });
+    await expect(title).toBeVisible();
+    expect(await title.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  });
+}
+
+test("a focused header button keeps focus while the header re-measures", async ({ mount, page }) => {
+  await page.setViewportSize({ width: 1600, height: 720 });
+  await mount("run-panel/log-header/search-child");
+  const back = page.getByRole("button", { name: "Back to Emergency Contact batch" });
+  await back.focus();
+  for (const width of [1280, 1100, 900, 1280, 1600]) {
+    await page.setViewportSize({ width, height: 720 });
+    await expect(back).toBeFocused();
+  }
+});
+
 test("the run menu closes on Escape and returns focus to its button", async ({ mount, page }) => {
   await mount("run-panel/log-header/default");
   const more = page.getByRole("button", { name: "More actions" });

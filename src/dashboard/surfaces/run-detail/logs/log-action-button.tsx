@@ -6,7 +6,8 @@ import { cn } from "../../../lib/utils.js";
 export const LogActionButton = forwardRef<HTMLButtonElement, Omit<ComponentProps<typeof Button>, "icon" | "children"> & { label: string; icon: ReactNode; text?: ReactNode }>(function LogActionButton({ label, text, icon, className, ...props }, ref) {
   const compact = useContext(LogHeaderCompact);
   const button = <Button ref={ref} size="md" aria-label={compact ? label : undefined} icon={icon} className={cn(compact && "w-[var(--ds-h-md)] justify-center px-0", className)} {...props} {...(compact ? { title: "" } : {})}>{compact ? undefined : text ?? label}</Button>;
-  return compact ? <Tooltip side="bottom" content={label}>{button}</Tooltip> : button;
+  // The Tooltip wrapper stays in both modes so the button is never remounted (and never loses focus) when the header flips; it only speaks when the label is hidden.
+  return <Tooltip side="bottom" content={label} {...(compact ? {} : { open: false as const })}>{button}</Tooltip>;
 });
 
 /** An icon button in the run header: the shared Tooltip names it. */

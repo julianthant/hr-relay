@@ -19,15 +19,20 @@ const headerIcon = (label: string) => label === "Review" ? <ClipboardCheck aria-
 /** One row: the title truncates, the actions stay on the line. When the row's contents overflow, text buttons collapse to icons first, then the actions take their own line under the title, so nothing is pushed past the edge. */
 function LogHeader({ title, status, middle, searching, layoutKey, children }: { title: string; status?: ReactNode; middle?: ReactNode; searching: boolean; layoutKey: readonly unknown[]; children: ReactNode }) {
   const row = useRef<HTMLDivElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
   const [width, setWidth] = useState(Infinity);
-  // 0 = text buttons, 1 = icons, 2 = icons on their own line; any change to the row's width or contents starts again at 0.
+  // 0 = text buttons, 1 = icons, 2 = icons beside the search on their own line. Only more room or new contents start again at 0; a narrower row keeps its level.
   const [level, setLevel] = useState(0);
-  const key = [width, searching, ...layoutKey];
-  const [seen, setSeen] = useState(key);
-  if (key.length !== seen.length || key.some((value, index) => !Object.is(value, seen[index]))) { setSeen(key); setLevel(0); }
+  const key = [searching, ...layoutKey];
+  const [seen, setSeen] = useState({ key, width });
+  if (width > seen.width || key.length !== seen.key.length || key.some((value, index) => !Object.is(value, seen.key[index]))) { setSeen({ key, width }); setLevel(0); }
+  else if (width < seen.width) setSeen({ key, width });
   useLayoutEffect(() => {
     const node = row.current;
-    if (node !== null && level < 2 && node.scrollWidth > node.clientWidth) setLevel(level + 1);
+    const title = heading.current;
+    if (node === null || title === null) return;
+    // A squeezed title counts as overflow: buttons collapse, then move to their own line, before the name truncates.
+    if (level < 2 && (node.scrollWidth > node.clientWidth || title.scrollWidth > title.clientWidth)) setLevel(level + 1);
   }, [level, seen]);
   useEffect(() => {
     const node = row.current;
@@ -38,8 +43,8 @@ function LogHeader({ title, status, middle, searching, layoutKey, children }: { 
   }, []);
   const stacked = level === 2;
   return <header className="shrink-0 border-b border-ui-stroke bg-ui-table px-4 py-3">
-    <div ref={row} className={cn("flex min-h-6 min-w-0 items-center gap-3", stacked && "flex-wrap")}><h2 className={cn("m-0 truncate text-heading", searching ? "min-w-24" : "min-w-0")} title={title}>{title}</h2>{status && <span className="flex shrink-0 items-center gap-2">{status}</span>}{middle}
-      <LogHeaderCompact.Provider value={level > 0}><span className={cn("ml-auto flex items-center gap-2", searching ? "min-w-0 [&>:not([role=search])]:shrink-0" : "shrink-0", stacked && "w-full flex-wrap justify-end [&>[role=search]]:order-last [&>[role=search]]:w-full")}>{children}</span></LogHeaderCompact.Provider>
+    <div ref={row} className={cn("flex min-h-6 min-w-0 items-center gap-3", stacked && "flex-wrap")}><h2 ref={heading} className={cn("m-0 truncate text-heading", searching ? "min-w-24" : "min-w-0")} title={title}>{title}</h2>{status && <span className="flex shrink-0 items-center gap-2">{status}</span>}{middle}
+      <LogHeaderCompact.Provider value={level > 0}><span className={cn("ml-auto flex items-center gap-2", searching ? "min-w-0 [&>:not([role=search])]:shrink-0" : "shrink-0", stacked && "w-full flex-wrap justify-end [&>[role=search]]:w-auto [&>[role=search]]:min-w-32 [&>[role=search]]:flex-1")}>{children}</span></LogHeaderCompact.Provider>
     </div>
   </header>;
 }
