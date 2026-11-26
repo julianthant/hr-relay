@@ -442,7 +442,7 @@ describe("the workflow explorer projection", () => {
     if (entry.surfaces.inputRun.state !== "declared") return;
     assert.match(
       entry.surfaces.inputRun.placeholder,
-      /Kuali document numbers/u,
+      /^e\.g\. 4502; 4510$/u,
     );
     assert.equal(entry.surfaces.inputRun.supportsDryRun, true);
   });
