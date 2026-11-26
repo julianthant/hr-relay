@@ -396,7 +396,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       test("a held file read reserves the draft page's grid", async ({ dashboard, page }) => {
         await dashboard.openDataPage("Spreadsheets");
         await expect(page.getByText("No spreadsheets yet", { exact: true })).toBeVisible();
-        const input = page.locator('input[type="file"][aria-label="Spreadsheet file"]');
+        const input = page.locator('input[type="file"][aria-label="Spreadsheet file"]').first();
         const hold = await holdDashboardSkeletonRead(page, { fileName: FILE_NAME });
         const loading = `${SHEETS} [aria-label="Opening ${SHEET_NAME}"]`;
         await measure(page, input,

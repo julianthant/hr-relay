@@ -8,7 +8,7 @@ test("imports both CSV sizes, opens their saved rows, and picks both as run refe
   await dashboard.openDataPage("Spreadsheets");
   await expect(page.getByText("No spreadsheets yet", { exact: true })).toBeVisible();
 
-  const file = page.locator('input[type="file"][aria-label="Spreadsheet file"]');
+  const file = page.locator('input[type="file"][aria-label="Spreadsheet file"]').first();
   const inputs = [{ name: "Small smoke roster", rows: 3 }, { name: "Large smoke roster", rows: 5_000 }];
   for (const { name, rows } of inputs) await test.step(`Import and open the ${rows}-row CSV`, async () => {
     const lastEid = String(10_000_000 + rows);
