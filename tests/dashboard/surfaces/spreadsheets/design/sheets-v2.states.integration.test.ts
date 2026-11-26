@@ -132,7 +132,7 @@ it('locks Discard while Add saves, and adds the next file as itself after an unc
   await pick('A.csv');
   await click(button('Add to library'));
   assert.equal(button('Discard')?.disabled, true, 'a discarded draft cannot still join the library');
-  assert.equal(button('Spreadsheets'), undefined, 'nor leave through the breadcrumb');
+  assert.equal(button('Spreadsheets') === undefined, true, 'nor leave through the breadcrumb');
   await act(async () => { release({ state: 'uncertain', reason: 'lost' }); });
   assert.match(document.body.textContent ?? '', /Still confirming A/u);
   await click(button('Discard'));
