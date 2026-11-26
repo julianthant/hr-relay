@@ -533,6 +533,18 @@ describe("dashboard stream run panel rows", () => {
     second.close();
   });
 
+  it("settles a rejection that cannot become text as a refusal it retries", async () => {
+    const { w, hub, reader, timers } = await harness();
+    seedTwoRuns(w);
+    const connection = await hub.connect({ day: DAY, run: R });
+    reader.reads[0]?.reject({ toString: () => { throw new Error("no text"); } });
+    const [snapshot] = await take(connection, 2);
+    const refused = snapshotOf(snapshot).rows[0]?.value;
+    if (refused?.state !== "refused") assert.fail("expected the failed read to be refused");
+    assert.equal(refused.error.code, "DASHBOARD_READ_FAILED");
+    assert.equal(timers.live(), 1, "the failed read is read again");
+  });
+
   it("settles a rejection whose message is empty as a refusal it retries", async () => {
     const { w, hub, reader, timers } = await harness();
     seedTwoRuns(w);
