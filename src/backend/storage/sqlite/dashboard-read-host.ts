@@ -622,8 +622,7 @@ function runReadLane(port: MessagePort, data: unknown) {
   const serve = (definition: LaneReadDefinition<unknown, unknown>, message: Extract<LaneRequest, { kind: "read" }>) => {
     const args = definition.args.parse(message.args);
     const cached = definition.tables.length === 0 ? undefined : cache.get(message.key);
-    return history.withAuthorityReadSnapshot(() => {
-      lane.assertSource();
+    return history.withAuthorityReadSnapshot(() => lane.withProvedSource(() => {
       const meta = history.getMeta(), change = history.capturedChangeKey();
       const timelineThrough = definition.timeline ? history.authority.timelineEvents.highWaterMark() : null;
       const base = { source, schemaVersion: meta.schemaVersion, schemaCookie: change.schemaCookie, authorityGeneration: meta.authorityGeneration };
@@ -650,7 +649,7 @@ function runReadLane(port: MessagePort, data: unknown) {
         processRevision: message.processRevision, validUntil: definition.cacheMs === undefined ? null : message.nowMs + definition.cacheMs };
       if (definition.tables.length > 0) cache.set(message.key, { body, position, beginSeq: message.beginSeq });
       return { body, position, cached: false, beginSeq: message.beginSeq };
-    });
+    }));
   };
 
   const handle = (input: unknown): void => {
@@ -687,10 +686,9 @@ function runReadLane(port: MessagePort, data: unknown) {
     for (const definition of definitions.values()) {
       const warm = definition.warm;
       if (warm === undefined || definition.lane !== start.lane) continue;
-      history.withAuthorityReadSnapshot(() => {
-        lane.assertSource();
+      history.withAuthorityReadSnapshot(() => lane.withProvedSource(() => {
         warm({ start, native, history, nowMs: systemClock.nowMs(), retain: resource => { resources.push(resource); } });
-      });
+      }));
     }
   } catch (error) { close(); throw error; }
   if (leftInTransaction()) process.exit(LANE_TRANSACTION_EXIT_CODE);
