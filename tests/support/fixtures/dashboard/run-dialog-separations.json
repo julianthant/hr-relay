@@ -283,6 +283,15 @@
                   "Manually Processed",
                   "Pending"
                 ]
+              },
+              {
+                "key": "effectiveDate",
+                "label": "Effective date",
+                "replaces": {
+                  "nodeId": "receipt",
+                  "path": "effectiveDate"
+                },
+                "kind": "us-date"
               }
             ]
           },
@@ -552,6 +561,15 @@
                   "Manually Processed",
                   "Pending"
                 ]
+              },
+              {
+                "key": "effectiveDate",
+                "label": "Effective date",
+                "replaces": {
+                  "nodeId": "receipt",
+                  "path": "effectiveDate"
+                },
+                "kind": "us-date"
               }
             ]
           },

@@ -145,7 +145,7 @@ describe("step selection", () => {
     assert.deepEqual(selectedStepKeys(off, plain), ["write", "finish"], "a step done by hand stays in until the operator turns it off");
     const both = toggleRow(off, plain, null, row("write"), false);
     assert.deepEqual(selectedStepKeys(both, plain), ["finish"]);
-    assert.deepEqual(selectedStepKeys(toggleRow(both, plain, null, row("read"), true), plain), ["read", "write", "finish"]);
+    assert.deepEqual(selectedStepKeys(toggleRow(both, plain, null, row("read"), true), plain), ["read", "finish"], "restoring the read keeps a step done by hand off");
   });
   it("refuses a step the workflow does not declare", () => {
     assert.throws(() => toggleRow(freshLaunchDraft(plain), plain, null, { ...row("read"), key: "nope", stepKey: "nope" }, false), /does not declare/u);
