@@ -453,7 +453,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
   }));
   dashboardPreflightRunners.markBackendOwned(server.port);
-  const gateParkTimer = startNotificationPolling(database, clock, notificationObserver);
+  const gateParkTimer = startNotificationPolling(database, clock, notificationObserver, notifications.pollList);
   startupCleanups.push(() => clearInterval(gateParkTimer));
   const historyTimer = startAssistantHistoryCleanup(() => { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); }, error => {
     const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "assistant-history-cleanup", code: "ASSISTANT_HISTORY_CLEANUP_FAILED",

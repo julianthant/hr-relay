@@ -106,7 +106,7 @@ type NotificationListSource = NonNullable<Parameters<typeof composeShell>[0]["no
 export function composeNotificationRoutes(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "assertCurrent" | "notificationObserver"> & {
   notificationTarget: ReturnType<typeof createNotificationTargetQuery>;
   notificationReads?: ReturnType<typeof composeNotificationReads>;
-}): NotificationRoutes & { streamList: NotificationListSource } {
+}): NotificationRoutes & { streamList: NotificationListSource; pollList(): void } {
   const { database, clock, assertCurrent, notificationObserver, notificationTarget } = input;
   const { list, collection } = input.notificationReads ?? composeNotificationReads(database);
   const projectionDependencies = createProjectionDependencies(input);
@@ -148,6 +148,7 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
   };
   const snapshot = (actor: string) => database.withAuthorityReadSnapshot(() => project(actor));
   let streamed: readonly NotificationWire[] | undefined;
+  const listListeners = new Set<() => void>();
   return {
     withSnapshot: (actor, respond) => database.withAuthorityReadSnapshot(() => {
       const rows = project(actor);
@@ -171,24 +172,21 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
       notePublication: row => {
         if (streamed !== undefined) streamed = [...upsertListedRow(streamed, row)].sort(compareNotificationRows);
       },
-      onChange: listener => {
-        const timer = setInterval(() => {
-          const prior = retained.get(LOCAL_OPERATOR_ACTOR_ID);
-          if (streamed === undefined) return;
-          try {
-            if (prior?.rows === streamed && prior.position === position() && within(prior, clock.nowMs())) return;
-            const rows = snapshot(LOCAL_OPERATOR_ACTOR_ID);
-            const changed = !isDeepStrictEqual(rows, streamed);
-            streamed = rows;
-            if (!changed) return;
-          } catch (error) {
-            if (!(error instanceof Error)) throw error;
-          }
-          listener();
-        }, 1000);
-        timer.unref();
-        return () => clearInterval(timer);
-      },
+      onChange: listener => { listListeners.add(listener); return () => { listListeners.delete(listener); }; },
+    },
+    pollList: () => {
+      if (streamed === undefined || listListeners.size === 0) return;
+      const prior = retained.get(LOCAL_OPERATOR_ACTOR_ID);
+      try {
+        if (prior?.rows === streamed && prior.position === position() && within(prior, clock.nowMs())) return;
+        const rows = snapshot(LOCAL_OPERATOR_ACTOR_ID);
+        const changed = !isDeepStrictEqual(rows, streamed);
+        streamed = rows;
+        if (!changed) return;
+      } catch (error) {
+        if (!(error instanceof Error)) throw error;
+      }
+      for (const listener of listListeners) listener();
     },
   };
 }

@@ -80,9 +80,10 @@ it("serves the same storage group through the inbox route and stream row, keepin
     const queue = createOperatorProjection({ database, reader: lifecycle, clock, stateRoot: w.stateRoot,
       appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, ledger: createTransactionHistory(database.authority), descriptors });
     const unexpected = (): never => { throw new Error("unexpected start plan"); };
-    registerQueueRoutes(app, { queue: { day: day => queue.servedDashboardDay(day) },
+    const queueApp: DashboardApp = new Hono();
+    registerQueueRoutes(queueApp, { queue: { day: day => queue.servedDashboardDay(day) },
       startPlans: { plan: unexpected, previewWarnings: unexpected } });
-    const dayResponse = await app.request(`/api/v1/dashboard?day=${DAY}`);
+    const dayResponse = await queueApp.request(`/api/v1/dashboard?day=${DAY}`);
     assert.equal(dayResponse.status, 200);
     const dayPayload: unknown = await dayResponse.json();
     assert.ok(dayPayload !== null && typeof dayPayload === "object");
@@ -193,7 +194,6 @@ it("refreshes a streamed storage notice when only its concern's health clears", 
   };
   const routes = composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps: createRunDetailTestWorld().depsOf(w),
     assertCurrent: () => undefined, notificationObserver: observer, notificationTarget: () => ({ kind: "storage" }) });
-  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   const hub = createDashboardStreamHub({ projection: w.projection, notificationList: routes.streamList,
     backfillGaps: { detected: () => Promise.reject(new Error("unexpected gap")) } });
   try {
@@ -208,7 +208,7 @@ it("refreshes a streamed storage notice when only its concern's health clears", 
     clock.advanceWall(1000);
     health(false);
     assert.equal(routes.snapshot("local-operator")[0].kind, "notification", "a GET may read the new state before the stream polls");
-    await vi.advanceTimersByTimeAsync(1000);
+    routes.pollList();
     assert.equal(connection.pending, 1);
     const change = await connection.next();
     assert.ok(change?.type === "change" && change.day === undefined);
@@ -216,7 +216,6 @@ it("refreshes a streamed storage notice when only its concern's health clears", 
     connection.close();
   } finally {
     hub.close();
-    vi.useRealTimers();
     await observer.stop();
   }
 });

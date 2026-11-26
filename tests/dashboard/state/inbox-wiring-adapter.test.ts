@@ -104,6 +104,12 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
   if (enabled && statusDelivered) await status(initiallyFailed ? { state: "unavailable", error: ERROR } : { state: "available", value: { state: "ready", pending: 0 } });
   serveNotificationList(store, rows);
   let dayServed = rows, dayRows = dayServed, refreshes = 0, snapshots = 1, reloading = false;
+  let listed = dayServed;
+  const deliverList = () => {
+    if (listed === dayServed) return;
+    listed = dayServed;
+    serveNotificationList(store, listed);
+  };
   let connection: SubscriptionState = { state: "live" };
   let day = { state: "loaded" as const, value: { ...FIXTURE_DAY_WIRE } };
   const scope = { client, authority: epoch, actorId: "local-operator", dayRequest };
@@ -115,10 +121,11 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
   let value: InboxWiring | undefined;
   function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding }); return null; }
   root = createRoot(document.createElement("div"));
-  const render = async (served = enabled, currentBinding = binding, currentClient = client) => { activeScope = currentBinding.scope; await act(async () => { if (dayRows !== dayServed) serveNotificationList(store, dayServed); root?.render(createElement(Probe, { served, currentBinding, currentClient })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
+  const render = async (served = enabled, currentBinding = binding, currentClient = client) => { activeScope = currentBinding.scope; await act(async () => { deliverList(); root?.render(createElement(Probe, { served, currentBinding, currentClient })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   await render();
-  /** Each subscriber, delivering an arrival on the snapshot the stream holds now: a day the harness next serves is a new snapshot. */
+  /** Deliver pending list rows before a publication queued behind them. */
   const publishers = () => listeners.map(listener => (arrival: NotificationArrival) => {
+    deliverList();
     store.applyNotification(arrival.listed);
     listener(arrival);
   });
