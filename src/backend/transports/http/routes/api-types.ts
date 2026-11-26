@@ -32,6 +32,12 @@ export interface DashboardAppDeps extends OcrRouteDeps, ChatGptAccountRouteDeps,
     snapshot(actor: string): readonly NotificationWire[];
     target: ReturnType<typeof import("../../../runs/queries/notifications.js").createNotificationTargetQuery>;
     status(): import("../../../runs/notifications/observation.js").NotificationObservationStatus;
+    /** The list, collection and target GETs on a read lane, each answered with the lane's validated body. */
+    lane?: Readonly<{
+      list(actor: string, signal?: AbortSignal): Promise<string>;
+      collection(actor: string, operation: import("../../../../models/notifications/notifications.js").NotificationCollectionOperation): Promise<string>;
+      target(id: string, actor: string): Promise<string>;
+    }>;
   };
   readonly assistant?: AssistantService;
   readonly requestIdentity: RequestIdentityCheckpoint;

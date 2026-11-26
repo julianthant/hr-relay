@@ -48,7 +48,7 @@ interface OperatorXlsxExportMainDependencies {
   readonly artifacts: ContentAddressedArtifactWriter;
   readonly authority: OperatorXlsxExportRepository;
   /** Reserved for the Activity arm; search composition must never read it. */
-  readonly activityReport: (from: string, to: string, token: string) => ActivityReportSelection;
+  readonly activityReport: (from: string, to: string, token: string) => ActivityReportSelection | Promise<ActivityReportSelection>;
 }
 
 type SearchSelection = Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "search" }>;
@@ -167,11 +167,11 @@ function readSearchDocument(
   });
 }
 
-function collectActivityDocument(
+async function collectActivityDocument(
   deps: OperatorXlsxExportMainDependencies,
   selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "activity" }>,
 ) {
-  const selectedReport = ActivityReportSelectionSchema.parse(deps.activityReport(selection.from, selection.to, selection.snapshotToken));
+  const selectedReport = ActivityReportSelectionSchema.parse(await deps.activityReport(selection.from, selection.to, selection.snapshotToken));
   if(selectedReport.snapshot.token!==selection.snapshotToken)throw new Error("activity-export-selection-identity-mismatch");
   const report = ActivityReportWireSchema.parse(Object.fromEntries(Object.entries(selectedReport).filter(([key])=>key!=="snapshot")));
   return OperatorXlsxActivityDocumentSchema.parse({
@@ -224,7 +224,7 @@ export function createOperatorXlsxExportService(
         ? "readSearchDocument" in deps
           ? await deps.readSearchDocument(request.selection)
           : collectSearchDocument({ ...deps, sourceIdentity }, request.selection)
-        : collectActivityDocument({ ...deps, sourceIdentity }, request.selection);
+        : await collectActivityDocument({ ...deps, sourceIdentity }, request.selection);
       const workbook = await composeOperatorXlsxWorkbook(document);
       const exportId = OperatorXlsxExportIdSchema.parse(deps.ids.uuid());
       const previous = deps.authority.getFile(exportId);

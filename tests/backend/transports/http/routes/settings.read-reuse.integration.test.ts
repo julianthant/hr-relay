@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
+import { createComposedDashboardReadHost } from "../../../../../src/backend/app/composition/dashboard/runtime-resources.js";
 import { composeSettings } from "../../../../../src/backend/app/composition/dashboard/settings.js";
 import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
 import { activeSettingsRuntimeIdentity } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { registerSettingsRoutes } from "../../../../../src/backend/transports/http/routes/settings.js";
 import { SettingsFactsWireSchema } from "../../../../../src/models/dashboard/settings.js";
+import { EditableSettingsWireSchema } from "../../../../../src/models/dashboard/settings-editor.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { seedInitialSettingsRuntimeConfig } from "../../../../support/fixtures/operator-command-fixtures.js";
 import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, NOW, UUID_1, UUID_3 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -72,4 +74,70 @@ it("revalidates the admitted settings facts against each of their four authority
     current = false;
     assert.equal((await read(latest)).status, 500);
   } finally { await fixture.close(); }
+});
+
+it("serves both Settings GETs from the navigation lane, rebuilding the editor when the store, the protected facts or the fiscal year change", async () => {
+  const clock = manualClock(new Date(NOW));
+  const fixture = await openBoundDatabaseFixture("settings-lane", clock);
+  const { database } = fixture;
+  const lanes = createComposedDashboardReadHost({ admission: fixture.profile.admission, database, clock });
+  try {
+    seedInitialSettingsRuntimeConfig(database, clock);
+    const hostFacts = { primaryDisplay: null };
+    const store = createCredentialStore({ stateRoot: fixture.stateRoot });
+    let protectedFailure = false;
+    const credentials = { ...store, read: () => { if (protectedFailure) throw new Error("protected store unreadable"); return store.read(); } };
+    const { routes, editable } = composeSettings({ database, clock, environment: {}, hostFacts, readLanes: lanes,
+      active: activeSettingsRuntimeIdentity, credentials });
+    const app: DashboardApp = new Hono();
+    app.onError((error, c) => c.json({ message: error.message }, 500));
+    registerSettingsRoutes(app, routes);
+    const readEditable = async () => {
+      const response = await app.request("/api/v1/settings/editable");
+      const body: unknown = await response.json();
+      assert.equal(response.status, 200, JSON.stringify(body));
+      return EditableSettingsWireSchema.parse(body);
+    };
+    const noMainRead = () => { throw new Error("main-connection read"); };
+    const snapshot = vi.spyOn(database, "withAuthorityReadSnapshot").mockImplementation(noMainRead);
+    try {
+      const facts = await app.request("/api/v1/settings/facts");
+      assert.equal(facts.status, 200);
+      assert.equal(facts.headers.get("Cache-Control"), "private, no-cache");
+      SettingsFactsWireSchema.parse(await facts.json());
+      const tag = facts.headers.get("ETag");
+      assert.ok(tag);
+      assert.equal((await app.request("/api/v1/settings/facts", { headers: { "If-None-Match": tag } })).status, 304);
+
+      const first = await readEditable();
+      assert.equal(first.protectedSettings.state, "available");
+      assert.equal(first.currentFiscalYear, 2027);
+      assert.equal(await editable(), await editable(), "an unchanged store part, protected facts and fiscal year reuse the document");
+
+      protectedFailure = true;
+      assert.equal((await readEditable()).protectedSettings.state, "unknown", "a protected-facts change builds again");
+      protectedFailure = false;
+
+      clock.setWall(new Date("2027-07-01T17:00:00.000Z"));
+      const rolled = await readEditable();
+      assert.equal(rolled.currentFiscalYear, 2028, "the fiscal-year rollover builds again");
+      assert.ok(rolled.sections.flatMap(section => section.leaves).some(leaf => leaf.path.includes("FY2028")));
+      assert.equal(snapshot.mock.calls.length, 0);
+    } finally { snapshot.mockRestore(); }
+
+    const active = database.authority.runtimeConfig.get();
+    assert.ok(active);
+    const resolved = resolveConfigWithProvenance({ urls: { crm: { prod: { ...CONFIG_SNAPSHOT.config.urls.crm.prod, entry: "https://crm.example.test/lane" } } } }, hostFacts, clock);
+    const next = { ...CONFIG_SNAPSHOT, configSnapshotId: randomUUID(), capturedAt: NOW,
+      config: resolved.config, provenance: resolved.provenance, fingerprint: resolved.fingerprint };
+    database.authority.configSnapshots.insert(next);
+    database.authority.runtimeConfig.activate({ settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint,
+      configSnapshotId: next.configSnapshotId, configFingerprint: next.fingerprint, activatedAt: NOW });
+    const changed = await readEditable();
+    assert.equal(changed.activeConfigFingerprint, next.fingerprint, "a store change builds again");
+    assert.equal(changed.runtimeStatus.state, "restart-required");
+  } finally {
+    await lanes.close();
+    await fixture.close();
+  }
 });

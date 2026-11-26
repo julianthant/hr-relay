@@ -35,8 +35,6 @@ import { createApplicationLifecycle } from "../../../runs/lifecycle/application-
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
 import { createWorkerCommandResultQuery } from "../../../runs/queries/worker-command-result.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
-import { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
-import { ocrHostRun } from "../../../runs/queries/ocr-record-members.js";
 import { createRunWorkbookService } from "../../../runs/workbooks.js";
 import { createRunHistoryService } from "../../../runs/commands/run-history-service.js";
 import { createCommandBrowserManager } from "../../../runtime/browser/command-browser.js";
@@ -60,7 +58,7 @@ import { composeDataQueries } from "./data.js";
 import { composeExplorer } from "./explorer.js";
 import { composeFailureResolution } from "./failure-resolution.js";
 import { composeIntake } from "./intake.js";
-import { composeNotificationPublications,composeNotificationReads,composeNotificationRoutes } from "./notification-wiring.js";
+import { composeNotificationPublications,composeNotificationReads,composeNotificationRoutes,createHistoryNotificationTarget } from "./notification-wiring.js";
 import { composeQueueSummaries } from "./queue-summaries.js";
 import { createOperatorProjection } from "./queue.js";
 import type { DashboardRuntime } from "./runtime-contracts.js";
@@ -113,7 +111,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const reader = history === database ? lifecycle : new RunRecordService({ database: history, clock, ids,
     publishQueued: () => { throw new Error("isolated-history-read-only"); }, resolveDescriptor: descriptors.resolve });
   const ledger = createTransactionHistory(history.authority);
-  const runHistory = createRunHistoryService({ database, lifecycle, afterClear: () => { assertCurrent(); projection.rebuildFromTimeline(); } });
+  const runHistory = createRunHistoryService({ database, lifecycle, readLanes, afterClear: () => { assertCurrent(); projection.rebuildFromTimeline(); } });
   const confirmedHistoryCommand = (request: ClearRunHistoryRequest) => {
     if (request.target.profileId !== admission.profileBinding.profileId || request.target.epoch !== context.profileEpoch) {
       throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
@@ -124,8 +122,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     return { commandId: request.commandId };
   };
 
-  const { activity, activityPopulation } = composeActivity({ database: history, clock, descriptors, ledger });
-  const summaries: ServedSummaryQueries = { ...composeQueueSummaries(history), activity: (from, to) => activity.read(from, to) };
+  const { activity, activityPopulation, reports } = composeActivity({ database: history, clock, descriptors, ledger, readLanes });
+  const summaries: ServedSummaryQueries = { ...composeQueueSummaries(history), activity: (from, to) => reports.read(from, to) };
   const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries };
   let snapshotWorkers: () => readonly WorkerMemberView[] = () => [];
   const workerMembers = (): readonly WorkerMemberView[] => snapshotWorkers();
@@ -294,11 +292,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
 
-  const notificationTarget = createNotificationTargetQuery({ get: history.authority.notifications.get, read: id => reader.read(id), failure: history.authority.failures.get,
-    host: run => history.withAuthorityReadSnapshot(() => ocrHostRun(history.authority, run)),
-    command: commandId => history.authority.commands.readForNotice(commandId),
-    bulk: bulkCommandId => { const acceptance = history.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: history.authority.commands.listBulkChildren(bulkCommandId) }; } });
-  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads });
+  const notificationTarget = createHistoryNotificationTarget(history, reader);
+  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads, readLanes });
   const dataQueries = composeDataQueries(runDetailDeps);
   const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });
   const assistantProposals = createAssistantProposals({ ocrSources: () => ocrSources, database, authorization: assistantAuthorization, plans: startPlans, commands, runs: lifecycle, descriptors,

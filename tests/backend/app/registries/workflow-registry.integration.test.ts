@@ -95,7 +95,7 @@ describe("workflow definition registry conformance", () => {
   it("serves every definition-backed workflow through the existing bootstrap/start, detail timeline, and Explorer projections", async () => {
     const world = await makeWorld();
     try {
-      const bootstrap = buildBootstrap({
+      const bootstrap = await buildBootstrap({
         appVersion: "0.1.0",
         clock: manualClock(AT),
         modules: DASHBOARD_CATALOG_MODULES,

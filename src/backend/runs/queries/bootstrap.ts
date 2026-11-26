@@ -15,6 +15,8 @@ import type { WorkbookLibraryService, WorkbookReferenceWorkflow } from "../../wo
 
 import type { WorkbookCompatibility } from "../../../models/dashboard/workbook-library.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { AuthorityMetaSchema } from "../../storage/sqlite/authority-connection.js";
+import { defineLaneRead, type DashboardReadLanes } from "../../storage/sqlite/dashboard-read-host.js";
 
 interface BootstrapModuleView {
   readonly descriptor: AnyWorkflowDescriptor;
@@ -32,12 +34,22 @@ export interface BootstrapQueryDeps {
   readonly descriptorSetHash: Fingerprint;
   readonly settingsSchemaHash: Fingerprint;
   readonly projection: Pick<RunQueueProjection, "generation">;
-  /** Probes the authority store; throws when it cannot be reached. */
-  readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
+  /** Probes the authority store, on a read lane when one is composed; throws or rejects when it cannot be reached. */
+  readonly authorityMeta: () => AuthorityMetaProbe | Promise<AuthorityMetaProbe>;
   readonly workbookCompatibility: (workflows: readonly WorkbookReferenceWorkflow[]) => ReturnType<WorkbookLibraryService["compatibility"]>;
   /** The one retained report produced by the composed preflight authority. */
   readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
 }
+
+type AuthorityMetaProbe = Readonly<{ schemaVersion: number; authorityGeneration: number }>;
+
+const authorityMetaLaneRead = defineLaneRead(import.meta.url, "authority-meta", {
+  lane: "navigation", priority: "interactive", args: z.strictObject({}),
+  run: ({ history }) => history.getMeta(),
+});
+
+export const laneAuthorityMeta = (lanes: Pick<DashboardReadLanes, "read">) => async (): Promise<AuthorityMetaProbe> =>
+  AuthorityMetaSchema.parse(JSON.parse((await lanes.read(authorityMetaLaneRead, {})).body));
 
 const DEFERRED_FEATURES = [
   ["archive", "archive snapshots land with the version service in 2i"],
@@ -84,17 +96,17 @@ export function projectWorkflowStartReadiness(workflow: WorkbookReferenceWorkflo
       requiredFields: [...projection.requiredWorkbookFields] } };
 }
 
-export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire {
-  const preflight = PreflightReportSchema.parse(deps.preflightReport());
-  const workbookCompatibility = deps.workbookCompatibility(deps.modules.map(module => module.descriptor));
+export async function buildBootstrap(deps: BootstrapQueryDeps): Promise<FrontendBootstrapWire> {
   let storageAuthority: "healthy" | "unavailable" = "healthy";
   try {
-    deps.authorityMeta();
+    await deps.authorityMeta();
   } catch {
     // The wire enum is closed; the exact failure surfaces through the
     // authority routes themselves, which throw rather than degrade.
     storageAuthority = "unavailable";
   }
+  const preflight = PreflightReportSchema.parse(deps.preflightReport());
+  const workbookCompatibility = deps.workbookCompatibility(deps.modules.map(module => module.descriptor));
   const systems = new Set<string>();
   for (const { descriptor } of deps.modules) {
     for (const system of workflowProjections(descriptor).systems) systems.add(system);

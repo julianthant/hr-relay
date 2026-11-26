@@ -11,11 +11,15 @@ import type { SettingsRouteDeps } from "./settings-types.js";
 export function registerSettingsRoutes(app: DashboardApp, deps: SettingsRouteDeps): void {
   // Compatibility facts and workflow capabilities are read-only.
   const factsResponse = createPositionedReadResponse("private, no-cache");
-  app.get("/api/v1/settings/facts", etag(), c => deps.withSettingsFacts === undefined
-    ? c.json(buildSettingsFacts(deps.settings)) : deps.withSettingsFacts(factsResponse));
+  app.get("/api/v1/settings/facts", etag(), async c => {
+    if (deps.settingsLane !== undefined) return new Response(await deps.settingsLane.facts(), { headers: {
+      "Content-Type": "application/json", "Cache-Control": "private, no-cache" } });
+    return deps.withSettingsFacts === undefined ? c.json(buildSettingsFacts(deps.settings)) : deps.withSettingsFacts(factsResponse);
+  });
 
   // values, provenance and editability are server-owned; this route has no mutation arm.
-  app.get("/api/v1/settings/editable", (c) => c.json(buildSettingsEditor(deps.settingsEditor)));
+  app.get("/api/v1/settings/editable", async (c) => c.json(deps.settingsLane === undefined
+    ? buildSettingsEditor(deps.settingsEditor) : await deps.settingsLane.editable()));
 
   app.post("/api/v1/settings/path-picker", async (c) => {
     const request = NativePathPickerRequestSchema.parse(await c.req.json());

@@ -113,16 +113,18 @@ export function createSettingsRuntimeReader(input: Readonly<{
         configFingerprint: active.configFingerprint,
       });
       const record = readSettings(repositories);
-      const resolved = resolveConfigWithProvenance(record.settings, input.hostFacts, input.clock, input.runtimeStoragePair);
-      const persisted = settingsRuntimeIdentity(record, resolved.fingerprint);
-      const runtimeStatus = SettingsRuntimeStatusSchema.parse(
-        canonicalJsonStringify(persisted) === canonicalJsonStringify(active)
-          ? { state: "current", identity: active }
-          : { state: "restart-required", active, persisted },
-      );
-      return Object.freeze({ record, runtimeStatus });
+      return Object.freeze({ record, runtimeStatus: settingsRuntimeStatus(input, record, active) });
     },
   });
+}
+
+/** The saved record against the active identity. Pure, so a store part read elsewhere resolves here with the host's facts. */
+export function settingsRuntimeStatus(input: Readonly<{ hostFacts: HostConfigFacts; clock: Clock; runtimeStoragePair?: AdmittedRuntimeStoragePair }>,
+  record: SettingsFileRecord, active: SettingsRuntimeIdentity): SettingsRuntimeStatus {
+  const resolved = resolveConfigWithProvenance(record.settings, input.hostFacts, input.clock, input.runtimeStoragePair);
+  const persisted = settingsRuntimeIdentity(record, resolved.fingerprint);
+  return SettingsRuntimeStatusSchema.parse(canonicalJsonStringify(persisted) === canonicalJsonStringify(active)
+    ? { state: "current", identity: active } : { state: "restart-required", active, persisted });
 }
 
 /** The caller's SQLite transaction excludes concurrent settings application. */

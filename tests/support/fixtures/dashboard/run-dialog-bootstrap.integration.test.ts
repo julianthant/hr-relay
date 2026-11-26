@@ -13,12 +13,12 @@ it("the Run dialog's saved bootstrap is the served fixture bootstrap", () => {
   assert.deepEqual(snapshot, JSON.parse(JSON.stringify(FIXTURE_BOOTSTRAP)));
 });
 
-it("the Work-Study entry saved for the cancelled-rerun stories is the served one", () => {
+it("the Work-Study entry saved for the cancelled-rerun stories is the served one", async () => {
   const descriptor = DESCRIPTORS.find(candidate => String(candidate.id) === "work-study");
   assert.ok(descriptor);
   const clock = manualClock(new Date("2026-08-26T21:00:00.000Z"));
   const intake = INTAKE_PROJECTIONS["work-study"];
-  const wire = buildBootstrap({ appVersion: "0.1.0", actorLabel: () => "Fixture Operator", clock,
+  const wire = await buildBootstrap({ appVersion: "0.1.0", actorLabel: () => "Fixture Operator", clock,
     modules: [{ descriptor, role: defineWorkflowRole({ kind: "composition" }), ...(intake === undefined ? {} : { intake }) }],
     descriptorSetHash: descriptorSetHash([descriptor.contractFingerprint]), settingsSchemaHash: descriptorSetHash(["settings-schema"]),
     projection: { generation: () => 1 }, authorityMeta: () => ({ schemaVersion: 1, authorityGeneration: 1 }),
