@@ -7,7 +7,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import readXlsxFile from "read-excel-file/node";
-import { afterEach,it } from "vitest";
+import { afterEach,it,vi } from "vitest";
+import { createComposedDashboardReadHost } from "../../../../../src/backend/app/composition/dashboard/runtime-resources.js";
 import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
 import { collectSearchDocument,createOperatorXlsxExportService } from "../../../../../src/backend/runs/exports/operator-xlsx-export-service.js";
 import { composeOperatorXlsxWorkbook } from "../../../../../src/backend/runs/exports/operator-xlsx-workbook.js";
@@ -102,7 +103,7 @@ function shiftActivityVolumeSeries(report:ActivityReportWire):ActivityReportWire
   return {...report,volume:{...volume,buckets:volume.buckets.map((bucket,index)=>({...bucket,
     runs:bucket.runs+(index===source?-1:index===destination?1:0)}))}};
 }
-async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) {
+async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean;lanes?:boolean}={}) {
   const profile=await createBoundProfileFixture();
   const scratch=mkdtempSync(join(tmpdir(),"activity-selection-proof-"));
   const clock=manualClock(new Date("2026-09-21T17:00:00Z"));
@@ -127,7 +128,11 @@ async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean
     const report=queryActivitySummaries(database,{from,to,generatedAt},{descriptors,ledger});
     return shiftVolumeSeries?shiftActivityVolumeSeries(report):report;
   };
-  const { activityPopulation, activity: composedActivity } = composeActivity({database,clock,descriptors,ledger});
+  const lanes=options.lanes?createComposedDashboardReadHost({admission:profile.admission,database,clock}):undefined;
+  // Registered after the store's own cleanup, so the lanes close before the store they read.
+  if(lanes!==undefined)cleanup.unshift(()=>lanes.close());
+  const { activityPopulation, activity: composedActivity } = lanes===undefined
+    ? composeActivity({database,clock,descriptors,ledger}) : composeActivity({database,clock,descriptors,ledger,readLanes:lanes});
   const activity=options.dynamicVolumeSeries
     ?createActivitySelectionService({database,clock,read:readSummary})
     :composedActivity;
@@ -313,6 +318,32 @@ it("exports the complete ordered collected search values with coverage and exact
   assert.equal(runs.data.length,4);assert.deepEqual(runs.data.slice(1).map(row=>row[0]),diagnostic.rows.map(row=>row.runNumber.value));
   assert.doesNotMatch(JSON.stringify(sheets),/Private Ingress Subject|10000000/u);
   assert.throws(()=>exportSearchMetadata(f,{format:"csv",selection}),/snapshot/u);
+});
+
+it("issues the Activity token on a read lane and accepts it for the XLSX, refusing a forged or expired one",async()=>{
+  const f=await fixture({lanes:true});await f.artifacts.ready;
+  const snapshot=vi.spyOn(f.database,"withAuthorityReadSnapshot").mockImplementation(()=>{throw new Error("main-connection read");});
+  try{
+    const served=await f.app.request("http://localhost/api/v1/reports/activity?from=2026-09-20&to=2026-09-20");
+    assert.equal(served.status,200);
+    const report=ActivityReportSelectionSchema.parse(await served.json());
+    assert.equal(report.totalRuns,3);
+    const exportOf=(snapshotToken:string)=>f.app.request("http://localhost/api/v1/exports/xlsx",{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({requestVersion:3,selection:{kind:"activity",from:report.from,to:report.to,snapshotToken}})});
+    const workbook=await exportOf(report.snapshot.token);
+    assert.equal(workbook.status,200);
+    const summary=(await readXlsxFile(Buffer.from(await workbook.arrayBuffer()))).find(sheet=>sheet.sheet==="Summary");assert.ok(summary);
+    assert.deepEqual(summary.data.find(row=>row[0]==="Total runs")?.slice(0,2),["Total runs",3]);
+    const exportRequest=(snapshotToken:string)=>({requestVersion:3 as const,selection:{kind:"activity" as const,from:report.from,to:report.to,snapshotToken}});
+    const operator=ActorIdSchema.parse("synthetic-operator");
+    await assert.rejects(f.xlsx.export(operator,exportRequest(`${report.snapshot.token}x`)),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
+    const population=await f.app.request("http://localhost/api/v1/reports/activity/population?from=2026-09-20&to=2026-09-20");
+    assert.equal(population.status,200);
+    assert.equal(ActivityPopulationSelectionSchema.parse(await population.json()).report.totalRuns,3);
+    f.clock.advanceWall(15*60_000);
+    await assert.rejects(f.xlsx.export(operator,exportRequest(report.snapshot.token)),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
+    assert.equal(snapshot.mock.calls.length,0);
+  }finally{snapshot.mockRestore();}
 });
 
 it("rejects report token tampering, mismatched range, foreign signer and expiry without returning a replacement report",async()=>{

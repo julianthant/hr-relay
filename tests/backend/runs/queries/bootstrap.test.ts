@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { describe, it, vi } from "vitest";
-import { buildBootstrap, type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
+import { buildBootstrap, laneAuthorityMeta, type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { StorageAuthoritySummarySchema } from "../../../../src/models/storage/storage-status.js";
 import { projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
@@ -42,6 +42,19 @@ describe("bootstrap storage authority contract", () => {
     assert.deepEqual((await buildBootstrap(deps)).storage, { authority: "unavailable" });
     assert.equal(authorityMeta.mock.calls.length, 2);
     assert.equal(vi.mocked(readdirSync).mock.calls.length, 0);
+  });
+
+  it("serves an unreachable lane probe as unavailable", async () => {
+    const clock = manualClock(new Date("2026-11-06T13:00:00.000Z"));
+    const read = vi.fn(() => Promise.reject(new Error("read-lane-closed")));
+    const deps = {
+      appVersion: "0.1.0", actorLabel: () => "Fixture Operator", clock, modules: [],
+      descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), settingsSchemaHash: FingerprintSchema.parse("b".repeat(64)),
+      projection: { generation: () => 1 }, authorityMeta: laneAuthorityMeta({ read }),
+      workbookCompatibility: workflows => projectWorkbookCompatibility(workflows, []), preflightReport: () => healthyDashboardPreflightReport(clock),
+    } satisfies BootstrapQueryDeps;
+    assert.deepEqual((await buildBootstrap(deps)).storage, { authority: "unavailable" });
+    assert.equal(read.mock.calls.length, 1);
   });
 
   it("serves the Pacific zone as the dashboard clock zone when the machine zone is not Pacific", async () => {

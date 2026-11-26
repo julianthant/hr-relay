@@ -12,13 +12,14 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { createComposedDashboardReadHost } from "../../../../src/backend/app/composition/dashboard/runtime-resources.js";
 import { createRunHistoryService } from "../../../../src/backend/runs/commands/run-history-service.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createContentAddressedArtifactWriter, removeArtifactDeletionFile } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { RunHistoryCommandSchema } from "../../../../src/models/dashboard/run-history.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
+import { capturedInstantClock, manualClock } from "../../../../src/rules/time/clock.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-database-admission.js";
 import { CONFIG_SNAPSHOT, HASH_A, NOW, UUID_3, UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -442,6 +443,21 @@ it("keeps read-only inspection passive and never sweeps unowned files during rec
   expect(() => enumerateProfileCredentialMembership(f.profile.admission, f.database.readProfileResourceCustody(), join(f.profile.stateRoot, "browsers"), {
     workerDirectory() { throw new Error("no fixture browser membership"); },
   })).toThrow("profile-inventory-artifact-unowned");
+});
+
+it("reads the run-history counts on a read lane with the main read connection disabled", async () => {
+  const f = await fixture();
+  f.seed(); f.seed(undefined, undefined, false);
+  const lanes = createComposedDashboardReadHost({ admission: f.profile.admission, database: f.database, clock: manualClock(new Date(NOW)) });
+  try {
+    const service = createRunHistoryService({ database: f.database, lifecycle: f.lifecycle(), readLanes: lanes, afterClear() {} });
+    // The pending-cleanup sweep before the counts is write custody and stays on main; it reads no snapshot.
+    const snapshot = vi.spyOn(f.database, "withAuthorityReadSnapshot").mockImplementation(() => { throw new Error("main-connection read"); });
+    try {
+      expect(await service.status()).toEqual({ state: "available", finishedRuns: 1, activeRuns: 1 });
+      expect(snapshot).not.toHaveBeenCalled();
+    } finally { snapshot.mockRestore(); }
+  } finally { await lanes.close(); }
 });
 
 it("discovers pending cleanup from status after browser request state is discarded", async () => {

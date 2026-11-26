@@ -1,10 +1,12 @@
 
 import assert from "node:assert/strict";
-import { describe,expect,it } from "vitest";
+import { describe,expect,it,vi } from "vitest";
+import { createComposedDashboardReadHost } from "../../../../src/backend/app/composition/dashboard/runtime-resources.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { z } from "zod";
 import { DESCRIPTORS, descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectWorkbookCompatibilityFromRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
-import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
+import { buildBootstrap,laneAuthorityMeta,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { projectStartRows, projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
@@ -424,6 +426,25 @@ describe("bootstrap storage summary", () => {
     } finally {
       await world.dispose();
     }
+  });
+
+  it("probes authority on the read lane with the main connection's meta read disabled", async () => {
+    const profiles = createProfileFixtureSet();
+    try {
+      const profile = await profiles.create();
+      const world = await makeWorld({ profileFixture: async () => profile });
+      try {
+        const lanes = createComposedDashboardReadHost({ admission: profile.admission, database: world.database, clock: world.clock });
+        try {
+          const getMeta = vi.spyOn(world.database, "getMeta").mockImplementation(() => { throw new Error("main-connection read"); });
+          try {
+            const wire = await buildBootstrap({ ...depsOf(world), authorityMeta: laneAuthorityMeta(lanes) });
+            assert.deepEqual(wire.storage, { authority: "healthy" });
+            assert.equal(getMeta.mock.calls.length, 0);
+          } finally { getMeta.mockRestore(); }
+        } finally { await lanes.close(); }
+      } finally { await world.dispose(); }
+    } finally { await profiles.close(); }
   });
 
   it("an unreachable authority stays explicitly unavailable", async () => {

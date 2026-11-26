@@ -17,7 +17,15 @@ import { createTransactionHistory } from "../../../../../src/backend/storage/sql
 import { queryAssistantUsage } from "../../../../../src/backend/assistant/usage-counts.js";
 import { applyDashboardDayPatch } from "../../../../../src/dashboard/client/index.js";
 import { notificationSourceEventOf, notificationWireOf, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
-import { DashboardStreamEnvelopeSchema, NotificationPublicationWireSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
+import { DashboardStreamEnvelopeSchema, NotificationPublicationWireSchema, type DashboardStreamEnvelope, type StreamRow } from "../../../../../src/models/dashboard/subscription.js";
+import { createComposedDashboardReadHost } from "../../../../../src/backend/app/composition/dashboard/runtime-resources.js";
+import { composeSettings } from "../../../../../src/backend/app/composition/dashboard/settings.js";
+import { activeSettingsRuntimeIdentity } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { seedInitialSettingsRuntimeConfig } from "../../../../support/fixtures/operator-command-fixtures.js";
+import { NOW } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { openBoundDatabaseFixture } from "../../../../support/helpers/admission-fixture.js";
+import { createCredentialStore } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import {
   APP_VERSION,
@@ -577,5 +585,84 @@ describe("the day wire main stamps around the lane's body", () => {
     lastRead(reads).answer({ body: "{\"day\":\"not a lane body\"}", processRevision: 1 });
     await assert.rejects(connecting, /queue-day-lane-body-unverified: frame/u);
     assert.equal(hub.subscriberCount(), 0, "a refused handoff leaves no connection");
+  });
+});
+
+/** The settings row composed as the runtime composes it: the store part read on a real navigation lane, the protected facts on main. */
+async function settingsLaneHarness() {
+  const world = await makeWorld(); worlds.push(world);
+  const clock = manualClock(new Date(NOW));
+  const fixture = await openBoundDatabaseFixture("settings-stream-lane", clock);
+  seedInitialSettingsRuntimeConfig(fixture.database, clock);
+  const lanes = createComposedDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock });
+  settingsCleanups.push(async () => { await lanes.close(); await fixture.close(); });
+  const faults = { lane: false, protected: false };
+  const store = createCredentialStore({ stateRoot: fixture.stateRoot });
+  const { editable } = composeSettings({ database: fixture.database, clock, environment: {}, hostFacts: { primaryDisplay: null },
+    active: activeSettingsRuntimeIdentity,
+    credentials: { ...store, read: () => { if (faults.protected) throw new Error("protected store unreadable"); return store.read(); } },
+    readLanes: { read: (definition, args, options) => faults.lane ? Promise.reject(new Error("lane read failed")) : lanes.read(definition, args, options) } });
+  const listeners = new Set<() => void>();
+  const timers: { task: () => void; cancelled: boolean }[] = [];
+  const hub = createDashboardStreamHub({ projection: world.projection,
+    backfillGaps: { detected: () => { throw new Error("no gap is expected"); } },
+    settings: { read: editable, onChange: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; } },
+    schedule: (_delayMs, task) => { const timer = { task, cancelled: false }; timers.push(timer); return () => { timer.cancelled = true; }; } });
+  hubs.push(hub);
+  return { hub, clock, faults,
+    changed: () => { for (const listener of [...listeners]) listener(); },
+    fire: () => { for (const timer of timers.splice(0).filter(timer => !timer.cancelled)) timer.task(); } };
+}
+
+const settingsCleanups: (() => Promise<void>)[] = [];
+afterEach(async () => { for (const close of settingsCleanups.splice(0)) await close(); });
+
+type SettingsRowValue = Extract<StreamRow, { model: "settings" }>["value"];
+const settingsRowOf = (envelope: DashboardStreamEnvelope | undefined): SettingsRowValue | undefined =>
+  envelope?.type === "snapshot" || envelope?.type === "change"
+    ? envelope.rows.find((row): row is Extract<StreamRow, { model: "settings" }> => row.model === "settings")?.value : undefined;
+
+/** The next settings row the connection is handed: from what it was already given, else from what it is handed next. */
+async function nextSettingsRow(connection: DashboardStreamConnection, given: readonly DashboardStreamEnvelope[] = []): Promise<SettingsRowValue> {
+  for (const envelope of given) { const row = settingsRowOf(envelope); if (row !== undefined) return row; }
+  for (;;) {
+    const envelope = await connection.next();
+    assert.ok(envelope !== undefined, "the connection ended before a settings row");
+    const row = settingsRowOf(envelope);
+    if (row !== undefined) return row;
+  }
+}
+
+describe("the settings row read on the navigation lane", () => {
+  it("hands a cold subscriber the lane-built row, recovers a failed refresh, and rebuilds on a protected-facts change and the fiscal-year rollover", async () => {
+    const { hub, clock, faults, changed, fire } = await settingsLaneHarness();
+    const connection = await hub.connect({ day: DAY });
+    const first = await nextSettingsRow(connection, connection.initial);
+    assert.ok(first.state === "available", "the first subscriber's handoff waits for the lane's read");
+    assert.equal(first.value.protectedSettings.state, "available");
+    assert.equal(first.value.currentFiscalYear, 2027);
+
+    faults.lane = true;
+    changed();
+    assert.equal((await nextSettingsRow(connection)).state, "unavailable", "a failed refresh is sent unavailable");
+    faults.lane = false;
+    fire();
+    const recovered = await nextSettingsRow(connection);
+    assert.ok(recovered.state === "available", "the retry recovers the row");
+
+    faults.protected = true;
+    changed();
+    const unknown = await nextSettingsRow(connection);
+    assert.ok(unknown.state === "available");
+    assert.equal(unknown.value.protectedSettings.state, "unknown", "a protected-facts change rebuilds the document");
+    faults.protected = false;
+
+    clock.setWall(new Date("2027-07-01T17:00:00.000Z"));
+    changed();
+    const rolled = await nextSettingsRow(connection);
+    assert.ok(rolled.state === "available");
+    assert.equal(rolled.value.currentFiscalYear, 2028, "the fiscal-year rollover rebuilds the document");
+    assert.equal(rolled.value.protectedSettings.state, "available");
+    connection.close();
   });
 });

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/profile-session-routes.js";
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
@@ -72,7 +72,12 @@ it("serves history counts, refuses active deletion, then clears a finished run a
   assert.deepEqual(await client.runHistoryStatus(), { state: "available", finishedRuns: 0, activeRuns: 0 });
   const { run, runId, eventId, bundleId, path } = await seedHistory(database, admission);
   assert.equal(existsSync(path), true);
-  assert.deepEqual(await client.runHistoryStatus(), { state: "available", finishedRuns: 0, activeRuns: 1 });
+  // The counts read on the navigation lane: the main connection's history read never runs.
+  const mainStatus = vi.spyOn(RunRecordService.prototype, "historyStatus").mockImplementation(() => { throw new Error("main-connection read"); });
+  try {
+    assert.deepEqual(await client.runHistoryStatus(), { state: "available", finishedRuns: 0, activeRuns: 1 });
+    assert.equal(mainStatus.mock.calls.length, 0);
+  } finally { mainStatus.mockRestore(); }
   const refused = ClearRunHistoryRequestSchema.parse({ commandId: randomUUID(), target });
   assert.deepEqual(await client.clearRunHistory(refused), { state: "refused", commandId: refused.commandId, reason: "active-runs" });
   assert.ok(database.authority.runs.get(runId)); assert.equal(existsSync(path), true);
