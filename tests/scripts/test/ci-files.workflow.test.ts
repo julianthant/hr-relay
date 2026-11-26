@@ -588,7 +588,7 @@ describe("separate event and admitted proof workflows", () => {
       expect(job(workflow, "unit").match(/actions\/checkout@v7/gu)).toHaveLength(1);
       expect(job(workflow, "unit").match(/run: npm ci/gu)).toHaveLength(1);
     }
-    expect(job(checks, "unit")).toContain("needs: [changes, lint, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, perf, smoke]");
+    expect(job(checks, "unit")).toContain("needs: [changes, lint, static, privacy, ubuntu, integration, architecture, macos, coverage, unit-proofs, perf, smoke]");
     expect(job(checks, "unit")).not.toMatch(/^ {4}needs:.*\btimings\b/mu);
     expect(job(staging, "staging")).toContain("needs: [names, checks, full-proof]");
     expect(job(production, "production")).toContain("needs: [checks, codeql, dependencies, full-proof]");
