@@ -58,7 +58,8 @@ test("imports both CSV sizes, opens their saved rows, and picks both as run refe
   await page.getByRole("button", { name: /^(Back to dashboard|Close settings)$/u }).click();
   const checks = dashboard.dialog.getByRole("region", { name: "Spreadsheets" });
   for (const { name } of inputs) await test.step(`Pick ${name} as a reference`, async () => {
-    await page.getByRole("button", { name: "Start a Person Lookup run", exact: true }).click();
+    await dashboard.openStartDialog();
+    await dashboard.dialog.getByRole("navigation", { name: "Workflow" }).getByRole("button", { name: "Person Lookup", exact: true }).click();
     await checks.getByRole("button", { name: "Add spreadsheet" }).click();
     await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill(name);
     await page.getByRole("menuitem", { name: new RegExp(name, "u") }).click();
