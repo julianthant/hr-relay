@@ -52,9 +52,11 @@ async function benchmark(profile: "staging" | "development", repetitions: number
           const runtimeStoragePair = Object.freeze({ stateRoot, artifactRoot: join(stateRoot, "artifacts") });
           const { editable } = composeSettings({ database: context.database, readLanes: lanes, hostFacts, clock, active: activeSettingsRuntimeIdentity, runtimeStoragePair,
             environment, credentials: context.credentials, resolveSettings: context.resolveSettings });
+          // The warm-up reads the other fiscal year, so the first sample builds too.
+          read = 1;
           await editable();
           const samples = [];
-          for (; read < repetitions; read++) {
+          for (read = 0; read < repetitions; read++) {
             const cpu = process.threadCpuUsage(), started = systemClock.monotonicMs();
             await editable();
             const used = process.threadCpuUsage(cpu);
