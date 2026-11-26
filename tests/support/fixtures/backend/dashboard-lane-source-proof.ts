@@ -1,14 +1,13 @@
-import { chmodSync, renameSync, unlinkSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import { chmodSync, copyFileSync, renameSync, unlinkSync } from "node:fs";
 import { z } from "zod";
 import "../../../../src/backend/storage/sqlite/dashboard-background-read-worker.js";
 import { defineLaneRead, runReadLaneWorker } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 
 const held = (path: string) => `${path}.held`;
-/** Swaps the store for a copy at the same path, so its identity changes. */
+/** Swaps the store for a byte copy at the same path, so its file identity changes; open connections keep the original. */
 function replaceSource(path: string): void {
   renameSync(path, held(path));
-  new DatabaseSync(held(path), { readOnly: true }).exec(`VACUUM INTO '${path}'`);
+  copyFileSync(held(path), path);
   chmodSync(path, 0o600);
 }
 /** Puts the original store back at its path. */
