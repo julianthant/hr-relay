@@ -108,6 +108,20 @@ const COMBINATION = {
   "add-workers": { title: "The Add workers dialog, opened from the sidebar footer", ready: '[role="dialog"]',
     render: () => <StoryFrame><AddWorkers data={ready(SESSION_WORKER_BY_STATE.running)} workflows={SESSION_STORY_WORKFLOWS} onAdd={noop} onAdded={noop} /></StoryFrame>,
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } },
+  "add-workers-set": { title: "The Add workers dialog with a second workflow and three workers set", ready: '[role="dialog"]',
+    render: () => <StoryFrame><AddWorkers data={ready(SESSION_WORKER_BY_STATE.running)} workflows={SESSION_STORY_WORKFLOWS} onAdd={noop} onAdded={noop} /></StoryFrame>,
+    play: async page => {
+      await page.getByRole("button", { name: "Add workers", exact: true }).click();
+      await page.getByRole("combobox", { name: "Workflow" }).click();
+      await page.getByRole("option", { name: /^Person Lookup/ }).click();
+      await page.getByRole("spinbutton", { name: "Workers" }).fill("3");
+    } },
+  "add-workers-menu": { title: "The Add workers dialog with the workflow list open", ready: '[role="listbox"]',
+    render: () => <StoryFrame><AddWorkers data={ready(SESSION_WORKER_BY_STATE.running)} workflows={SESSION_STORY_WORKFLOWS} onAdd={noop} onAdded={noop} /></StoryFrame>,
+    play: async page => {
+      await page.getByRole("button", { name: "Add workers", exact: true }).click();
+      await page.getByRole("combobox", { name: "Workflow" }).click();
+    } },
 } satisfies Record<string, Story>;
 
 /** The sidebar icon: each dot, and pressed while the console is open. With the panel closed it is all that shows. */
