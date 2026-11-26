@@ -242,7 +242,7 @@ The assistant mark is **Orbit**: a core, a thin orbit and one satellite (`surfac
 
 | State | Mark | Motion |
 | --- | --- | --- |
-| idle | Ring, core and the satellite | The satellite circles slowly, faster while the pointer is over its button |
+| idle | Ring, core and the satellite; the launcher draws a plain target instead | None |
 | thinking (the model is writing) | Hollow blue core, blue satellite | The satellite orbits slowly |
 | working (a session or run is going) | Blue core, dashed blue orbit | The satellite orbits fast |
 | done | Green core; the satellite docked at the top | One settle |
