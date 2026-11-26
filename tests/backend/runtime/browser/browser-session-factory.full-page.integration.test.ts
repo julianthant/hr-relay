@@ -8,6 +8,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
+import { assertChildFrameCaptureMasks } from "../../../support/helpers/browser/full-page-capture.js";
 import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -80,6 +81,12 @@ describe("whole-page factory screenshots", () => {
       assert.equal(page.viewportSize(), null);
       assert.deepEqual(await dimensions(), originalSize);
     } finally { await context.close(); }
+  });
+
+  it("masks same-origin and cross-origin child frame pixels on the native capture path", async () => {
+    const context = await browser.newContext({ viewport: null });
+    try { await assertChildFrameCaptureMasks(await context.newPage()); }
+    finally { await context.close(); }
   });
 
   it("adds a visible dry-run sample banner without hiding any form pixels and removes the temporary label", async () => {
