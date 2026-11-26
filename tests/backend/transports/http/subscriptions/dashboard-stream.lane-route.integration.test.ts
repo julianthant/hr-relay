@@ -5,7 +5,7 @@ import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../sr
 import { searchPartitionDay } from "../../../../../src/models/dashboard/search-calendar.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { LANE_SOURCE_PROOF_ENTRY, perReadRead, perStatementRead, restoreSource } from "../../../../support/fixtures/backend/dashboard-lane-source-proof.js";
-import { LANE_WARM_ENTRY, laneWarmed, WARM_MS } from "../../../../support/fixtures/backend/dashboard-lane-warm-reads.js";
+import { LANE_WARM_ENTRY, lanePrebuilt, laneWarmed, WARM_MS } from "../../../../support/fixtures/backend/dashboard-lane-warm-reads.js";
 import { LANE_BUILD_REFUSED_ENTRY, laneFolded } from "../../../../support/fixtures/backend/dashboard-lane-build-refused.js";
 import { LANE_WARM_REFUSED_ENTRY, laneWarmRefused } from "../../../../support/fixtures/backend/dashboard-lane-warm-refused.js";
 import { openBoundDatabaseFixture } from "../../../../support/helpers/admission-fixture.js";
@@ -69,6 +69,18 @@ describe("a lane read's warm step", () => {
     const reply = JSON.parse((await lanes.read(laneWarmed, {})).body) as { warms: number; warmedAt: number | null };
     assert.equal(reply.warms, 1);
     assert.notEqual(reply.warmedAt, null);
+  });
+
+  it("reports ready before its optional prebuild runs", async () => {
+    const fixture = await openBoundDatabaseFixture("read-lane-prebuild");
+    cleanups.push(() => fixture.close());
+    const lanes = createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock,
+      lanes: ["navigation"], entry: LANE_WARM_ENTRY });
+    cleanups.push(() => lanes.close());
+    await lanes.ready;
+    const readyAt = systemClock.nowMs();
+    const reply = JSON.parse((await lanes.read(lanePrebuilt, {})).body) as { prebuiltAt: number | null };
+    assert.ok(reply.prebuiltAt !== null && reply.prebuiltAt > readyAt, "the prebuild finished after ready was announced, and before the first read");
   });
 
   it("boots ready when a peer commit refuses the optional day build's snapshot before the build starts", async () => {

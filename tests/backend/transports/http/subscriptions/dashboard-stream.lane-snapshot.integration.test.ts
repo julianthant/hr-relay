@@ -9,6 +9,7 @@ import {
 } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createDashboardStreamHub, type DashboardStreamConnection, type DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { sseSerialize } from "../../../../../src/backend/transports/http/subscriptions/sse-response.js";
+import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
 import { BackfillGapObservationSchema } from "../../../../../src/backend/runs/notifications/backfill-gap.js";
 import { createNotificationInbox } from "../../../../../src/backend/runs/notifications/inbox.js";
 import type { NotificationObservationStatus } from "../../../../../src/backend/runs/notifications/observation.js";
@@ -436,6 +437,51 @@ describe("a stream snapshot read on the navigation lane", () => {
     const connection = await connecting;
     const envelopes = [...connection.initial, ...await drain(connection)];
     assert.equal(envelopes.filter(envelope => envelope.type === "snapshot").length, 1);
+    assertConverges(main, envelopes);
+  });
+
+  it("refuses a fresh handoff by name when a publication overtakes each of its reads, twice in a row, and frames the day once publications pause", async () => {
+    const { main, hub, reads, publish } = await laneHarness();
+    const identities = ["1", "2", "3", "4", "5", "6"];
+    for (const round of [1, 2]) {
+      const refused = assert.rejects(hub.connect({ day: DAY }), (error: unknown) => {
+        const { status, body } = failureStatus(error);
+        return status === 503 && body.retryable && body.code === "DASHBOARD_SNAPSHOT_OVERTAKEN";
+      }, "an exhausted handoff is a retryable 503, which the client answers on its delayed reconnect");
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await publish(identities.shift() ?? "");
+        const read = lastRead(reads);
+        read.answer(read.capture());
+        await tick();
+      }
+      await refused;
+      assert.equal(reads.length, round * 3, "the handoff asks three times and no more");
+      assert.equal(hub.subscriberCount(), 0, "the refused handoff leaves no connection");
+    }
+    const connecting = hub.connect({ day: DAY });
+    await answerAll(reads, 6);
+    const envelopes = await connecting.then(async connection => [...connection.initial, ...await drain(connection)]);
+    assertConverges(main, envelopes);
+    assert.deepEqual(sourcesOf(envelopes), [], "the day holds all six arrivals");
+  });
+
+  it("asks again in the same place when a snapshot-only fold overtakes the day the lane read, and hands out only the newer day", async () => {
+    const { w, main, hub, reads, changes, fold } = await laneHarness();
+    const connecting = hub.connect({ day: DAY });
+    const read = lastRead(reads);
+    // The lane read its day before the fold: no publication is made and the process facts do not move.
+    const stale = read.capture();
+    queuedEventOf(w, { seed: 1 }); queuedEventOf(w, { seed: 2 }); claimEventOf(w, 1); claimEventOf(w, 2); fold();
+    assert.ok(changes.some(change => change.kind === "snapshot"), "the fold asks for a new snapshot");
+    assert.equal(changes.some(change => change.kind === "patch"), false, "and makes no patch that could correct an older day");
+    assert.equal(reads.length, 1, "the handoff keeps its place and its read");
+    read.answer(stale);
+    await tick();
+    assert.equal(reads.length, 2, "a day older than the snapshot change is not framed; the same place asks again");
+    await answerAll(reads, 1);
+    const connection = await connecting;
+    const envelopes = [...connection.initial, ...await drain(connection)];
+    assert.equal(envelopes.filter(envelope => envelope.type === "snapshot").length, 1, "only the newer day is handed out");
     assertConverges(main, envelopes);
   });
 
