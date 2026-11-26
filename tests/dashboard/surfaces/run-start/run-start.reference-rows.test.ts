@@ -246,3 +246,14 @@ it("lists worksheets newest first and narrows them by search", async () => {
   assert.deepEqual(items(), []);
   assert.match(text(), /No worksheets match\./u);
 });
+
+it("says None added in the References card until a spreadsheet is picked, and again after it is removed", async () => {
+  await h.openDialog(h.stubClient({ ...served }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
+  await h.settle();
+  const card = () => document.body.querySelector('[role="region"][aria-label="References"]')?.textContent ?? "";
+  assert.match(card(), /None added/u);
+  await add("References", "Contact roster");
+  assert.doesNotMatch(card(), /None added/u);
+  await click("Remove Contact roster");
+  assert.match(card(), /None added/u);
+});
