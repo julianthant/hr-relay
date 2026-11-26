@@ -1,6 +1,6 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { etag } from "hono/etag";
-import { createReadResponse } from "../read-reuse.js";
 const DayQuerySchema = z.iso.date();
 
 import type { DashboardApp } from "./api-types.js";
@@ -11,10 +11,13 @@ export function registerQueueRoutes(app: DashboardApp, deps: QueueRouteDeps): vo
     c.header("Cache-Control", "no-store");
     return c.json(deps.startPlans.previewWarnings(await c.req.json()));
   });
-  const dayResponse = createReadResponse();
+  // The body is already the wire's JSON. Its ETag is set here, in the request's turn, so the middleware only compares it.
   app.get("/api/v1/dashboard", etag(), async (c) => {
     const day = DayQuerySchema.parse(c.req.query("day"));
-    return dayResponse(await deps.queue.day(day, { tab: c.req.header("x-relay-tab"), signal: c.req.raw.signal }));
+    const served = await deps.queue.day(day, { tab: c.req.header("x-relay-tab"), signal: c.req.raw.signal });
+    const body = typeof served === "string" ? served : JSON.stringify(served);
+    return new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "private, no-cache",
+      ETag: `"${createHash("sha256").update(body).digest("base64url")}"` } });
   });
 
   app.post("/api/v1/start-plans", async (c) => {

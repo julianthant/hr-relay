@@ -11,7 +11,7 @@ for (const viewport of VIEWPORTS) {
   test.describe(`queue layout at ${String(viewport.width)}x${String(viewport.height)}`, () => {
     test.use({ viewport });
 
-    test("Options closes on Escape and returns focus; the sidebar + shows on focus; Start run opens without a workflow list", async ({ dashboard, failures, page }) => {
+    test("Options closes on Escape and returns focus; the sidebar + shows on focus; Start run opens with its workflow list", async ({ dashboard, failures, page }) => {
       failures.allow(SEEDED_PREFERENCE_WRITE, "the seeded backend cannot save the chosen workflow");
       mkdirSync(FRAMES, { recursive: true });
       // The seeded profile stores no UCPath username; a long one shows the profile line truncating.
@@ -82,7 +82,7 @@ for (const viewport of VIEWPORTS) {
       await page.getByRole("button", { name: "Start run", exact: true }).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
-      await expect(page.locator(".launch-workflow-rail")).toHaveCount(0);
+      await expect(dialog.getByRole("navigation", { name: "Workflow" })).toBeVisible();
       await shot("start-run");
       await page.keyboard.press("Escape");
       await expect(dialog).toHaveCount(0);

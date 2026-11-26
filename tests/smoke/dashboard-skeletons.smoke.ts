@@ -83,7 +83,7 @@ function startFrames(page: Page, trigger: Awaited<ReturnType<Locator["elementHan
         feedback: findTarget(scene.feedback) !== undefined,
         analytics: scene.analyticsPeriod === undefined ? undefined : {
           period: find(`${toolbar} [data-analytics-period]`)?.textContent?.trim(),
-          updating: findTarget({ selector: `${toolbar} [role="status"]`, text: "Updating" }) !== undefined,
+          reading: findTarget({ selector: `${toolbar} [data-analytics-reading] > *` }) !== undefined,
           exportLocked: findTarget({ selector: `${toolbar} button:disabled`, text: "Export" }) !== undefined,
           drillInLocked: drillIn instanceof HTMLButtonElement && drillIn.disabled,
           bounds: analyticsBoxes(drillIn),
@@ -175,7 +175,7 @@ async function measure(
       }
     }
     if (scene.analyticsPeriod !== undefined) {
-      checkAppearance(samples.find(frame => frame.analytics?.updating)?.at, "Updating");
+      checkAppearance(samples.find(frame => frame.analytics?.reading)?.at, "Spinner beside the date");
       expect.soft(pendingFrames.filter(frame => frame.analytics?.period !== scene.analyticsPeriod), "prior report keeps its own period").toHaveLength(0);
       expect.soft(pendingFrames.filter(frame => !frame.analytics?.exportLocked || !frame.analytics.drillInLocked),
         "Export and Open runs stay locked during the read").toHaveLength(0);
@@ -188,7 +188,7 @@ async function measure(
             `held Analytics ${part} ${key} within one CSS pixel`).toHaveLength(0);
         }
       }
-      expect.soft(samples.at(-1)?.analytics?.updating, "Updating clears on settlement").toBe(false);
+      expect.soft(samples.at(-1)?.analytics?.reading, "Spinner clears on settlement").toBe(false);
     }
   }
   if (scene.keep !== undefined) {

@@ -1,5 +1,8 @@
 import { useDashboardCommandBinding } from "./client-context.js";
 import { useSettingsRead } from "./settings-read-model.js";
+import { systemClock } from "../../rules/time/clock.js";
+import { createKeptResults } from "./async-resource.js";
+import { runDataVersion, subscribeRunData } from "./run-data-changes.js";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityPopulationBrowseSchema, type ActivityPopulationSelection, type ActivityPopulationBrowseResult, type ActivityPopulationRun } from "../../models/dashboard/activity-population.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../models/failures/error-catalog.js";
@@ -98,12 +101,17 @@ export async function projectActivityBrowse(client: ActivityClient, selection: A
 }
 
 const unavailableActivityClient = {};
+/** How many ranges a page keeps; a revisit inside a report's lifetime, with no run data changed since, makes no request. */
+const KEPT_RANGES_LIMIT = 16;
+interface KeptRange { readonly selection: ActivityPopulationSelection; readonly version: number; readonly readAt: number; readonly lifetimeMs: number }
+const keptRanges = createKeptResults<KeptRange>(KEPT_RANGES_LIMIT);
 export function useActivityWiring(client: ActivityClient | undefined, range: ActivityDateRange, browse: ActivityBrowse | null, sources: WorkflowSourcePolicy, enabled: boolean) {
   const request = useMemo(() => ({ client, from: range.from, to: range.to, enabled }), [client, range.from, range.to, enabled]);
   const resource = useSettingsRead<ActivityPopulationSelection>(client ?? unavailableActivityClient, `activity:${range.from}:${range.to}`);
   const base = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
   const selection = enabled ? base.value : undefined;
   const authority = useDashboardCommandBinding()?.authority.epoch ?? client;
+  const version = useSyncExternalStore(listener => subscribeRunData(client ?? unavailableActivityClient, listener), () => runDataVersion(client ?? unavailableActivityClient, range.from, range.to));
   const settledReport = useRef<{ authority: object | undefined; selection: ActivityPopulationSelection } | undefined>(undefined);
   if (selection !== undefined) settledReport.current = { authority, selection };
   /** The last settled report, shown while another range loads; a cold read, a refusal or new authority shows none. */
@@ -118,12 +126,20 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
   const cachedBrowse = useSyncExternalStore(browseResource.subscribe, browseResource.snapshot, browseResource.snapshot);
   const [observedBrowse, setSettled] = useState<{ request: typeof browseRequest; result?: ActivityDrilldownData; error?: unknown }>();
   const settled = observedBrowse?.request === browseRequest ? observedBrowse : cachedBrowse.value === undefined ? observedBrowse : { request: browseRequest, result: cachedBrowse.value };
+  const rangeKey = `${range.from}:${range.to}`;
   useEffect(() => {
     if (!enabled || client === undefined) return;
+    const owner = [authority];
+    const kept = keptRanges.get(client, owner, rangeKey)?.value;
+    if (kept !== undefined && resource.snapshot().value !== kept.selection) resource.accept(kept.selection);
+    if (kept !== undefined && kept.version === version && systemClock.monotonicMs() - kept.readAt < kept.lifetimeMs) return;
     const controller = new AbortController();
-    void resource.read(signal => client.activityPopulation(request.from, request.to, signal), "DASHBOARD_READ_FAILED", undefined, controller.signal).catch(() => resource.snapshot());
+    const readAt = systemClock.monotonicMs();
+    void resource.read(signal => client.activityPopulation(request.from, request.to, signal), "DASHBOARD_READ_FAILED", undefined, controller.signal).then(next => {
+      keptRanges.keep(client, owner, rangeKey, { value: { selection: next, version, readAt, lifetimeMs: Date.parse(next.snapshot.expiresAt) - Date.parse(next.snapshot.generatedAt) }, at: version });
+    }, () => resource.snapshot());
     return () => controller.abort();
-  }, [client, enabled, request, resource]);
+  }, [client, enabled, request, resource, version, authority, rangeKey]);
   useEffect(() => {
     if (!enabled || client === undefined || selection === undefined || browseInput?.success !== true) return;
     let active = true;
@@ -133,10 +149,12 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
       if (read.browse === null) throw refused();
       return projectActivityBrowse(client, selection, read.browse, sources, controller.signal);
     }, "DASHBOARD_READ_FAILED").then(result => { if (active) setSettled({ request: browseRequest, result }); }, error => {
+      const entry = keptRanges.get(client, [authority], rangeKey);
+      if (entry !== undefined && entry.value.selection === selection) keptRanges.keep(client, [authority], rangeKey, { ...entry, value: { ...entry.value, readAt: -Infinity } });
       if (active) setSettled({ request: browseRequest, error });
     });
     return () => { active = false; };
-  }, [client, enabled, selection, browseInput, browseRequest, sources, browseResource]);
+  }, [client, enabled, selection, browseInput, browseRequest, sources, browseResource, authority, rangeKey]);
   const current = settled?.request === browseRequest;
   const previousBrowse = settled?.request.browse === undefined ? null : JSON.parse(settled.request.browse) as ActivityBrowse | null;
   const retain = !current && settled?.result !== undefined && selection !== undefined && settled?.request.selection === selection && browse !== null && previousBrowse !== null
@@ -166,5 +184,5 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
     if (!mounted.current || latest.current.request !== request || latest.current.resource !== resource || latest.current.selection !== selection || latest.current.blocked || signal?.aborted) throw refused();
     return download;
   }, [client, request, resource, selection]);
-  return { data, browse: browseData, pending, exportReady: !blocked, notice: base.state === "failed" ? activityFailureText(base.error) : cachedBrowse.state === "failed" ? activityFailureText(cachedBrowse.error) : pending && (retain || history !== undefined) ? "Refreshing Analytics selection…" : "", exportCsv };
+  return { data, browse: browseData, pending, reading: enabled && client !== undefined && base.state === "loading", exportReady: !blocked, notice: base.state === "failed" ? activityFailureText(base.error) : cachedBrowse.state === "failed" ? activityFailureText(cachedBrowse.error) : pending && (retain || history !== undefined) ? "Refreshing Analytics selection…" : "", exportCsv };
 }

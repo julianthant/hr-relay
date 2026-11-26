@@ -198,9 +198,7 @@ it("retires an upload when the selected workflow changes and ignores its late re
   const file = pdf("retired.pdf", "%PDF retired");
   await attach([file]);
   expect(dialog.text()).toContain("Reading PDFs");
-  // The Start run doors name the workflow, so a change of workflow is a close and a reopen on the other one.
-  await dialog.rerender({ open: false });
-  await dialog.rerender({ open: true, panelWorkflowId: other.workflowId });
+  await dialog.press(other.label);
   expect(held.signal?.aborted).toBe(true);
   const resolve = held.resolve; assert.ok(resolve);
   await act(async () => resolve(OcrSourceUploadSchema.parse({ fileName: file.name, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
@@ -223,6 +221,18 @@ it("says a draft was kept only when it reopens on the workflow it was typed in",
   expect(dialog.text()).toContain("Draft kept");
   await reopen(next.workflowId);
   expect(dialog.text()).not.toContain("Draft kept");
+});
+
+it("keeps what was typed after picking a workflow in the list, and says so on reopening on it", async () => {
+  const other = h.WORKFLOWS.find(candidate => candidate.inputRun.state === "present" && candidate.workflowId !== workflow.workflowId); assert.ok(other);
+  const text = h.WORKFLOWS.find(candidate => candidate.inputRun.state === "present" && candidate.uploadRun === undefined); assert.ok(text);
+  const first = other.workflowId === text.workflowId ? workflow : other;
+  const dialog = await h.openDialog(client({}), { workflows: [first, text], panelWorkflowId: first.workflowId });
+  await dialog.press(text.label);
+  await dialog.type("10812345");
+  await dialog.press("Cancel"); await dialog.rerender({ open: false }); await dialog.rerender({ open: true, panelWorkflowId: text.workflowId });
+  expect(dialog.text()).toContain("Draft kept");
+  expect(document.querySelector("textarea")?.value).toBe("10812345");
 });
 
 it("plans one Emergency Contact run per uploaded PDF", async () => {

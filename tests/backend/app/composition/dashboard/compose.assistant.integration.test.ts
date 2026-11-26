@@ -736,6 +736,7 @@ it.each(["ready", "refused", "unknown"] as const)('confirms run actions with %s 
       assert.ok(documents.effect === 'workflow-start' && documents.dryRun);
       assert.deepEqual(documents.startPlan.planned.map(row => row.display), [{ kind: 'document', documentNumber: '4502' }, { kind: 'document', documentNumber: '4510' }]);
       assert.equal(documents.targetLabel, '2 documents');
+      assert.equal(documents.startPlan.stopBefore, 'Clear Pending Terminations', 'a dry-run card carries its descriptor boundary');
       assert.equal((await decide({ chatId: documents.chatId, actionId: documents.actionId, revision: documents.revision, decision: 'cancel' })).state, 'cancelled');
 
       const listed = await propose('Look up 10812345 and Jordan Lee', outbound => {
@@ -745,6 +746,7 @@ it.each(["ready", "refused", "unknown"] as const)('confirms run actions with %s 
       assert.equal(listed.effect, 'workflow-start'); if (listed.effect !== 'workflow-start') throw new Error('start card required');
       assert.deepEqual(listed.startPlan.planned.map(row => row.display), [{ kind: 'person', employeeId: '10812345' }, { kind: 'person', name: 'Jordan Lee' }]);
       assert.equal(listed.targetLabel, '2 people');
+      assert.equal(listed.startPlan.stopBefore, undefined, 'a live read has no dry-run boundary');
       const record = database.authority.assistantAuthorization.action(listed.actionId); assert.ok(record && record.command.family === 'start');
       const startPlanId = record.command.family === 'start' ? record.command.target.startPlanId : '';
       assert.equal((await decide({ chatId: listed.chatId, actionId: listed.actionId, revision: listed.revision, decision: 'cancel' })).state, 'cancelled');

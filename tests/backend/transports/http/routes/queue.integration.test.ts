@@ -1,4 +1,14 @@
+import { createHash } from "node:crypto";
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
+import { composedQueueLane, refuseMainReads } from "../../../../support/helpers/backend/composed-queue-lane.js";
+import { BackfillGapObservationSchema } from "../../../../../src/backend/runs/notifications/backfill-gap.js";
+import { registerQueueRoutes } from "../../../../../src/backend/transports/http/routes/queue.js";
+import { registerShellRoutes } from "../../../../../src/backend/transports/http/routes/shell.js";
+import type { ShellRouteDeps } from "../../../../../src/backend/transports/http/routes/shell-types.js";
+import type { QueueRouteDeps } from "../../../../../src/backend/transports/http/routes/queue-types.js";
+import { createDashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
+import { DashboardStreamEnvelopeSchema } from "../../../../../src/models/dashboard/subscription.js";
+import { searchPartitionDay } from "../../../../../src/models/dashboard/search-calendar.js";
 import { foreignOriginCases } from "../../../../support/helpers/backend/http-route-harness.js";
 import { Hono } from "hono";
 import assert from "node:assert/strict";
@@ -297,4 +307,56 @@ afterEach(cleanupOriginalFixture);
   });
 });
 const cleanupOriginalFixture = disposeHttpRouteHarness;
+}
+
+{
+const cleanups: (() => unknown)[] = [];
+describe("GET /api/v1/dashboard and GET /events/v1 through the composition's navigation lane", () => {
+  afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+
+  it("answer while every main-connection read throws, with the bytes of the day built on the request thread", async () => {
+    const { f, main, local } = await composedQueueLane(cleanups);
+    const day = searchPartitionDay(new Date(f.run.envelope.enqueuedAt));
+    const built = local().buildDashboardDayWire(day);
+    assert.ok(built.queueSurfaces.length > 0, "the fixture's run is on the day");
+    /** The request thread's day, stamped as main stamps the lane's: same members, same order. */
+    const expected = (cursor: string) => JSON.stringify({ ...built, projectionGeneration: main.generation(), snapshotCursor: cursor });
+    const hub = createDashboardStreamHub({ projection: main,
+      backfillGaps: { detected: input => Promise.resolve({ published: false as const, gap: BackfillGapObservationSchema.parse(input) }) } });
+    cleanups.push(() => hub.close());
+    const app: DashboardApp = new Hono();
+    registerQueueRoutes(app, { startPlans: {} as QueueRouteDeps["startPlans"],
+      queue: { day: (requested, request) => main.servedDashboardDay(requested, { signal: request.signal }) } });
+    registerShellRoutes(app, { bootstrap: {} as ShellRouteDeps["bootstrap"], search: {} as ShellRouteDeps["search"], hub });
+
+    const restore = refuseMainReads(f.db);
+    cleanups.push(restore);
+    assert.throws(() => f.db.authority, /main-connection-read/u);
+
+    const response = await app.request(`http://localhost/api/v1/dashboard?day=${day}`);
+    assert.equal(response.status, 200);
+    const body = await response.text();
+    assert.equal(body, expected(main.cursor()), "GET answers the request thread's day, byte for byte");
+    assert.equal(response.headers.get("etag"), `"${createHash("sha256").update(body).digest("base64url")}"`);
+
+    const stream = await app.request(`http://localhost/events/v1?topics=dashboard-day:${day}`);
+    assert.equal(stream.status, 200);
+    assert.equal(stream.headers.get("content-type"), "text/event-stream");
+    const reader = stream.body?.getReader() ?? assert.fail("the stream has no body");
+    const decoder = new TextDecoder();
+    let text = "";
+    while (!/data: \{"type":"snapshot"[^\n]*\n\n/u.test(text)) {
+      const chunk = await reader.read();
+      if (chunk.done) assert.fail(`the stream ended before its snapshot: ${text}`);
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+    await reader.cancel();
+    const event = /id: (pc:\d+)\ndata: (\{"type":"snapshot"[^\n]*)\n\n/u.exec(text) ?? assert.fail("no snapshot event");
+    const [, cursor = "", data = ""] = event;
+    const snapshot = DashboardStreamEnvelopeSchema.parse(JSON.parse(data));
+    assert.ok(snapshot.type === "snapshot");
+    assert.equal(data, JSON.stringify(snapshot), "the framed snapshot is the envelope today's serializer writes");
+    assert.ok(data.includes(`"payload":${expected(cursor)},"rows":`), "its payload is the request thread's day at the snapshot's cursor");
+  });
+});
 }

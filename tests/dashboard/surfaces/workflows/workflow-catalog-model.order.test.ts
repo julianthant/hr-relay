@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { WORKFLOW_SOURCES } from "../../../../src/dashboard/app/workflow-sources.js";
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { runPickerGroups } from "../../../../src/dashboard/surfaces/run-start/run-start-picker-model.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { workflowNavigationGroups } from "../../../../src/dashboard/surfaces/shell/workflow-rail-model.js";
 import { buildWorkflowCatalog, servedLaunchWorkflows } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
@@ -41,7 +42,8 @@ describe("workflow order across every list", () => {
     expect(flat(workflowNavigationGroups(catalog))).toEqual(LISTED_ORDER);
   });
 
-  it("orders the Start run list", () => {
+  it("orders the Start run list and its picker", () => {
     expect(servedLaunchWorkflows(catalog).map(flow => flow.workflowId)).toEqual(LISTED_ORDER);
+    expect(flat(runPickerGroups(catalog, ""))).toEqual(LISTED_ORDER);
   });
 });

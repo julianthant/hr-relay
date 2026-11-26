@@ -178,7 +178,7 @@ async function measureCopy(profile: z.infer<typeof ProfileSchema>, repeats: numb
             const unused = (): never => { throw new Error("unexpected search benchmark dependency"); };
             return await measureSearchLaneHttp({ database, readLanes, clock, artifacts, ids: systemIdFactory,
               descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor },
-              projection: { onChange: () => () => {}, health: unused, buildDashboardDayWire: unused, recordPublishedDay: unused,
+              projection: { onChange: () => () => {}, health: unused, requestDashboardDay: unused, stampDay: unused, foldCursor: unused, whenFolded: unused, recordPublishedDay: unused,
                 generation: unused, cursor: unused, takeCursor: unused, position: unused, descriptorSetHash: unused, runFold: unused },
               activity: { read: unused, readSelected: unused }, appVersion: "benchmark",
               actorLabel: unused, descriptorSetHash: FingerprintSchema.parse("0".repeat(64)), preflightReport: unused,

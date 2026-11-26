@@ -21,7 +21,7 @@ import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
-import { DashboardReadFailedError,DiagnosticBundleBytesMissingError,DiagnosticBundleCorruptError,LogDisplayRefusedError,LogIdentityRefusedError,ProjectionDegradedError,RequestIdentityRefusedError,SectionUnavailableError,TargetNotFoundError } from "../../../runs/commands/refusals.js";
+import { DashboardReadFailedError,DashboardSnapshotOvertakenError,DiagnosticBundleBytesMissingError,DiagnosticBundleCorruptError,LogDisplayRefusedError,LogIdentityRefusedError,ProjectionDegradedError,RequestIdentityRefusedError,SectionUnavailableError,TargetNotFoundError } from "../../../runs/commands/refusals.js";
 import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
 
 export type WireError = z.infer<typeof WireErrorSchema>;
@@ -61,6 +61,7 @@ export function failureStatus(
   if (error instanceof ReadSupersededError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof ReadLaneRestartedError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, true) };
   if (error instanceof AuthoritySnapshotChangedError) return { status: 503, body: wireError(error.code, ERROR_CATALOG[error.code].text, true) };
+  if (error instanceof DashboardSnapshotOvertakenError) return { status: 503, body: wireError(error.code, ERROR_CATALOG[error.code].text, true) };
   if (error instanceof DashboardReadFailedError) return { status: 500, body: wireError("DASHBOARD_READ_FAILED", ERROR_CATALOG.DASHBOARD_READ_FAILED.text, false) };
   if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, error.message, false) };
   if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, error.message, false) };
