@@ -137,6 +137,16 @@ function lastRead(reads: readonly LaneRead[]): LaneRead {
   return read;
 }
 
+/** Answers each read the hub has asked from `from` on, and each it asks in answer, with the replica's day at that moment. */
+async function answerAll(reads: readonly LaneRead[], from = 0): Promise<void> {
+  for (let index = from; index < reads.length; index++) {
+    const read = reads[index];
+    if (read === undefined) continue;
+    read.answer(read.capture());
+    await new Promise(resolve => setImmediate(resolve));
+  }
+}
+
 async function drain(connection: DashboardStreamConnection): Promise<DashboardStreamEnvelope[]> {
   const out: DashboardStreamEnvelope[] = [];
   while (connection.pending > 0) {
@@ -422,6 +432,63 @@ describe("a stream snapshot read on the navigation lane", () => {
     const envelopes = [...connection.initial, ...await drain(connection)];
     assert.equal(envelopes.filter(envelope => envelope.type === "snapshot").length, 1);
     assertConverges(main, envelopes);
+  });
+
+  it("hands a publication to a streaming connection while overlapping handoff reads are still pending", async () => {
+    const { main, hub, reads, publish } = await laneHarness();
+    const earlyConnecting = hub.connect({ day: DAY });
+    await answerAll(reads);
+    const early = await earlyConnecting;
+    await drain(early);
+    const answered = reads.length;
+
+    const first = hub.connect({ day: DAY });
+    await publish("a");
+    const second = hub.connect({ day: DAY });
+    assert.equal(sourcesOf(await drain(early)).length, 1, "the arrival waits for neither pending read");
+    await publish("b");
+    assert.equal(sourcesOf(await drain(early)).length, 1, "nor does the next one, published under both");
+
+    await answerAll(reads, answered);
+    for (const connection of [await first, await second]) {
+      const envelopes = [...connection.initial, ...await drain(connection)];
+      assert.equal(envelopes.filter(envelope => envelope.type === "snapshot").length, 1, "each overlapping read is answered");
+      assertConverges(main, envelopes);
+    }
+  });
+
+  it("keeps one pending count: a publication made under a connection's place waits nowhere outside it", async () => {
+    const { hub, reads, publish, status } = await laneHarness({ maxPending: 4, status: true });
+    const connecting = hub.connect({ day: DAY });
+    await publish("a");
+    status.move();
+    status.move();
+    assert.equal(lastRead(reads).signal?.aborted, false, "the place, health and two row changes are four");
+    await answerAll(reads);
+    const connection = await connecting;
+    for (const read of [...status.reads]) await status.settle(read, READY_STATUS);
+    const envelopes = [...connection.initial, ...await drain(connection)];
+    assert.equal(envelopes.some(envelope => envelope.type === "reset-required"), false, "nothing uncounted arrives later to overflow the bound");
+    assert.equal(envelopes.filter(envelope => envelope.type === "snapshot").length, 1);
+    connection.close();
+  });
+
+  it("hands no live copy of a publication to a connection whose snapshot holds it, and replays none to a resume from that snapshot", async () => {
+    const { main, hub, reads, publish } = await laneHarness();
+    const first = hub.connect({ day: DAY });
+    await publish("a");
+    // The second connection starts after the publication: its snapshot is read wholly above it.
+    const second = hub.connect({ day: DAY });
+    await answerAll(reads);
+    for (const connection of [await first, await second]) {
+      const envelopes = [...connection.initial, ...await drain(connection)];
+      const snapshot = assertConverges(main, envelopes);
+      assert.deepEqual(sourcesOf(envelopes), [], "the snapshot holds the arrival, so it is not handed out live");
+      connection.close();
+      const resumed = await hub.connect({ day: DAY, lastEventId: snapshot.cursor, lastProjectionGeneration: main.generation() });
+      assert.deepEqual(sourcesOf([...resumed.initial, ...await drain(resumed)]), [], "a resume from that snapshot replays nothing it holds");
+      resumed.close();
+    }
   });
 });
 
