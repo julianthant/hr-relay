@@ -9,6 +9,7 @@ import { PausedRunsStrip, QuitDialog } from "../../../../../../src/dashboard/sur
 import { HubShell } from "../../../../../../src/dashboard/surfaces/shell/hub-shell.js";
 import { StartupLoading } from "../../../../../../src/dashboard/surfaces/shell/startup-loading.js";
 import { WorkflowRail } from "../../../../../../src/dashboard/surfaces/shell/workflow-rail.js";
+import { AssistantLauncher } from "../../../../../../src/dashboard/surfaces/shell/assistant-launcher.js";
 import { RailSearch } from "../../../../../../src/dashboard/surfaces/shell/search/navbar-view.js";
 import { PALETTE_FILTERS, type PaletteFilter } from "../../../../../../src/dashboard/surfaces/shell/search/search-palette-model.js";
 import { SLOW_STARTUP_MS } from "../../../../../../src/dashboard/app/startup/first-screen.js";
@@ -79,7 +80,7 @@ const RAIL = {
 
 type HeaderState = "closed" | "options-open" | "options-changed" | "options-changed-open";
 const header = (title: string, changed: boolean, play?: Story["play"]): Story => ({ title, ready: '[aria-label="Queue header"]', ...(play === undefined ? {} : { play }),
-  render: () => <StoryFrame><QueueHeader title="Person Lookup" ask={null} startId="story-start-run" onStartRun={noop} day={changed ? "2026-10-29" : "2026-10-30"} today="2026-10-30" onDay={noop}
+  render: () => <StoryFrame><QueueHeader title="Person Lookup" ask={<AssistantLauncher />} startId="story-start-run" onStartRun={noop} day={changed ? "2026-10-29" : "2026-10-30"} today="2026-10-30" onDay={noop}
     sort={changed ? "oldest" : "attention"} order={changed ? "oldest" : "newest"} onSort={noop} active={changed ? ["failed"] : ["all"]} counts={[]} onFilter={noop} /></StoryFrame> });
 // Opened by keyboard on the last item: it takes the menu's Tab stop, and arrows from it walk the rest without opening a submenu.
 const openOptions: Story["play"] = async page => {
