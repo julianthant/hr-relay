@@ -5,6 +5,7 @@ import { it, vi } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
 import { createComposedDashboardReadHost } from "../../../../../src/backend/app/composition/dashboard/runtime-resources.js";
 import { composeSettings } from "../../../../../src/backend/app/composition/dashboard/settings.js";
+import type { DashboardReadLanes } from "../../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
 import { activeSettingsRuntimeIdentity } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
@@ -87,7 +88,14 @@ it("serves both Settings GETs from the navigation lane, rebuilding the editor wh
     const store = createCredentialStore({ stateRoot: fixture.stateRoot });
     let protectedFailure = false;
     const credentials = { ...store, read: () => { if (protectedFailure) throw new Error("protected store unreadable"); return store.read(); } };
-    const { routes, editable } = composeSettings({ database, clock, environment: {}, hostFacts, readLanes: lanes,
+    // Whether each store-part read was served from the lane's cache.
+    const storeParts: boolean[] = [];
+    const readLanes: Pick<DashboardReadLanes, "read"> = { read: async (definition, args, options) => {
+      const reply = await lanes.read(definition, args, options);
+      if (definition.id.endsWith("settings-store-part")) storeParts.push(reply.cached);
+      return reply;
+    } };
+    const { routes, editable } = composeSettings({ database, clock, environment: {}, hostFacts, readLanes,
       active: activeSettingsRuntimeIdentity, credentials });
     const app: DashboardApp = new Hono();
     app.onError((error, c) => c.json({ message: error.message }, 500));
@@ -136,6 +144,23 @@ it("serves both Settings GETs from the navigation lane, rebuilding the editor wh
     const changed = await readEditable();
     assert.equal(changed.activeConfigFingerprint, next.fingerprint, "a store change builds again");
     assert.equal(changed.runtimeStatus.state, "restart-required");
+
+    // The store part is authenticated against its command and audit rows, so a write to either runs the lane read again.
+    await readEditable();
+    for (const write of [
+      () => database.authority.commands.insert(COMMAND_FIXTURES[0]),
+      () => database.authority.commandAudits.insert({ auditId: randomUUID(), request: COMMAND_FIXTURES[0],
+        result: { state: "applied", commandId: UUID_1, affectedTargets: [{ family: "start", workflowId: "onboarding", startPlanId: UUID_3, expectedVersion: 1 }] },
+        completedAt: NOW, versionChanges: [], affectedDependencyIds: [] }),
+    ]) {
+      write();
+      storeParts.length = 0;
+      await readEditable();
+      assert.equal(storeParts.length, 1);
+      assert.equal(storeParts[0], false, "a backing command or audit write is not served from the warmed store part");
+      await readEditable();
+      assert.equal(storeParts[1], true, "an unchanged store part is reused");
+    }
   } finally {
     await lanes.close();
     await fixture.close();

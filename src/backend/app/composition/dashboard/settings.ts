@@ -19,7 +19,8 @@ import { SettingsFactsWireSchema } from "../../../../models/dashboard/settings.j
 import type { EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 
-const SETTINGS_TABLES = ["settings", "settings_snapshots"] as const;
+// The settings record is authenticated against its command and audit rows, so those rows back every settings read.
+const SETTINGS_TABLES = ["settings", "settings_snapshots", "commands", "command_audits"] as const;
 const fileRecord = SettingsFileRecordSchema.shape;
 /** The store's authenticated record, as `readSettings` returns it: the file form's `lastApplied` is not part of it. */
 const StoredSettingsRecordSchema = z.strictObject({ revision: fileRecord.revision, settingsSchemaHash: fileRecord.settingsSchemaHash,
@@ -49,7 +50,7 @@ const settingsStorePartRead = defineLaneRead(import.meta.url, "settings-store-pa
 });
 
 const settingsFactsRead = defineLaneRead(import.meta.url, "settings-facts", {
-  lane: "navigation", priority: "interactive", args: z.strictObject({}), tables: [...SETTINGS_TABLES, "commands", "command_audits"],
+  lane: "navigation", priority: "interactive", args: z.strictObject({}), tables: SETTINGS_TABLES,
   run: ({ native }) => SettingsFactsWireSchema.parse(buildSettingsFacts({ config: activeSettingsConfig(native.authority), descriptors: DESCRIPTORS })),
 });
 
