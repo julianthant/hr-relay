@@ -1026,7 +1026,7 @@ export const DashboardCommandRequestSchema = z.union([CommandRequestSchema, Iden
 export type DashboardCommandRequest = z.infer<typeof DashboardCommandRequestSchema>;
 /** Start, or a run command that leaves work queued for a worker of its workflow; only these may carry workerStartup. */
 export type CapacityRequest = Extract<CommandRequest, { family: "start" } | { family: "run" }>;
-const QUEUEING_RUN_TYPES: ReadonlySet<string> = new Set(["resume", "retry", "recover-run"]);
+const QUEUEING_RUN_TYPES: ReadonlySet<string> = new Set(["resume", "retry"]);
 export function needsWorkerCapacity(request: DashboardCommandRequest): request is CapacityRequest {
   return request.family === "start" || request.family === "run" && QUEUEING_RUN_TYPES.has(request.type);
 }
