@@ -127,7 +127,7 @@ test("notification row: hovering shows the read toggle and moves nothing", async
   await page.getByRole("button", { name: /^Notifications, \d+ unread$/u }).click();
   const row = page.getByRole("dialog", { name: "Notifications" }).locator(".notice-row").first();
   await expect(row).toBeVisible();
-  const boxes = () => row.evaluate(node => [node, ...node.querySelectorAll(".notice-title, .notice-age, .notice-context, .notice-detail")].map(part => {
+  const boxes = () => row.evaluate(node => [node, ...node.querySelectorAll(".notice-title, .notice-age, .notice-detail")].map(part => {
     const box = part.getBoundingClientRect(); return [box.x, box.y, box.width, box.height];
   }));
   await page.mouse.move(0, 0);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { notificationsSample } from "../../../support/fixtures/dashboard/notifications-sample.js";
-import { itemContext,itemSource,notificationView,updateNotification,withCommandNotices,type NotificationItem,type NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
+import { notificationView,updateNotification,withCommandNotices,type NotificationItem,type NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 
 function ready(state: NotificationsState) {
   assert.equal(state.state, "ready");
@@ -9,15 +9,6 @@ function ready(state: NotificationsState) {
   return state;
 }
 describe("frontend notification state", () => {
-  it("shows a workflow-only run's reason without an empty subject prefix", () => {
-    const item: NotificationItem = { id: "retained-failure", kind: "run", title: "Run failed", subject: "", workflow: "Onboarding",
-      detail: "UCPath could not be reached. Check the connection.", tone: "danger", age: "Just now",
-      read: false, action: "Open log", destination: { kind: "none" } };
-    assert.equal(itemSource(item), "Onboarding");
-    assert.equal(itemContext(item), "Onboarding");
-    assert.equal(itemContext({ ...item, subject: "Synthetic run" }), "Onboarding · Synthetic run");
-    assert.equal(itemContext({ ...item, subject: "" }), "Onboarding");
-  });
   it("retires history gaps, with urgency independent of read state", () => {
     const state = notificationsSample("normal");
     const all = notificationView(state, "all");
