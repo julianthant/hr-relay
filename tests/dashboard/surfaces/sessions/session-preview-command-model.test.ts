@@ -35,7 +35,7 @@ const paused = (port: SessionPreviewCommandPort, problems: string[] = []) => {
   const source = { snapshot: initial, scope: {}, actorId: "local-operator", onRefused: (problem: string) => { problems.push(problem); } };
   function Harness() {
     const commands = useSessionPreviewCommands(initial, SERVED_CATALOG, port, source);
-    return createElement(SessionsView, { data: commands.data, open: true, onOpenChange: () => undefined, workflows: SERVED_CATALOG.map(flow => ({ id: flow.id, label: flow.label })), onControl: commands.control, onAdd: commands.add, operations: commands.operations });
+    return createElement(SessionsView, { data: commands.data, open: true, onOpenChange: () => undefined, workflows: SERVED_CATALOG.map(flow => ({ id: flow.id, label: flow.label })), onControl: commands.control, operations: commands.operations });
   }
   return createElement(Harness);
 };

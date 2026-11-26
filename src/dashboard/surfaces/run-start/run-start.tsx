@@ -5,7 +5,6 @@ import { useViewNavigation, useViewState } from "../../app/navigation/view-route
 import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import "./launch-presentation.css";
 import { RunChoice, RunOptionsLayout } from "./run-launch-layout.js";
-import { RunWorkflowPicker } from "./run-start-picker.js";
 import { RunChecksStage } from "./run-checks.js";
 import { FailureNotice } from "../../ds/primitives/failure-notice.js";
 import { useRunChecks, type RunCheckRow } from "./run-checks-model.js";
@@ -102,26 +101,6 @@ const RERUN_INPUT_GONE = formatErrorCatalogFailure(createErrorCatalogFailure("RE
 
 /** Restore intake focus to its launcher; it is the control that opened the workspace. */
 
-export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void }) {
-  return (
-    <Button
-      id={id}
-      size="toolbar"
-      variant="brand"
-      className="queue-start-trigger"
-      aria-label="Start run"
-      onClick={onOpen}
-      icon={<Play aria-hidden className={dsIcon.sm} />}
-      // Keep shortcut hints in their shared discovery route so the primary control stays focused on its verb.
-      title="Start a run — any workflow, from anywhere (r)"
-    >
-      <span className="queue-start-label">Start run</span>
-    </Button>
-  );
-}
-
-
-
 /** Never auto-pick a harness; select one only when the operator already chose its panel. */
 function defaultWorkflowId(
   workflows: readonly RunStartWorkflow[],
@@ -176,7 +155,6 @@ export function RunStartDialog({
   const workflows = useMemo(() => servedLaunchWorkflows(catalog), [catalog]);
   const navigation = useViewNavigation();
   const routed = navigation !== undefined;
-  const [pickerQuery, setPickerQuery] = useState("");
   const client = useDashboardClient();
   const commandBinding = useDashboardCommandBinding();
   const pdfInput = usePdfRunInput(client, commandBinding);
@@ -193,6 +171,7 @@ export function RunStartDialog({
 
   const [workflowId, setWorkflowId] = useViewState("launchServed", () => defaultWorkflowId(workflows, panelWorkflowId));
   const selectedWorkflowRef = useRef(workflowId);
+  const lastOpenedWorkflow = useRef(workflowId);
   useEffect(() => { selectedWorkflowRef.current = workflowId; }, [workflowId]);
   const [currentStage, setCurrentStage] = useViewState("launchStage", "Input");
   const [draft, setDraft] = useState(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId)), commandBinding?.authority.today));
@@ -326,6 +305,7 @@ export function RunStartDialog({
   const readback = view.recovery.state === "retained" && view.recovery.answer !== undefined;
   const load = view.source.kind === "rerun" ? view.source.load : undefined;
   const snapshot = load?.state === "ready" ? load.snapshot : null;
+  const filedBySource = snapshot?.transactions.filter(entry => entry.filedBySource) ?? [];
   const sourceError = load?.state === "failed" ? load.message : null;
   const warning = shownRepeatWarning(view, fingerprint) ?? null;
   const acknowledgment = load?.state === "ready" ? load.acknowledgment : undefined;
@@ -351,6 +331,7 @@ export function RunStartDialog({
   const held = useRef({ sending, failed: sourceError !== null });
   held.current = { sending, failed: sourceError !== null };
   const fromRerun = useRef(false);
+  const keptPending = useRef(false);
   useEffect(() => { if (!open) { openedFor.current = undefined; setOpened(undefined); } }, [open]);
   /** Nothing is drawn while a one-click rerun goes on by itself. */
   const drawn = open && !hidden && view.unattended === undefined && !(rerunInOneClick && opened !== rerunSource);
@@ -365,8 +346,12 @@ export function RunStartDialog({
     const changed = restored !== undefined && !sameDefinition(restored, workflows.find(entry => entry.workflowId === restored.workflowId));
     if (reopened && (held.current.sending || !held.current.failed && !changed)) return;
     resetPdfs();
+    // Landing on another workflow clears the draft, so there is nothing kept to announce.
+    if (lastOpenedWorkflow.current !== (routed ? selectedWorkflowRef.current : defaultWorkflowId(workflows, panelWorkflowId))) keptPending.current = false;
     if (!routed && selectedWorkflowRef.current !== defaultWorkflowId(workflows, panelWorkflowId)) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId), true);
-    setPickerQuery("");
+    // The Start run doors name the workflow, so an open can land on another one than the last: its draft starts clean.
+    if (lastOpenedWorkflow.current !== selectedWorkflowRef.current) update(current => launchDraft.changeWorkflow(current, workflows.find(entry => entry.workflowId === selectedWorkflowRef.current), commandBindingRef.current?.authority.today));
+    lastOpenedWorkflow.current = selectedWorkflowRef.current;
     update(current => ({ ...current, valueDrafts: {}, copiedOmissions: {}, sourceInputUnchanged: false,
       ...(rerunSource === undefined ? {} : { typed: { workflowId: "", draft: {} }, text: "" }) }));
     let recoveryState: LaunchRecovery;
@@ -391,20 +376,8 @@ export function RunStartDialog({
     setOpened(rerunSource);
   }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, rerunInOneClick, actorId, launchService, routed, setCustomizeSteps, resetPdfs, update, send]);
 
-  const pickWorkflow = useCallback((id: string) => {
-    if (selectedWorkflowRef.current === id || sending) return;
-    const entry = catalog.find(flow => flow.id === id);
-    if (!entry || entry.launch.state === "unavailable") return;
-    selectedWorkflowRef.current = id;
-    if (entry.served) {
-      send({ type: "pick-workflow" });
-      selectWorkflow(id);
-    }
-  }, [catalog, selectWorkflow, send, sending]);
-
   /** Closing without starting keeps the draft; the next open says so for a few seconds. */
   const [draftKept, setDraftKept] = useState(false);
-  const keptPending = useRef(false);
   const closeAndReset = useCallback((next: boolean) => {
     if (!next && rerunSource === undefined) {
       keptPending.current = JSON.stringify(draftRef.current) !== JSON.stringify(launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === workflowId), commandBinding?.authority.today));
@@ -472,7 +445,6 @@ export function RunStartDialog({
       stepSelection: { workflowId, keys: defaultStepKeys } }));
   };
 
-  const picker = <RunWorkflowPicker catalog={catalog} value={workflowId} locked={sending} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />;
   const selectedLaunch = catalog.find(entry => entry.id === workflowId)?.launch;
   const launchRefusal = selectedLaunch?.state === 'unavailable' ? selectedLaunch.reason : undefined;
 
@@ -551,10 +523,8 @@ export function RunStartDialog({
         size="lg"
         title={isRerun ? "Rerun" : "Start run"}
         description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? workflow.label : "Choose a workflow to begin"}
-        className={cn("launch-design launch-dialog", isRerun && "launch-rerun")}
+        className={"launch-design launch-dialog"}
       >
-          {!isRerun && picker}
-
           {launchRefusal ? <><DialogBody><EmptyState title="Workflow unavailable" description={launchRefusal} /></DialogBody><DialogFooter><Button onClick={() => closeAndReset(false)}>Close</Button></DialogFooter></> : <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ol aria-label="Run configuration path" className="launch-stagebar">
@@ -603,6 +573,16 @@ export function RunStartDialog({
                     if (step === undefined) throw new Error("RERUN_WARNING_STEP_UNAVAILABLE");
                     return <RunListRow key={`${entry.nodeId}:${entry.writeIntentId}`} title={stepLabel(step.key)}><span className="text-[13px] text-ui-secondary">{SYSTEM_NAME[entry.system]}</span></RunListRow>;
                   })}</RunList>
+                </section>
+              )}
+
+              {/* The source's own receipts show before Start, whether or not their step runs again; the repeat warning replaces them once Start asks for consent. */}
+              {onLastStage && isRerun && warning === null && filedBySource.length > 0 && (
+                <section aria-label="Already submitted by this run" className="launch-section">
+                  <RunList title="Already submitted" description="The earlier run filed these." label="Already submitted by this run">{filedBySource.map((entry) => (
+                    <RunListRow key={`${entry.nodeId}:${entry.writeIntentId}`} title={stepLabel(entry.stepKey)}>
+                      <span className="text-[13px] text-ui-secondary">{selectedStepKeys.includes(entry.stepKey) ? "Runs again" : "Not run again"}</span>
+                    </RunListRow>))}</RunList>
                 </section>
               )}
 

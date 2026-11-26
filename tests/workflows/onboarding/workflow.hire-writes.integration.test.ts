@@ -8,6 +8,8 @@ import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding
 import { RunDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
 import { DRY_RUN_I9_PROFILE_ID, containsDryRunSample } from "../../../src/models/workflow/dry-run.js";
 import { ONBOARDING_WRITE_REVIEW_GATE } from "../../../src/models/workflows/onboarding/read-write-plan.js";
+import { RerunSourceSchema } from "../../../src/models/run/rerun.js";
+import { previewRerunWarnings } from "../../../src/backend/runs/start/rerun.js";
 
 const world = createOnboardingRunWorld();
 afterAll(world.close);
@@ -48,6 +50,19 @@ describe("public onboarding write execution", () => {
     assert.deepEqual(master.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [null, "T009000001"]);
     assert.equal(h.repository.runOperations(root.envelope.runId).length, 1);
     assert.equal(h.repository.list().length, 1);
+  });
+
+  it("previews Rerun of a run cancelled after it filed a hire, warning on the filed hire only", async () => {
+    const h = await world.executionFixture(false, { match: "unique", selectedRow: true, cancelAfterFiling: true }), root = h.start();
+    await h.execution.execute(root, signal());
+    const source = h.database.authority.runs.get(root.envelope.runId);
+    assert.ok(source?.lifecycle.state === "terminal" && source.lifecycle.outcome === "cancelled", JSON.stringify(source?.lifecycle));
+    const committed = h.database.authority.writeIntents.listByRun(root.envelope.runId).filter(intent => intent.status === "committed");
+    assert.equal(committed.length, 3);
+    const plan = previewRerunWarnings(h.database.authority, h.descriptor, RerunSourceSchema.parse({ runId: source.envelope.runId,
+      expectedVersion: source.version, intent: "rerun", selectedStepKeys: h.descriptor.timeline.map(step => step.key) }));
+    assert.deepEqual(plan.warnings.map(warning => warning.writeIntentId).sort(), committed.map(intent => intent.writeIntentId).sort());
+    assert.equal(plan.warnings.filter(warning => warning.nodeId.startsWith("hire-")).length, 1);
   });
 
   it("G-T1 applies a delayed write-review decision and re-reads hire findings before previews", async () => {

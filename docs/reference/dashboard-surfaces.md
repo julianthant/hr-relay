@@ -399,7 +399,9 @@ not use them as its default producer.
 `SessionPanel` mounts `SessionsView` with the served day and `createSessionPreviewPort`; a harness may replace both through `sessionsHarness`.
 Catalog IDs resolve worker labels. Unknown worker workflows throw. Loading, unavailable, ready
 with no workers, and ready workers are distinct states. The open panel holds one row of
-worker cards, one per worker, that scrolls sideways and is as tall as one card; Add workers is a dialog from the bar.
+worker cards, one per worker, that scrolls sideways and is as tall as one card; Add workers is a dialog from the sidebar footer.
+The console docks under the queue and the log and is toggled by the sidebar footer's console icon. Opening it from the icon moves
+focus into the console, × returns focus to the icon, and the top border resizes it by drag or the arrow keys.
 
 Cards show workflow/state, subject, browser systems and availability, and footer controls. Running offers Pause, paused offers Resume, failed offers Retry,
 non-idle offers Stop, and idle offers Remove worker. Pending operations lock duplicate

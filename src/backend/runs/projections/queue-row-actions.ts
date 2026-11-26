@@ -21,6 +21,8 @@ export interface QueueRowActionFacts {
   readonly status: QueueStatus;
   readonly recoverySource?: "failed" | "interrupted";
   readonly crashed?: boolean;
+  /** the run ended by an operator or system cancel; a discarded or superseded row shows "cancelled" too but never reruns */
+  readonly cancelled?: boolean;
   /** the CAS target every served command binds to */
   readonly rowRevision: number;
   /** ref workflow-model's envelope flag — decides whether a re-run can touch a real system */
@@ -162,7 +164,7 @@ export function queueRowActions(
       confirm: { title: "Recover completed steps", body: "Unfinished steps run again; uncertain writes stay parked.",
         confirmLabel: "Recover", tone: "neutral" } })] : [];
   const rerun = (!facts.crashed || recover.length === 0) && !facts.isChild && !facts.parkedWrite
-    && ["done", "failed", "partial"].includes(facts.status)
+    && (["done", "failed", "partial"].includes(facts.status) || facts.status === "cancelled" && facts.cancelled === true)
     && (policyEnables(policy, "retry", facts) || policyEnables(policy, "restart", facts))
     ? [ActionDescriptorWireSchema.parse({ key: "rerun", label: "Rerun", kind: "navigation",
       navigate: { kind: "rerun", expectedVersion: facts.rowRevision },

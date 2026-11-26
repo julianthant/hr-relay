@@ -96,6 +96,7 @@ const sharedConfig = defineConfig({
     pool: "forks",
     isolate: true,
     globals: false,
+    clearMocks: false,
     testTimeout: scaledMs(30_000),
     hookTimeout: scaledMs(30_000),
     coverage: {
@@ -175,6 +176,7 @@ export default defineConfig({
     maxWorkers: Math.min(4, availableParallelism()),
     projects: REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => ({
       ...sharedConfig,
+      extends: false,
       test: {
         ...sharedConfig.test,
         name,
