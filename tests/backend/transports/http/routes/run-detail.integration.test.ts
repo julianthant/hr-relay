@@ -6,7 +6,7 @@ import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import * as writeSafety from "../../../../../src/backend/app/composition/dashboard/write-safety.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
-import { readRunDetail, readRunSection, type RunDetailQueryDeps } from "../../../../../src/backend/runs/queries/run-detail.js";
+import * as runDetails from "../../../../../src/backend/runs/queries/run-detail.js";
 import * as captures from "../../../../../src/backend/runs/queries/run-captures.js";
 import * as streams from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
@@ -36,7 +36,8 @@ const dashboard = createDashboardPortTestWorld(() => vi.restoreAllMocks(), relea
 afterEach(dashboard.cleanup);
 
 it("serves run routes and the stream panel through the composed navigation lane", async () => {
-  const composed: RunDetailQueryDeps[] = [];
+  const { readRunDetail, readRunSection, readRunSectionBody } = runDetails;
+  const composed: runDetails.RunDetailQueryDeps[] = [];
   const compose = writeSafety.composeWriteSafety;
   vi.spyOn(writeSafety, "composeWriteSafety").mockImplementation(input => {
     const deps = compose(input);
@@ -120,10 +121,19 @@ it("serves run routes and the stream panel through the composed navigation lane"
     expectedVersion: running.run.version, failureId: failure.failureId,
   } });
   assert.equal(database.authority.evidenceReceipts.findByRun(runId), undefined);
-  const derive = vi.spyOn(database, "withAuthorityTransaction");
+  const inReceipt = new AsyncLocalStorage<boolean>();
+  const sectionRead = vi.spyOn(runDetails, "readRunSectionBody").mockImplementation((...args) =>
+    inReceipt.run(true, () => readRunSectionBody(...args)));
+  const transact = database.withAuthorityTransaction.bind(database);
+  let receiptTransactions = 0;
+  const derive = vi.spyOn(database, "withAuthorityTransaction").mockImplementation(work => {
+    if (inReceipt.getStore() === true) receiptTransactions++;
+    return transact(work);
+  });
   const receipt = await get("/receipt");
-  assert.equal(derive.mock.calls.length, 1);
+  assert.equal(receiptTransactions, 1);
   derive.mockRestore();
+  sectionRead.mockRestore();
   const storedReceipt = database.authority.evidenceReceipts.findByRun(runId);
   assert.ok(storedReceipt);
   const itemHistory = detailDeps.itemAttemptHistory;
