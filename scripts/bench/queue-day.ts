@@ -5,7 +5,7 @@ import { availableParallelism, loadavg } from "node:os";
 import { join } from "node:path";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { setTimeout as delay } from "node:timers/promises";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
@@ -200,30 +200,21 @@ export function summarize(runs: readonly Run[]) {
 
 const entryPath = process.argv[1];
 if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
-  const { positionals, values } = parseArgs({ allowPositionals: true, options: { runs: { type: "string", default: "3" }, day: { type: "string" },
-    child: { type: "boolean", default: false } } });
+  const { positionals, values } = parseArgs({ allowPositionals: true, options: { runs: { type: "string", default: "3" }, day: { type: "string" } } });
   const [profile] = z.tuple([CopyProfileSchema]).parse(positionals);
   const day = values.day === undefined ? undefined : z.iso.date().parse(values.day);
   // Runtime isolation and key custody bind the profile at module initialization.
   process.env[RUNTIME_PROFILE_ENV] = profile;
   const { applicationDataWorkspace } = await import("../../src/backend/app/config/runtime-isolation.js");
   const workspace = applicationDataWorkspace(undefined, profile), lockPort = runtimeProfiles[profile].lockPort;
-  if (values.child) {
-    process.stdout.write(`${JSON.stringify(await measure(workspace, lockPort, day))}\n`);
-  } else {
-    const count = z.coerce.number().int().min(1).max(10).parse(values.runs);
-    const script = fileURLToPath(import.meta.url);
-    const runs: Run[] = [];
-    // Every run is a cold process, so each lane boot and fold starts from nothing.
-    for (let index = 0; index < count; index++) {
-      const output = execFileSync(process.execPath, ["--import", "tsx", script, profile, "--child", ...(day === undefined ? [] : ["--day", day])], { encoding: "utf8" });
-      runs.push(RunSchema.parse(JSON.parse(output.trim().split("\n").at(-1) ?? "")));
-    }
-    const report = { gate: "G1", runtime: "tsx (the dashboard:prod backend loader)", node: process.version, profile,
-      commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), host: { cpus: availableParallelism(), loadavg: loadavg() },
-      summary: summarize(runs), runs };
-    const path = join(process.cwd(), `queue-day-g1-${new Date(systemClock.nowMs()).toISOString().replaceAll(":", "-")}.json`);
-    writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
-    process.stdout.write(`${JSON.stringify(report.summary, null, 2)}\nwrote ${path}\n`);
-  }
+  const count = z.coerce.number().int().min(1).max(10).parse(values.runs);
+  const runs: Run[] = [];
+  // Each run starts its own lane and folds its own projections from nothing.
+  for (let index = 0; index < count; index++) runs.push(await measure(workspace, lockPort, day));
+  const report = { gate: "G1", runtime: "tsx (the dashboard:prod backend loader)", node: process.version, profile,
+    commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), host: { cpus: availableParallelism(), loadavg: loadavg() },
+    summary: summarize(runs), runs };
+  const path = join(process.cwd(), `queue-day-g1-${new Date(systemClock.nowMs()).toISOString().replaceAll(":", "-")}.json`);
+  writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+  process.stdout.write(`${JSON.stringify(report.summary, null, 2)}\nwrote ${path}\n`);
 }
