@@ -129,7 +129,7 @@ it("shows a first snapshot whose status could not be read as display-only rows, 
   const m = await mount();
   await m.greet(UNAVAILABLE);
   await m.openBell();
-  assert.deepEqual(m.listed(), ["Run completed"], "the day's rows show while the status is unavailable");
+  assert.deepEqual(m.listed(), ["Served subject"], "the day's rows show while the status is unavailable");
   assert.match(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, true);
   assert.equal(m.open().disabled, true, "Open cannot act or take focus while the status is unavailable");
@@ -153,7 +153,7 @@ it("turns the controls off when a status update cannot be read, and back on when
 
   await m.change(UNAVAILABLE);
 
-  assert.deepEqual(m.listed(), ["Run completed"], "the held rows stay");
+  assert.deepEqual(m.listed(), ["Served subject"], "the held rows stay");
   assert.match(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, true);
   assert.equal(m.open().disabled, true, "Open cannot act or take focus while the status is unavailable");
@@ -183,24 +183,24 @@ it("keeps served clears off when a resumed stream is live before its status row,
     const rows = [...document.querySelectorAll<HTMLElement>("li.notice-row")].filter(row => row.querySelector(".notice-title")?.textContent === title);
     const found = rows[0]?.querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]'); assert(found, title); return found;
   };
-  assert.deepEqual([...m.listed()].sort(), ["Resume: nothing was sent", "Run completed"]);
-  assert.equal(clearOf("Run completed").disabled, false);
+  assert.deepEqual([...m.listed()].sort(), ["Resume: nothing was sent", "Served subject"]);
+  assert.equal(clearOf("Served subject").disabled, false);
 
   await m.resume();
 
-  assert.equal(clearOf("Run completed").disabled, true);
+  assert.equal(clearOf("Served subject").disabled, true);
   assert.equal(clearOf("Resume: nothing was sent").disabled, false);
   assert.equal(clearAll().disabled, false, "Clear all still takes the local result");
   await act(async () => clearAll().click()); await settle();
-  assert.deepEqual(m.listed(), ["Run completed"], "only the local result is cleared");
+  assert.deepEqual(m.listed(), ["Served subject"], "only the local result is cleared");
   assert.equal(clearAll().disabled, true);
   assert.deepEqual(m.commands, []);
 
   await m.change(READY);
-  assert.equal(clearOf("Run completed").disabled, true, "the held list remains stale");
+  assert.equal(clearOf("Served subject").disabled, true, "the held list remains stale");
   await m.change(READY, true);
 
-  assert.equal(clearOf("Run completed").disabled, false);
+  assert.equal(clearOf("Served subject").disabled, false);
   assert.equal(clearAll().disabled, false);
 });
 
@@ -209,11 +209,11 @@ it("keeps a publication that arrives in the same delivery as the snapshot before
   await m.greet(READY);
   await m.openBell();
   const published = NotificationWireSchema.parse({ ...NOTIFICATION, notificationId: "00000000-0000-4000-8000-000000000222", publicationId: "c".repeat(64),
-    title: "Second run completed", occurredAt: "2026-08-03T17:05:00Z" });
+    title: "Second run completed", context: { state: "available", subject: "Second subject", workflow: "Person Lookup" }, occurredAt: "2026-08-03T17:05:00Z" });
 
   await m.snapshotThenPublication(published);
 
-  assert.deepEqual(m.listed(), ["Second run completed", "Run completed"], "the publication stands over the snapshot the stream accepted before it");
+  assert.deepEqual(m.listed(), ["Second subject", "Served subject"], "the publication stands over the snapshot the stream accepted before it");
 });
 
 for (const link of ["2099-01-01", "not-a-date"]) it(`loads the inbox from today's stream on a cold link to ${link}`, async () => {
@@ -222,7 +222,7 @@ for (const link of ["2099-01-01", "not-a-date"]) it(`loads the inbox from today'
   assert.notEqual(m.opened[0]?.day, link);
   await m.greet(READY);
   await m.openBell();
-  assert.deepEqual(m.listed(), ["Run completed"]);
+  assert.deepEqual(m.listed(), ["Served subject"]);
   assert.equal(m.control("Mark as read").disabled, false);
 
   await act(async () => m.control("Mark as read").click()); await settle();
