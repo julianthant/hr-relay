@@ -87,7 +87,8 @@ it("gives a loader that returns for the same profile its own startup deadline", 
   const button = (name: string) => [...app.host.querySelectorAll("button")].find(item => item.textContent === name);
   try {
     await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
-    await act(async () => { window.history.pushState(window.history.state, "", "/?settings=activity&activityPreview=missing"); window.dispatchEvent(new PopStateEvent("popstate", { state: window.history.state })); });
+    const entry: unknown = window.history.state;
+    await act(async () => { window.history.pushState(entry, "", "/?settings=activity&activityPreview=missing"); window.dispatchEvent(new PopStateEvent("popstate", { state: entry })); });
     await vi.waitFor(() => assert.ok(button("Open dashboard")), { timeout: 5_000, interval: 50 });
     stalled = true;
     const returning = app.frames.length;
