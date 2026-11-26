@@ -24,7 +24,7 @@ it.each([{workflowId:h.WORKFLOW_ID,version:3},{workflowId:"separations",version:
     executeCommand: async input => { submitted = input; return CommandResultSchema.parse({ ...h.APPLIED, affectedTargets: [{ family: "start", workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }] }); },
   }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
   await dialog.type(workflowId === "separations" ? "4502" : h.TYPED);
-  await dialog.press("Continue");
+  await dialog.press("Next");
   assert.doesNotMatch(dialog.text(), /Active policy|Workflow version/u);
   assert.equal(document.querySelector(".launch-fixed-facts") === null, true);
   assert.ok(!dialog.text().includes(`v${version}`), "the workflow version line is not shown before start");

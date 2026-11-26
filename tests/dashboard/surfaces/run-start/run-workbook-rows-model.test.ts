@@ -80,7 +80,7 @@ describe("saved workbook row choices", () => {
 const parser = { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "email" }, emit: "email" }] };
 const rowSurface = InputRunSurfaceSchema.parse({ placeholder: "Emails", parser, workbookRows: { typeId: logicalId, inputField: "email" }, typedInput: {
   modeField: "mode", modeLabel: "Hire mode", initialMode: "new-hire", description: "Choose hire mode", controls: [], modes: ["new-hire", "rehire"].map(value => ({
-    value, label: value, inputLabel: "Email", hint: "One email", placeholder: "Email", defaults: [{ field: "postalCodeOverride", value: { kind: "text", text: "" } }],
+    value, label: value, inputLabel: "Email", placeholder: "Email", defaults: [{ field: "postalCodeOverride", value: { kind: "text", text: "" } }],
     parser: { kind: "entries", spec: parser }, display: { kind: "first-present", fields: ["email"] }, identityFields: ["email"],
   })),
 } });

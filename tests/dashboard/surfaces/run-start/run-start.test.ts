@@ -24,7 +24,7 @@ it("reveals the launched workflow after an applied start", async () => {
   });
   const dialog = await openDialog(client, undefined, (workflowId) => revealed.push(workflowId));
   await dialog.type(TYPED);
-  await dialog.press("Continue");
+  await dialog.press("Next");
   assert.deepEqual(revealed, []);
   await dialog.press("Start run");
   assert.deepEqual(revealed, [WORKFLOW_ID]);
@@ -41,7 +41,7 @@ it("keeps the current view after a refused start", async () => {
     executeCommand: async () => CONFLICT,
   }), undefined, (workflowId) => revealed.push(workflowId));
   await dialog.type(TYPED);
-  await dialog.press("Continue");
+  await dialog.press("Next");
   await dialog.press("Start run");
   assert.deepEqual(revealed, []);
 });
@@ -58,9 +58,9 @@ it("Enter advances and starts, Shift+Enter keeps its newline, buttons keep their
   assert.doesNotMatch(dialog.text(), /Enter to/u, "the footer names no shortcut");
   assert.equal(await dialog.enter({ shift: true }), false, "Shift+Enter keeps its newline");
   assert.equal(dialog.stage(), "Input");
-  const back = buttons().find(button => button.textContent?.trim() === "Cancel");
-  assert.ok(back);
-  assert.equal(await dialog.enter({ on: back }), false, "a focused button keeps its Enter");
+  const close = buttons().find(button => button.getAttribute("aria-label") === "Close");
+  assert.ok(close);
+  assert.equal(await dialog.enter({ on: close }), false, "a focused button keeps its Enter");
   assert.equal(await dialog.enter(), true);
   assert.equal(dialog.stage(), "Start");
   for (let wait = 0; wait < 6; wait += 1) await settle();
@@ -86,12 +86,12 @@ describe("a settlement and the request it answers", () => {
     }));
 
     await dialog.type(TYPED);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     await dialog.press("Start run");
     const settlePlan = release;
     assert.ok(settlePlan !== undefined, "the dialog never called submitStartPlan");
 
-    await dialog.press("Back");
+    await dialog.press("1 Input");
     await dialog.type("10873698; Battistessa, Johnnie");
 
     await act(async () => {
@@ -115,13 +115,13 @@ describe("a settlement and the request it answers", () => {
     }));
 
     await dialog.type(TYPED);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     await dialog.press("Start run");
     const settleCommand = release;
     assert.ok(settleCommand !== undefined, "the dialog never called executeCommand");
 
-    assert.equal(dialog.disabled("Back"), true);
-    await dialog.press("Back");
+    assert.equal(dialog.disabled("1 Input"), true);
+    await dialog.press("1 Input");
     assert.equal(dialog.stage(), "Start");
 
     await act(async () => {
@@ -169,8 +169,8 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
         submitStartPlan: async () => ({ ...planResponse("5a000000-0000-4000-8000-000000000001"), planned: [], refused: [{ entry: 1, code: "input-invalid", message: "Bad row." }] }),
       }), { workflows: [dryRuns], panelWorkflowId: WORKFLOW_ID });
       await dialog.type(TYPED);
-      await dialog.press("Continue");
-      if (customize) { await dialog.press("Customize steps"); await dialog.press("Continue"); }
+      await dialog.press("Next");
+      if (customize) { await dialog.press("Customize steps"); await dialog.press("Next"); }
       for (let wait = 0; wait < 6; wait += 1) await settle();
       await dialog.press("Start live run");
       for (let wait = 0; wait < 6; wait += 1) await settle();
@@ -194,7 +194,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
       submitStartPlan: async () => ({ ...planResponse("5a000000-0000-4000-8000-000000000001"), priority: "bulk", refused: [{ entry: 2, code: "input-invalid", message: "Bad row." }] }),
     }));
     await dialog.type(`${TYPED}\n10873699`);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Start");
     await dialog.press("Start run");
     assert.ok(planIsDrawn(), "the plan never rendered");
@@ -221,7 +221,7 @@ describe("keeps optional steps and removes only the per-start destination", () =
     }));
 
     await dialog.type(TYPED);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Start");
     assert.ok(dialog.text().includes("Customize steps"));
     assert.ok(!dialog.text().includes("CRM Dates"), "Steps show only once Customize steps is on");
@@ -241,7 +241,7 @@ describe("keeps optional steps and removes only the per-start destination", () =
     );
 
     await dialog.press("Customize steps");
-    await dialog.press("Continue");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Steps");
     assert.ok(dialog.text().includes("CRM Dates"), "the optional step disappeared");
     await dialog.press("CRM Dates");
@@ -277,7 +277,7 @@ describe("browser presentation is an immutable Run Options choice", () => {
       return planResponse("5a000000-0000-4000-8000-000000000001");
     } }));
     await dialog.type(TYPED);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     const modes = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"][name^="Browser mode-"]')];
     assert.deepEqual(modes.map(mode => mode.value), ["headed", "headless"]);
     assert.equal(modes.find(mode => mode.value === "headed")?.checked, true);
@@ -335,14 +335,14 @@ describe("spreadsheet registration stays outside Run", () => {
   it("a served intake capability does not restore the retired upload action", async () => {
     let uploads = 0;
     const dialog = await openDialog(stubClient({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } }));
-    await dialog.type(TYPED); await dialog.press("Continue");
+    await dialog.type(TYPED); await dialog.press("Next");
     assert.ok(!dialog.text().includes("Import a spreadsheet"));
     assert.equal(uploads, 0); assert.deepEqual(intakeHandoffs, []);
   });
   it("omits reference controls for a workflow without declared references", async () => {
     let submission: unknown;
     const dialog = await openDialog(stubClient({ submitStartPlan: async input => { submission = input; return planResponse("5a000000-0000-4000-8000-000000000001"); } }));
-    await dialog.type(TYPED); await dialog.press("Continue");
+    await dialog.type(TYPED); await dialog.press("Next");
     assert.equal(dialog.text().includes("Workbook · Optional"), false);
     assert.equal(dialog.text().includes("Reference spreadsheet"), false);
     await dialog.press("Start run");
@@ -351,14 +351,14 @@ describe("spreadsheet registration stays outside Run", () => {
   });
   it("keeps mock registration from becoming a prerequisite for a live start", async () => {
     const dialog = await openDialog(stubClient({ submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001") }));
-    await dialog.type(TYPED); await dialog.press("Continue");
+    await dialog.type(TYPED); await dialog.press("Next");
     assert.equal(dialog.stage(), "Start"); assert.equal(dialog.disabled("Start run"), false);
     assert.equal([...document.querySelectorAll("dt")].some(label => label.textContent === "Workbook"), false);
     assert.ok(!dialog.text().includes("Import spreadsheet"));
   });
   it("returning from Start preserves typed input and the complete path", async () => {
     const dialog = await openDialog(stubClient({}));
-    await dialog.type(TYPED); await dialog.press("Continue"); await dialog.press("Back");
+    await dialog.type(TYPED); await dialog.press("Next"); await dialog.press("1 Input");
     assert.equal(dialog.stage(), "Input"); assert.equal(dialog.typedInput().value, TYPED);
     assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 2);
     assert.equal(document.querySelectorAll('input[type="file"]').length, 0);
@@ -483,7 +483,7 @@ it("keeps staging's dry-run sentence for a typed workflow", async () => {
     panelWorkflowId: "separations",
   });
   await dialog.type(DOCUMENT);
-  await dialog.press("Continue");
+  await dialog.press("Next");
   assert.equal(dialog.stage(), "Start");
   const row = [...document.querySelectorAll(".ds-run-row")].find(node => node.textContent?.includes("Dry run"));
   assert.ok(row, "the typed dry-run row is missing");
@@ -494,9 +494,9 @@ it("keeps staging's dry-run sentence for a typed workflow", async () => {
 async function openSteps(client: DashboardClient, typed: string = DOCUMENT, scenario: typeof SEPARATIONS = SEPARATIONS): Promise<OpenDialog> {
   const dialog = await openDialog(client, scenario);
   await dialog.type(typed);
-  await dialog.press("Continue");
+  await dialog.press("Next");
   await dialog.press("Customize steps");
-  await dialog.press("Continue");
+  await dialog.press("Next");
   assert.equal(dialog.stage(), "Steps");
   return dialog;
 }
@@ -618,7 +618,7 @@ describe("Options while a run is starting", () => {
       executeCommand: async () => { launched += 1; return APPLIED; },
     }), dryRunnable());
     await dialog.type(DOCUMENT);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     const dryRun = optionSwitch("Dry run"); assert.ok(dryRun, "the Dry run switch");
     assert.equal(await dialog.enter({ on: dryRun }), false, "Enter on the switch is left to the switch");
     assert.equal(planned, 0, "no plan was asked for");
@@ -632,7 +632,7 @@ describe("Options while a run is starting", () => {
       executeCommand: async () => new Promise<CommandResult>(resolve => { release = resolve; }),
     }), dryRunnable());
     await dialog.type(DOCUMENT);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     await dialog.press("Start live run");
     const settleCommand = release; assert.ok(settleCommand !== undefined, "the dialog never called executeCommand");
     for (const name of ["Priority", "Dry run"]) {
@@ -791,9 +791,9 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
       },
     }), CASCADING_SEPARATIONS);
     await dialog.type(DOCUMENT);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     await dialog.press("Customize steps");
-    await dialog.press("Continue");
+    await dialog.press("Next");
 
     assert.ok(dialog.text().includes("Also omits: UCPath transaction"));
     assert.equal(dialog.disabled("UCPath transaction"), false);

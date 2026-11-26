@@ -194,7 +194,7 @@ field membership and discriminated states. The client checks identity as well as
 
 `FrontendBootstrapWire` carries actor, server clock, descriptor/config identity, workflows,
 Settings sections, storage, and readiness. `DashboardDayWire` carries the selected day's queue,
-counts, workers and pools, notifications, and projection identity. Its optional `attemptHistory`
+counts, workers and pools, and projection identity. Its optional `attemptHistory`
 contains each queue run's `runId`, `startedAt`, and `endedAt` for that day, including runs in
 progress. When present, `DashboardDayWireSchema` requires exact run membership and matching
 timestamps with `queueSurfaces`. The Queue view model numbers each item's runs from 1 in ascending
@@ -400,9 +400,15 @@ generation change empty the outbox and abort reads nobody else is owed.
 
 Notification subjects use the registered title projection and the matching retained evidence receipt when a workflow declares one, through the same canonical title resolver as Queue. Unavailable or refused title authority withholds the subject without falling back to a checkpoint or guessed name; a readable linked run and descriptor still serve the workflow-only context. Other declared subject projections retain their checkpoint identity checks. Workflow-only previews omit the subject and retain the reason. A retained failed-row summary can supply that reason when the source publication is unavailable only if it exactly matches a current error-catalog sentence; other retained summaries leave the reason unavailable. Toast eligibility still requires the source-event policy. Run rows show the unavailable notice when their context or display reason cannot be read. This display context belongs only to the served inbox; durable notification summaries and OS delivery are unchanged.
 
-Notification publications originate after the authority transaction commits. They are live-only,
-nonretained events with explicit source identity; baseline reads, replay, reconnect and resnapshot
-never synthesize publications. The stream/client validate actor, day, descriptor and generation,
+The stream hands off the inbox in a separate actor-keyed `notification-list` row with the same
+list as `GET /api/v1/notifications`. Inbox refreshes carry that row independently of the queue
+when read state, membership, snooze expiry or display evidence changes. Display context is reused
+while the notice and linked run revisions and their display evidence still match.
+
+Notification publications originate after the authority transaction commits. A retained arrival
+can replay on resume at its original cursor. Its listed row replaces the affected notice or
+storage group in the inbox, and handoff reads never synthesize arrivals. The stream and client
+validate actor, day, descriptor and generation,
 and the mounted subscriber retains its request/client scope. Only eligible committed source events
 can toast, once per source; snoozed rows and control revisions do not toast. The adapter applies the
 eight source-event policies and shows catalog notices for missing source evidence or backfill gaps.

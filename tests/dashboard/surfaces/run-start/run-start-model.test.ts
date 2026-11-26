@@ -8,7 +8,6 @@ foldStepOmissionFacts,
 forcedStepOmissions,
 handOffStepOmissions,
 initialStepOmissionDraft,
-inputRunDelimiterHint,
 inputRunFieldLabel,
 omittedStepViews,
 runControlGroups,
@@ -100,14 +99,6 @@ describe("compact input guidance follows the declared parser", () => {
       const parser = { rules: [{ when: { kind: "pattern" as const, pattern }, emit: "value" }], split: { kind: "whole-text" as const } };
       assert.equal(inputRunFieldLabel(parser), expected);
     }
-  });
-
-  it("names only the accepted separators", () => {
-    const rules = [{ when: { kind: "otherwise" as const }, emit: "eid" }];
-    assert.equal(inputRunDelimiterHint({ rules, split: { kind: "whole-text" } }), "Enter one value.");
-    assert.equal(inputRunDelimiterHint({ rules, split: { kind: "delimited", delimiters: ["\n"] } }), "Separate values with a new line.");
-    assert.equal(inputRunDelimiterHint({ rules, split: { kind: "delimited", delimiters: ["\n", ";", ","] } }), "Separate values with a new line or a semicolon or a comma.");
-    assert.equal(inputRunDelimiterHint({ rules, split: { kind: "delimited", delimiters: ["|"] } }), 'Separate values with "|".');
   });
 });
 

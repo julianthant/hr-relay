@@ -104,7 +104,7 @@ export class DashboardPage {
     await this.dialog.locator("textarea").fill(eid);
     await this.dialog.getByRole("button", { name: "Choose effective date" }).click();
     await this.page.getByRole("dialog").last().getByRole("gridcell", { name: /16/ }).first().click();
-    await this.dialog.getByRole("button", { name: "Continue" }).click();
+    await this.dialog.getByRole("button", { name: "Next" }).click();
     await expect(this.dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
     await expect(this.dialog.getByText("Ready to start")).toBeVisible();
   }

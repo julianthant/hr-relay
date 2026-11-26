@@ -379,7 +379,7 @@ export function parseTypedDate(text: string): string | undefined {
 }
 const TypedInputModeSchema = z.strictObject({
   value: z.string().min(1), label: z.string().min(1),
-  inputLabel: z.string().min(1), hint: z.string().min(1), placeholder: z.string().min(1),
+  inputLabel: z.string().min(1), placeholder: z.string().min(1),
   defaults: z.array(SurfaceFieldSchema),
   parser: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("entries"), spec: InputParserSpecSchema }),

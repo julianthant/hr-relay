@@ -1,3 +1,4 @@
+import type { NotificationWire } from "../../../../src/models/dashboard/projection.js";
 import { DashboardClientError, type DashboardClient, type RowStoreWriter } from "../../../../src/dashboard/client/index.js";
 import { WireErrorSchema } from "../../../../src/models/dashboard/primitives.js";
 import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -34,6 +35,10 @@ export async function serveRunPanel(rows: RowStoreWriter, client: PanelReads, ru
 /** The `notification-status` row the server sends with every snapshot, for an observer that is ready. */
 export function serveReadyNotificationStatus(rows: RowStoreWriter | undefined): void {
   rows?.apply([{ model: "notification-status", key: ActorIdSchema.parse("local-operator"), value: { state: "available", value: { state: "ready", pending: 0 } } }]);
+}
+
+export function serveNotificationList(rows: RowStoreWriter | undefined, notices: readonly NotificationWire[]): void {
+  rows?.apply([{ model: "notification-list", key: ActorIdSchema.parse("local-operator"), value: { state: "available", value: [...notices] } }]);
 }
 
 type DaySubscription = ReturnType<DashboardClient["subscribeDay"]>;

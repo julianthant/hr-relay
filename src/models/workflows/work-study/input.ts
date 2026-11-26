@@ -20,7 +20,7 @@ export const WORK_STUDY_TYPED_INPUT = TypedInputSurfaceSchema.parse({
   modeField: "mode", modeLabel: "Input", initialMode: "employee-ids", submitsMode: false,
   description: "Each Employee ID starts one run; every run uses the one effective date.",
   modes: [{
-    value: "employee-ids", label: "Employee IDs", inputLabel: "Employee IDs", hint: "Separate values with a semicolon or Shift+Enter.",
+    value: "employee-ids", label: "Employee IDs", inputLabel: "Employee IDs",
     placeholder: "10000001; 10000002", defaults: [], parser: { kind: "entries", spec: WORK_STUDY_INPUT_PARSER },
     display: { kind: "first-present", fields: ["emplId"] }, identityFields: ["emplId"],
   }],

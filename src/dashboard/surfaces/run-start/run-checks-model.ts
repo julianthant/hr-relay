@@ -105,3 +105,9 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
   const recheck = useCallback(() => { if (workflowId !== undefined) ask(workflowId); }, [ask, workflowId]);
   return { state, recheck, prepareAfterFix: () => { asked.current = false; } };
 }
+
+/** "1 check failed", as the footer and the Checks announcement read it; undefined while no check has failed. */
+export function failedCheckSentence(checks: RunChecksState): string | undefined {
+  const failed = checks.state === "ready" ? checks.rows.filter(row => row.verdict === "fail").length : 0;
+  return failed === 0 ? undefined : `${failed} ${failed === 1 ? "check" : "checks"} failed`;
+}

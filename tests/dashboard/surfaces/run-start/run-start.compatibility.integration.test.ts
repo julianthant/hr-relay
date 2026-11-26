@@ -47,7 +47,7 @@ describe("Start run without a reference-spreadsheet check", () => {
       const alerts = [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "");
       assert.deepEqual(alerts, ["Spreadsheets can't be checked.Retry"], dialog.text());
       assert.equal(document.querySelector('section[aria-label="Input"]') === null, true);
-      assert.equal(dialog.disabled("Continue"), true);
+      assert.equal(dialog.disabled("Next"), true);
       assert.doesNotMatch(dialog.text(), /WORKBOOK_COMPATIBILITY|Page unavailable/u);
       const before = served.reads();
       await dialog.press("Retry");
@@ -58,7 +58,7 @@ describe("Start run without a reference-spreadsheet check", () => {
 });
 
 describe("closing Start run", () => {
-  const cases = (["Escape", "Close", "Cancel"] as const).flatMap(how => (["Input", "Start"] as const).map(stage => [how, stage] as const));
+  const cases = (["Escape", "Close"] as const).flatMap(how => (["Input", "Start"] as const).map(stage => [how, stage] as const));
   for (const [how, stage] of cases) {
     it(`leaves no launch coordinate in the URL after ${how} from ${stage}`, async () => {
       const descriptor = onboardingModule.descriptor;
@@ -88,7 +88,7 @@ describe("closing Start run", () => {
       if (stage === "Start") {
         const box = document.querySelector("textarea"); assert.ok(box);
         await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(box, h.TYPED); box.dispatchEvent(new Event("input", { bubbles: true })); });
-        const next = h.buttons().find(candidate => h.buttonName(candidate) === "Continue"); assert.ok(next);
+        const next = h.buttons().find(candidate => h.buttonName(candidate) === "Next"); assert.ok(next);
         await act(async () => next.click());
         await settleAll();
         assert.equal(seen.view?.launchStage, "Start");

@@ -27,9 +27,9 @@ const planOmitting = (steps: readonly string[]) => StartPlanWireSchema.parse({ .
 async function openSteps(workflow: RunStartWorkflow, typed: string, client = h.stubClient({})) {
   const dialog = await h.openDialog(client, { workflows: [workflow], panelWorkflowId: workflow.workflowId });
   await dialog.type(typed);
-  await dialog.press("Continue");
+  await dialog.press("Next");
   await dialog.press("Customize steps");
-  await dialog.press("Continue");
+  await dialog.press("Next");
   assert.equal(dialog.stage(), "Steps");
   return dialog;
 }
@@ -134,11 +134,10 @@ describe("the Steps stage draws the served rows", () => {
     await dialog.press("Read CRM dates");
     await typeDate("Employment date", "01/15/2020");
     await typeDate("Oath date", "02/20/2020");
-    await dialog.press("Back");
-    await dialog.press("Back");
+    await dialog.press("1 Input");
     await dialog.type(`${h.TYPED}; 10000001`);
-    await dialog.press("Continue");
-    await dialog.press("Continue");
+    await dialog.press("Next");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Steps");
     assert.deepEqual(alerts(), ["Typed values fit one person; 2 are entered."]);
     assert.equal(dialog.disabled("Start run"), true);
@@ -213,7 +212,7 @@ describe("Rerun draws the same rows", () => {
     for (let wait = 0; wait < 6; wait += 1) await h.settle();
     return dialog;
   }
-  const finish = async (dialog: Awaited<ReturnType<typeof openRerun>>) => { await dialog.press("Continue"); await dialog.press("Start run"); };
+  const finish = async (dialog: Awaited<ReturnType<typeof openRerun>>) => { await dialog.press("Next"); await dialog.press("Start run"); };
 
   it("starts with every row included and a badge from the source run", async () => {
     const dialog = await openRerun(snapshot(), []);

@@ -70,29 +70,29 @@ describe("typed input refusals read as one plain sentence and keep their parsed 
     assert.doesNotMatch(dialog.text(), RAW);
   });
 
-  it("names the same separators in every workflow's help text and placeholder", async () => {
+  it("shows the semicolon separator by example in every workflow's placeholder", async () => {
     for (const id of ["person-lookup", "separations", "work-study"]) {
       const dialog = await open(id);
       const box = dialog.typedInput();
       assert.doesNotMatch(dialog.text(), /commas|new lines/u, id);
-      assert.match(`${dialog.text()} ${box.placeholder}`, /semicolon or Shift\+Enter/u, id);
+      assert.match(box.placeholder, /\d; /u, id);
       assert.doesNotMatch(box.placeholder, /,\s?\d{5,}/u, id);
       await h.cleanup();
     }
   });
 
-  it("words each list hint the same way and accepts the separators it names", async () => {
+  it("labels each list by what it takes and accepts both separators", async () => {
     const hints: Array<[string, boolean, RegExp, string]> = [
-      ["person-lookup", false, /Separate people with a semicolon or Shift\+Enter\./u, "10000001"],
-      ["person-lookup", true, /Separate people with a semicolon or Shift\+Enter\./u, "Lee, Jordan, x, 123-45-6789"],
-      ["separations", false, /Separate values with a semicolon or Shift\+Enter\./u, "4502"],
-      ["work-study", false, /Separate values with a semicolon or Shift\+Enter\./u, "10000001"],
+      ["person-lookup", false, /Employee IDs or names\./u, "10000001"],
+      ["person-lookup", true, /Name, DOB and SSN\./u, "Lee, Jordan, x, 123-45-6789"],
+      ["separations", false, /Kuali ID\./u, "4502"],
+      ["work-study", false, /Employee IDs\./u, "10000001"],
     ];
     for (const [id, match, hint, one] of hints) {
       for (const separator of ["; ", "\n"]) {
         const dialog = await open(id);
         if (match) await pickMatch();
-        assert.match(dialog.text(), hint, `${id} hint`);
+        assert.match(dialog.text(), hint, `${id} label`);
         const second = one === "4502" ? "4510" : one === "10000001" ? "10000002" : "Kim, Alex, 01/01/2000, x";
         await dialog.type(`${one}${separator}${second}`);
         assert.match(dialog.text(), /Parsed input2 runs/u, `${id} ${JSON.stringify(separator)}`);

@@ -26,6 +26,15 @@ export const AssistantCommandAttributionSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("assistant"), requestedBy: ActorIdSchema, profileId: z.uuid(), conversationId: z.uuid(), acceptedMessageId: z.uuid(), binding: AssistantActionBindingSchema }),
 ]);
 
+/** A command id the caller sent again with different content: the caller's mistake, answered by name. */
+export class CommandIdReusedError extends Error {
+  readonly code = "COMMAND_ID_REUSED";
+  constructor(commandId: string) {
+    super(`command id ${commandId} was reused with different content`);
+    this.name = "CommandIdReusedError";
+  }
+}
+
 /** A durable command identity cannot be reused by another command or authority. */
 export class CommandIdentityConflictError extends Error {
   constructor(message = "command-divergent: command identity belongs to a different command") {
@@ -444,6 +453,7 @@ export const CommandRejectionCodeSchema = z.enum([
   "WORKER_PAUSE_SETTLING",
   "OCR_REVIEW_REFUSED",
   "RUN_CONTINUATION_REFUSED",
+  "SAMPLE_RUN_REFUSED",
   "RUN_START_PLAN_EXPIRED",
   "RUN_START_RESTART_REQUIRED",
   "RUN_START_READINESS_BLOCKED",

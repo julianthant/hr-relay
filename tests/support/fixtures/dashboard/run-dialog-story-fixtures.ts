@@ -61,11 +61,14 @@ export const RUN_DIALOG_REFERENCE_CATALOG = catalogOf(flow => ({ ...flow, requir
 /** The entry as a workflow with the optional second check. */
 export const RUN_DIALOG_CHECK_CATALOG = catalogOf(flow => ({ ...flow, workbookCheck: { id: "reference-check", keyFieldId: "eid" } }));
 /** The entry as a PDF workflow: documents in, an OCR switch and a required choice on the Options stage. */
-export const RUN_DIALOG_PDF_CATALOG = catalogOf(flow => ({ ...flow, inputRun: { state: "absent", reason: "PDF input" }, uploadRun: {
+const pdfFlow = (flow: RunStartWorkflow): RunStartWorkflow => ({ ...flow, inputRun: { state: "absent", reason: "PDF input" }, uploadRun: {
   pdfInput: { documentField: "document", fileNameField: "fileName", readingIdField: "readingId", fixed: {} }, title: literal("Upload PDFs"),
   fields: [{ kind: "boolean", field: "extractWithOcr", label: "Read with OCR", initial: true, description: "Turn off for text PDFs." },
     { kind: "select", field: "form", label: "Form", required: true, options: [{ value: "i9", label: "I-9" }, { value: "w4", label: "W-4" }] }],
-  accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: PositiveIntSchema.parse(25 * 1024 * 1024) }], successMessage: literal("Started."), supportsDryRun: true } }));
+  accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: PositiveIntSchema.parse(25 * 1024 * 1024) }], successMessage: literal("Started."), supportsDryRun: true } });
+export const RUN_DIALOG_PDF_CATALOG = catalogOf(pdfFlow);
+/** The PDF workflow reading its people from a required reference spreadsheet: PDFs and References on one Input stage. */
+export const RUN_DIALOG_PDF_REFERENCE_CATALOG = catalogOf(flow => ({ ...pdfFlow(flow), requiredWorkbookFields: ["eid"], workbookReference: { id: "roster-type", keyFieldId: "eid", mode: "keys", writableFields: [] } }));
 
 /** What the client serves for a PDF the story attaches: the upload as the actor made it, named and sized as sent. */
 export const runDialogUpload: DashboardClient["uploadOcrSource"] = async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-26T21:00:00.000Z",

@@ -343,7 +343,7 @@ export function createRunStartDialogHarness() {
       if (/^(Start|Create rerun)/u.test(name) && !buttons().some(button => buttonName(button) === name)) {
         for (let guard = 0; guard < 6 && stage() !== "Start"; guard += 1) {
           const before = stage();
-          const next = buttons().find(button => buttonName(button) === "Continue");
+          const next = buttons().find(button => buttonName(button) === "Next");
           if (next === undefined) break;
           await act(async () => { next.click(); });
           await settle();
@@ -512,7 +512,7 @@ export function createRunStartDialogHarness() {
       executeCommand: async () => CONFLICT,
     }));
     await dialog.type(TYPED);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Start");
     await dialog.press("Start run");
     assert.equal(closed.at(-1), false);

@@ -80,7 +80,7 @@ const filterAtRest: NonNullable<Story["play"]> = async page => {
 /** Hovering a row shows its actions in the time's slot; every text line box stays where it was. */
 const hoverKeepsText: NonNullable<Story["play"]> = async page => {
   const row = page.locator(".notice-row").first();
-  const boxes = () => row.locator(".notice-title, .notice-context, .notice-detail").evaluateAll(lines => lines.map(line => {
+  const boxes = () => row.locator(".notice-title, .notice-detail").evaluateAll(lines => lines.map(line => {
     const box = line.getBoundingClientRect();
     return [box.x, box.y, box.width, box.height];
   }));
@@ -94,12 +94,12 @@ const COMBINATION = {
   empty: popover("The popover with no notifications", notificationsReady()),
   grouped: popover("The popover with many grouped notifications", POPOVER_MANY),
   long: popover("The popover with a long name, truncated on one line", POPOVER_LONG_NOTICES, { knownFailures: { "fits-viewport": "#751" } }),
-  hover: popover("A row hovered: the read toggle and Clear take the time's place and nothing moves", POPOVER_FEW, { play: async page => { await filterAtRest(page); await hoverKeepsText(page); } }),
+  hover: popover("A row hovered: the read toggle and Clear take the time's place and nothing moves", POPOVER_MANY, { play: async page => { await filterAtRest(page); await hoverKeepsText(page); } }),
   standing: popover("A notice still waiting on you, hovered: no Clear until it is handled", POPOVER_FEW, { play: async page => { await filterAtRest(page); await page.locator('.notice-row[data-id="popover-waiting"]').hover(); } }),
   cleared: popover("Everything cleared: only the notice still waiting on you stays", POPOVER_FEW, { play: page => page.getByRole("button", { name: "Clear all" }).click() }),
   "cleared-empty": popover("Everything cleared: the empty panel", notificationsReady(POPOVER_FAILED, POPOVER_DONE), { play: async page => { await page.getByRole("button", { name: "Clear all" }).click(); await filterAtRest(page); } }),
   unread: popover("Only unread notifications", POPOVER_MANY, {}, { show: "unread" }),
-  "all-read": popover("Unread chosen with everything read", notificationsReady({ ...NOTICE_BY_TONE.positive, day: "Today" }), {}, { show: "unread" }),
+  "all-read": popover("Unread chosen with everything read", notificationsReady(NOTICE_BY_TONE.positive), {}, { show: "unread" }),
   gone: popover("A notice whose run was deleted", notificationsReady(POPOVER_GONE)),
   "history-gap": popover("Notification history is incomplete", POPOVER_FEW, {}, { notice: "Notification history is incomplete. Check the affected work." }),
 } satisfies Record<string, Story>;
