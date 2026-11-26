@@ -29,6 +29,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/child-execution-write-workflow.ts` | child write workflow with durable attempting and UNKNOWN controls |
 | `helpers/assistant-function-fixtures.ts` | synthetic assistant function descriptors and recording call owners |
 | `helpers/assistant-m1-history-fixture.ts` | in-memory SQLite with the prepared M1 history and M2 proposal owners over their candidate statements |
+| `helpers/assistant-scenario.ts` | scripted assistant conversations over seeded history with synthetic provider requests and token budgets |
 | `helpers/assistant-session-claims.ts` | in-memory session claims with the durable once-only rules, and the real session owner over fake plan, submit and run ports |
 | `helpers/assistant-typed-proposals.ts` | the typed-proposal owner over the real M2 store with fake plan, submit and run ports |
 | `fixtures/person-lookup-presentation.ts` | fictional served Person Lookup presentation evidence |
