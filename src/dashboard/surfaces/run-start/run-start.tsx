@@ -195,7 +195,7 @@ export function RunStartDialog({
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
 
   const inputRun = workflow?.inputRun ?? NO_WORKFLOW_SELECTED;
-  const pdfSurface = workflow?.uploadRun?.pdfInput === undefined ? undefined : workflow.uploadRun;
+  const pdfSurface = draft.interruptedRerun || workflow?.uploadRun?.pdfInput === undefined ? undefined : workflow.uploadRun;
   const typedDeclaration = inputRun.state === "present" ? inputRun.surface.typedInput : undefined;
   const declaredInput = typedDeclaration !== undefined;
   const typedValues = useMemo(() => {
@@ -265,7 +265,7 @@ export function RunStartDialog({
       restoreSource: restored => {
         const sourceWorkflow = workflowsRef.current.find(entry => entry.workflowId === restored.source.workflow);
         if (sourceWorkflow === undefined) throw new Error("RERUN_WORKFLOW_UNAVAILABLE");
-        if (sourceWorkflow.uploadRun?.pdfInput !== undefined) {
+        if (restored.retainedSteps === undefined && sourceWorkflow.uploadRun?.pdfInput !== undefined) {
           const pdfs = restored.sourceInput.state === "available" ? restorePdfRun(sourceWorkflow.uploadRun, restored.sourceInput.value, actorId) : null;
           if (pdfs === null) throw new Error(RERUN_INPUT_GONE);
           pdfInput.restore(pdfs);
@@ -495,7 +495,7 @@ export function RunStartDialog({
   }, [oneClickReady, send]);
   /** What a workflow's last stage still shows before Start: its chosen references and typed dates. */
   const lastStageFacts = [
-    ...(typedDeclaration === undefined ? [] : typedDateControls(typedDeclaration, typedInputMode(typedDeclaration, typedValues)?.value ?? "").flatMap(control => {
+    ...(draft.interruptedRerun || typedDeclaration === undefined ? [] : typedDateControls(typedDeclaration, typedInputMode(typedDeclaration, typedValues)?.value ?? "").flatMap(control => {
       const date = typeof typedValues[control.field] === "string" ? usDateText(String(typedValues[control.field]).trim()) : undefined;
       return date === undefined ? [] : [{ key: control.label, value: date }];
     })),

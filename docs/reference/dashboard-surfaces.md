@@ -301,7 +301,8 @@ choice, with no fresh text-entry alternative. [Run reference planning](frontend-
 owns entry admission, partial refusals and independent run creation.
 
 Rerun prefills safe source identity fields in Values, using the declared input parser. Protected
-values and identities that no longer satisfy the current input stay uncopied. Onboarding Rerun remains
+values and identities that no longer satisfy the current input stay uncopied. Interrupted Rerun
+uses the source run's retained input and workbook references. Ordinary Onboarding Rerun remains
 one source input with a fresh visible library/version lookup, without a selected-row picker or retained
 source selector. Its [trusted input projection](workflow-model.md#56-recovery-and-rerun) removes server-owned roster data.
 

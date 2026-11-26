@@ -295,6 +295,17 @@ describe("rerun restore", () => {
     const write = startRowsOf(ran).find(row => row.key === "write"); assert.ok(write);
     assert.deepEqual(selectedStepKeys(toggleRow(draft, ran, interrupted, write, true), ran), ["write", "finish"]);
   });
+  it("opens an interrupted typed-input rerun when its input is unavailable to the browser", () => {
+    const interrupted = RerunValuesSnapshotSchema.parse({ ...snapshot,
+      source: { ...snapshot.source, workflow: workStudy.workflowId, outcome: "interrupted" },
+      sourceInput: { state: "unavailable", reason: "protected" },
+      retainedSteps: [{ key: "read", repeatable: true }, { key: "write", repeatable: true }, { key: "extra", repeatable: true }],
+    });
+    const draft = restoreRerunDraft(interrupted, workStudy);
+    assert.equal(draft.interruptedRerun, true);
+    assert.equal(draft.text, "");
+    assert.deepEqual(selectedStepKeys(draft, workStudy), ["finish"]);
+  });
   it("restores the plain identity text with no value drafts and picks up from the failed step", () => {
     const partial = RerunValuesSnapshotSchema.parse({ ...snapshot, sourceInput: { state: "partial", value: { eid: "10812345" }, identityCopied: true } });
     const ran = { ...plain, steps: plain.steps.slice(0, 3) };

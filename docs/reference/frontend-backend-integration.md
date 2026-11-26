@@ -583,6 +583,10 @@ deduplicates entries. Public `planned[].workbookReferences[].selectedRow` comes 
 The client verifies unique, in-range refusal indices, complete entry coverage and matching references for
 each accepted entry before confirmation.
 
+Interrupted Rerun submits the source run ID, revision and step selection with no submissions or
+workbook picks. Planning and Start authenticate the retained input, manual values and workbook
+references against that run. These plans describe one subject.
+
 A workflow declares `plannedOutputs(input, references)` to project output facts from parsed input and captured references. These become `planned[].outputs` in the retained plan and public response and are bound into its input fingerprint. `src/models/dashboard/run-outputs.ts` owns the closed vocabulary: `workbook` with a known row count or `after-review`, a concrete `worksheet-archive` with its worksheet/row membership, or `worksheet-archives` with `after-row-choice` when packaging membership is unresolved. Confirm renders those served facts; absence never creates an output placeholder. A plan describes intended output, not a produced artifact.
 
 ## Local debug events

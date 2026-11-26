@@ -415,6 +415,26 @@ describe("what a rerun keeps of its source", () => {
     assert.deepEqual(plans, []);
   });
 
+  it("opens an interrupted PDF rerun and requests the retained source without restoring its input", async () => {
+    const source = RerunValuesSnapshotSchema.parse({ ...pdfSource({ fileName: "one.pdf" }),
+      source: { ...finished.source, workflow: pdf.workflowId, descriptorVersion: pdf.version, outcome: "interrupted" },
+      sourceInput: { state: "unavailable", reason: "incompatible" }, retainedSteps: [] });
+    const { dialog, plans } = await openOneClick({}, { workflow: pdf, source });
+    await settleLong();
+    assert.equal(dialog.stage(), "Steps");
+    assert.deepEqual(plans, []);
+    assert.equal(dialog.disabled("Continue"), false);
+    await dialog.press("Continue");
+    await settleAll();
+    assert.equal(dialog.disabled("Start live run"), false);
+    await dialog.press("Start live run");
+    await settleAll();
+    assert.equal(plans.length, 1);
+    assert.deepEqual(plans[0]?.submissions, []);
+    assert.equal(plans[0]?.workbookReferences, undefined);
+    assert.equal(plans[0]?.rerunSource?.runId, source.source.runId);
+  });
+
   it("sends the operator to Start run when the original spreadsheet is gone", async () => {
     const workflow = servedIn(RUN_DIALOG_REFERENCE_CATALOG);
     const value = RerunValuesSnapshotSchema.parse({ ...(runDialogRerunSnapshot() as { snapshot: typeof snapshot }).snapshot,

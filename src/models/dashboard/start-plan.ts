@@ -24,7 +24,7 @@ const SHARED_REQUEST_LEAVES = {
   workflowId: WorkflowIdSchema,
   rerunSource: RerunSourceSchema.optional(),
   warningAcknowledgment: FingerprintSchema.optional(),
-  submissions: z.array(JsonValueSchema).min(1),
+  submissions: z.array(JsonValueSchema),
   dryRun: z.boolean(),
   /** The surface may request `bulk` explicitly; the server stamps the default. */
   priority: RunPrioritySchema.optional(),
@@ -37,12 +37,14 @@ const SHARED_REQUEST_LEAVES = {
 
 const hasStartSelection = (request: { rerunSource?: unknown; selectedStepKeys?: string[] | undefined }) =>
   request.rerunSource !== undefined || request.selectedStepKeys?.length !== 0;
+const hasStartInput = (request: { rerunSource?: unknown; submissions: unknown[] }) =>
+  request.submissions.length > 0 || request.rerunSource !== undefined;
 
 export const StartPlanRequestSchema = z.strictObject({
   ...SHARED_REQUEST_LEAVES,
   browserMode: BrowserPresentationModeSchema,
   captureBrowserScreenshots: z.boolean(),
-});
+}).refine(hasStartInput, { path: ["submissions"], message: "Provide at least one submission or a Rerun source." });
 export type StartPlanRequest = z.infer<typeof StartPlanRequestSchema>;
 
 export const StartPlanIngressSchema = z.strictObject({
@@ -53,7 +55,8 @@ export const StartPlanIngressSchema = z.strictObject({
   captureBrowserScreenshots: z.boolean().default(false),
   /** Trusted server stamp; the surface may request `bulk` explicitly. */
   priority: RunPrioritySchema.default("interactive"),
-}).refine(hasStartSelection, { path: ["selectedStepKeys"], message: "Select at least one step to start." });
+}).refine(hasStartInput, { path: ["submissions"], message: "Provide at least one submission or a Rerun source." })
+  .refine(hasStartSelection, { path: ["selectedStepKeys"], message: "Select at least one step to start." });
 export type StartPlanIngress = z.infer<typeof StartPlanIngressSchema>;
 
 export const StartPlanWireSchema = z.strictObject({

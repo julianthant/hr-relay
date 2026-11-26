@@ -301,9 +301,12 @@ function preselectRerunSteps(draft: LaunchDraft, snapshot: RerunValuesSnapshot, 
 export function restoreRerunDraft(snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow, rerunInputText?: string): LaunchDraft {
   const id = workflow.workflowId, { browserMode } = snapshot.source;
   if (browserMode === undefined) throw refusal("RERUN_BROWSER_MODE_UNKNOWN");
-  let next = withSteps({ ...freshLaunchDraft(workflow), ...spreadsheetPicks(snapshot, workflow), dryRunRequested: snapshot.source.dryRun, priority: snapshot.source.priority,
-    browserMode, ...(snapshot.retainedSteps === undefined ? { valueDrafts: initialRerunValueDrafts(snapshot, workflow) } : { interruptedRerun: true }) },
-  id, defaultRerunSteps(snapshot, workflow));
+  const base = { ...freshLaunchDraft(workflow), dryRunRequested: snapshot.source.dryRun, priority: snapshot.source.priority, browserMode };
+  const defaults = defaultRerunSteps(snapshot, workflow);
+  if (snapshot.retainedSteps !== undefined) {
+    return preselectRerunSteps(withSteps({ ...base, interruptedRerun: true }, id, defaults), snapshot, workflow);
+  }
+  let next = withSteps({ ...base, ...spreadsheetPicks(snapshot, workflow), valueDrafts: initialRerunValueDrafts(snapshot, workflow) }, id, defaults);
   if (rerunInputText !== undefined) {
     if (workflow.inputRun.state !== "present" || workflow.inputRun.surface.typedInput !== undefined
       || snapshot.source.outcome !== "failed" || snapshot.transactions.length !== 0) throw refusal("COMMAND_REFUSED");

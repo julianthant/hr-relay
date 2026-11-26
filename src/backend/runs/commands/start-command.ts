@@ -112,6 +112,8 @@ export function readStartPlan(
       }
     }
   }
+  // The continuation check above binds the retained references to the exact source run.
+  if (plan.rerun?.continuation !== undefined) return { descriptor, plan, selectedSources: undefined };
   const captureReference = createWorkbookReferenceCapture(repositories.workbooks);
   let selectedSources: { libraryId: string; sheetId: string }[] | undefined;
   for (const planned of plan.planned) {

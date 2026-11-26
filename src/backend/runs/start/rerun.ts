@@ -24,6 +24,8 @@ import type { AuthorityRepositories } from "../../storage/sqlite/authority-repos
 import { projectStartSteps } from "./step-selection.js";
 import { isInterruptedRerunSource, planInterruptedRerun } from "./recovery-plan.js";
 import { RunContinuationSchema } from "../../../models/run/continuation.js";
+import { delegationEvidenceOutput } from "../../../models/run/result.js";
+import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 
 import { RerunRefusedError } from "./rerun-source.js";
 
@@ -95,6 +97,13 @@ function recordedGateSkipLookup(repositories: AuthorityRepositories, descriptor:
   };
 }
 
+function rerunDelegationOutput(repositories: AuthorityRepositories, run: RunRecord, node: RuntimeFlowNode | undefined,
+  historical: boolean, schemaReader?: EvidenceSchemaReader): JsonValue | undefined {
+  if (node?.kind !== "child-run" || !isInterruptedRerunSource(repositories, run)) return undefined;
+  const evidence = AuthenticatedRunContinuation.authenticate(repositories, run.envelope).dependency(node.id, node.edgeId, historical);
+  return evidence === undefined ? undefined : JsonValueSchema.parse(delegationEvidenceOutput(evidence, node.target.result, schemaReader));
+}
+
 export function validateRerunTransactionEvidence(input: Readonly<{
   repositories: AuthorityRepositories; descriptor: AnyWorkflowDescriptor; run: RunRecord;
   node: Extract<RuntimeFlowNode, { kind: "transaction" }>; checkpoint: RunCheckpointRecord;
@@ -124,6 +133,8 @@ export function validateRerunTransactionEvidence(input: Readonly<{
     } else {
       const gate = gates.find(gate => String(gate.gateId) === String(id));
       if (gate === undefined) {
+        const delegated = rerunDelegationOutput(repositories, run, dependency, true, schemaReader);
+        if (delegated !== undefined) { outputs[id] = delegated; continue; }
         if (gateWasSkipped(dependency, checkpoint)) continue;
         throw new RerunRefusedError("invalid-value", "Rerun transaction dependency is unavailable");
       }
@@ -198,10 +209,12 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   const interrupted = isInterruptedRerunSource(repositories, run);
   let continuation: RerunPlan["continuation"];
   if (interrupted) {
-    if (source.failureCorrection !== undefined || source.gateCorrection !== undefined
+    if (source.failureCorrection !== undefined || source.gateCorrection !== undefined || (source.copiedFrom?.length ?? 0) > 0
       || (entry !== undefined && (entry.itemId !== run.envelope.itemId
-        || canonicalJsonStringify(entry.input.value) !== canonicalJsonStringify(run.input.parsed.value)
-        || canonicalJsonStringify(entry.workbookReferences ?? []) !== canonicalJsonStringify(run.input.workbookReferences ?? [])))) {
+        || canonicalJsonStringify(entry.rawInput) !== canonicalJsonStringify(run.input.raw)
+        || canonicalJsonStringify(entry.input) !== canonicalJsonStringify({ ...run.input.parsed, schemaHash: entry.input.schemaHash })
+        || canonicalJsonStringify(entry.workbookReferences ?? []) !== canonicalJsonStringify(run.input.workbookReferences ?? [])
+        || canonicalJsonStringify(stepOmissions ?? []) !== canonicalJsonStringify(run.envelope.stepOmissions ?? [])))) {
       throw new RerunRefusedError("invalid-value", "Interrupted rerun requires the original run input and workbook references.");
     }
     const retained = planInterruptedRerun(repositories, descriptor, run, schemaReader);
@@ -319,7 +332,11 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
             throw new RerunRefusedError("schema-mismatch", "Previous transaction warning evidence is incompatible");
           }
           outputs[String(dependency)] = gate.result.value;
-        } else if (!gateWasSkipped(dependencyNode, transactionCheckpoint)) missingDependency = true;
+        } else {
+          const delegated = rerunDelegationOutput(repositories, run, dependencyNode, false, schemaReader);
+          if (delegated !== undefined) outputs[dependency] = delegated;
+          else if (!gateWasSkipped(dependencyNode, transactionCheckpoint)) missingDependency = true;
+        }
       }
     }
     // Missing fresh upstream facts cannot authorize a repeat. Execution must

@@ -133,12 +133,11 @@ function effects(h: Fixture) {
     confirmations: h.database.authority.timelineEvents.page({}).filter(row => row.payload.kind === "operation-confirmed") };
 }
 
-it("retains a completed write on an interrupted rerun and requires confirmation if it is selected again", async () => {
-  const h = await fixture([], descriptor, [], true);
+function interruptPaused(h: Fixture) {
   const paused = h.failed;
   const resumed = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: h.ids.uuid(), runId: paused.envelope.runId, expectedVersion: paused.version }));
-  const owner = testWorkerLifetime(h.database, descriptor.id, 1);
-  const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: descriptor.id,
+  const owner = testWorkerLifetime(h.database, h.descriptor.id, 1);
+  const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id,
     workerId: owner.workerId, runtimeConfig: selectRunRuntime(h.database.authority) }));
   assert.equal(claimed.envelope.runId, resumed.envelope.runId);
   const endedAt = h.clock.now().toISOString();
@@ -148,12 +147,17 @@ it("retains a completed write on an interrupted rerun and requires confirmation 
     lifecycle: { state: "terminal", outcome: "interrupted", endedAt },
   }));
   assert.ok(terminal.state === "applied");
-  const source = { runId: terminal.run.envelope.runId, expectedVersion: terminal.run.version };
+  return { runId: terminal.run.envelope.runId, expectedVersion: terminal.run.version };
+}
+
+it("retains a completed write on an interrupted rerun and requires confirmation if it is selected again", async () => {
+  const h = await fixture([], descriptor, [], true);
+  const source = interruptPaused(h);
   const values = readRerunValues({ database: h.database, reader: h.lifecycle, descriptors: { resolve: () => descriptor } }, source);
   assert.ok(values.state === "available", JSON.stringify(values));
   assert.deepEqual(values.snapshot.retainedSteps, [{ key: "before", repeatable: true }, { key: WRITE_FIXTURE_NODE_ID, repeatable: true }]);
   const plan = (selectedStepKeys: string[]) => h.planner.plan({ workflowId: descriptor.id, dryRun: false,
-    submissions: [terminal.run.input.raw], selectedStepKeys, rerunSource: { ...source, intent: "rerun", selectedStepKeys } });
+    submissions: [], selectedStepKeys, rerunSource: { ...source, intent: "rerun", selectedStepKeys } });
   const repeat = plan([WRITE_FIXTURE_NODE_ID, "finish"]);
   assert.deepEqual(repeat.rerun?.warnings.map(warning => warning.nodeId), [WRITE_FIXTURE_NODE_ID]);
   assert.equal(h.kernel.execute(h.command(repeat)).state, "confirmation-required");
@@ -165,6 +169,25 @@ it("retains a completed write on an interrupted rerun and requires confirmation 
   assert.ok(continued.envelope.continuation?.checkpoints.some(row => row.nodeId === WRITE_FIXTURE_NODE_ID));
   assert.equal((await h.execute(continued)).state, "done");
   assert.deepEqual(effects(h), before);
+});
+
+it("reuses a completed delegated result and its dependent write through interrupted Rerun and Start", async () => {
+  const h = await fixture([], childReceiptDescriptor, [sourceBoundReadDescriptor], true);
+  const source = interruptPaused(h);
+  const children = h.database.authority.runs.listChildren(source.runId);
+  assert.equal(children.length, 1);
+  const values = readRerunValues({ database: h.database, reader: h.lifecycle, descriptors: h.descriptors }, source);
+  assert.ok(values.state === "available", JSON.stringify(values));
+  assert.ok(values.snapshot.retainedSteps?.some(step => !step.repeatable));
+  const selectedStepKeys = childReceiptDescriptor.timeline.map(step => step.key)
+    .filter(key => !values.snapshot.retainedSteps?.some(step => step.key === key));
+  const before = effects(h);
+  const plan = h.planner.plan({ workflowId: childReceiptDescriptor.id, dryRun: false, submissions: [], selectedStepKeys,
+    rerunSource: { ...source, intent: "rerun", selectedStepKeys } });
+  const continued = h.start(plan);
+  assert.equal((await h.execute(continued)).state, "done");
+  assert.deepEqual(effects(h), before);
+  assert.deepEqual(h.database.authority.runs.listByWorkflow(sourceBoundReadDescriptor.id), children);
 });
 function operatorRecover(h: Fixture, run = h.failed, replay = false) {
   const command = { commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",

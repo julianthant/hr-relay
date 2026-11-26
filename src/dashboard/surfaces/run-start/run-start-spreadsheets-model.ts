@@ -95,6 +95,9 @@ export function runStartSpreadsheetReadiness(
     referenceId, checkSelections, checkPending, requiredTypes }: ReturnType<typeof useRunStartSpreadsheets>,
   referenceSelections: launchDraft.LaunchDraft["referenceSelections"], isRerun: boolean, snapshot: RerunValuesSnapshot | null,
 ) {
+  if (snapshot?.retainedSteps !== undefined) return {
+    spreadsheetsError: false, spreadsheetsReading: false, spreadsheetGone: false, referencesUnavailable: false,
+  };
   const usesSpreadsheets = workbookReference !== undefined || workbookCheck !== undefined;
   const spreadsheetsError = isRerun && usesSpreadsheets && (Boolean(library.catalogError) || compatibilityMissing);
   const spreadsheetsReading = usesSpreadsheets && !spreadsheetsError && (library.catalogLoading || library.catalogRefreshing || library.compatibility === undefined
