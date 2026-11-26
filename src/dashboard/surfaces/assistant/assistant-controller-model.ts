@@ -169,8 +169,15 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         commands.feedback({ kind: 'failed', commandId: '', cause: composed.reason, feedback: formatErrorCatalogFailure(createErrorCatalogFailure('COMMAND_REFUSED', {})) });
         return;
       }
-      await commands.executor.execute(CommandRequestSchema.parse(composed.request), { scope: commands.scope, publish: commands.feedback });
-      await refreshSessions();
+      const before = state.sessions?.find(session => session.runId === stop.runId);
+      await commands.executor.execute(CommandRequestSchema.parse(composed.request), { scope: commands.scope, publish: commands.feedback,
+        // The chip re-read proves the Cancel: the served row moved on or no longer offers Stop.
+        readback: async (_request, reply) => {
+          await refreshSessions();
+          const after = state.sessions?.find(session => session.runId === stop.runId);
+          const applied = "state" in reply && (reply.state === "applied" || reply.state === "already-applied");
+          return { state: applied && (after === undefined || after.stop === null || after.rowRevision !== before?.rowRevision) ? "matched" : "mismatch", evidence: after ?? null };
+        } });
     },
     /** Stages one picked file under this chat so a later send can name it; nothing reaches the model before then. */
     async stage(file: Readonly<{ name: string; mediaType: string; bytes: Uint8Array }>): Promise<AssistantStageResult> {

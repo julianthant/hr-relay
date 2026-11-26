@@ -106,7 +106,7 @@ function selectedRunReference(subjectRef: string): { runId: string; revision: nu
   if (match === null || !z.uuid().safeParse(match[1]).success || !Number.isSafeInteger(revision)) throw new AssistantProtocolError("assistant-selected-run-invalid");
   return { runId: match[1], revision };
 }
-export type AssistantService = ReturnType<typeof createAssistantM1Service>;
+export type AssistantService = Pick<ReturnType<typeof createAssistantM1Service>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantM1Service>, 'activity' | 'stage' | 'models' | 'modelPreference' | 'historyView' | 'conversation' | 'history'>>;
 
 export interface AssistantM1ServiceOptions extends Omit<AssistantServiceOptions, "debugEvents"> {
   readonly history: () => AssistantM1HistoryRepository;
@@ -426,7 +426,9 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
       if (view === undefined) return undefined;
       const parts = new Map(view.messages.flatMap(message => message.payload.parts.flatMap(part => part.kind === "session" ? [[part.runId, part] as const] : [])));
       // A chip whose run is gone or changed shows its stored label without status or Stop.
-      const sessions = read === undefined ? [] : [...parts.values()].flatMap(part => { try { return [readAssistantSession(part, read)]; } catch { return []; } });
+      const sessions = read === undefined ? [] : [...parts.values()].flatMap(part => {
+        try { return [readAssistantSession(part, read)]; } catch (error) { if (error instanceof AssistantToolRefusal) return []; throw error; }
+      });
       return { ...view, sessions };
     },
     history(input: unknown): AssistantHistoryResult {

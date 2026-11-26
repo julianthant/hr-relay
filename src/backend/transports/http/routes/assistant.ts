@@ -43,7 +43,7 @@ async function readUpload(request: Request, maxBytes: number, signal: AbortSigna
     try { await reader.cancel(); } finally { reader.releaseLock(); }
   }
 }
-const noReply = (reason: "ASSISTANT_UNAVAILABLE" | "ASSISTANT_INVALID") => ({ kind: "result", result: { state: "no-reply", reason, canRetry: false, turn: null } }) as const;
+const UNAVAILABLE_NO_REPLY = { kind: "result", result: { state: "no-reply", reason: "ASSISTANT_UNAVAILABLE", canRetry: false, turn: null } } as const;
 const uploadName = (value: string | undefined) => decodeURIComponent(value ?? "");
 
 export function registerAssistantRoutes(app: DashboardApp, service: AssistantService | undefined): void {
@@ -66,8 +66,8 @@ export function registerAssistantRoutes(app: DashboardApp, service: AssistantSer
     c.header("Cache-Control", "no-store");
     try {
       const input = AssistantM1RequestSchema.parse(await readInput(c.req.raw));
-      return c.json(AssistantM1RespondEnvelopeSchema.parse(service === undefined ? noReply("ASSISTANT_UNAVAILABLE") : await service.respond(input, c.req.raw.signal)));
-    } catch { return c.json(noReply("ASSISTANT_INVALID"), 400); }
+      return c.json(AssistantM1RespondEnvelopeSchema.parse(service === undefined ? UNAVAILABLE_NO_REPLY : await service.respond(input, c.req.raw.signal)));
+    } catch { return c.json({ kind: "result", result: { state: "no-reply", reason: "ASSISTANT_INVALID", canRetry: false, turn: null } }, 400); }
   });
   const HISTORY_UNAVAILABLE = ["ASSISTANT_HISTORY_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE, false] as const;
   app.get("/api/v1/assistant/activity", c => {

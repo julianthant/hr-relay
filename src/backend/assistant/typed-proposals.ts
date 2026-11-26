@@ -113,7 +113,7 @@ export interface AssistantTypedProposalPorts {
   readonly actorId: string;
 }
 
-export type PlannedInputs = Readonly<{ capturedAt: string; runs: readonly Readonly<{ input: unknown; rawInput: unknown; workbookReferences: unknown }>[] }>;
+export type PlannedInputs = Readonly<{ capturedAt: string; runs: readonly Readonly<{ input: unknown; rawInput: unknown; workbookReferences?: unknown }>[] }>;
 
 function refuse(code: "ASSISTANT_PROPOSAL_REFUSED" | "ASSISTANT_PROPOSAL_CHANGED" | "ASSISTANT_READ_STALE" = "ASSISTANT_PROPOSAL_REFUSED"): never { throw new AssistantToolRefusal(code); }
 const same = (left: unknown, right: unknown) => canonicalJsonStringify(JsonValueSchema.parse(left)) === canonicalJsonStringify(JsonValueSchema.parse(right));

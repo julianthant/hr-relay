@@ -11,7 +11,7 @@ import { OcrFormTypeSchema } from "../ocr/form-registry.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { z } from "zod";
 import { CommandIdSchema, FingerprintSchema, IsoInstantSchema, LocalDateSchema, PositiveIntSchema, RunIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
-import { StartPlanRequestSchema } from "./start-plan.js";
+import { StartPlanRequestSchema, StartPlanWireSchema } from "./start-plan.js";
 import { AssistantModelPreferenceSchema, AssistantModelSlugSchema } from "../config/assistant-model-preference.js";
 
 export const ASSISTANT_DEFAULT_MODEL = "gpt-6.1-sol";
