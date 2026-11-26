@@ -39,7 +39,7 @@ export interface SessionCommandBinding {
   readonly workflowId?: string;
 }
 type NativeAttempt = { readonly body: string; readonly actor: string; readonly client: DashboardClient; readonly authority: object;
-  readonly commands: CommandRequest[]; readonly expected: number; snapshot?: DashboardDayWire; cause?: unknown };
+  readonly commands: CommandRequest[]; readonly expected: number; sampleStopWorkerId?: string; snapshot?: DashboardDayWire; cause?: unknown };
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 // Relay stamps its own requestedAt, requestedBy and source on admission; the audit still proves this command when everything else matches.
 const intent = ({ requestedAt: _at, requestedBy: _by, source: _source, ...rest }: DashboardCommandRequest) => canonicalJsonStringify(rest);
@@ -47,7 +47,7 @@ const sameIntent = (recorded: DashboardCommandRequest, sent: DashboardCommandReq
 const commandFeedback = (code: "COMMAND_REFUSED") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 /** A worker command is confirmed once the served day shows its effect; the member fence makes each effect observable. */
-export function sessionCommandEffect(day: DashboardDayWire, request: DashboardCommandRequest): boolean {
+export function sessionCommandEffect(day: DashboardDayWire, request: DashboardCommandRequest, sampleStopWorkerId?: string): boolean {
   if (request.family !== "worker-browser" || day.workerAuthority.state !== "present") return false;
   if (request.type === "plan-worker-count") {
     const pool = day.workerPools.find(pool => pool.workflowId === request.target.workflowId);
@@ -56,6 +56,9 @@ export function sessionCommandEffect(day: DashboardDayWire, request: DashboardCo
   }
   if (request.type === "check-parked-write") return false;
   const card = day.workerCards.find(card => card.workerId === (request.type === "spawn-worker" ? request.payload.workerId : request.target.workerId));
+  if (request.type === "stop-worker" && request.target.workerId === sampleStopWorkerId) {
+    return card === undefined && !day.unavailableWorkerCards?.some(card => card.workerId === sampleStopWorkerId);
+  }
   const lifetimeId = card?.controls?.basis.state === "present" ? card.controls.basis.value.lifetimeId : null;
   switch (request.type) {
     case "remove-worker": return !day.workerAuthority.members.some(member => member.workerId === request.target.workerId);
@@ -105,7 +108,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
   const options = (attempt: NativeAttempt, binding: SessionCommandBinding): CommandExecutionOptions => ({ scope: binding.scope,
     readback: async (command, reply) => {
       const day = await read(attempt, binding);
-      const matched = "state" in reply && (reply.state === "applied" || reply.state === "already-applied") && sessionCommandEffect(day, command);
+      const matched = "state" in reply && (reply.state === "applied" || reply.state === "already-applied") && sessionCommandEffect(day, command, attempt.sampleStopWorkerId);
       return { state: matched ? "matched" : "mismatch", evidence: day.day };
     },
   });
@@ -120,7 +123,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
   const result = (request: SessionPreviewRequest, attempt: NativeAttempt, outcome?: CommandOutcome): SessionPreviewResult => {
     const snapshot = attempt.snapshot;
     const all = attempt.commands.length === attempt.expected && snapshot !== undefined
-      && (outcome === undefined || outcome.kind === "confirmed") && attempt.commands.every(command => sessionCommandEffect(snapshot, command));
+      && (outcome === undefined || outcome.kind === "confirmed") && attempt.commands.every(command => sessionCommandEffect(snapshot, command, attempt.sampleStopWorkerId));
     const data = snapshot === undefined ? undefined : sessionsFromDay(snapshot, current().catalog, requireBinding().now());
     return all ? { id: request.id, state: "confirmed", data } : { id: request.id,
       state: attempt.commands.length === 1 && outcome !== undefined && outcome.kind !== "confirmed" && commandAttemptView(outcome).view !== "unknown" ? "refused" : "uncertain",
@@ -186,6 +189,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
           return result(request, attempt);
         }
         const target = { workerId: card.workerId, workflowId: card.workflowId, lifetimeId: basis.value.lifetimeId, expectedVersion: basis.value.version };
+        if (request.action === "stop" && card.sample === true) attempt.sampleStopWorkerId = card.workerId;
         return result(request, attempt, await dispatch({ ...envelope(request.id, binding), type: `${request.action}-worker`, target }));
       } catch (cause) {
         attempt.cause = cause;

@@ -17,10 +17,12 @@ import { createNoteTimelineWriter } from "../../../src/backend/storage/events/no
 import { importIsolatedProfileData } from "../../../src/backend/storage/maintenance/isolated-library-import.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
-import { createDashboardClient } from "../../../src/dashboard/client/index.js";
+import { CommandExecutor } from "../../../src/dashboard/app/commands/command-executor.js";
+import { createDashboardClient, createRowStore } from "../../../src/dashboard/client/index.js";
 import { queueBatches } from "../../../src/dashboard/surfaces/queue/queue-model.js";
 import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
-import { sessionsFromDay } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
+import { createSessionPreviewPort } from "../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
+import { sessionWorkerAuthorityKey, sessionsFromDay } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { workflowProjections } from "../../../src/workflow-kit/workflow.js";
@@ -339,17 +341,23 @@ async function expectLiveSamples(client: ReturnType<typeof createDashboardClient
   expect(preflight.mock.calls).toHaveLength(preflights);
 
   // Stop on a running card and close on an idle one each remove the card from the served Sessions.
-  const removed = [["stop-worker", cards.find(entry => entry.state === "running" && entry.directive === "run")], ["remove-worker", cards.find(entry => entry.state === "idle")]] as const;
-  for (const [type, card] of removed) {
-    assert.ok(card?.controls?.basis.state === "present", type);
-    const command = { ...envelope("sessions"), family: "worker-browser", type,
-      target: { workerId: card.workerId, workflowId: card.workflowId, lifetimeId: card.controls.basis.value.lifetimeId, expectedVersion: 1 } };
-    expect((await client.executeCommand(command)).state).toBe("applied");
-    const readback = await client.dashboardDay(today);
-    expect(readback.workerCards.some(entry => entry.workerId === card.workerId), type).toBe(false);
-    const view = sessionsFromDay(readback, catalog, clock.now().toISOString());
-    assert.ok(view.state === "ready", JSON.stringify(view));
-    expect(view.workers.some(worker => worker.id === card.workerId), type).toBe(false);
+  const scope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
+  const executor = new CommandExecutor(() => scope);
+  let snapshot = day;
+  const port = createSessionPreviewPort(() => ({ catalog, binding: {
+    client, executor, scope, day: today, now: () => clock.now().toISOString(),
+    dayState: { request: scope.dayRequest, rows: createRowStore(), day: { state: "loaded", value: snapshot },
+      connection: { state: "live" }, subscribePublications: () => { throw new Error("fixture publications are not served"); }, refresh() {} },
+  } }));
+  const removed = [["stop", cards.find(entry => entry.state === "running" && entry.directive === "run")], ["remove", cards.find(entry => entry.state === "idle")]] as const;
+  for (const [action, card] of removed) {
+    assert.ok(card?.controls?.basis.state === "present", action);
+    const result = await port.send({ id: randomUUID(), target: card.workerId, action, authorityKey: sessionWorkerAuthorityKey(card) });
+    expect(result.state, action).toBe("confirmed");
+    assert.ok(result.data?.state === "ready", JSON.stringify(result));
+    expect(result.data.workers.some(worker => worker.id === card.workerId), action).toBe(false);
+    snapshot = await client.dashboardDay(today);
+    expect(snapshot.workerCards.some(entry => entry.workerId === card.workerId), action).toBe(false);
   }
   expect((await client.runDetail(running.envelope.runId)).runId).toBe(running.envelope.runId);
 }
