@@ -205,6 +205,12 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.deepEqual(keysFor("failed"), ["rerun", "rename", "delete"]);
   });
 
+  it("offers Rerun on a cancelled run, live or dry, and not on a discarded or superseded one", () => {
+    for (const dryRun of [false, true]) assert.deepEqual(keysFor("cancelled", { cancelled: true, dryRun }), ["rerun", "rename", "delete"]);
+    assert.deepEqual(keysFor("cancelled", { cancelled: false }), ["rename", "delete"]);
+    assert.deepEqual(keysFor("cancelled", { cancelled: true, isChild: true }), ["rename"]);
+  });
+
 
   it("drops rename for a delegated MEMBER, and keeps it for every other row", () => {
     assert.deepEqual(keysFor("running", { isMember: true }), ["cancel"]);

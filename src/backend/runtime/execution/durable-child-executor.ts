@@ -155,7 +155,6 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
               case "cancelled": {
                 if (dependency.state !== "cancelled") throw new Error("delegation-dependency-unsettled");
                 const source = authority.authority.dependencies.cancellationOutcome(child.envelope.runId);
-                if (source.reason === undefined) throw new Error("delegation-child-cancellation-reason-unavailable");
                 return { run: child, result, cancellation: source };
               }
               default:

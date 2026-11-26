@@ -1013,10 +1013,10 @@ export function delegationCancellationAvailability(repositories: AuthorityReposi
   const request = z.object({ cancellationSource: CancellationSourceSchema }).parse(retained.request);
   const source = request.cancellationSource;
   if (repositories.commands.get(source.commandId) === undefined || repositories.commandAudits.findByCommand(source.commandId) === undefined) return { state: "unavailable" as const, reason: "source" as const };
-  const outcome = readDelegationCancellation(repositories, runId);
-  return outcome.reason === undefined ? { state: "unavailable" as const, reason: "reason" as const }
-    : { state: "available" as const, outcome: { ...outcome, reason: outcome.reason } };
+  return { state: "available" as const, outcome: readDelegationCancellation(repositories, runId) };
 }
+
+const OPERATOR_CANCEL_REASON = "Cancelled by the operator";
 
 export function readDelegationCancellation(repositories: AuthorityRepositories, runId: string) {
   const run = repositories.runs.get(runId), retained = repositories.lifecycleJournal.findCancellation(runId);
@@ -1032,7 +1032,8 @@ export function readDelegationCancellation(repositories: AuthorityRepositories, 
     || authored?.result.state !== "applied" || canonicalJsonStringify(authored.request) !== canonicalJsonStringify(source)
     || !authored.versionChanges.some(change => change.target.family === "run" && change.target.runId === runId
       && change.before === request.expectedVersion && change.after === appliedVersion)) throw new Error("delegation-child-cancellation-source-mismatch");
-  return { cancelledBy: runId === request.cancellationSource.rootRunId ? "operator" as const : "parent" as const, reason: source.reason };
+  // The dashboard's Cancel sends no reason; the authenticated command still is the operator's cancel.
+  return { cancelledBy: runId === request.cancellationSource.rootRunId ? "operator" as const : "parent" as const, reason: source.reason ?? OPERATOR_CANCEL_REASON };
 }
 
 export function delegationEdgeForChild(repositories: AuthorityRepositories, parentRunId: string, childRunId: string) {
