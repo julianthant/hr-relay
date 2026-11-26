@@ -81,6 +81,16 @@ test("with search open at 1024 Tab runs from Back to More actions in drawn order
   expect(stops.map(stop => stop.name)).toEqual(drawn.map(stop => stop.name));
 });
 
+test("at 1024 the search field shows a typed query in full beside its match count", async ({ mount, page }) => {
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await mount("run-panel/log-header/search-child");
+  await page.getByRole("button", { name: "Search logs" }).click();
+  const input = page.getByRole("textbox", { name: "Search logs" });
+  await input.fill("employment");
+  await expect(page.getByText(/\d+ of \d+/)).toBeVisible();
+  expect(await input.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+});
+
 test("a focused header button keeps focus while the header re-measures", async ({ mount, page }) => {
   await page.setViewportSize({ width: 1600, height: 720 });
   await mount("run-panel/log-header/search-child");
