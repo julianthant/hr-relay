@@ -12,10 +12,11 @@ import { hasUnprovedSourceClosure } from "../../src/backend/storage/source-closu
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
 import { RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
 import { notificationTitle } from "../../src/models/dashboard/projection.js";
-import { searchPartitionDay } from "../../src/models/dashboard/search-calendar.js";
+import { PACIFIC_TIME_ZONE, searchPartitionDay } from "../../src/models/dashboard/search-calendar.js";
 import { SpanEventWireSchema } from "../../src/models/events/types.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../../src/models/notifications/notifications.js";
 import { RunRecordSchema, type RunLifecycle, type RunRecord } from "../../src/models/run/record.js";
+import { RunSessionRecordSchema } from "../../src/models/run/session.js";
 import { FailureRecordSchema } from "../../src/models/trust/failure.js";
 import { deriveSchemaHash } from "../../src/models/validation/schema-bound-value.js";
 import { canonicalInputSamples } from "../../src/models/workflow/canonical-input.js";
@@ -29,6 +30,7 @@ import { capturedInstantClock, systemClock } from "../../src/rules/time/clock.js
 import { sha256Hex } from "../../src/rules/validation/sha256.js";
 import { descriptorRuntimeNodes, workflowProjections, type AnyWorkflowDescriptor } from "../../src/workflow-kit/workflow.js";
 import { CopySampleSessionSchema, SAMPLE_WORKER_ORDINAL_FLOOR, sampleWorkerId, type CopySampleSession } from "../../src/backend/app/composition/dashboard/copy-samples.js";
+import configuredWorkflowSources from "../../config/dashboard-workflow-sources.json" with { type: "json" };
 
 const CopyProfileSchema = z.enum(["development", "staging"]);
 type CopyProfile = z.infer<typeof CopyProfileSchema>;
@@ -38,8 +40,19 @@ type SeedState = typeof seedStates[number];
 const liveStates = ["queued", "running", "cancelling", "needs-duo", ...seedStates] as const;
 type LiveState = typeof liveStates[number];
 type SeedSlot = Readonly<{ workflow: AnyWorkflowDescriptor; state: SeedState; day: string }>
-  | Readonly<{ workflow: AnyWorkflowDescriptor; state: LiveState; day: string; live: Readonly<{ order: number; workerId?: string }> }>;
+  | Readonly<{ workflow: AnyWorkflowDescriptor; state: LiveState; day: string; live: Readonly<{ order: number; workerId?: string; sessionId?: string }> }>;
 const dayMs = 86_400_000;
+const workflowSources = z.record(z.string(), z.enum(["served", "hidden"])).parse(configuredWorkflowSources);
+
+/** The instant today began in Pacific time; on a DST day wall-clock hours and elapsed hours differ by one. */
+export function pacificDayStart(now: Date): number {
+  const day = searchPartitionDay(now);
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: PACIFIC_TIME_ZONE, hourCycle: "h23", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(now);
+  const part = (type: "hour" | "minute" | "second") => Number(parts.find(entry => entry.type === type)?.value);
+  const start = now.getTime() - now.getUTCMilliseconds() - ((part("hour") * 60 + part("minute")) * 60 + part("second")) * 1000;
+  if (searchPartitionDay(new Date(start)) !== day) return start + 3_600_000;
+  return searchPartitionDay(new Date(start - 1)) === day ? start - 3_600_000 : start;
+}
 
 function dateAtOffset(today: number, daysAgo: number): string {
   return new Date(today - daysAgo * dayMs).toISOString().slice(0, 10);
@@ -105,18 +118,30 @@ function planSeedRuns(now: Date, existing: readonly RunRecord[], descriptors: re
 const workerStates = { running: "busy", cancelling: "busy", "needs-duo": "busy" } as const;
 const spareWorkers = ["idle", "waiting", "starting", "stopping", "stopped"] as const;
 
-/** Every live state for every workflow today, and the sample workers that hold the claimed ones. */
-function planLiveRuns(now: Date, descriptors: readonly AnyWorkflowDescriptor[]) {
+type QueueCapabilities = (workflowId: string) => Readonly<{ groupedBatchLayout?: boolean }> | undefined;
+
+/** Every live state for every served workflow today, the sample workers that hold the claimed ones, and a Partial group. */
+function planLiveRuns(now: Date, descriptors: readonly AnyWorkflowDescriptor[], capabilities: QueueCapabilities, profileId: string) {
   const day = searchPartitionDay(now);
   let ordinal = SAMPLE_WORKER_ORDINAL_FLOOR;
   const slots: SeedSlot[] = [];
+  const batches: { sessionId: string; workflow: AnyWorkflowDescriptor }[] = [];
   const sessions: { session: Omit<CopySampleSession, "browsers" | "runId">; state: LiveState | typeof spareWorkers[number]; workflow: AnyWorkflowDescriptor }[] = [];
   for (const workflow of descriptors) {
+    const browsers = workflowProjections(workflow).systems.length > 0;
     for (const [order, state] of liveStates.entries()) {
+      // A Duo wait needs a browser; without one the run reads as a second Running row.
+      if (state === "needs-duo" && !browsers) continue;
       if (!(state in workerStates)) { slots.push({ workflow, state, day, live: { order } }); continue; }
       const session = { workflow: workflow.id, ordinal: ++ordinal, state: "busy" as const, startedAt: now.toISOString() };
       slots.push({ workflow, state, day, live: { order, workerId: sampleWorkerId(session) } });
       sessions.push({ session, state, workflow });
+    }
+    if (capabilities(workflow.id)?.groupedBatchLayout === true) {
+      // A finished group with a done and a cancelled member reads Partial.
+      const sessionId = deriveStableUuid(seedNamespace, `batch/${profileId}/${workflow.id}/${day}`);
+      for (const state of ["succeeded", "cancelled"] as const) slots.push({ workflow, state, day, live: { order: liveStates.length, sessionId } });
+      batches.push({ sessionId, workflow });
     }
   }
   // Spare cards go to workflows with browsers, so each card shows its sign-in and last browsers.
@@ -125,7 +150,7 @@ function planLiveRuns(now: Date, descriptors: readonly AnyWorkflowDescriptor[]) 
     const workflow = browsered[index % browsered.length];
     sessions.push({ session: { workflow: workflow.id, ordinal: ++ordinal, state, startedAt: now.toISOString() }, state, workflow });
   }
-  return { slots, sessions };
+  return { slots, sessions, batches };
 }
 
 /** A worker's browsers: busy on its first system, ready on the rest; a Duo wait holds its first system's sign-in. */
@@ -171,14 +196,14 @@ function seedInput(workflow: AnyWorkflowDescriptor): RunRecord["input"] {
 function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) {
   const { workflow, day, state } = slot;
   const live = "live" in slot ? slot.live : undefined;
-  const key = `${profileId}/${workflow.id}/${day}/${live === undefined ? "" : "live/"}${state}`;
+  const key = `${profileId}/${workflow.id}/${day}/${live === undefined ? "" : live.sessionId === undefined ? "live/" : "batch/"}${state}`;
   const id = (kind: string) => deriveStableUuid(seedNamespace, `${kind}/${key}`);
   const hash = sha256Hex(key);
   const durationMs = 35_000 + Number.parseInt(hash.slice(0, 4), 16) * 5;
   const minuteOffsetMs = Number.parseInt(hash.slice(8, 12), 16) % 3_600_000;
-  // A live run started minutes ago, never before today began.
+  // A live run started minutes ago, never before today began in Pacific time.
   const timeMs = live === undefined ? Math.min(now.getTime(), Date.parse(`${day}T19:00:00.000Z`) + minuteOffsetMs)
-    : Math.max(Date.parse(`${day}T00:00:00.000Z`), now.getTime() - (live.order + 2) * 240_000);
+    : Math.max(pacificDayStart(now), now.getTime() - (live.order + 2) * 240_000);
   const enqueuedAt = new Date(timeMs).toISOString();
   const settledAt = new Date(Math.min(now.getTime(), timeMs + durationMs)).toISOString();
   const runId = id("run");
@@ -198,7 +223,7 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
     remediation: [{ kind: "no-safe-action", message: "This run is synthetic history." }], occurredAt: settledAt,
   });
   const outcome = { succeeded: "done", failed: "failed", cancelled: "cancelled", "needs-review": "interrupted" } as const;
-  const claimed = live?.workerId === undefined ? undefined : { workerId: live.workerId, claimedAt: new Date(timeMs + 1000).toISOString(), heartbeatAt: now.toISOString() };
+  const claimed = live?.workerId === undefined ? undefined : { workerId: live.workerId, claimedAt: new Date(Math.min(now.getTime(), timeMs + 1000)).toISOString(), heartbeatAt: now.toISOString() };
   const lifecycle: z.input<typeof RunRecordSchema>["lifecycle"] = claimed !== undefined
     ? { state: "running", ...claimed, ...(step === undefined ? {} : { currentNodeId: step.id }) }
     : state === "queued" ? { state: "queued" }
@@ -214,6 +239,7 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
       configSnapshotId: id("config"), resolvedInstance: {}, shape: "single", priority: "interactive", dryRun: true, attempt: 1, enqueuedAt },
     input: seedInput(workflow),
     lifecycle, claimGeneration: state === "paused" || state === "cancelled" || state === "queued" ? 0 : 1, displayName: title,
+    ...(live?.sessionId === undefined ? {} : { sessionId: live.sessionId }),
     ...(state === "cancelling" ? { cancelRequested: true } : {}),
     ...(state === "paused" ? { pause: { state: "paused", commandId: id("pause"), requestedAt: settledAt, pausedAt: settledAt } } : {}),
     ...(state === "succeeded" ? { completion: { ...completionFields, kind: "done", resultDigest: seedDigest } } : {}),
@@ -327,39 +353,57 @@ async function withStoppedCopy<T>(profile: CopyProfile, work: (admission: Runtim
   } finally { if (!retain) await lock.close(); }
 }
 
+type SeedModule = Readonly<{ descriptor: AnyWorkflowDescriptor }>;
+
+/** The whole generated set for one copy: history, today's live runs and groups, notifications and Sessions cards. */
+export function planCopySeed(input: Readonly<{ now: Date; existing: readonly RunRecord[]; modules: readonly SeedModule[];
+  capabilities: QueueCapabilities; profileId: string; buildId: string }>) {
+  const { now, profileId } = input;
+  const descriptors = input.modules.map(({ descriptor }) => descriptor);
+  const live = planLiveRuns(now, descriptors.filter(descriptor => workflowSources[descriptor.id] === "served"), input.capabilities, profileId);
+  const runs = [...planSeedRuns(now, input.existing, descriptors), ...live.slots].map(slot => seedRun(slot, profileId, now, input.buildId));
+  const notifications = seedNotifications(runs, profileId, now);
+  const batches = live.batches.map(({ sessionId, workflow }) => {
+    const startedAt = runs.find(row => row.run.sessionId === sessionId)?.run.envelope.enqueuedAt;
+    if (startedAt === undefined) throw new SeedCopyError("seed-copy-batch-empty");
+    return RunSessionRecordSchema.parse({ sessionId, workflow: workflow.id, startedAt, createdAt: startedAt, groupInQueue: true, version: 1,
+      origin: { kind: "start-plan", startPlanId: deriveStableUuid(seedNamespace, `plan/${sessionId}`), actorId: LOCAL_OPERATOR_ACTOR_ID } });
+  });
+  const byState = Object.fromEntries(seedStates.map(state => [state, 0]));
+  const todayByState = Object.fromEntries(liveStates.map(state => [state, 0]));
+  const byNotificationKind = Object.fromEntries(NotificationTriggerSchema.options.map(kind => [kind, 0]));
+  const sessionsByState: Record<string, number> = {};
+  for (const row of runs) {
+    if ("live" in row) todayByState[row.state] += 1;
+    else byState[row.state] += 1;
+  }
+  for (const { trigger } of notifications) byNotificationKind[trigger] += 1;
+  const sessions = live.sessions.map(planned => {
+    const workerId = sampleWorkerId(planned.session);
+    const run = runs.find(row => row.run.lifecycle.state === "running" && row.run.lifecycle.workerId === workerId);
+    sessionsByState[planned.state] = (sessionsByState[planned.state] ?? 0) + 1;
+    return { workerId, payload: sampleSession(planned, run?.run.envelope.runId) };
+  });
+  return { runs, notifications, batches, sessions, counts: { byState, todayByState, sessionsByState, byNotificationKind } };
+}
+
 async function seedCopy(profile: CopyProfile) {
   return withStoppedCopy(profile, async admission => {
-    const [{ seedIsolatedHistory }, { COPY_HISTORY_SEED_BUILD }, { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES }] = await Promise.all([
+    const [{ seedIsolatedHistory }, { COPY_HISTORY_SEED_BUILD }, { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES, workflowQueueCapabilities }] = await Promise.all([
       import("../../src/backend/storage/maintenance/isolated-history-import.js"),
       import("../../src/backend/storage/sqlite/isolated-history-store.js"),
       import("../../src/backend/app/registries/workflow-registry.js"),
     ]);
     const now = systemClock.now(), { profileId } = admission.profileBinding;
     const fromDay = dateAtOffset(Date.parse(`${searchPartitionDay(now)}T00:00:00Z`), 89);
-    const byState = Object.fromEntries(seedStates.map(state => [state, 0]));
-    const byNotificationKind = Object.fromEntries(NotificationTriggerSchema.options.map(kind => [kind, 0]));
-    const todayByState = Object.fromEntries(liveStates.map(state => [state, 0]));
-    const sessionsByState: Record<string, number> = {};
-    const descriptors = WORKFLOW_MODULES.map(({ descriptor }) => descriptor);
+    let counts: ReturnType<typeof planCopySeed>["counts"] | undefined;
     const report = await seedIsolatedHistory(admission, profile, { fromDay, build(existing) {
-      const live = planLiveRuns(now, descriptors);
-      const runs = [...planSeedRuns(now, existing, descriptors), ...live.slots].map(slot => seedRun(slot, profileId, now, COPY_HISTORY_SEED_BUILD));
-      const notifications = seedNotifications(runs, profileId, now);
-      for (const row of runs) {
-        if ("live" in row) todayByState[row.state] += 1;
-        else byState[row.state] += 1;
-      }
-      for (const { trigger } of notifications) byNotificationKind[trigger] += 1;
-      const sessions = live.sessions.map(planned => {
-        const workerId = sampleWorkerId(planned.session);
-        const run = runs.find(row => row.run.lifecycle.state === "running" && row.run.lifecycle.workerId === workerId);
-        sessionsByState[planned.state] = (sessionsByState[planned.state] ?? 0) + 1;
-        return { workerId, payload: sampleSession(planned, run?.run.envelope.runId) };
-      });
-      return { runs, notifications, sessions };
+      const plan = planCopySeed({ now, existing, modules: WORKFLOW_MODULES, capabilities: workflowQueueCapabilities, profileId, buildId: COPY_HISTORY_SEED_BUILD });
+      counts = plan.counts;
+      return plan;
     } });
     const skippedChildOnlyWorkflows = CHILD_ONLY_WORKFLOW_MODULES.map(({ descriptor }) => descriptor.id);
-    return { ...report, byState, todayByState, sessionsByState, byNotificationKind, skippedChildOnlyWorkflows };
+    return { ...report, ...counts, skippedChildOnlyWorkflows };
   });
 }
 

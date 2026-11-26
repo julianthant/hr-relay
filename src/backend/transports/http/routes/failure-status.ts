@@ -21,7 +21,7 @@ import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
-import { DashboardReadFailedError,DiagnosticBundleBytesMissingError,DiagnosticBundleCorruptError,LogDisplayRefusedError,LogIdentityRefusedError,ProjectionDegradedError,RequestIdentityRefusedError,SectionUnavailableError,TargetNotFoundError } from "../../../runs/commands/refusals.js";
+import { DashboardReadFailedError,DiagnosticBundleBytesMissingError,DiagnosticBundleCorruptError,LogDisplayRefusedError,LogIdentityRefusedError,ProjectionDegradedError,RequestIdentityRefusedError,SampleRunRefusedError,SectionUnavailableError,TargetNotFoundError } from "../../../runs/commands/refusals.js";
 import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
 
 export type WireError = z.infer<typeof WireErrorSchema>;
@@ -77,6 +77,7 @@ export function failureStatus(
   if (error instanceof TargetNotFoundError) {
     return { status: 404, body: wireError("TARGET_NOT_FOUND", error.message, false) };
   }
+  if (error instanceof SampleRunRefusedError) return { status: 409, body: wireError(error.code, error.message, false) };
   if (error instanceof RerunRefusedError) {
     return { status: error.code === "target-not-found" ? 404 : 409,
       body: { ...wireError("RERUN_REFUSED", error.message, false), refusalCode: error.code } };

@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { CommandResultSchema, type CommandRequest } from "../../../rules/commands/commands.js";
-import { WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
+import { SAMPLE_WORKER_ORDINAL_FLOOR, WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { IsoInstantSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 
 interface WorkerSlotPorts {
@@ -34,7 +34,8 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
         if (database.prepare("SELECT 1 FROM worker_pools WHERE workflow=?").get(request.workflow) === undefined) throw new Error("worker-slot-pool-not-admitted");
         const existing = active(request.workflow).find(slot => slot.poolIndex === request.poolIndex);
         if (existing !== undefined) return { result: existing, changes: 0 };
-        const ordinal = z.strictObject({ ordinal: z.number().int().positive() }).parse(database.prepare("SELECT COALESCE(MAX(ordinal),0)+1 AS ordinal FROM worker_slots").get()).ordinal;
+        const ordinal = z.strictObject({ ordinal: z.number().int().positive().max(SAMPLE_WORKER_ORDINAL_FLOOR) })
+          .parse(database.prepare("SELECT COALESCE(MAX(ordinal),0)+1 AS ordinal FROM worker_slots").get()).ordinal;
         const record = WorkerSlotRecordSchema.parse({ workerId: `${request.workflow}-worker-${ordinal}`, workflow: request.workflow, ordinal,
           poolIndex: request.poolIndex, paused: false, retiredAt: null, createdAt: request.now, updatedAt: request.now });
         database.prepare("INSERT INTO worker_slots(id,workflow,ordinal,pool_index,paused,retired_at,created_at,updated_at) VALUES(?,?,?,?,0,NULL,?,?)")

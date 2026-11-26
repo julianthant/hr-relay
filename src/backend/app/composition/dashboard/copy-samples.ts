@@ -1,17 +1,17 @@
 import { z } from "zod";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { RerunValuesResponse } from "../../../../models/dashboard/rerun-values.js";
-import { workerPoolMember, WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../models/run/worker-slot.js";
+import { SAMPLE_WORKER_ORDINAL_FLOOR, workerPoolMember, WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../models/run/worker-slot.js";
 import { WorkerBrowserObservationSchema } from "../../../../models/run/worker-control.js";
 import { CommandResultSchema, type CommandResult } from "../../../../rules/commands/commands.js";
 import { deriveStableUuid } from "../../../../rules/identity/identifiers.js";
 import { BrowserSystemIdSchema, CommandIdSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema, type BrowserSystemId, type IsoInstant } from "../../../../rules/identity/ids.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { CommandKernel } from "../../../runs/commands/command-kernel.js";
+import { SampleRunRefusedError } from "../../../runs/commands/refusals.js";
 import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 
-/** Sample workers take ordinals above this, so they never share an ID with a real worker. */
-export const SAMPLE_WORKER_ORDINAL_FLOOR = 9000;
+export { SAMPLE_WORKER_ORDINAL_FLOOR };
 const namespace = "relay-copy-seed-session";
 const fingerprint = sha256Hex(namespace);
 
@@ -24,6 +24,7 @@ export const CopySampleSessionSchema = z.strictObject({
 }).refine(session => (session.state === "busy") === (session.runId !== undefined), "a busy sample worker names its run");
 export type CopySampleSession = z.input<typeof CopySampleSessionSchema>;
 
+/** Real slot allocation stops at the floor (worker-slots.ts), so a sample ordinal above it never names a real slot. */
 export function sampleWorkerId(session: Readonly<{ workflow: string; ordinal: number }>) {
   return WorkerIdSchema.parse(`${session.workflow}-worker-${String(session.ordinal)}`);
 }
@@ -65,10 +66,14 @@ function parseStored(stored: StoredSamples) {
     if (sample.slot.workerId !== workerId) throw new Error("copy-sample-session-identity-mismatch");
     return sample;
   });
-  return { runIds: new Set(stored.runIds.map(id => RunIdSchema.parse(id))), sessions };
+  const runIds = new Set(stored.runIds.map(id => RunIdSchema.parse(id)));
+  if (sessions.some(sample => sample.session.runId !== undefined && !runIds.has(sample.session.runId))) throw new Error("copy-sample-session-run-unknown");
+  return { runIds, sessions };
 }
 
 const RunTargetSchema = z.object({ commandId: CommandIdSchema, target: z.object({ runId: RunIdSchema }) });
+const RerunPlanSourceSchema = z.object({ rerunSource: z.object({ runId: RunIdSchema }) });
+const WarningSourceSchema = z.object({ source: z.object({ runId: RunIdSchema }) });
 const WorkerTargetSchema = z.object({ commandId: CommandIdSchema, family: z.literal("worker-browser"), type: z.string(), target: z.object({ workerId: WorkerIdSchema }) });
 
 /**
@@ -98,10 +103,20 @@ export function createCopySamples(input: Readonly<{ stored: StoredSamples; realS
     const parsed = RunTargetSchema.safeParse(request);
     return parsed.success && runIds.has(parsed.data.target.runId) ? refused(parsed.data.commandId) : undefined;
   };
+  const refuseSource = (runId: string | undefined) => { if (runId !== undefined && runIds.has(runId)) throw new SampleRunRefusedError(); };
+  const planSource = (input: unknown) => RerunPlanSourceSchema.safeParse(input).data?.rerunSource.runId;
   return Object.freeze({
     slots: (): readonly WorkerSlotRecord[] => [...samples.values()].map(sample => sample.slot),
     views: (): readonly WorkerMemberView[] => [...samples.values()].map(sample => sample.view),
     leases: (workerId: string) => samples.get(WorkerIdSchema.parse(workerId))?.leases,
+    /** Refuses a command on a sample run before any resolver, write resolution or intake reads it. */
+    refuseRun: runCommand,
+    /** A rerun from a sample run is refused before its Start plan runs preflight or reads credentials. */
+    guardStartPlans: <S extends Readonly<{ prepare(input: unknown, signal: AbortSignal): Promise<void>; plan(input: unknown): unknown; previewWarnings(input: unknown): unknown }>>(service: S): S => Object.freeze({ ...service,
+      prepare: async (input: unknown, signal: AbortSignal) => { refuseSource(planSource(input)); return service.prepare(input, signal); },
+      plan: (input: unknown) => { refuseSource(planSource(input)); return service.plan(input); },
+      previewWarnings: (input: unknown) => { refuseSource(WarningSourceSchema.safeParse(input).data?.source.runId); return service.previewWarnings(input); },
+    }),
     rerunValues: (request: unknown): RerunValuesResponse | undefined => {
       const parsed = z.object({ runId: RunIdSchema }).safeParse(request);
       return parsed.success && runIds.has(parsed.data.runId) ? { state: "refused", code: "sample-run" } : undefined;

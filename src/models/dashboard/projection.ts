@@ -473,6 +473,8 @@ export const UnavailableWorkerCardWireSchema = z.strictObject({
 export const WorkerCardWireSchema = z.strictObject({
   member: WorkerPoolMemberSchema,
   workerId: WorkerIdSchema,
+  /** A copy profile's sample card: drawn on Sessions, never a pool member. */
+  sample: z.literal(true).optional(),
   /** The one workflow this worker claims for (ref execution-and-sessions ) — from its slot, never guessed. */
   workflowId: WorkflowIdSchema,
   state: z.enum(["running", "starting", "idle", "waiting", "paused", "failed"]),
@@ -830,8 +832,9 @@ export const DashboardDayWireSchema = z.strictObject({
   const cards = [...day.workerCards, ...day.unavailableWorkerCards ?? []];
   requireUnique(cards.map(({ workerId }) => workerId), "workerCards", context);
   requireUnique(day.workerAuthority.members.map(({ workerId }) => workerId), "workerAuthority", context);
-  if (day.workerAuthority.state === "present" && (day.workerAuthority.members.length !== cards.length
-    || day.workerAuthority.members.some(member => member.retiredAt !== null || !cards.some(card =>
+  const memberCards = cards.filter(card => !("sample" in card) || card.sample !== true);
+  if (day.workerAuthority.state === "present" && (day.workerAuthority.members.length !== memberCards.length
+    || day.workerAuthority.members.some(member => member.retiredAt !== null || !memberCards.some(card =>
       card.workerId === member.workerId
       && card.member.ordinal === member.ordinal && card.member.poolIndex === member.poolIndex && card.member.workflowId === member.workflow)))) {
     context.addIssue({ code: "custom", path: ["workerAuthority"], message: "available worker authority requires every exact standing member card" });

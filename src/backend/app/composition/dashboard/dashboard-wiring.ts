@@ -112,7 +112,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority, readLanes } = resources;
   const history = database.dashboardHistory();
   // A copy profile serves its sample runs and Sessions cards from the history archive; production never attaches one.
-  const samples = history === database ? undefined : createCopySamples({ stored: readCopySeedSamples(historyArchivePath(stateRoot)),
+  const samples = history === database ? undefined : createCopySamples({ stored: readCopySeedSamples(historyArchivePath(stateRoot), admission.profileBinding),
     realSlots: () => database.authority.workerSlots.list(), changed: () => { projection.reconcileWorkerAuthority(); } });
   const notificationReads = composeNotificationReads(database, history);
   const reader = history === database ? lifecycle : new RunRecordService({ database: history, clock, ids,
@@ -285,7 +285,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     startWorkerCapacity,
   });
 
-  const startPlans = createStartPlanService({
+  const nativeStartPlans = createStartPlanService({
     workbooks: { createReferenceCapture: () => workbookLibrary.createReferenceCapture() },
     preflight: runtimePreflight.admission,
     protectedSecrets,
@@ -299,6 +299,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     configSnapshotId,
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
+  const startPlans = samples?.guardStartPlans(nativeStartPlans) ?? nativeStartPlans;
 
   const notificationTarget = createNotificationTargetQuery({ get: history.authority.notifications.get, read: id => reader.read(id), failure: history.authority.failures.get,
     host: run => history.withAuthorityReadSnapshot(() => ocrHostRun(history.authority, run)),
@@ -418,6 +419,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     commands,
     resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority),
     commandJournal: database.authority.commands,
+    ...(samples === undefined ? {} : { refuseSampleCommand: samples.refuseRun }),
     protectedCommandAcceptedAt: (commandId) => protectedSettingsAuthority.acceptedAt(commandId),
     bulkCommandAcceptances: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) => {

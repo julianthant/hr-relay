@@ -80,3 +80,34 @@ it("refuses a sample worker that shares a real worker's identity", () => {
   const real = WorkerSlotRecordSchema.parse({ workerId, workflow: "person-lookup", ordinal: 9002, poolIndex: 1, paused: false, retiredAt: null, createdAt: startedAt, updatedAt: startedAt });
   assert.throws(() => fixture([real]), /copy-sample-worker-collision/u);
 });
+
+it("refuses a typed gate answer on a sample run before any gate resolver", () => {
+  const { samples } = fixture();
+  for (const type of ["answer-identity-gate", "answer-gate-arm"]) {
+    const answer = { ...envelope(), family: "gate", type, target: { runId: sampleRun, gateId: "review", expectedVersion: 1 }, payload: { arm: "approve" } };
+    assert.equal(samples.refuseRun(answer)?.code, "SAMPLE_RUN_REFUSED");
+  }
+  assert.equal(samples.refuseRun({ ...envelope(), family: "run", type: "pause", target: { runId: realRun, expectedVersion: 1 } }), undefined);
+});
+
+it("refuses a sample rerun source before its Start plan runs preflight or reads credentials", async () => {
+  const { samples } = fixture();
+  const calls: string[] = [];
+  const plans = samples.guardStartPlans({
+    prepare: async () => { calls.push("prepare"); }, plan: () => { calls.push("plan"); }, previewWarnings: () => { calls.push("warnings"); },
+  });
+  const sample = { workflowId: "person-lookup", rerunSource: { runId: sampleRun } };
+  await assert.rejects(plans.prepare(sample, new AbortController().signal), { name: "SampleRunRefusedError", message: "Sample run: nothing runs." });
+  assert.throws(() => plans.plan(sample), { name: "SampleRunRefusedError" });
+  assert.throws(() => plans.previewWarnings({ workflowId: "person-lookup", source: { runId: sampleRun } }), { name: "SampleRunRefusedError" });
+  assert.deepEqual(calls, []);
+  await plans.prepare({ workflowId: "person-lookup", rerunSource: { runId: realRun } }, new AbortController().signal);
+  plans.plan({ workflowId: "person-lookup" });
+  assert.deepEqual(calls, ["prepare", "plan"]);
+});
+
+it("refuses a card whose run is not seeded", () => {
+  const orphan = session(9010, "busy", { runId: realRun });
+  assert.throws(() => createCopySamples({ stored: { runIds: [sampleRun], sessions: [{ workerId: sampleWorkerId(orphan), payload: orphan }] },
+    realSlots: () => [], changed: () => undefined }), /copy-sample-session-run-unknown/u);
+});

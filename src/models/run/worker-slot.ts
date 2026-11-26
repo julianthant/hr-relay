@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { IsoInstantSchema, PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 
+/** Real slots take ordinals up to this; a copy's sample cards take the ones above, so the two never share an identity. */
+export const SAMPLE_WORKER_ORDINAL_FLOOR = 9000;
+
 /** A durable worker ordinal; `paused` is the operator's directive and survives a restart. */
 export const WorkerSlotRecordSchema = z.strictObject({
   workerId: WorkerIdSchema, workflow: WorkflowIdSchema, ordinal: PositiveIntSchema, poolIndex: PositiveIntSchema,

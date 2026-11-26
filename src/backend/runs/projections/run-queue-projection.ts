@@ -193,6 +193,8 @@ export interface RunQueueProjectionDeps {
     listGateResults: RunTimelineEvidenceSource["authority"]["listGateResults"];
 
     listWorkerSlots?(): readonly WorkerSlotRecord[];
+    /** A copy's sample cards: served on Sessions, never pool members, so Add and readback count only real slots. */
+    listSampleWorkerSlots?(): readonly WorkerSlotRecord[];
     listWorkerRuns?(workerId: string): readonly RunRecord[];
     /** The profile runtime's worker pool members; absent where no pool runs (then no worker card is served). */
     workerMembers?(): readonly WorkerMemberView[];
@@ -1073,7 +1075,8 @@ export class RunQueueProjection {
     const writeInFlight = built.claimedIds.map((id) => [id, this.#deps.authority.writeInFlight?.(id)]);
     const members = this.#deps.authority.listWorkerSlots?.();
     const startupPending = [...new Set(members?.map(member => member.workflow))].filter(workflowId => this.#deps.authority.workerStartupPending?.(workflowId) === true);
-    const fingerprint = JSON.stringify({ members, workers, writeInFlight, startupPending }) + built.storeJson;
+    const samples = this.#deps.authority.listSampleWorkerSlots?.();
+    const fingerprint = JSON.stringify({ members, samples, workers, writeInFlight, startupPending }) + built.storeJson;
     const batches = built.batches;
     if (!foreground || canonicalRuns !== undefined) this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
     return fingerprint;
@@ -1914,7 +1917,8 @@ export class RunQueueProjection {
       const views = this.#deps.authority.workerMembers?.();
       workerAuthority = members !== undefined && views !== undefined ? { state: "present", members: [...members] }
         : { state: "unavailable", members: [...(members ?? [])], reason: "Worker membership is unavailable." };
-      for (const member of members ?? []) {
+      const samples = new Set(this.#deps.authority.listSampleWorkerSlots?.() ?? []);
+      for (const member of [...members ?? [], ...samples]) {
         if (views === undefined) continue;
         // A card that cannot be built is served as unavailable; its siblings still render.
         try {
@@ -1925,7 +1929,8 @@ export class RunQueueProjection {
             ? this.#workerLastRun(member.workerId, readSharedRun, presentation.timeline) : undefined;
           const timelineRunId = runId ?? (lastRun?.state === "present" ? lastRun.runId : undefined);
           workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#foldState.workers.get(member.workerId)?.eventCount ?? 0,
-            startupPending: this.#deps.authority.workerStartupPending?.(member.workflow) === true,
+            startupPending: !samples.has(member) && this.#deps.authority.workerStartupPending?.(member.workflow) === true,
+            ...(samples.has(member) ? { sample: true } : {}),
             duoSystems: this.#deps.authority.heldDuoLeases?.(member.workerId).map(lease => lease.system),
             writeInFlight: runId => this.#deps.authority.writeInFlight?.(runId) === true,
             ...(lastRun === undefined ? {} : { lastRun }),
@@ -1936,6 +1941,8 @@ export class RunQueueProjection {
               return read.state === "present" && read.disposition === "live" ? read.run : undefined;
             } }));
         } catch (error) {
+          // A sample card is seeded data; one that cannot be built is a seed bug, never an unavailable member.
+          if (samples.has(member)) throw error;
           const reason = WorkerCardUnavailableReasonSchema.safeParse(error instanceof Error ? error.message : undefined);
           unavailableWorkerCards.push({ member: workerPoolMember(member), workerId: member.workerId,
             availability: { state: "unavailable", reason: reason.success ? reason.data : "worker-card-unavailable" } });

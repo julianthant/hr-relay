@@ -256,7 +256,12 @@ export function RunStartDialog({
     effects: {
       loadSource: async source => {
         const response = await launchService.openRerun({ runId: source.runId, expectedVersion: source.expectedVersion });
-        if (response.state === "refused") throw new Error(response.code === "sample-run" ? ERROR_CATALOG.SAMPLE_RUN_REFUSED.text : `Rerun unavailable: ${response.code}`);
+        if (response.state === "refused" && response.code === "sample-run") {
+          // A sample run never reruns: say so in a toast and close, never as the dialog's banner.
+          toast(runStartRefusalToast(ERROR_CATALOG.SAMPLE_RUN_REFUSED.text));
+          onOpenChange(false);
+        }
+        if (response.state === "refused") throw new Error(`Rerun unavailable: ${response.code}`);
         return response.snapshot;
       },
       restoreSource: restored => {
