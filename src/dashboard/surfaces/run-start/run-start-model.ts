@@ -253,15 +253,9 @@ export function inputRunFieldLabel(parser: InputParserSpec): string {
   return noun === "Kuali document numbers" ? "Kuali ID" : noun.charAt(0).toUpperCase() + noun.slice(1);
 }
 
-/** Name-tuple entries end at the declared delimiter or a new line, as the hint says. */
+/** Name-tuple entries end at the declared delimiter or a new line. */
 function splitTupleEntries(text: string, delimiter: string): string[] {
   return text.split(delimiter).flatMap(part => part.split("\n"));
-}
-
-export function inputRunDelimiterHint(parser: InputParserSpec): string {
-  if (parser.split.kind === "whole-text") return "Enter one value.";
-  const delimiters = parser.split.delimiters.map(delimiter => delimiter === "\n" ? "a new line" : delimiter === ";" ? "a semicolon" : delimiter === "," ? "a comma" : JSON.stringify(delimiter));
-  return `Separate values with ${delimiters.join(" or ")}.`;
 }
 
 /** State this dialog’s missing input surface, not an unsupported claim that all start routes refuse. */

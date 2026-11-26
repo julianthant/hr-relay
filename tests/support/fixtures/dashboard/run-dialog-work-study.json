@@ -52,7 +52,6 @@
             "value": "employee-ids",
             "label": "Employee IDs",
             "inputLabel": "Employee IDs",
-            "hint": "Separate values with a semicolon or Shift+Enter.",
             "placeholder": "10000001; 10000002",
             "defaults": [],
             "parser": {

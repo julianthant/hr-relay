@@ -1742,7 +1742,6 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.modes[].defaults[].value.text", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.modes[].display.missing", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.modes[].display.separator", origin: "repository-authored" },
-  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.modes[].hint", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.modes[].inputLabel", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.modes[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.modes[].parser.delimiter", origin: "repository-authored" },

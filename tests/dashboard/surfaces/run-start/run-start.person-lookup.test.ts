@@ -59,7 +59,6 @@ describe("served Person Lookup Run and Rerun", () => {
     supplied.typedInput.modeLabel = "Identity method";
     supplied.typedInput.modes[0].label = "By identity";
     supplied.typedInput.modes[0].inputLabel = "Identifiers to inspect";
-    supplied.typedInput.modes[0].hint = "Separate with a vertical bar.";
     supplied.typedInput.modes[0].placeholder = "10000001|10000002";
     supplied.typedInput.controls[0].label = "Cross-check CRM records";
     const parser = supplied.typedInput.modes[0].parser; assert.equal(parser.kind, "entries");
@@ -68,7 +67,7 @@ describe("served Person Lookup Run and Rerun", () => {
     const dialog = await h.openDialog(h.stubClient({ submitStartPlan: async input => { request = input; return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }),
       { workflows: [{ ...workflow, inputRun: { state: "present", surface: supplied } }], panelWorkflowId: descriptor.id });
     assert.match(dialog.text(), /Identity method/u); assert.match(dialog.text(), /By identity/u);
-    assert.match(dialog.text(), /Identifiers to inspect/u); assert.match(dialog.text(), /Separate with a vertical bar/u);
+    assert.match(dialog.text(), /Identifiers to inspect\./u);
     assert.match(dialog.text(), /Cross-check CRM records/u);
     assert.equal(dialog.typedInput().placeholder, "10000001|10000002");
     await dialog.type("10000001|10000002"); await dialog.press("Next"); await dialog.press("Start run");

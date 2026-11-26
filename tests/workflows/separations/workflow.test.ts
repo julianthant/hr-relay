@@ -105,7 +105,7 @@ describe("workflow definition public equivalence characterization", () => {
         ],
         surfaces: {
           inputRun: {
-            placeholder: "Enter Kuali document numbers separated by a semicolon or Shift+Enter (e.g. 4502; 4510)",
+            placeholder: "e.g. 4502; 4510",
             parser: {
               split: { kind: "delimited", delimiters: [";", "\n"] },
               rules: [{ when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" }],

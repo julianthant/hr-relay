@@ -31,7 +31,7 @@ import { FailureNotice } from "../../ds/primitives/failure-notice.js";
 import { RunList, RunListRow, RunSection } from "../../ds/primitives/run-list.js";
 import { RunChoice } from "./run-launch-layout.js";
 import { SpreadsheetPicker, SpreadsheetRow, SpreadsheetSection, type PickerOption, type SheetVersion, type SheetWorksheet } from "./run-spreadsheet-picker.js";
-import { typedInputMode, typedInputDefaults, inputRunFieldLabel, inputRunDelimiterHint, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft } from "./run-start-model.js";
+import { typedInputMode, typedInputDefaults, inputRunFieldLabel, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft } from "./run-start-model.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 /** the non-default run flags shown in the preview and confirmation */
 export function RunFlagChips({
@@ -371,7 +371,6 @@ export function TypedInput({
     : "";
   const entryText = (entries: RunInputPreview["entries"]) => entries.map(entry => entry.sourceText).join(separator);
   const inputLabel = mode?.inputLabel ?? inputRunFieldLabel(surface.parser);
-  const hint = (mode?.hint ?? inputRunDelimiterHint(surface.parser)).replace(/semicolon or a new line\./u, "semicolon or Shift+Enter.");
   const box = <Textarea key={workflowId} ref={inputRef} autoFocus={autoFocus} rows={4} value={text} disabled={locked} aria-label={inputLabel}
       placeholder={mode?.placeholder ?? (inputRunFieldLabel(surface.parser) === "Kuali ID" ? surface.placeholder.replaceAll("Kuali document numbers", "Kuali IDs") : surface.placeholder)}
       onChange={event => onText(event.target.value)}
@@ -404,7 +403,7 @@ export function TypedInput({
           </RunListRow>)}
       </RunList>}
     </>}
-    {rowInput === undefined ? <RunSection title="Input" description={`${inputLabel}. ${hint}`}>{box}{preview.problem !== null && preview.dateProblems === undefined && <p role="alert" className="m-0 text-caption text-ui-danger">{preview.problem}</p>}</RunSection>
+    {rowInput === undefined ? <RunSection title="Input" description={`${inputLabel}.`}>{box}{preview.problem !== null && preview.dateProblems === undefined && <p role="alert" className="m-0 text-caption text-ui-danger">{preview.problem}</p>}</RunSection>
       : <>{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>}
     {rowInput === undefined && preview.entries.length > 0 && <RunList title="Parsed input" label="Parsed input" aside={`${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`}>
       {preview.entries.map(entry => <RunListRow key={entry.index} title={<span className={cn("font-mono", preview.problem !== null && (preview.refusedIndexes === undefined || preview.refusedIndexes.includes(entry.index)) && "text-ui-danger")}>{entry.sourceText}</span>}>
