@@ -14,7 +14,7 @@ export type AnalyticsExport = "never" | "fail";
 export interface AnalyticsStoryOptions {
   readonly scenario?: ActivitySampleState;
   readonly export?: AnalyticsExport;
-  /** The report on screen is the sample period while the period asked for is read: the page holds it, marked Updating, and opens nothing. */
+  /** The report on screen is the sample period while the period asked for is read: the page holds it, with a spinner beside the date, and opens nothing. */
   readonly held?: true;
   /** A browse that is read and not yet answered. */
   readonly browsePending?: true;
@@ -29,6 +29,6 @@ export function analyticsStoryReport(options: AnalyticsStoryOptions = {}): Activ
     const browsed = useMemo(() => browse === null || data.state !== "loaded" || data.report.runs === undefined || browsePending ? undefined : activityDrilldown(data.report.runs, browse), [browse, data]);
     const exportCsv = useCallback((): ReturnType<ReturnType<ActivityReportHook>["exportCsv"]> =>
       options.export === "never" ? new Promise(() => undefined) : Promise.reject(new Error("The export did not complete.")), []);
-    return useMemo(() => ({ data, ...(browsed === undefined ? {} : { browse: browsed }), pending: held || browsePending, exportReady: !held && !browsePending, notice, exportCsv }), [data, browsed, exportCsv]);
+    return useMemo(() => ({ data, ...(browsed === undefined ? {} : { browse: browsed }), pending: held || browsePending, reading: held, exportReady: !held && !browsePending, notice, exportCsv }), [data, browsed, exportCsv]);
   };
 }

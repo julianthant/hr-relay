@@ -54,7 +54,7 @@ export function presentResult(result: AssistantResult, requestId: number, prompt
           { label: 'Expires', value: p.expiresAt },
         ] : p.effect === 'spreadsheet' ? [...p.facts, { label: 'Expires', value: p.expiresAt }]
         : [{ label: 'Action', value: p.action === 'pause' ? 'Pause' : p.action === 'resume' ? 'Resume' : 'Cancel' }, { label: 'Expires', value: p.expiresAt }],
-        effects: [start !== undefined ? 'Starts the reviewed plan after confirmation. No HR transaction is submitted.' : p.effect === 'spreadsheet' ? 'Changes only the Spreadsheets library.' : 'Changes only this run in the local queue.'], stopBefore: []
+        effects: [start !== undefined ? 'Starts the reviewed plan after confirmation. No HR transaction is submitted.' : p.effect === 'spreadsheet' ? 'Changes only the Spreadsheets library.' : 'Changes only this run in the local queue.'], stopBefore: start?.startPlan.stopBefore === undefined ? [] : [start.startPlan.stopBefore]
       } };
     }
   }

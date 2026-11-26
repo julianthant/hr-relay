@@ -706,7 +706,7 @@ it("hands the model a Separations dry-run proposal refused by readiness under it
   } finally { await w.f.cleanup(); }
 });
 
-it("logs an unclassified tool failure before answering that the assistant is unavailable", async () => {
+it("logs an unclassified tool failure under its tool name before answering that the assistant is unavailable", async () => {
   const events: Record<string, unknown>[] = [];
   const w = await world({ tools: db => separationsProposalTools(db, () => { throw new Error("PRIVATE_CANARY 1234"); }),
     options: { debugEvents: { emit(event) { events.push(event); } } } });
@@ -714,7 +714,7 @@ it("logs an unclassified tool failure before answering that the assistant is una
     w.script.push(call("propose_workflow_start", { workflow: "separations", entries: ["1234"] }));
     assert.deepEqual(await w.ask("Prepare a Separations dry run for 1234."),
       { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE });
-    assert.ok(events.some(event => event.code === "ASSISTANT_UNAVAILABLE" && event.area === "assistant-turn"));
+    assert.ok(events.some(event => event.code === "ASSISTANT_UNAVAILABLE" && event.area === "assistant-tool" && event.reason === "propose-workflow-start"));
     assert.ok(events.some(event => event.message === "Error"));
     assert.equal(JSON.stringify(events).includes("CANARY"), false);
   } finally { await w.f.cleanup(); }

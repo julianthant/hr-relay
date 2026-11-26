@@ -13,7 +13,7 @@ import { parseInputRunText, toRawSubmission } from "../../models/workflow/ingres
 import { CommandRequestSchema, StartCommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import type { Clock } from "../../rules/time/clock.js";
-import type { AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, runtimeNodeLabel, workflowDryRunSupport, type AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
 import type { DashboardCommandService } from "../runs/commands/command-service.js";
 import type { StartPlanService } from "../runs/commands/start-plan-service.js";
 import type { RunRecordService } from "../runs/lifecycle/run-record-service.js";
@@ -85,6 +85,15 @@ export function plannedRowDisplay(workflowId: string, input: unknown, sourceName
   }
   const document = z.object({ documentNumber: z.string().min(1).max(40) }).safeParse(bound.data.value);
   return document.success ? { kind: "document", documentNumber: document.data.documentNumber } : { kind: "request" };
+}
+/** The step a dry run stops before: the descriptor's first transaction, publication or delegation node. */
+export function dryRunStopStep(descriptor: AnyWorkflowDescriptor): string | undefined {
+  const support = workflowDryRunSupport(descriptor);
+  if (support.state !== "supported") return undefined;
+  const boundary = "firstTransactionNodeId" in support ? support.firstTransactionNodeId
+    : "firstPublicationNodeId" in support ? support.firstPublicationNodeId : support.firstDelegationNodeId;
+  const node = descriptorRuntimeNodes(descriptor).find(candidate => candidate.id === boundary);
+  return node === undefined ? undefined : runtimeNodeLabel(node);
 }
 const countLabel = (rows: readonly AssistantProposalRow[]) => {
   const kind = rows[0]?.display.kind, n = rows.length;
@@ -160,10 +169,11 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
     };
     const sourceName = (artifactId: string) => deps.database.authority.ocrReviews.source(artifactId)?.fileName;
     const rows = plan.planned.map(run => ({ title: run.title, ...(run.subtitle === undefined ? {} : { subtitle: run.subtitle }), display: plannedRowDisplay(plan.workflowId, run.input, sourceName) }));
+    const stopBefore = planned.dryRun ? dryRunStopStep(descriptor) : undefined;
     return issue(command, context, identity => ({ ...identity, label: `${input.source === "rerun" ? "Rerun" : "Start"} ${descriptor.label}`, targetLabel: countLabel(rows),
       effect: "workflow-start", source: input.source, workflowId: descriptor.id, dryRun, startPlan: {
         startPlanId: planned.startPlanId, workflowId: planned.workflowId, expectedVersion: planned.expectedVersion, expiresAt: planned.expiresAt, dryRun: planned.dryRun,
-        browserMode: planned.browserMode ?? request.browserMode, captureBrowserScreenshots: true, fingerprints: planned.fingerprints, planned: rows } }), {
+        browserMode: planned.browserMode ?? request.browserMode, captureBrowserScreenshots: true, fingerprints: planned.fingerprints, planned: rows, ...(stopBefore === undefined ? {} : { stopBefore }) } }), {
       planExpiresAt: plan.expiresAt,
       assertCurrent() {
         input.assertSource(); assertPlan(false);
