@@ -130,18 +130,15 @@ it("claims attachment bytes once, enforces owned reads and preserves accepted by
   assert.deepEqual(w.history.turnAttachments(input.messageId, LATER).map(file => [...file.bytes]), [[...bytes]]);
   assert.throws(() => w.history.turnAttachments(randomUUID(), LATER));
 });
-it("stores refused/uncertain accounting once and keeps literal decisions inert", () => {
+it("stores refused/uncertain accounting once and keeps an old card row inert", () => {
   const w = world(), id = w.create(), first = w.input(id), firstAttempt = w.history.accept(first);
   const usage = aggregateAssistantUsage([undefined]);
   assert.equal(w.history.settle(firstAttempt, { delivery: "refused", code: "ASSISTANT_UNAVAILABLE", usage }, LATER), 3);
   const next = w.input(id), nextAttempt = w.history.accept(next);
   w.history.settle(nextAttempt, { delivery: "delivery-unknown", usage }, LATER);
-  const actionId = randomUUID(), caption = { conversationId: id, actionId, messageId: randomUUID(), text: "Done: literal caption.", now: LATER };
-  w.history.appendDecision(caption); const generation = w.generation(); w.history.appendDecision(caption); assert.equal(w.generation(), generation);
   const rows = w.history.conversation(id, LATER)?.messages; assert.ok(rows);
-  assert.deepEqual(rows.map(row => row.delivery), ["refused", "delivery-unknown", "settled"]);
-  assert.deepEqual(rows[2]?.payload, { parts: parts(caption.text), recording: { kind: "unrecorded", usage: { state: "unrecorded" } } });
-  assert.equal(rows[2]?.kind, "decision"); assert.equal(rows[2]?.actionId, actionId);
+  assert.deepEqual(rows.map(row => row.delivery), ["refused", "delivery-unknown"]);
+  assert.equal("appendDecision" in w.history, false, "no Confirm decision is ever recorded");
   const nextId = w.create(), accepted = w.input(nextId), acceptedAttempt = w.history.accept(accepted);
   w.history.settle(acceptedAttempt, { delivery: "answered", usage: aggregateAssistantUsage([]),
     reply: { id: randomUUID(), kind: "proposal", actionId: randomUUID(), parts: [{ kind: "text", runs: [

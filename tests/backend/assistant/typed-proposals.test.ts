@@ -23,7 +23,7 @@ function world() {
   const storage = assistantM1HistoryFixture({ now: T, acceptedAt: T }), f = typedProposalFixture(storage, T), chat = storage.create(), table = createAssistantReferenceTable(1);
   const context = (): AssistantToolContext => ({ signal: new AbortController().signal, references: table, actorId: "local-operator", conversationId: chat, operatorText: "x",
     assertCurrent() {}, assertRetainedCurrent() {} });
-  const tool = (name: string) => { const found = f.owner.plugin.tools.find(entry => entry.name === name); assert.ok(found?.kind === "typed-proposal"); return found; };
+  const tool = (name: string) => { const found = f.owner.plugin.tools.find(entry => entry.name === name); assert.ok(found?.kind === "proposal"); return found; };
   const accept = (proposalAnswer: unknown = null) => {
     const accepted = storage.history.accept({ ...storage.input(chat), proposalAnswer: AssistantAcceptedTurnSchema.shape.proposalAnswer.parse(proposalAnswer) });
     assert.ok(accepted.state === "accepted"); return accepted;

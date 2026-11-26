@@ -10,7 +10,6 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
   "/api/v1/storage/run-history/clear": "operatorMutationIngressGuard",
   "/api/v1/storage/run-history/result": "operatorMutationIngressGuard",
   "/api/v1/assistant/respond": "operatorMutationIngressGuard",
-  "/api/v1/assistant/action": "operatorMutationIngressGuard",
   "/api/v1/assistant/history": "operatorMutationIngressGuard",
   "/api/v1/assistant/conversations/:conversationId/attachments": "operatorOpaqueIngressGuard",
   "/api/v1/debug/errors": "operatorMutationIngressGuard",
