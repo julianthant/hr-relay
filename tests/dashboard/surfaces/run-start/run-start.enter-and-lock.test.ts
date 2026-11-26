@@ -422,7 +422,7 @@ describe("what a rerun keeps of its source", () => {
     const { dialog, plans } = await openOneClick({}, { workflow: pdf, source });
     await settleLong();
     assert.equal(dialog.stage(), "Steps");
-    assert.deepEqual(plans, []);
+    assert.equal(plans.length, 0);
     assert.equal(dialog.disabled("Continue"), false);
     await dialog.press("Continue");
     await settleAll();
