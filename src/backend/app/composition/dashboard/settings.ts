@@ -2,7 +2,7 @@ import { z } from "zod";
 import { defineLaneRead, type DashboardReadLanes, type LaneReadDefinition } from "../../../storage/sqlite/dashboard-read-host.js";
 import { createSettingsApplicationExecutor } from "../../../runs/commands/settings-service.js";
 import { selectActiveRunSettings } from "../../../runs/settings/run-settings.js";
-import { activeSettingsConfig, activeSettingsRuntimeIdentity, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings, settingsRuntimeStatus, type ProtectedSettingsRuntimeSnapshot } from "../../../runtime/settings/settings-runtime.js";
+import { activeSettingsConfig, activeSettingsRuntimeIdentity, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings, settingsRuntimeStatusOf, type ProtectedSettingsRuntimeSnapshot } from "../../../runtime/settings/settings-runtime.js";
 import type { createCredentialStore } from "../../../storage/configuration/credential-store.js";
 import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { createNativePathPicker } from "../../../transports/http/native-path-picker.js";
@@ -75,6 +75,8 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   resolveSettings?: Parameters<typeof createSettingsApplicationExecutor>[0];
   /** Seam for the settings store-part lane read and the stream row. */
   readLanes?: Pick<DashboardReadLanes, "read">;
+  /** The profile's browser-root custody check, run on main for each lane resolution at every editor read. */
+  assertBrowserRoot?: (path: string) => void;
 }) {
   const { database, clock, hostFacts } = input;
   const reader = createSettingsRuntimeReader(input);
@@ -114,21 +116,28 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
     return body;
   };
   // Reused while the store part, the protected facts and the fiscal year are unchanged; any of them changing builds again.
-  let last: { key: string; document: EditableSettingsWire } | undefined;
+  let last: { key: string; browserRoots: readonly string[]; document: EditableSettingsWire } | undefined;
+  // The root on disk can stop qualifying after startup, so a reused document is checked again.
+  const assertBrowserRoots = (roots: readonly string[]) => { for (const root of roots) input.assertBrowserRoot?.(root); };
   const editable = async (): Promise<EditableSettingsWire> => {
     const body = await laneRead(settingsStorePartRead, { hostFacts, ...(input.runtimeStoragePair === undefined ? {} : { runtimeStoragePair: input.runtimeStoragePair }) });
     const protectedFacts = readProtectedFacts(routes.settingsEditor.protectedSettings);
     const key = canonicalJsonStringify({ body, protectedFacts: protectedFacts.state === "read" ? protectedFacts.facts : null, fiscalYear: clock.fiscalYear() });
-    if (last?.key === key) return last.document;
+    if (last?.key === key) {
+      assertBrowserRoots(last.browserRoots);
+      return last.document;
+    }
     const { record, active, activeConfig, activePreferences, resolutions } = SettingsStorePartSchema.parse(JSON.parse(body));
+    const browserRoots = [resolutions.record.config.paths.browserProfileRoot, resolutions.defaults.config.paths.browserProfileRoot];
+    assertBrowserRoots(browserRoots);
     const document = buildSettingsEditor({ ...routes.settingsEditor, resolutions,
-      settings: { read: () => ({ record, runtimeStatus: settingsRuntimeStatus(input, record, active), activeConfig, activePreferences }) },
+      settings: { read: () => ({ record, runtimeStatus: settingsRuntimeStatusOf(record, active, resolutions.record.fingerprint), activeConfig, activePreferences }) },
       // The editor shows an unreadable protected store as unknown; the read's own error is what it sees.
       protectedSettings: { read: () => {
         if (protectedFacts.state === "unreadable") throw protectedFacts.error;
         return protectedFacts.facts;
       } } });
-    last = { key, document };
+    last = { key, browserRoots, document };
     return document;
   };
   return { routes: { ...routes, settingsLane: { editable, facts: () => laneRead(settingsFactsRead, {}) } }, editable,

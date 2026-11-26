@@ -121,8 +121,12 @@ export function createSettingsRuntimeReader(input: Readonly<{
 /** The saved record against the active identity. Pure, so a store part read elsewhere resolves here with the host's facts. */
 export function settingsRuntimeStatus(input: Readonly<{ hostFacts: HostConfigFacts; clock: Clock; runtimeStoragePair?: AdmittedRuntimeStoragePair }>,
   record: SettingsFileRecord, active: SettingsRuntimeIdentity): SettingsRuntimeStatus {
-  const resolved = resolveConfigWithProvenance(record.settings, input.hostFacts, input.clock, input.runtimeStoragePair);
-  const persisted = settingsRuntimeIdentity(record, resolved.fingerprint);
+  return settingsRuntimeStatusOf(record, active, resolveConfigWithProvenance(record.settings, input.hostFacts, input.clock, input.runtimeStoragePair).fingerprint);
+}
+
+/** The saved record against the active identity, given the record's resolved fingerprint. */
+export function settingsRuntimeStatusOf(record: SettingsFileRecord, active: SettingsRuntimeIdentity, resolvedFingerprint: string): SettingsRuntimeStatus {
+  const persisted = settingsRuntimeIdentity(record, resolvedFingerprint);
   return SettingsRuntimeStatusSchema.parse(canonicalJsonStringify(persisted) === canonicalJsonStringify(active)
     ? { state: "current", identity: active } : { state: "restart-required", active, persisted });
 }

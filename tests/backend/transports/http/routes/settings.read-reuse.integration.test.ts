@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { Hono } from "hono";
 import { it, vi } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
 import { createComposedDashboardReadHost } from "../../../../../src/backend/app/composition/dashboard/runtime-resources.js";
 import { composeSettings } from "../../../../../src/backend/app/composition/dashboard/settings.js";
 import type { DashboardReadLanes } from "../../../../../src/backend/storage/sqlite/dashboard-read-host.js";
+import { assertRetainedProfileBrowserRoot } from "../../../../../src/backend/storage/maintenance/profile-custody.js";
 import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
 import { activeSettingsRuntimeIdentity } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
@@ -161,6 +164,37 @@ it("serves both Settings GETs from the navigation lane, rebuilding the editor wh
       await readEditable();
       assert.equal(storeParts[1], true, "an unchanged store part is reused");
     }
+  } finally {
+    await lanes.close();
+    await fixture.close();
+  }
+});
+
+it("checks the browser root's custody at every lane-built editor read, so a root that stops qualifying after startup is refused", async () => {
+  const clock = manualClock(new Date(NOW));
+  const fixture = await openBoundDatabaseFixture("settings-lane-browser-root", clock);
+  const { database } = fixture;
+  const lanes = createComposedDashboardReadHost({ admission: fixture.profile.admission, database, clock });
+  try {
+    const { admission } = fixture.profile;
+    const runtimeStoragePair = { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot };
+    seedInitialSettingsRuntimeConfig(database, clock, runtimeStoragePair);
+    const { routes } = composeSettings({ database, clock, environment: {}, hostFacts: { primaryDisplay: null }, readLanes: lanes, runtimeStoragePair,
+      active: activeSettingsRuntimeIdentity, credentials: createCredentialStore({ stateRoot: fixture.stateRoot }),
+      assertBrowserRoot: path => { assertRetainedProfileBrowserRoot(admission, path); } });
+    const app: DashboardApp = new Hono();
+    app.onError((error, c) => c.json({ message: error.message }, 500));
+    registerSettingsRoutes(app, routes);
+    const read = () => app.request("/api/v1/settings/editable");
+    assert.equal((await read()).status, 200);
+    assert.equal((await read()).status, 200, "the reused document passes while the root qualifies");
+
+    const root = join(admission.stateRoot, "browsers");
+    rmSync(root, { recursive: true, force: true });
+    writeFileSync(root, "", { mode: 0o600 });
+    assert.equal((await read()).status, 500, "a root that is no longer a private directory is refused, though the store part is unchanged");
+    rmSync(root);
+    assert.equal((await read()).status, 200);
   } finally {
     await lanes.close();
     await fixture.close();
