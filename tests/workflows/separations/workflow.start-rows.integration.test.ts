@@ -29,7 +29,11 @@ it("takes a typed receipt for Submit termination and nothing for the steps done 
   ]));
   assert.deepEqual(typed?.map(({ step }) => step), ["pending-termination", "ucpath-transaction", "kuali-finalization"]);
   assert.throws(
-    () => resolveStartStepOmissions(descriptor, steps, StepOmissionsSchema.parse([{ step: "ucpath-transaction", facts: { transactionNumber: "123", approvalStatus: "Approved" } }])),
+    () => resolveStartStepOmissions(descriptor, steps, StepOmissionsSchema.parse([
+      { step: "pending-termination", facts: {} },
+      { step: "ucpath-transaction", facts: { transactionNumber: "123", approvalStatus: "Approved" } },
+      { step: "kuali-finalization", facts: {} },
+    ])),
     (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "facts-invalid",
   );
 });
