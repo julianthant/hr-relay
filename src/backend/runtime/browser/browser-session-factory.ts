@@ -520,7 +520,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                   assertCurrent();
                   if (!after.authenticated || pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
                 },
-                mask: () => page.frames().flatMap(frame => [frame.locator(`[${CAPTURE_MASK_ATTRIBUTE}]`), frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)]),
+                mask: frame => [frame.locator(`[${CAPTURE_MASK_ATTRIBUTE}]`), frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)],
                 assertSafe: async () => {
                   assertCurrent();
                   if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
@@ -710,7 +710,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     try {
       context = await this.#launcher.launch({ profileDirectory, ...(config.features.duoWebAuthn ? {} : { nativeOnly: true }), headless: browserMode === "headless",
         extensionDirectory, acceptDownloads, downloadsPath: config.paths.downloadsDir,
-        viewport: { width: config.display.screenWidth, height: config.display.screenHeight },
+        viewport: browserMode === "headless" ? { width: config.display.screenWidth, height: config.display.screenHeight } : null,
         ...(timeoutMs === undefined ? {} : { timeoutMs }) });
       launch.opened();
       return context;

@@ -5,7 +5,8 @@ import { validateNativeLifecycleRequest } from "../storage/sqlite/native-lifecyc
 import { CanonicalWorkerTransitionRequestSchema } from "../storage/sqlite/run-store-contracts.js";
 import { parseCanonicalInputSnapshot } from "../../models/workflow/canonical-input.js";
 import { z } from "zod";
-import type { AuthorityDatabase, AuthorityRepositories } from "../storage/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../storage/sqlite/authority-repositories.js";
 import { RunWorkbookSnapshotReferenceSchema, RunWorkbookNamedReferenceSchema, CapturedWorkbookWriteSourceSchema, parseRunWorkbookReference, encodeSavedWorkbook, type WorkbookOperationReceipt, type WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import type { RunDecisionWire } from "../../models/dashboard/run-decision.js";
@@ -71,6 +72,10 @@ const onboardingInputBinding = Object.freeze({
   },
 });
 const ocrInputBinding = Object.freeze({
+  sourceToIngress(source: unknown) {
+    if (source === null || typeof source !== "object" || Array.isArray(source)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    return { ...source, roster: null };
+  },
   assertSubmission(input: unknown) {
     if (input !== null && typeof input === "object" && Reflect.get(input, "roster") != null) {
       throw new Error("OCR roster values are captured by Relay; caller-supplied roster input is invalid");

@@ -1,6 +1,8 @@
 import { GATE_PARK_WATCH_MS } from "./timeline.js";
+import { startStartupObservation } from "./startup-observation.js";
 import { createNotificationObserver } from "../../../runs/notifications/observation.js";
-import { readNotificationSources } from "./notification-sources.js";
+import { createLaneNotificationSourceReader, NOTIFICATION_SOURCE_TABLES, readNotificationSources } from "./notification-sources.js";
+import type { DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
 import { createNotificationHealthObserver, readNotificationHealth } from "./notification-health.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import type { Clock } from "../../../../rules/time/clock.js";
@@ -11,7 +13,7 @@ import {
 
 import {
   AuthorityDatabase,
-} from "../../../storage/sqlite/index.js";
+} from "../../../storage/sqlite/authority-database.js";
 import { createNotificationInbox } from "../../../runs/notifications/inbox.js";
 import { createBackfillGapNotifier } from "../../../runs/notifications/backfill-gap.js";
 import {
@@ -41,7 +43,8 @@ export function readGateParks(database: AuthorityDatabase, reader: TrustRunReade
   }));
 }
 
-export function createTrustNotifications(input: { admission?: RuntimeAdmission; database: AuthorityDatabase; clock: Clock; ids: IdFactory; reader: Pick<RunRecordService, "read" | "list">; stateRoot?: string }) {
+export function createTrustNotifications(input: { admission?: RuntimeAdmission; database: AuthorityDatabase; clock: Clock; ids: IdFactory;
+  reader: Pick<RunRecordService, "read" | "list">; readLanes?: Pick<DashboardReadLanes, "read">; stateRoot?: string }) {
   const { database, clock, ids, stateRoot } = input;
   const inbox = createNotificationInbox({ authority: database, clock, ids, runReader: input.reader, actorId: LOCAL_OPERATOR_ACTOR_ID });
   // A stop ends a backup inspection still running in the health pass instead of waiting for it.
@@ -49,7 +52,8 @@ export function createTrustNotifications(input: { admission?: RuntimeAdmission; 
   const observeHealth = stateRoot === undefined ? undefined : createNotificationHealthObserver({ database, clock, inbox, signal,
     read: () => readNotificationHealth({ admission: requireRuntimeAdmission(input.admission), database, clock, reader: input.reader, stateRoot, signal }) });
   let healthDueAt = Infinity;
-  const observation = createNotificationObserver({ inbox, read: () => readNotificationSources(database, input.reader),
+  const read = input.readLanes === undefined ? () => readNotificationSources(database, input.reader) : createLaneNotificationSourceReader(input.readLanes);
+  const observation = createNotificationObserver({ inbox, read,
     health: async () => {
       if (observeHealth === undefined) return;
       await observeHealth();
@@ -59,14 +63,15 @@ export function createTrustNotifications(input: { admission?: RuntimeAdmission; 
       healthDueAt = Date.parse(sample.observedAt) + 60_000;
     },
   });
-  const observer = Object.freeze({ ...observation, healthDueAt: () => healthDueAt, async stop() { healthStop.abort(); await observation.stop(); } });
+  const observer = Object.freeze({ ...observation, ...(input.readLanes === undefined ? {} : { sourceReadOnLane: true }),
+    healthDueAt: () => healthDueAt, async stop() { healthStop.abort(); await observation.stop(); } });
   return { observer, inbox, backfillGapNotifier: createBackfillGapNotifier({ inbox }), gateParkNotifier: createGateParkNotifier({ inbox }), readParks: () => readGateParks(database, input.reader) };
 }
 
 export function startNotificationPolling(database: AuthorityDatabase, clock: Clock, observation: ReturnType<typeof createTrustNotifications>["observer"]) {
-  const revision = database.trackAuthorityTables(["runs", "deleted_runs", "run_failures", "run_receipts", "notifications"], "poll-hint");
-  let observed = revision();
-  const changed = () => {
+  const revision = observation.sourceReadOnLane === true ? undefined : database.trackAuthorityTables(NOTIFICATION_SOURCE_TABLES, "poll-hint");
+  let observed = revision?.();
+  const changed = revision === undefined ? undefined : () => {
     const current = revision();
     const dirty = current === undefined || current !== observed;
     observed = current;
@@ -74,16 +79,18 @@ export function startNotificationPolling(database: AuthorityDatabase, clock: Clo
   };
   let safetyAt = Infinity;
   let healthDueAt = Infinity;
-  const safetyPass = () => {
+  const safetyPass = (initial = false) => {
+    const startup = initial ? startStartupObservation("notification-observer") : undefined;
     safetyAt = Infinity;
     healthDueAt = Infinity;
     void observation.observe().then(() => {
       const failed = observation.status().state === "failed";
+      startup?.(failed ? "failed" : "completed");
       safetyAt = clock.monotonicMs() + (failed ? GATE_PARK_WATCH_MS : 60_000);
       if (!failed) healthDueAt = observation.healthDueAt();
     });
   };
-  safetyPass();
+  safetyPass(true);
   const timer = setInterval(() => {
     if (clock.monotonicMs() >= safetyAt || clock.nowMs() >= healthDueAt) safetyPass();
     else void observation.observeSources(changed);

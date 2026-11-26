@@ -25,7 +25,7 @@ export class DashboardPage {
     this.queue = page.getByRole("region", { name: "Queue" });
     this.runPanel = page.getByRole("region", { name: "Selected run logs" });
     // An empty queue offers a second Start run in its body; the toolbar's is always present.
-    this.startRunButton = page.getByRole("group", { name: "Action panel controls" }).getByRole("button", { name: "Start run", exact: true });
+    this.startRunButton = page.locator('[aria-label="Queue header"]').getByRole("button", { name: "Start run", exact: true });
     this.dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     this.toasts = page.locator('[data-slot="toast"]');
     // A running run arms the leave-page prompt; a test that reloads or navigates away means to leave.
@@ -99,14 +99,13 @@ export class DashboardPage {
     await expect(this.dialog.getByRole("heading", { name: "Start run" })).toBeVisible();
   }
 
-  /** Fills the Work-Study Start run dialog for one employee ID and stops on the Checks stage, ready to press Start. */
+  /** Fills the Work-Study Start run dialog for one employee ID and stops on the Start stage, ready to press Start. */
   async fillStartDialog(eid: string): Promise<void> {
     await this.dialog.locator("textarea").fill(eid);
     await this.dialog.getByRole("button", { name: "Choose effective date" }).click();
     await this.page.getByRole("dialog").last().getByRole("gridcell", { name: /16/ }).first().click();
     await this.dialog.getByRole("button", { name: "Continue" }).click();
-    await expect(this.dialog.getByRole("region", { name: "Run", exact: true })).toBeVisible();
-    await this.dialog.getByRole("button", { name: "Continue" }).click();
+    await expect(this.dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
     await expect(this.dialog.getByText("Ready to start")).toBeVisible();
   }
 

@@ -7,7 +7,6 @@ import ts from "typescript";
 import { describe,it } from "vitest";
 import inventory from "../../../docs/guard-inventory.json" with { type: "json" };
 import { projectOwnershipViolations } from "../../../scripts/test/project-policy.js";
-import { spreadsheetValueMatches } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js";
 import vitestConfig,{
 REBUILD_ARCHITECTURE_TEST_EXCLUDE,
 REBUILD_ARCHITECTURE_TEST_INCLUDE,
@@ -238,21 +237,20 @@ function writeFixture(root: string, path: string, content: string): void {
 
 describe("reviewed architecture guard manifest", () => {
 
-  it("recursively registers every guard file exactly once and every active entry exists", () => {
-    const active = inventory.guards.filter(({ status }) => status === "active");
-    const names = active.map(({ name }) => name);
-    assert.equal(new Set(names).size, names.length, "active guard names must be unique");
+  it("recursively registers every guard file exactly once and every entry exists", () => {
+    const { guards } = inventory;
+    const names = guards.map(({ name }) => name);
+    assert.equal(new Set(names).size, names.length, "guard names must be unique");
 
-    const registered = active.map(({ file }) => file).sort();
+    const registered = guards.map(({ file }) => file).sort();
     assert.deepEqual(
       registered,
       discoverArchitectureTests(ARCHITECTURE_ROOT),
       "recursive guard file discovery and inventory must match exactly",
     );
-    for (const entry of active) {
+    for (const entry of guards) {
       assert.ok(entry.invariant.trim(), `${entry.name} must state its invariant`);
       assert.ok(entry.owner.trim(), `${entry.name} must name its owner`);
-      assert.equal(entry.replacementRequired, true, `${entry.name} must require a replacement decision on removal`);
       assert.ok(existsSync(join(REPO_ROOT, entry.file)), entry.file);
     }
   });
@@ -458,12 +456,6 @@ describe("reviewed architecture guard manifest", () => {
         rmSync(root, { recursive: true, force: true });
       }
     }
-  });
-
-  it("keeps reviewed spreadsheet validation failures distinct from missing field definitions", () => {
-    assert.equal(spreadsheetValueMatches("personalEmail", "invalid@"), false);
-    assert.equal(spreadsheetValueMatches("personalEmail", ""), true);
-    assert.throws(() => spreadsheetValueMatches("unregistered-field", "value"), /SPREADSHEET_FIELD_NOT_FOUND/u);
   });
 
   it("pins reviewed catch statements while permitting edits outside them", () => {

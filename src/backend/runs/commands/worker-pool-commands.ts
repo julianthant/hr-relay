@@ -7,7 +7,8 @@ import { type CommandRequest, type CommandResult, CommandResultSchema, type Park
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import { WorkerSetupRefusedError } from "../../runtime/workers/worker-pool.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateDescendantHome } from "../../storage/sqlite/delegation-authority.js";
 import { applyWorkerPoolPlan, WorkerPoolPlanVersionConflict } from "../../storage/sqlite/worker-slots.js";
@@ -115,10 +116,11 @@ function auditWorkerCommand(dependencies: CommandKernelDependencies, repositorie
 
 /** A pool refusal after admission is the command's recorded outcome; any other failure stays a structured throw. */
 function workerEffectRefusal(request: WorkerBrowserCommand, error: unknown): CommandApplication | undefined {
-  const code = error instanceof Error && "code" in error && typeof error.code === "string" && error.code.startsWith("WORKER_") ? error.code
+  const message = error instanceof WorkerSetupRefusedError ? error.message
+    : error instanceof Error && "code" in error && typeof error.code === "string" && error.code.startsWith("WORKER_") ? error.code
     : error instanceof WorkerControlRefusal ? error.message : undefined;
-  if (code === undefined) return undefined;
-  return { result: CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: code }), versionChanges: [], affectedDependencyIds: [] };
+  if (message === undefined) return undefined;
+  return { result: CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message }), versionChanges: [], affectedDependencyIds: [] };
 }
 
 /**
@@ -220,9 +222,14 @@ export async function executeWorkerPoolCommand(
       const member = transact(repositories => requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId));
       requireMemberFence(pool, request);
       return await settle(() => pool.remove(member), repositories => {
-        const retiredPool = repositories.workerPools.retireMember({ workerId: member.workerId, requestedBy: request.requestedBy, now });
+        const current = repositories.workerPools.get(member.workflowId);
+        if (current === undefined) throw new Error("worker-pool-missing-for-active-slot");
+        const planned = repositories.workerPools.plan({ workflow: member.workflowId, expectedVersion: current.version,
+          desiredWorkers: Math.max(0, current.desiredWorkers - 1), requestedBy: request.requestedBy, now });
+        if (planned.state !== "applied") throw new Error("worker-pool-plan-conflict-in-transaction");
+        repositories.workerSlots.retire({ workerId: member.workerId, now });
         const target = { family: "worker-pool" as const, workflowId: member.workflowId };
-        return applied(request, [target, workerTarget(member.workerId)], [{ target, before: retiredPool.version - 1, after: retiredPool.version }]);
+        return applied(request, [target, workerTarget(member.workerId)], [{ target, before: current.version, after: planned.pool.version }]);
       });
     }
     case "stop-worker": {

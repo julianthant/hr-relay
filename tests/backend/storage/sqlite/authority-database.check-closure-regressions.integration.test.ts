@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { readAuthorityChanges, validateAuthorityChanges, validateAuthorityStore } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { readAuthorityChanges, validateAuthorityChanges, validateAuthorityStore } from "../../../../src/backend/storage/sqlite/authority-change-admission.js";
 import type { ChangeEntry } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import { dropGuardTriggers, logCursor } from "../../../support/fixtures/storage/raw-authority-writer.js";
 import type { AuthorityTableName } from "../../../../src/models/config/authority.js";
@@ -66,6 +66,22 @@ describe("authority check closure regressions", () => {
     expect(refusal(() => validateAuthorityChanges(raw, [], []))).toBeUndefined();
   });
 
+  it("reuses validated command outcomes for the audit link in one current snapshot", () => {
+    const prepare = vi.spyOn(raw, "prepare");
+    try {
+      expect(refusal(() => validateAuthorityStore(raw))).toBeUndefined();
+      expect(prepare.mock.calls.map(([sql]) => sql)).toContain("SELECT outcome_json FROM commands WHERE id=?");
+    } finally { prepare.mockRestore(); }
+  });
+
+  it("refuses invalid command identity even when its audit outcome still matches", () => {
+    const command = one("SELECT id FROM commands WHERE family='run-lifecycle' AND outcome_json IS NOT NULL ORDER BY id LIMIT 1");
+    edited(() => {
+      raw.prepare("UPDATE commands SET request_digest=? WHERE id=?").run("0".repeat(64), text(command.id));
+      expect(refusal(() => validateAuthorityStore(raw))).toContain("command-row-identity-mismatch");
+    });
+  });
+
   it("refuses a settled command whose outcome names another audit", () => {
     // A command that targets no run and whose audit names none, so only the command key reaches the audit row.
     const target = one(`SELECT c.id AS command_id, a.id AS audit_id FROM commands c JOIN command_audits a ON a.command_id=c.id
@@ -78,7 +94,7 @@ describe("authority check closure regressions", () => {
     edited(logged => {
       const outcome = RowSchema.parse(JSON.parse(text(command.outcome_json)));
       raw.prepare("UPDATE commands SET outcome_json=? WHERE id=?").run(JSON.stringify({ ...outcome, auditId: otherAuditId }), text(command.id));
-      expect(refusal(() => validateAuthorityStore(raw))).toBeDefined();
+      expect(refusal(() => validateAuthorityStore(raw))).toContain("command-audit-settlement-mismatch");
       expect(refusal(() => validateAuthorityChanges(raw, logged(), []))).toContain("command-audit-settlement-mismatch");
     });
   });

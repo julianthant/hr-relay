@@ -23,7 +23,7 @@ import {
   type CrossDateSearchResult,
 } from "../../../models/dashboard/search.js";
 import { ActivityReportWireSchema } from "../../../models/dashboard/activity.js";
-import type { OperatorXlsxExportRepository } from "../../storage/sqlite/authority-database.js";
+import type { OperatorXlsxExportRepository } from "../../storage/sqlite/authority-repositories.js";
 import type { CrossDateSearchQueryService } from "../queries/search.js";
 import { composeOperatorXlsxWorkbook } from "./operator-xlsx-workbook.js";
 
@@ -41,17 +41,26 @@ export interface OperatorXlsxExportService {
   export(requestedBy: ActorId, input: unknown): Promise<OperatorXlsxDownload>;
 }
 
-export interface OperatorXlsxExportServiceDependencies {
+interface OperatorXlsxExportMainDependencies {
   readonly clock: Clock;
   readonly ids: Pick<IdFactory, "uuid">;
   readonly sourceIdentity: string;
   readonly artifacts: ContentAddressedArtifactWriter;
   readonly authority: OperatorXlsxExportRepository;
-  readonly search: CrossDateSearchQueryService;
-  readonly withSearchSnapshot: <Result>(read: () => Result) => Result;
   /** Reserved for the Activity arm; search composition must never read it. */
   readonly activityReport: (from: string, to: string, token: string) => ActivityReportSelection;
 }
+
+type SearchSelection = Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "search" }>;
+interface SearchDocumentDependencies {
+  readonly sourceIdentity: string;
+  readonly search: CrossDateSearchQueryService;
+  readonly withSearchSnapshot: <Result>(read: () => Result) => Result;
+}
+
+export type OperatorXlsxExportServiceDependencies = OperatorXlsxExportMainDependencies & (SearchDocumentDependencies | {
+  readonly readSearchDocument: (selection: SearchSelection) => Promise<ReturnType<typeof collectSearchDocument>>;
+});
 
 async function materialize(stream: Readable, expectedBytes: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -89,15 +98,15 @@ function assertSnapshot(
 }
 
 export function collectSearchDocument(
-  deps: Pick<OperatorXlsxExportServiceDependencies, "search" | "sourceIdentity" | "withSearchSnapshot">,
-  selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "search" }>,
+  deps: SearchDocumentDependencies,
+  selection: SearchSelection,
 ) {
   return deps.withSearchSnapshot(() => readSearchDocument(deps, selection));
 }
 
 function readSearchDocument(
-  deps: Pick<OperatorXlsxExportServiceDependencies, "search" | "sourceIdentity">,
-  selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "search" }>,
+  deps: Pick<SearchDocumentDependencies, "search" | "sourceIdentity">,
+  selection: SearchSelection,
 ) {
   const query = CrossDateSearchQuerySchema.omit({ cursor: true }).parse(selection.query);
   const first = assertSnapshot(
@@ -159,7 +168,7 @@ function readSearchDocument(
 }
 
 function collectActivityDocument(
-  deps: OperatorXlsxExportServiceDependencies,
+  deps: OperatorXlsxExportMainDependencies,
   selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "activity" }>,
 ) {
   const selectedReport = ActivityReportSelectionSchema.parse(deps.activityReport(selection.from, selection.to, selection.snapshotToken));
@@ -212,7 +221,9 @@ export function createOperatorXlsxExportService(
       const request = OperatorXlsxExportRequestSchema.parse(input);
       // Capture the entire admitted selection before registration advances authority generation.
       const document = request.selection.kind === "search"
-        ? collectSearchDocument({ ...deps, sourceIdentity }, request.selection)
+        ? "readSearchDocument" in deps
+          ? await deps.readSearchDocument(request.selection)
+          : collectSearchDocument({ ...deps, sourceIdentity }, request.selection)
         : collectActivityDocument({ ...deps, sourceIdentity }, request.selection);
       const workbook = await composeOperatorXlsxWorkbook(document);
       const exportId = OperatorXlsxExportIdSchema.parse(deps.ids.uuid());

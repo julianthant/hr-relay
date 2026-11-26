@@ -21,7 +21,7 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../rules/write-safety/write-safety.js";
 import { taskSpanPath } from "../../logs/span-emitter.js";
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { projectStartSteps } from "./step-selection.js";
 
 export class RerunRefusedError extends Error {
@@ -199,10 +199,10 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   // Use the same authority disposition predicate as RunRecordService.read.
   const parkedAtCorrectedGate = source.gateCorrection !== undefined && run.lifecycle.state === "parked-gate"
     && String(run.lifecycle.gateId) === source.gateCorrection.gateId;
-  if ((!parkedAtCorrectedGate && (run.lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(run.lifecycle.outcome)))
+  if ((!parkedAtCorrectedGate && (run.lifecycle.state !== "terminal" || !["done", "failed", "interrupted", "cancelled"].includes(run.lifecycle.outcome)))
     || repositories.writeIntents.listAttemptingByItem({ workflowId: descriptor.id, itemId: run.envelope.itemId }).length > 0
     || repositories.writeIntents.listByRun(source.runId).some((intent) => intent.status === "parked")) {
-    throw new RerunRefusedError("invalid-state", "Rerun requires a successful, failed, interrupted or gate-corrected source without uncertain writes");
+    throw new RerunRefusedError("invalid-state", "Rerun requires a finished or gate-corrected source without uncertain writes");
   }
   if (older && repositories.writeIntents.listByRun(source.runId).some(intent => intent.status === "committed"
     && !descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction" && node.commit.uses.id === intent.taskId
@@ -319,7 +319,8 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
     // obtain renewed consent if its eventual natural key is not in this set.
     if (missingDependency) {
       if (transactionCheckpoint !== undefined || repositories.writeIntents.listByRun(source.runId)
-        .some((intent) => intent.status === "committed" && intent.taskId === node.commit.uses.id)) {
+        .some((intent) => intent.status === "committed" && intent.taskId === node.commit.uses.id && "bindingProof" in intent
+          && intent.bindingProof.afterPrepareSpanPath === `${run.envelope.traceId}/${node.id}/prepare`)) {
         throw new RerunRefusedError("invalid-value", "Previous transaction warning evidence is unavailable");
       }
       continue;

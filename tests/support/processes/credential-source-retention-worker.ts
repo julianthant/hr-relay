@@ -13,7 +13,7 @@ if (actualEntry !== FakeKeyringEntry || process.env.RELAY_TEST_KEYCHAIN === unde
 if (!process.connected || process.send === undefined) throw new Error("retention-worker-ipc-required");
 const { z } = await import("zod");
 const [port, workspace, profileId, scenario, crashNonce] = z.tuple([z.coerce.number().int().positive().max(65535), z.string().min(1), z.uuid(),
-  z.enum(["readonly-native-close", "worker-native-open", "writer-close", "duo-read-first", "duo-read-second", "stopped-head-close", "protected-source", "chatgpt-source", "account-projection", "stopped-control-snapshot-disposal", "setup-protected-close", "startup-upgrade-key-close", "startup-upgrade-service-inspection", "startup-upgrade-binding-inspection", "startup-upgrade-unproved-close", "startup-upgrade-closed-publication-refusal", "protected-crash-before", "protected-crash-after", "logout-prepared", "logout-commit-intent", "logout-after-commit", "logout-done", "logout-ready", "logout-unlink", "logout-writer-close", "logout-third-image", "logout-resume", "logout-unknown-copy", "logout-live-process", "logout-browser-root", "logout-key-replacement", "logout-snapshot-disposal", "logout-process-observation", "logout-seed", "logout-seed-unknown", "logout-seed-predecessor", "logout-seed-predecessor-unknown", "logout-seed-predecessor-collision", "logout-collision", "logout-predecessor-windows-refusal", "logout-unknown", "logout-browser-busy", "logout-browser-unproved", "logout-process-root-copy", "logout-exited-process", "logout-exit-only", "browser-root-native-success", "browser-root-busy", "browser-root-close-unproved", "browser-root-stage-close", "browser-root-observed-publication", "browser-root-rm-refusal", "browser-root-unknown-seed", "browser-root-unknown-resume"]), z.uuid().optional()]).parse(process.argv.slice(2));
+  z.enum(["readonly-native-close", "worker-native-open", "writer-close", "duo-read-first", "duo-read-second", "stopped-head-close", "protected-source", "chatgpt-source", "account-projection", "stopped-control-snapshot-disposal", "stopped-upgrade-service", "stopped-upgrade-command", "setup-protected-close", "startup-upgrade-key-close", "startup-upgrade-service-inspection", "startup-upgrade-binding-inspection", "startup-upgrade-unproved-close", "startup-upgrade-closed-publication-refusal", "protected-crash-before", "protected-crash-after", "logout-prepared", "logout-commit-intent", "logout-after-commit", "logout-done", "logout-ready", "logout-unlink", "logout-writer-close", "logout-third-image", "logout-resume", "logout-unknown-copy", "logout-live-process", "logout-browser-root", "logout-key-replacement", "logout-snapshot-disposal", "logout-process-observation", "logout-seed", "logout-seed-unknown", "logout-seed-predecessor", "logout-seed-predecessor-unknown", "logout-seed-predecessor-collision", "logout-collision", "logout-predecessor-windows-refusal", "logout-unknown", "logout-browser-busy", "logout-browser-unproved", "logout-process-root-copy", "logout-exited-process", "logout-exit-only", "browser-root-native-success", "browser-root-busy", "browser-root-close-unproved", "browser-root-stage-close", "browser-root-observed-publication", "browser-root-rm-refusal", "browser-root-unknown-seed", "browser-root-unknown-resume"]), z.uuid().optional()]).parse(process.argv.slice(2));
 const { WorkerRuntimeLifetimeLock, isOfflineMaintenanceOperationActive } = await import("../../../src/backend/storage/admission/lifetime-lock.js");
 const { acquireSharedRuntimeAdmission, RuntimeAdmission } = await import("../../../src/backend/storage/admission/admission.js");
 const { createCanonicalCredentials, captureStoppedCanonicalCredentialHead } = await import("../../../src/backend/storage/configuration/canonical-credential-store.js");
@@ -345,16 +345,22 @@ try {
   if (scenario.startsWith("browser-root-")) {
     const { runBrowserRootRetentionCase } = await import("./browser-root-retention.js");
     await runBrowserRootRetentionCase({ scenario, workspace, nonce: z.uuid().parse(crashNonce) });
-  } else if (scenario.startsWith("startup-upgrade-")) {
-    const { runStartupUpgradeRetentionCase } = await import("./startup-upgrade-retention-cases.js");
-    await runStartupUpgradeRetentionCase({ scenario, workspace, nonce: z.uuid().parse(crashNonce) });
+  } else if (scenario.startsWith("startup-upgrade-") || scenario === "stopped-upgrade-service" || scenario === "stopped-upgrade-command") {
+    const { runStartupUpgradeRetentionCase, runStoppedUpgradeRetentionCase } = await import("./startup-upgrade-retention-cases.js");
+    const nonce = z.uuid().parse(crashNonce);
+    if (scenario.startsWith("startup-upgrade-")) {
+      await runStartupUpgradeRetentionCase({ scenario, workspace, nonce });
+    } else {
+      await runStoppedUpgradeRetentionCase({ entry: scenario === "stopped-upgrade-service" ? "service" : "command",
+        workspace: join(workspace, `.${scenario}-${nonce}`) });
+    }
   } else if (scenario === "worker-native-open") await runWorkerNativeOpening();
   else if (scenario === "setup-protected-close") await runSetupProtectedClose();
   else if (scenario === "stopped-head-close") await runStoppedHead();
   else if (scenario === "stopped-control-snapshot-disposal") await runStoppedSnapshot();
   else await runCurrent();
   lifetime.assertHeld();
-  process.send({ scenario, assertionsComplete: true, ...(scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("startup-upgrade-") || scenario.startsWith("browser-root-") ? { nonce: z.uuid().parse(crashNonce) } : {}),
+  process.send({ scenario, assertionsComplete: true, ...(scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("startup-upgrade-") || scenario.startsWith("stopped-upgrade-") || scenario.startsWith("browser-root-") ? { nonce: z.uuid().parse(crashNonce) } : {}),
     ...(scenario === "browser-root-unknown-seed" ? { keychain: FakeKeyringEntry.snapshot() } : {}) });
 } catch (error) {
   const name = error instanceof Error && ["AssertionError", "TypeError", "RangeError", "SyntaxError"].includes(error.name) ? error.name : "Error";
@@ -614,7 +620,7 @@ async function runLogout(): Promise<void> {
     const { sha256Hex } = await import("../../../src/rules/validation/sha256.js");
     const { RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } = await import("../../../src/rules/commands/commands.js");
     const { withAuthorityDatabaseReadOnly } = await import("../../../src/backend/storage/sqlite/readonly-authority-snapshot.js");
-    const { inspectNativeAuthority } = await import("../../../src/backend/storage/sqlite/authority-database.js");
+    const { inspectNativeAuthority } = await import("../../../src/backend/storage/sqlite/authority-inspection.js");
     const source = z.object({ nonce: z.uuid(), operationId: z.uuid(), runId: z.uuid(), workerId: z.string(), processId: z.number().int().positive(),
       epoch: z.number().int().nonnegative(), version: z.number().int().positive(), claimGeneration: z.number().int().positive(),
       member: WorkerPoolMemberSchema })

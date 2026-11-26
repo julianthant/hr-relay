@@ -29,6 +29,7 @@ import type { DuoKeyChange, DuoReenrolCommitIntent } from "../../models/config/d
 import type { DuoKeyChangeResult } from "../../models/profiles/public-profile.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { systemClock,type Clock } from "../../rules/time/clock.js";
+import type { TimelineRepository } from "../../models/events/timeline.js";
 import { noSymlinkAncestry,withOperationProof,type DirectoryIdentity } from "../storage/configuration/credential-safe-file.js";
 import { createDuoCredentialStore,DuoCredentialError } from "../storage/configuration/duo-credential-store.js";
 import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
@@ -190,6 +191,10 @@ export function createProfileSession(input: {
     });
     assertCredentialStoreOwner(store, capability);
     return store;
+  }
+
+  function accountOf(row: ProfileRegistryRow): ProfileAccount {
+    return profileAccount(row, verifiers.identify, storeFor(row.profileId).read().entries.ucpathUserId?.value);
   }
 
   function releaseOrdinary(profileId: string): void {
@@ -613,11 +618,17 @@ export function createProfileSession(input: {
     return refusal("PROFILE_LOGOUT_BLOCKED", operation.operationId);
   }
 
+  function onboardingTimeline(profileId: string, clock: Clock, write: (repository: TimelineRepository) => void): void {
+    const capability = admittedProfile(profileId);
+    // A ready profile's database belongs to its runtime, so a Duo re-enrolment's events stay in the machine Duo log.
+    if (capability.isProfileInitialization()) AuthorityDatabase.withProfileOnboardingTimeline(capability, clock, write);
+  }
+
   const onboarding = createProfileOnboarding({
     onEvent: (draft, event) => {
       const clock = input.clock ?? systemClock;
       appendDuoDiagnostic(machineRoot, clock.now(), event);
-      AuthorityDatabase.withProfileOnboardingTimeline(admittedProfile(draft.profileId), clock, repository => {
+      onboardingTimeline(draft.profileId, clock, repository => {
         const build = z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"))).version;
         createDebugEventWriter({ repository, clock, build }).emit({ category: "duo",
           phase: event.stage === "refused" || event.stage === "aborted" ? "failed" : event.stage === "timed-out" ? "expired" : event.stage === "replied" ? "settled" : "started",
@@ -629,7 +640,7 @@ export function createProfileSession(input: {
     failureDiagnostic: error => error instanceof ProfileOnboardingDuoProviderError ? { kind: error.kind, causeTag: error.reason } : { kind: "unknown", causeTag: "provider" }, clock: input.clock ?? systemClock,
     onFailure: (attempt, failure) => {
       const clock = input.clock ?? systemClock;
-      AuthorityDatabase.withProfileOnboardingTimeline(admittedProfile(attempt.profileId), clock, repository => {
+      onboardingTimeline(attempt.profileId, clock, repository => {
         const build = z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"))).version;
         createDebugEventWriter({ repository, clock, build }).emit({ category: "duo", phase: "failed", correlationId: attempt.attemptId,
           area: "profile-onboarding", reason: failure.causeTag,
@@ -1197,6 +1208,7 @@ export function createProfileSession(input: {
     changeUsername(token: string, fields: { readonly currentPassword: string; readonly newUsername: string; readonly at: string }) {
       return changeLogin(token, { currentPassword: fields.currentPassword, change: { kind: "username", email: fields.newUsername }, at: fields.at });
     },
+    account: accountOf,
     /** Change the signed-in person's Name, Initials or Timekeeper name; runs already started keep the timekeeper name they captured. */
     changeDetails(token: string, change: ProfileDetailsChange): { readonly state: "changed"; readonly account: ProfileAccount } | ProfileRefusal {
       admission.assertWritable();
@@ -1208,7 +1220,7 @@ export function createProfileSession(input: {
         if ("state" in session) return session;
         const row = registry.read().profiles.find(entry => entry.profileId === session.profileId);
         if (row === undefined) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
-        const account = profileAccount({ ...row, ...checked.patch }, verifiers.identify);
+        const account = accountOf({ ...row, ...checked.patch });
         registry.update(session.profileId, checked.patch);
         return { state: "changed", account };
       });

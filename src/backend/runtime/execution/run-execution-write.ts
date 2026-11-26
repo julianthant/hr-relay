@@ -5,7 +5,8 @@ import type { TaskLogger } from "../../../workflow-kit/task.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { RuntimeFlowNode, RuntimeScope } from "../../../models/workflow/graph.js";
-import { authenticateStoredParkedWriteRecheck, type AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import { authenticateStoredParkedWriteRecheck } from "../../storage/sqlite/authority-run-evidence.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import type { WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
 
 type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;

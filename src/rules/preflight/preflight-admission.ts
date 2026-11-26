@@ -34,6 +34,12 @@ export class PreflightEvidenceExpiredError extends PreflightAdmissionRefusal {
     super("stale", ERROR_CATALOG.PREFLIGHT_EVIDENCE_EXPIRED.text); this.name = "PreflightEvidenceExpiredError";
   }
 }
+/** No completed evidence for this exact scope yet; the reader prepares it. */
+export class PreflightEvidenceMissingError extends PreflightAdmissionRefusal {
+  constructor() {
+    super("unavailable", "Preflight evidence is unavailable for this exact scope; re-check readiness."); this.name = "PreflightEvidenceMissingError";
+  }
+}
 export interface PreflightAdmission {
   prepare(scope: PreflightAdmissionScope, signal: AbortSignal): Promise<PreflightReport>;
   assertReady(scope: PreflightAdmissionScope): void;
@@ -56,9 +62,9 @@ export function createPreflightAdmission(input: Readonly<{
     input.validate(scope);
     const entry = entries.get(key(scope));
     if (entry === undefined || entry.pending > 0 || entry.report === undefined || entry.completedAt === undefined) {
-      throw new PreflightAdmissionRefusal("unavailable", "Preflight evidence is unavailable for this exact scope; re-check readiness.");
+      throw new PreflightEvidenceMissingError();
     }
-    if (entry.observationIdentity !== input.observationIdentity?.(scope)) throw new PreflightAdmissionRefusal("stale", "Protected settings changed; re-check readiness.");
+    if (entry.observationIdentity !== input.observationIdentity?.(scope)) throw new PreflightAdmissionRefusal("stale", "Run prerequisites changed; re-check readiness.");
     const age = input.clock.monotonicMs() - entry.completedAt;
     if (age < 0) throw new PreflightAdmissionRefusal("stale", "Preflight evidence is dated in the future; re-check readiness.");
     if (age >= freshnessMs) throw new PreflightEvidenceExpiredError(entry.report);
@@ -80,7 +86,7 @@ export function createPreflightAdmission(input: Readonly<{
       try {
         const report = await entry.authority.refresh(signal);
         input.validate(scope);
-        if (input.observationIdentity?.(scope) !== observationIdentity) throw new PreflightAdmissionRefusal("stale", "Protected settings changed during preflight; re-check readiness.");
+        if (input.observationIdentity?.(scope) !== observationIdentity) throw new PreflightAdmissionRefusal("stale", "Run prerequisites changed during preflight; re-check readiness.");
         entry.observationIdentity = observationIdentity;
         entry.report = report;
         entry.completedAt = input.clock.monotonicMs();

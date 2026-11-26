@@ -20,12 +20,12 @@ function ancestor(node: ts.Node, predicate: (candidate: ts.Node) => boolean): bo
 }
 
 function repositoryMutator(declaration: ts.Declaration | undefined): boolean {
-  if (declaration === undefined || repoRelative(declaration.getSourceFile().fileName) !== "src/backend/storage/sqlite/authority-database.ts") return false;
-  if (!(ts.isMethodSignature(declaration) || ts.isMethodDeclaration(declaration))) return false;
+  if (declaration === undefined || !(ts.isMethodSignature(declaration) || ts.isMethodDeclaration(declaration))) return false;
+  const file = repoRelative(declaration.getSourceFile().fileName);
   const name = declaration.name.getText();
   return MUTATORS.has(name) && ancestor(declaration, (node) =>
-    (ts.isTypeAliasDeclaration(node) && node.name.text === "RunRepository")
-    || (ts.isClassDeclaration(node) && node.name?.text === "AuthorityDatabase"
+    (file === "src/backend/storage/sqlite/authority-repositories.ts" && ts.isTypeAliasDeclaration(node) && node.name.text === "RunRepository")
+    || (file === "src/backend/storage/sqlite/authority-database.ts" && ts.isClassDeclaration(node) && node.name?.text === "AuthorityDatabase"
       && ["terminalizeFailure", "terminalizeSuccess"].includes(name)));
 }
 
@@ -83,7 +83,8 @@ describe("worker-loop-writes-only-through-the-service", () => {
 
   it("detects a relocated helper and aliased repository mutators", () => {
     const violations = audit(`
-      import type { AuthorityRepositories, AuthorityDatabase } from "../storage/sqlite/authority-database.js";
+      import type { AuthorityRepositories } from "../storage/sqlite/authority-repositories.js";
+      import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
       export function relocated(repositories: AuthorityRepositories, database: AuthorityDatabase) {
         repositories.runs.transition({});
         const resume = repositories.runs.resume;

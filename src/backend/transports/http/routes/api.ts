@@ -45,6 +45,13 @@ const debugReportCauseTokens = new Set([
   "timeline-event-owner-missing",
 ]);
 
+/** A row names its cause: its own code, else its closed reason, else its class. Message text never reaches a code. */
+function causeCode({ code, reason, name }: ReturnType<typeof serializeTokenedErrorCauses>[number]): string {
+  if (code !== "INTERNAL_FAILURE" && code !== "ERR_SQLITE_ERROR") return code;
+  if (reason !== "cause-unavailable") return reason;
+  return code === "INTERNAL_FAILURE" ? name : code;
+}
+
 export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   const app = new Hono<{ Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> } }>();
   const debugEvents = deps.debugEvents ?? createDebugEventWriter({ repository: withEmergencyTimelineWriter(deps.runDetail.timeline, { stateRoot: deps.runDetail.stateRoot, clock: deps.bootstrap.clock, build: deps.bootstrap.appVersion }), clock: deps.bootstrap.clock, build: deps.bootstrap.appVersion });
@@ -65,7 +72,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
             const reason = debugReportFailed ? reportCause : "request-cause";
             debugEvents.emit({ category: "http", phase: "failed", correlationId, area: "request", reason,
               ...(debugReportFailed ? { method: "POST", route: "/api/v1/debug/errors" } : {}),
-              ...(disconnected ? {} : { status }), code: cause.code, message: cause.name, stack: cause.stack });
+              ...(disconnected ? {} : { status }), code: debugReportFailed ? cause.code : causeCode(cause), message: cause.name, stack: cause.stack });
           }
         });
       } catch {

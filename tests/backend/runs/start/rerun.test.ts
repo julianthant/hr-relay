@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { previewRerunWarnings, RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
@@ -46,7 +46,7 @@ function fixture(outcome: "done" | "failed" | "interrupted" | "cancelled", older
     selectedStepKeys: descriptor.timeline.map(step => step.key) };
   return { repositories, source };
 }
-it.each(["done", "failed", "interrupted"] as const)("ordinary Rerun accepts %s without inheriting saved work", outcome => {
+it.each(["done", "failed", "interrupted", "cancelled"] as const)("ordinary Rerun accepts %s without inheriting saved work", outcome => {
   for (const older of [false, true]) {
     const f = fixture(outcome, older);
     const plan = previewRerunWarnings(f.repositories, descriptor, f.source);
@@ -62,8 +62,8 @@ it.each(["parked", "attempting"] as const)("ordinary Rerun still refuses %s writ
       error => error instanceof RerunRefusedError && error.code === "invalid-state");
   }
 });
-it("ordinary Rerun refuses a cancelled source", () => {
-  const f = fixture("cancelled");
+it.each(["parked", "attempting"] as const)("Rerun of a cancelled source still refuses %s write authority", uncertain => {
+  const f = fixture("cancelled", false, uncertain);
   assert.throws(() => previewRerunWarnings(f.repositories, descriptor, f.source),
     error => error instanceof RerunRefusedError && error.code === "invalid-state");
 });

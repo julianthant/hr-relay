@@ -84,6 +84,16 @@ describe("Duo re-enrolment for an active profile", () => {
     assert.deepEqual(workflowDuo(machine, alex.profileId), before);
   });
 
+  it("records the setup browser's Duo events for the active profile", async () => {
+    const machine = await world();
+    const session = machine.open({ onboardingDuo: { ...syntheticOnboardingDuo(),
+      async showBrowser(owner) { owner.reportEvent({ stage: "refused", detail: "backend", code: "UCSD_SSO_SUBMIT_TIMEOUT" }); } } });
+    const alex = await machine.signUp(session, alexFields);
+    const opened = session.beginDuoReenrol(alex.token);
+    await session.showDuoReenrolBrowser(alex.token, opened.operationId);
+    assert.match(readFileSync(join(machine.machineRoot, "logs", "duo.jsonl"), "utf8"), /UCSD_SSO_SUBMIT_TIMEOUT/u);
+  });
+
   it("stages the proved security key out of use, then commit replaces the ready set and keeps the session signed in", async () => {
     const machine = await world();
     const session = machine.open({ idleFence });

@@ -339,13 +339,23 @@ export function noDeadDisabledControl({ page }: StateRuleContext): Promise<reado
       if (!disabled(control) || control.getBoundingClientRect().width <= 1) continue;
       // A control held off while its own request is in flight says so on itself: that is a lock, not a dead control.
       if (control.matches('[aria-haspopup][aria-busy="true"]')) continue;
-      // A button that opens a dialog is not a picker; the approved mock keeps Add workers shown and switched off until it can act.
-      if (control.matches('button[aria-haspopup="dialog"]')) continue;
+      // A dimmed control that keeps its place and gives its reason in a tooltip (the trigger's label) is explained, not dead.
+      // The trigger is a wrapper around it; tabs and disclosure triggers carry the same data-state but are not tooltips.
+      let explained = false;
+      for (let holder = control.parentElement; holder !== null; holder = holder.parentElement) {
+        const tooltip = ["closed", "delayed-open", "instant-open"].includes(holder.getAttribute("data-state") ?? "") && !holder.hasAttribute("aria-expanded") && holder.getAttribute("role") !== "tab";
+        const reason = (holder.getAttribute("aria-label") ?? "").trim();
+        const own = (control.getAttribute("aria-label") ?? control.textContent ?? "").trim();
+        if (tooltip && reason !== "" && reason !== own) { explained = true; break; }
+      }
+      if (explained) continue;
       if (control instanceof HTMLSelectElement && [...control.options].filter(option => !option.disabled).length > 1) continue;
       found.push(`the picker "${name(control)}" is shown switched off with nothing to choose`);
     }
     for (const group of document.querySelectorAll('body :is([role="radiogroup"], [role="group"], fieldset)')) {
-      const choices = [...group.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], [role="switch"]')];
+      // A switched-off, checked box on a card marked settled is a value on show, not a choice left to make.
+      const choices = [...group.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], [role="switch"]')]
+        .filter(choice => !(disabled(choice) && choice.closest("[data-settled]") !== null && ((choice as HTMLInputElement).checked || choice.getAttribute("aria-checked") === "true")));
       if (choices.length > 0 && choices.every(disabled)) found.push(`every choice in "${name(group)}" is switched off`);
     }
     return found;
@@ -419,6 +429,8 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
       if (element.matches(':disabled, [aria-disabled="true"]') || element.closest('[inert], [aria-hidden="true"]') !== null) continue;
       // A tab list hands its Tab stop to the active tab, so the tabs are the stops; the list counts as reached only while that tab can take focus.
       if (element.getAttribute("role") === "tablist" && element.querySelector('[role="tab"][aria-selected="true"]:not(:disabled, [aria-disabled="true"])') !== null) continue;
+      // A menu popup hands its stop to its items the same way; one with no enabled item still counts.
+      if (element.getAttribute("role") === "menu" && element.querySelector('[role^="menuitem"]:not(:disabled, [aria-disabled="true"])') !== null) continue;
       if (element.getAttribute("tabindex") === "-1") {
         // Settings names the highlighted row so it can announce the destination; its controls still have their own stops.
         const settingsPath = element.getAttribute("data-settings-path");
@@ -453,6 +465,8 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
 
 export async function namedAndFocusable({ page, recordTabStop }: StateRuleContext): Promise<readonly string[]> {
   const found: string[] = [];
+  // A story may open focused. Blur on its own turn so a state-driven ring (React Aria) is gone before the unfocused look is read.
+  await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); });
   const { controls } = await page.evaluate(focusProbe, { step: "tag", selector: CONTROL_SELECTOR });
   try {
     for (const { index, label } of controls) {
@@ -541,14 +555,15 @@ export function statusLabelOnTitleLine({ page }: StateRuleContext): Promise<read
   });
 }
 
-/** Every page title (Settings and Analytics alike) is 20px. */
+/** Every page title is 20px, except inside Settings, where the operator asked on 2026-11-25 "the title needs to be bigger and more spacing between it and the bottom is needed": those are 28px. */
 export function pageTitle20px({ page }: StateRuleContext): Promise<readonly string[]> {
   return page.evaluate(() => {
     const found: string[] = [];
     for (const title of document.querySelectorAll<HTMLElement>(".ds-page-heading-title")) {
       if (title.getBoundingClientRect().width <= 1) continue;
+      const expected = title.closest(".settings-takeover") === null ? "20px" : "28px";
       const size = getComputedStyle(title).fontSize;
-      if (size !== "20px") found.push(`the page title "${title.textContent?.trim().slice(0, 40) ?? ""}" is ${size}, not 20px`);
+      if (size !== expected) found.push(`the page title "${title.textContent?.trim().slice(0, 40) ?? ""}" is ${size}, not ${expected}`);
     }
     return found;
   });
@@ -567,6 +582,6 @@ export const STATE_RULES: Readonly<Record<StateRuleName, { readonly check: State
   "no-dead-disabled-control": { check: noDeadDisabledControl, failure: "a control shown switched off with nothing to choose" },
   "named-and-focusable": { check: namedAndFocusable, failure: "an interactive element with no name or no visible focus ring" },
   "status-label-on-title-line": { check: statusLabelOnTitleLine, failure: "a queue card whose status label wraps under the title" },
-  "page-title-20px": { check: pageTitle20px, failure: "a page title that is not 20px" },
+  "page-title-20px": { check: pageTitle20px, failure: "a page title that is not 20px (28px inside Settings)" },
   "declared-diagnostics": { check: declaredDiagnostics, failure: "console errors, page errors, failed requests or HTTP errors the story does not declare" },
 });

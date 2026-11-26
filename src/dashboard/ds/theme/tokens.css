@@ -256,13 +256,11 @@
   --ds-toolbar-control-h: 32px; /* a search field; the filter dropdowns beside it stay 28px */
   --ds-radius-body-group: var(--ds-row-radius);
   --ds-radius-body-dialog: 16px;
-  --ds-w-body-switch: 36px;
-  --ds-h-body-switch: 20px;
-  --ds-size-body-switch-thumb: 14px;
+  --ds-w-body-switch: 40px;
+  --ds-h-body-switch: 24px;
+  --ds-size-body-switch-thumb: 18px;
   --ds-body-switch-thumb-off-x: 2px;
   --ds-body-switch-thumb-on-x: 18px;
-  --ds-body-switch-thumb-bg: #ffffff;
-  --ds-body-switch-checked-bg: var(--ds-switch-on);
 
   --ds-tracking-caps: 0; /* group labels carry no tracking */
   --ds-tracking-tight: -0.006em; /* section/display sizes only */
@@ -291,6 +289,9 @@
   --ds-space-heading-description: 4px;
   --ds-space-heading-content: 12px;
   --ds-space-page-heading-content: 24px;
+  --ds-settings-title: 28px;
+  --ds-settings-title-lh: 34px;
+  --ds-settings-heading-content: 40px;
   --ds-w-body-content: 828px;
   --ds-w-body-performance: 1090px;
   --ds-w-body-control-standard: 237px;
@@ -334,11 +335,11 @@
   --ds-h-lg: 32px; /* primary dialog actions, search fields */
   --ds-h-row: 32px; /* one queue/table row */
   --ds-h-bar: 36px; /* status bar, panel toolbar */
-  --ds-w-switch: 28px;
-  --ds-h-switch: 16px;
+  --ds-w-switch: 40px;
+  --ds-h-switch: 24px;
   --ds-switch-thumb-off-x: 2px;
-  --ds-switch-thumb-on-x: 14px;
-  --ds-size-switch-thumb: 12px;
+  --ds-switch-thumb-on-x: 18px;
+  --ds-size-switch-thumb: 18px;
   /* EVERY control in the queue's action bar is this tall — the launcher, the
    run starter, the eight status pills, the two composites' container, the */
   --ds-h-toolbar: var(--ds-h-lg);
@@ -1033,9 +1034,21 @@ body[data-demo-theme="light"] {
 /* Two-way switch: track a clear step above the card, thumb a step above the track, unselected label in the secondary text colour (AA on the track). */
 /* On-state fill of the toggle switch. */
 :root, [data-demo-theme="light"] {
-  --ds-switch-on: var(--ui-info);
+  --ds-switch-on: #4c8dff;
+  --ds-switch-on-hover: #6a9fff;
+  --ds-switch-off: #3a3a41;
+  --ds-switch-off-hover: #46464e;
+  --ds-switch-knob-off: #d4d4d8;
+  --ds-switch-ring: #9cc0ff;
+  --ds-on-signal: #ffffff;
   --ds-settings-section-gap: 48px;
   --ds-settings-card-gap: 40px;
+}
+[data-demo-theme="light"] {
+  --ds-switch-off: #d4d4d8;
+  --ds-switch-off-hover: #c4c4cc;
+  --ds-switch-knob-off: #ffffff;
+  --ds-switch-ring: var(--ui-info);
 }
 /* The selected pill of a two- or three-way switch: a soft step above whatever surface it sits on. */
 .ds-segment {
@@ -1646,26 +1659,17 @@ body[data-demo-theme="light"] {
 .ds-switch-control .ds-switch-thumb { margin-inline-start: var(--ds-switch-thumb-off-x); }
 .ds-switch-control .ds-switch-thumb-checked { margin-inline-start: var(--ds-switch-thumb-on-x); }
 
-.ds-body-scope .ds-switch-row {
-  --switch-control-bg-checked: var(--ds-body-switch-checked-bg);
-  --switch-control-bg-checked-hover: var(--ds-body-switch-checked-bg);
-}
-
-.ds-body-scope .ds-switch-row .ds-switch-thumb {
-  background-color: var(--ds-body-switch-thumb-bg);
-}
-
-.ds-body-scope .ds-switch-row[data-selected="true"] .ds-switch-control {
-  background-color: var(--ds-body-switch-checked-bg);
-}
-
-.ds-body-scope .ds-switch-row:not([data-selected="true"]) .ds-switch-control {
-  background-color: var(--ui-stroke-control);
-}
-
-.ds-body-scope .ds-switch-row[data-selected="true"] .ds-switch-thumb {
-  background-color: var(--ds-body-switch-thumb-bg);
-}
+/* One switch everywhere. The input covers the whole row, so hover and focus are read from the row. */
+.ds-switch-row .ds-switch-control.ds-switch-control { background: var(--ds-switch-off); }
+.ds-switch-row .ds-switch-control.ds-switch-control-checked { background: var(--ds-switch-on); }
+.ds-switch-row .ds-switch-thumb.ds-switch-thumb { display: grid; place-items: center; background: var(--ds-switch-knob-off); transition: margin 150ms var(--ds-ease-out); }
+.ds-switch-row .ds-switch-thumb.ds-switch-thumb-checked { background: var(--ds-on-signal); }
+.ds-switch-row:not([data-disabled="true"]):hover .ds-switch-control.ds-switch-control { background: var(--ds-switch-off-hover); }
+.ds-switch-row:not([data-disabled="true"]):hover .ds-switch-control.ds-switch-control-checked { background: var(--ds-switch-on-hover); }
+.ds-switch-row [data-focus-visible="true"] .ds-switch-control.ds-switch-control { outline: 2px solid var(--ds-switch-ring); outline-offset: 2px; }
+.ds-switch-row.ds-switch-row[data-disabled="true"] { opacity: 1; }
+.ds-switch-row[data-disabled="true"] .ds-switch-control { opacity: 0.45; cursor: default; }
+.ds-switch-thumb > svg { width: 10px; height: 10px; color: var(--ds-switch-off); }
 
 .ds-body-scope .ds-ranked-list {
   display: flex;
@@ -2079,6 +2083,11 @@ body[data-demo-theme],
 [role="dialog"] { --ds-dialog-footer-gap: 12px; }
 [data-slot="dialog-footer"] [data-slot="button"][data-variant] { height: 32px; min-height: 32px; border-radius: 10px; padding-inline: 16px; font-size: 14px; }
 [data-slot="dialog-footer"] [data-variant="primary"]:disabled { opacity: 1; background: var(--ds-button-off-bg); color: var(--ds-button-off-fg); }
+
+/* The run dialog's size: 20px inset, a 12px header and the same X. */
+[data-size="lg"][role="dialog"] { --ds-dialog-pad: 20px; }
+[data-size="lg"][role="dialog"] > header { position: relative; height: auto; padding: 12px 48px 12px 20px; }
+[data-size="lg"][role="dialog"] .ds-dialog-close { position: absolute; top: 14px; right: 14px; }
 
 /* The small dialog (single-field edits, renames and confirmations): 520 wide, 20px inset, the title centred 34px down, the X centred 28px in from the top right corner, a 36px field 20px above the footer. */
 [data-size="sm"][role="dialog"] { --ds-dialog-pad: 20px; --ds-dialog-header-pb: 0px; --ds-dialog-body-pt: 21px; --ds-dialog-body-pb: 0px; --ds-dialog-footer-pt: 20px; }

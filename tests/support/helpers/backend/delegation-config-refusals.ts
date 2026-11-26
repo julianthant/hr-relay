@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { admitDelegation } from "../../../../src/backend/runs/lifecycle/delegation-admission.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { WriteIntentRecordSchema, deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
 import { WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";

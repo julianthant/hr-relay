@@ -1,7 +1,7 @@
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { fixtureDuoSigningSource } from "../../../support/helpers/browser/duo-signing.js";
 import assert from "node:assert/strict";
-import { chmodSync,mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
+import { mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
@@ -47,6 +47,27 @@ function protectedRecord(omit?: string) {
 }
 
 describe("registered workflow detectors", () => {
+  it("checks ready Duo credentials only for selected browser sessions with Fast Duo enabled", async () => {
+    const f = fixture(["executor.run", "system.ucpath.prod", "system.crm.prod"]);
+    Reflect.set(f.input, "duo", fixtureDuoSigningSource({ credentials: () => [] }));
+    const missing = await f.observe("browser.duo-key", true);
+    assert.equal(missing.state, "unhealthy");
+    assert.equal(missing.summary, "Duo isn't set up. Set it up in Settings.");
+
+    Reflect.set(f.input, "duo", fixtureDuoSigningSource({ credentials: () => [
+      { credentialId: "fixture-key", rpId: "duosecurity.com", transport: "usb", isResidentCredential: false },
+    ] }));
+    assert.equal((await f.observe("browser.duo-key", true)).state, "healthy");
+    Reflect.set(f.input, "duo", fixtureDuoSigningSource({ credentials() { throw new Error("unavailable fixture credential authority"); } }));
+    const unavailable = await f.observe("browser.duo-key", true);
+    assert.equal(unavailable.state, "unhealthy");
+    assert.equal(unavailable.summary, "Duo credentials could not be read or saved safely.");
+
+    f.config.features.duoWebAuthn = false;
+    assert.equal((await f.observe("browser.duo-key", true)).state, "healthy");
+    assert.equal(createRuntimePreflightRunners(fixture(["executor.run"]).input).some(runner => runner.check === "browser.duo-key"), false);
+  });
+
   it("checks admitted profile identity without a stored timekeeper setting or exposing its name", async () => {
     const f = fixture(["workflow.kuali-fill"]);
     const source = protectedSecretSource({ profileName: "Synthetic Middle Operator" });
@@ -118,17 +139,13 @@ describe("registered workflow detectors", () => {
     assert.match((await f.observe("browser.assets", true)).summary, /Chromium.*unavailable/u);
     writeFileSync(executable, "synthetic executable", { mode: 0o700 });
     assert.match((await f.observe("browser.assets", true)).summary, /manifest.*unavailable/u);
-    mkdirSync(f.config.paths.duoExtensionDir); writeFileSync(join(f.config.paths.duoExtensionDir, "workflow-manifest.json"), "{}");
-    assert.match((await f.observe("browser.assets", true)).summary, /backend signing source.*unavailable/u);
-    Reflect.set(f.input, "duo", fixtureDuoSigningSource());
-    writeFileSync(f.config.paths.duoCredential, "SYNTHETIC_PRIVATE_SECRET", { mode: 0o600 });
+    const manifest = join(f.config.paths.duoExtensionDir, "workflow-manifest.json");
+    mkdirSync(f.config.paths.duoExtensionDir); writeFileSync(manifest, "{}");
     assert.equal((await f.observe("browser.assets", true)).state, "healthy");
-    Reflect.set(f.input, "duo", fixtureDuoSigningSource({ assertCurrent() { throw new Error("SYNTHETIC_PRIVATE_SECRET"); } }));
-    chmodSync(f.config.paths.duoCredential, 0o644);
+    rmSync(manifest);
     const unsafe = await f.observe("browser.assets", true);
     assert.equal(unsafe.state, "unhealthy"); assert.doesNotMatch(JSON.stringify(unsafe), /SYNTHETIC_PRIVATE|setup-detectors-/u);
-    Reflect.set(f.input, "duo", fixtureDuoSigningSource());
-    chmodSync(f.config.paths.duoCredential, 0o600);
+    writeFileSync(manifest, "{}");
     assert.equal((await f.observe("browser.assets", true)).state, "healthy");
     assert.equal(launch.mock.calls.length, 0);
   });

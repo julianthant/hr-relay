@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import { RunRecordService, workerRunLifecyclePort, runContinuationPort } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import type { Clock } from "../../../src/rules/time/clock.js";
-import type { AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-repositories.js";
 import type { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { CONFIG_SNAPSHOT } from "./phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";

@@ -6,7 +6,7 @@ import { afterEach, it } from "vitest";
 import { CommandExecutor, type CommandExecutionScope } from "../../../../src/dashboard/app/commands/command-executor.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
-import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
+import { SessionPanel } from "../../../support/helpers/dashboard/sessions-host.js";
 import type { SessionCommandBinding } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
@@ -52,6 +52,7 @@ it("keeps the worker cards it last read while another day loads, marked as updat
   assert.equal(host.querySelector("[data-sessions-stale]")?.textContent, "Updating");
   assert.deepEqual(workerButtons(host).filter(button => !button.disabled).map(button => button.getAttribute("aria-label")), []);
   assert.equal(addWorkers(host)?.disabled, true, "Add workers stays shown and switched off while the day loads");
+  assert.equal(addWorkers(host)?.parentElement?.getAttribute("aria-label"), "Sessions are out of date", "the dimmed button says why");
   await render({ state: "loaded", value: FIXTURE_DAY_WIRE });
   assert.equal(host.querySelector("[data-sessions-stale]") === null, true);
   assert.equal(addWorkers(host)?.disabled, false);
@@ -64,4 +65,5 @@ it("shows the loading placeholder, with Add workers switched off, when a day loa
   assert.equal(host.querySelector('[role="status"][aria-label="Loading sessions"]')?.getAttribute("aria-busy"), "true");
   assert.equal(host.querySelector("[data-sessions-stale]") === null, true);
   assert.equal(addWorkers(host)?.disabled, true);
+  assert.equal(addWorkers(host)?.parentElement?.getAttribute("aria-label"), "Sessions are loading");
 });

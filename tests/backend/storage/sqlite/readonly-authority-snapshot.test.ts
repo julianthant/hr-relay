@@ -4,8 +4,10 @@ import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
-import { createReadonlyAuthoritySnapshot, withReusableReadonlyAuthoritySnapshots } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { startupImageDigest } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
+import { createReadonlyAuthoritySnapshot, withReadonlyAuthoritySnapshot, withReusableReadonlyAuthoritySnapshots } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 
 for (const fault of ["writable", "hardlink", "foreign-owner"] as const) {
   it(`refuses a ${fault} snapshot source before starting its observer`, () => {
@@ -39,7 +41,7 @@ it("shares an unchanged stopped copy, rechecks replaced sources and closes each 
   try {
     const freshPath = await withReusableReadonlyAuthoritySnapshots(async () => {
       const first = createReadonlyAuthoritySnapshot(path);
-      const peer = createReadonlyAuthoritySnapshot(path);
+      const peer = await withReusableReadonlyAuthoritySnapshots(async () => createReadonlyAuthoritySnapshot(path));
       try {
         assert.equal(first.path, peer.path);
         peer.dispose();
@@ -62,5 +64,32 @@ it("shares an unchanged stopped copy, rechecks replaced sources and closes each 
       } finally { peer.dispose(); first.dispose(); }
     });
     assert.equal(fs.existsSync(freshPath), false);
+  } finally { fs.rmSync(root, { recursive: true }); }
+});
+
+it("shares the startup digest only between readers of the same private copy", async () => {
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "private-snapshot-digest-"));
+  const path = join(root, "source.db");
+  const write = (sql: string) => {
+    const database = new DatabaseSync(path);
+    try { database.exec(sql); } finally { database.close(); }
+  };
+  try {
+    write("CREATE TABLE sample(value); INSERT INTO sample VALUES(1)");
+    fs.chmodSync(path, 0o600);
+    const serialize = vi.spyOn(DatabaseSync.prototype, "serialize");
+    try {
+      await withReusableReadonlyAuthoritySnapshots(async () => {
+        const first = withReadonlyAuthoritySnapshot(path, startupImageDigest);
+        assert.equal(first.state, "observed");
+        assert.deepEqual(withReadonlyAuthoritySnapshot(path, startupImageDigest), first);
+        assert.equal(serialize.mock.calls.length, 1);
+        write("UPDATE sample SET value=2");
+        const changed = withReadonlyAuthoritySnapshot(path, startupImageDigest);
+        assert.equal(changed.state, "observed");
+        assert.notDeepEqual(changed, first);
+        assert.equal(serialize.mock.calls.length, 2);
+      });
+    } finally { serialize.mockRestore(); }
   } finally { fs.rmSync(root, { recursive: true }); }
 });

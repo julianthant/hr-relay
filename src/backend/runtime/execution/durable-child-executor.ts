@@ -9,7 +9,7 @@ import { DelegationManifestRefSchema, type AnyWorkflowRef } from "../../../model
 import { CommandIdSchema, DelegationManifestIdSchema, RunIdSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { DelegationManifestSchema, type DelegationManifest } from "../../../rules/workflow/dependencies.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import type { ChildRunBatchContext, ChildRunContext, ChildRunExecutor } from "./run-execution-contract.js";
 import { descriptorRuntimeNodes, workflowProjections, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { planCanonicalDelegation } from "../../runs/lifecycle/delegation-planning.js";
@@ -155,7 +155,6 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
               case "cancelled": {
                 if (dependency.state !== "cancelled") throw new Error("delegation-dependency-unsettled");
                 const source = authority.authority.dependencies.cancellationOutcome(child.envelope.runId);
-                if (source.reason === undefined) throw new Error("delegation-child-cancellation-reason-unavailable");
                 return { run: child, result, cancellation: source };
               }
               default:

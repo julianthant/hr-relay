@@ -1,4 +1,4 @@
-import type { SessionsHarness } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
+import type { SessionsHarness } from "../../../../src/dashboard/surfaces/sessions/use-sessions.js";
 import type { SessionPreviewCommandPort, SessionPreviewResult } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import type { WorkflowCatalogEntry } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import type { SessionControl, SessionNode, SessionWorker, SessionsViewState } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";

@@ -163,6 +163,7 @@ export const ERROR_CATALOG = Object.freeze({
   RUNTIME_ALREADY_RUNNING: catalogEntry("Relay is already running. Close it before starting another.", EmptyParametersSchema),
   PRIVATE_FILE_LOCK_UNAVAILABLE: catalogEntry("Local storage is busy. Wait for the other operation, then try again.", EmptyParametersSchema),
   DATABASE_WRITER_UNAVAILABLE: catalogEntry("Saved data was busy too long. Nothing was written. Try again.", EmptyParametersSchema),
+  STORAGE_SNAPSHOT_CHANGED: catalogEntry("Saved data changed while loading. Loading again.", EmptyParametersSchema),
   RUN_CRASH_RESOURCES_RELEASED: catalogEntry("Resources held by an interrupted worker were released.", EmptyParametersSchema),
   BROWSER_CLOSURE_UNPROVED: catalogEntry("The browser may not have closed. No file or credential was changed.", EmptyParametersSchema),
   DUO_SETUP_OPEN_FAILED: catalogEntry("The setup browser did not start. Select Reopen to try again.", EmptyParametersSchema),
@@ -195,6 +196,8 @@ export const ERROR_CATALOG = Object.freeze({
   DUO_CREDENTIAL_CONFLICT: catalogEntry("The Duo credential changed. Reload its current state and try again.", EmptyParametersSchema),
   DUO_CREDENTIAL_UNCERTAIN: catalogEntry("The Duo change could not be confirmed. Leave this profile as is.", EmptyParametersSchema),
   DUO_CREDENTIAL_UNAVAILABLE: catalogEntry("Duo credentials could not be read or saved safely.", EmptyParametersSchema),
+  DUO_READY_CREDENTIAL_REQUIRED: catalogEntry("Duo isn't set up. Set it up in Settings.", EmptyParametersSchema),
+  DUO_SIGNING_SOURCE_REQUIRED: catalogEntry("Relay couldn't access Duo setup. Check Settings.", EmptyParametersSchema),
   CREDENTIAL_CONVERSION_COUNTER_UNPROVED: catalogEntry("The saved Duo credential has no safe counter. Keep this profile stopped.", EmptyParametersSchema),
   CREDENTIAL_CONVERSION_REQUIRED: catalogEntry("Restart Relay to finish converting this profile’s credentials, then log in.", EmptyParametersSchema),
   CREDENTIAL_CONVERSION_UNSUPPORTED: catalogEntry("Relay cannot convert these credentials. Keep the original installation.", EmptyParametersSchema),
@@ -510,7 +513,11 @@ export const ERROR_CATALOG = Object.freeze({
     z.strictObject({ source: BoundarySourceSchema }),
   ),
   RERUN_SOURCE_INPUT_PROTECTED: catalogEntry(
-    "This input is protected and cannot be copied. Start a new run.",
+    "The original input can't be reused; use Start run.",
+    EmptyParametersSchema,
+  ),
+  RERUN_BROWSER_MODE_UNKNOWN: catalogEntry(
+    "The original browser mode is unknown; use Start run.",
     EmptyParametersSchema,
   ),
   QUEUE_READ_UNAVAILABLE: catalogEntry(
@@ -563,6 +570,8 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   DASHBOARD_PAGE_FAILED: catalogEntry("This page could not be shown. Open the dashboard again.", EmptyParametersSchema),
+  READ_SUPERSEDED: catalogEntry("A newer request from this tab replaced this one.", EmptyParametersSchema),
+  READ_LANE_RESTARTED: catalogEntry("The dashboard reader restarted. Try again.", EmptyParametersSchema),
   DASHBOARD_READ_FAILED: catalogEntry(
     "This could not load. Try again.",
     EmptyParametersSchema,

@@ -1,6 +1,6 @@
 import type { RunRecord } from "../../../models/run/record.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { authenticateOcrOperator } from "../lifecycle/ocr-review-authority.js";
 import { delegationRetryWriteRefusal, childTerminalSettlement } from "../../storage/sqlite/delegation-authority.js";

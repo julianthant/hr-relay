@@ -1,15 +1,4 @@
 export {
-  AuthorityDatabase,
-  AuthorityDatabaseOptionsSchema,
-  AuthorityFormatUnsupportedError,
-  AuthorityMetaSchema,
-  AuthoritySchemaInspectionSchema,
-  ImmutableInsertDispositionSchema,
-  type AuthorityRepositories,
-  type AuthorityTerminalizationHooks,
-  type AuthorityWriteCommitHooks,
-} from "./authority-database.js";
-export {
   ArtifactOutboxStorageRecordSchema,
 } from "./storage-records.js";
 export {

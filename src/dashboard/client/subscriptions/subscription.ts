@@ -67,9 +67,11 @@ export interface DashboardDaySubscription {
 const CURSOR_PATTERN = /^pc:([1-9]\d*)$/;
 
 /** Which stream endings a RECONNECT can answer, and which are terminal.
- * `openStream` rejects with exactly two kinds: `network` when the fetch itself fails. */
+ * `openStream` rejects with exactly two kinds: `network` when the fetch itself fails.
+ * A retryable 503 is a read the server cannot serve right now; any other HTTP failure is terminal. */
 function reconnectableStreamFailure(reason: unknown): boolean {
-  return reason instanceof DashboardClientError && reason.kind === "network";
+  return reason instanceof DashboardClientError
+    && (reason.kind === "network" || reason.kind === "http" && reason.status === 503 && reason.retryable);
 }
 
 /** A rejection this client cannot classify is not a network blip. Naming it

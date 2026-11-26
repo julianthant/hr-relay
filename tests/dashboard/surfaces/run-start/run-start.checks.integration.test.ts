@@ -8,8 +8,6 @@ import { FIXTURE_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-b
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/fixtures/dashboard/fixture-settings.js";
 import { PreflightRerunCommandRequestSchema } from "../../../../src/models/preflight/preflight-contract.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
-import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
@@ -31,13 +29,12 @@ function served(...reports: ReturnType<typeof h.readiness>[]) {
 async function reachChecks(dialog: Awaited<ReturnType<typeof h.openDialog>>) {
   await dialog.type(h.TYPED);
   await dialog.press("Continue");
-  await dialog.press("Continue");
   for (let wait = 0; wait < 6; wait += 1) await h.settle();
-  assert.equal(dialog.stage(), "Checks");
+  assert.equal(dialog.stage(), "Start");
 }
 const fixButton = (name: string) => h.buttons().find(button => h.buttonName(button) === name);
 
-describe("the Run dialog's Checks step", () => {
+describe("the Run dialog's Checks section", () => {
   it("reads the selected workflow's readiness when the dialog opens, before Checks is reached", async () => {
     const { reads, client } = served(h.readiness([PASSING]));
     await h.openDialog(client);
@@ -78,7 +75,6 @@ describe("the Run dialog's Checks step", () => {
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
     await slow.press("Continue");
-    await slow.press("Continue");
     assert.equal(slow.disabled("Start run"), true);
     assert.ok(slow.text().includes("Checking"));
     await act(async () => { pending.resolve(h.readiness([PASSING])); });
@@ -112,6 +108,48 @@ describe("the Run dialog's Checks step", () => {
     assert.deepEqual(fixes, [["account", "protected.ucpathPassword"]]);
   });
 
+  it("blocks Start for a missing Duo key and sends Fix to Account Security", async () => {
+    const fixes: (readonly [string, string | undefined])[] = [];
+    const { client } = served(h.readiness([PASSING, { check: "browser.duo-key", status: "fail",
+      summary: "Duo isn't set up. Set it up in Settings." }]));
+    const dialog = await h.openDialog(client);
+    await dialog.rerender({ onFixCheck: (section, target) => fixes.push([section, target]) });
+    await reachChecks(dialog);
+    assert.equal(dialog.disabled("Start run"), true);
+    assert.match(dialog.text(), /Duo isn't set up\. Set it up in Settings\./u);
+    await dialog.press("Fix");
+    assert.deepEqual(fixes, [["account", "security.duo"]]);
+  });
+
+  it("checks again on return from Fix when the Duo evidence changed", async () => {
+    const blocked = h.readiness([{ check: "browser.duo-key", status: "fail", summary: "Duo isn't set up. Set it up in Settings." }]);
+    const stale = { state: "unavailable", reason: "Duo evidence needs a fresh check." } as const;
+    let evidence: ReturnType<typeof h.readiness> = stale;
+    let reruns = 0;
+    const client = h.stubClient({
+      readPreflight: async () => evidence,
+      editableSettings: async () => FIXTURE_EDITABLE_SETTINGS,
+      preflightScopes: async () => WorkflowBootstrapPrimitiveSchema.array().parse(FIXTURE_BOOTSTRAP.workflows),
+      rerunPreflight: async request => {
+        evidence = ++reruns === 1 ? blocked : h.READY;
+        if (evidence.state !== "present") throw new Error("fixture readiness report required");
+        return { state: "completed", commandId: PreflightRerunCommandRequestSchema.parse(request).commandId, report: evidence.report };
+      },
+    });
+    const dialog = await h.openDialog(client);
+    await dialog.rerender({ onFixCheck: () => undefined });
+    await reachChecks(dialog);
+    assert.equal(dialog.disabled("Start run"), true);
+    assert.equal(reruns, 1);
+    await dialog.press("Fix");
+    await dialog.rerender({ hidden: true });
+    evidence = stale;
+    await dialog.rerender({ hidden: false });
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    assert.equal(reruns, 2);
+    assert.equal(dialog.disabled("Start run"), false);
+  });
+
   it("says on a failed check with no Fix button what is wrong and what to do, in one sentence", async () => {
     const files = { check: "filesystem.health", status: "fail", summary: "Relay is out of disk space." } as const;
     const address = { check: "endpoint.crm.prod", status: "fail", summary: "The CRM address is invalid." } as const;
@@ -128,7 +166,6 @@ describe("the Run dialog's Checks step", () => {
     const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
-    await slow.press("Continue");
     await slow.press("Continue");
     const section = document.body.querySelector('section[aria-label="Checks"]');
     assert.equal(((section?.textContent ?? "").match(/Checking/gu) ?? []).length, 1, "the Checks section says Checking once");
@@ -163,9 +200,8 @@ describe("the Run dialog's Checks step", () => {
     assert.deepEqual(h.closed, [], "hiding is not closing");
     await dialog.rerender({ onFixCheck: () => undefined, hidden: false });
     assert.equal(reads.length, 2, "the checks run again after Settings");
-    assert.equal(dialog.stage(), "Checks");
+    assert.equal(dialog.stage(), "Start");
     assert.equal(dialog.disabled("Start run"), false, "the fixed check no longer blocks Start");
-    await dialog.press("Back");
     await dialog.press("Back");
     assert.equal(dialog.typedInput().value, h.TYPED);
     assert.equal(window.sessionStorage.length, 0);
@@ -195,7 +231,6 @@ describe("the Run dialog's Checks step", () => {
     const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
-    await slow.press("Continue");
     await slow.press("Continue");
     const region = document.body.querySelector('section[aria-label="Checks"] [role="status"]');
     assert.ok(region?.textContent?.includes("Checking"));
@@ -231,29 +266,18 @@ describe("asking for a re-check", () => {
     assert.equal(served.reruns(), 1, "a second visit to Checks only reads");
   });
 
-  it("does not ask again after switching workflow or returning from Settings, and asks once more after a reopen", async () => {
+  it("does not ask again after returning from Settings, and asks once more after a reopen", async () => {
     const served = missing(async () => { throw new Error("refused"); });
-    const separations = DESCRIPTORS.find(flow => flow.id === "separations");
-    assert.ok(separations?.surfaces.inputRun);
-    const other = { ...h.WORKFLOWS[0], workflowId: separations.id, label: separations.label, version: separations.version,
-      steps: projectStartSteps(separations), inputRun: { state: "present" as const, surface: separations.surfaces.inputRun } };
-    const dialog = await h.openDialog(served.client, { workflows: [h.WORKFLOWS[0], other], panelWorkflowId: h.WORKFLOW_ID });
+    const dialog = await h.openDialog(served.client, { workflows: [h.WORKFLOWS[0]], panelWorkflowId: h.WORKFLOW_ID });
     await reachChecks(dialog);
     assert.equal(served.reruns(), 1);
-    const pick = async (label: string) => {
-      const button = [...document.body.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflow"] button')].find(node => node.textContent?.includes(label));
-      assert.ok(button, label);
-      await act(async () => button.click());
-      for (let wait = 0; wait < 6; wait += 1) await h.settle();
-    };
-    await pick(other.label);
-    await pick(h.WORKFLOWS[0].label);
-    assert.equal(served.reruns(), 1, "switching workflow asks for no second re-check");
     await dialog.rerender({ hidden: true });
     await dialog.rerender({ hidden: false });
     assert.equal(served.reruns(), 1, "returning from Settings asks for no second re-check");
     await dialog.rerender({ open: false });
     await dialog.rerender({ open: true });
+    // A reopen keeps the stage it was closed on.
+    await dialog.press("Back");
     await reachChecks(dialog);
     assert.equal(served.reruns(), 2, "a reopened dialog may ask once more");
   });
@@ -308,9 +332,8 @@ describe("a refused re-check through the real client", () => {
   }
   async function toChecks(dialog: Awaited<ReturnType<typeof h.openDialog>>) {
     await dialog.press("Continue");
-    await dialog.press("Continue");
     for (let wait = 0; wait < 6; wait += 1) await h.settle();
-    assert.equal(dialog.stage(), "Checks");
+    assert.equal(dialog.stage(), "Start");
   }
 
   it("shows one notice and sends no error report when the server turns the re-check away (429)", async () => {

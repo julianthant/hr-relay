@@ -12,7 +12,7 @@ import { TaskError } from "../../../workflow-kit/errors.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { drainBrowserActionNotes } from "../../logs/browser-action-drain.js";
 import { createNoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { withBrowserActionNotes, type BrowserAction } from "../../systems/browser-shared/action-notes.js";
 import type { RunConfigFingerprintBinding } from "../workers/worker-sessions.js";
 import { WorkerSessionClosureUnprovedError } from "../workers/worker-sessions.js";

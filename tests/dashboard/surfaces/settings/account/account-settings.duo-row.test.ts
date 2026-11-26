@@ -70,7 +70,7 @@ describe("Settings > Account Security group", () => {
     assert.ok(confirm);
     await act(async () => { confirm.click(); });
     assert.equal(change.mock.calls.length, 1);
-    assert.match(document.body.textContent ?? "", /DuoNot set upSet up/u);
+    assert.match(document.body.textContent ?? "", /DuoSet up/u);
     assert.ok(button("Set up"));
     assert.doesNotMatch(document.body.textContent ?? "", /Relay Work Key/u);
   });

@@ -10,7 +10,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import type { CommandRowCurrent } from "../../../rules/commands/command-lifecycle.js";
 import { CommandRowStateSchema, UNKNOWN_EFFECT_CODES, commandRowStateOf, commandRowTransition, nativeAuditEffect } from "../../../rules/commands/command-lifecycle.js";
-import type { AuthorityRepositories } from "./authority-database.js";
+import type { AuthorityRepositories } from "./authority-repositories.js";
 
 let activeRunCommand: Readonly<{ repositories: AuthorityRepositories; request: string }> | undefined;
 

@@ -290,15 +290,16 @@ export function createRunStartDialogHarness() {
 
   async function openDialog(
     client: DashboardClient,
-    catalogue: Readonly<{ workflows: readonly RunStartWorkflow[]; panelWorkflowId: string; rerunSource?: RerunLaunchSource }> = {
+    catalogue: Readonly<{ workflows: readonly RunStartWorkflow[]; panelWorkflowId: string; rerunSource?: RerunLaunchSource; rerunInOneClick?: boolean }> = {
       workflows: WORKFLOWS,
       panelWorkflowId: WORKFLOW_ID,
     },
     onApplied: (workflowId: string) => void = () => undefined,
+    wrap: (dialog: ReactElement) => ReactElement = dialog => dialog,
   ): Promise<OpenDialog> {
     intakeHandoffs.length = 0; closed.length = 0;
     const catalog = buildWorkflowCatalog(catalogue.workflows, servedFixtureSources(catalogue.workflows));
-    const dialogElement = (extra: Partial<ComponentProps<typeof RunStartDialog>>) => createElement(ToastProvider, { children: createElement(DashboardClientProvider, {
+    const dialogElement = (extra: Partial<ComponentProps<typeof RunStartDialog>>) => wrap(createElement(ToastProvider, { children: createElement(DashboardClientProvider, {
       client,
       children: createElement(FixtureCommandBinding, { actorId: ACTOR_ID, children: createElement(RunStartDialog, {
         open: true,
@@ -307,13 +308,14 @@ export function createRunStartDialogHarness() {
         panelWorkflowId: catalogue.panelWorkflowId,
         actorId: ACTOR_ID,
         rerunSource: catalogue.rerunSource,
+        rerunInOneClick: catalogue.rerunInOneClick,
         onApplied,
         onOpenIntake: (workflowId: string, intakeSessionId: string) => {
           intakeHandoffs.push({ workflowId, intakeSessionId });
         },
         ...extra,
       }) }),
-    }) });
+    }) }));
     await render(dialogElement({}));
     const rerender = async (extra: Partial<ComponentProps<typeof RunStartDialog>>): Promise<void> => {
       assert.ok(mounted, "the dialog is mounted");
@@ -336,10 +338,10 @@ export function createRunStartDialogHarness() {
 
     const switchNamed = (name: string): HTMLInputElement | undefined => [...document.body.querySelectorAll<HTMLInputElement>('[role="switch"], [role="checkbox"]')]
       .find(node => [name, `Include ${name}`, `${name} (required)`].includes(node.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent ?? "") || node.getAttribute("aria-label") === name);
-    /** Checks is the last stage and holds Start; a press of Start from an earlier stage goes there first and waits for the checks. */
+    /** Start is the last stage and holds the Start button; a press of Start from an earlier stage goes there first and waits for the checks. */
     const press = async (name: string): Promise<void> => {
       if (/^(Start|Create rerun)/u.test(name) && !buttons().some(button => buttonName(button) === name)) {
-        for (let guard = 0; guard < 6 && stage() !== "Checks"; guard += 1) {
+        for (let guard = 0; guard < 6 && stage() !== "Start"; guard += 1) {
           const before = stage();
           const next = buttons().find(button => buttonName(button) === "Continue");
           if (next === undefined) break;
@@ -511,7 +513,7 @@ export function createRunStartDialogHarness() {
     }));
     await dialog.type(TYPED);
     await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Options");
+    assert.equal(dialog.stage(), "Start");
     await dialog.press("Start run");
     assert.equal(closed.at(-1), false);
     return dialog;

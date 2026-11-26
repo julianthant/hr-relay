@@ -26,7 +26,7 @@ function ToastOverSessions() {
   }, [toast]);
   return <>
     <style>{'[data-slot="toast-viewport"] { top: auto !important; bottom: 24px !important; left: 25% !important; }'}</style>
-    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} workflows={[]} />
   </>;
 }
 
@@ -39,7 +39,7 @@ function ToastBelowTop() {
   }, [toast]);
   return <>
     <style>{'[data-slot="toast-viewport"] { top: 66px !important; }'}</style>
-    <SessionsView data={{ state: "ready", workers: [] }} open={false} onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+    <SessionsView data={{ state: "ready", workers: [] }} open={false} onOpenChange={() => undefined} onControl={() => undefined} workflows={[]} />
   </>;
 }
 
@@ -49,7 +49,7 @@ function RaiseToasts() {
   const [raised, setRaised] = useState(0);
   return <>
     <div><Button onClick={() => { toast({ tone: "success", sticky: true, title: `Result ${String(raised + 1)}` }); setRaised(raised + 1); }}>Raise toast</Button></div>
-    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
+    <SessionsView data={{ state: "ready", workers: [] }} open onOpenChange={() => undefined} onControl={() => undefined} workflows={[]} />
   </>;
 }
 
@@ -169,6 +169,16 @@ export const RULE_PROBES = {
     },
     finds: { "named-and-focusable": [/"Frozen tab" cannot be reached with the keyboard/u, /has no name/u, /^(?![\s\S]*"(?:Steps|One|Two)" cannot)/u] },
   },
+  "menu-popup-hands-over-its-stop": {
+    story: {
+      title: "A menu whose item takes the stop, and one with no enabled item",
+      render: () => <StoryFrame>
+        <div role="menu" aria-label="Held actions" tabIndex={-1}><div role="menuitem" tabIndex={-1}>Stuck item</div></div>
+        <div role="menu" aria-label="Empty actions" tabIndex={-1}><div role="menuitem" aria-disabled="true" tabIndex={-1}>Unavailable</div></div>
+      </StoryFrame>,
+    },
+    finds: { "named-and-focusable": [/"Stuck item" cannot be reached with the keyboard/u, /"Empty actions" cannot be reached with the keyboard/u, /^(?![\s\S]*"Held actions")/u] },
+  },
   "switch-ring-on-its-control": {
     story: {
       title: "A switch that rings its control, and an invisible input that rings nothing",
@@ -256,6 +266,20 @@ export const RULE_PROBES = {
       </StoryFrame>,
     },
     finds: { "no-dead-disabled-control": [/the picker "Workflow" is shown switched off/u, /^(?![\s\S]*"Add workers")/u] },
+  },
+  "dimmed-with-a-reason": {
+    story: {
+      title: "A dimmed Add workers that says why beside dimmed controls that do not, and settled beside locked boxes",
+      render: () => <StoryFrame>
+        <span data-state="closed" aria-label="Sessions are out of date" tabIndex={0}><Button aria-haspopup="dialog" disabled>Add workers</Button></span>
+        <Button aria-haspopup="dialog" disabled>Add people</Button>
+        <span data-state="closed" aria-label="A dimmed picker whose label repeats its own long name for the tooltip"><Button aria-haspopup="dialog" disabled aria-label="A dimmed picker whose label repeats its own long name for the tooltip">A dimmed picker whose label repeats its own long name for the tooltip</Button></span>
+        <section data-settled><div role="group" aria-label="Settled record"><input type="checkbox" aria-label="Include" checked readOnly disabled /></div></section>
+        <section><div role="group" aria-label="Locked record"><input type="checkbox" aria-label="Include locked" checked readOnly disabled /></div></section>
+        <section data-settled><div role="group" aria-label="Open record"><input type="checkbox" aria-label="Include again" disabled /></div></section>
+      </StoryFrame>,
+    },
+    finds: { "no-dead-disabled-control": [/the picker "Add people" is shown switched off/u, /the picker "A dimmed picker whose label repeats its/u, /every choice in "Locked record" is switched off/u, /every choice in "Open record" is switched off/u, /^(?![\s\S]*(?:"Add workers"|Settled record))/u] },
   },
   "toast-with-a-button": {
     story: { title: "A toast that holds a button", ready: "[data-ds-toast-state]", render: () => <StoryFrame><div data-ds-toast-state="full">Run deleted<Button>Undo</Button></div></StoryFrame> },

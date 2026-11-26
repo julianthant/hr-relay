@@ -21,7 +21,8 @@ import { createCredentialStore } from "../../../../src/backend/storage/configura
 import { createProfileVerifiers } from "../../../../src/backend/storage/configuration/verifier-store.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { backupStoppedAuthority, upgradeProfileAtStartup, upgradeReadyProfileStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";

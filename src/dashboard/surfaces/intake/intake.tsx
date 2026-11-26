@@ -13,7 +13,7 @@ Play,
 Table2,
 X,
 } from "lucide-react";
-import { useCallback,useMemo,useState,type ReactNode } from "react";
+import { useCallback,useMemo,useRef,useState,type ReactNode } from "react";
 import type { z } from "zod";
 import type { RowRejectSchema } from "../../../models/intake/manifest.js";
 import type {
@@ -632,6 +632,16 @@ function RejectedRowsTable({
     value: string;
   }> | null>(null);
   const [exclusion, setExclusion] = useState<Readonly<{ sourceRow: number; reason: string }> | null>(null);
+  // Cancel unmounts its own button; hand focus back to the row button that opened the editor.
+  const openers = useRef(new Map<string, HTMLButtonElement>());
+  const opener = (key: string) => (node: HTMLButtonElement | null) => {
+    if (node === null) openers.current.delete(key);
+    else openers.current.set(key, node);
+  };
+  const cancelTo = (key: string, close: () => void) => () => {
+    openers.current.get(key)?.focus();
+    close();
+  };
 
   return (
     <div className="flex flex-col gap-[var(--ds-space-cozy)]">
@@ -673,10 +683,12 @@ function RejectedRowsTable({
                     <span className="flex justify-end gap-[var(--ds-space-tight)]">
                       {correctable && "field" in reject && (
                         <Button
+                          ref={opener(`fix:${String(reject.sourceRow)}:${reject.field}`)}
                           size="sm"
                           variant="outline"
                           className="relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']"
                           disabled={locked}
+                          aria-label={`${INTAKE_REVIEW_COPY.fixCell}, row ${String(reject.sourceRow)}, ${labelOf(reject.field)}`}
                           onClick={() => {
                             setExclusion(null);
                             setCorrection({ sourceRow: reject.sourceRow, field: reject.field, value: "" });
@@ -686,10 +698,12 @@ function RejectedRowsTable({
                         </Button>
                       )}
                       <Button
+                        ref={opener(`exclude:${String(reject.sourceRow)}`)}
                         size="sm"
                         variant="outline"
                         className="relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']"
                         disabled={locked}
+                        aria-label={`Exclude row ${String(reject.sourceRow)}`}
                         onClick={() => {
                           setCorrection(null);
                           setExclusion({ sourceRow: reject.sourceRow, reason: "" });
@@ -730,7 +744,7 @@ function RejectedRowsTable({
             />
           </Field>
           <span className="flex justify-end gap-[var(--ds-space-base)]">
-            <Button variant="secondary" icon={<X aria-hidden className={dsIcon.md} />} disabled={locked} onClick={() => setCorrection(null)}>
+            <Button variant="secondary" icon={<X aria-hidden className={dsIcon.md} />} disabled={locked} onClick={cancelTo(`fix:${String(correction.sourceRow)}:${correction.field}`, () => setCorrection(null))}>
               {INTAKE_REVIEW_COPY.cancel}
             </Button>
             <Button
@@ -776,7 +790,7 @@ function RejectedRowsTable({
             />
           </Field>
           <span className="flex justify-end gap-[var(--ds-space-base)]">
-            <Button variant="secondary" icon={<X aria-hidden className={dsIcon.md} />} disabled={locked} onClick={() => setExclusion(null)}>
+            <Button variant="secondary" icon={<X aria-hidden className={dsIcon.md} />} disabled={locked} onClick={cancelTo(`exclude:${String(exclusion.sourceRow)}`, () => setExclusion(null))}>
               {INTAKE_REVIEW_COPY.cancel}
             </Button>
             <Button
@@ -856,7 +870,7 @@ function ManifestRows({ manifestId, rows }: { manifestId: string; rows: readonly
                 <TD numeric>{row.inputHash === undefined ? "—" : row.inputHash.slice(0, 10)}</TD>
                 <TD className="max-w-[var(--ds-w-member-detail)]">
                   <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
-                    <span className="min-w-0 flex-1 break-words">{row.parsedInput}</span>
+                    <span className="min-w-0 flex-1 truncate" title={row.parsedInput}>{row.parsedInput}</span>
                     <IdentifierPopover
                       label={`Show full evidence for source row ${String(row.sourceRow)}`}
                       title={`Source row ${String(row.sourceRow)} evidence`}

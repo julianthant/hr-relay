@@ -14,7 +14,7 @@ import { ReadOcrResult } from "../../../../src/models/workflows/ocr/read-result.
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { CommandAuditRecordSchema, CommandRequestSchema, RunLifecycleCommandAuditRecordSchema } from "../../../../src/rules/commands/commands.js";
 import { OcrReviewRevisionSchema, initialOcrReviewRecords } from "../../../../src/models/ocr/review.js";
 import { deriveStableUuid, lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";

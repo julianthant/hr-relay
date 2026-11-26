@@ -16,6 +16,7 @@ export type RunCheckFix = Readonly<{ section: string; label: string; target?: st
 
 /** Stands for the current fiscal year's job end date row, whose path carries the year; Settings resolves it from the served document. */
 export const CURRENT_FISCAL_TARGET = 'annualDates.current';
+export const DUO_SECURITY_TARGET = 'security.duo';
 
 const at = (section: string, label: string, target: string): RunCheckFix => ({ section, label, target });
 
@@ -23,6 +24,7 @@ const at = (section: string, label: string, target: string): RunCheckFix => ({ s
 export const RUN_CHECK_FIXES: Readonly<Record<string, RunCheckFix>> = Object.freeze({
   'runtime.compatibility': null,
   'browser.assets': null,
+  'browser.duo-key': at('account', 'Fix', DUO_SECURITY_TARGET),
   'config.valid': null,
   'filesystem.health': null,
   'authority.health': null,

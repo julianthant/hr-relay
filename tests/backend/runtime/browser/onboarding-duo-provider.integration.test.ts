@@ -6,15 +6,18 @@ import { stageFastDuoExtension } from "../../../../src/backend/runtime/browser/f
 import { PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../../src/models/config/duo-credential-store.js";
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { captureFullPage, FullPageCaptureRefusedError } from "../../../../src/backend/runtime/browser/full-page-capture.js";
+import { holdNativeViewport } from "../../../../src/backend/runtime/browser/native-viewport.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import assert from "node:assert/strict";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect } from "@playwright/test";
 import { chromium, type BrowserContext } from "playwright";
+import { PNG } from "pngjs";
 import { beforeAll, it } from "vitest";
 import { z } from "zod";
 import { createProfileOnboardingDuoProvider, duoScreenSnapshot, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
@@ -25,21 +28,31 @@ import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../..
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { assertChildFrameCaptureMasks } from "../../../support/helpers/browser/full-page-capture.js";
 
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const FORM = `<!doctype html><form action="${SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="username"><label for="ssopassword">Password</label><input id="ssopassword" name="password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
 
-// The runner's first load of the staged MV3 extension is slow; paying it here keeps it out of each test's 5 s launch window.
+// Warm the owned Chromium launch path before the provider's 5 s launch window.
 beforeAll(async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "onboarding-warm-"))), extension = join(root, "extension");
-  stageFastDuoExtension(realpathSync("fast-duo"), extension, PROFILE_ENROLLMENT_EXTENSION_MODE);
-  const context = await chromium.launchPersistentContext(join(root, "profile"), { channel: "chromium", headless: true,
-    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
+  const profileDirectory = realpathSync(mkdtempSync(join(tmpdir(), "onboarding-warm-")));
+  const extensionDirectory = join(profileDirectory, "relay-extension");
+  let owned: OwnedBrowserProcess | undefined;
+  let context: BrowserContext | undefined;
   try {
+    stageFastDuoExtension(realpathSync("fast-duo"), extensionDirectory, PROFILE_ENROLLMENT_EXTENSION_MODE);
+    context = await DEFAULT_BROWSER_LAUNCHER.launch({
+      profileDirectory, extensionDirectory, headless: true, acceptDownloads: false,
+      downloadsPath: profileDirectory, viewport: null, timeoutMs: 15_000, ownedProcess: process => { owned = process; },
+    });
+    assert.ok(owned);
     const worker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js"))
-      ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js") });
+      ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js"), timeout: 5000 });
     assert.ok(worker);
-  } finally { await context.close(); }
+  } finally {
+    await owned?.stop(5000, context === undefined ? undefined : true);
+    rmSync(profileDirectory, { recursive: true, force: true });
+  }
 });
 
 for (const pendingClose of [false, true]) it(pendingClose
@@ -470,13 +483,14 @@ it("measures, centers and clamps the exact native setup normal window and execut
   await focus.show(relayContext, relayPage);
   const relay = await focus.captureRelay(); assert.ok(relay?.workArea);
   const context = await DEFAULT_BROWSER_LAUNCHER.launch({ profileDirectory: root, extensionDirectory, headless: false, acceptDownloads: false,
-    downloadsPath: root, viewport: { width: 640, height: 720 }, timeoutMs: 5000, ownedProcess: owned => { process = owned; } });
+    downloadsPath: root, viewport: null, timeoutMs: 5000, ownedProcess: owned => { process = owned; } });
   try {
     const worker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js"))
       ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js"), timeout: 5000 });
     const target = z.object({ tabId: z.number(), windowId: z.number(), url: z.string() }).parse(await worker.evaluate(`globalThis.relayOnboarding.browserInstall(crypto.randomUUID())`));
     await expect.poll(() => context.pages().some(page => page.url() === target.url)).toBe(true);
     const page = context.pages().find(page => page.url() === target.url); assert.ok(page);
+    assert.equal(page.viewportSize(), null);
     const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
     const initial = { methods: { key: idle } };
     const reply = worker.evaluate(async initial => {
@@ -508,6 +522,108 @@ it("measures, centers and clamps the exact native setup normal window and execut
     await focus.show(context, page);
   } finally { assert.ok(process); await process.stop(5000, true); assert.equal(process.exited(), true); }
   } finally { await relayBrowser.close(); }
+});
+
+it("keeps headed evidence independent of native window size and gives resizing back after capture", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "relay-headed-capture-")));
+  const context = await DEFAULT_BROWSER_LAUNCHER.launch({ profileDirectory: root, extensionDirectory: "", nativeOnly: true,
+    headless: false, acceptDownloads: false, downloadsPath: root, viewport: null });
+  try {
+    const page = context.pages()[0]; assert.ok(page);
+    assert.equal(page.viewportSize(), null);
+    await page.setContent(`<style>body{margin:0}main{height:2400px;background:#123456}
+      @media(min-width:1100px) and (min-height:1000px){main{background:linear-gradient(#fedcba 0 50%,#123456 50%)}}</style>
+      <main><div data-mask style="position:absolute;top:40px;left:0;width:70px;height:30px;background:#000"></div></main>`);
+    const cdp = await context.newCDPSession(page);
+    const { windowId } = await cdp.send("Browser.getWindowForTarget");
+    const dimensions = () => page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    const resize = (width: number, height: number) => cdp.send("Browser.setWindowBounds", { windowId, bounds: { width, height } });
+    const capture = (sampleLabels?: readonly string[]) => captureFullPage(page, {
+      assertCurrent: () => {}, assertSafe: async () => {}, secretControls: 'input[type="password"]',
+      ...(sampleLabels === undefined ? {} : { sampleLabels }),
+      mask: frame => [frame.locator("[data-mask]")], afterCapture: async () => {},
+    });
+
+    const opening = await page.evaluate(() => ({ width: window.outerWidth, height: window.outerHeight,
+      workWidth: screen.availWidth, workHeight: screen.availHeight }));
+    assert.ok(opening.width <= opening.workWidth && opening.height <= opening.workHeight);
+    await resize(650, 500);
+    await expect.poll(async () => (await dimensions()).width).toBeLessThan(700);
+    const small = await dimensions();
+    const baseline = await capture();
+    const pixels = PNG.sync.read(Buffer.from(baseline.bytes));
+    const pixel = (y: number) => {
+      const offset = (y * pixels.width + 20) * 4;
+      return [...pixels.data.subarray(offset, offset + 3)];
+    };
+    assert.deepEqual(pixel(20), [254, 220, 186]);
+    assert.deepEqual(pixel(50), [255, 0, 255]);
+    assert.deepEqual(pixel(pixels.height - 20), [18, 52, 86]);
+    assert.equal(await page.locator("[data-mask]").evaluate(element => getComputedStyle(element).opacity), "1");
+    const matchesBaseline = async () => {
+      const image = await capture();
+      assert.deepEqual([image.width, image.height], [baseline.width, baseline.height]);
+      assert.equal(Buffer.compare(image.bytes, baseline.bytes), 0);
+    };
+    assert.equal(page.viewportSize(), null);
+    await expect.poll(dimensions).toEqual(small);
+
+    await resize(850, 650);
+    await expect.poll(async () => (await dimensions()).width).toBeGreaterThan(small.width);
+    const large = await dimensions();
+    await matchesBaseline();
+    await expect.poll(dimensions).toEqual(large);
+
+    const connect = context.newCDPSession.bind(context);
+    let resized = false, disturbMask = false;
+    context.newCDPSession = async target => {
+      const session = await connect(target), send = session.send.bind(session);
+      session.send = async (method, params) => {
+        if (method === "Page.captureScreenshot" && !resized) {
+          await resize(650, 500);
+          await expect.poll(async () => (await cdp.send("Browser.getWindowBounds", { windowId })).bounds.width).toBeLessThan(700);
+          assert.deepEqual(await dimensions(), { width: 1280, height: 1200 });
+          resized = true;
+        }
+        if (method === "Page.captureScreenshot" && disturbMask) {
+          await page.locator("[data-mask]").evaluate(element => {
+            element.style.setProperty("opacity", "1", "important");
+            element.style.setProperty("opacity", "0", "important");
+          });
+        }
+        return send(method, params);
+      };
+      return session;
+    };
+    await matchesBaseline();
+    assert.equal(resized, true);
+    assert.equal(page.viewportSize(), null);
+    await expect.poll(dimensions).toEqual(small);
+
+    const readHeldViewport = holdNativeViewport(page, () => {}, async () => {
+      await resize(850, 650);
+      await expect.poll(async () => (await cdp.send("Browser.getWindowBounds", { windowId })).bounds.width).toBeGreaterThan(800);
+      return dimensions();
+    });
+    assert.deepEqual(await readHeldViewport(), small);
+    await expect.poll(dimensions).toEqual(large);
+    const labelled = await capture(["Synthetic evidence"]);
+    assert.equal(labelled.width, baseline.width);
+    assert.ok(labelled.height > baseline.height);
+    disturbMask = true;
+    await assert.rejects(() => capture(), FullPageCaptureRefusedError);
+    assert.equal(await page.locator("[data-mask]").evaluate(element => getComputedStyle(element).opacity), "1");
+    await cdp.detach();
+  } finally { await context.close(); }
+});
+
+it("masks same-origin and cross-origin child frame pixels in headed evidence", async () => {
+  const browser = await chromium.launch({ headless: false });
+  try {
+    const context = await browser.newContext({ viewport: null });
+    try { await assertChildFrameCaptureMasks(await context.newPage()); }
+    finally { await context.close(); }
+  } finally { await browser.close(); }
 });
 
 for (const expire of [false, true]) it(`real public Reopen proves owned stop, native retry and exact request custody (expired=${expire})`, async () => {

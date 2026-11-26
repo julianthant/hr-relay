@@ -93,21 +93,21 @@ describe("the Steps stage draws the served rows", () => {
     assert.match(dialog.text(), /4 of 4 included/u);
   });
 
-  it("shows one alert, the first failure, and keeps Continue and Start off until every field is valid", async () => {
+  it("shows one alert, the first failure, and keeps Start off until every field is valid", async () => {
     const requests: unknown[] = [];
     const dialog = await openSteps(served("person-lookup"), h.TYPED, h.stubClient({ submitStartPlan: async input => { requests.push(input); return planOmitting(["crm-dates"]); } }));
     await dialog.press("Read CRM dates");
     assert.deepEqual(alerts(), ["Enter employment date for read CRM dates."]);
-    assert.equal(dialog.disabled("Continue"), true);
+    assert.equal(dialog.disabled("Start run"), true);
     await typeDate("Employment date", "2020-01-15");
     assert.deepEqual(alerts(), ["Employment date must be a valid date in MM/DD/YYYY format."]);
     await typeDate("Employment date", "01/15/2020");
     assert.deepEqual(alerts(), ["Enter oath date for read CRM dates."]);
-    assert.equal(dialog.disabled("Continue"), true);
+    assert.equal(dialog.disabled("Start run"), true);
     assert.equal(requests.length, 0);
     await typeDate("Oath date", "02/20/2020");
     assert.deepEqual(alerts(), []);
-    assert.equal(dialog.disabled("Continue"), false);
+    assert.equal(dialog.disabled("Start run"), false);
     await dialog.press("Start run");
     const request = submitted(requests);
     assert.equal(request.selectedStepKeys?.includes("crm-dates"), false);
@@ -137,12 +137,14 @@ describe("the Steps stage draws the served rows", () => {
     await dialog.press("Read CRM dates");
     await typeDate("Employment date", "01/15/2020");
     await typeDate("Oath date", "02/20/2020");
-    await dialog.press("Back"); await dialog.press("Back");
+    await dialog.press("Back");
+    await dialog.press("Back");
     await dialog.type(`${h.TYPED}; 10000001`);
-    await dialog.press("Continue"); await dialog.press("Continue");
+    await dialog.press("Continue");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Steps");
     assert.deepEqual(alerts(), ["Typed values fit one person; 2 are entered."]);
-    assert.equal(dialog.disabled("Continue"), true);
+    assert.equal(dialog.disabled("Start run"), true);
   });
 
   it("offers Enter manually on a locked row, and sends the typed facts for a step that still runs", async () => {
@@ -200,7 +202,7 @@ describe("Rerun draws the same rows", () => {
     sourceStepKey: "crm-dates", value, checkpoint: { attempt: 1, writtenAt: written }, provenance: { path: field, source: "live" as const, observedAt: written, originalObservedAt: written } });
   const snapshot = (extra: Partial<RerunValuesSnapshot> = {}): RerunValuesSnapshot => RerunValuesSnapshotSchema.parse({
     sourceInput: { state: "available", value: { mode: "search", emplId: h.TYPED, crmCheck: true, keepNonHdh: false, includeCrmDates: true } },
-    source: { runId: "5a000000-0000-4000-8000-000000000009", version: 3, workflow: "person-lookup", descriptorVersion: person.version, contractFingerprint: h.HASH, outcome: "done" },
+    source: { runId: "5a000000-0000-4000-8000-000000000009", version: 3, workflow: "person-lookup", descriptorVersion: person.version, contractFingerprint: h.HASH, outcome: "done", dryRun: false, priority: "interactive", browserMode: "headless" },
     steps: [{ key: "searching", state: "completed", nodes: [node("searching")] }, { key: "cross-verify", state: "unfinished", nodes: [node("cross-verify", "step-omitted", "unfinished")] },
       { key: "active-status", state: "completed", nodes: [node("active-status")] }, { key: "crm-dates", state: "completed", nodes: [node("crm-dates")] }],
     values: [candidate("employmentDate", "2020-01-15"), candidate("oathDate", "2020-02-20")], transactions: [], ...extra });

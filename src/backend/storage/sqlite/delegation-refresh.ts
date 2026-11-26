@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { RunContinuationRefusedError } from "./run-continuation.js";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
-import type { AuthorityRepositories } from "./authority-database.js";
+import type { AuthorityRepositories } from "./authority-repositories.js";
 import { DelegationRefreshRequestSchema, DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { PredecessorRunRecordSchema, RunRecordSchema, type PredecessorRunRecord, type RunLifecycle, type RunRecord } from "../../../models/run/record.js";
 import { terminalEvidenceResult, type RunResultRecord } from "../../../models/run/result.js";

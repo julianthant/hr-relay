@@ -478,7 +478,9 @@ describe("worker pool", () => {
     const first = w.pool.stop(target, "operator"); await flush();
     const second = w.pool.stopAll("shutdown"); await flush();
     port.exit(0, null); await first; await second;
-    assert.equal(w.settled[0]?.reason, "operator");
+    const exit = w.settled[0];
+    assert.equal(exit?.outcome, "stopped");
+    assert.equal(exit.reason, "operator");
   });
 
   it("carries the child's reported failure code on a crash only", async () => {

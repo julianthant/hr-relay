@@ -7,6 +7,7 @@ import type { createDashboardApp } from "../../../transports/http/routes/api.js"
 import type { prepareDashboardRuntime } from "./runtime-resources.js";
 import type { composeShell } from "./shell.js";
 import type { composeWriteSafety } from "./write-safety.js";
+import { AuthoritySnapshotChangedError } from "../../../storage/sqlite/authority-errors.js";
 
 type NotificationWiringInput = Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "clock" | "lifecycle" | "descriptors"> & Pick<ReturnType<typeof composeWriteSafety>, "runDetailDeps">;
 
@@ -16,7 +17,7 @@ export function composeNotificationReads(database: NotificationWiringInput["data
     if (history === database) return native.listByActor(actor);
     return history.withAuthorityReadSnapshot(() => database.withAuthorityReadSnapshot(() => {
       // Both connections must see the same native rows before absence can identify an archive row.
-      if (history.getMeta().authorityGeneration !== database.getMeta().authorityGeneration) throw new Error("isolated-history-snapshot-changed");
+      if (history.getMeta().authorityGeneration !== database.getMeta().authorityGeneration) throw new AuthoritySnapshotChangedError();
       const nativeIds = new Set(native.listByActor(actor).map(record => record.notificationId));
       return history.authority.notifications.listByActor(actor)
         .map<ServedNotificationRecord>(record => nativeIds.has(record.notificationId) ? record : { ...record, readOnlyHistory: true });

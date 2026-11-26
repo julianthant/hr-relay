@@ -11,7 +11,7 @@ import { createTimeoutDeadlineScheduler } from "../../../../src/backend/runtime/
 import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
 import { registerSettingsPreflightRoutes } from "../../../../src/backend/transports/http/routes/settings-preflight.js";
 import { createDashboardClient, type DashboardClient } from "../../../../src/dashboard/client/index.js";
-import { SETTINGS_READ_DEADLINE_MS } from "../../../../src/dashboard/client/read-deadline.js";
+import { PREFLIGHT_RERUN_DEADLINE_MS, SETTINGS_READ_DEADLINE_MS } from "../../../../src/dashboard/client/read-deadline.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { runChecksBlocked, useRunChecks } from "../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import { RunChecksStage } from "../../../../src/dashboard/surfaces/run-start/run-checks.js";
@@ -36,7 +36,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-function checksHarness(workflowId: string, failingCheck: "config.valid" | "secrets.ucpath-sso" | false = "config.valid", beforeRerun?: () => Promise<void>) {
+function checksHarness(workflowId: string, failingCheck: "config.valid" | "secrets.ucpath-sso" | false = "config.valid", beforeRerun?: () => Promise<void>, beforeRead?: () => Promise<void>, firstAttempt: Readonly<Record<string, "lost" | "silent">> = {}) {
   const descriptor = WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor;
   assert.ok(descriptor, `registered workflow ${workflowId}`);
   const clock = manualClock(new Date("2026-11-17T12:00:00Z"));
@@ -69,13 +69,21 @@ function checksHarness(workflowId: string, failingCheck: "config.valid" | "secre
   app.get("/api/v1/settings/editable", () => Response.json(FIXTURE_EDITABLE_SETTINGS));
   registerSettingsPreflightRoutes(app, { preflight: service });
   const requests: string[] = [];
-  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
+  const reports: unknown[] = [];
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", surface: () => "run-start", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
     requests.push(`${init?.method ?? "GET"} ${path}`);
+    if (path === "/api/v1/profile/state") return Response.json({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready" });
+    if (path === "/api/v1/debug/errors") { assert.ok(typeof init?.body === "string"); reports.push(JSON.parse(init.body)); return Response.json({ state: "recorded" }); }
+    if (firstAttempt[path] !== undefined && requests.filter(request => request === `GET ${path}`).length === 1) {
+      if (firstAttempt[path] === "lost") throw new TypeError("Failed to fetch");
+      await new Promise<never>(() => undefined);
+    }
     if (path === "/api/v1/preflight/rerun") await beforeRerun?.();
+    if (path === "/api/v1/preflight") await beforeRead?.();
     return app.request(url, { ...init, headers: { ...init?.headers, host: "127.0.0.1:3938" } });
   } });
-  return { client, clock, observations, requests, scope };
+  return { client, clock, observations, reports, requests, scope };
 }
 
 /** The unavailable-checks notice with its Check again action is on screen. */
@@ -110,6 +118,7 @@ it("produces Emergency Contact's exact-scope report and shows its real failed ch
   assert.equal(missing.state, "unavailable");
   if (missing.state !== "unavailable") throw new Error("unexecuted scope must be unavailable");
   assert.match(missing.reason, /Preflight evidence is unavailable for this exact scope/u);
+  assert.equal(missing.code, "PREFLIGHT_EVIDENCE_MISSING");
   await mount(h.client, "emergency-contact");
   assert.ok(document.body.textContent?.includes("Relay's settings could not be read. Restart Relay, then check again."), document.body.textContent ?? "");
   assert.equal(document.querySelector('[data-run-check-fix="config.valid"]') === null, true, "Settings cannot fix an invalid runtime configuration");
@@ -209,6 +218,74 @@ it("does not execute a late check after the dialog has closed during settings ac
   assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 0);
 });
 
+it("shows the checks when the live rerun answers after the read deadline", async () => {
+  const rerun = Promise.withResolvers<void>();
+  const h = checksHarness("emergency-contact", false, () => rerun.promise);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await mount(h.client, "emergency-contact");
+  await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS + 5_000); });
+  assert.equal(checksUnavailable(), false, document.body.textContent ?? "");
+  await act(async () => { rerun.resolve(); });
+  await settle();
+  assert.equal(checksUnavailable(), false, document.body.textContent ?? "");
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
+});
+
+it("asks a checks read that got no answer in time again and shows the checks", async () => {
+  let reads = 0;
+  const h = checksHarness("emergency-contact", false, undefined, () => (reads += 1) === 1 ? new Promise<void>(() => undefined) : Promise.resolve());
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await mount(h.client, "emergency-contact");
+  await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS + 250); });
+  await settle();
+  assert.equal(checksUnavailable(), false, document.body.textContent ?? "");
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
+  assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
+});
+
+it("asks the settings read before a rerun again at the request when its first attempt gets no answer in time", async () => {
+  const h = checksHarness("emergency-contact", false, undefined, undefined, { "/api/v1/settings/editable": "silent" });
+  await h.client.readProfileSession();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await mount(h.client, "emergency-contact");
+  await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS + 250); });
+  await settle();
+  assert.equal(h.requests.filter(request => request === "GET /api/v1/settings/editable").length, 2);
+  assert.equal(checksUnavailable(), false, document.body.textContent ?? "");
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
+  assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
+  assert.deepEqual(h.reports, []);
+});
+
+it("asks the workflow-scope read before a rerun again at the request when its first attempt gets no answer in time", async () => {
+  const h = checksHarness("emergency-contact", false, undefined, undefined, { "/api/v1/bootstrap": "silent" });
+  await h.client.readProfileSession();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await mount(h.client, "emergency-contact");
+  await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS + 250); });
+  await settle();
+  assert.equal(h.requests.filter(request => request === "GET /api/v1/bootstrap").length, 2);
+  assert.equal(checksUnavailable(), false, document.body.textContent ?? "");
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
+  assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
+  assert.deepEqual(h.reports, []);
+});
+
+it("asks the settings and workflow-scope reads again at the request after a lost connection and reports nothing", async () => {
+  const h = checksHarness("emergency-contact", false, undefined, undefined, { "/api/v1/settings/editable": "lost", "/api/v1/bootstrap": "lost" });
+  await h.client.readProfileSession();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await mount(h.client, "emergency-contact");
+  await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+  await settle();
+  assert.equal(checksUnavailable(), false, document.body.textContent ?? "");
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
+  assert.equal(h.requests.filter(request => request === "GET /api/v1/settings/editable").length, 2);
+  assert.equal(h.requests.filter(request => request === "GET /api/v1/bootstrap").length, 2);
+  assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
+  assert.deepEqual(h.reports, []);
+});
+
 it("bounds a stalled rerun response, ignores its late completion and permits an explicit fresh check", async () => {
   const response = Promise.withResolvers<void>();
   const h = checksHarness("emergency-contact", false, () => response.promise);
@@ -216,7 +293,7 @@ it("bounds a stalled rerun response, ignores its late completion and permits an 
   try {
     await mount(h.client, "emergency-contact");
     assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS - 1); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(PREFLIGHT_RERUN_DEADLINE_MS - 1); });
     assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, true);
     assert.ok(document.body.textContent?.includes("Checking"));
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });

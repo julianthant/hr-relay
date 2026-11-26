@@ -1,6 +1,8 @@
 import { composeWorkerArtifactProjector } from "./worker/artifact-output.js";
 import { hasUncertainBrowserLaunch } from "../../runtime/browser/native-browser.js";
-import { createDuoCredentialStore } from "../../storage/configuration/duo-credential-store.js";
+import { createDuoCredentialStore, DuoCredentialError } from "../../storage/configuration/duo-credential-store.js";
+import { DuoSetupRefusal } from "../../storage/configuration/duo-signing.js";
+import type { WorkerSetupRefusalCode } from "../../../models/run/worker-control.js";
 import { createNominatimWorkerAdapter } from "../../processing/providers/nominatim-owner.js";
 import { createNominatimGeocodeAdapter } from "../../processing/providers/geocode-adapters.js";
 import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
@@ -14,7 +16,7 @@ import { runQueuedSpanEvent } from "../../runs/commands/run-queued-span.js";
 import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { createIpcRouter, type IpcRouter } from "../../runtime/workers/worker-ipc-router.js";
 import { createWorkerChildChannel, type WorkerChildChannel } from "../../runtime/workers/worker-child-channel.js";
-import { WORKER_MESSAGE_PREFIX, type WorkerActivity } from "../../runtime/workers/worker-messages.js";
+import { WORKER_MESSAGE_PREFIX, type WorkerActivity, type WorkerChildMessage } from "../../runtime/workers/worker-messages.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
 import { appendEmergencyFault, withEmergencyTimelineWriter } from "../../logs/emergency-faults.js";
@@ -70,7 +72,7 @@ import { createNoteTimelineWriter } from "../../storage/events/note-timeline-wri
 
 
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
-import { AuthorityDatabase } from "../../storage/sqlite/index.js";
+import { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { taskStoreRegistry } from "../registries/task-registry.js";
 
 // Cadences are composition choices; the contracts constrain renewal and recovery ordering, not numeric defaults.
@@ -389,6 +391,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   const cleanupErrors: unknown[] = [];
   let runtimeReport: WorkerLoopReport | undefined;
   let bootRefusal: PreflightAdmissionRefusal | undefined;
+  let setupRefusal: DuoSetupRefusal | DuoCredentialError | undefined;
   let resources: ReturnType<typeof createRunResourcesFactory> | undefined;
   let ocrAccount: ReturnType<typeof createChatGptAccountService> | undefined;
   let accountClosureProven = true;
@@ -484,6 +487,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   const ocr = createChatGptOcrAdapter({ account: ocrAccount, artifacts, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
   const workerNominatim = input.lifetimeLock instanceof RuntimeLifetimeLock ? undefined : createNominatimWorkerAdapter(clock);
   resources = createRunResourcesFactory({runReader:runRecordService,duo,ocr,nominatim:workerNominatim ?? createNominatimGeocodeAdapter({clock}),preflight:runtimePreflight,admission,database,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+    browserSessionsRequired: systems.size > 0,
     assertBrowserRoot,
     onDebug: workerSessionDiagnostics(debugEvents),
     assertProfileOwner: requestedWorkerId => withOperationProof(() => {
@@ -497,7 +501,13 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     ...(input.createSessionFactory === undefined ? {} : {createSessionFactory:input.createSessionFactory}),
     ...(input.duoCeremony === undefined ? {} : {duoCeremony:input.duoCeremony})});
   const ownedResources = resources;
-  const baselineResources = ownedResources.baseline(resolved.config);
+  const baselineResources = (() => {
+    try { return ownedResources.baseline(resolved.config); }
+    catch (error) {
+      if (error instanceof DuoSetupRefusal || error instanceof DuoCredentialError) setupRefusal = error;
+      throw error;
+    }
+  })();
 
   const stopController = new AbortController();
   const forwardStop = (reason: string) => (): void => {
@@ -722,6 +732,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     try {
       if (refusal !== undefined) debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-runtime",
         code: refusal.code, ...(refusal.summary === undefined ? {} : { message: refusal.summary }), reason: "operation-refused" }, { kind: "worker", workerId });
+      else if (setupRefusal !== undefined) debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-runtime",
+        code: setupRefusal.code, message: setupRefusal.message, reason: "setup-refused" }, { kind: "worker", workerId });
       else emitFaultWithCauses(debugEvents, undefined, error, { category: "worker", area: "worker-runtime", code: "WORKER_RUNTIME_FAILED",
         reason: hasUncertainBrowserLaunch(error) ? "browser-closure-unproved" : "worker-failed" }, { kind: "worker", workerId });
     } catch (loggingError) { cleanupErrors.push(loggingError); }
@@ -759,11 +771,21 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     throw new RuntimeCustodyUncertainError(errors);
   }
   if (runtimeError !== undefined) {
+    if (setupRefusal !== undefined && launch !== undefined) await sendSetupRefusal(setupRefusal.code);
     if (runtimeError instanceof Error) throw runtimeError;
     throw new Error(`worker ${workerId} failed with a non-Error value`, { cause: runtimeError });
   }
   if (runtimeReport === undefined) throw new Error(`worker ${workerId} produced no report`);
   return runtimeReport;
+}
+
+async function sendSetupRefusal(code: WorkerSetupRefusalCode): Promise<void> {
+  const send = process.send?.bind(process);
+  if (send === undefined || !process.connected) throw new Error("runtime-parent-channel-required");
+  const message = { kind: "worker-setup-refused", code } satisfies WorkerChildMessage;
+  await new Promise<void>((resolve, reject) => {
+    send(message, undefined, undefined, error => { if (error === null) resolve(); else reject(error); });
+  });
 }
 
 

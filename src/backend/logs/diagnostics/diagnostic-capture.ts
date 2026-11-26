@@ -18,7 +18,7 @@ import {
   DiagnosticBundleSchema,
   type DiagnosticBundle,
 } from "../../../models/trust/diagnostic.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 
 
 const ATTACHMENT_MEDIA_TYPES = Object.freeze({

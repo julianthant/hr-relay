@@ -1,6 +1,6 @@
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import { DecisionAnswerWireSchema, type DecisionAnswerWire } from "../../../models/dashboard/run-decision.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 
 export type DecisionAnswerer = (commandId: string, option: Readonly<{ id: string; label: string }>, at: string) => DecisionAnswerWire;
 

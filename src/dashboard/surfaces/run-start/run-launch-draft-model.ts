@@ -1,17 +1,20 @@
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import type { TypedInputDraft } from "../../../models/workflow/ingress.js";
 import type { RunStartWorkflow } from "./run-start.js";
 import {
-  defaultRerunSteps, initialRerunValueDrafts, partialRerunTypedInput, plainRerunInputText, type RerunValueDraft,
+  defaultRerunSteps, initialRerunValueDrafts, partialRerunTypedInput, plainRerunInputText, rerunsInOneClick, type RerunValueDraft,
 } from "./run-start-rerun-model.js";
 import {
-  changeTypedInput, initialStepOmissionDraft, restoreTypedInput, toggleStepSelection, typedInputDefaults, typedInputText, typedDateControls, usDateText,
+  changeTypedInput, foldStepOmissionFacts, initialStepOmissionDraft, restoreTypedInput, toggleStepSelection, typedControlAvailable, typedInputDefaults, typedInputText, typedDateControls, usDateText,
   type BrowserMode, type StartPriority, type StepOmissionDraft, type StepOmissionFactDraft,
 } from "./run-start-model.js";
+import type { RerunLaunchSource } from "./run-launch-model.js";
+import type { PdfRunDraft, PdfRunPicks } from "./run-start-pdfs.js";
 import type { WorkbookRowChoice } from "./run-workbook-rows-model.js";
-import { factDraft, sourceTypedFacts, type ManualRows, type StepRow } from "./run-steps-model.js";
+import { factDraft, includedRowCount, rowFieldsOpen, rowIncluded, preselectionBadge, sourceTypedFacts, startRowsOf, type ManualRows, type StepRow } from "./run-steps-model.js";
 
 export type ReferenceSelection = Readonly<{ libraryId: string; versionId: string; sheetId: string }>;
 export type CheckPick = Readonly<{ versionId: string; sheetIds: readonly string[] }>;
@@ -47,11 +50,11 @@ export type LaunchDraft = Readonly<{
 const NO_TYPED_DRAFT: TypedInputDraft = {};
 const typedDeclarationOf = (workflow: RunStartWorkflow | undefined) =>
   workflow?.inputRun.state === "present" ? workflow.inputRun.surface.typedInput : undefined;
-/** A required date starts on the dashboard day; clearing it still refuses. */
+/** A required date starts on the dashboard day; clearing it still refuses. A declaration with no initial mode starts on its first mode. */
 const typedDefaultsOf = (workflow: RunStartWorkflow | undefined, today: string | undefined): TypedInputDraft => {
   const declaration = typedDeclarationOf(workflow);
   if (declaration === undefined) return {};
-  const defaults = typedInputDefaults(declaration);
+  const defaults = typedInputDefaults(declaration, declaration.initialMode ?? declaration.modes[0]?.value ?? null);
   const day = today === undefined ? undefined : usDateText(today);
   return day === undefined ? defaults : { ...defaults, ...Object.fromEntries(typedDateControls(declaration, String(defaults[declaration.modeField] ?? declaration.initialMode)).filter(control => control.required).map(control => [control.field, day])) };
 };
@@ -60,6 +63,36 @@ const defaultStepKeys = (workflow: RunStartWorkflow | undefined): string[] =>
 const omit = <T>(record: Readonly<Record<string, T>>, key: string): Record<string, T> =>
   Object.fromEntries(Object.entries(record).filter(([entry]) => entry !== key));
 const withSteps = (draft: LaunchDraft, workflowId: string, keys: readonly string[]): LaunchDraft => ({ ...draft, stepSelection: { workflowId, keys } });
+
+/** Every input the plan request is built from or refused by. A new one must be added here to reach the request. */
+export type LaunchRequestInputs = Readonly<{
+  /** The whole draft, so a new draft field shapes the request without being named. */
+  draft: LaunchDraft;
+  rowIdentity: string;
+  customizeSteps: boolean;
+  typedValues: TypedInputDraft;
+  rerunSource: RerunLaunchSource | undefined;
+  pdf: Readonly<{ draft: PdfRunDraft | null; picks: PdfRunPicks; loading: boolean; error: string | null }>;
+  workbookRows: Readonly<{ state: string; fresh: boolean }>;
+  library: Readonly<{ loading: boolean; refreshing: boolean; error: string | null; compatibility: unknown }>;
+  spreadsheets: ReturnType<typeof namedSpreadsheets>;
+  versionSources: Readonly<{ state: string; sources: readonly ReferenceSelection[] }>;
+  checks: Readonly<{ pending: boolean; selections: readonly ReferenceSelection[] }>;
+  /** `startRequestFingerprint`: the request controls as the dialog resolves them. */
+  request: string;
+}>;
+
+/** The library facts of every spreadsheet the draft names, picked or half picked. */
+export function namedSpreadsheets(draft: LaunchDraft, catalog: readonly Readonly<{ libraryId: string; version: number; state: Readonly<{ revision: number }> }>[]) {
+  const named = new Set([...[draft.referenceSelections, draft.referenceDrafts].flatMap(picks => Object.values(picks).map(pick => pick.libraryId)), ...Object.keys(draft.checkPicks)]);
+  return catalog.filter(entry => named.has(entry.libraryId)).map(entry => [entry.libraryId, entry.version, entry.state.revision] as const);
+}
+
+/** A plan is good for one fingerprint: a change to any input drops it. */
+export function launchRequestFingerprint(inputs: LaunchRequestInputs): string {
+  // JSON drops the draft's undefined fields, which the canonical form refuses.
+  return canonicalJsonStringify(JSON.parse(JSON.stringify(inputs)));
+}
 
 export function freshLaunchDraft(workflow: RunStartWorkflow | undefined, today?: string): LaunchDraft {
   return {
@@ -71,8 +104,10 @@ export function freshLaunchDraft(workflow: RunStartWorkflow | undefined, today?:
   };
 }
 
-export function typedDraftOf(draft: LaunchDraft, workflowId: string): TypedInputDraft {
-  return draft.typed.workflowId === workflowId ? draft.typed.draft : NO_TYPED_DRAFT;
+/** A routed workflow the draft was not made for (a restored route, a late catalog) shows the workflow's own defaults, not an empty draft. */
+export function typedDraftOf(draft: LaunchDraft, workflowId: string, workflow?: RunStartWorkflow, today?: string): TypedInputDraft {
+  if (draft.typed.workflowId === workflowId) return draft.typed.draft;
+  return workflow?.workflowId === workflowId ? typedDefaultsOf(workflow, today) : NO_TYPED_DRAFT;
 }
 
 export function selectedStepKeys(draft: LaunchDraft, workflow: RunStartWorkflow | undefined): readonly string[] {
@@ -92,7 +127,7 @@ export function changeText(draft: LaunchDraft, text: string): LaunchDraft {
 export function changeTypedValue(draft: LaunchDraft, workflow: RunStartWorkflow, field: string, value: string | boolean): LaunchDraft {
   const declaration = typedDeclarationOf(workflow);
   if (declaration === undefined) return draft;
-  const values = { ...typedInputDefaults(declaration), ...typedDraftOf(draft, workflow.workflowId) };
+  const values = typedDraftOf(draft, workflow.workflowId, workflow);
   const next = changeTypedInput(declaration, values, field, value);
   const current = selectedStepKeys(draft, workflow);
   const keys = workflow.steps.filter(step => step.control.state !== "selectable"
@@ -162,10 +197,6 @@ export function copyOmittedValue(draft: LaunchDraft, snapshot: RerunValuesSnapsh
     copiedOmissions: { ...draft.copiedOmissions, [index]: true } };
 }
 
-export function changeValueText(draft: LaunchDraft, index: number, text: string): LaunchDraft {
-  return { ...draft, valueDrafts: { ...draft.valueDrafts, [index]: { text, copied: false } } };
-}
-
 export function effectivePriority(choice: StartPriority | undefined, people: number): StartPriority {
   return choice ?? (people > 1 ? "bulk" : "interactive");
 }
@@ -214,14 +245,57 @@ export function clearWorkbookRows(draft: LaunchDraft): LaunchDraft {
 const refusal = (code: Parameters<typeof createErrorCatalogFailure>[0]): Error =>
   new Error(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text);
 
+/** The spreadsheets the source run was started with. More than one for the workflow's one required spreadsheet cannot be picked again. */
+function spreadsheetPicks(snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow): Pick<LaunchDraft, "referenceSelections" | "referenceDrafts" | "checkPicks"> {
+  const picked = (typeId: string | undefined) => (snapshot.spreadsheets ?? []).filter(pick => pick.typeId === typeId);
+  const [required, ...others] = picked(workflow.workbookReference?.id);
+  const checkPicks: Record<string, CheckPick> = {};
+  for (const { libraryId, versionId, sheetId } of picked(workflow.workbookCheck?.id))
+    checkPicks[libraryId] = { versionId, sheetIds: [...(checkPicks[libraryId]?.sheetIds ?? []), sheetId] };
+  if (required === undefined || others.length > 0) return { referenceSelections: {}, referenceDrafts: {}, checkPicks };
+  const { typeId, libraryId, versionId, sheetId } = required;
+  return { referenceSelections: { [typeId]: { libraryId, versionId, sheetId } }, referenceDrafts: { [typeId]: { libraryId, versionId } }, checkPicks };
+}
+
+/** A step the typed input decides (its control sits on the Input stage or is unavailable) is neither switched nor typed on its row. */
+export function rowInputDriven(workflow: RunStartWorkflow | undefined, typedValues: TypedInputDraft, row: StepRow): boolean {
+  const declaration = typedDeclarationOf(workflow);
+  const control = row.stepKey === undefined ? undefined : workflow?.steps.find(step => step.key === row.stepKey)?.control;
+  return declaration !== undefined && control?.state === "selectable"
+    && (declaration.controls.some(field => field.field === control.inputField && field.placement === "input") || !typedControlAvailable(declaration, typedValues, control.inputField));
+}
+
+/** A rerun picks up from the first row that did not complete: completed rows before it are off and rows the source skipped stay skipped.
+ * A row stays on when switching it off would take a later row with it, or leave a value nobody recorded to type. */
+function preselectRerunSteps(draft: LaunchDraft, snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow): LaunchDraft {
+  const rows = startRowsOf(workflow), badges = rows.map(row => preselectionBadge(row, snapshot));
+  const failed = badges.indexOf("failed"), restart = failed >= 0 ? failed : rerunsInOneClick(snapshot) ? 0 : Math.max(0, badges.indexOf("not-started"));
+  const leavesOut = (index: number) => badges[index] === "skipped" || badges[index] === "completed" && index < restart;
+  let next = draft;
+  for (const [index, row] of rows.entries()) {
+    if (!leavesOut(index) || rowInputDriven(workflow, typedDraftOf(next, workflow.workflowId, workflow), row)) continue;
+    const candidate = row.kind === "switch" ? toggleRow(next, workflow, snapshot, row, false)
+      : badges[index] === "skipped" ? toggleManual(next, snapshot, row, true) : next;
+    const before = selectedStepKeys(next, workflow), after = selectedStepKeys(candidate, workflow);
+    const losesLater = rows.some((other, position) => !leavesOut(position) && rowIncluded(other, before, next.manualRows) && !rowIncluded(other, after, candidate.manualRows));
+    const complete = rows.every(other => other.form === undefined || !rowFieldsOpen(other, after, candidate.manualRows)
+      || foldStepOmissionFacts(other.form, candidate.stepDrafts[other.key] ?? initialStepOmissionDraft(other.form)).state === "facts");
+    if (!losesLater && complete && includedRowCount(rows, after, candidate.manualRows) > 0) next = candidate;
+  }
+  return next;
+}
+
 /** The draft a rerun opens with, from its source snapshot and the workflow that ran it. */
-export function restoreRerunDraft(draft: LaunchDraft, snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow, rerunInputText?: string): LaunchDraft {
-  const id = workflow.workflowId;
-  let next = withSteps({ ...draft, valueDrafts: initialRerunValueDrafts(snapshot, workflow) }, id, defaultRerunSteps(snapshot, workflow));
+export function restoreRerunDraft(snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow, rerunInputText?: string): LaunchDraft {
+  const id = workflow.workflowId, { browserMode } = snapshot.source;
+  if (browserMode === undefined) throw refusal("RERUN_BROWSER_MODE_UNKNOWN");
+  let next = withSteps({ ...freshLaunchDraft(workflow), ...spreadsheetPicks(snapshot, workflow), dryRunRequested: snapshot.source.dryRun, priority: snapshot.source.priority,
+    browserMode, valueDrafts: initialRerunValueDrafts(snapshot, workflow) }, id, defaultRerunSteps(snapshot, workflow));
   if (rerunInputText !== undefined) {
     if (workflow.inputRun.state !== "present" || workflow.inputRun.surface.typedInput !== undefined
       || snapshot.source.outcome !== "failed" || snapshot.transactions.length !== 0) throw refusal("COMMAND_REFUSED");
-    next = withSteps({ ...next, text: rerunInputText, valueDrafts: {} }, id, workflow.steps.map(step => step.key));
+    // A corrected input may be another person's, so no earlier result stands in for a step.
+    return withSteps({ ...next, text: rerunInputText, valueDrafts: {} }, id, workflow.steps.map(step => step.key));
   }
   if (workflow.inputRun.state === "present" && workflow.inputRun.surface.typedInput !== undefined) {
     if (snapshot.sourceInput.state === "unavailable") throw refusal("RERUN_SOURCE_INPUT_PROTECTED");
@@ -229,10 +303,10 @@ export function restoreRerunDraft(draft: LaunchDraft, snapshot: RerunValuesSnaps
     const input = snapshot.sourceInput.value;
     const partial = snapshot.sourceInput.state === "partial" ? partialRerunTypedInput(declaration, snapshot.sourceInput) : undefined;
     const restored = partial?.draft ?? restoreTypedInput(declaration, input);
-    return withSteps({ ...next, typed: { workflowId: id, draft: restored }, text: partial?.text ?? typedInputText(declaration, input),
+    return preselectRerunSteps(withSteps({ ...next, typed: { workflowId: id, draft: restored }, text: partial?.text ?? typedInputText(declaration, input),
       sourceInputUnchanged: partial === undefined || snapshot.sourceInput.state === "partial" && snapshot.sourceInput.identityCopied, valueDrafts: {} },
-    id, workflow.steps.filter(step => step.control.state !== "selectable" || restored[step.control.inputField] === true).map(step => step.key));
+    id, workflow.steps.filter(step => step.control.state !== "selectable" || restored[step.control.inputField] === true).map(step => step.key)), snapshot, workflow);
   }
-  if (workflow.inputRun.state === "present" && rerunInputText === undefined) return { ...next, text: plainRerunInputText(workflow.inputRun.surface, snapshot.sourceInput) };
-  return next;
+  if (workflow.inputRun.state === "present") next = { ...next, text: plainRerunInputText(workflow.inputRun.surface, snapshot.sourceInput) };
+  return preselectRerunSteps(next, snapshot, workflow);
 }

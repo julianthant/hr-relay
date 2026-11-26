@@ -24,17 +24,33 @@ const schemas = {
   delete:CanonicalDeleteRequestSchema,purge:CanonicalPurgeRequestSchema,
   "clear-history": RunHistoryCommandSchema,
 };
+const LifecycleOperationSchema = z.enum(["application-admission","pause","resume","acknowledge-pause","delegation-invocation","delegation-admission","delegation-settlement","delegation-refresh","delegation-retry","create","claim-next","transition","recover-crash","renew-claim","worker-transition","terminalize","requeue","retry","recover","delete","purge","clear-history"]);
+const CommandBindingSchema = z.object({ commandId: z.string() });
+const VersionFenceSourceSchema = z.object({ expectedVersion: z.number() });
+const ClaimSchema = z.object({ workerId: z.string(), claimGeneration: z.number() });
+const ClaimFenceSourceSchema = z.object({ claim: ClaimSchema });
+const TerminalFenceSourceSchema = z.object({
+  terminal: z.object({ authorization: VersionFenceSourceSchema.extend({ claim: ClaimSchema }) }).optional(),
+  expectedVersion: z.number().optional(),
+  claim: ClaimSchema.optional(),
+});
+
+function fingerprintCanonicalRequest(operation: string, requestJson: string): string {
+  return sha256Hex(`hrauto:run-lifecycle-command:v1\0${operation}\0${requestJson}`);
+}
+
 export function runLifecycleRequestFingerprint(operation: string, request: unknown): string {
-  return sha256Hex(`hrauto:run-lifecycle-command:v1\0${operation}\0${canonicalJsonStringify(request)}`);
+  return fingerprintCanonicalRequest(operation, canonicalJsonStringify(request));
 }
 export function validateNativeLifecycleRequest(input: unknown): void {
   const command = RunLifecycleCommandRecordSchema.parse(input);
   if (!Object.hasOwn(schemas,command.operation)) throw new Error("run-lifecycle-operation-unavailable");
-  const operation = z.enum(["application-admission","pause","resume","acknowledge-pause","delegation-invocation","delegation-admission","delegation-settlement","delegation-refresh","delegation-retry","create","claim-next","transition","recover-crash","renew-claim","worker-transition","terminalize","requeue","retry","recover","delete","purge","clear-history"]).parse(command.operation);
+  const operation = LifecycleOperationSchema.parse(command.operation);
   const parsed = schemas[operation].parse(command.request);
-  if (z.object({commandId:z.string()}).parse(parsed).commandId !== command.commandId
-    || canonicalJsonStringify(parsed) !== canonicalJsonStringify(command.request)
-    || command.requestFingerprint !== runLifecycleRequestFingerprint(command.operation, parsed)) {
+  const requestJson = canonicalJsonStringify(parsed);
+  if (CommandBindingSchema.parse(parsed).commandId !== command.commandId
+    || requestJson !== canonicalJsonStringify(command.request)
+    || command.requestFingerprint !== fingerprintCanonicalRequest(command.operation, requestJson)) {
     throw new Error("run-lifecycle-request-binding-mismatch");
   }
   let expectedFence: unknown;
@@ -43,16 +59,15 @@ export function validateNativeLifecycleRequest(input: unknown): void {
     const request = DelegationAdmissionRequestSchema.parse(parsed);
     expectedFence = { kind: "terminal", expectedVersion: request.expectedVersion, ...request.claim };
   }
-  else if (operation === "renew-claim" || operation === "worker-transition" || operation === "acknowledge-pause") expectedFence = {kind:"claim",...z.object({claim:z.object({workerId:z.string(),claimGeneration:z.number()})}).parse(parsed).claim};
+  else if (operation === "renew-claim" || operation === "worker-transition" || operation === "acknowledge-pause") expectedFence = {kind:"claim",...ClaimFenceSourceSchema.parse(parsed).claim};
   else if (operation === "recover-crash") {
     const request = CanonicalCrashRecoveryRequestSchema.parse(parsed);
     expectedFence = { kind: "terminal", expectedVersion: request.expectedVersion, ...request.claim };
   }
   else if (operation === "terminalize") {
-    const request = z.object({terminal:z.object({authorization:z.object({expectedVersion:z.number(),claim:z.object({workerId:z.string(),claimGeneration:z.number()})})}).optional(),
-      expectedVersion:z.number().optional(),claim:z.object({workerId:z.string(),claimGeneration:z.number()}).optional()}).parse(parsed);
+    const request = TerminalFenceSourceSchema.parse(parsed);
     const owner = request.terminal?.authorization ?? request;
     expectedFence = {kind:"terminal",expectedVersion:owner.expectedVersion,...owner.claim};
-  } else expectedFence = {kind:"version",expectedVersion:z.object({expectedVersion:z.number()}).parse(parsed).expectedVersion};
+  } else expectedFence = {kind:"version",expectedVersion:VersionFenceSourceSchema.parse(parsed).expectedVersion};
   if (canonicalJsonStringify(expectedFence) !== canonicalJsonStringify(command.fence)) throw new Error("run-lifecycle-request-fence-mismatch");
 }

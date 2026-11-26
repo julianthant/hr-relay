@@ -7,4 +7,5 @@ export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopRe
   shutdown: "shut down",
   crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
   "not-started": "did not start",
+  "setup-refused": "could not finish setup",
 };

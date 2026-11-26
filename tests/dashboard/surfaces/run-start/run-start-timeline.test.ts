@@ -7,31 +7,31 @@ runStartStages,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-timeline.js";
 
 describe("run-start timeline", () => {
-  it("keeps Options in the ordinary path and ends every path on Checks", () => {
-    assert.deepEqual(runStartStages(false), [
-      { label: "Input", number: 1 },
-      { label: "Options", number: 2 },
-      { label: "Checks", number: 3 },
-    ]);
-    assert.deepEqual(runStartStages(false, true).map(stage => stage.label), ["Steps", "Values", "Options", "Checks"]);
-  });
-
-  it("adds Steps after Options when customization is enabled", () => {
-    const stages = runStartStages(true);
+  it("is two steps: Input then Start for a run, Steps then Start for a rerun", () => {
+    assert.deepEqual(runStartStages(true), [{ label: "Steps", number: 1 }, { label: "Start", number: 2 }]);
+    const stages = runStartStages(false);
     assert.deepEqual(stages, [
       { label: "Input", number: 1 },
-      { label: "Options", number: 2 },
-      { label: "Steps", number: 3 },
-      { label: "Checks", number: 4 },
+      { label: "Start", number: 2 },
     ]);
-    assert.equal(adjacentRunStartStage(stages, "Input", "next"), "Options");
-    assert.equal(adjacentRunStartStage(stages, "Options", "next"), "Steps");
-    assert.equal(adjacentRunStartStage(stages, "Steps", "next"), "Checks");
-    assert.equal(adjacentRunStartStage(stages, "Checks", "next"), null);
+    assert.equal(adjacentRunStartStage(stages, "Input", "next"), "Start");
+    assert.equal(adjacentRunStartStage(stages, "Start", "next"), null);
     assert.equal(adjacentRunStartStage(stages, "Input", "previous"), null);
+    assert.equal(adjacentRunStartStage(stages, "Start", "previous"), "Input");
   });
 
-  it("returns to Options when Steps disappears", () => {
-    assert.equal(reconcileRunStartStage(runStartStages(false), "Steps"), "Options");
+  it("adds Steps as the last page of a run that customizes them, and leaves a rerun as it is", () => {
+    assert.deepEqual(runStartStages(false, true).map(stage => stage.label), ["Input", "Start", "Steps"]);
+    assert.deepEqual(runStartStages(true, true), runStartStages(true));
+    assert.equal(reconcileRunStartStage(runStartStages(false), "Steps"), "Input");
+  });
+
+  it("keeps a stage on the path and falls back to the first page for one that is not", () => {
+    for (const [rerun, first, missing] of [[false, "Input", "Steps"], [true, "Steps", "Input"]] as const) {
+      const stages = runStartStages(rerun);
+      assert.equal(reconcileRunStartStage(stages, "Start"), "Start");
+      assert.equal(reconcileRunStartStage(stages, first), first);
+      assert.equal(reconcileRunStartStage(stages, missing), first);
+    }
   });
 });

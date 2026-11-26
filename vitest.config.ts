@@ -96,6 +96,7 @@ const sharedConfig = defineConfig({
     pool: "forks",
     isolate: true,
     globals: false,
+    clearMocks: false,
     testTimeout: scaledMs(30_000),
     hookTimeout: scaledMs(30_000),
     coverage: {
@@ -158,7 +159,7 @@ const sharedConfig = defineConfig({
         "src/backend/runtime/writes/write-resolution-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/writes/write-sequencer.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/workflow-kit/mutation-capability.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/storage/sqlite/authority-database.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/storage/sqlite/authority-{change-admission,connection,dashboard-snapshot,database,errors,inspection,repositories,run-evidence,stopped-reads,stored-rows,upgrades}.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/**/*recovery*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/**/*projection*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
       },
@@ -175,6 +176,7 @@ export default defineConfig({
     maxWorkers: Math.min(4, availableParallelism()),
     projects: REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => ({
       ...sharedConfig,
+      extends: false,
       test: {
         ...sharedConfig.test,
         name,

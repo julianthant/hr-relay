@@ -283,6 +283,8 @@ export interface WriteFixtureWorld {
   lastCapability?: MutationCapability;
   /** Called during prepare, before it returns (budget-expiry injection). */
   onPrepare?: () => void;
+  /** Runs inside every source-bound read, after it recorded its data. */
+  onRead?: () => void;
   prepareSteps?: (captureScreenshot: () => Promise<void>) => Promise<void>;
   /** When true the served driver has NO read() method. */
   omitDriverRead: boolean;

@@ -5,7 +5,7 @@ import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../m
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../models/workflow/gates.js";
-import type { AuthorityRepositories } from "./authority-database.js";
+import type { AuthorityRepositories } from "./authority-repositories.js";
 import { validateNativeLifecycleRequest } from "./native-lifecycle-request.js";
 import { CanonicalCreateRunRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalRecoverRunRequestSchema, CanonicalTransitionRequestSchema, CanonicalWorkerTransitionRequestSchema } from "./run-store-contracts.js";
 

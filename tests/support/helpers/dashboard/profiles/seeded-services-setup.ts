@@ -52,7 +52,7 @@ import { createCrossDateSearchService } from "../../../../../src/backend/runs/qu
 import { createReceiptService } from "../../../../../src/backend/runs/trust/receipt-service.js";
 import { createProtectedSettingsRuntimeReader, readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
-import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/index.js";
+import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../../../src/backend/transports/http/request-identity.js";
 import type { DashboardAppDeps } from "../../../../../src/backend/transports/http/routes/api-types.js";

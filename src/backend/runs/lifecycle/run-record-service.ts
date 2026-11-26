@@ -44,7 +44,8 @@ import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting, descr
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { ChildRunBatchContext } from "../../runtime/execution/run-execution-contract.js";
 import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
-import type { AuthorityDatabase,AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { assertCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateCancellationSource,authenticateDelegationResume,captureDelegationResume,prepareDelegationRetry,assertDelegationRetryUnwritten } from "../../storage/sqlite/delegation-authority.js";
 import { DelegationRetryRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
@@ -1283,9 +1284,8 @@ export class RunRecordService {
 
   historyStatus(): RunHistoryStatus {
     return this.dependencies.database.withAuthorityReadSnapshot(() => {
-      const runs = this.dependencies.database.authority.runs.listWorkflows().flatMap(workflow => this.dependencies.database.authority.runs.listByWorkflow(workflow));
-      return { state: "available", finishedRuns: runs.filter(run => run.lifecycle.state === "terminal").length,
-        activeRuns: runs.filter(run => run.lifecycle.state !== "terminal").length };
+      const { finished, active } = this.dependencies.database.authority.runs.countByTerminal();
+      return { state: "available", finishedRuns: finished, activeRuns: active };
     });
   }
 

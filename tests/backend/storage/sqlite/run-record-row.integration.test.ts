@@ -9,7 +9,7 @@ import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { LATER } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1, UUID_2 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { readNative6RunRecord, removeSchema15RunPause, updateNative6RunFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
 import { testProcessImport } from "../../../support/compiled-process.js";

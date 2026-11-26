@@ -6,7 +6,7 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/se
 import type { CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
-import { type AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { type AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { type CredentialStore } from "../../../../src/models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema,ProtectedStoreRecordSchema,type ProtectedStoreRecord } from "../../../../src/models/config/protected-settings.js";
 import { ActiveRuntimeConfigActivationSchema,ActiveRuntimeConfigRecordSchema } from "../../../../src/models/config/runtime-generation.js";

@@ -1,4 +1,4 @@
-import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
+import { readDuoKeyReadiness, type DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { assertCredentialStoreOwner } from "../../storage/configuration/credential-store.js";
 import { executePreflightRunner, requiredPreflightChecks } from "../../../models/preflight/preflight.js";
@@ -15,7 +15,8 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { createPreflightAdmission, PreflightAdmissionRefusal, PreflightAdmissionScopeSchema, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
 import { protectedSecretRevision, type ProtectedSecretSource } from "../../../models/config/secrets.js";
 import type { InstanceSelection, RunEnvelope } from "../../../models/run/envelope.js";
-import { AuthorityHealthPreflightRunner, type AuthorityDatabase } from "../../storage/sqlite/index.js";
+import { AuthorityHealthPreflightRunner } from "../../storage/sqlite/index.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { workflowPreflightScope } from "../../runs/start/preflight-scope.js";
@@ -45,8 +46,13 @@ export function composeRuntimePreflight(input: Readonly<{
   };
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const observationIdentity = (scope: PreflightAdmissionScope): string => {
-    if (!requiredPreflightChecks(scope.requestedCapabilities).some(check => check.startsWith("secrets."))) return "no-protected-dependency";
-    try { return String(protectedSecretRevision(input.protectedSecrets)); }
+    const checks = requiredPreflightChecks(scope.requestedCapabilities);
+    const duoReadiness = checks.some(check => check === "browser.duo-key") && readConfig(scope).features.duoWebAuthn
+      ? readDuoKeyReadiness(input.duo) : null;
+    try {
+      const revision = checks.some(check => check.startsWith("secrets.")) ? protectedSecretRevision(input.protectedSecrets) : null;
+      return canonicalJsonStringify([revision, duoReadiness]);
+    }
     catch { throw new PreflightAdmissionRefusal("unavailable", "Protected settings presence could not be verified."); }
   };
   const runners = (scope: PreflightAdmissionScope) => {
@@ -86,7 +92,7 @@ export function composeRuntimePreflight(input: Readonly<{
         if (observation.state !== "healthy") throw new PreflightAdmissionRefusal("blocked", `Preflight blocks this session: ${observation.check}.`);
       }
       readConfig(scope);
-      if (observationIdentity(sessionScope) !== revision) throw new PreflightAdmissionRefusal("stale", "Protected settings changed during preflight; re-check readiness.");
+      if (observationIdentity(sessionScope) !== revision) throw new PreflightAdmissionRefusal("stale", "Run prerequisites changed during preflight; re-check readiness.");
     } catch (error) {
       if (error instanceof PreflightAdmissionRefusal) throw error;
       throw new PreflightAdmissionRefusal("unavailable", "Session detectors could not verify readiness.", { cause: error });

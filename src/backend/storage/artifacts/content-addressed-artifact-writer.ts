@@ -1,9 +1,10 @@
 import { fileModified, fileChanged, asyncFileStatus, descriptorStatus, fileStatus, asyncDescriptorStatus, privateFileNumber } from "../file-identity.js";
 import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { systemClock } from "../../../rules/time/clock.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { createHash, randomUUID } from "node:crypto";
-import { constants, openSync, closeSync, readFileSync, readSync, unlinkSync, fsyncSync, linkSync, readdirSync } from "node:fs";
+import { type BigIntStats, constants, openSync, closeSync, fstatSync, lstatSync, readSync, unlinkSync, fsyncSync, linkSync, readdirSync } from "node:fs";
 import {
   link,
   mkdir,
@@ -103,6 +104,78 @@ export function decodeStoredArtifact(input: unknown, expectedDigest: string): Re
   return Object.freeze({ ref: Object.freeze(stored.ref), bytes });
 }
 
+const STORED_REF_KEY = Buffer.from("{\"ref\":"), STORED_PAYLOAD_KEY = Buffer.from(",\"payloadBase64\":\""), STORED_PAYLOAD_END = Buffer.from("\"}");
+// A multiple of 4 so every payload chunk but the last decodes as whole Base64 groups.
+const BASE64_PADDING = 0x3d, DELETION_PROOF_CHUNK_BYTES = 1024 * 1024, DELETION_PROOF_SETTLED_NS = 2_000_000_000n, JSON_WHITESPACE = [0x20, 0x09, 0x0a, 0x0d];
+type DeletionProofIdentity = Readonly<{ device: bigint; inode: bigint; size: bigint; modified: bigint; changed: bigint }>;
+// shortcut: one entry per proved artifact path until it is removed, so it grows with the store; bound it if stores reach hundreds of thousands of files.
+const deletionProofs = new Map<string, Readonly<{ identity: DeletionProofIdentity; stored: ArtifactRef; storedSha256: string; storedBytes: number }>>();
+
+function deletionProofIdentity(status: BigIntStats): DeletionProofIdentity {
+  return { device: status.dev, inode: status.ino, size: status.size, modified: status.mtimeNs, changed: status.ctimeNs };
+}
+const sameDeletionProofIdentity = (left: DeletionProofIdentity, right: DeletionProofIdentity) => left.device === right.device
+  && left.inode === right.inode && left.size === right.size && left.modified === right.modified && left.changed === right.changed;
+
+// Writer-framed files stream once: one hash of the file and a canonical Base64 decode hashed against the ref, with only the ref parsed.
+// Anything else JSON.parse accepted, and every rejection, takes the whole-file decode so the envelope grammar and its verdicts stay unchanged.
+function proveStoredArtifact(handle: number, size: number, digest: string) {
+  let framed: ReturnType<typeof streamWriterFramedArtifact>;
+  // A header split that is not a JSON ref is not the writer's framing; the whole-file decode below gives that file its verdict.
+  try { framed = streamWriterFramedArtifact(handle, size, digest); }
+  catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+  return framed ?? decodeWholeStoredArtifact(handle, size, digest);
+}
+
+function streamWriterFramedArtifact(handle: number, size: number, digest: string) {
+  const chunk = Buffer.allocUnsafe(Math.min(Math.max(size, 1), DELETION_PROOF_CHUNK_BYTES));
+  const header = Buffer.from(chunk.subarray(0, readSync(handle, chunk, 0, chunk.byteLength, 0)));
+  const window = Math.min(size, chunk.byteLength);
+  if (readSync(handle, chunk, 0, window, size - window) !== window) return undefined;
+  const tail = chunk.subarray(0, window);
+  let end = tail.byteLength;
+  while (end > 0 && JSON_WHITESPACE.includes(tail[end - 1] ?? 0)) end--;
+  const payloadEnd = size - (tail.byteLength - end) - STORED_PAYLOAD_END.byteLength, payloadStart = header.indexOf(STORED_PAYLOAD_KEY);
+  if (payloadStart < STORED_REF_KEY.byteLength || !header.subarray(0, STORED_REF_KEY.byteLength).equals(STORED_REF_KEY)
+    || end < STORED_PAYLOAD_END.byteLength || !tail.subarray(end - STORED_PAYLOAD_END.byteLength, end).equals(STORED_PAYLOAD_END)) return undefined;
+  const parsed = ArtifactRefSchema.safeParse(JSON.parse(header.subarray(STORED_REF_KEY.byteLength, payloadStart).toString("utf8")) as unknown);
+  if (!parsed.success) return undefined;
+  const stored = parsed.data;
+  const payloadFrom = payloadStart + STORED_PAYLOAD_KEY.byteLength;
+  if (stored.sha256 !== digest || payloadEnd - payloadFrom !== Math.ceil(stored.bytes / 3) * 4) return undefined;
+  const storedHash = createHash("sha256").update(header.subarray(0, payloadFrom)), payloadHash = createHash("sha256");
+  let position = payloadFrom, decodedBytes = 0;
+  for (let read = readSync(handle, chunk, 0, chunk.byteLength, position); read > 0; read = readSync(handle, chunk, 0, chunk.byteLength, position)) {
+    const bytes = chunk.subarray(0, read);
+    storedHash.update(bytes);
+    if (position < payloadEnd) {
+      const encoded = bytes.subarray(0, Math.min(read, payloadEnd - position));
+      // Padding is canonical only in the payload's last group, so an earlier chunk holding "=" is not canonical Base64.
+      if (position + encoded.byteLength < payloadEnd && encoded.includes(BASE64_PADDING)) return undefined;
+      const text = encoded.toString("latin1"), decoded = Buffer.from(text, "base64");
+      if (decoded.toString("base64") !== text) return undefined;
+      payloadHash.update(decoded);
+      decodedBytes += decoded.byteLength;
+    }
+    position += read;
+  }
+  if (position !== size || decodedBytes !== stored.bytes || payloadHash.digest("hex") !== digest) return undefined;
+  return { stored, storedSha256: storedHash.digest("hex"), storedBytes: size };
+}
+
+function decodeWholeStoredArtifact(handle: number, size: number, digest: string) {
+  const bytes = Buffer.allocUnsafe(size);
+  let length = 0;
+  while (length < size) {
+    const read = readSync(handle, bytes, length, size - length, length);
+    if (read === 0) break;
+    length += read;
+  }
+  if (length !== size) throw new Error("artifact-deletion-custody-changed");
+  const decoded = decodeStoredArtifact(JSON.parse(bytes.toString("utf8")) as unknown, digest);
+  return { stored: decoded.ref, storedSha256: createHash("sha256").update(bytes).digest("hex"), storedBytes: size };
+}
+
 function inspectDeletionFile(admission: RuntimeAdmission, input: ArtifactRef) {
   requireRuntimeAdmission(admission).assertLive();
   const ref = ArtifactRefSchema.parse(input);
@@ -110,12 +183,22 @@ function inspectDeletionFile(admission: RuntimeAdmission, input: ArtifactRef) {
   const path = join(admission.artifactRoot, `${ref.sha256}.artifact`);
   const handle = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    const status = descriptorStatus(handle);
+    const status = fstatSync(handle, { bigint: true });
     if (!status.isFile()) throw new Error("artifact-deletion-file-not-regular");
-    const stored = readFileSync(handle);
-    const decoded = decodeStoredArtifact(JSON.parse(stored.toString("utf8")) as unknown, ref.sha256);
-    if (decoded.ref.id !== ref.id || decoded.ref.bytes !== ref.bytes || decoded.ref.mediaType !== ref.mediaType) throw new Error("artifact-deletion-reference-mismatch");
-    return {path,device:status.dev,inode:status.ino,ref,storedSha256:createHash("sha256").update(stored).digest("hex"),storedBytes:stored.byteLength};
+    // One clear proves each artifact at preflight, execution and removal; an unchanged file identity reuses the first full proof.
+    const identity = deletionProofIdentity(status), cached = deletionProofs.get(path);
+    let proof = cached !== undefined && sameDeletionProofIdentity(cached.identity, identity) ? cached : undefined;
+    if (proof === undefined) {
+      deletionProofs.delete(path);
+      const proved = proveStoredArtifact(handle, privateFileNumber(identity.size), ref.sha256);
+      if (!sameDeletionProofIdentity(identity, deletionProofIdentity(fstatSync(handle, { bigint: true })))) throw new Error("artifact-deletion-custody-changed");
+      proof = { identity, ...proved };
+      // Coarse filesystem clocks can stamp a same-size rewrite with the old times, so only settled files are reused.
+      if (BigInt(systemClock.nowMs()) * 1_000_000n - identity.changed > DELETION_PROOF_SETTLED_NS) deletionProofs.set(path, proof);
+    }
+    const { stored, storedSha256, storedBytes } = proof;
+    if (stored.id !== ref.id || stored.bytes !== ref.bytes || stored.mediaType !== ref.mediaType) throw new Error("artifact-deletion-reference-mismatch");
+    return {path,device:status.dev,inode:status.ino,ref,storedSha256,storedBytes};
   } finally { closeSync(handle); }
 }
 
@@ -135,9 +218,10 @@ export function removeArtifactDeletionFile(admission: RuntimeAdmission,
   }
   if (observed.storedSha256 !== captured.storedSha256 || observed.storedBytes !== captured.storedBytes) throw new Error("artifact-deletion-captured-bytes-mismatch");
   admission.assertReadable();
-  const current = fileStatus(observed.path);
+  const current = lstatSync(observed.path, { bigint: true });
   if (!current.isFile() || current.isSymbolicLink() || current.dev !== observed.device || current.ino !== observed.inode) throw new Error("artifact-deletion-custody-changed");
   unlinkSync(observed.path);
+  deletionProofs.delete(observed.path);
   const directory = openSync(admission.artifactRoot,constants.O_RDONLY | constants.O_NOFOLLOW);
   try { fsyncSync(directory); } finally { closeSync(directory); }
   return "removed" as const;

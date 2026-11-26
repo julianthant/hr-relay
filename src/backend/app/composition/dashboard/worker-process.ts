@@ -4,7 +4,7 @@ import { lstatSync, rmdirSync } from "node:fs";
 import { join } from "node:path";
 import { ConfigSchema } from "../../../../models/config/schema.js";
 import { DEVELOPMENT_DEBUG_MIRROR_ENV, workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
-import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
+import { WorkerControlRefusal, type WorkerSetupRefusalCode } from "../../../../models/run/worker-control.js";
 import { workerPoolMember } from "../../../../models/run/worker-slot.js";
 import { PreflightAdmissionRefusal, type PreflightAdmission, type PreflightAdmissionScope } from "../../../../rules/preflight/preflight-admission.js";
 import type { Clock } from "../../../../rules/time/clock.js";
@@ -18,12 +18,12 @@ import { createNativeBrowserProbe } from "../../../runtime/browser/native-browse
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
 import { createIpcRouter } from "../../../runtime/workers/worker-ipc-router.js";
 import { WORKER_MESSAGE_PREFIX } from "../../../runtime/workers/worker-messages.js";
-import { createWorkerPool, WorkerPoolError, type WorkerMemberView, type WorkerPool, type WorkerPoolMember,
+import { createWorkerPool, WorkerPoolError, WorkerSetupRefusedError, type WorkerMemberView, type WorkerPool, type WorkerPoolMember,
   type WorkerProcessPort } from "../../../runtime/workers/worker-pool.js";
 import { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { assertPrivateProfilePath, createBrowserRoots } from "../../../storage/browser-roots.js";
-import { AuthorityDatabase } from "../../../storage/sqlite/index.js";
+import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 
 /** Refresh, reopen, parked-write checks and close-for-removal each get this long to reply. */
 export const WORKER_REQUEST_DEADLINE_MS = 120_000;
@@ -81,6 +81,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
   seam: WorkerPoolRuntimeSeam;
   /** Starts every active member of the workflow that has no live process. */
   running(workflowId: string): boolean;
+  setupRefusal(workflowId: string): WorkerSetupRefusalCode | undefined;
   ensureRunning(workflowId: string): Promise<void>;
   /** Boot: starts every active member of every pool; each failure shows on its card. */
   startActive(): Promise<void>;
@@ -224,6 +225,13 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
 
   const activeMembers = (workflowId?: string): readonly WorkerPoolMember[] => input.database.authority.workerSlots.list(workflowId)
     .filter(slot => slot.retiredAt === null).map(workerPoolMember);
+  const setupRefusal = (workflowId: string): WorkerSetupRefusalCode | undefined => {
+    for (const member of activeMembers(workflowId)) {
+      const exit = viewOf(member.workerId)?.exit;
+      if (exit?.outcome === "setup-refused" && exit.settlement === "settled") return exit.failureCode;
+    }
+    return undefined;
+  };
   const startAll = async (members: readonly WorkerPoolMember[]): Promise<void> => {
     await Promise.all(members.map(member => ensure(member).catch((error: unknown) => { input.onFault(fault(error), { workerId: member.workerId }); })));
   };
@@ -242,13 +250,17 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     }),
     seam: Object.freeze(seam),
     running: (workflowId: string) => activeMembers(workflowId).some(member => live(viewOf(member.workerId))),
+    setupRefusal,
     /** Preflights once, then starts every member that is not live; throws when the workflow still has no live member. */
     ensureRunning: async (workflowId: string) => {
       const members = activeMembers(workflowId);
       if (members.every(member => live(viewOf(member.workerId)))) return;
       await preflight();
       await startAll(members);
-      if (!members.some(member => live(viewOf(member.workerId)))) throw new WorkerControlRefusal("worker-start-failed");
+      if (members.some(member => live(viewOf(member.workerId)))) return;
+      const refusal = setupRefusal(workflowId);
+      if (refusal !== undefined) throw new WorkerSetupRefusedError(refusal);
+      throw new WorkerControlRefusal("worker-start-failed");
     },
     startActive: () => startAll(activeMembers()),
     own: (work: Promise<void>) => {

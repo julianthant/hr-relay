@@ -3,7 +3,7 @@ import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { separationsDescriptor } from "../registered-workflows.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
-import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
+import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { runRecordOf, type SeedRunInput } from "./dashboard-harness.js";
 
 

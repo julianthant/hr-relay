@@ -10,6 +10,7 @@ import { WorkbookLibraryEntrySchema, WorkbookLibraryVersionViewSchema, projectWo
 import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
 import { RerunValuesRequestSchema, RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../src/models/dashboard/rerun-warning.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
@@ -30,6 +31,7 @@ afterEach(async () => {
 });
 const descriptor = DESCRIPTORS.find(flow => flow.id === "onboarding"); assert.ok(descriptor?.surfaces.inputRun);
 const descriptorId = descriptor.id;
+const rerunDescriptor = descriptor;
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
   requiredWorkbookFields: [...descriptor.requiredWorkbookFields], workbookReference: descriptor.workbookReference,
   referenceSources: [], steps: projectStartSteps(descriptor), inputRun: { state: "present", surface: descriptor.surfaces.inputRun } };
@@ -92,12 +94,14 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
   }
   await act(async () => root.render(createElement(Harness)));
   if (path !== "restored route") await act(async () => openOnboarding());
-  await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire");
+  await h.settle(); await chooseCurrent(); await select(0);
+  assert.equal(document.querySelector<HTMLInputElement>('input[value="new-hire"]')?.checked, true, `New hire is selected on the ${path} without a click`);
+  await mode("new-hire");
   const press = async (name: string) => {
     const button = h.buttons().find(button => h.buttonName(button) === name); assert.ok(button, name);
     await act(async () => button.click());
   };
-  await press("Continue"); await press("Continue"); for (let wait = 0; wait < 6; wait += 1) await h.settle();
+  await press("Continue"); for (let wait = 0; wait < 6; wait += 1) await h.settle();
   await press(h.buttons().some(button => h.buttonName(button) === "Start live run") ? "Start live run" : "Start run");
   assert.ok(planned, document.body.textContent ?? "Planner was not called");
   assert.deepEqual(planned.selectedStepKeys, workflow.steps.filter(step => step.includedByDefault).map(step => step.key));
@@ -112,7 +116,7 @@ it("reads catalog and compatibility without the workbook list while the launcher
     workbookCompatibility: async () => { reads.workbookCompatibility += 1; return libraryReads.workbookCompatibility(); } };
   const dialog = await h.openDialog(h.stubClient({ ...counted }), { workflows: [workflow], panelWorkflowId: descriptor.id });
   await h.settle(); await chooseCurrent(); await select(0); await mode("rehire");
-  await dialog.press("Continue"); await h.settle(); await dialog.press("Continue"); await h.settle();
+  await dialog.press("Continue"); await h.settle();
   assert.equal(reads.workbookList, 0, "Start run never lists whole workbooks");
   assert.deepEqual([reads.workbookCatalog, reads.workbookCompatibility], [1, 1], "each reference read happens once per dialog open");
 });
@@ -122,9 +126,9 @@ it("uses saved rows only, requires a common explicit mode and preserves duplicat
   const dialog = await h.openDialog(h.stubClient({ ...libraryReads, submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return proposal(planned, true); } }), { workflows: [workflow], panelWorkflowId: descriptor.id });
   await h.settle(); await chooseCurrent();
   assert.equal(document.querySelector("textarea") === null, true);
-  assert.equal(document.querySelectorAll('input[type="radio"]:checked').length, 0);
+  assert.equal(document.querySelectorAll('input[type="radio"]:checked').length, 1, "the first mode is preselected");
   assert.equal(checkboxRows().length, 2); assert.equal(dialog.disabled("Continue"), true);
-  await select(1); await select(0); assert.equal(dialog.disabled("Continue"), true);
+  await select(1); await select(0); assert.equal(dialog.disabled("Continue"), false, "the preselected first mode applies to both rows");
   await mode("rehire"); await dialog.press("Continue");
   assert.equal(dialog.text().includes("Reference spreadsheet"), false, "row-source reference controls are only in Input");
   await dialog.press("Start live run"); assert.ok(planned);
@@ -143,27 +147,50 @@ it("retains the original issued envelope after an unknown result and later mode 
   }), { workflows: [workflow], panelWorkflowId: descriptor.id });
   await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire"); await dialog.press("Continue"); await dialog.press("Start live run");
   const retained = window.sessionStorage.getItem(window.sessionStorage.key(0) ?? ""); assert.ok(retained);
-  await dialog.press("Back"); await dialog.press("Back"); await mode("rehire");
+  await dialog.press("Back"); await mode("rehire");
   assert.equal(window.sessionStorage.getItem(window.sessionStorage.key(0) ?? ""), retained);
   assert.equal(commands.length, 1); assert.equal(dialog.disabled("Continue"), true);
 });
 
-it("keeps Rerun single-source with its restored mode and a fresh explicit reference, without roster leakage", async () => {
+function rerunSnapshot() {
   const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
-  const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
-    descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "failed" }, sourceInput: { state: "available", value: { email: "source@example.test", mode: "rehire" } },
-    steps: descriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })), values: [], transactions: [] });
+  const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: rerunDescriptor.id,
+    descriptorVersion: rerunDescriptor.version, contractFingerprint: rerunDescriptor.contractFingerprint, outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" }, sourceInput: { state: "available", value: { email: "source@example.test", mode: "rehire" } },
+    spreadsheets: [{ typeId: workflow.workbookReference?.id, libraryId: entry.libraryId, versionId: "version", sheetId: "first", selectedRow: { sheetId: "first", rowId: "row-2" } }],
+    steps: rerunDescriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })), values: [], transactions: [] });
+  return { source, snapshot };
+}
+
+it("reruns the original person, mode and saved spreadsheet, with its row and no roster", async () => {
+  const { source, snapshot } = rerunSnapshot();
   let planned: StartPlanRequest | undefined;
   const dialog = await h.openDialog(h.stubClient({ ...libraryReads, rerunValues: async () => ({ state: "available", snapshot }),
     previewRerunWarnings: async input => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(input).source, warnings: [], warningDigest: h.HASH } }),
     submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return proposal(planned); },
   }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
-  await dialog.press("Continue"); assert.equal(checkboxRows().length, 0); assert.equal(dialog.typedInput().value, "source@example.test");
-  await chooseCurrent();
-  assert.equal(document.querySelector<HTMLInputElement>('input[value="rehire"]')?.checked, true);
+  await h.settle();
+  assert.equal(checkboxRows().length, 0); assert.equal(document.querySelector(".launch-dialog textarea") === null, true);
   await dialog.press("Continue"); await dialog.press("Start live run"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "source@example.test", mode: "rehire" }]);
-  assert.deepEqual(planned.workbookReferences, [{ entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "first", expectedVersion: 1 }]);
+  assert.deepEqual(planned.workbookReferences, [{ entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "first", expectedVersion: 1, selectedRow: { sheetId: "first", rowId: "row-2" } }]);
+});
+
+it("refuses a rerun whose saved spreadsheet version is no longer the active one, never moving its row to another version", async () => {
+  const { source, snapshot } = rerunSnapshot();
+  const moved = WorkbookLibraryEntrySchema.parse({ ...entry, version: 2, state: { ...entry.state, selectedVersionId: "edited", versions: [...entry.state.versions, { ...entry.state.versions[0], id: "edited", name: "Edited", snapshotId: "edited-snapshot", version: 2 }] } });
+  const reads: string[] = [];
+  const dialog = await h.openDialog(h.stubClient({ ...libraryReads, workbookCatalog: async () => [moved],
+    workbookCompatibility: async () => projectWorkbookCompatibility([descriptor], [{ libraryId: entry.libraryId, versionId: "edited", origin: { kind: "local" }, removed: false,
+      sheets: versionView.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name, mappings: (sheet.columnBindings ?? []).map((binding, column) => ({ fieldId: binding.fieldId!, column, basis: "manual" as const })) })) }]),
+    workbookLibraryVersion: async (_libraryId, versionId) => { reads.push(versionId); return versionView; },
+    rerunValues: async () => ({ state: "available", snapshot }),
+    previewRerunWarnings: async input => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(input).source, warnings: [], warningDigest: h.HASH } }),
+    submitStartPlan: async () => { throw new Error("a stale spreadsheet version must not reach planning"); },
+  }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
+  await h.settle();
+  await dialog.press("Continue"); await dialog.press("Start live run");
+  assert.deepEqual([...new Set(reads)], ["version"], "the original version is the one read");
+  assert.ok(dialog.text().includes(ERROR_CATALOG.WORKBOOK_INVALID.text), dialog.text());
 });
 
 it("keeps earlier selected rows visible and disabled after a named-version change until explicitly cleared", async () => {

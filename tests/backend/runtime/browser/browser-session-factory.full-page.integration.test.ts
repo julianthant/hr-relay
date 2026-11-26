@@ -8,6 +8,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
+import { assertChildFrameCaptureMasks } from "../../../support/helpers/browser/full-page-capture.js";
 import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -62,6 +63,78 @@ async function image(resource: WorkerBrowserResource) {
 const pixel = (png: PNG, x: number, y: number) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)];
 
 describe("whole-page factory screenshots", () => {
+  it("captures a native viewport at the evidence size and leaves it under window control", async () => {
+    const context = await browser.newContext({ viewport: null });
+    try {
+      const page = await context.newPage();
+      await page.setContent(html(content));
+      const dimensions = () => page.evaluate(() => [window.innerWidth, window.innerHeight]);
+      const originalSize = await dimensions();
+      const image = await captureFullPage(page, {
+        assertCurrent: () => {}, assertSafe: async () => {}, afterCapture: async () => {},
+        secretControls: 'input[type="password"]', mask: () => [],
+      });
+      const png = PNG.sync.read(Buffer.from(image.bytes));
+      assert.deepEqual([png.width, png.height], [1280, 3000]);
+      assert.deepEqual(pixel(png, 20, 20), [210, 20, 30]);
+      assert.deepEqual(pixel(png, 20, 2980), [20, 30, 210]);
+      assert.equal(page.viewportSize(), null);
+      assert.deepEqual(await dimensions(), originalSize);
+    } finally { await context.close(); }
+  });
+
+  it("masks same-origin and cross-origin child frame pixels on the native capture path", async () => {
+    const context = await browser.newContext({ viewport: null });
+    try { await assertChildFrameCaptureMasks(await context.newPage()); }
+    finally { await context.close(); }
+  });
+
+  for (const change of ["attach", "detach", "reload"] as const) {
+    it(`refuses native capture when a child frame changes during the screenshot (${change})`, async () => {
+      const context = await browser.newContext({ viewport: null });
+      try {
+        const page = await context.newPage();
+        const mask = '<div data-mask style="width:60px;height:40px;background:#123456"></div>';
+        await page.route("https://capture.invalid/child", route => route.fulfill({ contentType: "text/html", body: html(mask) }));
+        await page.setContent(html(mask + '<iframe name="child" src="https://capture.invalid/child" style="position:fixed;top:60px;left:60px"></iframe>'));
+        const child = page.frame({ name: "child" });
+        assert.ok(child);
+        const connect = context.newCDPSession.bind(context);
+        let screenshots = 0;
+        context.newCDPSession = async target => {
+          const session = await connect(target), send = session.send.bind(session);
+          session.send = async (method, params) => {
+            if (method === "Page.captureScreenshot") {
+              screenshots++;
+              assert.equal(await child.locator("[data-mask]").evaluate(element => getComputedStyle(element).opacity), "0");
+              if (change === "attach") {
+                await page.evaluate(markup => {
+                  const frame = document.createElement("iframe");
+                  frame.style.position = "fixed";
+                  frame.srcdoc = markup;
+                  document.body.append(frame);
+                }, mask);
+                await page.frameLocator("iframe").last().locator("[data-mask]").waitFor();
+              } else if (change === "detach") {
+                await page.locator('iframe[name="child"]').evaluate(element => element.remove());
+              } else {
+                await child.goto(child.url());
+              }
+            }
+            return send(method, params);
+          };
+          return session;
+        };
+        await assert.rejects(() => captureFullPage(page, {
+          assertCurrent: () => {}, assertSafe: async () => {}, afterCapture: async () => {},
+          secretControls: 'input[type="password"]', mask: frame => [frame.locator("[data-mask]")],
+        }), { name: "FullPageCaptureRefusedError", reason: "page-changed" });
+        assert.equal(screenshots, 1);
+        assert.equal(await page.locator("[data-mask]").evaluate(element => getComputedStyle(element).opacity), "1");
+      } finally { await context.close(); }
+    });
+  }
+
   it("adds a visible dry-run sample banner without hiding any form pixels and removes the temporary label", async () => {
     await withPage(content, async (page, resource) => {
       const plain = await image(resource);

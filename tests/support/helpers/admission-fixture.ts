@@ -19,7 +19,8 @@ import { dirname, join, resolve } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { AuthorityDatabase as ProductionAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase as ProductionAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabaseOptionsSchema } from "../../../src/backend/storage/sqlite/authority-connection.js";
 import { createCredentialStore as productionCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 
 const admissions = new Map<string, RuntimeAdmission>();

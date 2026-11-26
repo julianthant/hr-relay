@@ -1,7 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
 import { z } from "zod";
-import { inspectNativeAuthority, validateAuthorityStore } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
+import { validateAuthorityStore } from "../../../../src/backend/storage/sqlite/authority-change-admission.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
 import { seedCheckClosureStore } from "../../../support/fixtures/storage/check-closure-store.js";
 

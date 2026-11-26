@@ -22,7 +22,7 @@ import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/f
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { RuntimeScope } from "../../../models/workflow/graph.js";
 import { planStepOmissions } from "../../../models/workflow/step-omission.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { buildEntryValidationFailureRecord } from "./run-failure.js";
 import { ExecutorSpanEventSchema, runSpanPath } from "../../logs/span-emitter.js";
 import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";

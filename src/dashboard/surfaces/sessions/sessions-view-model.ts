@@ -40,7 +40,7 @@ export function sessionsUnavailable(diagnostic?: unknown): SessionsViewState {
     ...(diagnostic === undefined ? {} : { diagnostic }) };
 }
 /** One plain sentence for why a worker is not running; a deliberate stop is not an error. */
-const SETTLED_LINE: Readonly<Record<NonNullable<WorkerCardWire["stopReason"]>, string>> = { operator: "You stopped this worker.", shutdown: "Relay shut down.", crashed: "Worker stopped unexpectedly.", "not-started": "Worker didn't start." };
+const SETTLED_LINE: Readonly<Record<NonNullable<WorkerCardWire["stopReason"]>, string>> = { operator: "You stopped this worker.", shutdown: "Relay shut down.", crashed: "Worker stopped unexpectedly.", "not-started": "Worker didn't start.", "setup-refused": "Worker setup stopped." };
 export const SESSION_STATE_LABELS: Readonly<Record<SessionWorkerState, string>> = {
   running: "Running", starting: "Starting", idle: "Idle", waiting: "Waiting", paused: "Paused", stopped: "Stopped", failed: "Failed", unavailable: "Unavailable",
 };
@@ -66,7 +66,7 @@ const TIMELINE_REASON: Readonly<Record<NonNullable<Extract<WorkerCardWire["timel
 };
 export function sessionStateColor(state: SessionWorkerState): string {
   return state === "failed" ? "text-ui-danger" : state === "waiting" || state === "starting" || state === "unavailable" ? "text-ui-warning"
-    : state === "running" ? "text-ui-positive" : "text-ui-muted";
+    : state === "running" ? "text-ui-info" : "text-ui-muted";
 }
 export function sessionTallies(workers: readonly SessionWorker[]): readonly { state: SessionWorkerState; count: number }[] {
   const order: readonly SessionWorkerState[] = ["running", "starting", "idle", "waiting", "paused", "stopped", "failed", "unavailable"];
@@ -107,8 +107,8 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
     const seconds = workerElapsedSeconds(card, nowIso);
     const browserView = workerBrowserView(card);
     const stepLabel = row?.pipeline.find(step => atStep(step) || step.state === "blocked" || step.state === "failed")?.label;
-    // How a settled lease ended: a crash names its recorded refusal when there is one (long, so it wraps under the bar).
     const failureLine = card.failureCode === undefined ? undefined : operatorFailureSentence(card.failureCode);
+    const setupProblem = card.stopReason === "setup-refused" ? failureLine : undefined;
     const settledLine = card.stopReason === undefined ? undefined : failureLine ?? SETTLED_LINE[card.stopReason];
     // A settled worker whose run left the day says what happened in the top line and why the step is unknown below the bar.
     const recordGone = settled && row === undefined;
@@ -122,7 +122,7 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
         ?? RUNLESS_LINE[card.state],
       ...(card.state === "idle" ? {} : { elapsed: formatDuration(seconds) }),
       ...(timeline === undefined ? { timelineUnavailable } : { timeline }),
-      ...(problem === undefined ? {} : { problem }),
+      ...(setupProblem !== undefined ? { browsersNote: setupProblem } : problem === undefined ? {} : { problem }),
       ...(note === undefined ? {} : { note }),
       browsers: browserView.slots.map((slot, index) => slot.state !== "open"
         ? { id: `required:${card.workerId}:${index}:${slot.system}`, ...systemLabel(slot.system), state: slot.state === "closed" ? "closed" : "unopened" }

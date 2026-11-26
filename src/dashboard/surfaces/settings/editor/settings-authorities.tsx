@@ -35,7 +35,7 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
     {authority.state === "unknown" && <Notice sticky tone="warning" title="Credentials unavailable" description="Reopen Settings to try again." />}
     <SettingsSaveFeedback save={credentials.save} />
     <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
-      <BodySection title="UCPath sign-in" description={embedded ? "Workflows use this to sign in to UCPath." : undefined}>
+      <BodySection title="UCPath sign-in" description="Workflows use this to sign in to UCPath.">
         <FormGroup label="UCPath sign-in">
           {authority.rows.filter(row => row.name === "ucpathUserId" || row.name === "ucpathPassword").map(row => {
             const description = PROTECTED_DESCRIPTION[row.name] ?? row.purpose;
@@ -45,7 +45,7 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
           })}
         </FormGroup>
       </BodySection>
-      {!embedded && <BodySection title="Workflow configuration">
+      {!embedded && <BodySection title="Workflow configuration" description="Names workflows put on the forms they file.">
         <FormGroup label="Workflow configuration">
           {PROFILE_WORKFLOW_FACTS.map(fact => <ResultRow key={fact.key} label={<span data-settings-path={fact.target}>{fact.label}</span>} value={profile[fact.key]} />)}
         </FormGroup>

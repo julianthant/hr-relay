@@ -6,7 +6,7 @@ import type { CreateRunRequest, RunRecordService } from "../../../../src/backend
 import { buildRerunPlan, previewRerunWarnings, RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
 import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values.js";
 import { planStart } from "../../../../src/backend/runs/start/plan.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { evidenceLeaves } from "../../../../src/models/trust/evidence-classification.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { derivePlannedInputFingerprint, StartPlanRecordSchema } from "../../../../src/models/run/start-plan.js";
@@ -161,7 +161,8 @@ function repositoriesOf(source: Source, start: Readonly<Record<string, unknown>>
     if (typeof key === "string" && Object.hasOwn(start, key)) return start[key];
     switch (key) {
       case "deletedRuns": return { get: () => undefined };
-      case "runs": return { get: () => source.run };
+      case "runs": return { get: () => source.run, listChildren: () => [] };
+      case "configSnapshots": return { get: () => undefined };
       // As production: a run lists only the intents it owns; a live-probe observation owns none.
       case "writeIntents": return { listAttemptingByItem: () => [],
         listByRun: (runId: unknown) => intents.filter(intent => "runId" in intent && intent.runId === runId),

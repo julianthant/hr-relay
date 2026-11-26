@@ -1,6 +1,6 @@
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { PreflightAdmissionRefusal, PreflightEvidenceExpiredError, type PreflightAdmission, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
+import { PreflightAdmissionRefusal, PreflightEvidenceExpiredError, PreflightEvidenceMissingError, type PreflightAdmission, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
 import { PreflightRerunCommandRequestSchema, PreflightRerunCommandResultWireSchema, PreflightSelectionSchema, type PreflightReadinessWire, type PreflightSelection } from "../../../models/preflight/preflight-contract.js";
 import { createPreflightCommandReplay, type createPreflightAuthority } from "../../../models/preflight/preflight.js";
 import type { InstanceSelection } from "../../../models/run/envelope.js";
@@ -70,7 +70,9 @@ export function createPreflightReportService(input: Readonly<{
       } catch (error) {
         if (error instanceof PreflightEvidenceExpiredError) return { state: "unavailable", code: "PREFLIGHT_EVIDENCE_EXPIRED",
           reason: error.message, lastCompleted: error.report };
-        if (error instanceof PreflightAdmissionRefusal) return { state: "unavailable", reason: error.message, ...(previous === undefined ? {} : { lastCompleted: previous }) };
+        if (error instanceof PreflightAdmissionRefusal) return { state: "unavailable", reason: error.message,
+          code: error instanceof PreflightEvidenceMissingError ? "PREFLIGHT_EVIDENCE_MISSING" : error.reason === "stale" ? "PREFLIGHT_EVIDENCE_STALE" : "PREFLIGHT_READ_FAILED",
+          ...(previous === undefined ? {} : { lastCompleted: previous }) };
         throw error;
       }
     },

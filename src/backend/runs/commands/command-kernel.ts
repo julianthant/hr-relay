@@ -12,7 +12,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { captureDelegationResume, delegationResumeCommandId } from "../../storage/sqlite/delegation-authority.js";
 import { executeFailureResolution } from "../lifecycle/failure-resolution.js";

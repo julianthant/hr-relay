@@ -379,16 +379,19 @@ admission, or persistence. Tests preserve the real schema parser, provenance col
 kernel, timeline writer, and receipt derivation at the seam they claim to cover.
 Composition tests that replace browser sessions also pass the lease-backed `fixtureDuoCeremonyGates(clock)` through `duoCeremony`; they retain the real worker drain and never read operator credentials.
 
-`tests/architecture/runs/evidence-receipt.test.ts` owns receipt schema/evidence checks.
-`tests/backend/runs/provenance/evidence-receipt.live-workflow-composition.integration.test.ts`
-exercises composition. `tests/architecture/storage/storage-recovery.test.ts` owns real isolated
-backup/recovery behavior; projection-only replay cannot stand in for preserved authority.
+`tests/architecture/runs/evidence-receipt.test.ts` audits declared evidence classifications.
+`tests/backend/runs/provenance/evidence-receipt.strictness.integration.test.ts` exercises receipt
+validation, and `evidence-receipt.live-workflow-composition.integration.test.ts` in the same directory
+exercises composition. Backup, doctor, and restore integration tests under
+`tests/backend/storage/sqlite/` exercise preserved authority in isolated stores.
+`tests/architecture/storage/storage-recovery.test.ts` scans the recovery boundaries.
 The run's retained result and receipt are distinct from emitted progress events.
 
 ### 3.15 Local values and egress checks
 
-`tests/architecture/logs/redaction-surface-scan.test.ts` audits declared surface origins and
-canary-bearing producers. `tests/architecture/logs/no-secret-values-in-logs.test.ts` checks secret
+`tests/architecture/logs/redaction-surface-scan.test.ts` audits declared surface origins.
+Canary tests for the receipt, provenance collector, and workbook library mirror their backend modules.
+`tests/architecture/logs/no-secret-values-in-logs.test.ts` checks secret
 interpolation and diagnostic boundaries. Complete local operator evidence retains supplied values;
 provider prompts and OS notifications have separate egress restrictions. The source owners are
 `src/rules/redaction/redaction.ts`, the receipt producers under `src/backend/runs/provenance/`,
@@ -423,11 +426,11 @@ results describe their observation time, rather than current external readiness.
 
 ## 5. Guard registration and removal
 
-`docs/guard-inventory.json` is the machine-readable guard inventory. Every active entry
-names a unique guard, file, owner, invariant, and `replacementRequired: true`.
-`tests/architecture/tooling/guard-manifest.test.ts` compares active files to recursive discovery of
-`tests/architecture/` in both directions. An unregistered file or missing active file fails. A
-planned or retired file cannot appear as an unclaimed architecture test.
+`docs/guard-inventory.json` lists each guard on one line with `name`, `file`, `owner`, and
+`invariant`. Write the invariant as one sentence that starts with the reason for the guard.
+`tests/architecture/tooling/guard-manifest.test.ts` checks unique guard names and compares registered
+files with recursive discovery of `tests/architecture/`. Missing or duplicate registrations and
+entries for missing files fail the check.
 
 A new guard accompanies a real recurring mistake. Its production target, violating fixture,
 inventory row, and owning documentation land together. A positive control establishes the valid
@@ -457,8 +460,7 @@ removing a label reruns the metadata check on development PRs.
 Removal names where the invariant goes and updates its inventory entry and consumers in the same
 change. The manifest protects against accidental removal or glob orphaning. It cannot prevent a
 coordinated edit to both a guard and its inventory row. Review and operator authorization remain
-the boundary for deliberate loss of protection. The inventory still uses machine-owned retirement
-and activation fields; this prose does not alter their schema or statuses.
+the boundary for deliberate loss of protection.
 
 The workflow-ID guard (`no-workflow-id-branches`) admits registered ids in generic code only at the
 files listed with a reason for named ids; a new branch elsewhere, a stale entry or a missing reason fails.
@@ -499,11 +501,14 @@ helpers or imports outside the span can still change meaning and need ordinary c
 ### 5.2 Gate and scope guards
 
 `tests/architecture/runtime/gate-coverage.test.ts` pins the exact `typecheck`, `lint`, `test`,
-`test:coverage`, and `test:perf` scripts, the single TypeScript program, all authored `src`, `tests`,
-and `scripts` roots,
-and the three root configs `vitest.config.ts`, `vite.dashboard.config.ts`, and
-`vite.mocks.config.ts`. Both lint CLI targets and typed ESLint blocks must cover those inputs.
-Warnings and unmatched patterns fail. An inert wrapper containing the expected words fails.
+`test:coverage`, and `test:perf` scripts and rejects inert wrappers. It checks the single TypeScript
+program and compares Oxlint's file listing with the authored `src`, `tests`, and `scripts` roots
+and the root configs `vitest.config.ts`, `vite.dashboard.config.ts`, and `vite.mocks.config.ts`.
+
+Root lint uses Oxlint with its type-aware sidecar. `.oxlintrc.json` scopes typed rules to TypeScript
+and React hooks rules to the dashboard. It sets separate unused-binding rules for source and tests. Warnings,
+including unused disable directives, and unmatched patterns fail the gate. Oxlint has no equivalent
+for the classic-script rules `no-dupe-args` and `no-octal`. Fast Duo runs its own ESLint check.
 
 `guard-manifest.test.ts` also pins Vitest topology, reporter selection, exclusion-list digest,
 minimum floors, and executable scanners. Registration proves a command remains wired; only its
@@ -530,10 +535,11 @@ maintenance. Its broad patterns include `src/**/*write-sequencer*.ts`,
 `coverage.thresholds` contains no branch threshold. Those constants do not create a branch gate.
 The global configured floor is 60, not 80.
 
-The coverage exclusion list is empty. The manifest verifies its serialized SHA-256 from
-`guard-inventory.json` and audits exclusion activation with independent fixtures. A planned owner
-must not exist or match files. An active owner must exist and match files. Owners must be exact, independent paths,
-with nonempty reasons. An exclusion cannot silently grow into a parent scope.
+The coverage exclusion list is empty. The manifest verifies its serialized SHA-256 against the
+top-level `coveragePolicy` in `guard-inventory.json` and audits exclusion activation with independent
+fixtures. A planned owner must not exist or match files. An active owner must exist and match files.
+Owners must be exact, independent paths with nonempty reasons. An exclusion cannot silently grow
+into a parent scope.
 
 ## 7. State gallery
 

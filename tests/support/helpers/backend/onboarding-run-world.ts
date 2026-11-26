@@ -9,7 +9,7 @@ import { canonicalChildExecution } from "./canonical-child-execution.js";
 import { healthyCrmDriver, healthyUcpathDriver, ManualScheduler, recordingLogger, recordingTimelineEmitter, sessionFactoryHarness, sessionManagerFor } from "../phase1f-executor-harness.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import type { I9LookupInput } from "../../../../src/models/systems/i9/read-section2-signer.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
@@ -157,6 +157,8 @@ export function createOnboardingRunWorld() {
   async function executionFixture(corruptAssertedSubject = false, options: {
     match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; legalName?: string; livedName?: string; crmReadFails?: boolean;
     personMatch?: z.output<typeof SearchPersonMatchOutputSchema>; ssn?: string;
+    /** The operator cancels when the library patch starts after filing, so the run ends cancelled with its receipts committed. */
+    cancelAfterFiling?: boolean;
     hire?: Omit<Parameters<typeof deterministicHireOperations>[0], "now">;
     i9?: Partial<Omit<Parameters<typeof createDeterministicI9Driver>[0], "now">>;
   } = {}) {
@@ -193,6 +195,12 @@ export function createOnboardingRunWorld() {
     const adapter: ProviderAdapter<"workbooks.library"> = { capability: "workbooks.library", invoke(request, invocation) {
       const running = f.database.authority.runs.listByWorkflow(descriptor.id).filter(run => run.lifecycle.state === "running");
       assert.equal(running.length, 1); const run = running[0]; assert.ok(run);
+      if (options.cancelAfterFiling === true && f.database.authority.writeIntents.listByRun(run.envelope.runId).some(intent => intent.status === "committed")) {
+        const cancelled = testRunService(f.database, f.clock).transition({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version,
+          lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } });
+        assert.equal(cancelled.state, "applied", JSON.stringify(cancelled));
+        throw new Error("fixture: the cancel stops the library patch");
+      }
       return createWorkbookLibraryAdapter({ runId: run.envelope.runId, repository: f.repository, clock: f.clock,
         references: { runId: run.envelope.runId, write: command => workbooks.write(run, command), verifyPerson: command => workbooks.verifyPerson(run, command) } }).invoke(request, invocation);
     } };
@@ -272,7 +280,7 @@ export function createOnboardingRunWorld() {
         } },
       });
     });
-    return { ...f, execution, rawExecution, approve, calls, sessions, hire, i9, setFault: (value: ExecutionFault | undefined) => { fault = value; },
+    return { ...f, descriptor, execution, rawExecution, approve, calls, sessions, hire, i9, setFault: (value: ExecutionFault | undefined) => { fault = value; },
       setRepositoryView: (value: typeof repositoryView) => { repositoryView = value; } };
   }
 

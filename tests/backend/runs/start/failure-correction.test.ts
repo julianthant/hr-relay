@@ -6,7 +6,7 @@ import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { failureCorrectionSubmission } from "../../../../src/backend/runs/start/failure-correction.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { FailureDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { failureDecision, failureRecovery } from "../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
@@ -31,7 +31,7 @@ function fixture() {
   const failureId = uuidOf(30);
   const base = runRecordOf({ seed: 1, workflow: "separations", descriptor: separationsDescriptor,
     lifecycle: { state: "terminal", outcome: "failed", endedAt: "2026-08-03T19:00:00.000Z", failureId, errorSummary: "Employee absent" } });
-  const run = RunRecordSchema.parse({ ...base, envelope: { ...base.envelope, itemId: deriveItemId(separationsDescriptor.id, "separations:4510#re-read-1") },
+  const run = RunRecordSchema.parse({ ...base, envelope: { ...base.envelope, browserMode: "headless", itemId: deriveItemId(separationsDescriptor.id, "separations:4510#re-read-1") },
     input: { ...base.input, parsed: { ...base.input.parsed, value: original, protectedBindings: [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId: uuidOf(90) }], schemaHash: deriveSchemaHash(SeparationsCanonicalInput, "output") } } });
   const failure = FailureRecordSchema.parse({ failureId, fingerprint: "a".repeat(64), runId: run.envelope.runId,
     traceId: run.envelope.traceId, attempt: 1, workflowId: "separations", nodeId: "job-summary", taskId: "ucpath/read-job-summary",
@@ -200,4 +200,12 @@ it("prefills an entered Employee ID UCPath does not know, and serves it nowhere 
   assert.equal(JSON.stringify({ rest, served, options: decision.options.map(({ input: _input, ...option }) => option) }).includes(typed), false);
   assert.deepEqual(served.request.submissions, [{}]);
   assert.equal(served.request.rerunSource?.runId, request.rerunSource?.runId);
+});
+
+it("refuses a correction whose source never recorded its browser mode instead of assuming headless", () => {
+  const { run, failure, request } = fixture();
+  const { browserMode: _recorded, ...envelope } = run.envelope;
+  const older = RunRecordSchema.parse({ ...run, envelope });
+  assert.throws(() => failureCorrectionSubmission(separationsDescriptor, older, failure, request),
+    (error: unknown) => error instanceof RerunRefusedError && error.code === "invalid-value");
 });

@@ -1,3 +1,4 @@
+import type { DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
 import { createIntakeParser } from "../../../processing/spreadsheet/intake-parser.js";
 import { type WriteResolutionExecutor } from "../../../runs/commands/write-resolution-command.js";
 import { runContinuationPort } from "../../../runs/lifecycle/run-record-service.js";
@@ -33,7 +34,9 @@ export function prepareWriteSafety(input: Pick<ReturnType<typeof prepareDashboar
   return { writeResolution, artifacts };
 }
 
-export function composeWriteSafety(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "lifecycle" | "stateRoot"> & { history: AuthorityDatabase; reader: RunRecordService; projection: ReturnType<typeof createOperatorProjection>; workerMembers: () => readonly WorkerMemberView[]; operatorName: () => string; artifacts: ReturnType<typeof createContentAddressedArtifactWriter>; artifactReader: ReturnType<typeof createServerVerifiedArtifactReader> }) {
+export function composeWriteSafety(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "lifecycle" | "stateRoot"> & { history: AuthorityDatabase; reader: RunRecordService; projection: ReturnType<typeof createOperatorProjection>; workerMembers: () => readonly WorkerMemberView[]; operatorName: () => string; artifacts: ReturnType<typeof createContentAddressedArtifactWriter>; artifactReader: ReturnType<typeof createServerVerifiedArtifactReader>;
+  /** Seam for the run detail, logs and run panel lane reads. */
+  readLanes?: DashboardReadLanes }) {
   const { database, lifecycle, stateRoot, projection, workerMembers, operatorName, artifacts, artifactReader } = input;
   const intakeParser = createIntakeParser({ artifacts });
   const intakeProjections = {

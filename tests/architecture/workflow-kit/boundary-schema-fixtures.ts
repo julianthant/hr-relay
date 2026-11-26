@@ -48,7 +48,8 @@ import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/models/trust/prefligh
 import { ScenarioManifestSchema } from "../../../src/models/trust/scenario.js";
 import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
 import { NegativeSettlementDecisionSchema, NegativeSettlementEvaluationInputSchema, NegativeSettlementPolicySchema, RecoveryProbeVerdictSchema, SubjectEvidenceSchema, SubjectProofSchema, TransactionOutcomeSchema, WriteAttemptRecordSchema, WriteBindingProofSchema, WriteIntentRecordSchema } from "../../../src/rules/write-safety/write-safety.js";
-import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, AuthorityBackupRunReportSchema, AuthorityCopyInspectionSchema, AuthoritySchemaInspectionSchema, PermanentWriteResolutionSchema, StorageDoctorReportSchema, WriteFenceInputSchema, FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema } from "../../../src/backend/storage/sqlite/index.js";
+import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, AuthorityBackupRunReportSchema, AuthorityCopyInspectionSchema, PermanentWriteResolutionSchema, StorageDoctorReportSchema, WriteFenceInputSchema, FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema } from "../../../src/backend/storage/sqlite/index.js";
+import { AuthoritySchemaInspectionSchema } from "../../../src/backend/storage/sqlite/authority-connection.js";
 import { BackupHealthSchema, RestoreCandidateSchema } from "../../../src/models/storage/storage-status.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { CRM_UI_REGISTRY } from "../../../src/backend/systems/crm/driver/ui-registry.js";

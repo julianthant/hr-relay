@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { authenticateRootRun } from "../../../../src/backend/storage/sqlite/delegation-root-authority.js";
-import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { ActorIdSchema, FingerprintSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";

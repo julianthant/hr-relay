@@ -90,4 +90,9 @@ describe("Intake uses the desktop control sizes", () => {
     assert.doesNotMatch(source, /font-semibold/);
     assert.doesNotMatch(source, /min-w-\[\d+rem\]/);
   });
+
+  it("keeps each parsed value on one line, truncated, with the full value as its title", () => {
+    const source = readFileSync("src/dashboard/surfaces/intake/intake.tsx", "utf8");
+    assert.match(source, /className="min-w-0 flex-1 truncate" title=\{row\.parsedInput\}>\{row\.parsedInput\}/);
+  });
 });

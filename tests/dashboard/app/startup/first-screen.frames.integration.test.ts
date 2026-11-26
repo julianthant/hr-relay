@@ -28,7 +28,7 @@ async function delayedStart(at: string) {
   }), at, servedAnalytics);
 }
 
-for (const [page, at, loaded] of [["the queue", "/", "Start run"], ["a Settings URL", "/?settings=general", "Prevent sleep while running"],
+for (const [page, at, loaded] of [["the queue", "/", "Person Lookup queue"], ["a Settings URL", "/?settings=general", "Prevent sleep while running"],
   ["an Analytics URL", `/?activity=${DAY}..${DAY}`, "1 open now"]] as const) {
   it(`goes from the loader straight to the complete dashboard on ${page} when every read takes 2.5 s`, async () => {
     const app = await delayedStart(at);

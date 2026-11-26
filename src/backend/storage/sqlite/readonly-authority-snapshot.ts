@@ -118,7 +118,7 @@ export interface AuthorityImageOwner {
 /** pointInTime: an owner image; later changes to the live files do not make it stale. */
 type SnapshotMarkers = Readonly<{ files: string; authority: string; copiedBytes: bigint }>;
 type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void; pointInTime?: true; markers?: SnapshotMarkers }>;
-type ReadonlyAuthorityImage = Readonly<{ path: string; marker: string }>;
+type ReadonlyAuthorityImage = Readonly<{ path: string; marker: string; copy: SnapshotMarkers }>;
 const readerImages = new WeakMap<DatabaseSync, ReadonlyAuthorityImage>();
 
 export function readonlyAuthorityImage(database: DatabaseSync): ReadonlyAuthorityImage | undefined {
@@ -140,6 +140,7 @@ const maxReusableSnapshotBytes = 256n * 1024n * 1024n;
 
 /** Share guarded copies of unchanged SQLite files during stopped upgrade inspection. */
 export async function withReusableReadonlyAuthoritySnapshots<T>(body: () => Promise<T>): Promise<T> {
+  if (reusableSnapshots.getStore()?.active) return body();
   const copies = new Map<string, ReusableSnapshot>();
   const scope = { active: true, bytes: 0n, copies };
   let primary: { error: unknown } | undefined;
@@ -412,11 +413,12 @@ export function withAuthorityDatabaseReadOnly<Result>(admission:RuntimeAdmission
  });
 }
 
-export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (database: DatabaseSync) => Result, busyTimeoutMs = 250): Result {
+export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (database: DatabaseSync) => Result,
+  busyTimeoutMs = 250, lifetime: "operation" | "reader" = "operation"): Result {
  const path = resolve(pathInput);
  requireDatabaseSourcePath(path);
  if(!existsSync(path)||statSync(path).size===0)throw new Error("authority-backup-source-missing");
- const snapshot=createReadonlyAuthoritySnapshot(path);
+ const snapshot = lifetime === "reader" ? copyReadonlyAuthoritySnapshot(path) : createReadonlyAuthoritySnapshot(path);
  let database: DatabaseSync | undefined;
  let result: { value: Result } | undefined;
  const failures: unknown[] = [];
@@ -424,7 +426,7 @@ export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (
  try {
    database = openReadOnlyDatabase(snapshot.path, busyTimeoutMs);
    database.exec("PRAGMA query_only=ON; BEGIN"); transactionOpen = true;
-   if (snapshot.markers !== undefined) readerImages.set(database, Object.freeze({ path, marker: snapshot.markers.authority }));
+   if (snapshot.markers !== undefined) readerImages.set(database, Object.freeze({ path, marker: snapshot.markers.authority, copy: snapshot.markers }));
    try { result = { value: read(database) }; }
    finally { readerImages.delete(database); }
    database.exec("COMMIT"); transactionOpen = false;
@@ -438,7 +440,11 @@ export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (
  }
  try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
  try { snapshot.dispose(); }
- catch (error) { throw retainAuthoritySourceClosure([...failures, error], { snapshot }); }
+ catch (cleanup) {
+   const error = failures.length === 0 ? cleanup
+     : new AggregateError([...failures, cleanup], "authority-read-and-snapshot-disposal-failed", { cause: cleanup });
+   throw retainAuthoritySourceClosure([error], { snapshot });
+ }
  if (failures.length === 1) throw failures[0];
  if (failures.some(error => error instanceof AuthoritySourceClosureUnprovedError)) throw retainAuthoritySourceClosure(failures, {});
  if (failures.length > 1) throw new AggregateError(failures, "authority-read-only-failed", { cause: failures[0] });

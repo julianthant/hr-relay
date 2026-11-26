@@ -41,7 +41,7 @@ import { WriteFixturePrepare, WriteFixtureCommit, buildWriteFixtureRegistry, abs
 import { createRowStore } from "../../../src/dashboard/client/index.js";
 
 const Input = z.strictObject({ eid: EidSchema, memo: z.string().optional() });
-export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", current: { version?: number; fingerprint?: string; stepPrefix?: string; gateDependency?: boolean; gateCorrection?: boolean; readReplay?: "checkpoint" | "always-rerun" } = {}) {
+export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", current: { version?: number; fingerprint?: string; stepPrefix?: string; gateDependency?: boolean; gateCorrection?: boolean; readReplay?: "checkpoint" | "always-rerun"; confirmAfterFiling?: boolean } = {}) {
   const prefix = current.stepPrefix ?? "";
   const readFlow = () => flow(Input)
     .step("read", sourceBoundReadContract, { dependsOn: [], replay: current.readReplay ?? "checkpoint", bind: ({ input }) => input })
@@ -53,11 +53,14 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", curre
       commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) },
       dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
     }).build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read });
-  const graphWithoutGate = readFlow().transaction("submit-write", { dependsOn: ["read"],
+  const filed = () => readFlow().transaction("submit-write", { dependsOn: ["read"],
       prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
       commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) },
       dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
-    }).build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read });
+    });
+  const graphWithConfirm = filed().step("confirm", sourceBoundReadContract, { dependsOn: ["submit-write"], replay: current.readReplay ?? "checkpoint", bind: ({ input }) => input })
+    .build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read });
+  const graphWithoutGate = filed().build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read });
   const descriptor = { id: "launch-proof", version: current.version ?? 1, contractFingerprint: current.fingerprint ?? "a".repeat(64), code: "lp",
     label: "Launch proof", icon: "Search", category: "operations", inputSubject: "eid", surface: { shape: "single" },
     canonicalInput: defineCanonicalInput(Input, Input, [{ eid: "10812345" }]), enqueue, actions: STANDARD_WORKFLOW_ACTIONS,
@@ -69,6 +72,7 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", curre
       { key: `${prefix}checking`, label: "Check employee", nodes: ["check"], manual: { form: StepOmissionFormSchema.parse({ fields: [{ key: "eid", label: "Checked employee ID", kind: "eid", replaces: { nodeId: "check", path: "eid" } }] }),
         produces: { check: ({ facts }: StepOmissionProduceContext) => z.strictObject({ eid: EidSchema }).parse(facts) } } },
       { key: `${prefix}filing`, label: "File transaction", nodes: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"] },
+      ...(current.confirmAfterFiling ? [{ key: `${prefix}confirming`, label: "Confirm filing", nodes: ["confirm"] }] : []),
     ],
     rerunValues: [
       { nodeId: "read", fieldPath: "eid", targetFieldPath: "eid", label: "Employee ID" },
@@ -77,8 +81,8 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", curre
   } as const;
   const gateCorrections = current.gateCorrection === true
     ? { gateCorrections: [{ gateId: "approval", inputField: "memo", label: "Memo", placeholder: "lowercase", pattern: "^[a-z]+$" }] } : {};
-  return current.gateDependency
-    ? defineWorkflowDescriptor({ ...descriptor, ...gateCorrections, flow: graphWithGate })
+  if (current.gateDependency) return defineWorkflowDescriptor({ ...descriptor, ...gateCorrections, flow: graphWithGate });
+  return current.confirmAfterFiling ? defineWorkflowDescriptor({ ...descriptor, flow: graphWithConfirm })
     : defineWorkflowDescriptor({ ...descriptor, flow: graphWithoutGate });
 }
 export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2], selection?: Readonly<{ descriptor: AnyWorkflowDescriptor; protectedSecrets: ProtectedSecretSource }>,

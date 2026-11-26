@@ -17,6 +17,7 @@ import { CommandResultSchema, type CommandResult } from "../../../../src/rules/c
 import intakeSnapshot from "./run-dialog-intake-sessions.json" with { type: "json" };
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../../src/models/intake/wire.js";
 import bootstrapSnapshot from "./run-dialog-bootstrap.json" with { type: "json" };
+import workStudySnapshot from "./run-dialog-work-study.json" with { type: "json" };
 
 /** The served bootstrap of the one registered workflow, saved so the gallery page stays free of backend modules; run-dialog-bootstrap.integration.test.ts keeps it current. */
 export const RUN_DIALOG_BOOTSTRAP = FrontendBootstrapWireSchema.parse(bootstrapSnapshot);
@@ -29,7 +30,7 @@ export const RUN_DIALOG_WORKFLOW = "person-lookup";
 export const RUN_DIALOG_TYPED = "10873698";
 const HASH = "a".repeat(64);
 
-export const RUN_DIALOG_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(FIXTURE_BOOTSTRAP.workflows).map((entry): RunStartWorkflow => {
+const startWorkflows = (workflows: readonly unknown[]): readonly RunStartWorkflow[] => parseWorkflows(workflows).map((entry): RunStartWorkflow => {
   const start = entry.start;
   return {
     workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId, role: entry.role, icon: entry.icon,
@@ -42,6 +43,7 @@ export const RUN_DIALOG_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
     referenceSources: FIXTURE_BOOTSTRAP.workbookCompatibility.workflows.find(workflow => workflow.workflowId === entry.id)?.sources ?? [],
   };
 });
+export const RUN_DIALOG_WORKFLOWS = startWorkflows(FIXTURE_BOOTSTRAP.workflows);
 
 export const RUN_DIALOG_CATALOG = buildWorkflowCatalog(RUN_DIALOG_WORKFLOWS,
   Object.freeze(Object.fromEntries(RUN_DIALOG_WORKFLOWS.map(flow => [flow.workflowId, "served" as const]))));
@@ -115,17 +117,50 @@ export const never = <T>(): Promise<T> => new Promise<T>(() => undefined);
 export const RUN_DIALOG_RERUN_SOURCE = { ...RerunValuesRequestSchema.parse({ runId: RUN_ID, expectedVersion: 3 }), label: "Ada Lovelace" };
 const STEPS = ["searching", "cross-verify", "active-status"] as const;
 
-/** What a failed Person Lookup run offers a rerun: the typed input it ran on, each step's state, and one value to copy. */
-export function runDialogRerunSnapshot(): RerunValuesResponse {
+/** The entry with its reading steps switchable, so a rerun can leave the steps that already succeeded off. */
+export const RUN_DIALOG_RERUN_CATALOG = catalogOf(flow => ({ ...flow, steps: flow.steps.map(step => step.control.state === "required"
+  ? { ...step, control: { state: "omittable" as const, form: { fields: [] }, forces: [] } } : step) }));
+
+/** What a Person Lookup run offers a rerun: the typed input it ran on, each step's state (a failed run stops at its last step), and one value to copy. */
+export function runDialogRerunSnapshot(outcome: "failed" | "done" = "failed"): RerunValuesResponse {
   return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
-    sourceInput: { state: "available", value: { eid: RUN_DIALOG_TYPED } },
-    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome: "failed" },
-    steps: STEPS.map((key, index) => ({ key, state: index < 2 ? "completed" : "failed",
-      nodes: [{ nodeId: key, state: index < 2 ? "completed" : "failed", reason: index < 2 ? "checkpoint" : "failure" }] })),
-    values: [{ state: "available", sourceStepKey: "searching", nodeId: "searching", fieldPath: "eid", label: "Employee ID", targetFieldPath: "eid", value: RUN_DIALOG_TYPED,
+    sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED } },
+    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORKFLOW, descriptorVersion: RUN_DIALOG_WORKFLOWS[0]?.version ?? 1, contractFingerprint: HASH, outcome, dryRun: false, priority: "interactive", browserMode: "headless" },
+    steps: STEPS.map((key, index) => { const ok = outcome === "done" || index < 2; return { key, state: ok ? "completed" : "failed",
+      nodes: [{ nodeId: key, state: ok ? "completed" : "failed", reason: ok ? "checkpoint" : "failure" }] }; }),
+    values: [{ state: "available", sourceStepKey: "searching", nodeId: "searching", fieldPath: "emplId", label: "Employee ID", targetFieldPath: "emplId", value: RUN_DIALOG_TYPED,
       checkpoint: { attempt: 1, writtenAt: "2026-08-26T20:00:00.000Z" },
-      provenance: { path: "eid", source: "live", observedAt: "2026-08-26T20:00:00.000Z", originalObservedAt: "2026-08-26T20:00:00.000Z" } }],
+      provenance: { path: "emplId", source: "live", observedAt: "2026-08-26T20:00:00.000Z", originalObservedAt: "2026-08-26T20:00:00.000Z" } }],
     transactions: [],
+  } });
+}
+
+/** The served Work-Study entry, saved beside the bootstrap; run-dialog-bootstrap.integration.test.ts keeps it current. */
+const [WORK_STUDY] = startWorkflows([workStudySnapshot]);
+if (WORK_STUDY === undefined) throw new Error("the saved Work-Study entry is missing");
+export const RUN_DIALOG_WORK_STUDY = WORK_STUDY.workflowId;
+export const RUN_DIALOG_WRITE_RERUN_CATALOG = buildWorkflowCatalog([WORK_STUDY], Object.freeze({ [WORK_STUDY.workflowId]: "served" as const }));
+const WRITE_NODES = { "ucpath-auth": ["paypath-position"], "reference-check": ["reference-check", "reference-stop", "reference-check-review"], transaction: ["transaction-plan", "save-transaction"] } as const;
+const WRITE_RECEIPT = { nodeId: "save-transaction", taskId: "ucpath/submit-paypath-work-study", writeIntentId: "20000000-0000-4000-8000-000000000002", evidenceDigest: HASH } as const;
+
+/** A Work-Study run cancelled after Save and Submit committed, before its filing step finished; its reference stop was condition-skipped and the receipt is the source's own. */
+export function runDialogWriteRerunSnapshot(): RerunValuesResponse {
+  return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
+    sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED, effectiveDate: "2026-08-03" } },
+    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORK_STUDY, descriptorVersion: WORK_STUDY.version, contractFingerprint: HASH, outcome: "cancelled", dryRun: false, priority: "interactive", browserMode: "headless" },
+    steps: WORK_STUDY.steps.map(({ key }) => key !== "transaction"
+      ? { key, state: "completed", nodes: (WRITE_NODES[key as keyof typeof WRITE_NODES] ?? []).map(nodeId => ({ nodeId, state: "completed", reason: nodeId === "reference-stop" ? "condition-skipped" : "checkpoint" })) }
+      : { key, state: "unfinished", nodes: [{ nodeId: "transaction-plan", state: "completed", reason: "checkpoint" },
+        { nodeId: "save-transaction", state: "unfinished", reason: "incomplete-execution" }] }),
+    values: [], transactions: [{ stepKey: "transaction", ...WRITE_RECEIPT, disposition: "committed", filedBySource: true }],
+  } });
+}
+
+/** The repeat warning for that Work-Study source: its required filing step runs again. */
+export function runDialogWriteRerunWarning(): RerunWarningWire {
+  return RerunWarningWireSchema.parse({ workflowId: RUN_DIALOG_WORK_STUDY, rerun: {
+    source: { runId: RUN_ID, expectedVersion: 3, intent: "rerun", selectedStepKeys: WORK_STUDY.steps.map(({ key }) => key) },
+    warnings: [{ ...WRITE_RECEIPT, system: "ucpath", businessKeyDigest: HASH }], warningDigest: HASH,
   } });
 }
 

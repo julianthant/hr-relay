@@ -14,7 +14,8 @@ import { chmodSync, copyFileSync, linkSync, lstatSync, renameSync, mkdirSync, mk
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
 import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { join } from "node:path";

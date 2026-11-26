@@ -2,7 +2,7 @@ import { localDatePart } from "../../../rules/time/clock.js";
 import { FailureResolutionSchema } from "../../../models/trust/failure-resolution.js";
 import type { CommandApplication } from "../commands/command-application.js";
 import type { FailureResolutionCommand } from "../../../rules/commands/commands.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { rejectCommandRequest } from "../commands/command-refusal.js";
 import { lifecycleCommandId } from "./run-record-service.js";
 

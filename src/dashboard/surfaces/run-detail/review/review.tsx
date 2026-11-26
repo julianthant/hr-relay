@@ -82,7 +82,7 @@ function ReviewSourcePreview({ recordId, subject, pages, recordPage, onPageChang
 
 function ReviewRecordCard({ runId, subject, record, name, original, pages, readOnly, settled, disabled, selectionDisabled, disposition, approvalError, onChange, onEditField, onFocus, onFullscreen }: {
   runId: string; subject: string; record: ReviewRecordView; name: string; original?: ReviewRecordView; pages: readonly ReviewSourcePage[];
-  readOnly: boolean; /** Approved: there is nothing left to choose, so no selection box is shown. */ settled?: boolean; disabled?: boolean; selectionDisabled?: boolean; disposition?: Readonly<{ label: string; tone: "success" | "neutral" }>;
+  readOnly: boolean; /** Approved: the include box stays, shown checked and not editable. */ settled?: boolean; disabled?: boolean; selectionDisabled?: boolean; disposition?: Readonly<{ label: string; tone: "success" | "neutral" }>;
   approvalError?: string; onChange?: (record: ReviewRecordView) => void; onEditField?: (key: string, value: string) => void; onFocus?: () => void; onFullscreen?: () => void;
 }) {
   const update = (key: string, value: string) => onEditField?.(key, value);
@@ -95,14 +95,13 @@ function ReviewRecordCard({ runId, subject, record, name, original, pages, readO
       {record.manualEntry && /^section[12]$/u.test(item.key) ? <Select disabled={disabled} aria-label={item.label} value={item.value} onChange={event => update(item.key, event.target.value)}>{Array.from({ length: record.sourcePageCount ?? 1 }, (_, index) => <option key={index + 1} value={index + 1}>Page {index + 1}</option>)}</Select> : item.kind === "relationship" ? <Select disabled={disabled} aria-label={item.label} value={item.value} onChange={event => update(item.key, event.target.value)}>{!REVIEW_RELATIONSHIPS.includes(item.value) && <option value={item.value}>{item.value || "Unspecified"}</option>}{REVIEW_RELATIONSHIPS.map(value => <option key={value} value={value}>{value}</option>)}</Select> : multiline ? <Textarea disabled={disabled} aria-label={item.label} name={item.key} rows={2} value={item.value} onChange={event => update(item.key, event.target.value)} /> : <Input disabled={disabled} aria-label={item.label} name={item.key} spellCheck={item.key === "employeeId" ? false : undefined} type="text" placeholder={item.kind === "date" ? "MM/DD/YYYY" : undefined} value={item.kind === "date" ? displayExtractedDate(item.value) : item.value} onChange={event => update(item.key, event.target.value)} />}
     </Field>;
   };
-  const heading = <span data-ocr-review-heading {...(settled ? { role: "heading", "aria-level": 3, tabIndex: 0 } : { tabIndex: -1 })} className={cn("inline-block min-w-0 break-words rounded-sm text-body font-medium", dsFocus)}>{name}</span>;
-  return <section aria-label={`Record ${record.id}`} data-review-record-id={record.id} onFocusCapture={onFocus} className="grid min-w-0 grid-cols-[minmax(0,3fr)_minmax(0,2fr)] overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel">
+  return <section aria-label={`Record ${record.id}`} data-review-record-id={record.id} data-settled={settled || undefined} onFocusCapture={onFocus} className="grid min-w-0 grid-cols-[minmax(0,3fr)_minmax(0,2fr)] overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel">
     <ReviewSourcePreview key={JSON.stringify([runId, pages.map(page => page.identity ?? page.imageUrl)])} recordId={`${runId}:${record.id}`} subject={subject} pages={pages} recordPage={record.page} onPageChange={record.manualEntry && !readOnly && record.kind !== "i9" ? page => onChange?.({ ...record, page }) : undefined} onFullscreenChange={onFullscreen && (() => onFullscreen())} />
     <div data-review-fields className="@container/record min-w-0 space-y-3 bg-ui-table p-3">
       <Card role="group" aria-label="Record selection">
         <CardBody className="space-y-2 p-3">
           <div className="flex flex-wrap items-center gap-2">
-            {settled ? <div className="min-w-0 flex-1">{heading}</div> : <Checkbox className="min-w-0 flex-1" label={<><span className="sr-only">Include </span>{heading}</>} checked={record.selected} disabled={disabled || selectionDisabled || readOnly || record.unknown} onCheckedChange={selected => onChange?.({ ...record, selected: selected === true })} />}
+            <Checkbox className="min-w-0 flex-1" label={<><span className="sr-only">Include </span><span data-ocr-review-heading {...(settled ? { role: "heading", "aria-level": 3, tabIndex: 0 } : { tabIndex: -1 })} className={cn("inline-block min-w-0 break-words rounded-sm text-body font-medium", dsFocus)}>{name}</span></>} checked={record.selected} disabled={disabled || selectionDisabled || readOnly || record.unknown} onCheckedChange={selected => onChange?.({ ...record, selected: selected === true })} />
             {record.unconfirmed !== undefined && <Badge tone="warning">Unconfirmed</Badge>}
             {disposition && <Badge tone={disposition.tone}>{disposition.label}</Badge>}
           </div>

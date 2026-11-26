@@ -35,12 +35,11 @@ function CapturePreview({ screenshot, onChoose, submit = false }: { screenshot: 
   const onFailure = useCallback(() => setFailed(true), []);
   return <figure className={cn("log-capture", submit && "log-capture--submit")} data-kind={screenshot.kind} data-log-capture-id={screenshot.logId}>
     {!submit && <div className="log-capture-header"><span><Monitor aria-hidden className="size-3.5" />{screenshot.system ?? "Capture"}</span><span>{captureKindLabel(screenshot.kind)}</span></div>}
-    <div className="log-capture-open">
-      <DialogTrigger asChild><button type="button" onClick={event => onChoose(event.currentTarget)} className="log-capture-hit" aria-label={`Enlarge screenshot captured at ${screenshot.time}`}>
-        <div className="log-capture-viewport"><CaptureImage key={`${screenshot.src}-${screenshot.width}-${screenshot.height}-${attempt}`} screenshot={screenshot} onFailure={onFailure} /></div>
-      </button></DialogTrigger>
-      {!failed && <DialogTrigger asChild><IconButton label="Expand capture" className="log-capture-expand" icon={<Expand aria-hidden className="size-4" />} onClick={event => onChoose(event.currentTarget)} /></DialogTrigger>}
-    </div>
+    <DialogTrigger asChild><button type="button" onClick={event => onChoose(event.currentTarget)} className="log-capture-open" aria-label={`Enlarge screenshot captured at ${screenshot.time}`}>
+      <div className="log-capture-viewport"><CaptureImage key={`${screenshot.src}-${screenshot.width}-${screenshot.height}-${attempt}`} screenshot={screenshot} onFailure={onFailure} /></div>
+      {!failed && <span className="log-capture-expand"><Expand aria-hidden className="size-3.5" /></span>}
+      {screenshot.kind === "form" && !failed && <span className="log-form-hint">Full form · open to scroll</span>}
+    </button></DialogTrigger>
     <figcaption><span className={screenshot.label === "Failed action" ? "text-ui-danger" : undefined}>{screenshot.label ?? screenshot.time}</span>{submit && !failed && <time className="tabular-nums text-ui-muted">{screenshot.time}</time>}{failed && <Button size="sm" variant="ghost" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</figcaption>
   </figure>;
 }
@@ -79,8 +78,9 @@ function CaptureWorkspace({ screenshots, selected, choose }: { screenshots: read
   const zoomBy = (amount: number) => setZoom(Math.max(.1, Math.min(4, Math.round((zoom ?? scale) * 100 + amount * 25) / 100)));
   return <div className={cn("log-viewer", screenshots.length === 1 && "log-viewer--single")} onKeyDown={event => {
     if (event.target instanceof HTMLSelectElement || event.altKey || event.ctrlKey || event.metaKey) return;
-    if (event.key === "ArrowRight" && selected < screenshots.length - 1) { event.preventDefault(); switchCapture(selected + 1); }
-    if (event.key === "ArrowLeft" && selected > 0) { event.preventDefault(); switchCapture(selected - 1); }
+    const inViewport = event.target instanceof Element && event.target.closest(".log-image-viewport") !== null;
+    if (inViewport && event.key === "ArrowRight" && selected < screenshots.length - 1) { event.preventDefault(); switchCapture(selected + 1); }
+    if (inViewport && event.key === "ArrowLeft" && selected > 0) { event.preventDefault(); switchCapture(selected - 1); }
     if (event.key === "+" || event.key === "=") { event.preventDefault(); zoomBy(1); }
     if (event.key === "-") { event.preventDefault(); zoomBy(-1); }
     if (event.key.toLowerCase() === "r") { event.preventDefault(); setRotation(value => (value + 90) % 360); }

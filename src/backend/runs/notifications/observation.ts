@@ -9,12 +9,14 @@ export type NotificationObservationStatus = Readonly<{ state: "ready" | "failed"
 /** Publications and health inspections each have a single owner; slow health reads do not delay new occurrences. */
 export function createNotificationObserver(deps: {
   inbox: Pick<NotificationInbox, "publish">;
-  read(): NotificationSourceRead;
+  read(): NotificationSourceRead | Promise<NotificationSourceRead>;
   health(): Promise<void>;
 }) {
   let stopped = false, drained = false;
   let healthFailure: NotificationObservationStatus["code"];
   let running: Promise<void> | undefined;
+  let sourceScan: Promise<void> | undefined;
+  let rerunSources = false;
   let diagnostics: readonly NonNullable<NotificationObservationStatus["code"]>[] = [];
   const pendingBySource = new Map<string, NotificationObservation>();
   const queues = new Map<string, Set<NotificationObservation>>();
@@ -30,14 +32,10 @@ export function createNotificationObserver(deps: {
     for (const listener of [...statusListeners]) listener();
   };
 
-  const observeSources = (changed?: () => boolean): Promise<void> | undefined => {
-    if (stopped) return;
+  const acceptSources = (read: NotificationSourceRead | undefined): Promise<void> | undefined => {
+    diagnostics = read === undefined ? ["NOTIFICATION_OBSERVATION_FAILED"] : read.diagnostics;
     try {
-      if (changed !== undefined && !changed() && !needsRetry() && diagnostics.length === 0) return;
-      diagnostics = [];
-      const read = deps.read();
-      diagnostics = read.diagnostics;
-      for (const item of read.observations) {
+      for (const item of read?.observations ?? []) {
         const id = item.source.identity;
         const prior = pendingBySource.get(id);
         if (prior !== undefined) {
@@ -71,6 +69,31 @@ export function createNotificationObserver(deps: {
     statusMoved();
     if (active.size > 0) return Promise.all(active.values()).then(() => {});
   };
+  const observeSources = (changed?: () => boolean): Promise<void> | undefined => {
+    if (stopped) return;
+    let read: ReturnType<typeof deps.read>;
+    try {
+      if (changed !== undefined && !changed() && !needsRetry() && diagnostics.length === 0) return;
+      if (sourceScan !== undefined) {
+        rerunSources = true;
+        return sourceScan;
+      }
+      read = deps.read();
+    } catch { return acceptSources(undefined); }
+    if (!(read instanceof Promise)) return acceptSources(read);
+
+    sourceScan = read.then(
+      result => ({ publications: acceptSources(result) }),
+      () => ({ publications: acceptSources(undefined) }),
+    ).finally(() => {
+      sourceScan = undefined;
+      if (rerunSources) {
+        rerunSources = false;
+        void observeSources();
+      }
+    }).then(({ publications }) => publications);
+    return sourceScan;
+  };
   const observe = (): Promise<void> => {
     if (stopped) return Promise.resolve();
     if (running !== undefined) return running;
@@ -94,6 +117,7 @@ export function createNotificationObserver(deps: {
   };
   return Object.freeze({ observe, observeSources, status, onStatusChange, async stop() {
     stopped = true;
+    await sourceScan;
     await Promise.all([running, ...active.values()]);
     drained = true;
     statusMoved();
