@@ -38,7 +38,9 @@ describe("the queue day read's warm step", () => {
     const opened = openReadLane(lane, 250);
     cleanups.push(() => opened.native.close());
     const context = { start: lane.start, native: opened.native, history: opened.history, nowMs: f.clock.nowMs(), retain: () => {} };
-    Object.defineProperty(opened.history.authority.timelineEvents, "highWaterMark", { configurable: true, value: () => { throw new Error("timeline-unreadable"); } });
+    const authority = opened.history.authority;
+    const timelineEvents = Object.create(authority.timelineEvents, { withReadSnapshot: { value: () => { throw new Error("timeline-unreadable"); } } }) as typeof authority.timelineEvents;
+    Object.defineProperty(opened.history, "authority", { configurable: true, value: Object.create(authority, { timelineEvents: { value: timelineEvents } }) as typeof authority });
     assert.throws(() => opened.history.withAuthorityReadSnapshot(() => queueDayRead.warm?.(context)), /queue-day-fold-degraded/u,
       "a degraded replica never reports ready");
   });
