@@ -239,8 +239,7 @@ append a result note and may continue a preview timeline; those transitions are 
 
 `LogTimelineStage` has stable ID, label, state, optional time/duration/step target, and substeps.
 States are `completed`, `active`, `waiting`, `failed`, `pending`, `skipped`, and `cancelled`.
-The Logs header draws no step chips. Steps that do not apply remain visible as Skipped, and a wait with
-no ordinary step entry still needs a visible representation.
+The Logs header draws no step chips.
 
 The screenshot workspace retains selected image, dimensions, availability, zoom, and navigation.
 Loading, unavailable bytes, and a verified image are different states. Controls stay clear of

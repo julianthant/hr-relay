@@ -120,7 +120,7 @@
 .queue-options-menu > .ds-menu-item { min-height: 36px; padding-inline: 10px; gap: 10px; }
 .queue-options-value { display: inline-flex; margin-left: auto; align-items: center; gap: 8px; color: var(--ui-secondary); }
 /* The value, not the chevron, takes the free space. */
-.queue-options-value ~ svg.lucide-chevron-right { margin-left: 0; }
+.queue-options-value ~ svg { margin-left: 0; }
 .queue-options-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--ds-switch-on); }
 /* The toggle row draws a switch where a checked item draws its check. */
 .queue-options-menu > .queue-options-toggle.ds-menu-item { justify-content: space-between; padding-right: 10px; }
