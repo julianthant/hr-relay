@@ -11,7 +11,7 @@ import { RunSpreadsheets, TypedInput } from "./run-start-kit.js";
 import type { RunInputPreview } from "./run-start-model.js";
 import { WorkflowPdfInput } from "./run-start-pdf-input.js";
 import type { usePdfRunInput } from "./run-start-pdfs.js";
-import type { useRunStartSpreadsheets, useRunStartWorkbookRows } from "./run-start-spreadsheets-model.js";
+import { newestWorksheet, type useRunStartSpreadsheets, type useRunStartWorkbookRows } from "./run-start-spreadsheets-model.js";
 import type { RunStartWorkflow } from "./run-start.js";
 import { WORKBOOK_ROW_UNAVAILABLE_TEXT, resolveWorkbookRowSelection } from "./run-workbook-rows-model.js";
 
@@ -41,7 +41,7 @@ export function RunStartInput({
   const checkBusy = library.catalogRefreshing || library.compatibility === undefined;
   const checkHandlers = {
     onAdd: (libraryId: string) => { const sheet = checkSheets.find(candidate => candidate.libraryId === libraryId);
-      if (sheet !== undefined) update(current => launchDraft.pickCheck(current, libraryId, { versionId: sheet.versionId, sheetIds: sheet.worksheets.slice(0, 1).map(worksheet => worksheet.sheetId) })); },
+      if (sheet !== undefined) update(current => launchDraft.pickCheck(current, libraryId, { versionId: sheet.versionId, sheetIds: [newestWorksheet(sheet.worksheets)].flatMap(worksheet => worksheet === undefined ? [] : [worksheet.sheetId]) })); },
     onVersion: (libraryId: string, versionId: string) => update(current => launchDraft.pickCheck(current, libraryId, { versionId, sheetIds: [] })),
     onSheets: (libraryId: string, sheetIds: readonly string[]) => update(current => {
       const pick = current.checkPicks[libraryId];
@@ -50,13 +50,13 @@ export function RunStartInput({
     onRemove: (libraryId: string) => update(current => launchDraft.removeCheck(current, libraryId)),
   };
   const requiredLabelOf = (labels: readonly string[]) => labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels.join('');
-  const referenceLoading = (description: string) => <div role="status" aria-label="Loading reference data"><RunList title="Spreadsheets" description={description}><RunListSkeleton rows={2} /></RunList></div>;
+  const referenceLoading = (description: string) => <div role="status" aria-label="Loading reference data"><RunList title="References" description={description}><RunListSkeleton rows={2} /></RunList></div>;
   /** The one Spreadsheets field: the reference spreadsheet a run looks people up in and, when the workflow allows, the extra spreadsheets it checks each person against. */
   const referenceControls = (types: readonly string[], withCheck: boolean) => {
     const check = withCheck && workbookCheck !== undefined ? { sheets: checkSheets, ...checkHandlers } : undefined;
-    if (types.length === 0) return check === undefined ? undefined : library.catalogLoading ? referenceLoading("Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.")
+    if (types.length === 0) return check === undefined ? undefined : library.catalogLoading ? referenceLoading("Optional.")
       : <RunSpreadsheets check={check} busy={checkBusy} locked={sending} catalogError={library.catalogError} onRefresh={() => void library.adapter.refreshCatalog()} />;
-    if (library.catalogLoading) return referenceLoading(`Spreadsheets this run looks people up in. Needs ${requiredLabelOf(selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [])}.`);
+    if (library.catalogLoading) return referenceLoading(`Needs ${requiredLabelOf(selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [])}.`);
     return <>{types.map(typeId => {
       const draft = referenceDrafts[typeId];
       const sheetOptions = versionSources.state === 'ready' ? versionSources.sources : [];

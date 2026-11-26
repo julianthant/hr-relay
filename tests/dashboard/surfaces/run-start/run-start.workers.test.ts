@@ -15,7 +15,7 @@ describe("automatic worker forms", () => {
       submitted = input;
       return h.planResponse("5a000000-0000-4000-8000-000000000001");
     } }));
-    await dialog.type(h.TYPED); await dialog.press("Continue");
+    await dialog.type(h.TYPED); await dialog.press("Next");
     assert.equal(document.querySelector('button[aria-label$=" Workers"]') === null, true, "Workers picker must be absent");
     await dialog.press("Start run");
     assert.ok(submitted !== null && typeof submitted === "object");
@@ -43,7 +43,7 @@ describe("automatic worker forms", () => {
           rerun: { source: request.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: request.warningAcknowledgment } });
       },
     }), { workflows: [workflow], panelWorkflowId: workflow.workflowId, rerunSource: source });
-    await dialog.press("Continue");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Start");
     assert.equal(document.querySelector('button[aria-label$=" Workers"]') === null, true, "Workers picker must be absent");
     await dialog.press("Start run");

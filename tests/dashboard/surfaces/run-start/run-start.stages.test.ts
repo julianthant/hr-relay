@@ -21,7 +21,7 @@ describe("the Run dialog has no Confirm stage", () => {
     }));
     assert.deepEqual(stageNames(), ["Input", "Start"]);
     await dialog.type(h.TYPED);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Start");
     assert.ok(!dialog.text().includes("Preview plan"));
     await dialog.press("Start run");
@@ -36,21 +36,21 @@ describe("the Run dialog has no Confirm stage", () => {
       executeCommand: async () => h.APPLIED,
     }));
     await dialog.type(h.TYPED);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     await dialog.press("Customize steps");
     assert.deepEqual(stageNames(), ["Input", "Start", "Steps"]);
     await dialog.press("Customize steps");
     assert.deepEqual(stageNames(), ["Input", "Start"]);
-    assert.ok(!dialog.text().includes("Continue"), "Start run is back on the Start page");
+    assert.ok(!dialog.text().includes("Next"), "Start run is back on the Start page");
     await dialog.press("Customize steps");
-    await dialog.press("Continue");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Steps");
     await dialog.press("CRM Dates");
-    await dialog.press("Back");
+    await dialog.press("2 Start");
     assert.equal(dialog.stage(), "Start");
-    await dialog.press("Back");
-    await dialog.press("Continue");
-    await dialog.press("Continue");
+    await dialog.press("1 Input");
+    await dialog.press("Next");
+    await dialog.press("Next");
     await dialog.press("Start run");
     assert.equal(plans.length, 1);
     assert.deepEqual(StartPlanRequestSchema.parse(plans[0]).selectedStepKeys, ["searching", "cross-verify", "active-status", "crm-dates"]);
@@ -63,7 +63,7 @@ describe("the Run dialog has no Confirm stage", () => {
       executeCommand: async () => h.APPLIED,
     }));
     await dialog.type(`${h.TYPED}\n10873699`);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     await dialog.press("Start run");
     assert.equal(dialog.stage(), "Start", "a stopped plan stays on the last stage");
     assert.match(dialog.text(), /Relay could not use .+\./);

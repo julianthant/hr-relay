@@ -103,7 +103,7 @@ export const separationsWorkflow = defineWorkflow({
   actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {
     inputRun: {
-      placeholder: "Enter Kuali document numbers separated by a semicolon or Shift+Enter (e.g. 4502; 4510)",
+      placeholder: "e.g. 4502; 4510",
       parser: {
         split: { kind: "delimited", delimiters: [";", "\n"] },
         rules: [

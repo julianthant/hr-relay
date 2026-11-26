@@ -405,7 +405,7 @@ describe("a declared input-run example", () => {
 
 describe("typed input controls", () => {
   const EID_PARSER = { split: { kind: "delimited", delimiters: [",", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }] };
-  const mode = (value: string) => ({ value, label: "Employee IDs", inputLabel: "Employee IDs", hint: "Separate IDs with commas.", placeholder: "10000001",
+  const mode = (value: string) => ({ value, label: "Employee IDs", inputLabel: "Employee IDs", placeholder: "10000001",
     defaults: [], parser: { kind: "entries", spec: EID_PARSER }, display: { kind: "first-present", fields: ["emplId"] }, identityFields: ["emplId"] });
   const dateControl = { kind: "date", field: "effectiveDate", label: "Effective date", placement: "input", modes: ["eids"], requires: [],
     required: true, refusal: "Choose a valid effective date." };

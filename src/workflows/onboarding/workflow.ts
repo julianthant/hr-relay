@@ -25,10 +25,10 @@ export const onboardingWorkflow = defineWorkflow({
     typedInput: { modeField: "mode", modeLabel: "Hire mode", initialMode: null,
       description: "Choose saved roster rows and a hire mode. Each selected row starts one run.", controls: [],
       modes: [
-        { value: "new-hire", label: "New hire", inputLabel: "Email", hint: "Email from the saved roster row", placeholder: "hire@example.test", defaults: [],
+        { value: "new-hire", label: "New hire", inputLabel: "Email", placeholder: "hire@example.test", defaults: [],
           parser: { kind: "entries", spec: { split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "email" }, emit: "email" }] } },
           display: { kind: "first-present", fields: ["email"] }, identityFields: ["email"] },
-        { value: "rehire", label: "Rehire", inputLabel: "Email", hint: "Email from the saved roster row", placeholder: "hire@example.test", defaults: [],
+        { value: "rehire", label: "Rehire", inputLabel: "Email", placeholder: "hire@example.test", defaults: [],
           parser: { kind: "entries", spec: { split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "email" }, emit: "email" }] } },
           display: { kind: "first-present", fields: ["email"] }, identityFields: ["email"] },
       ],
