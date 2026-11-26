@@ -1381,7 +1381,6 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail", path: "timeline.steps[].typedValues.fields[].key", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "timeline.steps[].typedValues.fields[].label", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "timeline.steps[].typedValues.fields[].value", origin: "operator-authored" },
-  { surface: "wire/run-detail", path: "timeline.steps[].typedValues.doneByHand[]", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "timeline.steps[].usesTyped.line", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "timeline.steps[].usesTyped.labels[]", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "timeline.events[].notRun.reason", origin: "repository-authored" },
