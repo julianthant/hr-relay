@@ -43,7 +43,7 @@ async function laneFixture() {
 it("refuses a wrong protocol by name in a worker started on Relay's lane entry", async () => {
   const { start } = await laneFixture();
   const worker = new Worker(new URL("../../../../src/backend/storage/sqlite/dashboard-read-lane.js", import.meta.url), {
-    workerData: { ...start, protocol: "relay.dashboard-read-lane.v0" }, execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
+    workerData: { start: { ...start, protocol: "relay.dashboard-read-lane.v0" }, gate: new Int32Array(new SharedArrayBuffer(4)), clock: "host" }, execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
   const failure = await new Promise<unknown>(resolve => worker.once("error", resolve));
   assert.ok(failure instanceof Error);
   assert.match(failure.message, /read-lane-protocol-mismatch/u);

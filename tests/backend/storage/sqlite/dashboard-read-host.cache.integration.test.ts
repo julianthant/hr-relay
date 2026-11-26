@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createDashboardReadHost, type DashboardReadReply } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { manualClock, systemClock } from "../../../../src/rules/time/clock.js";
-import { LANE_READS_ENTRY, lanePool, lanePoolExpiring } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { LANE_READS_ENTRY, lanePool, lanePoolExpiring, laneSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -97,6 +97,26 @@ it("rebuilds an expired entry", async () => {
   const expired = await lanes.read(lanePoolExpiring, { workflow: WORKFLOW });
   assert.equal(expired.cached, false);
   assert.equal(body(expired).run, 2);
+});
+
+it("checks expiry when a queued read's snapshot starts, not when the host posted it", async () => {
+  const fixture = await openBoundDatabaseFixture("read-lane-cache-queued");
+  cleanups.push(() => fixture.close());
+  const lanes = createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock, lanes: ["navigation"],
+    entry: LANE_READS_ENTRY });
+  cleanups.push(() => lanes.close());
+  const first = await lanes.read(lanePoolExpiring, { workflow: WORKFLOW });
+  assert.ok(first.position.validUntil !== null);
+  // Posted well before the entry expires, the read waits in the lane behind a click that outlasts the expiry.
+  const blocker = lanes.read(laneSleep, { tag: "blocker", ms: 1_100 });
+  const postedAt = systemClock.nowMs();
+  const queued = lanes.read(lanePoolExpiring, { workflow: WORKFLOW });
+  assert.ok(postedAt < first.position.validUntil - 500, "the queued read was posted before the entry expired");
+  await blocker;
+  const reply = await queued;
+  assert.equal(reply.cached, false);
+  // The lane's runs count the blocker too: the entry, the blocker, then the rebuild.
+  assert.equal(body(reply).run, 3);
 });
 
 it("rebuilds an entry whose change-log interval has an interior gap", async () => {
