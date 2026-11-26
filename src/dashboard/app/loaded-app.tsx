@@ -1,5 +1,5 @@
 import { DashboardPageBoundary } from "./dashboard-page-boundary.js";
-import { runStartRefusalToast } from "./commands/command-result.js";
+import { runStartRefusalToast, sampleRunRefusalToast } from "./commands/command-result.js";
 import { attemptUnresolved, commandAttemptView } from "./commands/command-outcome.js";
 import { type PersonPreferencesOwner } from "../state/person-preferences-model.js";
 import { useConfirmCloseDuringRun } from "./confirm-close-during-run.js";
@@ -324,7 +324,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     }
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
     if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // the Settings models toast these
-    toast(original?.family === "start" && (outcome.kind === "refused" || outcome.kind === "conflict")
+    if (outcome.kind === "refused" && outcome.feedback.code === "SAMPLE_RUN_REFUSED") toast(sampleRunRefusalToast());
+    else toast(original?.family === "start" && (outcome.kind === "refused" || outcome.kind === "conflict")
       ? runStartRefusalToast(outcome.feedback.text) : { tone: outcome.kind === "conflict" ? "warning" : "danger", title: outcome.feedback.text });
   }, [executor, toast]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);

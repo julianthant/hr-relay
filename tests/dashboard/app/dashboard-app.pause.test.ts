@@ -8,7 +8,7 @@ import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
 import { deriveBulkChildCommandId } from "../../../src/rules/commands/command-groups.js";
-import { BulkRunCommandRequestSchema, BulkRunCommandResponseSchema, CommandRequestSchema, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
+import { BulkRunCommandRequestSchema, BulkRunCommandResponseSchema, CommandRequestSchema, CommandResultSchema, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
 import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { pickedRunWorld } from "../../support/helpers/dashboard/picked-dashboard.js";
@@ -91,6 +91,27 @@ it("a pause-pending run shows an enabled Resume from the served command and pres
     assert.equal(request.type, "resume");
     assert.equal(request.target.runId, world.row.runId);
     assert.equal(request.target.expectedVersion, world.row.rowRevision);
+  } finally { await f.close(); }
+});
+
+it("shows a refused sample Pause as one toast and leaves the bell count alone", async () => {
+  const world = pickedRunWorld("running");
+  const f = await mount("running", world.day);
+  try {
+    const bell = document.querySelector('button[aria-label^="Notifications,"]');
+    assert.ok(bell);
+    const previousCount = bell.getAttribute("aria-label");
+    await act(async () => f.button("Pause after this step").click());
+    const request = f.sent[0];
+    assert.ok(request.family === "run" && request.type === "pause" && !("targets" in request));
+    assert.equal(request.target.runId, world.row.runId);
+    const message = "Sample run: nothing runs.";
+    await act(async () => f.reply.resolve(CommandResultSchema.parse({
+      state: "rejected", commandId: request.commandId, code: "SAMPLE_RUN_REFUSED", message,
+    })));
+    assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent), [message]);
+    assert.doesNotMatch(f.host.textContent ?? "", /Pause after this step: rejected/u);
+    assert.equal(bell.getAttribute("aria-label"), previousCount);
   } finally { await f.close(); }
 });
 
