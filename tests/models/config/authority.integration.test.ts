@@ -182,13 +182,17 @@ afterAll(() => profiles.close());
     } },
   ];
 
-  it("accounts for every authority table", () => {
-    assert.deepEqual([...new Set(cases.map(({ table }) => table))].sort(), AUTHORITY_TABLE_REGISTRY
+  it("accounts for every authority table with an active writer", () => {
+    const uncomposed = ["assistant_proposals", "assistant_proposal_rows", "assistant_session_claims"];
+    const covered = new Set(cases.map(({ table }) => table));
+    assert.deepEqual([...covered].sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority"
         // Debug rows are diagnostics: their append bumps no authority generation.
-        && !["database_states", "database_upgrades", "debug_events"].includes(name))
+        && !["database_states", "database_upgrades", "debug_events", ...uncomposed].includes(name))
       .map(({ name }) => name)
       .sort());
+    assert.deepEqual(AUTHORITY_TABLE_REGISTRY.filter(({ name }) => uncomposed.includes(name)).map(({ name, classification }) => [name, classification]),
+      uncomposed.map(name => [name, "authority"]));
   });
   it.each(cases)("records authority generation for one outer mutation: $table", async mutation => {
       const profile = await profiles.create(); heldProfiles.push(profile);

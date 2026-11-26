@@ -348,14 +348,14 @@ export function createAssistantHistoryRepository(ports: Ports) {
 export type AssistantHistoryRepository = ReturnType<typeof createAssistantHistoryRepository>;
 
 
-/** Installed only by the stopped activation owner; the prepared factory never changes schema. */
+/** Keeps the served legacy writer's settlements while admitting recorded turn usage. */
 export const ASSISTANT_M1_HISTORY_STATEMENTS = Object.freeze([
   "DROP TRIGGER assistant_messages_settle_only",
   `CREATE TRIGGER assistant_messages_settle_only BEFORE UPDATE ON assistant_messages
     WHEN NOT COALESCE((OLD.delivery='sending' AND NEW.delivery IN ('answered','refused','delivery-unknown')
       AND NEW.id=OLD.id AND NEW.conversation_id=OLD.conversation_id AND NEW.ordinal=OLD.ordinal AND NEW.role=OLD.role AND NEW.kind=OLD.kind
       AND NEW.model_text IS OLD.model_text AND NEW.subject_ref IS OLD.subject_ref AND NEW.action_id IS OLD.action_id AND NEW.created_at=OLD.created_at
-      AND ((NEW.delivery='delivery-unknown' AND NEW.payload_json=OLD.payload_json)
+      AND ((NEW.payload_json=OLD.payload_json AND (NEW.delivery='delivery-unknown' OR json_type(OLD.payload_json,'$.recording') IS NULL))
         OR (json_extract(OLD.payload_json,'$.recording.kind')='accepted-turn'
           AND json_extract(OLD.payload_json,'$.recording.usage.state')='pending'
           AND json_extract(NEW.payload_json,'$.recording.usage.state') IN ('measured','unavailable')
