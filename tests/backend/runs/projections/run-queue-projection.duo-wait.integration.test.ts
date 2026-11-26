@@ -66,6 +66,8 @@ describe("the served queue's Duo wait", () => {
     assert.deepEqual(day.workerCards[0]?.currentRun, { state: "present", runId: uuidOf(1), traceId: day.queueSurfaces[0]?.traceId });
     assert.equal(day.queueSurfaces[0]?.status, "awaiting-approval");
     assert.deepEqual(day.queueSurfaces[0]?.operatorWait, { state: "present", kind: "duo", system: "ucpath", since });
+    const served = JSON.parse(await projection.servedDashboardDay(DAY)) as { queueSurfaces: Array<{ status: string }> };
+    assert.equal(served.queueSurfaces[0]?.status, "awaiting-approval");
   });
 
   it("publishes expiry without a span or authority mutation and keeps the acquisition time while held", async () => {
