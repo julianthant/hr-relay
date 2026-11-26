@@ -52,10 +52,11 @@ describe("query index migration 37", () => {
       assert.ok(prior.some(object => object.name === "checkpoints_replay_idx"));
       migrateTo36(database);
       const after = schemaObjects(database);
-      const laterTableChanges = new Set(["delegation_dependencies", "run_search"]);
-      const laterAssistantTables = new Set<string>(ASSISTANT_PHASE_ONE_TABLES);
-      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && !(object.name in LIST_INDEXES) && !["workbook_payloads", "debug_events"].includes(object.tbl_name) && !laterTableChanges.has(object.name) && !laterAssistantTables.has(object.tbl_name)),
-        prior.filter(object => object.name !== "checkpoints_replay_idx" && !laterTableChanges.has(object.name)));
+      const laterObjectChanges = new Set(["delegation_dependencies", "run_search", "assistant_messages_settle_only"]);
+      const laterTables = new Set(["workbook_payloads", "debug_events", ...ASSISTANT_PHASE_ONE_TABLES]);
+      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && !(object.name in LIST_INDEXES)
+        && !laterObjectChanges.has(object.name) && !laterTables.has(object.tbl_name)),
+        prior.filter(object => object.name !== "checkpoints_replay_idx" && !laterObjectChanges.has(object.name)));
       assert.deepEqual(after.filter(object => object.name in QUERY_INDEXES).map(object => [object.name, object.sql]).sort(),
         Object.entries(QUERY_INDEXES).map(([name, index]) => [name, `CREATE INDEX ${name} ON ${index.on}`]).sort());
       assert.deepEqual(rows(database), stored);
