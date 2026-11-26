@@ -150,7 +150,7 @@ it("validates transaction input, staged-output, constant and clickable source re
   assert.throws(() => compile({ ...candidate, pages: [{ ...page, nodeIds: ["receipt"], fields: [{ ...input,
     transactionFields: [{ nodeId: "receipt", kind: "input", fieldPath: "proof" }] }] }] }), /requires a transaction source/u);
   assert.throws(() => compile({ ...candidate, pages: [{ ...page, fields: [{ id: "fixed", label: "Fixed choice",
-    constant: { nodeIds: ["clear-pending"], value: true }, source: input.source }] }] }), /outside page/u);
+    constant: { nodeIds: ["receipt"], value: true }, source: input.source }] }] }), /outside page/u);
   assert.equal(WorkflowStepReviewSchema.safeParse({ ...candidate, pages: [{ ...page, fields: [{ ...input, transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "template", extra: true }] }] }] }).success, false);
 });
 

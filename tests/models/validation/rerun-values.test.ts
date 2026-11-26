@@ -64,6 +64,7 @@ describe("explicit Rerun mapping admission", () => {
     assert.deepEqual(mappings.map(({ fieldPath, targetStepKey, targetFieldPath }) => [fieldPath, targetStepKey, targetFieldPath]), [
       ["lastDayWorked", "kronos-timecard", "lastDayWorked"],
       ["separationDate", "kronos-timecard", "separationDate"],
+      ["approvalStatus", "ucpath-transaction", "approvalStatus"],
     ]);
     const date = mappings.find(({ fieldPath }) => fieldPath === "lastDayWorked"); assert.ok(date);
     assert.equal(rerunTargetAccepts(descriptor, date, "09/08/2026"), true);
