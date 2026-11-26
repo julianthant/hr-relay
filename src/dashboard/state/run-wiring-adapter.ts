@@ -291,8 +291,8 @@ function operatorActionReason(reason: string): string | undefined {
   switch (reason) {
     case "condition-false": return "Not needed for this run";
     case "branch-not-selected": return "Another path was selected";
-    case "operator-asserted": return "Supplied by the operator";
-    case "step-omitted": return "Step omitted";
+    case "operator-asserted": return "Manual values";
+    case "step-omitted": return "Done outside Relay";
     case "dry-run": return "Dry run";
     case "cancelled": return "Cancelled";
     case "callback-failed": return "Action failed";

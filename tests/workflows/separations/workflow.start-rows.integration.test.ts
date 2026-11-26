@@ -8,39 +8,34 @@ import { separationsDescriptor } from "../../support/helpers/registered-workflow
 const descriptor = separationsDescriptor;
 const allSteps = () => projectStartSteps(descriptor).map(step => step.key);
 
-it("serves the seven Separations rows in execution order: six locked with their reasons, Read timecard a switch", () => {
+it("serves the seven Separations rows in execution order, every one a switch", () => {
   assert.deepEqual(projectStartRows(descriptor).map(({ key, label, kind, lockReason, target, members }) => ({ key, label, kind, lockReason: lockReason ?? null, target: target ?? null, members })), [
-    { key: "kuali-extraction", label: "Read Kuali document", kind: "locked", lockReason: "bound-read", target: null, members: [{ step: "kuali-extraction" }] },
-    { key: "identity-check", label: "Verify employee identity", kind: "locked", lockReason: "guard-read", target: null, members: [{ step: "identity-check" }, { step: "reference-check" }] },
+    { key: "kuali-extraction", label: "Read Kuali document", kind: "switch", lockReason: null, target: { step: "kuali-extraction" }, members: [{ step: "kuali-extraction" }] },
+    { key: "identity-check", label: "Verify employee identity", kind: "switch", lockReason: null, target: { step: "identity-check" }, members: [{ step: "identity-check" }, { step: "reference-check" }] },
     { key: "kronos-timecard", label: "Read timecard", kind: "switch", lockReason: null, target: { step: "kronos-timecard" }, members: [{ step: "kronos-timecard" }] },
-    { key: "identity-review", label: "Approve identity", kind: "locked", lockReason: "approval", target: null, members: [{ step: "identity-review" }] },
-    { key: "pending-termination", label: "Check pending termination", kind: "locked", lockReason: "form-action", target: null, members: [{ step: "ucpath-transaction", nodes: ["pending-set", "clear-pending"] }] },
-    { key: "submit-termination", label: "Submit termination", kind: "locked", lockReason: "form-action", target: null, members: [{ step: "ucpath-transaction", nodes: ["file-termination", "receipt"] }] },
-    { key: "kuali-finalization", label: "Finalize Kuali document", kind: "locked", lockReason: "form-action", target: null, members: [{ step: "kuali-finalization" }] },
+    { key: "identity-review", label: "Approve identity", kind: "switch", lockReason: null, target: { step: "identity-review" }, members: [{ step: "identity-review" }] },
+    { key: "pending-termination", label: "Check pending termination", kind: "switch", lockReason: null, target: { step: "pending-termination" }, members: [{ step: "pending-termination" }] },
+    { key: "submit-termination", label: "Submit termination", kind: "switch", lockReason: null, target: { step: "ucpath-transaction" }, members: [{ step: "ucpath-transaction" }] },
+    { key: "kuali-finalization", label: "Finalize Kuali document", kind: "switch", lockReason: null, target: { step: "kuali-finalization" }, members: [{ step: "kuali-finalization" }] },
   ]);
 });
 
-it("refuses typed facts for either write step; only Read timecard takes typed values", () => {
-  assert.deepEqual(descriptor.stepOmissions.map(({ step }) => step), ["kronos-timecard"]);
-  const steps = allSteps().filter(step => step !== "ucpath-transaction" && step !== "kuali-finalization");
-  for (const [step, facts] of [
-    ["ucpath-transaction", { transactionNumber: "T123456", approvalStatus: "Approved" }],
-    ["kuali-finalization", {}],
-  ] as const) {
-    assert.throws(
-      () => resolveStartStepOmissions(descriptor, steps, StepOmissionsSchema.parse([{ step, facts }])),
-      (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "step-not-omittable",
-    );
-    assert.deepEqual(planStepOmissions(descriptor, StepOmissionsSchema.parse([{ step, facts }])).refusals.map(({ code }) => code), ["step-not-omittable"]);
-  }
-  const ucpath = projectStartSteps(descriptor).find(step => step.key === "ucpath-transaction");
-  const kuali = projectStartSteps(descriptor).find(step => step.key === "kuali-finalization");
-  assert.equal(ucpath?.control.state, "required");
-  assert.equal(kuali?.control.state, "required");
+it("takes a typed receipt for Submit termination and nothing for the steps done outside Relay", () => {
+  const steps = allSteps().filter(step => !["pending-termination", "ucpath-transaction", "kuali-finalization"].includes(step));
+  const typed = resolveStartStepOmissions(descriptor, steps, StepOmissionsSchema.parse([
+    { step: "pending-termination", facts: {} },
+    { step: "ucpath-transaction", facts: { transactionNumber: "T123456", approvalStatus: "Approved" } },
+    { step: "kuali-finalization", facts: {} },
+  ]));
+  assert.deepEqual(typed?.map(({ step }) => step), ["pending-termination", "ucpath-transaction", "kuali-finalization"]);
+  assert.throws(
+    () => resolveStartStepOmissions(descriptor, steps, StepOmissionsSchema.parse([{ step: "ucpath-transaction", facts: { transactionNumber: "123", approvalStatus: "Approved" } }])),
+    (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "facts-invalid",
+  );
 });
 
 it("keeps Read timecard's two typed dates standing for the dates node's leaves", () => {
-  const [timecard] = descriptor.stepOmissions;
+  const timecard = descriptor.stepOmissions.find(({ step }) => step === "kronos-timecard");
   assert.deepEqual(timecard?.form.fields.map(({ key, kind, replaces }) => ({ key, kind, replaces })), [
     { key: "lastDayWorked", kind: "us-date", replaces: { nodeId: "dates", path: "lastDayWorked" } },
     { key: "separationDate", kind: "us-date", replaces: { nodeId: "dates", path: "separationDate" } },
@@ -60,7 +55,8 @@ it("all switches on plans no omission and keeps today's steps and node ids", () 
     ["kronos-timecard", ["timecard-search", "timecard", "dates"]],
     ["identity-review", ["comparison", "identity-approval", "approval"]],
     ["reference-check", ["reference-check", "reference-stop", "reference-check-review"]],
-    ["ucpath-transaction", ["pending-set", "clear-pending", "file-termination", "receipt"]],
+    ["pending-termination", ["pending-set", "clear-pending"]],
+    ["ucpath-transaction", ["file-termination", "receipt"]],
     ["kuali-finalization", ["filing-presence", "finalize-kuali"]],
   ]);
 });

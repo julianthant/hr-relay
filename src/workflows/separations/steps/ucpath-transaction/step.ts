@@ -19,6 +19,7 @@ import {
 import {
   KualiEidFieldSchema,
   KualiOptionFieldSchema,
+  KualiTransactionNumberSchema,
 } from "../../../../models/ui/kuali-separation-document.js";
 import {
   UcpathPendingSweepSettlementProofSchema,
@@ -26,6 +27,8 @@ import {
   UcpathUsDateSchema,
 } from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
+import { ReadSeparationDatesOutputSchema } from "../../../../models/workflows/separations/read-separation-dates.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
 import { SeparationsMatchIdentity } from "../../../../models/workflows/separations/match-identity.js";
 import {
@@ -33,6 +36,7 @@ import {
 } from "../../../../models/workflows/separations/match-termination-type.js";
 import {
   SeparationsVerifyIdentityApproval,
+  VerifyIdentityApprovalOutputSchema,
 } from "../../../../models/workflows/separations/verify-identity-approval.js";
 import {
   SeparationsVerifyTerminationReceipt,
@@ -43,6 +47,7 @@ import {
   ResolvedIdentitySubjectSchema,
 } from "../../../../rules/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../../rules/separations/identity-evidence.js";
+import { TERMINATION_RECEIPT_ACCEPTED_STATUSES, assertTerminationReceipt } from "../../../../rules/separations/termination-receipt.js";
 import { noSeparationWritePlan } from "../../../../rules/separations/write-plan.js";
 import type { StepProofSpec, WorkflowAuthor, WorkflowEntryScope } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
@@ -59,20 +64,20 @@ type Timecard = ReturnType<typeof buildTimecard>;
 type Identity = ReturnType<typeof buildIdentity>;
 type Reference = ReturnType<typeof buildReferenceCheck>;
 
+export const PENDING_TERMINATION_STEP = defineWorkflowStep({
+  key: "pending-termination",
+  label: "Pending terminations",
+});
+
 export const UCPATH_TRANSACTION_STEP = defineWorkflowStep({
   key: "ucpath-transaction",
   label: "UCPath transaction",
 });
 
-/** Operator text and fields for this group in Explorer and Logs. */
-const UCPATH_TRANSACTION_DISPLAY = {
-  description: "Clear pending terminations, file the termination in UCPath and verify its receipt.",
+/** Operator text and fields for the pending sweep in Explorer and Logs. */
+const PENDING_TERMINATION_DISPLAY = {
+  description: "Clear pending terminations in UCPath.",
   system: "ucpath",
-  operatorFields: [
-    { label: "Transaction number", example: "T000000001", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "transactionNumber" }] },
-    { label: "Approval status", example: "Submitted", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "approvalStatus" }] },
-    { label: "Effective date", example: "4/27/2031", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "effectiveDate" }] },
-  ],
   review: {
     pages: [
       {
@@ -110,7 +115,23 @@ const UCPATH_TRANSACTION_DISPLAY = {
             source: { origin: "UCPath pending terminations", detail: "Only the exact eligible transactions read before this cleanup may be selected.", chain: [] }
           }
         ]
-      },
+      }
+    ],
+    branchLabels: []
+  } as const,
+} satisfies WorkflowGroupOptions;
+
+/** Operator text and fields for this group in Explorer and Logs. */
+const UCPATH_TRANSACTION_DISPLAY = {
+  description: "File the termination in UCPath and verify its receipt.",
+  system: "ucpath",
+  operatorFields: [
+    { label: "Transaction number", example: "T000000001", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "transactionNumber" }] },
+    { label: "Approval status", example: "Submitted", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "approvalStatus" }] },
+    { label: "Effective date", example: "4/27/2031", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "effectiveDate" }] },
+  ],
+  review: {
+    pages: [
       {
         id: "termination-setup",
         title: "Smart HR transaction setup",
@@ -302,14 +323,15 @@ export const SWEEP_NODE = "clear-pending";
 export const TERMINATION_NODE = "file-termination";
 export const RECEIPT_NODE = "receipt";
 
+const pendingTerminationEntries = defineStepEntries(PENDING_TERMINATION_STEP);
 const ucpathTransactionEntries = defineStepEntries(UCPATH_TRANSACTION_STEP);
 
-export const pendingSetNode = ucpathTransactionEntries.task(PENDING_SET_NODE, UcpathReadPendingTerminationSet, {
+export const pendingSetNode = pendingTerminationEntries.task(PENDING_SET_NODE, UcpathReadPendingTerminationSet, {
   label: "Read Exact Pending Set",
   replay: "checkpoint",
 });
 
-export const clearPendingNode = ucpathTransactionEntries.transaction(SWEEP_NODE, {
+export const clearPendingNode = pendingTerminationEntries.transaction(SWEEP_NODE, {
   label: "Clear Pending Terminations",
   prepare: UcpathStagePendingTerminationSweep,
   commit: UcpathDeletePendingTerminations,
@@ -331,6 +353,50 @@ const receiptNode = ucpathTransactionEntries.task(RECEIPT_NODE, SeparationsVerif
   label: "Termination Receipt",
   replay: "always-rerun",
 });
+
+/** Off: the pending sweep was done in UCPath by hand; nothing is read or deleted. */
+export const PENDING_TERMINATION_OMISSION: StepManualDeclaration = {
+  form: { fields: [] },
+  produces: {},
+  skips: [PENDING_SET_NODE, SWEEP_NODE],
+  skipsGatesAndTransactions: true,
+};
+
+const UcpathTransactionFactsSchema = z.strictObject({
+  transactionNumber: KualiTransactionNumberSchema,
+  approvalStatus: z.enum(TERMINATION_RECEIPT_ACCEPTED_STATUSES),
+});
+
+/** Off: the termination was filed in UCPath by hand; the typed receipt stands for it. */
+export const UCPATH_TRANSACTION_OMISSION: StepManualDeclaration = {
+  form: {
+    fields: [
+      { key: "transactionNumber", label: "Transaction number", kind: "text", help: "T followed by 6–12 digits." },
+      {
+        key: "approvalStatus", label: "Status", kind: "enum", replaces: { nodeId: RECEIPT_NODE, path: "approvalStatus" },
+        values: [...TERMINATION_RECEIPT_ACCEPTED_STATUSES],
+      },
+    ],
+  },
+  produces: {
+    [RECEIPT_NODE]: ({ facts, scope }) => {
+      const typed = UcpathTransactionFactsSchema.parse(facts);
+      const approval = VerifyIdentityApprovalOutputSchema.parse(scope.outputs["approval"]);
+      const dates = ReadSeparationDatesOutputSchema.parse(scope.outputs["dates"]);
+      return assertTerminationReceipt({
+        transactionNumber: typed.transactionNumber,
+        approvalStatus: typed.approvalStatus,
+        approvedEmplId: approval.approved.emplId,
+        approvedName: approval.approved.ucpathName,
+        expectedEffectiveDate: dates.terminationEffectiveDate,
+      });
+    },
+  },
+  skips: [TERMINATION_NODE],
+  skipsGatesAndTransactions: true,
+  refine: (facts) => KualiTransactionNumberSchema.safeParse(facts["transactionNumber"]).success ? []
+    : [{ field: "transactionNumber", message: "Enter T followed by 6–12 digits." }],
+};
 
 
 const TerminationInputShape = {
@@ -422,7 +488,10 @@ export function buildTermination({ task, transaction, group }: Author, extractio
   }));
   return {
     receipt, clearPending, fileTermination,
-    steps: [[group(UCPATH_TRANSACTION_STEP, UCPATH_TRANSACTION_DISPLAY), [pendingSet, clearPending, fileTermination, receipt]]] as const
+    steps: [
+      [group(PENDING_TERMINATION_STEP, { ...PENDING_TERMINATION_DISPLAY, manual: PENDING_TERMINATION_OMISSION }), [pendingSet, clearPending]],
+      [group(UCPATH_TRANSACTION_STEP, { ...UCPATH_TRANSACTION_DISPLAY, manual: UCPATH_TRANSACTION_OMISSION }), [fileTermination, receipt]],
+    ] as const
   };
 }
 
@@ -653,17 +722,10 @@ export const separationsUcpathTerminationDefinition = defineStep({
           },
         );
         return {
-          steps: [[UCPATH_TRANSACTION_STEP, [
-            jobSummary,
-            nameSearch,
-            terminationType,
-            comparison,
-            identityGate,
-            approval,
-            pendingSet,
-            clearPending,
-            fileTermination,
-          ]]],
+          steps: [
+            [PENDING_TERMINATION_STEP, [jobSummary, nameSearch, terminationType, comparison, identityGate, approval, pendingSet, clearPending]],
+            [UCPATH_TRANSACTION_STEP, [fileTermination]],
+          ],
           result: result(
             SeparationsUcpathTerminationResultSchema,
             [approval, clearPending, fileTermination],

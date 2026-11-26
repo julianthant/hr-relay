@@ -8,8 +8,11 @@ import { KualiEidFieldSchema } from "../../../../models/ui/kuali-separation-docu
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
 import {
+  MatchActiveEmploymentOutputSchema,
   SeparationsMatchActiveEmployment,
 } from "../../../../models/workflows/separations/match-active-employment.js";
+import { ReadSeparationPlanOutputSchema } from "../../../../models/workflows/separations/read-separation-plan.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import {
   SeparationsMatchDepartmentOption,
 } from "../../../../models/workflows/separations/match-department-option.js";
@@ -27,6 +30,10 @@ import {
 } from "../../../../rules/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../../rules/separations/identity-evidence.js";
 import { JobSummaryClassificationSchema } from "../../../../rules/separations/job-summary-classification.js";
+import { kualiDepartmentOptionCode, kualiDepartmentOptionDescription } from "../../../../rules/separations/department-option.js";
+import { classifyNameSimilarity } from "../../../../rules/matching/name-match.js";
+import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { noSeparationWritePlan } from "../../../../rules/separations/write-plan.js";
 import type { StepProofSpec, WorkflowAuthor, WorkflowGroupOptions } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
@@ -282,6 +289,100 @@ const departmentOptionNode = identityCheckEntries.task(DEPARTMENT_NODE, Separati
 });
 
 
+const IdentityCheckFactsSchema = z.strictObject({
+  emplId: EidSchema,
+  emplRecord: z.string().min(1),
+  department: z.string().min(1),
+  payrollTitleCode: z.string().min(1),
+  payrollTitle: z.string().min(1),
+});
+
+/** Every separation Relay files is on the SDCMP business unit; the Person Org search keeps only those rows. */
+const SEPARATION_BUSINESS_UNIT = "SDCMP";
+
+const typedDepartment = (facts: z.infer<typeof IdentityCheckFactsSchema>) => ({
+  code: kualiDepartmentOptionCode(facts.department),
+  description: kualiDepartmentOptionDescription(facts.department),
+});
+
+/** Off: UCPath is not searched; the typed values stand for the subject, the active job and the Kuali department option. */
+export const IDENTITY_CHECK_OMISSION: StepManualDeclaration = {
+  form: {
+    fields: [
+      { key: "emplId", label: "Employee ID", kind: "eid" },
+      { key: "emplRecord", label: "Empl record", kind: "text", help: "The active job's record number, e.g. 0." },
+      { key: "department", label: "Department", kind: "text", help: "The Kuali option: code - name." },
+      { key: "payrollTitleCode", label: "Title code", kind: "text" },
+      { key: "payrollTitle", label: "Title", kind: "text" },
+    ],
+  },
+  produces: {
+    [SUBJECT_NODE]: ({ facts }) => {
+      const typed = IdentityCheckFactsSchema.parse(facts);
+      return { emplId: typed.emplId, emplIdSource: "operator-entered", searchedEmployeeId: typed.emplId, candidateCount: 1 };
+    },
+    [EMPLOYMENT_NODE]: ({ facts }) => {
+      const typed = IdentityCheckFactsSchema.parse(facts);
+      const department = typedDepartment(typed);
+      return {
+        rowIndex: 0, emplRecord: typed.emplRecord, hrStatus: "Active", businessUnit: SEPARATION_BUSINESS_UNIT,
+        deptId: { state: "present", value: department.code }, department: { state: "present", value: department.description },
+        payrollTitleCode: typed.payrollTitleCode, payrollTitle: typed.payrollTitle,
+        effectiveDate: { state: "absent", reason: "typed by the operator" }, rowCount: 1,
+      };
+    },
+    [DEPARTMENT_NODE]: ({ facts }) => {
+      const typed = IdentityCheckFactsSchema.parse(facts);
+      const department = typedDepartment(typed);
+      return {
+        option: typed.department, departmentCode: department.code, optionDescription: department.description,
+        ucpathDepartment: department.description, observedOptionCount: 1,
+      };
+    },
+  },
+  skips: [NAME_SEARCH_NODE, JOB_SUMMARY_NODE],
+  refine: (facts) => kualiDepartmentOptionCode(String(facts["department"])) === "" || kualiDepartmentOptionDescription(String(facts["department"])) === ""
+    ? [{ field: "department", message: "Enter code - name." }] : [],
+};
+
+const IdentityReviewFactsSchema = z.strictObject({ emplId: EidSchema, ucpathName: z.string().min(1) });
+
+/** Off: no comparison and no approval prompt; the typed Employee ID is the operator's approval. */
+export const IDENTITY_REVIEW_OMISSION: StepManualDeclaration = {
+  form: {
+    fields: [
+      { key: "emplId", label: "Employee ID", kind: "eid" },
+      { key: "ucpathName", label: "Name in UCPath", kind: "text", help: "Last, First, as UCPath shows it." },
+    ],
+  },
+  produces: {
+    [APPROVAL_NODE]: ({ facts, scope }) => {
+      const typed = IdentityReviewFactsSchema.parse(facts);
+      const plan = ReadSeparationPlanOutputSchema.parse(scope.outputs["plan"]);
+      const employment = MatchActiveEmploymentOutputSchema.parse(scope.outputs[EMPLOYMENT_NODE]);
+      const cell = (value: typeof employment.department) => value.state === "present" ? value.value : `(unreadable: ${value.reason})`;
+      return {
+        documentNumber: plan.documentNumber,
+        approved: {
+          authority: "operator-approval", emplId: typed.emplId, chosenFrom: "manual",
+          evidenceDigest: sha256Hex(canonicalJsonStringify(typed)), ucpathName: typed.ucpathName,
+          nameTier: classifyNameSimilarity(plan.employeeName, typed.ucpathName), approvalShape: "type-the-eid",
+        },
+        jobs: {
+          disposition: "single-active-job", rowCount: 1, activeRowCount: 1, inactiveRowCount: 0, unknownRowCount: 0,
+          rows: [{
+            rowIndex: employment.rowIndex, emplRecord: employment.emplRecord, hrStatus: employment.hrStatus, tier: "active",
+            department: cell(employment.department), jobTitle: employment.payrollTitle, effectiveDate: cell(employment.effectiveDate),
+          }],
+          unreadableCells: [],
+        },
+      };
+    },
+  },
+  skips: [COMPARISON_NODE, GATE_NODE],
+  skipsGatesAndTransactions: true,
+};
+
 
 const IdentityCheckInputShape = {
   documentNumber: KualiDocumentNumberSchema,
@@ -402,7 +503,7 @@ export function readJobs({ task, group }: Author, extraction: Extraction, resolv
   );
   return {
     jobSummary, employment, departmentOption,
-    steps: [[group(IDENTITY_CHECK_STEP, { ...IDENTITY_CHECK_DISPLAY, locked: "guard-read" }), [eidSearch, subject, jobSummary, employment, departmentOption]]] as const,
+    steps: [[group(IDENTITY_CHECK_STEP, { ...IDENTITY_CHECK_DISPLAY, manual: IDENTITY_CHECK_OMISSION }), [eidSearch, subject, jobSummary, employment, departmentOption]]] as const,
   };
 }
 export function buildIdentity({ task, gate, group }: Author, extraction: Extraction, resolved: Subject, jobs: Jobs, timecard: Timecard) {
@@ -462,13 +563,13 @@ export function buildIdentity({ task, gate, group }: Author, extraction: Extract
     },
   );
   const identityGate = gate(identityApprovalGate, [comparison]);
-  const approval = task(approvalNode, [comparison, identityGate], ({ outputs }) => ({
+  const approval = task(approvalNode, [comparison, identityGate, plan, employment], ({ outputs }) => ({
     packet: outputs[COMPARISON_NODE].packet,
     evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
     approval: outputs[GATE_NODE],
   }));
   return {
-    approval, steps: [[group(IDENTITY_REVIEW_STEP, IDENTITY_REVIEW_DISPLAY), [comparison, identityGate, approval]]] as const
+    approval, steps: [[group(IDENTITY_REVIEW_STEP, { ...IDENTITY_REVIEW_DISPLAY, manual: IDENTITY_REVIEW_OMISSION }), [comparison, identityGate, approval]]] as const
   };
 }
 

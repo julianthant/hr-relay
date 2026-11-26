@@ -52,29 +52,27 @@ describe("start step selection", () => {
     );
   });
 
-  it("projects Separations' one omittable step and keeps its other steps required", () => {
+  it("projects every Separations step as omittable except the reference check, which runs under Verify employee identity", () => {
     const steps = projectStartSteps(separationsDescriptor);
     assert.deepEqual(
-      steps.map(({ key, control }) => [key, control.state]),
+      steps.map(({ key, control }) => [key, control.state, control.state === "omittable" ? control.forces : []]),
       [
-        ["kuali-extraction", "required"],
-        ["identity-check", "required"],
-        ["kronos-timecard", "omittable"],
-        ["identity-review", "required"],
-        ["reference-check", "required"],
-        ["ucpath-transaction", "required"],
-        ["kuali-finalization", "required"],
+        ["kuali-extraction", "omittable", ["identity-check", "identity-review", "kuali-finalization"]],
+        ["identity-check", "omittable", ["identity-review"]],
+        ["kronos-timecard", "omittable", []],
+        ["identity-review", "omittable", []],
+        ["reference-check", "required", []],
+        ["pending-termination", "omittable", []],
+        ["ucpath-transaction", "omittable", []],
+        ["kuali-finalization", "omittable", []],
       ],
     );
-    for (const step of steps) {
-      if (step.control.state === "omittable") assert.deepEqual(step.control.forces, []);
-    }
-    // Omitting a REQUIRED read step still refuses by name.
+    // The reference check has no row of its own, so leaving it out still refuses by name.
     assert.throws(
       () => applyStartStepSelection(
         separationsDescriptor,
         { documentNumber: "123456" },
-        steps.slice(1).map(({ key }) => key),
+        steps.filter(({ key }) => key !== "reference-check").map(({ key }) => key),
       ),
       /is required and cannot be omitted/,
     );
@@ -327,8 +325,8 @@ describe("authored start selection admission", () => {
 describe("served start rows", () => {
   const SERVED_ROWS: Readonly<Record<string, readonly (readonly [string, string, string | null])[]>> = {
     "person-lookup": [["searching", "switch", null], ["cross-verify", "switch", null], ["active-status", "switch", null], ["crm-dates", "switch", null]],
-    separations: [["kuali-extraction", "locked", "bound-read"], ["identity-check", "locked", "guard-read"], ["kronos-timecard", "switch", null], ["identity-review", "locked", "approval"],
-      ["pending-termination", "locked", "form-action"], ["submit-termination", "locked", "form-action"], ["kuali-finalization", "locked", "form-action"]],
+    separations: [["kuali-extraction", "switch", null], ["identity-check", "switch", null], ["kronos-timecard", "switch", null], ["identity-review", "switch", null],
+      ["pending-termination", "switch", null], ["submit-termination", "switch", null], ["kuali-finalization", "switch", null]],
     onboarding: [["crm-data", "locked", "guard-read"], ["ucpath-search", "locked", "guard-read"], ["i9-search", "locked", "guard-read"], ["hire-review", "locked", "approval"], ["i9-creation", "locked", "form-action"], ["ucpath-hire", "locked", "form-action"], ["master-results", "locked", null]],
     "work-study": [["ucpath-auth", "locked", "guard-read"], ["transaction", "locked", "form-action"]],
     "i9-check-start": [["read-forms", "locked", null], ["match-people", "locked", null], ["review-records", "locked", "approval"],

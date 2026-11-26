@@ -921,7 +921,7 @@ function deriveStepOmissions(
       if (!members.has(skipped)) throw new Error(`${id}: ${owner} skips node "${skipped}", which is not a member of that step`);
       if (Object.hasOwn(manual.produces, skipped)) throw new Error(`${id}: ${owner} both produces and skips node "${skipped}"`);
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(skipped), owner);
-      if (node.kind !== "task") {
+      if (node.kind !== "task" && manual.skipsGatesAndTransactions !== true) {
         throw new Error(`${id}: ${owner} skips ${node.kind} node "${skipped}"; a gate or transaction always runs`);
       }
       if (node.kind === "task" && node.dryRun === "stop-before-publish") {
@@ -966,6 +966,7 @@ function deriveStepOmissions(
       step: category.key, form, produces: Object.freeze({ ...manual.produces }),
       ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
       ...(manual.refine === undefined ? {} : { refine: manual.refine }),
+      ...(manual.skipsGatesAndTransactions === undefined ? {} : { skipsGatesAndTransactions: manual.skipsGatesAndTransactions }),
     }));
   }
   return Object.freeze(specs);

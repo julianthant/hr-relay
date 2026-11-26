@@ -1,4 +1,5 @@
 import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
+import { sourceBoundReadContract } from "./source-bound-read-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import type { DuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
@@ -469,6 +470,7 @@ interface FixtureDescriptorOptions {
   readonly version?: number;
   readonly memo?: boolean;
   readonly documentNumber?: boolean;
+  readonly omittable?: boolean;
   readonly enqueue?: "reject-active" | "allow-parallel";
   readonly commitEid?: string;
 
@@ -499,6 +501,8 @@ function buildDescriptor(
       probePolicy: "always",
       probeToFenceMaxMs: 30_000,
     });
+  const omittedFlow = () => fixtureGraph.step("read", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
+    .build({ schema: z.strictObject({ eid: EidSchema }), dependsOn: [], derive: ({ input }) => ({ eid: input.eid }) });
   const traversalFlow = () => fixtureGraph.transaction("second-write", {
     dependsOn: [WRITE_FIXTURE_NODE_ID], prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
     commit: { uses: commitContract, bind: ({ input }) => ({ eid: input.eid }) },
@@ -532,13 +536,17 @@ function buildDescriptor(
     identity: { matchKey: (input: z.output<typeof WriteFixtureInput>) => `eid:${input.eid}` },
     presentation: { title: (input: z.output<typeof WriteFixtureInput>) => `Write fixture ${input.eid}` },
     scenarios: ["write-fixture/happy"],
+    ...(options.omittable === true ? { timeline: [{ key: "reading", label: "Read", nodes: ["read"] }, { key: "write", label: "Write", nodes: [WRITE_FIXTURE_NODE_ID],
+      manual: { form: { fields: [{ key: "reason", label: "Reason", kind: "text" as const }] }, produces: {}, skips: [WRITE_FIXTURE_NODE_ID], skipsGatesAndTransactions: true as const } }] } : {}),
   } as const;
-  return options.traversal === true ? defineWorkflowDescriptor({ ...definition, flow: traversalFlow() })
+  return options.omittable === true ? defineWorkflowDescriptor({ ...definition, flow: omittedFlow() })
+    : options.traversal === true ? defineWorkflowDescriptor({ ...definition, flow: traversalFlow() })
     : defineWorkflowDescriptor({ ...definition, flow: fixtureFlow() });
 }
 
 export const writeFixtureDescriptor = buildDescriptor("receipt");
 export const writeFixtureTraversalDescriptor = buildDescriptor("receipt", { traversal: true });
+export const writeFixtureOmittableDescriptor = buildDescriptor("receipt", { omittable: true });
 export const writeFixtureMemoDescriptor = buildDescriptor("receipt", { memo: true });
 export const writeFixtureDocumentDescriptor = buildDescriptor("receipt", { documentNumber: true });
 export const writeFixtureParallelDescriptor = buildDescriptor("receipt", { enqueue: "allow-parallel" });

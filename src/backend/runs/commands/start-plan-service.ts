@@ -98,12 +98,13 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         throw new TargetNotFoundError(`workflow ${ingress.workflowId} is not registered; nothing to plan`);
       }
 
-      if (ingress.stepOmissions !== undefined && ingress.submissions.length !== 1) {
+      if (ingress.stepOmissions?.some(({ facts }) => Object.keys(facts).length > 0) === true && ingress.submissions.length !== 1) {
         // Typed facts (a last day worked, a transaction number) describe ONE
         // subject; a plan that fans out to several would assert them for all.
+        // A step done by hand carries none, so it may be off for every subject.
         throw new StartStepOmissionRefusedError(
           "single-subject-only",
-          `${descriptor.id} step omissions require exactly one submission; this plan carries ${String(ingress.submissions.length)}`,
+          `${descriptor.id} typed step values require exactly one submission; this plan carries ${String(ingress.submissions.length)}`,
         );
       }
       const sourceSelection = ingress.rerunSource?.selectedStepKeys;

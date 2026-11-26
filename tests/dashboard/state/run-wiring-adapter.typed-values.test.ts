@@ -46,7 +46,7 @@ describe("typed values in Logs", () => {
   it("says the automatic reading was replaced, not that the step was skipped", () => {
     const text = logPlainText(projectRunLogs(snapshot(group(typedFields), {}), client).steps);
     assert.match(text, /Automatic reading replaced with operator-entered values\./u);
-    assert.doesNotMatch(text, /Skipped · Supplied by the operator/u);
+    assert.doesNotMatch(text, /Skipped · Manual values/u);
   });
 
   it("names a withheld value without showing it", () => {
@@ -65,7 +65,7 @@ describe("typed values in Logs", () => {
   it("draws a run with nothing typed as before", () => {
     const steps = projectRunLogs(snapshot({}, {}), client).steps;
     const text = logPlainText(steps);
-    assert.match(text, /Skipped · Supplied by the operator/u);
+    assert.match(text, /Skipped · Manual values/u);
     assert.doesNotMatch(text, /Operator-entered|Typed by hand|Uses values typed/u);
     assert.deepEqual(steps.map(step => step.entries.map(entry => entry.kind)), [["note"], ["fields"]]);
   });
