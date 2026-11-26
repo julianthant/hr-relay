@@ -9,7 +9,7 @@ import { WorkerPoolMemberSchema } from "../../../../models/run/worker-slot.js";
 import { ErrorCatalogCodeSchema } from "../../../../models/failures/error-catalog.js";
 import { BrowserSystemIdSchema, FingerprintSchema, LocalDateSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { systemIdFactory } from "../../../../rules/identity/identifiers.js";
-import { capturedInstantClock, systemClock, type Clock } from "../../../../rules/time/clock.js";
+import { capturedInstantClock, localDatePart, systemClock, type Clock } from "../../../../rules/time/clock.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 
 import {
@@ -182,7 +182,13 @@ const QueueDayArgsSchema = z.strictObject({
  */
 export const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day", {
   lane: "navigation", priority: "interactive", processFacts: true, args: QueueDayArgsSchema,
-  warm(context) { laneReplica(context).projection.ingestFromTimeline(); },
+  warm(context) {
+    const { projection, state } = laneReplica(context);
+    projection.ingestFromTimeline();
+    // One day build before ready, so the first read is not this isolate's cold build; yesterday, so today is still built at its read.
+    const now = state.at.now();
+    projection.buildLaneDay(localDatePart(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)));
+  },
   run(context, { day, publications }) {
     const replica = laneReplica(context);
     replica.state.at = capturedInstantClock(new Date(context.nowMs).toISOString());
