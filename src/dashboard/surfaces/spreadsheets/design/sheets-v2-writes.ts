@@ -1,4 +1,4 @@
-import type { createSpreadsheetWiringAdapter } from '../../../state/spreadsheet-wiring-adapter.js';
+import type { createSpreadsheetWiringAdapter, LibraryChangeResult } from '../../../state/spreadsheet-wiring-adapter.js';
 import { draftHasUnsavedWork } from '../../../state/spreadsheet-draft.js';
 import type { SpreadsheetSaveResult } from '../spreadsheet-editor-model.js';
 import type { EditableWorkbook } from '../../../../rules/spreadsheets/workbook-io.js';
@@ -59,4 +59,11 @@ export async function closeDraft(adapter: Adapter, id: string, discard: boolean)
   if (draft && !discard && draftHasUnsavedWork(draft)) return false;
   adapter.close(id);
   return true;
+}
+
+/** "Use for all" runs after the mapping saves queued before it, so the library copies the columns as saved. */
+export function copyMapping(adapter: Adapter, id: string, worksheet: string): Promise<LibraryChangeResult> {
+  const writes = writesOf(adapter), turn = writes.queue.then(() => adapter.copyMapping(id, worksheet));
+  writes.queue = turn;
+  return turn;
 }

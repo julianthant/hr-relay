@@ -17,6 +17,9 @@
 .sv2-grid { --sv2-stripe: 3%; }
 [data-demo-theme="dark"] .sv2-grid, :root[data-demo-theme="dark"] .sv2-grid { --sv2-stripe: 4%; }
 .sv2-grid tbody tr:nth-child(even) > * { background: color-mix(in srgb, var(--ds-fg) var(--sv2-stripe), transparent); }
+/* The column of the field opened in the Columns panel; the sticky header stays opaque over the rows. */
+.sv2-grid thead th[data-marked] { box-shadow: inset 0 2px 0 var(--ds-accent); color: var(--ds-fg); background: color-mix(in srgb, var(--ds-accent) 12%, var(--ui-table)); }
+.sv2-grid tbody td[data-marked] { background: var(--ds-accent-quiet); }
 .sv2-grid tbody tr:hover > td { background: color-mix(in srgb, var(--ds-fg) 7%, transparent); }
 .sv2-grid tbody td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 10%, transparent); }
 .sv2-grid tbody tr:hover > td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 14%, transparent); }
