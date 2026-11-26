@@ -89,14 +89,9 @@
   .log-compare td::before { content: attr(data-label); flex: none; color: var(--ui-muted); text-align: left; }
 }
 
-.log-step-card { box-sizing: border-box; padding: 8px 12px; font-size: var(--text-body); line-height: 16px; }
-.log-step-card p { margin: 0; }
-.log-step-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.log-step-card-head:not(:last-child) { padding-bottom: 8px; border-bottom: 1px solid var(--ui-stroke); }
-.log-step-card-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--ui-primary); }
-.log-step-card-meta { flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ui-muted); }
-.log-step-card-rows { margin: 0; padding: 8px 0 0; list-style: none; }
-.log-step-card-rows li { display: flex; height: 20px; align-items: center; gap: 8px; line-height: 20px; }
-.log-step-card[data-dense] .log-step-card-rows li { height: 16px; line-height: 16px; }
 ::highlight(log-match) { background-color: color-mix(in srgb, var(--ui-warning) 28%, transparent); color: var(--ui-warning); }
 ::highlight(log-match-current) { background-color: var(--ui-info); color: var(--ui-canvas); }
+
+/* The ⋯ menu: two classes outrank the shared menu surface and item. */
+.log-actions-menu.ds-menu-surface { width: 220px; padding: 6px; }
+.log-actions-menu .ds-menu-item { min-height: 36px; gap: 10px; padding-inline: 10px; }

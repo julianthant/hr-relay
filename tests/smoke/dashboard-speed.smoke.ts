@@ -36,22 +36,13 @@ test("a cold load reaches the queue quickly", async ({ dashboard, page }) => {
   }), { message: "first contentful paint in ms" }).toBeLessThan(3_000);
 });
 
-test("idle style writes stay within budget apart from the known assistant orbit", async ({ dashboard, page }) => {
+test("idle style writes stay within budget", async ({ dashboard, page }) => {
   await dashboard.open();
   await expect(dashboard.queue).toBeVisible();
-  const orbit = page.getByRole("button", { name: /^Assistant(?:,|$)/u })
-    .locator('svg[data-direction="orbit"][data-state="idle"] .mark-spin');
-  const writes = await orbit.evaluate(async satellite => {
-    const rotation = /^transform: rotate\(\d+(?:\.\d+)?deg\);$/u;
-    const counts = { orbit: 0, other: 0 };
-    const observer = new MutationObserver(records => {
-      const rotating = rotation.test(satellite.getAttribute("style") ?? "");
-      for (const record of records) {
-        if (record.target === satellite && rotating && rotation.test(record.oldValue ?? "")) counts.orbit += 1;
-        else counts.other += 1;
-      }
-    });
-    observer.observe(document.body, { subtree: true, attributeFilter: ["style"], attributeOldValue: true });
+  const writes = await page.evaluate(async () => {
+    let count = 0;
+    const observer = new MutationObserver(records => { count += records.length; });
+    observer.observe(document.body, { subtree: true, attributeFilter: ["style"] });
     const end = performance.now() + 2_000;
     await new Promise<void>(resolve => {
       const sample = (frameTime: number): void => {
@@ -61,8 +52,7 @@ test("idle style writes stay within budget apart from the known assistant orbit"
       requestAnimationFrame(sample);
     });
     observer.disconnect();
-    return counts;
+    return count;
   });
-  expect(writes.other, "inline style writes outside the known rotation in two idle seconds").toBeLessThan(IDLE_STYLE_WRITE_LIMIT);
-  expect(writes.orbit, "known inline rotation; restore the overall budget once it is fixed").toBeGreaterThanOrEqual(IDLE_STYLE_WRITE_LIMIT);
+  expect(writes, "inline style writes in two idle seconds").toBeLessThan(IDLE_STYLE_WRITE_LIMIT);
 });

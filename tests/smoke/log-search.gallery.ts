@@ -19,7 +19,7 @@ for (const [query, presses] of [["employ", 8], ["09/01", 1], ["UCPath", 6]] as c
     await page.setViewportSize({ width: 1280, height: 720 });
     await mount("run-panel/log-header/default");
     await page.getByRole("button", { name: "Search logs" }).click();
-    const input = page.getByRole("textbox", { name: "Search logs" });
+    const input = page.getByRole("searchbox", { name: "Search logs" });
     await input.fill(query);
     const status = page.getByRole("search").getByRole("status");
     await expect(status).toHaveText(/^1 of \d+$/u);
@@ -85,7 +85,7 @@ test("at 1024 the search field shows a typed query in full beside its match coun
   await page.setViewportSize({ width: 1024, height: 720 });
   await mount("run-panel/log-header/search-child");
   await page.getByRole("button", { name: "Search logs" }).click();
-  const input = page.getByRole("textbox", { name: "Search logs" });
+  const input = page.getByRole("searchbox", { name: "Search logs" });
   await input.fill("employment");
   await expect(page.getByText(/\d+ of \d+/)).toBeVisible();
   expect(await input.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);

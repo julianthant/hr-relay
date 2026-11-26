@@ -62,7 +62,6 @@
   "src/dashboard/surfaces/run-detail/logs/log-sample.tsx",
   "src/dashboard/surfaces/run-detail/logs/log-screenshots.tsx",
   "src/dashboard/surfaces/run-detail/logs/log-search.tsx",
-  "src/dashboard/surfaces/run-detail/logs/log-timeline.tsx",
   "src/dashboard/surfaces/run-detail/logs/pick-table.tsx",
   "src/dashboard/surfaces/run-detail/review/review-dialog.tsx",
   "src/dashboard/surfaces/run-detail/review/review.tsx",
