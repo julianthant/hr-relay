@@ -333,7 +333,8 @@ async function prepareScrollCapture(page: Page): Promise<void> {
         if (mode === "window" && contentHeight <= innerHeight) {
           const range = document.createRange();
           range.selectNodeContents(document.body);
-          contentHeight = Math.max(1, Math.ceil(range.getBoundingClientRect().bottom + window.scrollY));
+          // A root that cannot scroll shows one viewport; the range also spans content clipped below it.
+          contentHeight = Math.max(1, Math.min(innerHeight, Math.ceil(range.getBoundingClientRect().bottom + window.scrollY)));
         }
         const r = target?.getBoundingClientRect();
         const clientWidth = target?.clientWidth ?? innerWidth;
