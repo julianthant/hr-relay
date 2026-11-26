@@ -330,6 +330,14 @@ async function expectLiveSamples(client: ReturnType<typeof createDashboardClient
     }
     expect(await client.rerunValues({ runId: sample.envelope.runId, expectedVersion: sample.version })).toEqual({ state: "refused", code: "sample-run" });
   }
+  const bulk = envelope("queue");
+  const targets = live.slice(0, 2).map(sample => ({ runId: sample.envelope.runId, expectedVersion: sample.version }));
+  const bulkResult = await client.executeBulkCommand({ ...bulk, bulkCommandId: bulk.commandId, family: "run", type: "resume", mode: "best-effort", targets });
+  assert.equal(bulkResult.state, "vector");
+  expect(bulkResult.results.map(result => result.outcome === "refused" && result.code)).toEqual(["SAMPLE_RUN_REFUSED", "SAMPLE_RUN_REFUSED"]);
+  expect((await client.notificationSnapshot()).some(notice => notice.kind === "command"
+    && notice.link.kind === "bulk-result" && notice.link.bulkCommandId === bulk.commandId)).toBe(false);
+
   const parked = live.find(row => row.lifecycle.state === "parked-gate");
   assert.ok(parked?.lifecycle.state === "parked-gate");
   const answer = { ...envelope("run-detail"), family: "gate", type: "answer-gate-arm",

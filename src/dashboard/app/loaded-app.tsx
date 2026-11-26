@@ -503,6 +503,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       publish: outcome => {
         refreshCommandRecovery(value => value + 1);
         commandFeedback(outcome);
+        if ("targets" in request && outcome.kind === "refused" && outcome.feedback.code === "SAMPLE_RUN_REFUSED") return;
         if ("targets" in request && plan !== undefined && outcome.reply !== undefined && "state" in outcome.reply && outcome.reply.state === "refused") {
           setBulkOutcome({ commandId: request.commandId, plan, subjects: bulkSubjectsOf(plan), response: { state: "refused", code: outcome.reply.code, message: outcome.kind === "confirmed" ? "Command confirmed." : outcome.feedback.text } });
         }

@@ -138,22 +138,48 @@ it("with paused and unpaused runs, the strip counts and resumes only the paused 
   } finally { await f.close(); }
 });
 
-it("shows the sample-run refusal in the queue bulk action toast and per-run result", async () => {
-  const message = "Sample run: nothing runs.";
-  const f = await mount("one-paused", FIXTURE_DAY_WIRE, async request => BulkRunCommandResponseSchema.parse({
+const SAMPLE_REFUSAL_TEXT = "Sample run: nothing runs.";
+const ORDINARY_REFUSAL_TEXT = "That was refused. Review the current state.";
+
+function bulkRefusalVector(request: BulkRunCommandRequest, mixed = false): BulkRunCommandResponse {
+  return BulkRunCommandResponseSchema.parse({
     state: "vector", bulkCommandId: request.bulkCommandId, type: request.type, requestedCount: request.targets.length,
-    results: request.targets.map(({ runId }) => ({
+    results: request.targets.map(({ runId }, index) => ({
       runId, commandId: deriveBulkChildCommandId(request.bulkCommandId, runId),
-      outcome: "refused", code: "SAMPLE_RUN_REFUSED", detail: message,
+      outcome: "refused",
+      code: mixed && index === 1 ? "policy-refused" : "SAMPLE_RUN_REFUSED",
+      detail: mixed && index === 1 ? "The policy rejected this command." : SAMPLE_REFUSAL_TEXT,
     })),
-  }));
+  });
+}
+
+it.each(["vector", "whole request"] as const)("shows an all-sample bulk %s refusal as one toast and leaves the bell count alone", async shape => {
+  const f = await mount("paused", FIXTURE_DAY_WIRE, async request => shape === "vector" ? bulkRefusalVector(request)
+    : { state: "refused", code: "SAMPLE_RUN_REFUSED", message: SAMPLE_REFUSAL_TEXT });
   try {
+    const bell = document.querySelector('button[aria-label^="Notifications,"]');
+    assert.ok(bell);
+    const previousCount = bell.getAttribute("aria-label");
     await act(async () => f.button("Resume all").click());
     assert.equal(f.sent.length, 1);
-    assert([...document.querySelectorAll('[data-slot="toast"]')].some(toast => toast.textContent?.includes(message)));
+    assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent), [SAMPLE_REFUSAL_TEXT]);
+    assert.equal(bell.getAttribute("aria-label"), previousCount);
+    assert.doesNotMatch(f.host.textContent ?? "", /Resume: (2 refused|nothing was sent)/u);
+  } finally { await f.close(); }
+});
 
+it("shows the ordinary bulk notice and per-run results for a mixed sample and real refusal", async () => {
+  const f = await mount("paused", FIXTURE_DAY_WIRE, async request => bulkRefusalVector(request, true));
+  try {
     const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]');
     assert.ok(bell);
+    const previousCount = bell.getAttribute("aria-label");
+    await act(async () => f.button("Resume all").click());
+    assert.equal(f.sent.length, 1);
+    assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent), [ORDINARY_REFUSAL_TEXT]);
+    assert.notEqual(bell.getAttribute("aria-label"), previousCount);
+    assert.match(f.host.textContent ?? "", /Resume: 2 refused/u);
+
     await act(async () => bell.click());
     const notice = [...document.querySelectorAll("li.notice-row")].find(row => row.querySelector(".notice-title")?.textContent === "Resume: partial result");
     const review = notice?.querySelector<HTMLButtonElement>("button.notice-main");
@@ -161,6 +187,7 @@ it("shows the sample-run refusal in the queue bulk action toast and per-run resu
     await act(async () => review.click());
     const result = document.querySelector('[data-queue-bulk-result="vector"]');
     assert.match(result?.textContent ?? "", /Refused.*Sample run: nothing runs/u);
+    assert.match(result?.textContent ?? "", /Refused.*That was refused\. Review the current state/u);
   } finally { await f.close(); }
 });
 

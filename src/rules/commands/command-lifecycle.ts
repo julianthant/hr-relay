@@ -51,6 +51,10 @@ export function bulkChildEffect(outcome: BulkChildClass): CommandEffect {
   }
 }
 
+export function allBulkChildrenRefusedAsSamples(results: readonly BulkRunCommandOutcome[], requestedCount: number): boolean {
+  return results.length === requestedCount && results.every(result => result.outcome === "refused" && result.code === "SAMPLE_RUN_REFUSED");
+}
+
 /** Row vocabulary. `uncertain` is a settled row whose effect is unknown. */
 export const COMMAND_ROW_STATES = deepFreeze(["admitted", "succeeded", "refused", "uncertain"] as const);
 export const CommandRowStateSchema = z.enum(COMMAND_ROW_STATES);

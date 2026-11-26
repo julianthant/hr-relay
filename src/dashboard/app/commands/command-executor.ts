@@ -1,6 +1,6 @@
 import { createErrorCatalogFailure,ERROR_CATALOG,ErrorCatalogCodeSchema,formatErrorCatalogFailure,type ErrorCatalogMessage } from "../../../models/failures/error-catalog.js";
 import { deriveBulkChildCommand } from "../../../rules/commands/command-groups.js";
-import { bulkChildEffect,commandResultEffect } from "../../../rules/commands/command-lifecycle.js";
+import { allBulkChildrenRefusedAsSamples,bulkChildEffect,commandResultEffect } from "../../../rules/commands/command-lifecycle.js";
 import { BulkRunCommandRequestSchema,DashboardCommandRequestSchema,type BulkRunCommandOutcome,type BulkRunCommandRequest,type BulkRunCommandResponse,type DashboardCommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { checkedBulkCommandResult,checkedCommandResult,type SharedCommands } from "../../client/commands/shared-commands.js";
@@ -274,8 +274,10 @@ export class CommandExecutor {
     try {
       if ("targets" in request) {
         const reply = checkedBulkCommandResult(request, await options.scope.client.executeBulkCommand(request));
-        if (reply.state === "refused") outcome = { kind: "refused", commandId: request.commandId, reply, feedback: feedback("COMMAND_REFUSED") };
-        else {
+        if (reply.state === "refused") {
+          outcome = { kind: "refused", commandId: request.commandId, reply,
+            feedback: feedback(reply.code === "SAMPLE_RUN_REFUSED" ? "SAMPLE_RUN_REFUSED" : "COMMAND_REFUSED") };
+        } else {
           const outcomes: CommandOutcome[] = [];
           for (const [index, command] of commands.entries()) {
             const child = reply.results[index];
@@ -283,12 +285,11 @@ export class CommandExecutor {
           }
           const unresolved = outcomes.find(child => child.kind === "uncertain");
           const conflict = outcomes.find(child => child.kind === "conflict");
-          const sampleRefused = outcomes.some(child => child.kind === "refused" && child.feedback.code === "SAMPLE_RUN_REFUSED");
           outcome = unresolved ? { ...unresolved, commandId: request.commandId, reply, children: Object.freeze(outcomes) }
             : conflict ? { ...conflict, commandId: request.commandId, reply, children: Object.freeze(outcomes) }
             : outcomes.every(child => child.kind === "confirmed") ? { kind: "confirmed", commandId: request.commandId, reply, children: Object.freeze(outcomes), readback: outcomes.map(child => child.kind === "confirmed" ? child.readback : undefined) }
             : { kind: "refused", commandId: request.commandId, reply, children: Object.freeze(outcomes),
-              feedback: feedback(sampleRefused ? "SAMPLE_RUN_REFUSED" : "COMMAND_REFUSED") };
+              feedback: feedback(allBulkChildrenRefusedAsSamples(reply.results, reply.requestedCount) ? "SAMPLE_RUN_REFUSED" : "COMMAND_REFUSED") };
         }
       } else outcome = await this.settle(request, checkedCommandResult(request, await options.scope.client.executeCommand(request)), options);
     } catch (cause) {
