@@ -45,6 +45,13 @@ thin dates across the last 90 days. The generated history uses synthetic labels 
 outside the worker and gate stores. The command prints counts by workflow, state, and notification
 kind and lists the skipped child-only workflows.
 
+The seed also fills today with sample runs for every workflow in each live state: queued, running
+at a mid step, cancelling, needs Duo, waiting at a gate, paused, and a few finished. Sessions gets
+sample worker and browser cards in every state. Every action on a sample run is refused with
+"Sample run: nothing runs." Stop on a sample card stops it and close removes it until the
+dashboard restarts. The executor never sees these runs and no browser starts. The output adds
+`todayByState` and `sessionsByState`.
+
 Run the same command again to replace the synthetic history. A profile refresh replaces the
 imported archive, so run the seed again after importing a newer backup.
 
