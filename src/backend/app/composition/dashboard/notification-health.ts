@@ -7,7 +7,6 @@ import { hasInspectionIntegrityFailureCode } from "../../../storage/sqlite/backu
 import { parseBackupManifestFile, verifyBackupManifestOffThread } from "../../../storage/sqlite/backup-service.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { NotificationInbox } from "../../../runs/notifications/inbox.js";
-import { followOwnedWrite } from "./notification-sources.js";
 import { StorageHealthConcernSchema } from "../../../../rules/notifications/notification-triggers.js";
 import { listCanonicalRuns } from "../../../runs/queries/canonical-runs.js";
 import type { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
@@ -44,7 +43,6 @@ function ownWrite<T>(database: AuthorityDatabase, write: () => T): T {
   if (entry !== undefined && sameKey(entry.key, before)) inspected.set(database, { ...entry, key: after });
   const flight = inFlight.get(database);
   if (flight !== undefined && sameKey(flight.key, before)) flight.key = after;
-  followOwnedWrite(database, before, after);
   return result;
 }
 /** A stall line is this process's own diagnostic append; letting it move the key would re-inspect the store, stall again and loop. */

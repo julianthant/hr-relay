@@ -223,7 +223,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   }
   profile.runtime.registerCommandActivity(profile.token, startSettingsKeepAwake({ database, debugEvents: ownedDiagnostics(database, debugEvents) }));
   const { backfillGapNotifier, inbox: notificationInbox, observer: notificationObserver } = createTrustNotifications({
-    admission, database, clock, ids, reader: lifecycle, stateRoot,
+    admission, database, clock, ids, reader: lifecycle, readLanes, stateRoot,
   });
   startupCleanups.push(requiredClosure(() => notificationObserver.stop()));
 
