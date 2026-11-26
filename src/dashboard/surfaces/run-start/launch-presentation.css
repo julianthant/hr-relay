@@ -32,7 +32,7 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start borde
 /* A refusal line beside the buttons leaves the summary little room: it takes a second line instead of being cut. */
 .launch-dialog > footer > span:first-child { @apply whitespace-normal; }
 .launch-dialog > footer > span:first-child,
-.launch-dialog > footer > span:first-child span { @apply font-ui text-[12px] leading-4 text-ui-muted; }
+.launch-dialog > footer > span:first-child span:not(.text-ui-danger) { @apply font-ui text-[12px] leading-4 text-ui-muted; }
 
 /* The stage buttons' own 8px inset lands their markers on the content's 20px edge. */
 .launch-design .launch-stagebar {
