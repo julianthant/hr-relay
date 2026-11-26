@@ -11,6 +11,7 @@ const reviewed = new Map([
   ["src/backend/app/composition/dashboard/timeline.ts#diagnosticRetentionTimer", "Enforces daily diagnostic and timeline retention."],
   ["src/backend/app/composition/dashboard/notifications.ts#timer", "Checks notification source revisions and storage health deadlines."],
   ["src/backend/runtime/settings/settings-runtime.ts#timer", "Checks settings and run activity revisions for keep-awake."],
+  ["src/backend/app/composition/dashboard/settings.ts#timer", "Checks the clock's fiscal year for the rollover while Settings rows have subscribers."],
   ["src/backend/runtime/workers/worker-loop.ts#tick", "Renews the active worker claim while its run is in progress."],
   ["src/backend/runtime/workers/worker-loop.ts#observeWork", "Checks the active run for pause and cancellation requests."],
   ["src/backend/runtime/workers/worker-loop.ts#handle", "Spaces worker claim attempts while the worker is idle or backing off."],

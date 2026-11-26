@@ -104,7 +104,7 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
     };
   };
   const applications = createSettingsApplicationExecutor(resolveSettings, input.credentials);
-  const executor: SettingsApplicationExecutor = Object.freeze({ ...applications, commitPrivate: command => {
+  const executor = Object.freeze<SettingsApplicationExecutor>({ ...applications, commitPrivate: command => {
     const refusal = applications.commitPrivate(command);
     // The private store commits here, ahead of the kernel's SQLite transaction; subscribers read after it settles.
     if (refusal === undefined) queueMicrotask(notify);
