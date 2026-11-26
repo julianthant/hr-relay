@@ -6,6 +6,7 @@ import {
 START_DOOR_ABSENCE,
 foldStepOmissionFacts,
 forcedStepOmissions,
+handOffStepOmissions,
 initialStepOmissionDraft,
 inputRunDelimiterHint,
 inputRunFieldLabel,
@@ -319,9 +320,23 @@ describe("every kind's refusal is the declared schema's own", () => {
 
 const CASCADING_STEPS: readonly StepOmissionStepView[] = Object.freeze([
   { key: "read", label: "Read", control: { state: "omittable", form: EVERY_KIND, forces: ["stage"] } },
-  { key: "stage", label: "Stage", control: { state: "omittable", form: { fields: [] }, forces: [] } },
+  { key: "stage", label: "Stage", control: { state: "omittable", form: { fields: [{ key: "note", label: "Note", kind: "text" }] }, forces: [] } },
   { key: "finalize", label: "Finalize", control: { state: "required", reason: "This workflow requires every node in this step." } },
 ]);
+const HAND_DONE_STEPS: readonly StepOmissionStepView[] = Object.freeze([
+  { key: "read", label: "Read", control: { state: "omittable", form: EVERY_KIND, forces: ["finish"] } },
+  { key: "finish", label: "Finish", control: { state: "omittable", form: { fields: [] }, forces: [] } },
+]);
+
+describe("a step done by hand is never forced off", () => {
+  it("stays included and is named for the operator to turn off", () => {
+    const next = toggleStepSelection(HAND_DONE_STEPS, ["read", "finish"], "read", false);
+    assert.deepEqual(next, ["finish"]);
+    assert.deepEqual([...forcedStepOmissions(HAND_DONE_STEPS, next)], []);
+    assert.deepEqual([...handOffStepOmissions(HAND_DONE_STEPS, next)], [["finish", ["read"]]]);
+    assert.deepEqual([...handOffStepOmissions(HAND_DONE_STEPS, toggleStepSelection(HAND_DONE_STEPS, next, "finish", false))], []);
+  });
+});
 
 describe("the cascade locks exactly what the planner would refuse", () => {
   it("names nobody while every step is included", () => {

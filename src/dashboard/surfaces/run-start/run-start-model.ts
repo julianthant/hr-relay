@@ -479,8 +479,29 @@ export function omittedStepViews<T extends StepOmissionStepView>(
   return steps.filter((step) => step.control.state === "omittable" && !selectedStepKeys.includes(step.key));
 }
 
-/** Lock exactly the omissions forced by the descriptor’s fixpoint, never another client rule. */
+/** A step whose omission types nothing: switching it off says it was done by hand. */
+function doneByHand(step: StepOmissionStepView | undefined): boolean {
+  return step?.control.state === "omittable" && step.control.form.fields.length === 0;
+}
+
+/** Lock exactly the omissions forced by the descriptor’s fixpoint, never another client rule; a step done by hand is never forced. */
 export function forcedStepOmissions(
+  steps: readonly StepOmissionStepView[],
+  selectedStepKeys: readonly string[],
+): ReadonlyMap<string, readonly string[]> {
+  return new Map([...cascadeTargets(steps, selectedStepKeys)].filter(([key]) => !doneByHand(steps.find((step) => step.key === key))));
+}
+
+/** Included steps done by hand that an omission reaches: the operator turns each off, or Start stays off. */
+export function handOffStepOmissions(
+  steps: readonly StepOmissionStepView[],
+  selectedStepKeys: readonly string[],
+): ReadonlyMap<string, readonly string[]> {
+  return new Map([...cascadeTargets(steps, selectedStepKeys)]
+    .filter(([key]) => selectedStepKeys.includes(key) && doneByHand(steps.find((step) => step.key === key))));
+}
+
+function cascadeTargets(
   steps: readonly StepOmissionStepView[],
   selectedStepKeys: readonly string[],
 ): ReadonlyMap<string, readonly string[]> {

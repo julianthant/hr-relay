@@ -743,6 +743,19 @@ describe("typed facts describe ONE subject", () => {
     assert.ok(dialog.text().includes("One person only."), dialog.text());
   });
 
+  it("keeps a step done by hand on when a skipped read reaches it, and holds Start until it is turned off", async () => {
+    const dialog = await openSteps(stubClient({}));
+    await dialog.press("Kuali extraction");
+    assert.ok(dialog.text().includes("5 of 8 included"), `a skipped read turned a form action off as if it were done by hand: ${dialog.text()}`);
+    assert.equal(dialog.disabled("Kuali finalization"), false);
+    assert.ok(dialog.text().includes("Needs Kuali extraction. Turn off if done by hand."), dialog.text());
+    assert.ok(dialog.text().includes("Turn off Kuali finalization if done by hand."), dialog.text());
+    await dialog.press("Kuali finalization");
+    assert.ok(dialog.text().includes("4 of 8 included"), dialog.text());
+    assert.ok(!dialog.text().includes("Turn off Kuali finalization if done by hand."), dialog.text());
+    assert.ok(dialog.text().includes("Done outside Relay."), dialog.text());
+  });
+
   it("lets several people skip a step done by hand, which types nothing", async () => {
     const dialog = await openSteps(stubClient({}), "4502; 4510");
     assert.equal(dialog.disabled("Kuali finalization"), false);

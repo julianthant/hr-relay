@@ -9,7 +9,7 @@ import type { RunStartWorkflow } from "./run-start.js";
 import { includedRowCount, lastIncludedSwitch, rowIncluded, sourceBadge, type OpenStepRow, type ManualRows, type StepRow, type StepsFailure } from "./run-steps-model.js";
 
 export function RunStartSteps({
-  workflow, snapshot, rows, selectedStepKeys, manualRows, forcedByStep, openRows, isRerun, multiSubject,
+  workflow, snapshot, rows, selectedStepKeys, manualRows, forcedByStep, handOffByStep, openRows, isRerun, multiSubject,
   inputDriven, sending, stepLabel, stepsFailure, copiedOmissions, update,
 }: {
   workflow: RunStartWorkflow;
@@ -18,6 +18,7 @@ export function RunStartSteps({
   selectedStepKeys: readonly string[];
   manualRows: ManualRows;
   forcedByStep: ReturnType<typeof forcedStepOmissions>;
+  handOffByStep: ReturnType<typeof forcedStepOmissions>;
   openRows: readonly OpenStepRow[];
   isRerun: boolean;
   multiSubject: boolean;
@@ -57,7 +58,9 @@ export function RunStartSteps({
                       const doneByHand = row.form !== undefined && row.form.fields.length === 0;
                       const oneSubjectOnly = multiSubject && row.form !== undefined && !doneByHand && included;
                       const disabled = forcedBy.length > 0 || inputDriven(row) || sending || lastIncludedSwitch(row, rows, selectedStepKeys, manualRows) || oneSubjectOnly;
+                      const needs = row.stepKey === undefined ? [] : handOffByStep.get(row.stepKey) ?? [];
                       const note = forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.`
+                        : needs.length > 0 ? `Needs ${stepLabels(needs)}. Turn off if done by hand.`
                         : oneSubjectOnly ? "One person only." : doneByHand && !included ? "Done outside Relay." : row.note;
                       const failure = stepsFailure !== null && stepsFailure.rowKey === row.key ? { [stepsFailure.fieldKey]: stepsFailure.text } : {};
                       return <RunListRow key={row.key} title={row.label} description={note}
