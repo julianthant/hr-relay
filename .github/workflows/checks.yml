@@ -14,6 +14,9 @@ on:
       results:
         description: Job results for the caller's proof gate.
         value: ${{ toJSON(jobs) }}
+      coverage-result:
+        description: Full coverage merge and threshold result.
+        value: ${{ jobs.coverage.result }}
 
 permissions:
   contents: read
@@ -561,7 +564,7 @@ jobs:
 
   unit:
     name: unit
-    needs: [changes, lint, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, perf, smoke]
+    needs: [changes, lint, static, privacy, ubuntu, integration, architecture, macos, coverage, unit-proofs, perf, smoke]
     if: ${{ !cancelled() && inputs.kind != 'fast' }}
     runs-on: ubuntu-latest
     steps:

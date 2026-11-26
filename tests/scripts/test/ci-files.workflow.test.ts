@@ -287,16 +287,22 @@ describe("development full run", () => {
 
   it("passes the full gate only when every full job passed", () => {
     const schedule = { event_name: "schedule" };
-    const ok = { decide: { result: "success", outputs: { start: "true" } }, "full-checks": { result: "success" },
+    const ok = { decide: { result: "success", outputs: { start: "true" } },
+      "full-checks": { result: "success", outputs: { "coverage-result": "success" } },
       codeql: { result: "success" }, dependencies: { result: "success" } };
-    const plan = planFor("portable");
+    const plan = selectUsingAdapter("full", "schedule", "", "development", {});
     expect(summary(full, "full", plan, ok, schedule)).toBe("success");
     expect(summary(full, "full", plan, { ...ok, decide: { result: "success", outputs: { start: "false" } } }, schedule)).toBe("skipped");
-    for (const name of ["full-checks", "codeql", "dependencies"]) {
+    for (const name of ["full-checks", "codeql", "dependencies"] as const) {
       for (const result of ["failure", "cancelled", "skipped"]) {
-        expect(summary(full, "full", plan, { ...ok, [name]: { result } }, schedule)).toBe("failure");
+        expect(summary(full, "full", plan, { ...ok, [name]: { ...ok[name], result } }, schedule)).toBe("failure");
       }
     }
+    for (const result of ["failure", "cancelled", "skipped", ""]) {
+      const checks = { result: "success", outputs: { "coverage-result": result } };
+      expect(summary(full, "full", plan, { ...ok, "full-checks": checks }, schedule)).toBe("failure");
+    }
+    expect(summary(full, "full", plan, { ...ok, "full-checks": { result: "success", outputs: {} } }, schedule)).toBe("failure");
   });
 });
 
@@ -457,7 +463,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(checks.split("\njobs:\n")[0]).toContain("value: ${{ toJSON(jobs) }}");
     expect(jobNames(staging)).toEqual(["names", "checks", "full-proof", "staging"]);
     expect(jobNames(production)).toEqual(["checks", "codeql", "dependencies", "full-proof", "production"]);
-    expect(jobNames(checks)).toEqual(["changes", "lint", "static", "privacy", "ubuntu", "macos", "unit-proofs", "integration", "architecture", "perf", "smoke", "unit"]);
+    expect(jobNames(checks)).toEqual(["changes", "lint", "static", "privacy", "ubuntu", "macos", "coverage", "unit-proofs", "integration", "architecture", "perf", "smoke", "unit"]);
     expect(job(checks, "lint")).toContain("run: npm run lint");
     expect(job(checks, "lint")).toContain("working-directory: fast-duo");
     expect(job(checks, "lint")).toContain("if: ${{ fromJSON(needs.changes.outputs.plan).lint }}");
@@ -499,12 +505,34 @@ describe("separate event and admitted proof workflows", () => {
     expect(expression(condition, { changes: { outputs: { plan: JSON.stringify(manual) } } }, {})).toBe(false);
   });
 
-  it("keeps coverage local in every workflow", () => {
+  it("collects coverage on existing Full shards and merges it without a second test pass", () => {
     const directory = new URL("../../../.github/workflows/", import.meta.url);
     for (const file of readdirSync(directory, { withFileTypes: true })) {
       if (!file.isFile() || !/\.ya?ml$/u.test(file.name)) continue;
-      expect(readFileSync(new URL(file.name, directory), "utf8")).not.toMatch(/test:coverage|--coverage/u);
+      const workflow = readFileSync(new URL(file.name, directory), "utf8");
+      expect(workflow).not.toContain("test:coverage");
+      if (file.name !== "checks.yml") expect(workflow).not.toContain("--coverage");
     }
+    const coverage = job(checks, "coverage");
+    const condition = coverage.match(/^ {4}if: (.+)$/mu)?.[1];
+    assert.ok(condition);
+    for (const kind of ["fast", "portable", "release", "full"]) {
+      expect(expression(condition, {}, {}, kind)).toBe(kind === "full");
+      for (const shard of ["ubuntu", "macos"]) {
+        const body = job(checks, shard);
+        const flags = body.match(/^ {6}COVERAGE_FLAGS: (.+)$/mu)?.[1];
+        assert.ok(flags);
+        expect(expression(flags, {}, {}, kind)).toBe(kind === "full"
+          ? "--coverage --no-coverage.thresholds --coverage.reporter=json" : "");
+        expect(body).toContain("coverage-final.json");
+        expect(body).toContain("if: inputs.kind == 'full'");
+      }
+    }
+    expect(coverage).toContain("needs: [changes, ubuntu, macos]");
+    expect(coverage).toContain("pattern: coverage-*");
+    expect(coverage).toContain('scripts/ci/full-coverage.ts "$RUNNER_TEMP/full-coverage" "$PLAN"');
+    expect(coverage).not.toContain("npm run test:");
+    expect(checks).toContain("value: ${{ jobs.coverage.result }}");
     expect(jobNames(checks)).not.toContain("release-batch");
   });
 

@@ -85,7 +85,7 @@ jobs:
     steps:
       - env:
           CHECKS: ${{ needs.full-checks.result }}
-          COVERAGE: ${{ needs.full-checks.outputs.results && fromJSON(needs.full-checks.outputs.results).coverage.result || 'missing' }}
+          COVERAGE: ${{ needs.full-checks.outputs.coverage-result || 'missing' }}
           CODEQL: ${{ needs.codeql.result }}
           DEPENDENCIES: ${{ needs.dependencies.result }}
         run: |
