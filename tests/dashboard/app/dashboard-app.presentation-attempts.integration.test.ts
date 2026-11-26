@@ -13,6 +13,7 @@ import { createRunQueueProjectionTestWorld } from "../../support/helpers/backend
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { seedPersonLookupPresentation } from "../../support/fixtures/person-lookup-presentation.js";
 import { uuidOf } from "../../support/helpers/backend/dashboard-harness.js";
+import { loadLazyPages } from "../../support/helpers/dashboard/lazy-pages.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/helpers/dashboard/mock-world/fixture-bootstrap.js";
 import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
@@ -68,6 +69,8 @@ it("shows the selected day's runs by start time and keeps that day when an attem
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
+    // jsdom 31 reports preload failures if the environment closes before the imports finish.
+    await loadLazyPages();
     const trigger = host.querySelector<HTMLButtonElement>('button[aria-label^="Attempts for"]'); assert.ok(trigger);
     assert.equal(host.querySelectorAll("[data-demo-row-id]").length, 1);
     assert.equal(host.querySelector("[data-demo-row-id]")?.getAttribute("data-demo-row-id"), chronologicalRunIds[chronologicalRunIds.length - 1]);
