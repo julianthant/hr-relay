@@ -251,6 +251,8 @@ const LaneDayFactsSchema = z.strictObject({
   surfaces: z.array(PublishedSurfaceSchema),
   /** The asked publication source ids that snapshot does not hold. */
   missingPublications: z.array(FingerprintSchema),
+  /** Whether this read built the day, rather than reusing one it had cached. */
+  built: z.boolean(),
 });
 export type LaneDayFacts = z.infer<typeof LaneDayFactsSchema>;
 /** The day without main's envelope stamp. The lane never names a projection cursor or generation. */
@@ -448,6 +450,8 @@ export class RunQueueProjection {
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
   readonly #notifiedRows = new Map<string, { status: QueueSurfaceWire["status"]; surface?: string }>();
   readonly #dayCache = new Map<string, CachedQueueDay>();
+  /** Day builds so far, so a lane read can report whether it built its day or reused a cached one. */
+  #dayBuilds = 0;
 
   #timelineCursor = 0;
 
@@ -1846,12 +1850,18 @@ export class RunQueueProjection {
 
   /** The day and the facts main needs from it, as the lane serves it; the lane's replica calls this inside its read snapshot. */
   buildLaneDay(day: string): { d: UnstampedDayWire; f: LaneDayFacts } {
+    const builds = this.#dayBuilds;
     const wire = this.buildDashboardDayWire(day);
-    return laneDayBody(wire, this.#laneFacts(wire));
+    return laneDayBody(wire, this.#laneFacts(wire, this.#dayBuilds > builds));
   }
 
-  #laneFacts(wire: DashboardDayWire): LaneDayFacts {
-    return { position: this.#timelineCursor, missingPublications: [],
+  /** A lane replica's days were built with the process facts main sent before; none of them is served again. */
+  processFactsChanged(): void {
+    this.#dayCache.clear();
+  }
+
+  #laneFacts(wire: DashboardDayWire, built: boolean): LaneDayFacts {
+    return { position: this.#timelineCursor, missingPublications: [], built,
       surfaces: wire.queueSurfaces.map(({ runId, status, startedAt }) => ({ runId, status, startedAt })) };
   }
 
@@ -1866,8 +1876,9 @@ export class RunQueueProjection {
     }
     const generation = this.#generationValue, dispatchCursor = this.#cursorValue, lane = this.#deps.dayLane;
     if (lane === undefined) {
+      const builds = this.#dayBuilds;
       const wire = this.buildDashboardDayWire(day);
-      const { dayJson, facts } = decodeLaneDay(JSON.stringify(laneDayBody(wire, this.#laneFacts(wire))));
+      const { dayJson, facts } = decodeLaneDay(JSON.stringify(laneDayBody(wire, this.#laneFacts(wire, this.#dayBuilds > builds))));
       return { dayJson, facts, generation, dispatchCursor, foldedHere: true, wire, current: () => generation === this.#generationValue };
     }
     const revision = lane.processRevision();
@@ -1976,6 +1987,7 @@ export class RunQueueProjection {
     patch?: QueueDayPatch): {
     wire: DashboardDayWire; sources: Omit<QueueDaySources, "through">; reusable: ReadonlySet<string>;
   } {
+    this.#dayBuilds += 1;
     const surfaces: QueueSurfaceWire[] = [];
     let fixtureRuns: readonly RunRecord[] | undefined;
     const monthPrefix = parsedDay.slice(0, 7);

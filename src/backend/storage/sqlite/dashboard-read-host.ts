@@ -66,6 +66,8 @@ export interface LaneReadDefinition<Args, Result> {
   run(context: LaneReadContext, args: Args): Result;
   /** Runs once in its lane's read snapshot before the lane reports ready; a throw fails the lane's boot. */
   readonly warm: ((context: LaneWarmContext) => void) | undefined;
+  /** per-statement (the default) proves the store's source on every statement; per-read, once at the snapshot and once before the result. */
+  readonly sourceProof: "per-statement" | "per-read";
 }
 
 const definitions = new Map<string, LaneReadDefinition<unknown, unknown>>();
@@ -75,13 +77,14 @@ const laneReadId = (module: string, name: string) => `${module}#${name}`;
 export function defineLaneRead<Args, Result>(module: string, name: string, spec: Readonly<{
   lane: ReadLaneName; priority: "interactive" | "background"; args: z.ZodType<Args>; tables?: readonly AuthorityTableName[];
   timeline?: boolean; processFacts?: boolean; cacheMs?: number; run(context: LaneReadContext, args: Args): Result;
-  warm?(context: LaneWarmContext): void;
+  warm?(context: LaneWarmContext): void; sourceProof?: "per-statement" | "per-read";
 }>): LaneReadDefinition<Args, Result> {
   const id = laneReadId(module, name);
   if (definitions.has(id)) throw new Error(`read-lane-read-duplicate: ${name}`);
   const definition: LaneReadDefinition<Args, Result> = Object.freeze({ id, module, name, lane: spec.lane, priority: spec.priority,
     tables: Object.freeze([...spec.tables ?? []]), timeline: spec.timeline ?? false, processFacts: spec.processFacts ?? false,
-    cacheMs: spec.cacheMs, args: spec.args, run: spec.run, warm: spec.warm });
+    cacheMs: spec.cacheMs, args: spec.args, run: spec.run, warm: spec.warm,
+    sourceProof: spec.sourceProof ?? "per-statement" });
   definitions.set(id, definition);
   return definition;
 }
@@ -630,11 +633,17 @@ function runReadLane(port: MessagePort, data: unknown) {
     port.close();
   };
   const send = (reply: LaneReply) => { port.postMessage(reply); };
+  /** Every statement proves the source, unless the read asks for one proof as its snapshot begins and one before its result returns. */
+  const proved = <T>(definition: LaneReadDefinition<unknown, unknown>, read: () => T): T => {
+    if (definition.sourceProof === "per-read") return lane.withProvedSource(read);
+    lane.assertSource();
+    return read();
+  };
 
   const serve = (definition: LaneReadDefinition<unknown, unknown>, message: LaneReadMessage) => {
     const args = definition.args.parse(message.args);
     const cached = definition.tables.length === 0 ? undefined : cache.get(message.key);
-    return history.withAuthorityReadSnapshot(() => lane.withProvedSource(() => {
+    return history.withAuthorityReadSnapshot(() => proved(definition, () => {
       // A read that waited in the lane checks expiry at its own snapshot, not at the host's post.
       const nowMs = clock === "system" ? systemClock.nowMs() : message.nowMs;
       const meta = history.getMeta(), change = history.capturedChangeKey();
@@ -794,7 +803,7 @@ function runReadLane(port: MessagePort, data: unknown) {
     for (const definition of definitions.values()) {
       const warm = definition.warm;
       if (warm === undefined || definition.lane !== start.lane) continue;
-      history.withAuthorityReadSnapshot(() => lane.withProvedSource(() => {
+      history.withAuthorityReadSnapshot(() => proved(definition, () => {
         warm({ start, native, history, nowMs: systemClock.nowMs(), retain: resource => { resources.push(resource); } });
       }));
     }

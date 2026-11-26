@@ -138,6 +138,8 @@ interface LaneReplica {
     /** The read's instant: the replica folds and builds at main's dispatch time. */
     at: Clock;
     facts: ProcessFacts;
+    /** The facts as main sent them, for the days the replica cached; undefined until a read sends them. */
+    factsKey: string | undefined;
   };
 }
 const replicas = new WeakMap<AuthorityDatabase, LaneReplica>();
@@ -148,7 +150,7 @@ function laneReplica(context: LaneWarmContext): LaneReplica {
   if (held !== undefined) return held;
   const { history, native } = context;
   const noFacts: ProcessFacts = { workers: [], startupPending: [] };
-  const state: LaneReplica["state"] = { at: capturedInstantClock(new Date(context.nowMs).toISOString()), facts: noFacts };
+  const state: LaneReplica["state"] = { at: capturedInstantClock(new Date(context.nowMs).toISOString()), facts: noFacts, factsKey: undefined };
   const clock: Clock = Object.freeze({
     now: () => state.at.now(), nowMs: () => state.at.nowMs(), monotonicMs: () => systemClock.monotonicMs(), todayLocal: () => state.at.todayLocal(),
     timeOfDayCode: (at?: Date) => state.at.timeOfDayCode(at), fiscalYear: (at?: Date) => state.at.fiscalYear(at),
@@ -176,23 +178,47 @@ const QueueDayArgsSchema = z.strictObject({
   publications: z.array(FingerprintSchema).max(1024),
 });
 
+/** The most runs a warm day may hold, so the warm stays a small part of the lane's boot. */
+export const WARM_DAY_RUN_LIMIT = 25;
+const WARM_WINDOW_DAYS = 31;
+
+/** The smallest day with runs, the most recent of a tie, from the window's day counts; none when every day is over the limit. */
+export function warmDayOf(counts: ReadonlyMap<string, number>): string | undefined {
+  let best: { day: string; count: number } | undefined;
+  for (const [day, count] of counts) {
+    if (count === 0 || count > WARM_DAY_RUN_LIMIT) continue;
+    if (best === undefined || count < best.count || (count === best.count && day > best.day)) best = { day, count };
+  }
+  return best?.day;
+}
+
 /**
  * Queue day, Sessions and the stream snapshot, built on the navigation lane from its replica. The body is the day without
  * main's stamp, plus the facts main frames it with; the replica folds the timeline once before the lane is ready.
  */
 export const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day", {
-  lane: "navigation", priority: "interactive", processFacts: true, args: QueueDayArgsSchema,
+  lane: "navigation", priority: "interactive", processFacts: true, args: QueueDayArgsSchema, sourceProof: "per-read",
   warm(context) {
     const { projection, state } = laneReplica(context);
     projection.ingestFromTimeline();
-    // One day build before ready, so the first read is not this isolate's cold build; yesterday, so today is still built at its read.
-    const now = state.at.now();
-    projection.buildLaneDay(localDatePart(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)));
+    // One small day build, so the first read does not pay this isolate's cold build of the day code. Optional: a refusal, a
+    // peer-commit snapshot change among them, only skips it, and the read that follows builds its own day.
+    try {
+      const now = state.at.now();
+      const day = (back: number) => localDatePart(new Date(now.getFullYear(), now.getMonth(), now.getDate() - back));
+      const warmDay = warmDayOf(context.history.readQueueDayCounts(day(WARM_WINDOW_DAYS), day(1)));
+      if (warmDay !== undefined) projection.buildLaneDay(warmDay);
+    } catch { /* the warm is skipped */ }
   },
   run(context, { day, publications }) {
     const replica = laneReplica(context);
     replica.state.at = capturedInstantClock(new Date(context.nowMs).toISOString());
+    const factsKey = JSON.stringify(context.processFacts);
     replica.state.facts = admitProcessFacts(context.processFacts);
+    if (factsKey !== replica.state.factsKey) {
+      replica.state.factsKey = factsKey;
+      replica.projection.processFactsChanged();
+    }
     replica.projection.ingestFromTimeline();
     const body = replica.projection.buildLaneDay(day);
     const heldSources = publications.length === 0 ? new Set<string>()
