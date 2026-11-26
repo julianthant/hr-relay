@@ -706,7 +706,7 @@ it("hands the model a Separations dry-run proposal refused by readiness under it
   } finally { await w.f.cleanup(); }
 });
 
-it("logs an unclassified tool failure before answering that the assistant is unavailable", async () => {
+it("logs an unclassified tool failure under its tool name before answering that the assistant is unavailable", async () => {
   const events: Record<string, unknown>[] = [];
   const w = await world({ tools: db => separationsProposalTools(db, () => { throw new Error("PRIVATE_CANARY 1234"); }),
     options: { debugEvents: { emit(event) { events.push(event); } } } });
@@ -714,38 +714,29 @@ it("logs an unclassified tool failure before answering that the assistant is una
     w.script.push(call("propose_workflow_start", { workflow: "separations", entries: ["1234"] }));
     assert.deepEqual(await w.ask("Prepare a Separations dry run for 1234."),
       { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE });
-    assert.ok(events.some(event => event.code === "ASSISTANT_UNAVAILABLE" && event.area === "assistant-turn"));
+    assert.ok(events.some(event => event.code === "ASSISTANT_UNAVAILABLE" && event.area === "assistant-tool" && event.reason === "propose-workflow-start"));
     assert.ok(events.some(event => event.message === "Error"));
     assert.equal(JSON.stringify(events).includes("CANARY"), false);
   } finally { await w.f.cleanup(); }
 });
 
-it("answers the model list from memory after the first read and reads it again after a sign-in change", async () => {
+it("answers the model list a turn observed without a provider call", async () => {
   const w = await world();
   try {
     const reads = () => w.f.calls.filter(call => call.url.endsWith("/models")).length;
-    const before = reads();
-    const first = await w.service.models(new AbortController().signal);
-    assert.equal(reads(), before + 1);
-    w.f.setModels({ models: [{ slug: "other", display_name: "Other", visibility: "list" }] });
-    assert.deepEqual(await w.service.models(new AbortController().signal), first);
-    assert.equal(reads(), before + 1);
+    assert.throws(() => w.service.models(), { code: "CHATGPT_MODELS_UNAVAILABLE" });
+    assert.equal(reads(), 0);
+    w.script.push(assistantMessageStream("Synthetic answer."));
+    assert.equal((await w.ask("Synthetic question")).state, "answered");
+    const observed = reads(); assert.ok(observed > 0);
+    assert.deepEqual(w.service.models(), { models: [{ slug: "gpt-6.1-sol", displayName: "GPT-6.1 Sol" }] });
+    assert.equal(reads(), observed);
     await w.f.service.signOut(); await w.f.connected();
-    const afterSignIn = reads();
-    assert.deepEqual(await w.service.models(new AbortController().signal), { models: [{ slug: "other", displayName: "Other" }] });
-    assert.equal(reads(), afterSignIn + 1);
+    assert.throws(() => w.service.models(), { code: "CHATGPT_MODELS_UNAVAILABLE" });
   } finally { await w.f.cleanup(); }
 });
 
-it("never remembers a failed model list read", async () => {
-  const w = await world();
-  try {
-    const reads = () => w.f.calls.filter(call => call.url.endsWith("/models")).length;
-    w.f.setModelsHook(async () => new Response("unavailable", { status: 503 }));
-    const before = reads();
-    await assert.rejects(w.service.models(new AbortController().signal));
-    w.f.setModelsHook(async () => Response.json({ models: [{ slug: "gpt-6.1-sol", display_name: "Sol", visibility: "list" }] }));
-    assert.deepEqual(await w.service.models(new AbortController().signal), { models: [{ slug: "gpt-6.1-sol", displayName: "Sol" }] });
-    assert.equal(reads(), before + 2);
-  } finally { await w.f.cleanup(); }
+it("refuses the model list of another composition", async () => {
+  const w = await world({ options: { assertComposition: () => { throw new Error("assistant-composition-changed"); } } });
+  try { assert.throws(() => w.service.models(), /assistant-composition-changed/u); } finally { await w.f.cleanup(); }
 });

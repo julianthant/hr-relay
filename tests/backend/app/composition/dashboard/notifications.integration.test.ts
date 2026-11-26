@@ -8,7 +8,7 @@ import * as inspection from "../../../../../src/backend/storage/sqlite/authority
 import * as sources from "../../../../../src/backend/app/composition/dashboard/notification-sources.js";
 import { syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { createDashboardReadHost, type DashboardReadLanes } from "../../../../../src/backend/storage/sqlite/dashboard-read-host.js";
-import { NOTIFICATION_SCAN_BENCH_ENTRY, notificationScanClick } from "../../../../../scripts/bench/notification-scan.js";
+import { heldNotificationSourceScan, NOTIFICATION_SCAN_BENCH_ENTRY, notificationScanBarrier, notificationScanClick } from "../../../../../scripts/bench/notification-scan.js";
 
 const { fixture, seedRun } = createNotificationCompositionTestWorld();
 
@@ -108,14 +108,16 @@ it("coalesces sustained polling churn into one rerun, lets the queued click thro
   const f = await fixture();
   const lanes = createDashboardReadHost({ admission: syntheticStateRoot(f.root), database: f.db, clock: f.clock,
     lanes: ["navigation"], entry: NOTIFICATION_SCAN_BENCH_ENTRY });
+  const barrier = notificationScanBarrier();
   const scansDone = Promise.withResolvers<void>();
   const allPublished = Promise.withResolvers<void>();
   const order: string[] = [];
   let scans = 0;
   const read: DashboardReadLanes["read"] = async (definition, args, options) => {
     expect(definition).toBe(sources.notificationSourceScan);
+    expect(args).toEqual({});
     const scan = ++scans;
-    const reply = await lanes.read(definition, args, options);
+    const reply = await lanes.read(heldNotificationSourceScan, {}, { ...options, ...barrier.options });
     order.push(`scan ${scan}`);
     if (scan === 2) scansDone.resolve();
     return reply;
@@ -143,6 +145,7 @@ it("coalesces sustained polling churn into one rerun, lets the queued click thro
     const first = gate(1);
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     timer = startNotificationPolling(f.db, f.clock, observer);
+    await barrier.waitForStart();
     const click = lanes.read(notificationScanClick, { runId: first }).then(reply => {
       order.push("click");
       expect(JSON.parse(reply.body)).toBe("present");
@@ -153,6 +156,7 @@ it("coalesces sustained polling churn into one rerun, lets the queued click thro
       vi.advanceTimersByTime(1000);
     }
     expect(scans).toBe(1);
+    barrier.release();
     await Promise.all([click, scansDone.promise, allPublished.promise]);
     await observer.stop();
     expect(scans).toBe(2);
@@ -162,6 +166,7 @@ it("coalesces sustained polling churn into one rerun, lets the queued click thro
     expect(track).not.toHaveBeenCalled();
     expect(list).not.toHaveBeenCalled();
   } finally {
+    barrier.release();
     if (timer !== undefined) clearInterval(timer);
     vi.useRealTimers();
     list.mockRestore();

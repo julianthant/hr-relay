@@ -25,6 +25,7 @@ import { ActorIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
 import { CrossDateSearchPageSchema } from "../../../../../src/models/dashboard/search.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { RunRecordSchema, type RunRecord } from "../../../../../src/models/run/record.js";
 import { seedSeparationsRunAuthority } from "../../../../support/fixtures/integration/separations-run-fixtures.js";
 import { insertMeasuredSearchRun } from "../../../../support/helpers/backend/cross-date-search-harness.js";
@@ -239,7 +240,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const body = await json(response);
     assert.equal(response.status, 500);
     assert.equal(body.code, "INTERNAL_FAILURE");
-    assert.equal(body.message, "run-search-index-rebuild-required");
+    assert.equal(body.message, ERROR_CATALOG.INTERNAL_FAILURE.text);
     assert.equal("people" in body, false);
     assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(join(h.stateRoot, "state.db")), /invariant validation failed: run-completion-consequences/u);
     assert.equal(h.database.authority.runResults.get(missing.envelope.runId), undefined);
@@ -348,7 +349,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
       assert.equal(response.status, 500, corpusCase.dimension);
       assert.equal(body.code, "INTERNAL_FAILURE", corpusCase.dimension);
-      assert.equal(body.message, "run-search-index-rebuild-required", corpusCase.dimension);
+      assert.equal(body.message, ERROR_CATALOG.INTERNAL_FAILURE.text, corpusCase.dimension);
       assert.doesNotMatch(String(body.message), new RegExp(corpusCase.observed, "u"), corpusCase.dimension);
       restoreSearchRun(h, run);
     }
@@ -378,7 +379,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     assert.equal(response.status, 500);
     assert.equal(body.code, "INTERNAL_FAILURE");
-    assert.equal(body.message, "run-search-index-rebuild-required");
+    assert.equal(body.message, ERROR_CATALOG.INTERNAL_FAILURE.text);
     assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
     restoreSearchRun(h, run);
   });
@@ -529,6 +530,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const timeline = h.database.authority.timelineEvents;
     fillDiagnosticBudget(DatabaseSync, join(h.stateRoot, "state.db"), timeline, h.clock);
     const before = timeline.highWaterMark();
+    // The hello carries the cursor from before the connection takes its own.
+    const cursor = h.projection.cursor();
     const response = await h.app.request(`http://localhost/events/v1?topics=dashboard-day:${DAY}`, { headers: { host: "localhost" } });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "text/event-stream");
@@ -537,7 +540,10 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     try {
       const first = await reader.read();
       assert.equal(first.done, false);
-      assert.match(new TextDecoder().decode(first.value), /"type":"hello"/u);
+      const descriptorHash = h.projection.descriptorSetHash();
+      const generation = h.projection.generation();
+      assert.equal(new TextDecoder().decode(first.value),
+        `id: ${cursor}\ndata: {"type":"hello","wireVersion":1,"descriptorHash":"${descriptorHash}","projectionGeneration":${generation},"cursor":"${cursor}"}\n\n`);
       assert.equal(h.hub.subscriberCount(), 1);
     } finally { await reader.cancel(); }
     assert.equal(h.hub.subscriberCount(), 0);
@@ -625,3 +631,17 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 import { OPERATOR_JSON_HEADERS, activityPeople, assertHttpFaultOnly, faultAuthoritySnapshot, currentSeparationsRun, disposeHttpRouteHarness, harness, json, persistCurrentSeparationsEvidence, projectCurrentSeparationsRuns, seedCurrentSeparationsRun } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);
+
+it("validates the whole event query before applying resume headers", async () => {
+  const h = await harness({ profileFixture: profileFixtures.create });
+  for (const suffix of ["&extra=unused", `&topics=dashboard-day:${DAY}`, "&cursor=pc:1&cursor=pc:2", "&cursor=malformed",
+    "&projectionGeneration=1e0", "&projectionGeneration=1&projectionGeneration=2"]) {
+    const response = await h.app.request(`/events/v1?topics=dashboard-day:${DAY}${suffix}`, {
+      headers: { "Last-Event-ID": "pc:1", "Dashboard-Projection-Generation": "1" },
+    });
+    if (response.status === 200) await response.body?.cancel();
+    assert.equal(response.status, 400, suffix);
+    assert.equal((await json(response)).code, "SCHEMA_INVALID");
+    assert.equal(h.hub.subscriberCount(), 0);
+  }
+});

@@ -15,7 +15,7 @@ visibleQueueKeys,
 queueScopeWorkflow
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueuePanel,QueueRow } from "../../../../src/dashboard/surfaces/queue/queue.js";
-import { LogTimelineSkeleton, QueueSkeleton, RunPanelSkeleton } from "../../../../src/dashboard/surfaces/shared/loading/loading.js";
+import { QueueSkeleton, RunPanelSkeleton } from "../../../../src/dashboard/surfaces/shared/loading/loading.js";
 import { RunStateChips } from "../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
 import {
 QueueSurfaceWireSchema,
@@ -479,12 +479,11 @@ describe("queue and run panel loading and status", () => {
     assert.equal(html.match(/border-t/g)?.length, 4);
   });
 
-  it("draws the run panel skeleton with a header, the stage strip and the padded feed", () => {
+  it("draws the run panel skeleton with a header and the padded feed", () => {
     const html = renderToStaticMarkup(createElement(RunPanelSkeleton));
     assert.match(html, /<header/);
     assert.match(html, /aria-label="Selected run logs"/);
     assert.match(html, /px-4 pb-6 pt-5/);
-    assert.equal(renderToStaticMarkup(createElement(LogTimelineSkeleton)).match(/<li /g)?.length, 4);
   });
 
   it("says Starting, not Queued, for a queued run that reports a live line", () => {

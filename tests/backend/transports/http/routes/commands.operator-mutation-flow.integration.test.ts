@@ -15,6 +15,26 @@ import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
+  it("rejects an oversized worker plan as invalid input before writing it", async () => {
+    const h = await harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b77";
+    const workflowId = "person-lookup";
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId, family: "worker-browser", type: "plan-worker-count",
+        target: { workflowId, expectedVersion: 0 }, payload: { desiredWorkers: 17 },
+      }),
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal((await json(response)).code, "SCHEMA_INVALID");
+    assert.equal(h.database.authority.commands.get(commandId), undefined);
+    assert.equal(h.database.authority.workerPools.get(workflowId), undefined);
+    assert.deepEqual(h.database.authority.workerSlots.active(workflowId), []);
+  });
+
   it("serializes concurrent acceptance of one command id around the server clock", async () => {
     let firstPrepareReached: (() => void) | undefined;
     const firstPrepare = new Promise<void>((resolve) => {

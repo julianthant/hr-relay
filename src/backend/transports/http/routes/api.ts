@@ -156,14 +156,15 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerTrustRoutes(app, deps);
   registerShellRoutes(app, { ...deps, debugEvents });
   registerNotificationRoutes(app, deps);
-  registerSettingsPreflightRoutes(app, { clock: deps.bootstrap.clock, preflight: deps.preflight });
+  registerSettingsPreflightRoutes(app, { preflight: deps.preflight });
   registerSettingsRoutes(app, deps);
   registerChatGptAccountRoutes(app, { ...deps, debugEvents, clock: deps.bootstrap.clock });
   registerAssistantRoutes(app, deps.assistant);
   registerStorageRoutes(app, deps);
   registerExplorerRoutes(app, deps);
   registerActivityRoutes(app, { activityPopulation: deps.activityPopulation, activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); }, readSelected: () => { throw new Error("activity-service-not-configured"); } } });
-  registerQueueRoutes(app, { startPlans: deps.startPlans, queue: { day: day => deps.projection.buildDashboardDayWire(day) } });
+  registerQueueRoutes(app, { startPlans: deps.startPlans, queue: { day: (day, request) => deps.projection.servedDashboardDay(day, {
+    signal: request.signal, ...(request.tab === undefined ? {} : { slot: { subscriberId: request.tab, slot: "queue-day" } }) }) } });
   registerIntakeRoutes(app, deps);
   registerOcrRoutes(app, deps);
   registerWorkbookRoutes(app, deps);

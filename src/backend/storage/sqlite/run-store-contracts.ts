@@ -30,7 +30,7 @@ import {
 } from "../../../rules/identity/ids.js";
 import { StartPlanRecordSchema } from "../../../models/run/start-plan.js";
 import { WorkerPoolRecordSchema } from "../../../models/run/worker-pool.js";
-import { RunDisplayNameSchema } from "../../../rules/commands/commands.js";
+import { PlannedWorkerCountSchema, RunDisplayNameSchema } from "../../../rules/commands/commands.js";
 import { CheckpointPatchSchema } from "../../../models/workflow/checkpoint.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../models/config/runtime-generation.js";
 import { RunEnvelopeSchema } from "../../../models/run/envelope.js";
@@ -425,7 +425,7 @@ export type StartPlanConsumeOutcome = z.infer<typeof StartPlanConsumeOutcomeSche
 export const WorkerPoolPlanRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   expectedVersion: NonNegativeIntSchema,
-  desiredWorkers: z.number().int().min(0),
+  desiredWorkers: PlannedWorkerCountSchema,
   requestedBy: ActorIdSchema,
   now: IsoInstantSchema,
 });

@@ -8,7 +8,7 @@ import { parseCanonicalInputSnapshot } from "../../../src/models/workflow/canoni
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
 import { createAssistantAuthorization } from "../../../src/backend/assistant/authorization.js";
-import { createAssistantProposals, plannedRowDisplay } from "../../../src/backend/assistant/proposals.js";
+import { createAssistantProposals, dryRunStopStep, plannedRowDisplay } from "../../../src/backend/assistant/proposals.js";
 import { AssistantToolRefusal } from "../../../src/backend/assistant/plugins/plugin.js";
 import { createAssistantReferenceTable } from "../../../src/backend/assistant/references.js";
 import { composeDataQueries } from "../../../src/backend/app/composition/dashboard/data.js";
@@ -192,11 +192,12 @@ it("applies a notification change at once without a card, and refuses with nothi
   await assert.rejects(change.invoke({ action: "read", target: "all" }, o.context), refusedWith("ASSISTANT_PROPOSAL_REFUSED"), "already read: nothing to change");
 });
 
-it("refuses reruns of cancelled, moved, parked and attempting sources through the proposal owner", async () => {
+it("proposes a rerun of a cancelled source and refuses moved, parked and attempting sources through the proposal owner", async () => {
   const cancelledOwner = await owners(), queued = cancelledOwner.h.start(cancelledOwner.h.proposal());
   assert.equal(cancelledOwner.h.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: cancelledOwner.clock.now().toISOString(), requestedBy: "local-operator",
     source: "queue-row", family: "run", type: "cancel", target: { runId: queued.envelope.runId, expectedVersion: queued.version } })).state, "applied");
-  await assert.rejects(rerunCard(cancelledOwner, cancelledOwner.h.fresh(queued)), refusedWith("ASSISTANT_PROPOSAL_REFUSED"));
+  const cancelledCard = await rerunCard(cancelledOwner, cancelledOwner.h.fresh(queued));
+  assert.ok(cancelledCard.effect === "workflow-start" && cancelledCard.source === "rerun");
 
   const movedOwner = await owners(), moved = await movedOwner.done();
   await assert.rejects(movedOwner.tool("propose_rerun").propose({ run: movedOwner.references.issue("R", moved.envelope.runId, "the selected run", moved.envelope.runId, moved.version + 1) },
@@ -274,6 +275,12 @@ it("keeps a lost response or an abort after the canonical effect UNKNOWN with ex
     assert.deepEqual(o.captions(), [ERROR_CATALOG.ASSISTANT_OUTCOME_UNKNOWN.text], mode);
     assert.deepEqual(o.database.authority.assistantHistory.replay(o.context.conversationId, Number.MAX_SAFE_INTEGER).map(row => row.modelText), [`Outcome unknown: ${card.label}. Do not retry.`], mode);
   }
+});
+
+it("names the step a dry run stops before from the descriptor, and none for a live read", () => {
+  const descriptor = (id: string) => { const found = DESCRIPTORS.find(candidate => candidate.id === id); assert.ok(found); return found; };
+  assert.equal(dryRunStopStep(descriptor("separations")), "Clear Pending Terminations");
+  assert.equal(dryRunStopStep(descriptor("person-lookup")), undefined);
 });
 
 it("shows Separations document identities from the real planned canonical inputs", () => {

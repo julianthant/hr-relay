@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
-import { CommandIdentityConflictError, BulkRunCommandRequestSchema, CommandResultSchema, CommandRequestSchema, GateArmAnswerRequestSchema, type GateArmAnswerRequest, IdentityGateAnswerRequestSchema, type IdentityGateAnswerRequest, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, deriveBulkRunCommandFingerprint, type BulkRunCommandAcceptanceRecord, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandResult, type CommandRequest } from "../../../rules/commands/commands.js";
+import { CommandAdmissionRequestSchema, CommandIdentityConflictError, BulkRunCommandRequestSchema, CommandResultSchema, CommandRequestSchema, GateArmAnswerRequestSchema, type GateArmAnswerRequest, IdentityGateAnswerRequestSchema, type IdentityGateAnswerRequest, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, deriveBulkRunCommandFingerprint, type BulkRunCommandAcceptanceRecord, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandResult, type CommandRequest } from "../../../rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
@@ -96,7 +96,7 @@ function settingsRequestRefusal(
 /** Admit the strict command shell before classifying request-only ordinary leaf failures. */
 function parseOperatorCommand(input: unknown, clock: Clock): CommandIngressDecision {
   const stamped = withOperatorProvenance(input, clock);
-  const parsed = CommandRequestSchema.safeParse(stamped);
+  const parsed = CommandAdmissionRequestSchema.safeParse(stamped);
   if (parsed.success) {
     const request = parsed.data;
     if (request.family === "settings") {

@@ -25,6 +25,7 @@ import {
   DashboardDayWireSchema,
   WorkerCardUnavailableReasonSchema,
   QUEUE_NOT_STARTING_NO_WORKER,
+  QueueStatusSchema,
   QueueSurfaceWireSchema,
   TERMINAL_QUEUE_STATUSES,
   type DashboardDayWire,
@@ -43,6 +44,9 @@ import {
   EidSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
+  FingerprintSchema,
+  IsoInstantSchema,
+  RunIdSchema,
   type Fingerprint,
   type BrowserSystemId,
   type IsoInstant,
@@ -229,7 +233,88 @@ export interface RunQueueProjectionDeps {
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
 
   readonly scheduleRebuild?: (rebuild: () => void) => void;
+  /** Builds the day on the navigation lane; without it the day is built here. */
+  readonly dayLane?: DashboardDayLane;
+  /** A lane's replica serves days and publishes nothing: an ingest only invalidates its cached days. */
+  readonly replica?: true;
 }
+
+/* ── the day as a lane serves it ─────────────────────────────────────────── */
+
+/** A served row's identity and status: what main records as published from a day it did not build itself. */
+const PublishedSurfaceSchema = z.strictObject({ runId: RunIdSchema, status: QueueStatusSchema, startedAt: IsoInstantSchema });
+export type PublishedSurface = z.infer<typeof PublishedSurfaceSchema>;
+
+const LaneDayFactsSchema = z.strictObject({
+  /** The timeline position the day's fold reached, in the snapshot its rows were read in. */
+  position: z.number().int().nonnegative(),
+  surfaces: z.array(PublishedSurfaceSchema),
+  /** The asked publication source ids that snapshot does not hold. */
+  missingPublications: z.array(FingerprintSchema),
+  /** Whether this read built the day, rather than reusing one it had cached. */
+  built: z.boolean(),
+});
+export type LaneDayFacts = z.infer<typeof LaneDayFactsSchema>;
+/** The day without main's envelope stamp. The lane never names a projection cursor or generation. */
+export type UnstampedDayWire = Omit<DashboardDayWire, "projectionGeneration" | "snapshotCursor">;
+
+/** The lane body: `{"d":<unstamped day>,"f":<facts>}`, serialized once where it was built. */
+export function laneDayBody(day: DashboardDayWire, facts: LaneDayFacts): { d: UnstampedDayWire; f: LaneDayFacts } {
+  const { projectionGeneration: _generation, snapshotCursor: _cursor, ...unstamped } = day;
+  return { d: unstamped, f: facts };
+}
+
+const LANE_DAY_HEAD = "{\"d\":";
+const LANE_DAY_FACTS = ",\"f\":";
+
+/** Splits a lane body without parsing the day: the facts are the body's last member, and no key inside them is `f`. */
+export function decodeLaneDay(body: string): { dayJson: string; facts: LaneDayFacts } {
+  const split = body.lastIndexOf(LANE_DAY_FACTS);
+  if (!body.startsWith(LANE_DAY_HEAD) || !body.endsWith("}") || split <= LANE_DAY_HEAD.length) throw new Error("queue-day-lane-body-unverified: frame");
+  const facts = LaneDayFactsSchema.parse(JSON.parse(body.slice(split + LANE_DAY_FACTS.length, -1)));
+  return { dayJson: body.slice(LANE_DAY_HEAD.length, split), facts };
+}
+
+/**
+ * Main's stamp, spliced into the lane's day after its two leading members, in the wire's own key order. A body whose
+ * leading members are not exactly this day and descriptor set is refused, never re-serialized.
+ */
+export function stampDashboardDay(dayJson: string, stamp: Readonly<{ day: string; descriptorHash: string; generation: number; cursor: ProjectionCursor }>): string {
+  const head = `{"day":${JSON.stringify(stamp.day)},"descriptorHash":${JSON.stringify(stamp.descriptorHash)},`;
+  if (!dayJson.startsWith(head) || !dayJson.endsWith("}")) throw new Error("queue-day-lane-body-unverified: head");
+  return `${head}"projectionGeneration":${JSON.stringify(stamp.generation)},"snapshotCursor":${JSON.stringify(stamp.cursor)},${dayJson.slice(head.length)}`;
+}
+
+/** The navigation lane's day read, as the projection calls it. */
+export interface DashboardDayLane {
+  read(day: string, request: Readonly<{ slot?: Readonly<{ subscriberId: string; slot: string }>; signal?: AbortSignal;
+    publications: readonly string[] }>): Promise<Readonly<{ body: string; processRevision: number | null }>>;
+  /** The current process-facts revision; a reply built at another revision is discarded. */
+  processRevision(): number;
+}
+
+/** A day read at a dispatch: its body, the generation and cursor main held when it asked, and whether it still holds. */
+export interface DashboardDayRead {
+  readonly dayJson: string;
+  readonly facts: LaneDayFacts;
+  readonly generation: number;
+  /** The cursor main held when it asked; everything main published at or below it is in the day. */
+  readonly dispatchCursor: number;
+  /** Built from main's own fold in the dispatching turn, so it is framed at its dispatch cursor with no fold mapping. */
+  readonly foldedHere: boolean;
+  /** The day as built here, stamped at the dispatch cursor; a lane read carries none. */
+  readonly wire: DashboardDayWire | undefined;
+  /** False once the projection generation or the process facts moved past the read. */
+  current(): boolean;
+}
+
+/** Where main's fold stood when the lane's position `T` was reached. */
+export type FoldCursor = { readonly state: "at"; readonly cursor: number } | { readonly state: "ahead" | "evicted" };
+
+/** One ingest of main's fold: the timeline position it reached and the cursor before and after its envelopes. */
+interface FoldMark { readonly position: number; readonly before: number; after: number }
+const FOLD_MARK_LIMIT = 1024;
+const DAY_LANE_ATTEMPTS = 3;
 
 type ProjectionCursor = z.infer<typeof ProjectionCursorSchema>;
 
@@ -365,6 +450,8 @@ export class RunQueueProjection {
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
   readonly #notifiedRows = new Map<string, { status: QueueSurfaceWire["status"]; surface?: string }>();
   readonly #dayCache = new Map<string, CachedQueueDay>();
+  /** Day builds so far, so a lane read can report whether it built its day or reused a cached one. */
+  #dayBuilds = 0;
 
   #timelineCursor = 0;
 
@@ -378,6 +465,9 @@ export class RunQueueProjection {
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
   #rebuildScheduled = false;
+  #foldMarks: FoldMark[] = [{ position: 0, before: 1, after: 1 }];
+  #foldMarksEvicted = false;
+  readonly #foldWaiters = new Set<{ readonly position: number; readonly resolve: () => void }>();
 
   constructor(deps: RunQueueProjectionDeps) {
     this.#deps = deps;
@@ -464,6 +554,27 @@ export class RunQueueProjection {
   }
 
   #ingestTail(tail: ReturnType<typeof readTimelineRecords>, workerFactsCaptured = false): void {
+    const before = this.#cursorValue;
+    try { this.#foldTail(tail, workerFactsCaptured); }
+    finally { this.#markFold(before); }
+  }
+
+  /** Records where this ingest left the fold, and wakes the reads waiting for it. */
+  #markFold(before: number): void {
+    const last = this.#foldMarks.at(-1);
+    // A later ingest at the same position mints above the mark: those envelopes are not part of reaching it.
+    if (last === undefined || last.position < this.#timelineCursor) {
+      this.#foldMarks.push({ position: this.#timelineCursor, before, after: this.#cursorValue });
+      if (this.#foldMarks.length > FOLD_MARK_LIMIT) { this.#foldMarks.shift(); this.#foldMarksEvicted = true; }
+    }
+    for (const waiter of [...this.#foldWaiters]) {
+      if (waiter.position > this.#timelineCursor) continue;
+      this.#foldWaiters.delete(waiter);
+      waiter.resolve();
+    }
+  }
+
+  #foldTail(tail: ReturnType<typeof readTimelineRecords>, workerFactsCaptured: boolean): void {
     this.#timelineCursor = tail.cursor;
     if (tail.records.length === 0) return;
     const touched = new Set<RunId>();
@@ -599,10 +710,10 @@ export class RunQueueProjection {
   }
 
   /** Worker authority can publish a run's new status before its spans arrive. */
-  recordPublishedDay(day: DashboardDayWire): void {
-    for (const { runId, status, startedAt } of day.queueSurfaces) {
+  recordPublishedDay(day: string, surfaces: readonly PublishedSurface[]): void {
+    for (const { runId, status, startedAt } of surfaces) {
       const previous = this.#notifiedRows.get(runId);
-      if (previous !== undefined && previous.status !== status && searchPartitionDay(new Date(startedAt)) === day.day) {
+      if (previous !== undefined && previous.status !== status && searchPartitionDay(new Date(startedAt)) === day) {
         this.#notifiedRows.set(runId, { status });
       }
     }
@@ -662,10 +773,15 @@ export class RunQueueProjection {
     this.#timelineCursor = cursor;
     this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
     this.#cursorValue = 1;
+    this.#foldMarks = [{ position: cursor, before: 1, after: 1 }];
+    this.#foldMarksEvicted = false;
     this.#health = { state: "live" };
     this.#foregroundSnapshot = undefined;
     this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
     this.#emit({ kind: "generation", cursor: this.cursor() });
+    // Every read waiting on the old generation's fold settles; its reader sees the generation moved.
+    for (const waiter of this.#foldWaiters) waiter.resolve();
+    this.#foldWaiters.clear();
   }
 
   refreshRun(runId: string): void {
@@ -940,6 +1056,7 @@ export class RunQueueProjection {
         for (const id of affected.runIds) cached.refreshedRuns.add(id);
       }
     }
+    if (this.#deps.replica === true) return { snapshot: false, runIds: affected.runIds };
     const publications = this.#deps.reader.withRunTreeSnapshot([], () => {
       const patches: { day: string; patch: z.infer<typeof DashboardDayPatchSchema> }[] = [];
       let snapshotNeeded = affected.workerChanged;
@@ -1596,6 +1713,7 @@ export class RunQueueProjection {
         crashed: authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "failed"
           && authority.lifecycle.failureId !== undefined && this.#deps.authority.getFailure(authority.lifecycle.failureId)?.code === "RUN_INTERRUPTED_BY_CRASH",
         status,
+        cancelled: authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "cancelled",
         ...(authority.lifecycle.state === "terminal" && (authority.lifecycle.outcome === "failed" || authority.lifecycle.outcome === "interrupted")
           ? { recoverySource: authority.lifecycle.outcome } : {}),
         rowRevision: authority.version,
@@ -1705,6 +1823,96 @@ export class RunQueueProjection {
     return wire;
   }
 
+  /**
+   * The cursor that names main's fold at the lane's position `T`. A batched fold that passed `T` names the cursor before
+   * that batch, so its envelopes replay above the baseline. `ahead` until main folds `T`; `evicted` once its marks are gone.
+   */
+  foldCursor(position: number): FoldCursor {
+    const index = this.#foldMarks.findIndex(mark => mark.position >= position);
+    const mark = this.#foldMarks[index];
+    if (mark === undefined) return { state: "ahead" };
+    if (mark.position === position) return { state: "at", cursor: mark.after };
+    if (index === 0 && this.#foldMarksEvicted) return { state: "evicted" };
+    return { state: "at", cursor: mark.before };
+  }
+
+  /** Settles once main's fold has reached `position`; a rebuild that moves past it also settles it. */
+  whenFolded(position: number, signal?: AbortSignal): Promise<void> {
+    if (this.#timelineCursor >= position) return Promise.resolve();
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const onAbort = () => { this.#foldWaiters.delete(waiter); reject(signal?.reason instanceof Error ? signal.reason : new Error("read-aborted")); };
+    const waiter = { position, resolve: () => { signal?.removeEventListener("abort", onAbort); resolve(); } };
+    if (signal?.aborted === true) { onAbort(); return promise; }
+    signal?.addEventListener("abort", onAbort, { once: true });
+    this.#foldWaiters.add(waiter);
+    return promise;
+  }
+
+  /** The day and the facts main needs from it, as the lane serves it; the lane's replica calls this inside its read snapshot. */
+  buildLaneDay(day: string): { d: UnstampedDayWire; f: LaneDayFacts } {
+    const builds = this.#dayBuilds;
+    const wire = this.buildDashboardDayWire(day);
+    return laneDayBody(wire, this.#laneFacts(wire, this.#dayBuilds > builds));
+  }
+
+  /** A lane replica's days were built with the process facts main sent before; none of them is served again. */
+  processFactsChanged(): void {
+    this.#dayCache.clear();
+  }
+
+  #laneFacts(wire: DashboardDayWire, built: boolean): LaneDayFacts {
+    return { position: this.#timelineCursor, missingPublications: [], built,
+      surfaces: wire.queueSurfaces.map(({ runId, status, startedAt }) => ({ runId, status, startedAt })) };
+  }
+
+  /**
+   * One read of the day at this dispatch. With a lane it is the lane's reply; without one it is built here, in this turn,
+   * so it is current by construction.
+   */
+  requestDashboardDay(day: string, request: Readonly<{ slot?: Readonly<{ subscriberId: string; slot: string }>; signal?: AbortSignal;
+    publications?: readonly string[] }> = {}): DashboardDayRead | Promise<DashboardDayRead> {
+    if (this.#health.state === "degraded") {
+      throw new ProjectionDegradedError(`the run/queue projection is degraded and refuses to serve counts: ${this.#health.lastError ?? "unknown"}`);
+    }
+    const generation = this.#generationValue, dispatchCursor = this.#cursorValue, lane = this.#deps.dayLane;
+    if (lane === undefined) {
+      const builds = this.#dayBuilds;
+      const wire = this.buildDashboardDayWire(day);
+      const { dayJson, facts } = decodeLaneDay(JSON.stringify(laneDayBody(wire, this.#laneFacts(wire, this.#dayBuilds > builds))));
+      return { dayJson, facts, generation, dispatchCursor, foldedHere: true, wire, current: () => generation === this.#generationValue };
+    }
+    const revision = lane.processRevision();
+    return lane.read(day, { ...request, publications: request.publications ?? [] }).then(reply => {
+      const { dayJson, facts } = decodeLaneDay(reply.body);
+      return { dayJson, facts, generation, dispatchCursor, foldedHere: false, wire: undefined,
+        current: () => generation === this.#generationValue && reply.processRevision === revision && lane.processRevision() === revision };
+    });
+  }
+
+  /** The stamp main gives a day read at baseline `cursor`. */
+  stampDay(day: string, read: DashboardDayRead, cursor: number): string {
+    return stampDashboardDay(read.dayJson, { day, descriptorHash: this.#deps.descriptorSetHash, generation: read.generation,
+      cursor: ProjectionCursorSchema.parse(`pc:${String(cursor)}`) });
+  }
+
+  /**
+   * `GET /api/v1/dashboard`: the same day read the stream frames, stamped at main's baseline for the lane's position. A read
+   * that a generation or process-facts change overtook is asked again, at most three times.
+   */
+  async servedDashboardDay(day: string, request: Readonly<{ slot?: Readonly<{ subscriberId: string; slot: string }>; signal?: AbortSignal }> = {}): Promise<string> {
+    const parsedDay = LocalDateSchema.parse(day);
+    for (let attempt = 1; ; attempt++) {
+      const read = await this.requestDashboardDay(parsedDay, request);
+      if (read.foldedHere) return this.stampDay(parsedDay, read, read.dispatchCursor);
+      if (read.current()) await this.whenFolded(read.facts.position, request.signal);
+      if (read.current()) {
+        const fold = this.foldCursor(read.facts.position);
+        if (fold.state === "at") return this.stampDay(parsedDay, read, Math.max(fold.cursor, read.dispatchCursor));
+      }
+      if (attempt >= DAY_LANE_ATTEMPTS) throw new ProjectionDegradedError("queue-day-lane-read-overtaken");
+    }
+  }
+
   #workerSurfaceKey(members: readonly WorkerSlotRecord[]): string | { state: "unavailable" } {
     // SQLite certifies the durable slots, writes and leases. Live views and pending starts are process state.
     try {
@@ -1779,6 +1987,7 @@ export class RunQueueProjection {
     patch?: QueueDayPatch): {
     wire: DashboardDayWire; sources: Omit<QueueDaySources, "through">; reusable: ReadonlySet<string>;
   } {
+    this.#dayBuilds += 1;
     const surfaces: QueueSurfaceWire[] = [];
     let fixtureRuns: readonly RunRecord[] | undefined;
     const monthPrefix = parsedDay.slice(0, 7);

@@ -43,7 +43,7 @@ async function laneFixture() {
 it("refuses a wrong protocol by name in a worker started on Relay's lane entry", async () => {
   const { start } = await laneFixture();
   const worker = new Worker(new URL("../../../../src/backend/storage/sqlite/dashboard-read-lane.js", import.meta.url), {
-    workerData: { ...start, protocol: "relay.dashboard-read-lane.v0" }, execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
+    workerData: { start: { ...start, protocol: "relay.dashboard-read-lane.v0" }, gate: new Int32Array(new SharedArrayBuffer(4)), clock: "host" }, execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
   const failure = await new Promise<unknown>(resolve => worker.once("error", resolve));
   assert.ok(failure instanceof Error);
   assert.match(failure.message, /read-lane-protocol-mismatch/u);
@@ -72,6 +72,38 @@ it("refuses a protocol mismatch, a binding mismatch and an inode change between 
   const opened = openReadLane(admitReadLane(start), 250);
   assert.equal(opened.history, opened.native);
   opened.native.close();
+});
+
+it("proves a read's source when it begins and before it returns, not per statement, and refuses a read whose source changed", async () => {
+  const { fixture, start } = await laneFixture();
+  const admitted = admitReadLane(start);
+  const opened = openReadLane(admitted, 250);
+  cleanups.push(() => { opened.native.close(); admitted.admission.release(); });
+  const held = `${fixture.path}.held`;
+  const replace = () => {
+    renameSync(fixture.path, held);
+    new DatabaseSync(held, { readOnly: true }).exec(`VACUUM INTO '${fixture.path}'`);
+    chmodSync(fixture.path, 0o600);
+  };
+  const restore = () => { unlinkSync(fixture.path); renameSync(held, fixture.path); };
+  const { schemaVersion } = opened.history.getMeta();
+  assert.equal(opened.history.withAuthorityReadSnapshot(() => admitted.withProvedSource(() => opened.history.getMeta().schemaVersion)), schemaVersion);
+
+  let readInside = false;
+  try {
+    assert.throws(() => opened.history.withAuthorityReadSnapshot(() => admitted.withProvedSource(() => {
+      replace();
+      opened.history.getMeta();
+      readInside = true;
+    })), /profile-database-open-source-changed/u);
+  } finally { restore(); }
+  assert.ok(readInside, "a statement inside the read does not re-prove the source");
+
+  replace();
+  try { assert.throws(() => opened.history.getMeta(), /profile-database-open-source-changed/u, "outside a read every statement still proves it"); }
+  finally { restore(); }
+  assert.equal(opened.history.getMeta().schemaVersion, schemaVersion);
+  assert.throws(() => admitted.withProvedSource(() => admitted.withProvedSource(() => 0)), /read-lane-source-proof-nested/u);
 });
 
 it("refuses a group-writable source, a hard-linked source and a missing write-ahead log", async () => {

@@ -15,8 +15,10 @@ import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.
 import { RunWorkerStartupError, type RunWorkerCapacity } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
 import { assistantProposalDigest } from "../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
 
+import * as assistantComposition from "../../../../../src/backend/app/composition/dashboard/assistant.js";
 import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { buildRunDetail } from "../../../../../src/backend/runs/queries/run-detail.js";
 import { ASSISTANT_WORKFLOW_FACTS_PATH, assistantWorkflowFacts } from "../../../../../src/backend/assistant/plugins/workflows/facts.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { ASSISTANT_FAILURES, AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionDecisionSchema } from "../../../../../src/models/dashboard/assistant.js";
@@ -27,6 +29,8 @@ import { completedResponseStream } from "../../../../support/helpers/chatgpt-res
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import type { RuntimePreflightRunnerFactory } from "../../../../../src/backend/app/preflight/runtime-runners.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { DASHBOARD_TAB_HEADER } from "../../../../../src/dashboard/client/transport.js";
+import { RunDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
 import { ScriptedWorkerChild } from "../../../../support/helpers/backend/fake-worker-port.js";
 import { EXECUTOR_EID, personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -179,11 +183,21 @@ function seedAssistantReadRun({ context, clock }: Pick<ServedAssistantFixture, '
 }
 
 it('serves the read tools through authenticated composition without private provider input or command effects', async () => {
+  using pluginComposition = vi.spyOn(assistantComposition, 'createAssistantPluginDeps');
   await withServedAssistant(async fixture => {
     const { context, transport, origin, originalFetch } = fixture, { run, title, subjectRef } = seedAssistantReadRun(fixture);
+    const tabId = randomUUID();
     const client = createDashboardClient({ baseUrl: origin });
-    await vi.waitFor(async () => assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12));
-    const detail = await client.runDetail(run.envelope.runId);
+    const response = await originalFetch(`${origin}/api/v1/runs/${run.envelope.runId}`, { headers: { [DASHBOARD_TAB_HEADER]: tabId } });
+    const wire = await response.text();
+    assert.equal(response.status, 200, wire);
+    const detail = RunDetailWireSchema.parse(JSON.parse(wire));
+    assert.equal(detail.timeline.events.length, 12, wire);
+
+    const mainRunDetail = pluginComposition.mock.lastCall?.[0].runDetail;
+    assert.ok(mainRunDetail);
+    await vi.waitFor(() => assert.equal(buildRunDetail(mainRunDetail, run.envelope.runId).timeline.events.length, 12));
+
     const ask = (message: string, selected?: string) => send(clientDoor(client), { message, ...(selected === undefined ? {} : { subjectRef: selected }) });
     const outputs: unknown[] = [];
     let turns = 0;
@@ -672,8 +686,8 @@ it.each(["ready", "refused", "unknown"] as const)('confirms run actions with %s 
       assert.deepEqual(stale, { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
 
       const current = `run_${run.envelope.runId}_${cancelled.version}`;
-      assert.deepEqual(await refusedTurn('Rerun this run', outbound => ['propose_rerun', { run: selected(outbound) }], current),
-        { state: 'refused', code: 'ASSISTANT_PROPOSAL_REFUSED', message: ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED }, 'a cancelled source is not rerun-eligible');
+      const rerunCancelled = await propose('Rerun this run', outbound => ['propose_rerun', { run: selected(outbound) }], current);
+      assert.ok(rerunCancelled.effect === 'workflow-start' && rerunCancelled.source === 'rerun', 'a cancelled source reruns');
       const durableCounts = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw => ({
         actions: raw.prepare('SELECT id FROM assistant_actions').all().length, plans: raw.prepare('SELECT id FROM run_requests').all().length }));
       const countsBefore = durableCounts();
@@ -722,6 +736,7 @@ it.each(["ready", "refused", "unknown"] as const)('confirms run actions with %s 
       assert.ok(documents.effect === 'workflow-start' && documents.dryRun);
       assert.deepEqual(documents.startPlan.planned.map(row => row.display), [{ kind: 'document', documentNumber: '4502' }, { kind: 'document', documentNumber: '4510' }]);
       assert.equal(documents.targetLabel, '2 documents');
+      assert.equal(documents.startPlan.stopBefore, 'Clear Pending Terminations', 'a dry-run card carries its descriptor boundary');
       assert.equal((await decide({ chatId: documents.chatId, actionId: documents.actionId, revision: documents.revision, decision: 'cancel' })).state, 'cancelled');
 
       const listed = await propose('Look up 10812345 and Jordan Lee', outbound => {
@@ -731,6 +746,7 @@ it.each(["ready", "refused", "unknown"] as const)('confirms run actions with %s 
       assert.equal(listed.effect, 'workflow-start'); if (listed.effect !== 'workflow-start') throw new Error('start card required');
       assert.deepEqual(listed.startPlan.planned.map(row => row.display), [{ kind: 'person', employeeId: '10812345' }, { kind: 'person', name: 'Jordan Lee' }]);
       assert.equal(listed.targetLabel, '2 people');
+      assert.equal(listed.startPlan.stopBefore, undefined, 'a live read has no dry-run boundary');
       const record = database.authority.assistantAuthorization.action(listed.actionId); assert.ok(record && record.command.family === 'start');
       const startPlanId = record.command.family === 'start' ? record.command.target.startPlanId : '';
       assert.equal((await decide({ chatId: listed.chatId, actionId: listed.actionId, revision: listed.revision, decision: 'cancel' })).state, 'cancelled');

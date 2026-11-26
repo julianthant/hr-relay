@@ -17,10 +17,11 @@
   overflow: clip;
   height: min(calc(100dvh - 2 * var(--ds-space-loose)), 40rem);
   max-height: calc(100dvh - 2 * var(--ds-space-loose));
-  max-width: min(calc(100vw - 2 * var(--ds-space-loose)), 45rem);
-  grid-template-columns: minmax(0, 1fr);
+  max-width: min(calc(100vw - 2 * var(--ds-space-loose)), 55rem);
+  grid-template-columns: 12rem minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
+.launch-dialog.launch-rerun { grid-template-columns: minmax(0, 1fr); }
 .launch-dialog > header, .launch-dialog > footer { grid-column: 1 / -1; }
 div.launch-dialog[data-size="lg"][data-band] > header { @apply border-b border-ui-stroke bg-ui-panel; }
 div.launch-dialog[data-size="lg"][data-band] > header > div { @apply gap-0; }
@@ -68,7 +69,7 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start borde
 .launch-design .launch-step-status { @apply h-5 min-w-20 justify-end rounded-none border-0 bg-transparent px-0 py-0 text-[13px] font-normal; }
 .launch-design .launch-step-status[data-status="completed"] { @apply text-ui-positive; }
 .launch-design .launch-step-status[data-status="failed"] { @apply text-ui-danger; }
-.launch-design .launch-step-status[data-status="unfinished"] { @apply text-ui-muted; }
+.launch-design .launch-step-status[data-status="cancelled"] { @apply text-ui-muted; }
 
 .launch-design [data-slot="label"],
 .launch-design .ds-field-label,
@@ -80,6 +81,13 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start borde
 
 
 
+
+.launch-dialog .launch-picker { @apply w-48 pb-5; background: var(--ds-surface-1); }
+.launch-dialog .launch-picker-search { @apply shrink-0 p-3; }
+.launch-dialog .launch-picker .workflow-rail { @apply p-2 pt-0; }
+.launch-dialog .launch-picker .workflow-rail-groups { @apply gap-4 pb-2; }
+.launch-dialog .launch-picker .workflow-rail h3 { @apply text-caption font-medium text-ui-muted; }
+.launch-dialog .launch-picker .workflow-rail button { @apply h-8 rounded-lg pl-[30px] font-normal; }
 
 .required-capture-row { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-loose); padding: var(--ds-space-cozy) var(--ds-space-loose); }
 

@@ -55,6 +55,45 @@ it("refuses first registration without issued client and OAuth denial without to
     const denied = await f.service.signIn({ usePlan: true }); await f.callback(denied, { error: "access_denied" }); await assert.rejects(denied.completion, { code: "CHATGPT_AUTH_CANCELLED" }); assert.equal(f.calls.length, 0);
   } finally { await f.cleanup(); }
 });
+for (const [name, query, code, text] of [
+  ["a refusal with a code", { error: "access_denied", code: "synthetic-code" }, "CHATGPT_AUTH_INVALID", "Invalid callback."],
+  ["an undocumented success field", { session: "synthetic" }, "CHATGPT_AUTH_INVALID", "Invalid callback."],
+  ["a success with a refusal's description", { error_description: "synthetic" }, "CHATGPT_AUTH_INVALID", "Invalid callback."],
+  ["an undocumented refusal field", { error: "access_denied", session: "synthetic" }, "CHATGPT_AUTH_INVALID", "Invalid callback."],
+  ["an empty code", { code: "" }, "CHATGPT_AUTH_INVALID", "Invalid callback."],
+  ["a documented refusal", { error: "access_denied", error_description: "synthetic", error_uri: "https://auth.openai.com/denied" }, "CHATGPT_AUTH_CANCELLED", "Sign-in refused."],
+  ["another documented refusal", { error: "server_error" }, "CHATGPT_AUTH_INVALID", "Sign-in refused."],
+] as const) it(`settles the attempt on ${name} without a token exchange`, async () => {
+  const f = await chatGptFixture(); try {
+    const attempt = await f.service.signIn({ usePlan: true }), response = await f.callback(attempt, query);
+    assert.equal(response.status, 400); assert.equal(await response.text(), text);
+    await assert.rejects(attempt.completion, { code }); assert.equal(f.calls.length, 0); assert.equal(attempt.signingIn, false);
+  } finally { await f.cleanup(); }
+});
+it("leaves the attempt pending on a callback with a wrong state, path or repeated field, then accepts the documented one", async () => {
+  const f = await chatGptFixture(); try {
+    const attempt = await f.service.signIn({ usePlan: true });
+    assert.equal((await f.callback(attempt, { state: "wrong" })).status, 400);
+    const authorize = new URL(attempt.authorizationUrl), other = new URL(authorize.searchParams.get("redirect_uri") ?? "");
+    other.searchParams.set("state", authorize.searchParams.get("state") ?? ""); other.searchParams.append("code", "one"); other.searchParams.append("code", "two");
+    assert.equal((await fetch(other)).status, 400);
+    other.pathname = "/auth/other"; assert.equal((await fetch(other)).status, 400);
+    assert.equal(attempt.signingIn, true); assert.equal(f.calls.length, 0);
+    assert.equal((await f.callback(attempt, { scope: "openid profile" })).status, 200);
+    assert.equal((await attempt.completion).state, "connected");
+  } finally { await f.cleanup(); }
+});
+it("keeps provider fields Relay does not model out of the stored account", async () => {
+  const f = await chatGptFixture(); try {
+    f.setToken({ private_token_field: "UNMODELLED_CANARY" }); f.setClaims({ private_claim: "UNMODELLED_CANARY" }); f.setDiscovery({ private_discovery: "UNMODELLED_CANARY" });
+    assert.equal((await f.connected()).state, "connected");
+    const stored = f.repository.read(); assert.ok(stored?.session);
+    const { idToken, ...session } = stored.session; assert.ok(idToken.length > 0);
+    assert.deepEqual(Object.keys(session).sort(), ["accessToken", "earliestRefreshAt", "expiresAt", "refreshToken", "scopes", "usage", "usePlan"]);
+    assert.deepEqual(Object.keys(stored.registration ?? {}).sort(), ["email", "name", "subject"]);
+    assert.equal(JSON.stringify({ ...stored, session }).includes("UNMODELLED_CANARY"), false);
+  } finally { await f.cleanup(); }
+});
 it("signout revokes, clears tokens and forgets client and host so the return sign-in is fresh", async () => {
   const f = await chatGptFixture(); try {
     await f.connected(); const original = f.repository.read(); assert.ok(original);

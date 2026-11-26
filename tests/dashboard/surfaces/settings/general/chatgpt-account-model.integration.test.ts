@@ -9,8 +9,9 @@ it("publishes the connected account when the BFF check takes more than ten secon
     expiresAt: "2026-10-12T13:00:00.000Z", planUsage: "enabled" });
   const response = Promise.withResolvers<Response>();
   let signal: AbortSignal | null | undefined;
-  const client = createDashboardClient({ baseUrl: "http://127.0.0.1", fetchImpl: (url, init) => {
-    assert.equal(url, "http://127.0.0.1/api/v1/settings/chatgpt-account");
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1", fetchImpl: async (url, init) => {
+    if (url === "http://127.0.0.1/api/v1/settings/chatgpt-account") return Response.json(status);
+    assert.equal(url, "http://127.0.0.1/api/v1/settings/chatgpt-account/check");
     signal = init?.signal;
     return response.promise;
   } });

@@ -14,6 +14,7 @@ import { closePersonLookupReceiptDatabase, openPersonLookupReceiptDatabase } fro
 import { deriveRunEvidenceReceipt, type ReceiptBuildInput } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { failureStatus } from "../../../../src/backend/transports/http/routes/failure-status.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -553,7 +554,7 @@ afterEach(async () => {
     assert.equal(projected.status, 500);
     assert.equal(projected.body.code, "INTERNAL_FAILURE");
     assert.equal(JSON.stringify(projected.body).includes(rawPermanentKey), false);
-    assert.match(String(projected.body.message), /evidence digest [a-f0-9]{12}…/u);
+    assert.equal(projected.body.message, ERROR_CATALOG.INTERNAL_FAILURE.text);
   });
 });
 }

@@ -12,6 +12,10 @@ import { RunIdSchema } from "../../src/rules/identity/ids.js";
 import { systemClock } from "../../src/rules/time/clock.js";
 
 const SCAN_LIMIT_MS = 100;
+const BARRIER_TIMEOUT_MS = 10_000;
+// The worker moves 0 to 1 after opening the snapshot. The host releases it with 2.
+const SCAN_STATE = 0;
+const SCAN_PAUSE_US = 1;
 const CopyProfileSchema = z.enum(["staging", "development"]);
 const entry = process.argv[1];
 const cli = isMainThread && entry !== undefined && pathToFileURL(entry).href === import.meta.url
@@ -33,10 +37,45 @@ export const notificationScanClick = defineLaneRead(import.meta.url, "notificati
   },
 });
 
+export const heldNotificationSourceScan = defineLaneRead(import.meta.url, "held-notification-source-scan", {
+  ...notificationSourceScan,
+  processFacts: true,
+  run(context, args) {
+    const barrier = z.instanceof(SharedArrayBuffer).parse(context.processFacts);
+    const gate = new Int32Array(barrier);
+    const started = systemClock.monotonicMs();
+    if (Atomics.compareExchange(gate, SCAN_STATE, 0, 1) === 0) {
+      Atomics.notify(gate, SCAN_STATE);
+      if (Atomics.wait(gate, SCAN_STATE, 1, BARRIER_TIMEOUT_MS) === "timed-out") {
+        throw new Error("notification-scan-bench-barrier-not-released");
+      }
+      Atomics.store(gate, SCAN_PAUSE_US, Math.floor((systemClock.monotonicMs() - started) * 1000));
+    }
+    return notificationSourceScan.run(context, args);
+  },
+});
+
+export function notificationScanBarrier() {
+  const gate = new Int32Array(new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT));
+  return {
+    options: { processFacts: { revision: 0, facts: gate.buffer } },
+    async waitForStart() {
+      const wait = Atomics.waitAsync(gate, SCAN_STATE, 0, BARRIER_TIMEOUT_MS);
+      if (wait.async) await wait.value;
+      if (Atomics.load(gate, SCAN_STATE) !== 1) throw new Error("notification-scan-bench-barrier-not-started");
+    },
+    release() {
+      Atomics.store(gate, SCAN_STATE, 2);
+      Atomics.notify(gate, SCAN_STATE);
+    },
+    pausedMs: () => Atomics.load(gate, SCAN_PAUSE_US) / 1000,
+  };
+}
+
 export const NOTIFICATION_SCAN_BENCH_ENTRY = new URL(import.meta.url);
 runReadLaneWorker();
 
-/** The uncached host round trip is a conservative upper bound on the transaction, including its commit. */
+/** The uncached host round trip, minus the deliberate barrier hold, bounds the transaction including commit. */
 export async function measureNotificationScan(admission: RuntimeAdmission, database: AuthorityDatabase, runs: number) {
   const reader = createTrustRunReader(database);
   const [target] = database.authority.runs.listPage({ offset: 0, limit: 1 });
@@ -44,29 +83,32 @@ export async function measureNotificationScan(admission: RuntimeAdmission, datab
   const samples = [];
   for (let sample = 0; sample < runs; sample++) {
     const lanes = createDashboardReadHost({ admission, database, clock: systemClock, lanes: ["navigation"], entry: NOTIFICATION_SCAN_BENCH_ENTRY });
+    const barrier = notificationScanBarrier();
     try {
       await lanes.ready;
       const order: string[] = [];
       const started = systemClock.monotonicMs();
-      const scan = lanes.read(notificationSourceScan, {}).then(reply => {
+      const scan = lanes.read(heldNotificationSourceScan, {}, barrier.options).then(reply => {
         order.push("scan");
         if (reply.cached) throw new Error("notification-scan-bench-cached-first-scan");
-        return systemClock.monotonicMs() - started;
+        return { scanMs: systemClock.monotonicMs() - started - barrier.pausedMs(), body: reply.body };
       });
+      await Promise.race([barrier.waitForStart(), scan]);
       const clickStarted = systemClock.monotonicMs();
       const click = lanes.read(notificationScanClick, { runId: target.envelope.runId }).then(reply => {
         order.push("click");
         if (JSON.parse(reply.body) !== "present") throw new Error("notification-scan-bench-click-run-missing");
         return systemClock.monotonicMs() - clickStarted;
       });
-      const rerun = lanes.read(notificationSourceScan, {}).then(reply => {
-        order.push("rerun");
-        if (!reply.cached) throw new Error("notification-scan-bench-store-moved");
-      });
-      const [scanMs, clickMs] = await Promise.all([scan, click, rerun]);
+      barrier.release();
+      const [{ scanMs, body }, clickMs] = await Promise.all([scan, click]);
+      const rerun = await lanes.read(heldNotificationSourceScan, {}, barrier.options);
+      order.push("rerun");
+      if (!rerun.cached) throw new Error("notification-scan-bench-store-moved");
+      if (rerun.body !== body) throw new Error("notification-scan-bench-cache-body-mismatch");
       if (lanes.status().checkpoints.length !== 0) throw new Error("notification-scan-bench-checkpoint-overlap");
       samples.push({ scanMs, clickMs, order });
-    } finally { await lanes.close(); }
+    } finally { barrier.release(); await lanes.close(); }
   }
   const counts = database.withAuthorityReadSnapshot(() => {
     const retained = listCanonicalRuns(reader, "live");

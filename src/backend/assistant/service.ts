@@ -9,10 +9,10 @@ import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.j
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import type { RunRecord } from "../../models/run/record.js";
 import { z } from "zod";
-import { AssistantHistoryOperationSchema, type AssistantActivityWire, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, AssistantModelPreferenceViewSchema, AssistantModelCatalogSchema, type AssistantModelCatalog, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
+import { AssistantHistoryOperationSchema, type AssistantActivityWire, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
   ASSISTANT_ATTACHMENT_TYPES, ASSISTANT_ATTACHMENT_UPLOAD_MS, type AssistantStageResult, ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_CONTEXT_TEXT_MAX_BYTES, type AssistantAttachmentRecord, type AssistantUserContentPart, assistantInputMedia,
   type AssistantActionDecision, type AssistantActionResult, type AssistantFailureCode, type AssistantResult, type AssistantInputItem } from "../../models/dashboard/assistant.js";
-import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountAuthority, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
+import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../runs/commands/refusals.js";
 import { PreflightAdmissionRefusal } from "../../rules/preflight/preflight-admission.js";
@@ -31,7 +31,7 @@ export interface AssistantServiceOptions {
   readonly activity?: { read(this: void, search?: string): AssistantActivityWire };
   readonly debugEvents?: { emit(event: Omit<z.input<typeof DebugEventSchema>, "build" | "pid">): void };
   readonly readModelPreference?: () => AssistantModelPreferenceView;
-  readonly account: Pick<ChatGptAccountService, "inferAssistant" | "listAssistantModels" | "readAuthority" | "revalidateAuthority">;
+  readonly account: Pick<ChatGptAccountService, "inferAssistant" | "listAssistantModels" | "readAssistantModels" | "readAuthority" | "revalidateAuthority">;
   /** Trusted composition currentness (selected profile and runtime); runs before and after every await. */
   readonly assertComposition?: () => void;
   readonly owner: () => Readonly<{ profileId: string; epoch: number }>;
@@ -70,7 +70,6 @@ export function createAssistantService(options: AssistantServiceOptions) {
   const live = new Map<string, AbortController>();
   const now = () => options.clock.now().toISOString();
   let staging = false;
-  let catalogRead: Readonly<{ catalog: AssistantModelCatalog; authority: ChatGptAccountAuthority }> | undefined;
   const actionRefused = (error: unknown) => {
     if (options.debugEvents !== undefined) emitFaultWithCauses(options.debugEvents, undefined, error,
       { category: "http", area: "assistant-proposal", reason: "action-decision", code: "ASSISTANT_PROPOSAL_REFUSED" });
@@ -86,16 +85,10 @@ export function createAssistantService(options: AssistantServiceOptions) {
   };
   return Object.freeze({
     activity: options.activity?.read,
-    /** The signed-in account's model catalog, for the composer's model picker. */
-    /** Remembered while the account authority it was read under stays current; a failed read is never remembered. */
-    async models(signal: AbortSignal) {
+    /** The observed model catalog of the signed-in account, for the composer's model picker. */
+    models() {
       options.assertComposition?.();
-      if (catalogRead !== undefined && options.account.revalidateAuthority(catalogRead.authority)) return catalogRead.catalog;
-      const { catalog, authority } = await options.account.listAssistantModels(signal);
-      options.assertComposition?.();
-      const parsed = AssistantModelCatalogSchema.parse(catalog);
-      catalogRead = { catalog: parsed, authority };
-      return parsed;
+      return options.account.readAssistantModels();
     },
     modelPreference() {
       if (options.readModelPreference === undefined) throw new Error("assistant-model-preference-unavailable");
@@ -185,6 +178,8 @@ export function createAssistantService(options: AssistantServiceOptions) {
   async function runTurn(request: AssistantRequest, signal: AbortSignal, history: AssistantHistoryRepository,
     onAccepted: (value: Accepted) => void): Promise<Turn> {
       let current: Accepted | undefined;
+      /** The tool whose call is in flight, so an unclassified failure's log line names it. */
+      let failingTool: string | undefined;
       try {
         let selected: ReturnType<AssistantServiceOptions["selectedModel"]>;
         try { selected = options.selectedModel(); } catch (error) { if (closure(error)) throw error; return stop("ASSISTANT_UNAVAILABLE"); }
@@ -270,6 +265,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           const key = canonicalJsonStringify({ name: tool.name, arguments: parsed });
           let outcome = outcomes.get(key);
           if (outcome === undefined) {
+            failingTool = tool.name.replaceAll("_", "-");
             try {
               if (tool.kind === "session" || tool.kind === "typed-proposal") return stop("ASSISTANT_INVALID");
               if (tool.kind === "proposal") {
@@ -288,6 +284,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
               outcome = { code, output: canonicalJsonStringify({ error: code, text: ASSISTANT_FAILURES[code] }) };
             }
             outcomes.set(key, outcome);
+            failingTool = undefined;
           }
           if (outcome.code === undefined) unrecovered.delete(tool.name);
           else if (!unrecovered.has(tool.name)) unrecovered.set(tool.name, outcome.code);
@@ -316,7 +313,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           if (code.success) return stop(code.data);
         }
         if (error instanceof AssistantProtocolError || error instanceof z.ZodError || error instanceof SyntaxError) return stop("ASSISTANT_INVALID");
-        fault(error, "assistant-turn", "unclassified-failure", "ASSISTANT_UNAVAILABLE");
+        fault(error, failingTool === undefined ? "assistant-turn" : "assistant-tool", failingTool ?? "unclassified-failure", "ASSISTANT_UNAVAILABLE");
         return stop("ASSISTANT_UNAVAILABLE");
       }
   }

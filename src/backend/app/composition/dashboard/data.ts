@@ -15,13 +15,13 @@ export function composeDataQueries(deps: RunDetailQueryDeps) {
         const row = deps.projection.runFold(runId);
         if (row === undefined) return [];
         if (row.queued.runId !== runId) throw new Error("RERUN_VALUES_EVIDENCE_MISMATCH");
-        return row.taskSpans.flatMap((span) => {
+        return [...row.taskSpans.flatMap((span) => {
           const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
           if (nodeId === undefined) return [];
           return [{ nodeId, attempt: span.attempt, ...(span.startedAt === undefined ? {} : { startedAt: span.startedAt }),
             ...(span.endedAt === undefined ? {} : { endedAt: span.endedAt }),
             ...(span.outcome === undefined ? {} : { outcome: span.outcome }) }];
-        });
+        }), ...row.openGates.map(({ gate, openedAt }) => ({ nodeId: gate, attempt: row.attempt, startedAt: openedAt }))];
       } }, request);
     },
   };

@@ -21,7 +21,7 @@ async function harness() {
 }
 
 
-function sourceOf(h: Harness, kind: "cancelled" | "discarded" | "superseded") {
+function sourceOf(h: Harness, kind: "discarded" | "superseded") {
   const queued=h.start(h.proposal());
   return requireLifecycleApplied(h.lifecycle.transition({commandId:h.ids.uuid(),runId:queued.envelope.runId,
     expectedVersion:queued.version,lifecycle:{state:"terminal",outcome:kind,endedAt:h.clock.now().toISOString()}}));
@@ -52,7 +52,8 @@ function snapshot(h: Harness, source: RunRecord) {
 }
 
 describe("Rerun source eligibility at planning and final consumption", () => {
-  for (const kind of ["cancelled", "discarded", "superseded"] as const) {
+  // A cancelled source reruns (rerun-values.integration.test.ts); a discarded or superseded one never does.
+  for (const kind of ["discarded", "superseded"] as const) {
     it(`refuses ${kind} source planning without persisting a plan or lifecycle effects`, async () => {
       const h = await harness(); const source = sourceOf(h, kind);
       const before = snapshot(h, source); const planIdsBefore = h.planIds.minted().length;
