@@ -3,6 +3,7 @@ import type { CatalogueEntry } from "../story-catalogue.js";
 import { EXPLORER_STORIES } from "./explorer-stories.js";
 import { SPREADSHEETS_STORIES } from "./spreadsheets-stories.js";
 import { ASSISTANT_STORIES } from "./assistant-stories.js";
+import { ASSISTANT_REPLY_PARTS_STORIES } from "./assistant-reply-parts-stories.js";
 import { ANALYTICS_STORIES } from "./analytics-stories.js";
 import { INTAKE_STORIES } from "./intake-stories.js";
 import { NOTIFICATIONS_STORIES } from "./notifications-stories.js";
@@ -15,4 +16,4 @@ import { SHELL_STORIES } from "./shell-stories.js";
 import { SIGN_IN_STORIES } from "./sign-in-stories.js";
 
 export const CATALOGUE: readonly CatalogueEntry[] = Object.freeze([...QUEUE_ROW_STORIES, ...SHELL_STORIES, ...SIGN_IN_STORIES, ...RUN_PANEL_STORIES, ...RUN_DIALOG_STORIES, ...INTAKE_STORIES, ...SETTINGS_STORIES, ...SESSIONS_STORIES, ...NOTIFICATIONS_STORIES,
-  ...EXPLORER_STORIES, ...ANALYTICS_STORIES, ...ASSISTANT_STORIES, ...SPREADSHEETS_STORIES]);
+  ...EXPLORER_STORIES, ...ANALYTICS_STORIES, ...ASSISTANT_STORIES, ...ASSISTANT_REPLY_PARTS_STORIES, ...SPREADSHEETS_STORIES]);
