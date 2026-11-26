@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { defineLaneRead, type DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
+import { defineLaneRead, type DashboardReadLanes, type LaneReadDefinition } from "../../../storage/sqlite/dashboard-read-host.js";
 import { createSettingsApplicationExecutor } from "../../../runs/commands/settings-service.js";
 import { selectActiveRunSettings } from "../../../runs/settings/run-settings.js";
 import { activeSettingsConfig, activeSettingsRuntimeIdentity, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings, settingsRuntimeStatus, type ProtectedSettingsRuntimeSnapshot } from "../../../runtime/settings/settings-runtime.js";
@@ -7,13 +7,14 @@ import type { createCredentialStore } from "../../../storage/configuration/crede
 import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { createNativePathPicker } from "../../../transports/http/native-path-picker.js";
 import type { SettingsRouteDeps } from "../../../transports/http/routes/settings-types.js";
-import { resolveConfigWithProvenance } from "../../config/resolve.js";
+import { resolveConfigWithProvenance, ResolvedConfigSchema } from "../../config/resolve.js";
 import { DESCRIPTORS } from "../../registries/workflow-registry.js";
 import { buildSettingsFacts } from "../../../runs/queries/settings.js";
 import { buildSettingsEditor } from "../../../runs/queries/settings-editor.js";
 import { SettingsFileRecordSchema, SettingsRuntimeIdentitySchema } from "../../../../models/config/settings.js";
 import { StoredConfigSchema } from "../../../../models/config/snapshot.js";
 import { PersonPreferencesSchema } from "../../../../models/config/person-preferences.js";
+import { HostConfigFactsSchema } from "../../../../models/config/host-display.js";
 import { SettingsFactsWireSchema } from "../../../../models/dashboard/settings.js";
 import type { EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
@@ -24,17 +25,26 @@ const fileRecord = SettingsFileRecordSchema.shape;
 const StoredSettingsRecordSchema = z.strictObject({ revision: fileRecord.revision, settingsSchemaHash: fileRecord.settingsSchemaHash,
   settingsFingerprint: fileRecord.settingsFingerprint, settings: fileRecord.settings });
 const SettingsStorePartSchema = z.strictObject({ record: StoredSettingsRecordSchema, active: SettingsRuntimeIdentitySchema,
-  activeConfig: StoredConfigSchema, activePreferences: PersonPreferencesSchema });
+  activeConfig: StoredConfigSchema, activePreferences: PersonPreferencesSchema,
+  resolutions: z.strictObject({ record: ResolvedConfigSchema, defaults: ResolvedConfigSchema }) });
 
-/** The store part of the settings editor: the saved record, the active identity and its snapshot. Protected settings never reach a lane. */
+/**
+ * The store part of the settings editor: the saved record, the active identity and its snapshot, and the record's and the
+ * defaults' resolutions (gate G6: resolving on main costs more than the editor's budget). Protected settings never reach a lane.
+ */
 const settingsStorePartRead = defineLaneRead(import.meta.url, "settings-store-part", {
-  lane: "navigation", priority: "interactive", args: z.strictObject({}), tables: SETTINGS_TABLES,
-  run({ native: { authority } }) {
+  lane: "navigation", priority: "interactive", tables: SETTINGS_TABLES,
+  // resolve validates the pair itself.
+  args: z.strictObject({ hostFacts: HostConfigFactsSchema, runtimeStoragePair: z.strictObject({ stateRoot: z.string(), artifactRoot: z.string() }).optional() }),
+  run({ native: { authority } }, { hostFacts, runtimeStoragePair }) {
     const active = activeSettingsRuntimeIdentity(authority);
     authority.runtimeConfig.requireActive({ settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint,
       configFingerprint: active.configFingerprint });
     const selected = selectActiveRunSettings(authority);
-    return SettingsStorePartSchema.parse({ record: readSettings(authority), active, activeConfig: selected.config, activePreferences: selected.preferences });
+    const record = readSettings(authority);
+    const resolve = (settings: unknown) => resolveConfigWithProvenance(settings, hostFacts, undefined, runtimeStoragePair);
+    return SettingsStorePartSchema.parse({ record, active, activeConfig: selected.config, activePreferences: selected.preferences,
+      resolutions: { record: resolve(record.settings), defaults: resolve({}) } });
   },
 });
 
@@ -96,21 +106,21 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
     const editable = () => buildSettingsEditor(routes.settingsEditor);
     return { routes, editable, executor: createSettingsApplicationExecutor(resolveSettings, input.credentials) };
   }
-  const laneRead = async (definition: typeof settingsStorePartRead | typeof settingsFactsRead) => {
+  const laneRead = async <Args>(definition: LaneReadDefinition<Args, unknown>, args: Args) => {
     input.assertCurrent?.();
-    const { body } = await lanes.read(definition, {});
+    const { body } = await lanes.read(definition, args);
     input.assertCurrent?.();
     return body;
   };
   // Reused while the store part, the protected facts and the fiscal year are unchanged; any of them changing builds again.
   let last: { key: string; document: EditableSettingsWire } | undefined;
   const editable = async (): Promise<EditableSettingsWire> => {
-    const body = await laneRead(settingsStorePartRead);
+    const body = await laneRead(settingsStorePartRead, { hostFacts, ...(input.runtimeStoragePair === undefined ? {} : { runtimeStoragePair: input.runtimeStoragePair }) });
     const protectedFacts = readProtectedFacts(routes.settingsEditor.protectedSettings);
     const key = canonicalJsonStringify({ body, protectedFacts: protectedFacts.state === "read" ? protectedFacts.facts : null, fiscalYear: clock.fiscalYear() });
     if (last?.key === key) return last.document;
-    const { record, active, activeConfig, activePreferences } = SettingsStorePartSchema.parse(JSON.parse(body));
-    const document = buildSettingsEditor({ ...routes.settingsEditor,
+    const { record, active, activeConfig, activePreferences, resolutions } = SettingsStorePartSchema.parse(JSON.parse(body));
+    const document = buildSettingsEditor({ ...routes.settingsEditor, resolutions,
       settings: { read: () => ({ record, runtimeStatus: settingsRuntimeStatus(input, record, active), activeConfig, activePreferences }) },
       // The editor shows an unreadable protected store as unknown; the read's own error is what it sees.
       protectedSettings: { read: () => {
@@ -120,6 +130,6 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
     last = { key, document };
     return document;
   };
-  return { routes: { ...routes, settingsLane: { editable, facts: () => laneRead(settingsFactsRead) } }, editable,
+  return { routes: { ...routes, settingsLane: { editable, facts: () => laneRead(settingsFactsRead, {}) } }, editable,
     executor: createSettingsApplicationExecutor(resolveSettings, input.credentials) };
 }
