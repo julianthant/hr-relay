@@ -394,7 +394,7 @@ afterEach_m3(_afterEachFixture0);
     assert_m3.equal(h.queueRoots.length, before + 1);
     const replay = await client.executeCommand(command); assert_m3.equal(replay.state, "already-applied");
     assert_m3.equal(h.queueRoots.length, before + 1);
-    await assert_m3.rejects(client.executeCommand({ ...command, requestedBy: "someone-else" }), /divergent|reused/);
+    await assert_m3.rejects(client.executeCommand({ ...command, requestedBy: "someone-else" }), { code: "INTERNAL_FAILURE" });
     assert_m3.deepEqual(await launch.openRerun({ runId: source.envelope.runId, expectedVersion: source.version - 1 }), { state: "refused", code: "source-stale" });
     assert_m3.throws(() => launch.prefill(response.snapshot, { selectedValueIndexes: [99], selectedStepKeys: ["reading"], dryRun: true, browserMode: "headless", captureBrowserScreenshots: false }), /VALUE_UNAVAILABLE/);
     assert_m3.equal(h.lifecycle.delete({ commandId: h.ids.uuid(), runId: source.envelope.runId, expectedVersion: source.version }).state, "deleted");
