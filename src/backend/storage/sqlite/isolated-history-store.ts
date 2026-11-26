@@ -119,6 +119,8 @@ export type CopyHistorySeed = Readonly<{
   build(runs: readonly RunRecord[]): Readonly<{
     runs: readonly Readonly<{ run: RunRecord; failure?: FailureRecord; events: readonly SpanEventWire[] }>[];
     notifications: readonly NotificationRecord[];
+    /** Sample Sessions cards, served beside the pool's members on a copy and never given to it. */
+    sessions: readonly Readonly<{ workerId: string; payload: unknown }>[];
   }>;
 }>;
 
@@ -148,6 +150,7 @@ function removePreviousSeed(archive: DatabaseSync): void {
     archive.exec(`DELETE FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"} IN (SELECT id FROM copy_seed_members WHERE kind='run')`);
   }
   archive.exec("DELETE FROM notifications WHERE id IN (SELECT id FROM copy_seed_members WHERE kind='notification'); DELETE FROM copy_seed_members");
+  archive.exec("CREATE TABLE IF NOT EXISTS copy_seed_sessions(worker_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL) STRICT; DELETE FROM copy_seed_sessions");
 }
 
 export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding: ProfileDatabaseBinding, cloned: boolean, seed: CopyHistorySeed) {
@@ -199,8 +202,25 @@ export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding:
       insert("notifications", initialNotificationColumns(notice));
       membership.run("notification", notice.notificationId);
     }
+    const session = archive.prepare("INSERT INTO copy_seed_sessions(worker_id,payload_json) VALUES(?,?)");
+    for (const { workerId, payload } of population.sessions) session.run(workerId, JSON.stringify(payload));
     archive.exec("COMMIT");
-    return { runs: population.runs.length, byWorkflow, notifications: population.notifications.length };
+    return { runs: population.runs.length, byWorkflow, notifications: population.notifications.length, sessions: population.sessions.length };
+  } finally { archive.close(); }
+}
+
+/** The copy seed's sample run IDs and Sessions cards, read once when a copy dashboard starts; an archive without a seed has none. */
+export function readCopySeedSamples(path: string) {
+  assertArchiveFile(path);
+  const archive = new DatabaseSync(path, { readOnly: true });
+  try {
+    const has = (table: string) => archive.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table) !== undefined;
+    const runIds = has("copy_seed_members") ? archive.prepare("SELECT id FROM copy_seed_members WHERE kind='run'").all()
+      .map(row => z.strictObject({ id: z.uuid() }).parse(row).id) : [];
+    const sessions = has("copy_seed_sessions") ? archive.prepare("SELECT worker_id,payload_json FROM copy_seed_sessions ORDER BY worker_id").all()
+      .map(row => z.strictObject({ worker_id: z.string(), payload_json: z.string() }).parse(row))
+      .map(row => ({ workerId: row.worker_id, payload: z.unknown().parse(JSON.parse(row.payload_json)) })) : [];
+    return { runIds, sessions };
   } finally { archive.close(); }
 }
 

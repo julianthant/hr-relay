@@ -1,6 +1,6 @@
 import type { IconName } from "../../../models/workflow/presentation.js";
 import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
+import { createErrorCatalogFailure, ERROR_CATALOG, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import "./launch-presentation.css";
@@ -256,7 +256,7 @@ export function RunStartDialog({
     effects: {
       loadSource: async source => {
         const response = await launchService.openRerun({ runId: source.runId, expectedVersion: source.expectedVersion });
-        if (response.state === "refused") throw new Error(`Rerun unavailable: ${response.code}`);
+        if (response.state === "refused") throw new Error(response.code === "sample-run" ? ERROR_CATALOG.SAMPLE_RUN_REFUSED.text : `Rerun unavailable: ${response.code}`);
         return response.snapshot;
       },
       restoreSource: restored => {

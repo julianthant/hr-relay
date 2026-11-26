@@ -2,6 +2,7 @@ import type { DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-
 import { aggregateMemberRetryAvailable, batchMemberRetryAvailable } from "../../../runs/queries/run-retry.js";
 import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
+import type { CopySamples } from "./copy-samples.js";
 
 import {
   AuthorityDatabase,
@@ -16,7 +17,9 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
   workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
   listNotifications?: Parameters<typeof createRunQueueProjection>[0]["authority"]["listNotifications"];
   /** Seam for the queue-day lane read. */
-  readLanes?: DashboardReadLanes }) {
+  readLanes?: DashboardReadLanes;
+  /** A copy's sample Sessions cards, served beside the durable worker slots. */
+  samples?: Pick<CopySamples, "slots" | "leases"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
   const changeKey = database.trackAuthorityTables(["runs", "run_batches", "worker_pools"]);
   return createRunQueueProjection({
@@ -49,11 +52,11 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
-      listWorkerSlots: () => database.authority.workerSlots.list(),
+      listWorkerSlots: () => [...database.authority.workerSlots.list(), ...input.samples?.slots() ?? []],
       listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
       ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
       ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }),
-      heldDuoLeases: workerId => database.heldDuoLeases(workerId),
+      heldDuoLeases: workerId => input.samples?.leases(workerId) ?? database.heldDuoLeases(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),

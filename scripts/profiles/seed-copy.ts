@@ -24,16 +24,21 @@ import { OCR_INPUT_EXAMPLE } from "../../src/models/workflows/ocr/input.js";
 import { ONBOARDING_INPUT_EXAMPLE } from "../../src/models/workflows/onboarding/input.js";
 import { WorkStudyCanonicalInput } from "../../src/models/workflows/work-study/input.js";
 import { deriveStableUuid, deriveTraceId } from "../../src/rules/identity/identifiers.js";
-import { LOCAL_OPERATOR_ACTOR_ID, NodeIdSchema } from "../../src/rules/identity/ids.js";
+import { BrowserSystemIdSchema, LOCAL_OPERATOR_ACTOR_ID, NodeIdSchema } from "../../src/rules/identity/ids.js";
 import { capturedInstantClock, systemClock } from "../../src/rules/time/clock.js";
 import { sha256Hex } from "../../src/rules/validation/sha256.js";
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowProjections, type AnyWorkflowDescriptor } from "../../src/workflow-kit/workflow.js";
+import { CopySampleSessionSchema, SAMPLE_WORKER_ORDINAL_FLOOR, sampleWorkerId, type CopySampleSession } from "../../src/backend/app/composition/dashboard/copy-samples.js";
 
 const CopyProfileSchema = z.enum(["development", "staging"]);
 type CopyProfile = z.infer<typeof CopyProfileSchema>;
 const seedStates = ["succeeded", "failed", "waiting", "paused", "cancelled", "needs-review"] as const;
 type SeedState = typeof seedStates[number];
-type SeedSlot = Readonly<{ workflow: AnyWorkflowDescriptor; state: SeedState; day: string }>;
+/** Today's live queue: the history states plus the ones a worker holds. */
+const liveStates = ["queued", "running", "cancelling", "needs-duo", ...seedStates] as const;
+type LiveState = typeof liveStates[number];
+type SeedSlot = Readonly<{ workflow: AnyWorkflowDescriptor; state: SeedState; day: string }>
+  | Readonly<{ workflow: AnyWorkflowDescriptor; state: LiveState; day: string; live: Readonly<{ order: number; workerId?: string }> }>;
 const dayMs = 86_400_000;
 
 function dateAtOffset(today: number, daysAgo: number): string {
@@ -97,6 +102,39 @@ function planSeedRuns(now: Date, existing: readonly RunRecord[], descriptors: re
   return slots;
 }
 
+const workerStates = { running: "busy", cancelling: "busy", "needs-duo": "busy" } as const;
+const spareWorkers = ["idle", "waiting", "starting", "stopping", "stopped"] as const;
+
+/** Every live state for every workflow today, and the sample workers that hold the claimed ones. */
+function planLiveRuns(now: Date, descriptors: readonly AnyWorkflowDescriptor[]) {
+  const day = searchPartitionDay(now);
+  let ordinal = SAMPLE_WORKER_ORDINAL_FLOOR;
+  const slots: SeedSlot[] = [];
+  const sessions: { session: Omit<CopySampleSession, "browsers" | "runId">; state: LiveState | typeof spareWorkers[number]; workflow: AnyWorkflowDescriptor }[] = [];
+  for (const workflow of descriptors) {
+    for (const [order, state] of liveStates.entries()) {
+      if (!(state in workerStates)) { slots.push({ workflow, state, day, live: { order } }); continue; }
+      const session = { workflow: workflow.id, ordinal: ++ordinal, state: "busy" as const, startedAt: now.toISOString() };
+      slots.push({ workflow, state, day, live: { order, workerId: sampleWorkerId(session) } });
+      sessions.push({ session, state, workflow });
+    }
+  }
+  for (const [index, state] of spareWorkers.entries()) {
+    sessions.push({ session: { workflow: descriptors[index % descriptors.length].id, ordinal: ++ordinal, state, startedAt: now.toISOString() },
+      state, workflow: descriptors[index % descriptors.length] });
+  }
+  return { slots, sessions };
+}
+
+/** A worker's browsers: busy on its first system, ready on the rest; a Duo wait holds its first system's sign-in. */
+function sampleSession({ session, state, workflow }: ReturnType<typeof planLiveRuns>["sessions"][number], runId: string | undefined): CopySampleSession {
+  const systems = BrowserSystemIdSchema.array().parse(workflowProjections(workflow).systems);
+  const browsers = systems.map((system, index) => ({ system, duo: state === "needs-duo" && index === 0,
+    health: index > 0 || state === "idle" || state === "stopping" || state === "stopped" ? "authenticated" as const
+      : state === "needs-duo" || state === "starting" || state === "waiting" ? "starting" as const : "unknown" as const }));
+  return CopySampleSessionSchema.parse({ ...session, ...(runId === undefined ? {} : { runId }), browsers });
+}
+
 const seedNamespace = "relay-copy-seed";
 const seedDigest = sha256Hex(seedNamespace);
 
@@ -130,21 +168,24 @@ function seedInput(workflow: AnyWorkflowDescriptor): RunRecord["input"] {
 
 function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) {
   const { workflow, day, state } = slot;
-  const key = `${profileId}/${workflow.id}/${day}/${state}`;
+  const live = "live" in slot ? slot.live : undefined;
+  const key = `${profileId}/${workflow.id}/${day}/${live === undefined ? "" : "live/"}${state}`;
   const id = (kind: string) => deriveStableUuid(seedNamespace, `${kind}/${key}`);
   const hash = sha256Hex(key);
   const durationMs = 35_000 + Number.parseInt(hash.slice(0, 4), 16) * 5;
   const minuteOffsetMs = Number.parseInt(hash.slice(8, 12), 16) % 3_600_000;
-  const timeMs = Math.min(now.getTime(), Date.parse(`${day}T19:00:00.000Z`) + minuteOffsetMs);
+  // A live run started minutes ago, never before today began.
+  const timeMs = live === undefined ? Math.min(now.getTime(), Date.parse(`${day}T19:00:00.000Z`) + minuteOffsetMs)
+    : Math.max(Date.parse(`${day}T00:00:00.000Z`), now.getTime() - (live.order + 2) * 240_000);
   const enqueuedAt = new Date(timeMs).toISOString();
   const settledAt = new Date(Math.min(now.getTime(), timeMs + durationMs)).toISOString();
   const runId = id("run");
   const traceId = deriveTraceId(workflow.code, runId, capturedInstantClock(enqueuedAt));
-  const title = `Synthetic ${workflow.label} ${day} ${state}`;
+  const title = `Synthetic ${workflow.label} ${live === undefined ? day : "today"} ${state}`;
   const runtimeNodes = descriptorRuntimeNodes(workflow);
   const gate = runtimeNodes.find(node => node.kind === "gate" && node.resolvedBy === "operator");
   const steps = workflow.timeline.flatMap(category => category.nodes);
-  const step = steps[Number.parseInt(hash.slice(4, 8), 16) % steps.length];
+  const step = live?.workerId !== undefined ? steps[Math.floor(steps.length / 2)] : steps[Number.parseInt(hash.slice(4, 8), 16) % steps.length];
   const claim = { workerId: seedNamespace, claimGeneration: 1 };
   const completionFields = { schemaVersion: 1, expectedVersion: 2, claim, authorizedAt: settledAt } as const;
   const failure = state !== "failed" ? undefined : FailureRecordSchema.parse({
@@ -155,9 +196,14 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
     remediation: [{ kind: "no-safe-action", message: "This run is synthetic history." }], occurredAt: settledAt,
   });
   const outcome = { succeeded: "done", failed: "failed", cancelled: "cancelled", "needs-review": "interrupted" } as const;
-  const lifecycle: z.input<typeof RunRecordSchema>["lifecycle"] = state === "waiting"
+  const claimed = live?.workerId === undefined ? undefined : { workerId: live.workerId, claimedAt: new Date(timeMs + 1000).toISOString(), heartbeatAt: now.toISOString() };
+  const lifecycle: z.input<typeof RunRecordSchema>["lifecycle"] = claimed !== undefined
+    ? { state: "running", ...claimed, ...(step === undefined ? {} : { currentNodeId: step.id }) }
+    : state === "queued" ? { state: "queued" }
+    : state === "waiting"
     ? { state: "parked-gate", gateId: gate?.id ?? "synthetic-review", resumeAt: step?.id ?? "synthetic-review", parkedAt: settledAt }
     : state === "paused" ? { state: "queued" }
+    : state === "running" || state === "cancelling" || state === "needs-duo" ? (() => { throw new SeedCopyError(`seed-copy-worker-missing: ${state}`); })()
     : { state: "terminal", outcome: outcome[state] satisfies Extract<RunLifecycle, { state: "terminal" }>["outcome"], endedAt: settledAt,
       ...(failure === undefined ? {} : { failureId: failure.failureId, errorSummary: failure.summary }) };
   const run = RunRecordSchema.parse({
@@ -165,7 +211,8 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
       contractFingerprint: workflow.contractFingerprint, buildId, configFingerprint: seedDigest,
       configSnapshotId: id("config"), resolvedInstance: {}, shape: "single", priority: "interactive", dryRun: true, attempt: 1, enqueuedAt },
     input: seedInput(workflow),
-    lifecycle, claimGeneration: state === "paused" || state === "cancelled" ? 0 : 1, displayName: title,
+    lifecycle, claimGeneration: state === "paused" || state === "cancelled" || state === "queued" ? 0 : 1, displayName: title,
+    ...(state === "cancelling" ? { cancelRequested: true } : {}),
     ...(state === "paused" ? { pause: { state: "paused", commandId: id("pause"), requestedAt: settledAt, pausedAt: settledAt } } : {}),
     ...(state === "succeeded" ? { completion: { ...completionFields, kind: "done", resultDigest: seedDigest } } : {}),
     ...(failure === undefined ? {} : { completion: { ...completionFields, kind: "failed", failureId: failure.failureId } }),
@@ -174,7 +221,17 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   const spanPath = runSpanPath(run.envelope.traceId);
   const common = { workflow: workflow.id, runId, traceId, attempt: run.envelope.attempt, pid: 1 };
   const events: unknown[] = [{ ...runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title }), pid: 1 }];
-  if (run.claimGeneration > 0) events.push({ ...common, t: "run.claimed", workerId: claim.workerId, claimGeneration: 1, ts: enqueuedAt, spanPath });
+  if (run.claimGeneration > 0) events.push({ ...common, t: "run.claimed", workerId: claimed?.workerId ?? claim.workerId, claimGeneration: 1, ts: claimed?.claimedAt ?? enqueuedAt, spanPath });
+  if (claimed !== undefined && step !== undefined) {
+    // The steps before the current one finished; the current one is open.
+    const index = steps.indexOf(step), stepMs = (now.getTime() - Date.parse(claimed.claimedAt)) / (index + 1);
+    for (const [position, node] of steps.slice(0, index + 1).entries()) {
+      const startedAt = new Date(Date.parse(claimed.claimedAt) + position * stepMs).toISOString();
+      const task = { ...common, kind: "task", parentSpanPath: spanPath, spanPath: taskSpanPath(traceId, NodeIdSchema.parse(node.id), 1, 1) };
+      events.push({ ...task, t: "span.started", ts: startedAt, name: node.label });
+      if (node !== step) events.push({ ...task, t: "span.ended", ts: new Date(Date.parse(startedAt) + stepMs).toISOString(), outcome: "done" });
+    }
+  }
   if (run.lifecycle.state === "terminal") {
     const { outcome } = run.lifecycle;
     const failureRef = failure === undefined ? {} : { failureId: failure.failureId };
@@ -279,16 +336,28 @@ async function seedCopy(profile: CopyProfile) {
     const fromDay = dateAtOffset(Date.parse(`${searchPartitionDay(now)}T00:00:00Z`), 89);
     const byState = Object.fromEntries(seedStates.map(state => [state, 0]));
     const byNotificationKind = Object.fromEntries(NotificationTriggerSchema.options.map(kind => [kind, 0]));
+    const todayByState = Object.fromEntries(liveStates.map(state => [state, 0]));
+    const sessionsByState: Record<string, number> = {};
+    const descriptors = WORKFLOW_MODULES.map(({ descriptor }) => descriptor);
     const report = await seedIsolatedHistory(admission, profile, { fromDay, build(existing) {
-      const runs = planSeedRuns(now, existing, WORKFLOW_MODULES.map(({ descriptor }) => descriptor))
-        .map(slot => seedRun(slot, profileId, now, COPY_HISTORY_SEED_BUILD));
+      const live = planLiveRuns(now, descriptors);
+      const runs = [...planSeedRuns(now, existing, descriptors), ...live.slots].map(slot => seedRun(slot, profileId, now, COPY_HISTORY_SEED_BUILD));
       const notifications = seedNotifications(runs, profileId, now);
-      for (const { state } of runs) byState[state] += 1;
+      for (const row of runs) {
+        if ("live" in row) todayByState[row.state] += 1;
+        else byState[row.state] += 1;
+      }
       for (const { trigger } of notifications) byNotificationKind[trigger] += 1;
-      return { runs, notifications };
+      const sessions = live.sessions.map(planned => {
+        const workerId = sampleWorkerId(planned.session);
+        const run = runs.find(row => row.run.lifecycle.state === "running" && row.run.lifecycle.workerId === workerId);
+        sessionsByState[planned.state] = (sessionsByState[planned.state] ?? 0) + 1;
+        return { workerId, payload: sampleSession(planned, run?.run.envelope.runId) };
+      });
+      return { runs, notifications, sessions };
     } });
     const skippedChildOnlyWorkflows = CHILD_ONLY_WORKFLOW_MODULES.map(({ descriptor }) => descriptor.id);
-    return { ...report, byState, byNotificationKind, skippedChildOnlyWorkflows };
+    return { ...report, byState, todayByState, sessionsByState, byNotificationKind, skippedChildOnlyWorkflows };
   });
 }
 
