@@ -7,6 +7,8 @@ import { runRecordOf } from "../../../../support/helpers/backend/dashboard-harne
 import * as inspection from "../../../../../src/backend/storage/sqlite/authority-inspection-off-thread.js";
 import * as sources from "../../../../../src/backend/app/composition/dashboard/notification-sources.js";
 import { syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
+import { createDashboardReadHost, type DashboardReadLanes } from "../../../../../src/backend/storage/sqlite/dashboard-read-host.js";
+import { NOTIFICATION_SCAN_BENCH_ENTRY, notificationScanClick } from "../../../../../scripts/bench/notification-scan.js";
 
 const { fixture, seedRun } = createNotificationCompositionTestWorld();
 
@@ -98,6 +100,75 @@ it("publishes changed sources within one second while health is in flight and sk
     await observer.stop();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    await f.close();
+  }
+});
+
+it("coalesces sustained polling churn into one rerun, lets the queued click through, and publishes each occurrence once", async () => {
+  const f = await fixture();
+  const lanes = createDashboardReadHost({ admission: syntheticStateRoot(f.root), database: f.db, clock: f.clock,
+    lanes: ["navigation"], entry: NOTIFICATION_SCAN_BENCH_ENTRY });
+  const scansDone = Promise.withResolvers<void>();
+  const allPublished = Promise.withResolvers<void>();
+  const order: string[] = [];
+  let scans = 0;
+  const read: DashboardReadLanes["read"] = async (definition, args, options) => {
+    expect(definition).toBe(sources.notificationSourceScan);
+    const scan = ++scans;
+    const reply = await lanes.read(definition, args, options);
+    order.push(`scan ${scan}`);
+    if (scan === 2) scansDone.resolve();
+    return reply;
+  };
+  const { observer, inbox } = createTrustNotifications({ database: f.db, clock: f.clock,
+    ids: sequentialIdFactory("b"), reader: f.reader, readLanes: { read } });
+  const expected: string[] = [];
+  const published: string[] = [];
+  const stopListening = inbox.onPublication(({ event }) => {
+    if (event.kind !== "gate-opened") return;
+    published.push(event.runId);
+    if (published.length === expected.length) allPublished.resolve();
+  });
+  const gate = (seed: number) => {
+    const { envelope: { runId } } = seedRun(f, runRecordOf({ seed, lifecycle: { state: "parked-gate", gateId: "confirm",
+      parkedAt: f.clock.now().toISOString(), resumeAt: "collect" } }));
+    expected.push(runId);
+    return runId;
+  };
+  let timer: ReturnType<typeof startNotificationPolling> | undefined;
+  const track = vi.spyOn(f.db, "trackAuthorityTables");
+  const list = vi.spyOn(f.reader, "list");
+  try {
+    await lanes.ready;
+    const first = gate(1);
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    timer = startNotificationPolling(f.db, f.clock, observer);
+    const click = lanes.read(notificationScanClick, { runId: first }).then(reply => {
+      order.push("click");
+      expect(JSON.parse(reply.body)).toBe("present");
+    });
+    for (let seed = 2; seed <= 8; seed++) {
+      f.clock.advanceWall(1000);
+      gate(seed);
+      vi.advanceTimersByTime(1000);
+    }
+    expect(scans).toBe(1);
+    await Promise.all([click, scansDone.promise, allPublished.promise]);
+    await observer.stop();
+    expect(scans).toBe(2);
+    expect(order).toEqual(["scan 1", "click", "scan 2"]);
+    expect(published.toSorted()).toEqual(expected.toSorted());
+    expect(f.inbox.list("local-operator").map(row => row.count)).toEqual(Array<number>(expected.length).fill(1));
+    expect(track).not.toHaveBeenCalled();
+    expect(list).not.toHaveBeenCalled();
+  } finally {
+    if (timer !== undefined) clearInterval(timer);
+    vi.useRealTimers();
+    list.mockRestore();
+    track.mockRestore();
+    stopListening();
+    await observer.stop();
+    await lanes.close();
     await f.close();
   }
 });

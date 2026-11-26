@@ -682,12 +682,44 @@ describe("source-bound Rerun value read", () => {
     assert.deepEqual(readRerunValues({ ...deps, descriptors: { resolve: () => undefined } }, request(run)), { state: "refused", code: "descriptor-mismatch" });
     assert.equal(snapshot(h, run), before);
   });
-  it("refuses active and cancelled canonical sources", async () => {
+  it("refuses an active source and offers Rerun for a cancelled read-only source", async () => {
     const h = await harness(); const queued = h.start(h.proposal());
     assert.deepEqual(readRerunValues(rerunValuesDeps(h), request(queued)), { state: "refused", code: "source-ineligible" });
     const cancelled = requireLifecycleApplied(h.lifecycle.transition({ commandId: h.ids.uuid(), ...request(queued),
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() } }));
-    assert.deepEqual(readRerunValues(rerunValuesDeps(h), request(cancelled)), { state: "refused", code: "source-ineligible" });
+    const result = readRerunValues(rerunValuesDeps(h), request(cancelled)); assert.ok(result.state === "available", JSON.stringify(result));
+    assert.equal(result.snapshot.source.outcome, "cancelled");
+    const plan = h.proposal(cancelled);
+    assert.equal(plan.rerun?.source.runId, cancelled.envelope.runId); assert.deepEqual(plan.rerun?.warnings, []);
+  });
+  it("offers Rerun for a live write run cancelled after it wrote, warning with the receipt it wrote", async () => {
+    let cancel = () => undefined as void;
+    const h = await sourceBoundHarness(transactionDescriptor(), world => {
+      const reads = sourceBoundReadStores(world, undefined, () => cancel()), writeStores = buildWriteFixtureRegistry(world);
+      return defineTaskStoreRegistry([...reads.stores, ...writeStores.stores], { scenarioIds: [...reads.corpus.scenarioIds, ...writeStores.corpus.scenarioIds],
+        tasks: [...reads.corpus.tasks, ...writeStores.corpus.tasks] });
+    }, undefined, undefined, profiles.create);
+    disposers.push(h.dispose);
+    h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+    const queued = h.start(h.proposal());
+    // The finish step reads after the write committed; the operator cancels there.
+    cancel = () => { const run = h.fresh(queued); requireLifecycleApplied(h.lifecycle.transition({ commandId: h.ids.uuid(), ...request(run),
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() } })); };
+    await h.execute(queued);
+    const source = h.fresh(queued);
+    assert.ok(source.lifecycle.state === "terminal" && source.lifecycle.outcome === "cancelled");
+    const receipts = h.database.authority.writeIntents.listByRun(source.envelope.runId).filter(intent => intent.status === "committed");
+    assert.equal(receipts.length, 1);
+    const values = readRerunValues(rerunValuesDeps(h), request(source)); assert.ok(values.state === "available", JSON.stringify(values));
+    assert.equal(values.snapshot.source.outcome, "cancelled");
+    assert.equal(values.snapshot.transactions[0]?.disposition, "committed");
+    assert.equal(values.snapshot.transactions[0]?.filedBySource, true);
+    const selectedStepKeys = h.descriptor.timeline.map(step => step.key);
+    const preview = previewRerunWarnings(h.database.authority, h.descriptor, { ...request(source), intent: "rerun", selectedStepKeys });
+    assert.deepEqual(preview.warnings.map(warning => warning.writeIntentId), receipts.map(intent => intent.writeIntentId));
+    const plan = h.proposal(source);
+    assert.deepEqual(plan.rerun?.warnings.map(warning => warning.writeIntentId), receipts.map(intent => intent.writeIntentId));
+    assert.equal(h.kernel.execute(h.command(plan)).state, "confirmation-required");
   });
   it("offers ordinary Rerun for successful and interrupted sources with completed evidence", async () => {
     const h = await harness(); await failed(h);
@@ -749,6 +781,7 @@ describe("source-bound Rerun value read", () => {
     const result = readRerunValues(rerunValuesDeps(h), request(run)); assert.ok(result.state === "available", JSON.stringify(result));
     assert.ok(result.snapshot.transactions.length > 0);
     assert.equal(result.snapshot.transactions[0]?.disposition, disposition);
+    assert.equal(result.snapshot.transactions[0]?.filedBySource, disposition === "committed");
     assert.equal(/acknowledgment|confirmationCommandId|businessKeyDigest/u.test(JSON.stringify(result)), false);
     assert.equal(snapshot(h, run), before);
   });

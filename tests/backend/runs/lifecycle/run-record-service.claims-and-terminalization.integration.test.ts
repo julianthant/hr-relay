@@ -147,8 +147,8 @@ describe("canonical run-record service", () => {
     assert.equal(service.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: child.envelope.runId,
       expectedVersion: requestedChild.version, claim: { workerId: firstOwner.workerId, claimGeneration: childClaim.run.claimGeneration },
       endedAt: clock.now().toISOString() }, childDescriptor).state, "applied");
-    assert.deepEqual(database.authority.dependencies.readiness(blocked.envelope.runId, "join"),
-      { state: "blocked", childRunId: child.envelope.runId, reason: "child-cancellation-unavailable" });
+    // A reasonless dashboard cancel is still the operator's authenticated cancel, so the join may read it.
+    assert.deepEqual(database.authority.dependencies.readiness(blocked.envelope.runId, "join"), { state: "ready" });
     assert.equal(database.authority.dependencies.readiness(blocked.envelope.runId, "cancel").state, "ready");
   });
 

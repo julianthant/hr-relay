@@ -2,6 +2,7 @@ import type { Page } from "playwright";
 import { z } from "zod";
 
 interface ViewportSize { readonly width: number; readonly height: number }
+interface ViewportClip extends ViewportSize { readonly x: number; readonly y: number }
 
 const WindowRectSchema = z.strictObject({ left: z.number().int(), top: z.number().int(), width: z.number().int().positive(), height: z.number().int().positive() });
 
@@ -30,6 +31,13 @@ export async function overrideNativeViewport(page: Page) {
   return {
     async resize(size: ViewportSize): Promise<void> {
       await session.send("Emulation.setDeviceMetricsOverride", { ...size, deviceScaleFactor: 0, mobile: false });
+    },
+    async capture(clip: ViewportClip): Promise<Buffer> {
+      // Chromium restores screenshot emulation on the session that took the image.
+      const { cssVisualViewport: { pageX, pageY, scale } } = await session.send("Page.getLayoutMetrics");
+      const { data } = await session.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true,
+        clip: { x: pageX + clip.x, y: pageY + clip.y, width: Math.ceil(clip.width / scale), height: Math.ceil(clip.height / scale), scale } });
+      return Buffer.from(data, "base64");
     },
     restore: async (): Promise<void> => {
       // Clearing the protocol override restores the current native size, including any OS resize during the operation.

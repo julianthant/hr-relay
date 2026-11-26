@@ -638,9 +638,11 @@ that exact run, including a parent; it does not implicitly cascade to children. 
 and pauses the complete current nonterminal membership, including children. UNKNOWN parks remain
 write-recovery authority and are never made resumable by these commands.
 
-Dashboard Rerun accepts done, failed and interrupted sources without uncertain writes. It creates a
-new source-bound run under the current descriptor, without inherited checkpoints or an implicit
-continuation. Compatible older source values remain available for operator selection.
+Dashboard Rerun accepts done, failed, interrupted and cancelled sources without uncertain writes;
+discarded and superseded sources never rerun. It creates a new source-bound run under the current
+descriptor, without inherited checkpoints or an implicit continuation. Start names the source's own
+committed receipts, and a selected step that would file again needs the repeat acknowledgment.
+Compatible older source values remain available for operator selection.
 
 Native Retry takes the item's next authority-allocated attempt and requires the source descriptor
 version and fingerprint. It uses the existing checkpoint policies; an always-rerun node executes again.

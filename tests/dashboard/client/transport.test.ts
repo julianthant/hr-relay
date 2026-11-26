@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { DashboardClientError } from "../../../src/dashboard/client/index.js";
 
-import { createDashboardTransport } from "../../../src/dashboard/client/transport.js";
+import { createDashboardTransport, DASHBOARD_TAB_HEADER, isReadSuperseded } from "../../../src/dashboard/client/transport.js";
 const HASH_D = "d".repeat(64);
 
 it("classifies binary body failures once without reporting body values", async () => {
@@ -131,6 +131,90 @@ describe("Settings read deadlines", () => {
   });
 });
 
+describe("run-start read retries", () => {
+  const readiness = { state: "unavailable", code: "PREFLIGHT_EVIDENCE_MISSING", reason: "Preflight evidence is unavailable for this exact scope; re-check readiness." };
+  it("asks a checks read that got no answer in time again without reporting a failure", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: () => (calls += 1) === 1 ? new Promise<Response>(() => undefined) : Promise.resolve(Response.json(readiness)) });
+    try {
+      const reading = transport.requestJson("/api/v1/preflight?selection=%7B%7D");
+      await vi.advanceTimersByTimeAsync(10_250);
+      assert.deepEqual(await reading, readiness);
+      assert.equal(calls, 2); assert.deepEqual(failures, []);
+    } finally { vi.useRealTimers(); }
+  });
+  it("asks again on a retryable 503 and reports nothing once answered", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: async () => (calls += 1) === 1
+        ? Response.json({ state: "error", code: "STORAGE_SNAPSHOT_CHANGED", message: "busy", retryable: true }, { status: 503 })
+        : Response.json({ workbooks: [] }) });
+    try {
+      const reading = transport.requestJson("/api/v1/workbooks");
+      await vi.advanceTimersByTimeAsync(250);
+      assert.deepEqual(await reading, { workbooks: [] });
+      assert.equal(calls, 2); assert.deepEqual(failures, []);
+    } finally { vi.useRealTimers(); }
+  });
+  it("reports one read failure that names its cause after the last attempt", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: () => { calls += 1; return new Promise<Response>(() => undefined); } });
+    try {
+      const reading = transport.requestJson("/api/v1/workbooks/library/versions/version").then(() => undefined, (error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(3 * 10_000 + 2 * 250);
+      const failure = await reading;
+      assert.ok(failure instanceof DashboardClientError); assert.equal(failure.code, "DASHBOARD_READ_FAILED");
+      assert.equal(calls, 3);
+      assert.deepEqual(failures, [{ code: "DASHBOARD_READ_FAILED", reason: "read-deadline", route: "/api/v1/workbooks" }]);
+    } finally { vi.useRealTimers(); }
+  });
+  it("names a network failure as its cause", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const failures: unknown[] = [];
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: async () => { throw new TypeError("Failed to fetch"); } });
+    try {
+      const reading = transport.requestJson("/api/v1/preflight").then(() => undefined, (error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(500);
+      assert.ok(await reading instanceof DashboardClientError);
+      assert.deepEqual(failures, [{ code: "DASHBOARD_READ_FAILED", reason: "network-failed", route: "/api/v1/preflight" }]);
+    } finally { vi.useRealTimers(); }
+  });
+  it("asks again when the connection drops while the body arrives", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: async () => (calls += 1) === 1
+        ? new Response(new ReadableStream({ start(controller) { controller.error(new TypeError("network error")); } }))
+        : Response.json(readiness) });
+    try {
+      const reading = transport.requestJson("/api/v1/preflight");
+      await vi.advanceTimersByTimeAsync(250);
+      assert.deepEqual(await reading, readiness);
+      assert.equal(calls, 2); assert.deepEqual(failures, []);
+    } finally { vi.useRealTimers(); }
+  });
+  it("names a body that is not JSON once without asking again", async () => {
+    const failures: unknown[] = [];
+    let calls = 0;
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+      fetchImpl: async () => { calls += 1; return new Response("<html>PRIVATE_PAGE</html>"); } });
+    const failure = await transport.requestJson("/api/v1/preflight").then(() => undefined, (error: unknown) => error);
+    assert.ok(failure instanceof DashboardClientError); assert.equal(failure.kind, "http");
+    assert.equal(calls, 1);
+    assert.deepEqual(failures, [{ code: "DASHBOARD_READ_FAILED", reason: "response-json-invalid", route: "/api/v1/preflight" }]);
+  });
+});
+
 it("keeps OAuth completion pending for its five-minute ceremony then bounds body delivery", async () => {
   const { vi } = await import("vitest"); vi.useFakeTimers();
   const transport = createDashboardTransport({ baseUrl: "http://bff.test", fetchImpl: async () => new Response(new ReadableStream({ start() {} })) });
@@ -182,5 +266,39 @@ describe("expected refusals", () => {
       await assert.rejects(transport.requestJson(path, { method }));
       assert.equal(failures.length, 1, `${method} ${path} ${String(status)}`);
     }
+  });
+});
+
+describe("read lanes", () => {
+  it("names the tab on every request, one identity per transport unless the caller supplies it", async () => {
+    const tabs: (string | null)[] = [];
+    const fetchImpl = async (_url: string, init?: RequestInit) => {
+      tabs.push(new Headers(init?.headers).get(DASHBOARD_TAB_HEADER));
+      return Response.json({ ok: true });
+    };
+    const first = createDashboardTransport({ baseUrl: "http://relay.test", fetchImpl, profileHeaders: () => ({ [DASHBOARD_TAB_HEADER]: "forged" }) });
+    await first.requestJson("/api/v1/dashboard?day=2026-11-25");
+    await first.requestJson("/api/v1/settings/editable");
+    await createDashboardTransport({ baseUrl: "http://relay.test", fetchImpl }).requestJson("/api/v1/dashboard?day=2026-11-25");
+    await createDashboardTransport({ baseUrl: "http://relay.test", fetchImpl, tabId: "tab-fixed" }).requestJson("/api/v1/dashboard?day=2026-11-25");
+    assert.equal(tabs[0], tabs[1]);
+    assert.match(tabs[0] ?? "", /^[0-9a-f-]{36}$/u);
+    assert.notEqual(tabs[2], tabs[0]);
+    assert.equal(tabs[3], "tab-fixed");
+  });
+
+  it("rejects a superseded read as READ_SUPERSEDED without reporting it, and still reports a lane restart", async () => {
+    const respond = (code: string) => async () => Response.json({ state: "error", code, message: "refused", retryable: true }, { status: 409 });
+    const failures: unknown[] = [];
+    const superseded = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); }, fetchImpl: respond("READ_SUPERSEDED") });
+    const error: unknown = await superseded.requestJson("/api/v1/dashboard?day=2026-11-25").then(() => undefined, (reason: unknown) => reason);
+    assert.equal(isReadSuperseded(error), true);
+    assert.equal(failures.length, 0);
+    const restarted = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); }, fetchImpl: respond("READ_LANE_RESTARTED") });
+    const other: unknown = await restarted.requestJson("/api/v1/dashboard?day=2026-11-25").then(() => undefined, (reason: unknown) => reason);
+    assert.equal(other instanceof DashboardClientError && other.status === 409, true);
+    assert.equal(isReadSuperseded(other), false);
+    assert.equal(failures.length, 1);
+    assert.equal(isReadSuperseded(new Error("READ_SUPERSEDED")), false);
   });
 });

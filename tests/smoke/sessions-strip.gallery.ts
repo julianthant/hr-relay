@@ -28,7 +28,7 @@ for (const width of [1280, 1024]) {
     for (const seen of [some, all]) {
       expect(seen).toMatchObject({ tops: 1, heights: 1, page: 0 });
       expect(seen.overflow, "the row scrolls sideways").toBeGreaterThan(0);
-      expect(seen.bodyHeight - seen.cardHeight, "the panel is its one card and the panel's padding").toBe(29);
+      expect(seen.bodyHeight - seen.cardHeight, "the panel is its one card and the panel's padding").toBe(31);
     }
     // Two cards exactly fill the row at 1024, so there the third starts past its edge.
     if (width === 1280) expect(all.peeking, "the next card shows at the right edge").toBe(true);

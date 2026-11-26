@@ -672,8 +672,8 @@ it.each(["ready", "refused", "unknown"] as const)('confirms run actions with %s 
       assert.deepEqual(stale, { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
 
       const current = `run_${run.envelope.runId}_${cancelled.version}`;
-      assert.deepEqual(await refusedTurn('Rerun this run', outbound => ['propose_rerun', { run: selected(outbound) }], current),
-        { state: 'refused', code: 'ASSISTANT_PROPOSAL_REFUSED', message: ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED }, 'a cancelled source is not rerun-eligible');
+      const rerunCancelled = await propose('Rerun this run', outbound => ['propose_rerun', { run: selected(outbound) }], current);
+      assert.ok(rerunCancelled.effect === 'workflow-start' && rerunCancelled.source === 'rerun', 'a cancelled source reruns');
       const durableCounts = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw => ({
         actions: raw.prepare('SELECT id FROM assistant_actions').all().length, plans: raw.prepare('SELECT id FROM run_requests').all().length }));
       const countsBefore = durableCounts();

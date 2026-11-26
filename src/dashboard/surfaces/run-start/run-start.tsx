@@ -305,6 +305,7 @@ export function RunStartDialog({
   const readback = view.recovery.state === "retained" && view.recovery.answer !== undefined;
   const load = view.source.kind === "rerun" ? view.source.load : undefined;
   const snapshot = load?.state === "ready" ? load.snapshot : null;
+  const filedBySource = snapshot?.transactions.filter(entry => entry.filedBySource) ?? [];
   const sourceError = load?.state === "failed" ? load.message : null;
   const warning = shownRepeatWarning(view, fingerprint) ?? null;
   const acknowledgment = load?.state === "ready" ? load.acknowledgment : undefined;
@@ -572,6 +573,16 @@ export function RunStartDialog({
                     if (step === undefined) throw new Error("RERUN_WARNING_STEP_UNAVAILABLE");
                     return <RunListRow key={`${entry.nodeId}:${entry.writeIntentId}`} title={stepLabel(step.key)}><span className="text-[13px] text-ui-secondary">{SYSTEM_NAME[entry.system]}</span></RunListRow>;
                   })}</RunList>
+                </section>
+              )}
+
+              {/* The source's own receipts show before Start, whether or not their step runs again; the repeat warning replaces them once Start asks for consent. */}
+              {onLastStage && isRerun && warning === null && filedBySource.length > 0 && (
+                <section aria-label="Already submitted by this run" className="launch-section">
+                  <RunList title="Already submitted" description="The earlier run filed these." label="Already submitted by this run">{filedBySource.map((entry) => (
+                    <RunListRow key={`${entry.nodeId}:${entry.writeIntentId}`} title={stepLabel(entry.stepKey)}>
+                      <span className="text-[13px] text-ui-secondary">{selectedStepKeys.includes(entry.stepKey) ? "Runs again" : "Not run again"}</span>
+                    </RunListRow>))}</RunList>
                 </section>
               )}
 

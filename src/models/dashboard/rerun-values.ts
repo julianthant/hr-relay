@@ -16,7 +16,7 @@ const NodeCompletionSchema = z.strictObject({
   phase: z.enum(["prepare", "commit"]).optional(),
   state: CompletionStateSchema,
   reason: z.enum(["checkpoint", "gate-result", "settled-transaction", "delegation-settled", "previewed", "prepared", "already-present",
-    "failure", "incomplete-execution", "operator-asserted", "step-omitted", "not-recorded"]),
+    "condition-skipped", "failure", "incomplete-execution", "operator-asserted", "step-omitted", "not-recorded"]),
 });
 const StepCompletionSchema = z.strictObject({ key: z.string().min(1), state: CompletionStateSchema, nodes: z.array(NodeCompletionSchema).min(1) });
 const CandidateCoordinatesSchema = RerunValueMappingSchema.extend({
@@ -44,7 +44,7 @@ export const RerunValuesSnapshotSchema = z.strictObject({
   source: z.strictObject({
     runId: RunIdSchema, version: PositiveIntSchema, workflow: WorkflowIdSchema,
     descriptorVersion: PositiveIntSchema, contractFingerprint: FingerprintSchema,
-    outcome: z.enum(["done", "failed", "interrupted"]),
+    outcome: z.enum(["done", "failed", "interrupted", "cancelled"]),
     /** How the source ran; a rerun keeps it, and is refused without a browser mode. */
     dryRun: z.boolean(), priority: RunPrioritySchema, browserMode: BrowserPresentationModeSchema.optional(),
   }),
@@ -63,6 +63,8 @@ export const RerunValuesSnapshotSchema = z.strictObject({
     stepKey: z.string().min(1), nodeId: NodeIdSchema, taskId: TaskIdSchema,
     writeIntentId: WriteIntentIdSchema, evidenceDigest: FingerprintSchema,
     disposition: z.enum(["committed", "observed-present"]),
+    /** True only for the source run's own committed receipt; prior observations and other runs' linked proof are false. */
+    filedBySource: z.boolean(),
   })),
 });
 export type RerunValuesSnapshot = z.infer<typeof RerunValuesSnapshotSchema>;

@@ -31,7 +31,11 @@ import { createTrustNotifications } from "./notifications.js";
 import { ownedDiagnostics } from "./notification-health.js";
 import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeInput,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
 import { composeSettings } from "./settings.js";
+import { createDashboardReadHost, ReadLaneStartError } from "../../../storage/sqlite/dashboard-read-host.js";
 
+export function createComposedDashboardReadHost(input: Omit<Parameters<typeof createDashboardReadHost>[0], "entry">) {
+  return createDashboardReadHost({ ...input, entry: new URL("./read-lane-entry.js", import.meta.url) });
+}
 
 export function prepareDashboardEnvironment(input: DashboardComposeInput, custody: StartupCustody) {
   const requireProducerClosure = (): void => {
@@ -124,6 +128,16 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     await profile.runtime.close();
     databaseClosed = true;
   });
+  // Read lanes boot on their own threads while the rest of startup runs; they close before the store they read.
+  const readLanes = (() => {
+    try { return createComposedDashboardReadHost({ admission, database, clock }); }
+    catch (error) {
+      // Lanes that did start still hold the store: the unwind joins them before it closes the database.
+      if (error instanceof ReadLaneStartError) startupCleanups.push(requiredClosure(() => error.exited));
+      throw error;
+    }
+  })();
+  startupCleanups.push(requiredClosure(() => readLanes.close()));
   importLocalDebugLog(stateRoot, database.authority.timelineEvents);
   importLocalDebugLog(machineAdmission.stateRoot, database.authority.timelineEvents);
   database.sweepOrdinaryDiagnostics(clock.now().toISOString());
@@ -137,7 +151,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   const { persistedSettings, resolved } = bootConfig;
   const protectedSettingsAuthority = context.credentials;
   const protectedSecrets = { read: () => { assertCurrent(); const result = context.protectedSecrets.read(); assertCurrent(); return result; } };
-  const settingsBoundary = composeSettings({ database, hostFacts, clock, active: activeSettingsRuntimeIdentity,
+  const settingsBoundary = composeSettings({ database, readLanes, hostFacts, clock, active: activeSettingsRuntimeIdentity,
     environment: env, credentials: protectedSettingsAuthority,
     runtimeStoragePair,
     resolveSettings: settings => { assertCurrent(); const result = context.resolveSettings(settings); assertCurrent(); return result; }, assertCurrent });
@@ -209,7 +223,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   }
   profile.runtime.registerCommandActivity(profile.token, startSettingsKeepAwake({ database, debugEvents: ownedDiagnostics(database, debugEvents) }));
   const { backfillGapNotifier, inbox: notificationInbox, observer: notificationObserver } = createTrustNotifications({
-    admission, database, clock, ids, reader: lifecycle, stateRoot,
+    admission, database, clock, ids, reader: lifecycle, readLanes, stateRoot,
   });
   startupCleanups.push(requiredClosure(() => notificationObserver.stop()));
 
@@ -237,5 +251,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }

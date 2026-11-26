@@ -7,11 +7,17 @@ import { createDebugEventWriter } from "../../../../src/backend/logs/debug-event
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createDashboardSnapshotQuery } from "../../../../src/backend/storage/sqlite/authority-dashboard-snapshot.js";
 import { createDashboardBackgroundReader } from "../../../../src/backend/storage/sqlite/dashboard-background-read-worker.js";
+import { createDashboardReadHost } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { traceSqliteStatements } from "../../../perf/sqlite-statement-counter.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
+
+function navigationLane(fixture: Awaited<ReturnType<typeof openBoundDatabaseFixture>>) {
+  const lanes = createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock, lanes: ["navigation"] });
+  return { lanes, reader: createDashboardBackgroundReader(lanes) };
+}
 
 function companions(path: string) {
   return ["-wal", "-shm"].filter(suffix => existsSync(path + suffix));
@@ -20,7 +26,7 @@ function companions(path: string) {
 it("returns ordered bounded pages and observes peer commits without advancing authority", async () => {
   const fixture = await openBoundDatabaseFixture("background-read");
   try {
-    const reader = createDashboardBackgroundReader(fixture.profile.admission, fixture.database);
+    const { lanes, reader } = navigationLane(fixture);
     try {
       const peer = fixture.database;
       const start = peer.authority.timelineEvents.highWaterMark();
@@ -65,7 +71,7 @@ it("returns ordered bounded pages and observes peer commits without advancing au
       assert.deepEqual((await reader.read({ ...request, spanTypes: ["run.claimed"] })).records, []);
       await assert.rejects(reader.read({ ...request, limit: 1001 }));
       await assert.rejects(reader.read({ ...request, after: last.cursor + 2 }), /timeline-cursor-reset-required/u);
-    } finally { await reader.close(); }
+    } finally { await lanes.close(); }
   } finally { await fixture.close(); }
 });
 
@@ -84,7 +90,7 @@ it("bounds worker facts and refuses to combine pages across a worker change", as
     const lease = authority.duoCeremonyLeases.acquire({ credentialKey: "a".repeat(64), workerId: slots[0].workerId,
       system: "ucpath", now: now.toISOString(), ttlMs: 5000 });
     assert.equal(lease.state, "acquired");
-    const reader = createDashboardBackgroundReader(fixture.profile.admission, fixture.database);
+    const { lanes, reader } = navigationLane(fixture);
     try {
       const request = { after: authority.timelineEvents.highWaterMark(), limit: 1, nowMs: now.getTime() };
       const { workers } = await reader.read(request);
@@ -100,7 +106,7 @@ it("bounds worker facts and refuses to combine pages across a worker change", as
       authority.workerSlots.setPaused({ workerId: slots[1].workerId, paused: true, now: now.toISOString() });
       await assert.rejects(reader.read({ ...request, workerCursor: workers.next }), /worker-cursor-stale/u);
     } finally {
-      await reader.close();
+      await lanes.close();
       if (lease.state === "acquired") authority.duoCeremonyLeases.release({ token: lease.token, now: now.toISOString() });
     }
   } finally { await fixture.close(); }
@@ -109,8 +115,8 @@ it("bounds worker facts and refuses to combine pages across a worker change", as
 it("refuses a machine admission and a mismatched binding on the worker connection", async () => {
   const fixture = await openBoundDatabaseFixture("background-read");
   try {
-    assert.throws(() => createDashboardBackgroundReader(fixture.profile.machine, fixture.database), /profile-bound-authority-required/u);
-    const reader = createDashboardBackgroundReader(fixture.profile.admission, fixture.database);
+    assert.throws(() => createDashboardReadHost({ admission: fixture.profile.machine, database: fixture.database, clock: systemClock }), /profile-bound-authority-required/u);
+    const { lanes, reader } = navigationLane(fixture);
     const request = { after: fixture.database.authority.timelineEvents.highWaterMark(), limit: 1, nowMs: systemClock.nowMs() };
     const peer = new DatabaseSync(fixture.path);
     const original = fixture.profile.admission.profileBinding.profileId;
@@ -128,28 +134,33 @@ it("refuses a machine admission and a mismatched binding on the worker connectio
       }
     } finally {
       peer.close();
-      await reader.close();
+      await lanes.close();
     }
     fixture.database.close();
     assert.deepEqual(companions(fixture.path), []);
   } finally { await fixture.close(); }
 });
 
-it("drains a pending read before shutdown and refuses later requests", async () => {
+it("holds the store open while its lane runs, settles waiters at close and refuses later requests", async () => {
   const fixture = await openBoundDatabaseFixture("background-read");
   try {
-    const reader = createDashboardBackgroundReader(fixture.profile.admission, fixture.database);
+    const { lanes, reader } = navigationLane(fixture);
     const request = { after: fixture.database.authority.timelineEvents.highWaterMark(), limit: 1, nowMs: systemClock.nowMs() };
     try {
-      const pending = reader.read(request);
-      assert.throws(() => fixture.database.close(), /dashboard-background-reader-open/u);
-      await assert.rejects(reader.read(request), /read-pending/u);
-      const closed = reader.close();
-      await assert.rejects(reader.read(request), /reader-closed/u);
-      const [page] = await Promise.all([pending, closed]);
+      await lanes.ready;
+      const page = await reader.read(request);
       assert.deepEqual(page.records, []);
       assert.equal(page.cursor, request.after);
-    } finally { await reader.close(); }
+      const pending = reader.read(request);
+      assert.throws(() => fixture.database.close(), /dashboard-background-reader-open/u);
+      const closed = lanes.close();
+      await assert.rejects(reader.read(request), /read-lane-closed/u);
+      await Promise.allSettled([pending]);
+      await closed;
+      const aborted = new AbortController();
+      aborted.abort(new Error("caller-gone"));
+      await assert.rejects(reader.read(request, aborted.signal), /read-lane-closed/u);
+    } finally { await lanes.close(); }
   } finally { await fixture.close(); }
 });
 
@@ -157,12 +168,12 @@ it("refuses a closed source without creating WAL companions on the checkpointed 
   const fixture = await openBoundDatabaseFixture("background-source");
   try {
     assert.deepEqual(companions(fixture.path), ["-wal", "-shm"]);
-    const reader = createDashboardBackgroundReader(fixture.profile.admission, fixture.database);
+    const { lanes, reader } = navigationLane(fixture);
     try { await reader.read({ after: 0, limit: 1, nowMs: systemClock.nowMs() }); }
-    finally { await reader.close(); }
+    finally { await lanes.close(); }
     fixture.database.close();
     assert.deepEqual(companions(fixture.path), []);
-    assert.throws(() => createDashboardBackgroundReader(fixture.profile.admission, fixture.database), /authority database is closed/u);
+    assert.throws(() => navigationLane(fixture), /authority database is closed/u);
     assert.deepEqual(companions(fixture.path), []);
   } finally { await fixture.close(); }
 });
@@ -205,5 +216,22 @@ it("reads only changed run facts after its first snapshot", async () => {
     assert.notEqual(rebuilt.workers.fingerprint, updated.value.workers.fingerprint);
     assert.deepEqual(rebuilt, createDashboardSnapshotQuery(native, fixture.profile.admission.profileBinding)(request));
     assert.equal(traceSqliteStatements(() => query(request)).statements.some(({ sql }) => fullRunRead(sql)), false);
+  } finally { native.close(); await fixture.close(); }
+});
+
+it("reports the store position of the transaction its page and worker facts were read in", async () => {
+  const fixture = await openBoundDatabaseFixture("background-snapshot-position");
+  const native = new DatabaseSync(fixture.path, { readOnly: true });
+  try {
+    fixture.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    fixture.database.authority.runs.enqueue(runRecordOf({ seed: 1 }));
+    native.exec("PRAGMA query_only=ON");
+    const positions: unknown[] = [];
+    createDashboardSnapshotQuery(native, fixture.profile.admission.profileBinding)({ after: 0, limit: 1, nowMs: systemClock.nowMs() },
+      position => { positions.push(position); });
+    const meta = fixture.database.getMeta();
+    const seq = native.prepare("SELECT seq FROM sqlite_sequence WHERE name='authority_changes'").get()?.seq;
+    assert.deepEqual(positions, [{ schemaVersion: meta.schemaVersion, schemaCookie: native.prepare("PRAGMA schema_version").get()?.schema_version,
+      authorityGeneration: meta.authorityGeneration, changeLogSeq: seq }]);
   } finally { native.close(); await fixture.close(); }
 });

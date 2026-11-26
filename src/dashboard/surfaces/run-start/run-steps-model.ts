@@ -163,18 +163,32 @@ export function firstStepsFailure(open: readonly OpenStepRow[]): StepsFailure | 
 }
 
 /** The source outcome a row's badge shows, from the nodes of the steps it is made of. */
-export type SourceBadge = "completed" | "skipped" | "failed" | "not-started";
+export type SourceBadge = "completed" | "skipped" | "failed" | "cancelled" | "not-started";
 
-export function sourceBadge(row: StepRow, snapshot: RerunValuesSnapshot): SourceBadge | undefined {
-  const nodes = row.members.flatMap(member => {
+function rowSourceNodes(row: StepRow, snapshot: RerunValuesSnapshot) {
+  return row.members.flatMap(member => {
     const steps = member.workflow === undefined ? snapshot.steps : snapshot.children?.find(child => child.workflow === member.workflow)?.steps ?? [];
     const step = steps.find(candidate => candidate.key === member.step);
     return step === undefined ? [] : step.nodes.filter(node => member.nodes === undefined || member.nodes.includes(node.nodeId));
   });
+}
+
+/** The source outcome Rerun preselection reads: a condition-skipped step counts as not run and nothing reads Cancelled, so the badge never moves the restart point. */
+export function preselectionBadge(row: StepRow, snapshot: RerunValuesSnapshot): Exclude<SourceBadge, "cancelled"> | undefined {
+  const nodes = rowSourceNodes(row, snapshot);
   if (nodes.length === 0) return undefined;
   if (nodes.some(node => node.state === "failed")) return "failed";
   if (nodes.every(node => node.reason === "step-omitted" || node.reason === "operator-asserted")) return "skipped";
-  return nodes.every(node => node.state === "completed") ? "completed" : "not-started";
+  return nodes.every(node => node.state === "completed" && node.reason !== "condition-skipped") ? "completed" : "not-started";
+}
+
+export function sourceBadge(row: StepRow, snapshot: RerunValuesSnapshot): SourceBadge | undefined {
+  const nodes = rowSourceNodes(row, snapshot);
+  if (nodes.length === 0) return undefined;
+  if (nodes.some(node => node.state === "failed")) return "failed";
+  if (nodes.every(node => node.reason === "step-omitted" || node.reason === "operator-asserted")) return "skipped";
+  if (nodes.every(node => node.state === "completed")) return "completed";
+  return snapshot.source.outcome === "cancelled" && nodes.some(node => node.reason === "incomplete-execution") ? "cancelled" : "not-started";
 }
 
 /** The facts the source run typed for a row's step, offered again as typed by hand. */

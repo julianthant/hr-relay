@@ -9,8 +9,8 @@ Run and item Pause/Resume, exact-membership Pause all, and confirmed Pause all a
 canonical typed command facade. The application lifecycle query supplies runtime generation,
 current target versions and update availability. Application pause commands refresh every affected
 run in the served projection before quit notification. Queue producers retain the orthogonal pause
-state and available pause command. Ordinary Rerun accepts done, failed and interrupted sources and
-starts fresh; native Retry retains its lifecycle semantics. A separate server-authored
+state and available pause command. Ordinary Rerun accepts done, failed, interrupted and cancelled
+sources and starts fresh; native Retry retains its lifecycle semantics. A separate server-authored
 Recover completed steps action composes `run/recover-run` through the same client and confirmation
 flow. The server derives its checkpoint recovery plan from an exact failed or interrupted source.
 Readback verifies the new item attempt while the source remains unchanged. Incompatible contracts,
@@ -378,6 +378,10 @@ resumable while every retained change above the presented cursor is still held; 
 replays them and closes with a `change` that carries no day part. Malformed envelopes and HTTP stream failures stop
 with visible error, except a retryable 503 such as `STORAGE_SNAPSHOT_CHANGED`, which reconnects like network loss;
 `GET /api/v1/dashboard` makes three attempts in total on the same refusal: the first and up to two retries, 250 ms apart.
+`GET /api/v1/preflight`, `GET /api/v1/workbooks/**`, and the Start run checks' `GET /api/v1/settings/editable` and
+`GET /api/v1/bootstrap` make the same three attempts after a read deadline, a network failure (including a body cut off in delivery) or a retryable
+503; a reported failure names its cause (`read-deadline`, `network-failed`, `response-json-invalid`). A preflight 200
+outside the readiness contract reports `response-contract-invalid`, `readiness-code-missing` or `readiness-report-missing`.
 Network loss resumes using `lastEventId` and `lastProjectionGeneration`.
 Superseded stream completions cannot reconnect the new stream.
 

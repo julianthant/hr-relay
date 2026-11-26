@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useToasts } from "../../../../../../src/dashboard/ds/ui.js";
 import { AddWorkers } from "../../../../../../src/dashboard/surfaces/sessions/add-workers.js";
+import { ConsoleToggle } from "../../../../../../src/dashboard/surfaces/sessions/session-rail-controls.js";
 import { SessionsView } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import { ERROR_CATALOG } from "../../../../../../src/models/failures/error-catalog.js";
 import type { SessionBrowserState, SessionWorker, SessionWorkerState, SessionsViewState } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
@@ -92,6 +93,7 @@ const DUO_SETUP_REFUSED: SessionWorker = { ...SESSION_WORKER_BY_STATE.idle, stat
 /** The combinations a person meets: a closed bar, an empty pool, a mixed pool, a stale day, a wide card and the Add workers dialog. */
 const COMBINATION = {
   closed: bar("The bar collapsed, counts only", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle), { open: false }),
+  "running-and-idle": bar("A running worker beside an idle one", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle)),
   empty: bar("No workers yet", ready(), {}, { ready: 'text="No workers yet"' }),
   attention: bar("Waiting, paused and failed workers side by side", ready(SESSION_WORKER_BY_STATE.waiting, SESSION_WORKER_BY_STATE.paused, SESSION_WORKER_BY_STATE.failed)),
   mixed: bar("Cards for busy and idle workers", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE)),
@@ -106,6 +108,16 @@ const COMBINATION = {
   "add-workers": { title: "The Add workers dialog, opened from the sidebar footer", ready: '[role="dialog"]',
     render: () => <StoryFrame><AddWorkers data={ready(SESSION_WORKER_BY_STATE.running)} workflows={SESSION_STORY_WORKFLOWS} onAdd={noop} onAdded={noop} /></StoryFrame>,
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } },
+} satisfies Record<string, Story>;
+
+/** The sidebar icon: each dot, and pressed while the console is open. With the panel closed it is all that shows. */
+const icon = (title: string, data: SessionsViewState, open = false): Story => ({ title, ready: 'button[aria-label="Sessions console"]',
+  render: () => <StoryFrame><div className="flex"><ConsoleToggle data={data} open={open} onOpenChange={noop} /></div></StoryFrame> });
+const ICON = {
+  "no-workers": icon("Panel closed, no workers: no dot", ready()),
+  idle: icon("Panel closed, idle workers: green dot", ready(SESSION_WORKER_BY_STATE.idle)),
+  running: icon("Panel closed, a running worker: blue dot", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle)),
+  open: icon("Panel open: the icon is pressed", ready(SESSION_WORKER_BY_STATE.idle), true),
 } satisfies Record<string, Story>;
 
 /** Toasts sit top centre at every panel height: collapsed, empty, one row and several. */
@@ -124,4 +136,4 @@ const TOAST = {
   "stack-collapsed": withToast("Three toasts stacked over the collapsed bar", ready(SESSION_WORKER_BY_STATE.running, ...QUIET_IDLE), false, 3, page => page.waitForTimeout(600)),
 } satisfies Record<string, Story>;
 
-export const SESSIONS_STORIES = defineSurface("sessions", { worker: WORKER, browser: BROWSER, bar: BAR, operation: OPERATION, combination: COMBINATION, toast: TOAST });
+export const SESSIONS_STORIES = defineSurface("sessions", { worker: WORKER, browser: BROWSER, bar: BAR, operation: OPERATION, combination: COMBINATION, icon: ICON, toast: TOAST });
