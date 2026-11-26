@@ -416,7 +416,9 @@ jobs:
       - name: Merge coverage and enforce floors
         env:
           PLAN: ${{ needs.changes.outputs.plan }}
-        run: node --import tsx scripts/ci/full-coverage.ts "$RUNNER_TEMP/full-coverage" "$PLAN"
+        run: |
+          /usr/bin/time -f 'Coverage merge: %e s, peak RSS: %M KiB' \
+            node --max-old-space-size=6144 --import tsx scripts/ci/full-coverage.ts "$RUNNER_TEMP/full-coverage" "$PLAN"
 
   unit-proofs:
     needs: [changes, ubuntu, macos]

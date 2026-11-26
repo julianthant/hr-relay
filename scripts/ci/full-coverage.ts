@@ -9,6 +9,9 @@ import { ciPlanSchema } from "../test/ci-plan.js";
 // The V8 mapper uses Infinity for unknown end columns, which JSON encodes as null.
 const position = z.strictObject({ line: z.number(), column: z.number().nullable() });
 const range = z.strictObject({ start: position, end: position });
+// The V8 mapper can emit empty positions for unmapped branch arms.
+const branchPosition = position.partial();
+const branchRange = z.strictObject({ start: branchPosition, end: branchPosition });
 const counts = z.record(z.string(), z.number().nonnegative());
 const branchCounts = z.record(z.string(), z.array(z.number().nonnegative()));
 const reportSchema = z.record(z.string(), z.strictObject({
@@ -16,7 +19,7 @@ const reportSchema = z.record(z.string(), z.strictObject({
   statementMap: z.record(z.string(), range),
   fnMap: z.record(z.string(), z.strictObject({ name: z.string(), decl: range, loc: range, line: z.number() })),
   branchMap: z.record(z.string(), z.strictObject({
-    loc: range, type: z.string(), locations: z.array(range), line: z.number(),
+    loc: range, type: z.string(), locations: z.array(branchRange), line: z.number(),
   })),
   s: counts,
   f: counts,
@@ -38,13 +41,12 @@ const summarySchema = z.record(z.string(), z.strictObject({
   branchesTrue: totals.optional(),
 }));
 
-function readReport(report: string, shardRoot: string, covered: Set<string>) {
+function readReport(report: string, shardRoot: string) {
   const files = reportSchema.parse(JSON.parse(readFileSync(report, "utf8")));
   return Object.fromEntries(Object.entries(files).map(([path, entry]) => {
     const file = relative(shardRoot, path);
     assert(isAbsolute(path) && path === entry.path && file.startsWith("src/"),
       `Coverage path ${path} in ${report} is outside the shard's src directory.`);
-    covered.add(file);
     const normalized = resolve(file);
     return [normalized, { ...entry, path: normalized }];
   }));
@@ -58,7 +60,6 @@ const artifacts = [
   ...plan.ubuntu.include.map(({ suite, shard }) => `coverage-ubuntu-${suite}-${shard}`),
   ...plan.macos.include.map(({ shard }) => `coverage-macos-${shard}`),
 ];
-const covered = new Set<string>();
 const reports = artifacts.flatMap(name => {
   const artifact = join(directory, name);
   const shardRoot = readFileSync(join(artifact, "root"), "utf8").trim();
@@ -66,9 +67,9 @@ const reports = artifacts.flatMap(name => {
   const files = globSync("*/coverage-final.json", { cwd: artifact }).sort();
   assert(!name.startsWith("coverage-ubuntu-") || files.length === 1,
     `Expected one coverage report in ${name}.`);
-  return files.map(file => readReport(join(artifact, file), shardRoot, covered));
+  return files.map(file => readReport(join(artifact, file), shardRoot));
 });
-assert(covered.size > 0, "The Full shards recorded no source coverage.");
+assert(reports.some(report => Object.keys(report).length > 0), "The Full shards recorded no source coverage.");
 
 const coverage = config.test?.coverage;
 assert(coverage?.provider === "v8" && coverage.thresholds, "Full coverage requires the configured V8 floors.");
@@ -79,15 +80,12 @@ const vitest = await createVitest({
     enabled: true,
     reportsDirectory,
     reporter: ["json-summary"],
-    // Filtered test runs omit untouched files. Transform those once for the merged denominator.
-    exclude: [...(coverage.exclude ?? []), ...covered],
   },
 });
 try {
   const provider = await vitest.createCoverageProvider();
   assert(provider?.mergeReports, "The configured coverage provider cannot merge shard reports.");
-  const untested = await provider.generateCoverage({ allTestsRun: true });
-  await provider.mergeReports([untested, ...reports]);
+  await provider.mergeReports(reports);
 } finally {
   await vitest.close();
 }
