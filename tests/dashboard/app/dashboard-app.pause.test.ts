@@ -7,6 +7,7 @@ import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
+import { deriveBulkChildCommandId } from "../../../src/rules/commands/command-groups.js";
 import { BulkRunCommandRequestSchema, CommandRequestSchema, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
 import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
@@ -19,7 +20,7 @@ Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} di
 const PAUSED_AT = "2026-08-03T00:00:00.000Z";
 
 async function mount(pause: "running" | "pause-pending" | "paused" | "one-paused" = "running", day: typeof FIXTURE_DAY_WIRE = FIXTURE_DAY_WIRE,
-  bulkReply: () => Promise<BulkRunCommandResponse> = () => new Promise<never>(() => undefined)) {
+  bulkReply: (request: BulkRunCommandRequest) => Promise<BulkRunCommandResponse> = () => new Promise<never>(() => undefined)) {
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   let lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 17, state: "ready", pause: pause === "one-paused" ? "running" : pause, update: "installer-unavailable",
@@ -32,7 +33,11 @@ async function mount(pause: "running" | "pause-pending" | "paused" | "one-paused
     subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) {
       input.onDay(day); input.onState({ state: "live" }); return { select() {}, close() {} };
     },
-    async executeBulkCommand(raw: unknown) { sent.push(BulkRunCommandRequestSchema.parse(raw)); return bulkReply(); },
+    async executeBulkCommand(raw: unknown) {
+      const request = BulkRunCommandRequestSchema.parse(raw);
+      sent.push(request);
+      return bulkReply(request);
+    },
     async executeCommand(raw: unknown) { sent.push(CommandRequestSchema.parse(raw)); return reply.promise; },
   };
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
@@ -109,6 +114,32 @@ it("with paused and unpaused runs, the strip counts and resumes only the paused 
     await act(async () => f.button("Resume all").click());
     const request = f.sent[0]; assert.ok("targets" in request && request.type === "resume");
     assert.deepEqual(request.targets, [{ runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, expectedVersion: 7 }]);
+  } finally { await f.close(); }
+});
+
+it("shows the sample-run refusal in the queue bulk action toast and per-run result", async () => {
+  const message = "Sample run: nothing runs.";
+  const f = await mount("one-paused", FIXTURE_DAY_WIRE, async request => ({
+    state: "vector", bulkCommandId: request.bulkCommandId, type: request.type, requestedCount: request.targets.length,
+    results: request.targets.map(({ runId }) => ({
+      runId, commandId: deriveBulkChildCommandId(request.bulkCommandId, runId),
+      outcome: "refused", code: "SAMPLE_RUN_REFUSED", detail: message,
+    })),
+  }));
+  try {
+    await act(async () => f.button("Resume all").click());
+    assert.equal(f.sent.length, 1);
+    assert([...document.querySelectorAll('[data-slot="toast"]')].some(toast => toast.textContent?.includes(message)));
+
+    const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]');
+    assert.ok(bell);
+    await act(async () => bell.click());
+    const notice = [...document.querySelectorAll("li.notice-row")].find(row => row.querySelector(".notice-title")?.textContent === "Resume: partial result");
+    const review = notice?.querySelector<HTMLButtonElement>("button.notice-main");
+    assert.ok(review);
+    await act(async () => review.click());
+    const result = document.querySelector('[data-queue-bulk-result="vector"]');
+    assert.match(result?.textContent ?? "", /Refused.*Sample run: nothing runs/u);
   } finally { await f.close(); }
 });
 

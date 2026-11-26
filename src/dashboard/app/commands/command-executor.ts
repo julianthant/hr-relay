@@ -66,7 +66,7 @@ interface Attempt {
 const RESOLVABLE: ReadonlySet<DashboardCommandRequest["family"]> = new Set(["settings", "assistant-model-preference", "worker-browser"]);
 interface Reservation { readonly attempt: Attempt; readonly token: object }
 
-function feedback(code: "COMMAND_REFUSED" | "COMMAND_CONFLICT" | "COMMAND_CONFIRMATION_REQUIRED" | "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_RESULT_IDENTITY_MISMATCH" | "COMMAND_READBACK_MISMATCH" | "COMMAND_DISPATCH_FAILED" | "DASHBOARD_AUTHORITY_REPLACED"): ErrorCatalogMessage {
+function feedback(code: "COMMAND_REFUSED" | "COMMAND_CONFLICT" | "COMMAND_CONFIRMATION_REQUIRED" | "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_RESULT_IDENTITY_MISMATCH" | "COMMAND_READBACK_MISMATCH" | "COMMAND_DISPATCH_FAILED" | "DASHBOARD_AUTHORITY_REPLACED" | "SAMPLE_RUN_REFUSED"): ErrorCatalogMessage {
   return formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
 }
 
@@ -219,7 +219,8 @@ export class CommandExecutor {
       switch (bulkChildEffect(reply.outcome)) {
         case "unknown": return uncertainOutcome(commandId, reply, reply);
         case "none": return reply.outcome === "conflict" ? { kind: "conflict", commandId, reply, feedback: feedback("COMMAND_CONFLICT") }
-          : { kind: "refused", commandId, reply, feedback: feedback("COMMAND_REFUSED") };
+          : { kind: "refused", commandId, reply,
+            feedback: feedback(reply.outcome === "refused" && reply.code === "SAMPLE_RUN_REFUSED" ? "SAMPLE_RUN_REFUSED" : "COMMAND_REFUSED") };
         case "landed": break;
       }
     } else {
@@ -282,10 +283,12 @@ export class CommandExecutor {
           }
           const unresolved = outcomes.find(child => child.kind === "uncertain");
           const conflict = outcomes.find(child => child.kind === "conflict");
+          const sampleRefused = outcomes.some(child => child.kind === "refused" && child.feedback.code === "SAMPLE_RUN_REFUSED");
           outcome = unresolved ? { ...unresolved, commandId: request.commandId, reply, children: Object.freeze(outcomes) }
             : conflict ? { ...conflict, commandId: request.commandId, reply, children: Object.freeze(outcomes) }
             : outcomes.every(child => child.kind === "confirmed") ? { kind: "confirmed", commandId: request.commandId, reply, children: Object.freeze(outcomes), readback: outcomes.map(child => child.kind === "confirmed" ? child.readback : undefined) }
-            : { kind: "refused", commandId: request.commandId, reply, children: Object.freeze(outcomes), feedback: feedback("COMMAND_REFUSED") };
+            : { kind: "refused", commandId: request.commandId, reply, children: Object.freeze(outcomes),
+              feedback: feedback(sampleRefused ? "SAMPLE_RUN_REFUSED" : "COMMAND_REFUSED") };
         }
       } else outcome = await this.settle(request, checkedCommandResult(request, await options.scope.client.executeCommand(request)), options);
     } catch (cause) {
