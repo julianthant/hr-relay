@@ -336,6 +336,12 @@ describe("a step done by hand is never forced off", () => {
     assert.deepEqual([...handOffStepOmissions(HAND_DONE_STEPS, next)], [["finish", ["read"]]]);
     assert.deepEqual([...handOffStepOmissions(HAND_DONE_STEPS, toggleStepSelection(HAND_DONE_STEPS, next, "finish", false))], []);
   });
+
+  it("keeps a form action turned off by hand off when its read is restored", () => {
+    const off = toggleStepSelection(HAND_DONE_STEPS, toggleStepSelection(HAND_DONE_STEPS, ["read", "finish"], "read", false), "finish", false);
+    assert.deepEqual(off, []);
+    assert.deepEqual(toggleStepSelection(HAND_DONE_STEPS, off, "read", true), ["read"]);
+  });
 });
 
 describe("the cascade locks exactly what the planner would refuse", () => {

@@ -538,7 +538,8 @@ export function toggleStepSelection(
     selected.add(key);
     // Only the step this press let back in is offered a return; whether it
     // GETS one is the cascade's answer, below.
-    for (const forced of forces) selected.add(forced);
+    // A form action done by hand keeps the operator's own choice.
+    for (const forced of forces) if (!doneByHand(steps.find((candidate) => candidate.key === forced))) selected.add(forced);
   } else {
     selected.delete(key);
   }
