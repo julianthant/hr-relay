@@ -30,6 +30,19 @@ describe("the queue day read's warm step", () => {
       "the folded replica serves the day");
   });
 
+  it("fails the lane's boot when its fold degrades", async () => {
+    const f = await foundationFixture();
+    cleanups.push(() => f.dispose());
+    const lane = admitReadLane(prepareReadLaneStart(f.profile.admission, f.db, "navigation"));
+    cleanups.push(() => lane.admission.release());
+    const opened = openReadLane(lane, 250);
+    cleanups.push(() => opened.native.close());
+    const context = { start: lane.start, native: opened.native, history: opened.history, nowMs: f.clock.nowMs(), retain: () => {} };
+    Object.defineProperty(opened.history.authority.timelineEvents, "highWaterMark", { configurable: true, value: () => { throw new Error("timeline-unreadable"); } });
+    assert.throws(() => opened.history.withAuthorityReadSnapshot(() => queueDayRead.warm?.(context)), /queue-day-fold-degraded/u,
+      "a degraded replica never reports ready");
+  });
+
   it("builds the smallest recent day with runs, never one over its run limit", () => {
     assert.equal(warmDayOf(new Map([["2026-11-20", 1180], ["2026-11-21", 49], ["2026-11-22", 3], ["2026-11-24", 3]])), "2026-11-24",
       "the smallest day, the most recent of a tie");

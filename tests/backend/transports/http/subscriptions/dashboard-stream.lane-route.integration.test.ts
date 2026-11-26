@@ -6,6 +6,7 @@ import { searchPartitionDay } from "../../../../../src/models/dashboard/search-c
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { LANE_SOURCE_PROOF_ENTRY, perReadRead, perStatementRead, restoreSource } from "../../../../support/fixtures/backend/dashboard-lane-source-proof.js";
 import { LANE_WARM_ENTRY, laneWarmed, WARM_MS } from "../../../../support/fixtures/backend/dashboard-lane-warm-reads.js";
+import { LANE_BUILD_REFUSED_ENTRY, laneFolded } from "../../../../support/fixtures/backend/dashboard-lane-build-refused.js";
 import { LANE_WARM_REFUSED_ENTRY, laneWarmRefused } from "../../../../support/fixtures/backend/dashboard-lane-warm-refused.js";
 import { openBoundDatabaseFixture } from "../../../../support/helpers/admission-fixture.js";
 import { composedQueueLane } from "../../../../support/helpers/backend/composed-queue-lane.js";
@@ -68,6 +69,16 @@ describe("a lane read's warm step", () => {
     const reply = JSON.parse((await lanes.read(laneWarmed, {})).body) as { warms: number; warmedAt: number | null };
     assert.equal(reply.warms, 1);
     assert.notEqual(reply.warmedAt, null);
+  });
+
+  it("boots ready when a peer commit refuses the optional day build's snapshot before the build starts", async () => {
+    const fixture = await openBoundDatabaseFixture("read-lane-build-refused");
+    cleanups.push(() => fixture.close());
+    const lanes = createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock,
+      lanes: ["navigation"], entry: LANE_BUILD_REFUSED_ENTRY });
+    cleanups.push(() => lanes.close());
+    await lanes.ready;
+    assert.deepEqual(JSON.parse((await lanes.read(laneFolded, {})).body), { built: false }, "the refused build is skipped, and the lane serves");
   });
 
   it("fails the lane's boot when it throws", async () => {

@@ -11,6 +11,7 @@ import { createDashboardStreamHub, type DashboardStreamConnection, type Dashboar
 import { sseSerialize } from "../../../../../src/backend/transports/http/subscriptions/sse-response.js";
 import { BackfillGapObservationSchema } from "../../../../../src/backend/runs/notifications/backfill-gap.js";
 import { createNotificationInbox } from "../../../../../src/backend/runs/notifications/inbox.js";
+import type { NotificationObservationStatus } from "../../../../../src/backend/runs/notifications/observation.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { queryAssistantUsage } from "../../../../../src/backend/assistant/usage-counts.js";
 import { applyDashboardDayPatch } from "../../../../../src/dashboard/client/index.js";
@@ -57,7 +58,10 @@ function projectionDeps(w: DashboardWorld) {
 }
 
 /** Main's projection served by a scripted navigation lane: each read waits until the test answers it with its replica's day. */
-async function laneHarness(options: Readonly<{ maxPending?: number }> = {}) {
+async function laneHarness(options: Readonly<{ maxPending?: number; status?: true }> = {}) {
+  const statusReads: PromiseWithResolvers<NotificationObservationStatus>[] = [];
+  const statusListeners = new Set<() => void>();
+  const timers: { task: () => void; cancelled: boolean }[] = [];
   const w = await makeWorld();
   worlds.push(w);
   const replica = createRunQueueProjection({ ...projectionDeps(w), replica: true });
@@ -92,14 +96,40 @@ async function laneHarness(options: Readonly<{ maxPending?: number }> = {}) {
           { actorId: publication.notification.actorId, notificationId: publication.notification.notificationId, event: publication.event, adopted: false })) });
       return { publication: wire, listed: wire.notification };
     }, target: () => STORAGE_TARGET },
+    // With `status`, the observer status answers later: each read waits until the test settles it.
+    ...options.status === undefined ? {} : {
+      notificationStatus: {
+        read: () => { const read = Promise.withResolvers<NotificationObservationStatus>(); statusReads.push(read); return read.promise; },
+        onChange: (listener: () => void) => { statusListeners.add(listener); return () => { statusListeners.delete(listener); }; },
+      },
+      schedule: (_delayMs: number, task: () => void) => { const timer = { task, cancelled: false }; timers.push(timer); return () => { timer.cancelled = true; }; },
+    },
   });
   hubs.push(hub);
   /** Folds new timeline records into main, as its ingest loop would. */
   const fold = () => main.ingestFromTimeline();
   /** One distinct publication from its own source. */
   const publish = (identity: string) => inbox.publish(STORAGE_EVENT, { identity: identity.repeat(64), occurredAt: w.clock.now().toISOString() });
-  return { w, main, hub, reads, state, changes, fold, publish };
+  const status = {
+    reads: statusReads,
+    /** The observer reports a move: the hub reads the row again for every connection. */
+    move: () => { for (const listener of [...statusListeners]) listener(); },
+    settle: async (read: PromiseWithResolvers<NotificationObservationStatus> | undefined, value: NotificationObservationStatus | "unavailable") => {
+      assert.ok(read !== undefined, "the hub asked for the status row");
+      if (value === "unavailable") read.reject(new Error("status read failed")); else read.resolve(value);
+      await new Promise(resolve => setImmediate(resolve));
+    },
+    /** The re-reads still armed: a settled read's deadline is cancelled, so these are retries. */
+    armed: () => timers.filter(timer => !timer.cancelled),
+  };
+  return { w, main, hub, reads, state, changes, fold, publish, status };
 }
+
+const READY_STATUS: NotificationObservationStatus = { state: "ready", pending: 0 };
+const sourcesOf = (envelopes: readonly DashboardStreamEnvelope[]): string[] =>
+  envelopes.flatMap(envelope => envelope.type === "notification-publication" ? [envelope.publication.sourceId] : []);
+const statusStateOf = (envelope: DashboardStreamEnvelope): string | undefined =>
+  envelope.type === "snapshot" || envelope.type === "change" ? envelope.rows.find(row => row.model === "notification-status")?.value.state : undefined;
 
 function lastRead(reads: readonly LaneRead[]): LaneRead {
   const read = reads.at(-1);
@@ -248,6 +278,73 @@ describe("a stream snapshot read on the navigation lane", () => {
     const resumed = await hub.connect({ day: DAY, lastEventId: snapshot.cursor, lastProjectionGeneration: main.generation() });
     const replayed = [...resumed.initial, ...await drain(resumed)].filter(envelope => envelope.type === "notification-publication");
     assert.equal(replayed.length, 1, "the resume replays the arrival the snapshot's connection never received");
+  });
+
+  it("hands each publication out once, in publish order, when a fold passes one while the read is pending", async () => {
+    const { w, main, hub, reads, fold, publish } = await laneHarness();
+    queuedEventOf(w, { seed: 1 }); fold();
+    const earlyConnecting = hub.connect({ day: DAY });
+    lastRead(reads).answer(lastRead(reads).capture());
+    const early = await earlyConnecting;
+    const earlySnapshot = [...early.initial, ...await drain(early)].find(envelope => envelope.type === "snapshot");
+    assert.ok(earlySnapshot?.type === "snapshot");
+
+    const connecting = hub.connect({ day: DAY });
+    const read = lastRead(reads);
+    await publish("a");
+    claimEventOf(w, 1);
+    const reply = read.capture();
+    // Main folds the peer write after A, so the baseline passes A; B is published above that baseline before the read answers.
+    fold();
+    await publish("b");
+    read.answer(reply);
+    const connection = await connecting;
+    const order = sourcesOf(await drain(early));
+    assert.equal(order.length, 2, "a connection already streaming gets each publication once");
+    assert.equal(new Set(order).size, 2);
+    const live = [...connection.initial, ...await drain(connection)];
+    assertConverges(main, live);
+    assert.deepEqual(sourcesOf(live), order, "the snapshot's connection gets them once, in the same order");
+
+    early.close();
+    connection.close();
+    const resumed = await hub.connect({ day: DAY, lastEventId: earlySnapshot.cursor, lastProjectionGeneration: main.generation() });
+    assert.deepEqual(sourcesOf([...resumed.initial, ...await drain(resumed)]), order, "a resume from before them replays each once, in order");
+  });
+
+  it("keeps a publication queued under a handoff's read when a projection snapshot replaces that read", async () => {
+    const { w, main, hub, reads, changes, fold, publish } = await laneHarness();
+    const connecting = hub.connect({ day: DAY });
+    await publish("a");
+    queuedEventOf(w, { seed: 1 }); queuedEventOf(w, { seed: 2 }); claimEventOf(w, 1); claimEventOf(w, 2); fold();
+    assert.ok(changes.some(change => change.kind === "snapshot"), "the fold asks for a new snapshot");
+    assert.equal(reads.length, 2, "the newer read answers the handoff's place");
+    for (const pending of reads) pending.answer(pending.capture());
+    const connection = await connecting;
+    const live = [...connection.initial, ...await drain(connection)];
+    const snapshot = assertConverges(main, live);
+    assert.equal(sourcesOf(live).length, 1, "the arrival is handed out once, above the replacement snapshot");
+
+    connection.close();
+    const resumed = await hub.connect({ day: DAY, lastEventId: snapshot.cursor, lastProjectionGeneration: main.generation() });
+    assert.equal(sourcesOf([...resumed.initial, ...await drain(resumed)]).length, 1, "a resume from the replacement snapshot replays it");
+  });
+
+  it("re-reads a row whose last handed value was unavailable when that change read was dispatched before the snapshot's", async () => {
+    const { hub, reads, status } = await laneHarness({ status: true });
+    const connecting = hub.connect({ day: DAY });
+    // The status moves while the snapshot is pending: that change's read is dispatched first and queues behind the snapshot's place.
+    status.move();
+    assert.equal(status.reads.length, 1);
+    lastRead(reads).answer(lastRead(reads).capture());
+    const connection = await connecting;
+    assert.equal(status.reads.length, 2, "the snapshot reads the row again for its own envelope");
+    await status.settle(status.reads[1], READY_STATUS);
+    await status.settle(status.reads[0], "unavailable");
+    const handed = (await drain(connection)).flatMap(envelope => statusStateOf(envelope) ?? []);
+    assert.deepEqual(handed, ["available", "unavailable"], "the snapshot's row is handed before the change queued behind it");
+    assert.equal(status.armed().length, 1, "the connection last received the row as unavailable, so a re-read is armed");
+    connection.close();
   });
 
   it("asks again when the lane's snapshot lacks a publication main retained at dispatch", async () => {
