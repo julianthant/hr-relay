@@ -117,14 +117,15 @@ describe("Logs of a run that failed in its first step", () => {
     assert.equal(client.calls, 0);
   });
 
-  it("lists the planned steps and the failed step's failure card", async () => {
+  it("shows the failed step and its failure card", async () => {
     const client = servedClient();
     const h = commandBindingFixture(client);
     await serveRows(h.binding.authority.dayState.rows, client, RUN);
     await mount(createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
       children: createElement(LogSample, { selection: { row: failedRow(), workflowLabel: "Onboarding" } }) }) }));
     const text = document.body.textContent ?? "";
-    for (const [, label] of PLANNED) assert.match(text, new RegExp(label, "u"));
+    assert.match(text, /Read hire data/u);
+    assert.ok(document.querySelector('nav[aria-label="Run timeline"]') === null, "the run header draws no step chips");
     assert.match(text, /Nothing was written|No changes were made/u);
     assert.doesNotMatch(text, /TASK_UNHANDLED_FAILURE|crm\/read-hire-data/u);
   });

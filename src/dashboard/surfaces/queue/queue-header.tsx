@@ -1,16 +1,17 @@
 import { type ReactNode } from "react";
 import { parseDate } from "@internationalized/date";
-import { ArrowDownUp, CalendarDays, ListFilter, Plus, SlidersHorizontal } from "lucide-react";
+import { ArrowDownUp, CalendarDays, ListFilter, Plus, Settings2 } from "lucide-react";
 import { BareButton, Calendar, IconButton, Tooltip, dsFocus } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import {
-  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
   DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from "../../ds/primitives/dropdown-menu.js";
 import { QUEUE_SORTS, type QueueOrder, type QueueSortKey } from "./queue-model.js";
 import { needsYouCount, statusCount, totalCount, type StatusBucket, type StatusCountWire } from "../shell/shell-model.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../shared/status/status-model.js";
-import { nonDefaultOptionCount, shownStatuses, toggleQueueFilter } from "./queue-filter-model.js";
+import { nonDefaultOptionCount, shownStatuses, statusFilterValue, toggleQueueFilter } from "./queue-filter-model.js";
+import { formatMonthDay } from "../../lib/date-format.js";
 
 const GROUPS: readonly { label: string; statuses: readonly StatusBucket[] }[] = [
   { label: "Quick filters", statuses: ["all", "needsYou"] },
@@ -36,6 +37,9 @@ export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay
   const label = (status: StatusBucket) => status === "all" ? "All" : status === "needsYou" ? "Needs you" : status === "awaiting-approval" ? "Needs approval" : PROPOSED_STATUS[dsStatusOf(status)].accessibleLabel;
   const count = (status: StatusBucket) => status === "all" ? totalCount(counts) : status === "needsYou" ? needsYouCount(counts) : statusCount(counts, status);
   const changed = nonDefaultOptionCount({ day, today, sort, order, active });
+  const dayLabel = day === today ? "Today" : /^\d{4}-\d{2}-\d{2}$/u.test(day) ? formatMonthDay(`${day}T00:00:00Z`, "UTC", "short") : day;
+  // Day first: it replaces the route, the other two build on the pending one.
+  const reset = () => { if (day !== today) onDay(today); onFilter(["all"]); onSort("attention", "newest"); };
   return <header aria-label="Queue header" className="queue-header">
     <h2 className="queue-header-title">{title}</h2>
     {dayMark}
@@ -44,12 +48,12 @@ export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay
       <DropdownMenu>
         <Tooltip side="bottom" content="Options">
           <DropdownMenuTrigger asChild>
-            <IconButton variant="ghost" size="sm" className="queue-options-trigger" label={changed > 0 ? `Options, ${String(changed)} changed` : "Options"} title="" icon={<span className="relative inline-flex"><SlidersHorizontal aria-hidden className="size-4" />{changed > 0 && <span aria-hidden className="queue-options-badge">{changed}</span>}</span>} />
+            <IconButton variant="ghost" size="sm" className="queue-options-trigger" label={changed > 0 ? `Options, ${String(changed)} changed` : "Options"} title="" icon={<span className="relative inline-flex"><Settings2 aria-hidden strokeWidth={1.75} />{changed > 0 && <span aria-hidden className="queue-options-badge">{changed}</span>}</span>} />
           </DropdownMenuTrigger>
         </Tooltip>
         <DropdownMenuContent aria-label="Queue options" align="end" className="queue-options-menu">
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger><CalendarDays aria-hidden />Date<span className="queue-options-value">{day === today ? "Today" : day}</span></DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger><CalendarDays aria-hidden />Date<span className="queue-options-value">{day !== today && <span aria-hidden className="queue-options-dot" />}{dayLabel}</span></DropdownMenuSubTrigger>
             <DropdownMenuSubContent aria-label="Pick a date" className="queue-date-menu">
               {/* A calendar is not menu items: its keys stay inside, so Tab and the arrows work it. Escape still closes. */}
               <div onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}>
@@ -59,8 +63,8 @@ export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay
             </DropdownMenuSubContent>
           </DropdownMenuSub>
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger><ArrowDownUp aria-hidden />Sort by</DropdownMenuSubTrigger>
-            <DropdownMenuSubContent aria-label="Sort by" className="w-64">
+            <DropdownMenuSubTrigger><ArrowDownUp aria-hidden />Sort by<span className="queue-options-value">{ORDERS.find(entry => entry.key === order)?.label}</span></DropdownMenuSubTrigger>
+            <DropdownMenuSubContent aria-label="Sort by" className="w-[260px]">
               <DropdownMenuRadioGroup value={order} onValueChange={value => { const next = value as QueueOrder; onSort(sort === "attention" ? "attention" : next, next); }}>
                 {ORDERS.map(entry => <DropdownMenuRadioItem key={entry.key} value={entry.key}>{entry.label}</DropdownMenuRadioItem>)}
               </DropdownMenuRadioGroup>
@@ -69,8 +73,8 @@ export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay
             </DropdownMenuSubContent>
           </DropdownMenuSub>
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger><ListFilter aria-hidden />Status</DropdownMenuSubTrigger>
-            <DropdownMenuSubContent aria-label="Filter by status" className="w-64">
+            <DropdownMenuSubTrigger><ListFilter aria-hidden />Status<span className="queue-options-value">{statusFilterValue(active, label)}</span></DropdownMenuSubTrigger>
+            <DropdownMenuSubContent aria-label="Filter by status" className="w-[280px]">
               {GROUPS.map((group, index) => <DropdownMenuGroup key={group.label}>
                 {index > 0 && <DropdownMenuSeparator />}<DropdownMenuLabel>{group.label}</DropdownMenuLabel>
                 {shownStatuses(group.statuses, active, count).map(status => <DropdownMenuCheckboxItem key={status} closeOnClick={false} checked={active.includes(status)} onCheckedChange={() => onFilter(toggleQueueFilter(active, status))}>
@@ -80,11 +84,17 @@ export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay
             </DropdownMenuSubContent>
           </DropdownMenuSub>
           <DropdownMenuSeparator />
-          <DropdownMenuCheckboxItem closeOnClick={false} checked={sort === "attention"} onCheckedChange={on => onSort(on ? "attention" : order, order)}>Attention first</DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem closeOnClick={false} className="queue-options-toggle" checked={sort === "attention"} onCheckedChange={on => onSort(on ? "attention" : order, order)}>
+            <DropdownMenuItemCopy title="Attention first" description="Needs you and failures on top" />
+            {/* The house switch's look only: the menu item itself carries the checked state and the keyboard. */}
+            <span aria-hidden className="ds-switch-row queue-options-switch"><span className={cn("ds-switch-control inline-flex items-center rounded-full", sort === "attention" && "ds-switch-control-checked")}><span className={cn("ds-switch-thumb rounded-full", sort === "attention" && "ds-switch-thumb-checked")} /></span></span>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="queue-options-reset" onSelect={reset}>Reset to defaults</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <Tooltip side="bottom" content="Start run">
-        <IconButton id={startId} variant="ghost" size="sm" label="Start run" title="" onClick={onStartRun} icon={<Plus aria-hidden className="size-4" />} />
+        <IconButton id={startId} variant="ghost" size="sm" label="Start run" title="" onClick={onStartRun} icon={<Plus aria-hidden strokeWidth={1.75} />} />
       </Tooltip>
     </div>
   </header>;
