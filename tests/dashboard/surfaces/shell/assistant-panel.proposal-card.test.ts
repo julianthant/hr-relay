@@ -13,6 +13,7 @@ const start = ASSISTANT_START_PROPOSAL.effect === 'workflow-start' ? ASSISTANT_S
 const withRows = (planned: AssistantProposalRow[], patch: Record<string, unknown> = {}, workflowId = start.workflowId) => AssistantActionProposalSchema.parse({
   ...start, source: 'entries', workflowId, startPlan: { ...start.startPlan, workflowId, planned }, ...patch });
 const person = (name: string, employeeId: string): AssistantProposalRow => ({ title: `EID ${employeeId}`, subtitle: 'Person Lookup', display: { kind: 'person', name, employeeId } });
+const START_EFFECT = 'Starts the reviewed plan after confirmation. No HR transaction is submitted.';
 const pause = AssistantActionProposalSchema.parse({ chatId: start.chatId, actionId: start.actionId, revision: 1, expiresAt: '2099-01-01T00:00:00Z',
   label: 'Pause Onboarding', targetLabel: 'Onboarding request', effect: 'run-action', action: 'pause', workflowId: 'onboarding',
   run: { runId: '00000000-0000-4000-8000-000000000004', expectedVersion: 3 }, row: { title: 'Onboarding request', display: { kind: 'request' } } });
@@ -30,9 +31,9 @@ describe('assistant proposal card rows', () => {
   it('shows one line per person in served order: Person with name and EID, EID alone, or Name alone, then the total', () => {
     const { facts } = render(withRows([person('Vega, Morgan', '10000002'), person('Sample, Avery', '10101010'), { title: 'EID 10000003', display: { kind: 'person', employeeId: '10000003' } },
       { title: 'Lin, Casey', display: { kind: 'person', name: 'Lin, Casey' } }], { targetLabel: '4 people' }));
-    expect(facts.slice(0, -1)).toEqual([['Person', 'Vega, Morgan EID 10000002'], ['Person', 'Sample, Avery EID 10101010'],
+    expect(facts.slice(0, -2)).toEqual([['Person', 'Vega, Morgan EID 10000002'], ['Person', 'Sample, Avery EID 10101010'],
       ['EID', '10000003'], ['Name', 'Lin, Casey'], ['Total', '4']]);
-    expect(facts.at(-1)).toEqual(['Options', 'Read only']);
+    expect(facts.slice(-2)).toEqual([['Options', 'Read only'], ['Effect', START_EFFECT]]);
   });
   it('shows Separations document numbers as documents, never as people', () => {
     const { facts } = render(withRows([{ title: 'Doc 4501', display: { kind: 'document', documentNumber: '4501' } }, { title: 'Doc 4502', display: { kind: 'document', documentNumber: '4502' } }],
@@ -40,20 +41,29 @@ describe('assistant proposal card rows', () => {
     for (const term of ['Person', 'EID', 'Name']) expect(facts.map(([label]) => label)).not.toContain(term);
     expect(facts.slice(0, 3)).toEqual([['Document', '4501'], ['Document', '4502'], ['Total', '2']]);
   });
+  it('shows a Separations dry run\'s effect and the step it stops before', () => {
+    const { facts } = render(withRows([{ title: 'Separation 4502', display: { kind: 'document', documentNumber: '4502' } }],
+      { label: 'Start Separations', targetLabel: '1 document', dryRun: true, startPlan: { ...start.startPlan, workflowId: 'separations', dryRun: true,
+        stopBefore: 'Clear Pending Terminations', planned: [{ title: 'Separation 4502', display: { kind: 'document', documentNumber: '4502' } }] } }, 'separations'));
+    expect(facts.at(-1)).toEqual(['Effect', `${START_EFFECT} Stops before Clear Pending Terminations.`]);
+  });
+  it('refuses a stop step on a card that is not a dry run', () => {
+    expect(() => withRows([person('Sample, Avery', '10101010')], { startPlan: { ...start.startPlan, stopBefore: 'UCPath transaction', planned: [person('Sample, Avery', '10101010')] } })).toThrow();
+  });
   it('shows a single request by its title without a total', () => {
     const { facts } = render(withRows([{ title: 'Onboarding for the reviewed sheet row', display: { kind: 'request' } }], { targetLabel: 'Onboarding for the reviewed sheet row' }));
-    expect(facts).toEqual([['Request', 'Onboarding for the reviewed sheet row'], ['Options', 'Read only']]);
+    expect(facts).toEqual([['Request', 'Onboarding for the reviewed sheet row'], ['Options', 'Read only'], ['Effect', START_EFFECT]]);
   });
   it('shows a run action\'s row with the local change mode', () => {
     const { facts, confirm } = render(pause);
-    expect(facts).toEqual([['Request', 'Onboarding request'], ['Options', 'Local change · Pause']]);
+    expect(facts).toEqual([['Request', 'Onboarding request'], ['Options', 'Local change · Pause'], ['Effect', 'Changes only this run in the local queue.']]);
     expect(confirm?.disabled).toBe(false);
   });
   it('shows a spreadsheet card as its fixed facts with the local change mode and resolves to its workbook', () => {
     const sheet = AssistantActionProposalSchema.parse({ chatId: start.chatId, actionId: start.actionId, revision: 1, expiresAt: '2099-01-01T00:00:00Z', label: 'Rename spreadsheet',
       targetLabel: 'Roster', effect: 'spreadsheet', action: 'rename', facts: [{ label: 'Name', value: 'Roster → Payroll' }] });
     const { facts, confirm } = render(sheet);
-    expect(facts).toEqual([['Name', 'Roster → Payroll']]);
+    expect(facts).toEqual([['Name', 'Roster → Payroll'], ['Effect', 'Changes only the Spreadsheets library.']]);
     expect(confirm?.disabled).toBe(false);
     expect(render(sheet, 'confirmed').host.textContent).toBe('Rename spreadsheet · RosterDone');
     expect(render(sheet, 'cancelled').host.textContent).toBe('Rename spreadsheet · RosterNot done');

@@ -49,6 +49,7 @@ export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfi
       {proposal.issued?.effect === 'spreadsheet' ? proposal.issued.facts.map(fact => <Fragment key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></Fragment>) : <>
         <ProposalRows rows={rows} />
         <dt>Options</dt><dd>{options.join(' · ')}</dd></>}
+      <dt>Effect</dt><dd>{[...proposal.effects, ...proposal.stopBefore.map(step => `Stops before ${step}.`)].join(' ')}</dd>
     </dl></div>
     <footer className="hub-card-footer"><span className="hub-footer-status" role="status">{busy ? <span className="hub-spinner" aria-hidden /> : null}{refusal ?? ''}</span><span className="hub-footer-actions">
       <Button size="sm" variant="ghost" disabled={disposition !== 'review'} onClick={onCancel}>Cancel</Button>
