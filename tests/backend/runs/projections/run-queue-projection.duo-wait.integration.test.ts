@@ -4,6 +4,7 @@ import { afterAll, afterEach, describe, it } from "vitest";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { workerActivityOf } from "../../../../src/backend/app/composition/worker-compose.js";
+import { WorkerChildMessageSchema } from "../../../../src/backend/runtime/workers/worker-messages.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
@@ -78,8 +79,11 @@ describe("the served queue's Duo wait", () => {
         settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
     assert.ok(claimed.state === "applied");
     // What the claimed worker publishes once its browser starts Duo sign-in.
-    const activity = workerActivityOf({ browsing: ["authenticating"], claimedRun: claimed.run.envelope.runId, paused: false, standing: undefined });
-    const worker = runningWorkerView(slot, { activity });
+    const emitted = workerActivityOf({ browsing: ["authenticating"], claimedRun: claimed.run.envelope.runId, paused: false, standing: undefined });
+    // The pool parses every child message with this schema and faults the worker on a refusal.
+    const received = WorkerChildMessageSchema.parse(JSON.parse(JSON.stringify({ kind: "worker-activity", activity: emitted })));
+    assert.ok(received.kind === "worker-activity");
+    const worker = runningWorkerView(slot, { activity: received.activity });
     const since = w.clock.now().toISOString();
     w.database.authority.duoCeremonyLeases.acquire({ credentialKey: "a".repeat(64), workerId: slot.workerId, system: "ucpath", now: since, ttlMs: 80_000 });
     const projection = createOperatorProjection({ database: w.database, stateRoot: w.stateRoot, clock: w.clock,
