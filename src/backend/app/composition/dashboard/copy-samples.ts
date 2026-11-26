@@ -40,7 +40,7 @@ function sampleOf(raw: unknown, poolIndex: number): Sample {
   const browsers = session.browsers.map(browser => WorkerBrowserObservationSchema.parse({ workerId,
     sessionId: deriveStableUuid(namespace, `${workerId}/${browser.system}`), system: browser.system,
     configFingerprint: fingerprint, signInFingerprint: fingerprint, browserMode: "headless", acceptDownloads: false, exclusive: false,
-    health: session.state === "stopped" ? "closed" : browser.health, observedAt: startedAt, openedAt: startedAt, profileRevision: 1 }));
+    health: browser.health, observedAt: startedAt, openedAt: startedAt, profileRevision: 1 }));
   const state = ({ idle: "running", busy: "running", waiting: "running", starting: "starting", stopping: "stopping", stopped: "exited" } as const)[session.state];
   const view: WorkerMemberView = {
     member: workerPoolMember(slot),

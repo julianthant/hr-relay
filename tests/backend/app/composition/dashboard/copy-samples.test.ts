@@ -58,7 +58,7 @@ it("serves each sample worker state, holds the Duo wait, and never forwards a sa
   const busy = sampleWorkerId(sessions[0]), idle = sampleWorkerId(sessions[1]);
   assert.deepEqual(samples.leases(busy), [{ system: "ucpath", since: startedAt }]);
   assert.deepEqual(samples.leases(idle), []);
-  assert.deepEqual(samples.views().at(-1)?.browsers.map(browser => browser.health), ["closed"]);
+  assert.deepEqual(samples.views().at(-1)?.browsers.map(browser => browser.health), ["authenticated"]);
 
   const control = (type: string, workerId: string) => ({ ...envelope(), family: "worker-browser", type,
     target: { workerId, workflowId: "person-lookup", lifetimeId: randomUUID(), expectedVersion: 1 } });
