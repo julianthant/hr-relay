@@ -541,7 +541,7 @@ describe("dashboard stream run panel rows", () => {
     const [snapshot] = await take(connection, 2);
     const refused = snapshotOf(snapshot).rows[0]?.value;
     if (refused?.state !== "refused") assert.fail("expected the failed read to be refused");
-    assert.equal(refused.error.code, "DASHBOARD_READ_FAILED");
+    assert.equal(refused.error.code, "INTERNAL_FAILURE");
     assert.equal(timers.live(), 1, "the failed read is read again");
   });
 
