@@ -168,14 +168,15 @@ describe("Separations composition with a reference spreadsheet", () => {
     });
     const f = await world.fixture(separationsDescriptor, sessions);
     const commits = () => [...kuali.events, ...ucpath.events].filter(event => event.startsWith("commit:"));
-    const begin = (picks: Parameters<typeof f.start>[1], dryRun = false) => f.start({ documentNumber: COMPOSITION_DOCUMENT }, picks, dryRun, { stepOmissions: OMIT_KRONOS,
-      selectedStepKeys: separationsDescriptor.timeline.map(step => step.key).filter(key => key !== "kronos-timecard") });
+    const begin = (picks: Parameters<typeof f.start>[1], dryRun = false, stepOmissions: readonly { step: string; facts: Record<string, unknown> }[] = OMIT_KRONOS) =>
+      f.start({ documentNumber: COMPOSITION_DOCUMENT }, picks, dryRun, { stepOmissions,
+        selectedStepKeys: separationsDescriptor.timeline.map(step => step.key).filter(key => !stepOmissions.some(omitted => omitted.step === key)) });
     const writeIntents = (run: RunRecord) => f.database.authority.writeIntents.listByRun(run.envelope.runId);
     const holding = () => f.spreadsheet("Separations roster", "People", ["eid", "fullName"], [["10000009", "Blair Example"], [COMPOSITION_EID, COMPOSITION_UCPATH_NAME]]);
     const missing = () => f.spreadsheet("Badge list", "Issued", ["eid"], [["10000009"]]);
     const renamed = () => f.spreadsheet("Separations roster", "People", ["fullName", "eid"], [[ROW_ONLY_NAME, COMPOSITION_EID]]);
     const parkedAt = (run: RunRecord) => run.lifecycle.state === "parked-gate" ? String(run.lifecycle.gateId) : run.lifecycle.state;
-    return { ...f, commits, begin, writeIntents, holding, missing, renamed, parkedAt, searches };
+    return { ...f, commits, begin, writeIntents, holding, missing, renamed, parkedAt, searches, ucpath };
   }
 
   it("stops before searching UCPath when the Kuali document has no Employee ID", async () => {
@@ -270,6 +271,19 @@ describe("Separations composition with a reference spreadsheet", () => {
     assert.notEqual(c.parkedAt(run), REFERENCE_GATE);
     assert.deepEqual(c.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
     assert.deepEqual(c.checkLines(run), ["Separations roster · People: found in row 3"]);
+  });
+
+  it("sends no UCPath write when its form actions were done by hand, and records the typed receipt", async () => {
+    const c = await composition();
+    // The termination someone filed by hand, as UCPath now shows it.
+    c.ucpath.rows.push({ transactionId: COMPOSITION_RECEIPT, emplId: COMPOSITION_EID, action: "TER", approvalStatus: "Approved", startDate: "06/20/2026", displayedName: COMPOSITION_UCPATH_NAME });
+    c.ucpath.employmentRecords.push({ transactionId: COMPOSITION_RECEIPT, emplRecord: "0" });
+    const run = await c.execute(c.begin([], false, [...OMIT_KRONOS, { step: "pending-termination", facts: {} },
+      { step: "ucpath-transaction", facts: { transactionNumber: COMPOSITION_RECEIPT, approvalStatus: "Approved" } }]));
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(run.lifecycle));
+    assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button"]);
+    assert.deepEqual(c.writeIntents(run).map(intent => intent.system), ["kuali"]);
+    for (const skipped of ["pending-set", "clear-pending", "file-termination"]) assert.deepEqual(c.nodeSpans(run, skipped), [["skipped", "step-omitted"]], skipped);
   });
 
   it("resumes past a skipped identity approval when the document carries the Employee ID and the Kronos timecard is omitted", async () => {
