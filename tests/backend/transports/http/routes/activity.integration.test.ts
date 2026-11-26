@@ -67,12 +67,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(report.durations.medianMs.state, "absent");
 
     const halfRange = await h.app.request(`/api/v1/reports/activity?from=${DAY}`);
-    assert.equal(halfRange.ok, false);
-    assert.match(String((await json(halfRange)).message), /requires both from= and to=/);
+    assert.equal(halfRange.status, 400);
+    assert.equal((await json(halfRange)).code, "ACTIVITY_POPULATION_RANGE_INVALID");
 
     const noRange = await h.app.request("/api/v1/reports/activity");
-    assert.equal(noRange.ok, false);
-    assert.match(String((await json(noRange)).message), /requires both from= and to=/);
+    assert.equal(noRange.status, 400);
+    assert.equal((await json(noRange)).code, "ACTIVITY_POPULATION_RANGE_INVALID");
 
     // A malformed bound is refused by the wire schema, by name.
     const badBound = await h.app.request(`/api/v1/reports/activity?from=today&to=${DAY}`);
@@ -110,12 +110,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.ok(csv.includes("Write ledger — what was actually filed"));
 
     const halfRange = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&snapshot=${activityReport.snapshot.token}`);
-    assert.equal(halfRange.ok, false);
-    assert.match(String((await json(halfRange)).message), /requires both from= and to=/);
+    assert.equal(halfRange.status, 400);
+    assert.equal((await json(halfRange)).code, "ACTIVITY_POPULATION_RANGE_INVALID");
 
     const noRange = await h.app.request("/api/v1/reports/activity.csv");
-    assert.equal(noRange.ok, false);
-    assert.match(String((await json(noRange)).message), /requires both from= and to=/);
+    assert.equal(noRange.status, 400);
+    assert.equal((await json(noRange)).code, "ACTIVITY_POPULATION_RANGE_INVALID");
 
     const inverted = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=2026-08-01&snapshot=${activityReport.snapshot.token}`);
     assert.equal(inverted.ok, false);

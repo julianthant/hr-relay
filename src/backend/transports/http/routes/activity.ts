@@ -25,11 +25,9 @@ export function registerActivityRoutes(app: DashboardApp, deps: ActivityRouteDep
   app.get("/api/v1/reports/activity", (c) => {
     const from = c.req.query("from");
     const to = c.req.query("to");
-    if (from === undefined || to === undefined) {
-      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
-    }
+    if (from === undefined || to === undefined) throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
     const parameters=[...new URL(c.req.url).searchParams];
-    if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-report-duplicate-query");
+    if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
     z.strictObject({from:z.iso.date(),to:z.iso.date()}).parse(Object.fromEntries(parameters));
     return c.json(deps.activity.read(from, to));
   });
@@ -38,11 +36,9 @@ export function registerActivityRoutes(app: DashboardApp, deps: ActivityRouteDep
   app.get("/api/v1/reports/activity.csv", (c) => {
     const from = c.req.query("from");
     const to = c.req.query("to");
-    if (from === undefined || to === undefined) {
-      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
-    }
+    if (from === undefined || to === undefined) throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
     const parameters=[...new URL(c.req.url).searchParams];
-    if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-export-duplicate-query");
+    if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
     const selection=z.strictObject({from:z.iso.date(),to:z.iso.date(),snapshot:ActivitySnapshotTokenSchema}).parse(Object.fromEntries(parameters));
     const report = deps.activity.readSelected(from, to, selection.snapshot);
     return selectionDownload(activityReportCsv(report),activityReportCsvFileName(report),"text/csv; charset=utf-8",selection.snapshot);
