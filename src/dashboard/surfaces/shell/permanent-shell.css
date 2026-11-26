@@ -94,17 +94,20 @@
 .workspace-rail-profile-text strong { font-size: 13px; font-weight: 600; }
 .workspace-rail-profile-text small { color: var(--ui-secondary); font-size: 12px; }
 .workspace-rail-icons { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--ui-stroke); padding-top: 8px; margin: 0 -10px; padding-inline: 10px; }
-.workspace-rail-icon-group { display: flex; align-items: center; gap: 2px; }
+.workspace-rail-icon-group { display: flex; align-items: center; gap: 4px; }
+/* Footer icons share one 26px box and 15px glyph, expanded and collapsed. */
+.workspace-rail-icons button { width: 26px; height: 26px; min-width: 26px; border-radius: 8px; }
+.workspace-rail-icons button svg { width: 15px; height: 15px; }
 .workspace-rail[data-collapsed] .workspace-rail-profile-text { display: none; }
 .workspace-rail[data-collapsed] .workspace-rail-profile { justify-content: center; padding: 6px 0; border: 0; background: transparent; }
 .workspace-rail[data-collapsed] .workspace-rail-icons { flex-direction: column; gap: 4px; }
 .workspace-rail[data-collapsed] .workspace-rail-icon-group { flex-direction: column; gap: 4px; }
-/* Start run beside a workflow: a sibling of the row, so Tab reaches it; it shows on hover and on keyboard focus. */
+/* Start run beside a workflow: a sibling of the row, so Tab reaches it; it shows on hover and keyboard focus only, never after a click. */
 .workflow-rail-item { position: relative; }
 .workflow-rail .workflow-rail-start { position: absolute; top: 50%; right: 4px; display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ui-primary); opacity: 0; transform: translateY(-50%); cursor: pointer; }
 .workflow-rail-item:hover .workflow-rail-start, .workflow-rail .workflow-rail-item:focus-within .workflow-rail-start { opacity: 1; }
 .workflow-rail .workflow-rail-start:hover { background: var(--ds-surface-3); }
-.workflow-rail-item:hover .workflow-rail-running, .workflow-rail-item:focus-within .workflow-rail-running { margin-right: 24px; }
+.workflow-rail-item:hover .workflow-rail-running, .workflow-rail-item:has(:focus-visible) .workflow-rail-running { margin-right: 24px; }
 .workflow-rail[data-collapsed] .workflow-rail .workflow-rail-start { display: none; }
 
 /* The queue header card: the workflow's title, then icon buttons with no button background. */
