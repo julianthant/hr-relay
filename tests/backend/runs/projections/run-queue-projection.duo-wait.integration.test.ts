@@ -56,6 +56,18 @@ describe("the served queue's Duo wait", () => {
     assert.deepEqual(released.statusCounts, [{ status: "running", count: 1 }]);
   });
 
+  it("serves the claimed run on the worker card and Needs Duo on its row while the worker waits on Duo sign-in", async () => {
+    const { w, projection, workerId, since } = await duoWorld();
+    w.authority.putWorkerMember(workerMemberOf(w.authority, { workerId, activity: { state: "waiting", waiting: "authenticating", runId: uuidOf(1) } }));
+    w.database.authority.duoCeremonyLeases.acquire({ credentialKey: "a".repeat(64), workerId, system: "ucpath", now: since, ttlMs: 80_000 });
+    projection.reconcileWorkerAuthority();
+    const day = projection.buildDashboardDayWire(DAY);
+    assert.equal(day.workerCards[0]?.state, "waiting");
+    assert.deepEqual(day.workerCards[0]?.currentRun, { state: "present", runId: uuidOf(1), traceId: day.queueSurfaces[0]?.traceId });
+    assert.equal(day.queueSurfaces[0]?.status, "awaiting-approval");
+    assert.deepEqual(day.queueSurfaces[0]?.operatorWait, { state: "present", kind: "duo", system: "ucpath", since });
+  });
+
   it("publishes expiry without a span or authority mutation and keeps the acquisition time while held", async () => {
     const { w, projection, workerId, since } = await duoWorld();
     w.database.authority.duoCeremonyLeases.acquire({ credentialKey: "a".repeat(64), workerId, system: "crm", now: since, ttlMs: 80_000 });
