@@ -832,7 +832,7 @@ export const DashboardDayWireSchema = z.strictObject({
   const cards = [...day.workerCards, ...day.unavailableWorkerCards ?? []];
   requireUnique(cards.map(({ workerId }) => workerId), "workerCards", context);
   requireUnique(day.workerAuthority.members.map(({ workerId }) => workerId), "workerAuthority", context);
-  const memberCards = cards.filter(card => card.sample !== true);
+  const memberCards = cards.filter(card => !("sample" in card) || card.sample !== true);
   if (day.workerAuthority.state === "present" && (day.workerAuthority.members.length !== memberCards.length
     || day.workerAuthority.members.some(member => member.retiredAt !== null || !memberCards.some(card =>
       card.workerId === member.workerId

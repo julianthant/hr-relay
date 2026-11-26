@@ -161,8 +161,10 @@ function removePreviousSeed(archive: DatabaseSync): void {
   for (const table of ["run_search", "timeline_events", "run_failures", "runs"] as const) {
     archive.exec(`DELETE FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"} IN (SELECT id FROM copy_seed_members WHERE kind='run')`);
   }
-  if (archive.prepare("SELECT 1 FROM runs WHERE batch_id IN (SELECT id FROM copy_seed_batches) AND id NOT IN (SELECT id FROM copy_seed_members WHERE kind='run') LIMIT 1").get() !== undefined) {
-    throw new Error("copy-seed-batch-membership-mismatch");
+  // Seed members are gone, so any run still in a seed batch is foreign.
+  const foreignMember = archive.prepare("SELECT 1 FROM runs WHERE batch_id=? LIMIT 1");
+  for (const raw of archive.prepare("SELECT id FROM copy_seed_batches").iterate()) {
+    if (foreignMember.get(z.object({ id: z.string() }).parse(raw).id) !== undefined) throw new Error("copy-seed-batch-membership-mismatch");
   }
   archive.exec(`DELETE FROM notifications WHERE id IN (SELECT id FROM copy_seed_members WHERE kind='notification'); DELETE FROM copy_seed_members;
     DELETE FROM run_batches WHERE id IN (SELECT id FROM copy_seed_batches); DELETE FROM copy_seed_batches`);

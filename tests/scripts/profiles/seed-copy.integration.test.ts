@@ -331,7 +331,7 @@ async function expectLiveSamples(client: ReturnType<typeof createDashboardClient
   expect(await client.executeCommand(answer)).toEqual({ state: "rejected", commandId: answer.commandId, code: "SAMPLE_RUN_REFUSED", message: "Sample run: nothing runs." });
   const preflights = preflight.mock.calls.length;
   await expect(client.submitStartPlan({ workflowId: running.envelope.workflow, dryRun: true, submissions: [running.input.raw], browserMode: "headless", captureBrowserScreenshots: false,
-    rerunSource: { runId: running.envelope.runId, expectedVersion: running.version, intent: "rerun" } })).rejects.toMatchObject({ status: 409, code: "SAMPLE_RUN_REFUSED" });
+    rerunSource: { runId: running.envelope.runId, expectedVersion: running.version, intent: "rerun", selectedStepKeys: ["all"] } })).rejects.toMatchObject({ status: 409, code: "SAMPLE_RUN_REFUSED" });
   expect(preflight.mock.calls).toHaveLength(preflights);
 
   const card = cards.find(entry => entry.state === "running");

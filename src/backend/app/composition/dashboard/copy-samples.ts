@@ -5,7 +5,7 @@ import { SAMPLE_WORKER_ORDINAL_FLOOR, workerPoolMember, WorkerSlotRecordSchema, 
 import { WorkerBrowserObservationSchema } from "../../../../models/run/worker-control.js";
 import { CommandResultSchema, type CommandResult } from "../../../../rules/commands/commands.js";
 import { deriveStableUuid } from "../../../../rules/identity/identifiers.js";
-import { BrowserSystemIdSchema, CommandIdSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema, type BrowserSystemId, type IsoInstant } from "../../../../rules/identity/ids.js";
+import { BrowserSystemIdSchema, CommandIdSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema, type BrowserSystemId, type IsoInstant, type RunId } from "../../../../rules/identity/ids.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { CommandKernel } from "../../../runs/commands/command-kernel.js";
 import { SampleRunRefusedError } from "../../../runs/commands/refusals.js";
@@ -103,7 +103,7 @@ export function createCopySamples(input: Readonly<{ stored: StoredSamples; realS
     const parsed = RunTargetSchema.safeParse(request);
     return parsed.success && runIds.has(parsed.data.target.runId) ? refused(parsed.data.commandId) : undefined;
   };
-  const refuseSource = (runId: string | undefined) => { if (runId !== undefined && runIds.has(runId)) throw new SampleRunRefusedError(); };
+  const refuseSource = (runId: RunId | undefined) => { if (runId !== undefined && runIds.has(runId)) throw new SampleRunRefusedError(); };
   const planSource = (input: unknown) => RerunPlanSourceSchema.safeParse(input).data?.rerunSource.runId;
   return Object.freeze({
     slots: (): readonly WorkerSlotRecord[] => [...samples.values()].map(sample => sample.slot),

@@ -86,7 +86,9 @@ it("refuses a typed gate answer on a sample run before any gate resolver", () =>
   const { samples } = fixture();
   for (const type of ["answer-identity-gate", "answer-gate-arm"]) {
     const answer = { ...envelope(), family: "gate", type, target: { runId: sampleRun, gateId: "review", expectedVersion: 1 }, payload: { arm: "approve" } };
-    assert.equal(samples.refuseRun(answer)?.code, "SAMPLE_RUN_REFUSED");
+    const result = samples.refuseRun(answer);
+    assert.ok(result?.state === "rejected");
+    assert.equal(result.code, "SAMPLE_RUN_REFUSED");
   }
   assert.equal(samples.refuseRun({ ...envelope(), family: "run", type: "pause", target: { runId: realRun, expectedVersion: 1 } }), undefined);
 });
@@ -100,12 +102,14 @@ it("refuses a sample rerun source before its Start plan runs preflight or reads 
     previewWarnings: () => { calls.push("warnings"); throw new Error("warnings-reached"); },
   };
   const plans = samples.guardStartPlans(served);
+  const prepare = plans.prepare;
+  assert.ok(prepare !== undefined);
   const sample = { workflowId: "person-lookup", rerunSource: { runId: sampleRun } };
-  await assert.rejects(plans.prepare(sample, new AbortController().signal), { name: "SampleRunRefusedError", message: "Sample run: nothing runs." });
+  await assert.rejects(prepare(sample, new AbortController().signal), { name: "SampleRunRefusedError", message: "Sample run: nothing runs." });
   assert.throws(() => plans.plan(sample), { name: "SampleRunRefusedError" });
   assert.throws(() => plans.previewWarnings({ workflowId: "person-lookup", source: { runId: sampleRun } }), { name: "SampleRunRefusedError" });
   assert.deepEqual(calls, []);
-  await plans.prepare({ workflowId: "person-lookup", rerunSource: { runId: realRun } }, new AbortController().signal);
+  await prepare({ workflowId: "person-lookup", rerunSource: { runId: realRun } }, new AbortController().signal);
   assert.throws(() => plans.plan({ workflowId: "person-lookup" }), /plan-reached/u);
   assert.deepEqual(calls, ["prepare", "plan"]);
 });
