@@ -715,10 +715,10 @@ describe("dashboard stream hub", () => {
     // fields, so every call must reach the real instance as its receiver.
     const counting = new Proxy(w.projection, {
       get(target, property, receiver) {
-        if (property === "buildDashboardDayWire") {
-          return (day: string) => {
+        if (property === "requestDashboardDay") {
+          return (day: string, request?: Parameters<typeof target.requestDashboardDay>[1]) => {
             builds.push(day);
-            return target.buildDashboardDayWire(day);
+            return target.requestDashboardDay(day, request);
           };
         }
         const value: unknown = Reflect.get(target, property, receiver);

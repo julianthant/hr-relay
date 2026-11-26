@@ -60,7 +60,8 @@ export function prepareReadLaneStart(admission: RuntimeAdmission, database: Auth
 }
 
 /** Worker thread: validates the start record, re-checks its source and issues this isolate's read-lane admission. */
-export function admitReadLane(input: unknown): Readonly<{ start: ReadLaneStart; admission: RuntimeAdmission; assertSource: () => void }> {
+export function admitReadLane(input: unknown): Readonly<{ start: ReadLaneStart; admission: RuntimeAdmission; assertSource: () => void;
+  withProvedSource: <T>(read: () => T) => T }> {
   if (!z.object({ protocol: z.literal(READ_LANE_PROTOCOL) }).safeParse(input).success) throw new Error("read-lane-protocol-mismatch");
   const start = ReadLaneStartSchema.parse(input);
   if (start.historyArchive === undefined && start.cursorOffset !== 0) throw new Error("read-lane-history-cursor-mismatch");
@@ -69,8 +70,23 @@ export function admitReadLane(input: unknown): Readonly<{ start: ReadLaneStart; 
     if (!sameDirectory(readLaneSourceIdentity(start.path, true), start.identity)) throw new Error("profile-database-open-source-changed");
   };
   assertSource();
-  const admission = RuntimeAdmission.forReadLane({ stateRoot: start.stateRoot, path: start.path, binding: start.binding, assertSource, checkpoint: start.checkpoint });
-  return Object.freeze({ start, admission, assertSource });
+  let proving = false;
+  const admission = RuntimeAdmission.forReadLane({ stateRoot: start.stateRoot, path: start.path, binding: start.binding,
+    assertSource: () => { if (!proving) assertSource(); }, checkpoint: start.checkpoint });
+  /**
+   * One read snapshot, with the source proved when it begins and again before its result is returned, instead of on every
+   * statement: a store replaced during the read still refuses that read's result.
+   */
+  const withProvedSource = <T>(read: () => T): T => {
+    if (proving) throw new Error("read-lane-source-proof-nested");
+    assertSource();
+    proving = true;
+    let result: T;
+    try { result = read(); } finally { proving = false; }
+    assertSource();
+    return result;
+  };
+  return Object.freeze({ start, admission, assertSource, withProvedSource });
 }
 
 /**

@@ -23,16 +23,3 @@ export function createPositionedReadResponse<Wire extends object>(cacheControl: 
     return response(entry, cacheControl);
   };
 }
-
-/** A reader returns the same deeply frozen wire only while its sources remain current. */
-export function createReadResponse() {
-  const serialized = new WeakMap<object, SerializedRead>();
-  return (wire: object): Response => {
-    let entry = serialized.get(wire);
-    if (entry === undefined) {
-      entry = serialize(wire);
-      if (Object.isFrozen(wire)) serialized.set(wire, entry);
-    }
-    return response(entry, "private, no-cache");
-  };
-}
