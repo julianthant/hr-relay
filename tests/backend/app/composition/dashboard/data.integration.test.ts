@@ -6,7 +6,8 @@ import { composeDataQueries } from "../../../../../src/backend/app/composition/d
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { registerDataRoutes } from "../../../../../src/backend/transports/http/routes/data.js";
 import { RerunValuesResponseSchema } from "../../../../../src/models/dashboard/rerun-values.js";
-import { rerunValuesHarness } from "../../../../support/fixtures/rerun-values-fixtures.js";
+import { mappedReadDescriptor, rerunValuesHarness } from "../../../../support/fixtures/rerun-values-fixtures.js";
+import { sourceBadge, type StepRow } from "../../../../../src/dashboard/surfaces/run-start/run-steps-model.js";
 import { makeWorld } from "../../../../support/helpers/backend/dashboard-harness.js";
 
 const profileFixtures = createProfileFixtureSet();
@@ -73,5 +74,20 @@ describe("Rerun values HTTP and composition", () => {
       { label: "requeues", valueRedacted: "not recorded" },
     ]);
   });
-
+  // The source ran its read step, then stopped at the approval: condition-skipped, or opened and never resolved.
+  for (const [label, evidence, fact, badge] of [
+    ["a condition-skipped approval finishes its row", { taskSpans: [{ attempt: 1, spanPath: "approval#1", name: "approval", outcome: "skipped", notRunReason: "condition-false" }], openGates: [] }, { state: "completed", reason: "condition-skipped" }, "completed"],
+    ["an approval left open shows its row Cancelled", { taskSpans: [], openGates: [{ gate: "approval", openedAt: "2026-11-25T12:00:00.000Z" }] }, { state: "unfinished", reason: "incomplete-execution" }, "cancelled"],
+  ] as const) {
+    it(`served from the run fold, ${label}`, async () => {
+      const { deps, run } = await setup();
+      const gated = mappedReadDescriptor(undefined, { gate: true });
+      const data = composeDataQueries({ ...deps, canonical: { ...deps.canonical, descriptors: { resolve: () => gated } },
+        projection: { runFold: () => ({ queued: { runId: run.envelope.runId }, attempt: run.envelope.attempt, ...evidence }) } as unknown as typeof deps.projection });
+      const result = data.rerunValues({ runId: run.envelope.runId, expectedVersion: run.version }); assert.ok(result.state === "available");
+      assert.deepEqual(result.snapshot.steps[0]?.nodes.find(({ nodeId }) => nodeId === "approval"), { nodeId: "approval", ...fact });
+      const row = { key: "read", label: "Read", kind: "locked", note: undefined, includedByDefault: true, members: [{ step: "read" }] } as unknown as StepRow;
+      assert.equal(sourceBadge(row, { ...result.snapshot, source: { ...result.snapshot.source, outcome: "cancelled" } }), badge);
+    });
+  }
 });

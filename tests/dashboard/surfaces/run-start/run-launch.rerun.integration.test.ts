@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
-import { launchDescriptor } from "../../../support/fixtures/run-launch-fixtures.js";
+import { launchDescriptor, launchHarness } from "../../../support/fixtures/run-launch-fixtures.js";
+import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { createMountedRerunWorld } from "../../../support/helpers/dashboard/mounted-rerun-world.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
@@ -43,6 +44,76 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     h.registerDescriptor(launchDescriptor("reject-active", { fingerprint: "b".repeat(64) }));
     await mount(h, source);
     for (const label of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(label).matches(":checked"), true);
+  });
+  it("opens Rerun on a run cancelled mid-run with the steps a run failed at the same step gets", async () => {
+    const rows = ["Read employee", "Check employee", "File transaction"];
+    const picked = async (stop: "failed" | "cancelled") => {
+      const h = await setup(); const queued = h.start(h.proposal()); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+      h.world.onPrepare = () => {
+        if (stop === "failed") throw new Error("synthetic prepare failure");
+        const run = h.fresh(queued); h.lifecycle.transition({ commandId: h.ids.uuid(), runId: run.envelope.runId, expectedVersion: run.version,
+          lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() } });
+      };
+      await h.execute(queued); delete h.world.onPrepare;
+      const source = h.fresh(queued);
+      assert.ok(source.lifecycle.state === "terminal" && source.lifecycle.outcome === stop, JSON.stringify(source.lifecycle));
+      await mount(h, source);
+      const checked = rows.map(label => checkbox(label).matches(":checked"));
+      await cleanup(); return checked;
+    };
+    const cancelled = await picked("cancelled");
+    assert.equal(cancelled.at(-1), true);
+    assert.deepEqual(cancelled, await picked("failed"));
+  });
+  it("names a cancelled run's receipt on Start whether its filing step runs again or is left off", async () => {
+    const h = await launchHarness("reject-active", undefined, { descriptor: launchDescriptor("reject-active", { confirmAfterFiling: true }),
+      protectedSecrets: protectedSecretSource() }, profileFixtures.create);
+    try {
+      const queued = h.start(h.proposal()); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+      let reads = 0;
+      // The third read is Confirm filing, after the write committed; the operator cancels there and it never finishes.
+      h.world.onRead = () => { reads += 1; if (reads !== 3) return;
+        const run = h.fresh(queued); h.lifecycle.transition({ commandId: h.ids.uuid(), runId: run.envelope.runId, expectedVersion: run.version,
+          lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() } });
+        throw new Error("fixture: the cancel stops Confirm filing"); };
+      await h.execute(queued); delete h.world.onRead;
+      const source = h.fresh(queued);
+      assert.ok(source.lifecycle.state === "terminal" && source.lifecycle.outcome === "cancelled", JSON.stringify(source.lifecycle));
+      assert.equal(h.database.authority.writeIntents.listByRun(source.envelope.runId).filter(intent => intent.status === "committed").length, 1);
+      const receipts = () => document.querySelector('[aria-label="Already submitted by this run"]')?.textContent ?? text();
+      // A served write step is required, so the default selection runs it again.
+      await mount(h, source);
+      assert.equal(checkbox("Confirm filing").matches(":checked"), true);
+      await press("Continue");
+      assert.match(receipts(), /File transaction.*Runs again/u);
+      await cleanup();
+      // A workflow whose write step can be left off: the default selection leaves the completed filing off and still names its receipt.
+      const omittable = { ...h, workflow: { ...h.workflow, steps: h.workflow.steps.map(step => step.key !== "filing" ? step
+        : { ...step, control: { state: "omittable" as const, form: { fields: [] }, forces: [] } }) } };
+      await mount(omittable, source);
+      assert.equal(checkbox("File transaction").matches(":checked"), false);
+      await press("Continue");
+      assert.match(receipts(), /File transaction.*Not run again/u);
+    } finally { await cleanup(); await h.dispose(); }
+  });
+  it("leaves a filing the source only found already present out of its receipts", async () => {
+    const h = await launchHarness("reject-active", undefined, { descriptor: launchDescriptor("reject-active", { confirmAfterFiling: true }),
+      protectedSecrets: protectedSecretSource() }, profileFixtures.create);
+    try {
+      const queued = h.start(h.proposal()); h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
+      let reads = 0;
+      h.world.onRead = () => { reads += 1; if (reads !== 3) return;
+        const run = h.fresh(queued); h.lifecycle.transition({ commandId: h.ids.uuid(), runId: run.envelope.runId, expectedVersion: run.version,
+          lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() } });
+        throw new Error("fixture: the cancel stops Confirm filing"); };
+      await h.execute(queued); delete h.world.onRead;
+      const source = h.fresh(queued);
+      assert.ok(source.lifecycle.state === "terminal" && source.lifecycle.outcome === "cancelled", JSON.stringify(source.lifecycle));
+      assert.deepEqual(h.database.authority.writeIntents.listByRun(source.envelope.runId).filter(intent => intent.status === "committed"), []);
+      await mount(h, source);
+      await press("Continue");
+      assert.equal(document.querySelector('[aria-label="Already submitted by this run"]') === null, true);
+    } finally { await cleanup(); await h.dispose(); }
   });
   it("submits an earlier source as a new current run with repeat consent and fresh evidence", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);

@@ -1,0 +1,181 @@
+{
+  "id": "work-study",
+  "code": "ws",
+  "label": "Work-Study",
+  "icon": "ClipboardCheck",
+  "categoryId": "operations",
+  "descriptorFingerprint": "750a31f2cc651f10c1db9c2547009df4071909f95d13ec566c761eed6815f360",
+  "availability": {
+    "state": "available"
+  },
+  "role": {
+    "kind": "composition"
+  },
+  "start": {
+    "readiness": {
+      "scope": "workbook-sources",
+      "state": "ready"
+    },
+    "summary": "Opens UCPath PayPath Actions for each employee and files the work-study transaction: the supplied effective date, reason JRL and pool F, with matching comments. Dry run fills it and saves nothing.",
+    "enqueue": "reject-active",
+    "version": 1,
+    "inputRun": {
+      "placeholder": "10000001; 10000002",
+      "parser": {
+        "split": {
+          "kind": "delimited",
+          "delimiters": [
+            ",",
+            ";",
+            "\n"
+          ]
+        },
+        "rules": [
+          {
+            "when": {
+              "kind": "pattern",
+              "pattern": "eid"
+            },
+            "emit": "emplId"
+          }
+        ],
+        "unmatched": "Employee IDs must contain at least five digits."
+      },
+      "typedInput": {
+        "modeField": "mode",
+        "modeLabel": "Input",
+        "initialMode": "employee-ids",
+        "description": "Each Employee ID starts one run; every run uses the one effective date.",
+        "submitsMode": false,
+        "modes": [
+          {
+            "value": "employee-ids",
+            "label": "Employee IDs",
+            "inputLabel": "Employee IDs",
+            "hint": "Separate values with a semicolon or Shift+Enter.",
+            "placeholder": "10000001; 10000002",
+            "defaults": [],
+            "parser": {
+              "kind": "entries",
+              "spec": {
+                "split": {
+                  "kind": "delimited",
+                  "delimiters": [
+                    ",",
+                    ";",
+                    "\n"
+                  ]
+                },
+                "rules": [
+                  {
+                    "when": {
+                      "kind": "pattern",
+                      "pattern": "eid"
+                    },
+                    "emit": "emplId"
+                  }
+                ],
+                "unmatched": "Employee IDs must contain at least five digits."
+              }
+            },
+            "display": {
+              "kind": "first-present",
+              "fields": [
+                "emplId"
+              ]
+            },
+            "identityFields": [
+              "emplId"
+            ]
+          }
+        ],
+        "controls": [
+          {
+            "field": "effectiveDate",
+            "label": "Effective date",
+            "modes": [
+              "employee-ids"
+            ],
+            "requires": [],
+            "kind": "date",
+            "placement": "input",
+            "required": true,
+            "refusal": "Choose a valid effective date."
+          }
+        ]
+      },
+      "supportsDryRun": true
+    },
+    "spreadsheetIntake": false,
+    "requiredWorkbookFields": [],
+    "workbookCheck": {
+      "id": "reference-check",
+      "keyFieldId": "eid"
+    },
+    "steps": [
+      {
+        "key": "ucpath-auth",
+        "label": "Sign in to UCPath",
+        "includedByDefault": true,
+        "systems": [
+          "ucpath"
+        ],
+        "control": {
+          "state": "required",
+          "reason": "This workflow requires every node in this step."
+        }
+      },
+      {
+        "key": "reference-check",
+        "label": "Check reference spreadsheets",
+        "includedByDefault": true,
+        "systems": [],
+        "control": {
+          "state": "required",
+          "reason": "This workflow requires every node in this step."
+        }
+      },
+      {
+        "key": "transaction",
+        "label": "Submit work-study transaction",
+        "includedByDefault": true,
+        "systems": [
+          "ucpath"
+        ],
+        "control": {
+          "state": "required",
+          "reason": "This workflow requires every node in this step."
+        }
+      }
+    ],
+    "rows": [
+      {
+        "key": "ucpath-auth",
+        "label": "Sign in to UCPath",
+        "includedByDefault": true,
+        "kind": "locked",
+        "lockReason": "guard-read",
+        "members": [
+          {
+            "step": "ucpath-auth"
+          },
+          {
+            "step": "reference-check"
+          }
+        ]
+      },
+      {
+        "key": "transaction",
+        "label": "Submit work-study transaction",
+        "includedByDefault": true,
+        "kind": "locked",
+        "lockReason": "form-action",
+        "members": [
+          {
+            "step": "transaction"
+          }
+        ]
+      }
+    ]
+  }
+}
