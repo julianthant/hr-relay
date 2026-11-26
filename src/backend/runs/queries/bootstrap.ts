@@ -45,7 +45,7 @@ type AuthorityMetaProbe = Readonly<{ schemaVersion: number; authorityGeneration:
 
 const authorityMetaLaneRead = defineLaneRead(import.meta.url, "authority-meta", {
   lane: "navigation", priority: "interactive", args: z.strictObject({}),
-  run: ({ history }) => history.getMeta(),
+  run: ({ native }) => native.getMeta(),
 });
 
 export const laneAuthorityMeta = (lanes: Pick<DashboardReadLanes, "read">) => async (): Promise<AuthorityMetaProbe> =>

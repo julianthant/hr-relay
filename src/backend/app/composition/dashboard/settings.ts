@@ -52,7 +52,7 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   assertCurrent?: () => void;
   resolveSettings?: Parameters<typeof createSettingsApplicationExecutor>[0];
   /** Seam for the settings store-part lane read and the stream row. */
-  readLanes?: DashboardReadLanes;
+  readLanes?: Pick<DashboardReadLanes, "read">;
 }) {
   const { database, clock, hostFacts } = input;
   const reader = createSettingsRuntimeReader(input);
