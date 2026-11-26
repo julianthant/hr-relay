@@ -4,10 +4,9 @@ import { z } from "zod";
 import { createChatGptAccountService } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantReadTool } from "../../../src/backend/assistant/plugins/plugin.js";
 import { ASSISTANT_TOOL_NAMESPACE } from "../../../src/backend/assistant/plugins/registry.js";
-import { sessionsPlugin } from "../../../src/backend/assistant/plugins/sessions/index.js";
 import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
-import { assistantPersonBinding } from "../../../src/backend/assistant/replies.js";
-import { createAssistantM1Service } from "../../../src/backend/assistant/service.js";
+import { composeAssistant } from "../../../src/backend/app/composition/dashboard/assistant.js";
+import { CommandResultSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 import { createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { AssistantInferenceRequestSchema, AssistantM1RespondEnvelopeSchema, type AssistantM1RespondEnvelope, type AssistantSessionClaim, type AssistantSessionOutcome } from "../../../src/models/dashboard/assistant.js";
@@ -17,7 +16,6 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import type { JsonValue } from "../../../src/rules/validation/canonical-json.js";
 import { createBoundProfileFixture } from "./admission-fixture.js";
 import { assistantM1HistoryFixture } from "./assistant-m1-history-fixture.js";
-import { sessionAuthorizationFixture } from "./assistant-session-claims.js";
 import { typedProposalFixture } from "./assistant-typed-proposals.js";
 import { completedResponseStream, partialTextStream } from "./chatgpt-response-stream.js";
 import { EXECUTOR_EID, personLookupQueuedRun } from "./phase1f-executor-harness.js";
@@ -130,9 +128,8 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
       const store = assistantM1HistoryFixture({ now: at, acceptedAt: at, profileId: admission.profileBinding.profileId });
       try {
         const owner = () => ({ profileId: store.profileId(), epoch: store.epoch() });
-        const proposals = typedProposalFixture(store, at), sessions = sessionAuthorizationFixture({ at, current: owner });
+        const proposals = typedProposalFixture(store, at), proposalStore = proposals.ports.store;
         const personRun = RunRecordSchema.parse(personLookupQueuedRun({ runId: randomUUID(), itemId: randomUUID() }));
-        const personTokens = new Set<string>();
         const personQuery = z.strictObject({ query: z.string().min(1) });
         const readPerson: AssistantReadTool = {
           kind: "read", tier: "read", name: "read_person", description: "Look up the person referenced in the operator's request.",
@@ -142,18 +139,27 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
             const { query } = personQuery.parse(input);
             if (context.references.expandArgument(query, ["E"]) !== SCENARIO_PERSON.eid) throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE");
             const person = context.references.issue("P", personRun.envelope.runId, SCENARIO_PERSON.name, SCENARIO_PERSON.eid, personRun.version);
-            personTokens.add(person);
             return { person };
           },
         };
-        const service = createAssistantM1Service({
-          account, proposals: proposals.owner, history: () => store.history, clock, actorId: "local-operator", owner,
-          selectedModel: () => ({ preference: { slug: MODEL, effort: "medium" }, assertCurrent() {} }),
-          facts: () => assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup")),
-          runReferenceLabel: () => "Lookup", debugEvents: { emit() {} },
-          tools: () => ({ plugins: [{ domain: "people", tools: [readPerson] }, proposals.owner.plugin, sessionsPlugin()], sessions: sessions.authorization,
-            bindings: table => [...personTokens].map(token => assistantPersonBinding(table, token, personRun)) }),
-        });
+        // The dashboard composition over the fixture's storage: only the start plans and the active browser setting are faked.
+        const authority = { assistantProposals: proposalStore, assistantHistory: store.history,
+          startPlans: { get: (id: string) => { const planned = proposals.ports.plannedInputs(id); return planned === undefined ? undefined : { plannedAt: planned.capturedAt, planned: planned.runs }; } },
+          runtimeConfig: { get: () => ({ configSnapshotId: "scenario", configFingerprint: "scenario" }) },
+          configSnapshots: { get: () => ({ fingerprint: "scenario", config: { browser: { headless: true } } }) } };
+        const starts = { ...proposals.ports, submit(command: CommandRequest, attribution: unknown) {
+          composed.assertEffect(command.commandId, command);
+          proposals.submitted.push({ command, attribution });
+          const runIds = command.family === "start" ? [proposals.run().envelope.runId] : command.family === "run" ? [command.target.runId] : [];
+          return Promise.resolve(CommandResultSchema.parse({ state: "applied", commandId: command.commandId, affectedTargets: runIds.map(runId => ({ family: "run", runId })) }));
+        } };
+        const composed = composeAssistant({ database: { authority, withAuthorityReadSnapshot: work => work() } as unknown as Parameters<typeof composeAssistant>[0]["database"], starts,
+          readPlugins: () => [{ domain: "people", tools: [readPerson] }],
+          service: { account, clock, actorId: "local-operator", owner,
+            selectedModel: () => ({ preference: { slug: MODEL, effort: "medium" }, assertCurrent() {} }),
+            facts: () => assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup")),
+            runReferenceLabel: () => "Lookup", debugEvents: { emit() {} } } });
+        const service = composed.assistant;
         const conversationId = randomUUID(), signal = new AbortController().signal;
         assert.equal(service.history({ operation: "create", conversationId, title: scenario.name }).state, "saved");
         const respond = (request: { expectedRevision: number; messageId: string; message: string }) =>
@@ -174,8 +180,10 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
           if (envelope.kind === "result" && envelope.result.state === "answered") {
             for (const part of envelope.result.reply.parts) if (part.kind === "session") privateValues.add(part.runId);
           }
-          turn.check({ envelope, requests: requests.slice(firstRequest).map(({ body }) => body), proposalStarts: proposals.submitted.length,
-            sessionStarts: sessions.submitted.length, sessionClaim: sessions.claims.all().at(-1) });
+          const sessionCommands = proposals.submitted.filter(({ command }) => proposalStore.sessions.byCommand(command.commandId) !== undefined);
+          const lastSession = sessionCommands.at(-1);
+          turn.check({ envelope, requests: requests.slice(firstRequest).map(({ body }) => body), proposalStarts: proposals.submitted.length - sessionCommands.length,
+            sessionStarts: sessionCommands.length, sessionClaim: lastSession === undefined ? undefined : proposalStore.sessions.byCommand(lastSession.command.commandId) });
         }
 
         for (const [index, { raw }] of requests.entries()) {
