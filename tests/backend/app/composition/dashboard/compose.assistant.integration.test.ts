@@ -184,7 +184,7 @@ it('serves the read tools through authenticated composition without private prov
   await withServedAssistant(async fixture => {
     const { context, transport, origin, originalFetch } = fixture, { run, title, subjectRef } = seedAssistantReadRun(fixture);
     const tabId = randomUUID();
-    const client = createDashboardClient({ baseUrl: origin, tabId });
+    const client = createDashboardClient({ baseUrl: origin });
     const response = await originalFetch(`${origin}/api/v1/runs/${run.envelope.runId}`, { headers: { [DASHBOARD_TAB_HEADER]: tabId } });
     const wire = await response.text();
     assert.equal(response.status, 200, wire);
