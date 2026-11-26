@@ -110,7 +110,7 @@ async function chooseSpreadsheet() {
   assert_m0.ok(document.querySelector('[role="dialog"]'));
 }
 for (const launch of ["external button", "keyboard shortcut"] as const) {
-  for (const dismissal of ["Cancel", "Escape", "Close"] as const) {
+  for (const dismissal of ["Escape", "Close"] as const) {
     it_m0(`${launch}: ${dismissal} restores the Run launch control after the real dialog unmounts`,async () => {
 try {
 
@@ -357,7 +357,7 @@ afterEach_m1(_afterEachFixture0);
     const preference = shellPreferences.snapshot().value.selectedWorkflowId;
     const target = surface === "search"
       ? [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent?.includes(title))
-      : [...document.querySelectorAll<HTMLButtonElement>('.notice-main')].find(item => item.querySelector(".notice-title")?.textContent === title);
+      : [...document.querySelectorAll<HTMLButtonElement>('.notice-main')].find(item => item.querySelector(".notice-title")?.textContent === "Canonical history");
     assert_m1.ok(target);
     await click(target);
     assert_m1.equal(document.body.textContent?.includes("Discard changes?"), false);

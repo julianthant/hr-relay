@@ -32,7 +32,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await mount(h, source);
     assert.equal(document.querySelector("textarea") === null, true);
     for (const label of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(label).matches(":checked"), true);
-    await press("Continue");
+    await press("Next");
     await pressOnce("Start live run");
     assert.match(text(), /already submitted/u);
   });
@@ -84,7 +84,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       // A served write step is required, so the default selection runs it again.
       await mount(h, source);
       assert.equal(checkbox("Confirm filing").matches(":checked"), true);
-      await press("Continue");
+      await press("Next");
       assert.match(receipts(), /File transaction.*Runs again/u);
       await cleanup();
       // A workflow whose write step can be left off: the default selection leaves the completed filing off and still names its receipt.
@@ -92,7 +92,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
         : { ...step, control: { state: "omittable" as const, form: { fields: [] }, forces: [] } }) } };
       await mount(omittable, source);
       assert.equal(checkbox("File transaction").matches(":checked"), false);
-      await press("Continue");
+      await press("Next");
       assert.match(receipts(), /File transaction.*Not run again/u);
     } finally { await cleanup(); await h.dispose(); }
   });
@@ -111,14 +111,14 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       assert.ok(source.lifecycle.state === "terminal" && source.lifecycle.outcome === "cancelled", JSON.stringify(source.lifecycle));
       assert.deepEqual(h.database.authority.writeIntents.listByRun(source.envelope.runId).filter(intent => intent.status === "committed"), []);
       await mount(h, source);
-      await press("Continue");
+      await press("Next");
       assert.equal(document.querySelector('[aria-label="Already submitted by this run"]') === null, true);
     } finally { await cleanup(); await h.dispose(); }
   });
   it("submits an earlier source as a new current run with repeat consent and fresh evidence", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
     h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));
-    await mount(h, source); await press("Continue");
+    await mount(h, source); await press("Next");
     await pressOnce("Start live run");
     assert.match(text(), /already submitted/u); assert.equal(h.finalCommands.length, 0);
     await press("Start live run again");
@@ -143,7 +143,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   it("Enter under the repeat warning consents and starts once", async () => {
     const h = await setup(); const source = await h.completeSource();
     h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));
-    await mount(h, source); await press("Continue");
+    await mount(h, source); await press("Next");
     await pressOnce("Start live run");
     assert.match(text(), /already submitted/u); assert.equal(h.finalCommands.length, 0); assert.equal(h.submissions.length, 0);
     await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
@@ -159,7 +159,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       dryRun: false, selectedStepKeys });
     const queued = h.start(plan); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
     assert.equal((await h.execute(queued)).state, "done"); const source = h.fresh(queued);
-    await mount(h, source); await press("Continue");
+    await mount(h, source); await press("Next");
     assert.equal(document.querySelector('button[aria-label$=" Workers"]') === null, true);
     await press("Start live run");
     assert.equal(Object.hasOwn(StartPlanRequestSchema.parse(h.submissions.at(-1)), "workers"), false);
@@ -171,7 +171,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const before = h.authoritySnapshot();
     for (const name of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(name).matches(":checked"), true);
     assert.match(text(), /Completed/u); assert.match(text(), /3 of 3 included/u);
-    await press("Continue");
+    await press("Next");
     assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
     await pressOnce("Start live run");
     assert.match(text(), /already submitted/u); assert.match(text(), /UCPath/u); assert.equal(document.querySelector('[aria-label="Required"]') === null, true);
@@ -191,7 +191,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   });
   it("reruns a dry run as a dry run that commits nothing", async () => {
     const h = await setup(); const source = await h.completeSource(true); const bytes = sourceBytes(h, source);
-    await mount(h, source); await press("Continue"); assert.doesNotMatch(text(), /Dry run/u);
+    await mount(h, source); await press("Next"); assert.doesNotMatch(text(), /Dry run/u);
     await press("Start dry run");
     const queued = h.queueRoots.at(-1); assert.ok(queued); const run = h.database.authority.runs.get(queued.runId); assert.ok(run);
     assert.notEqual(run.envelope.runId, source.envelope.runId); assert.equal(run.envelope.dryRun, true);
@@ -205,10 +205,10 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const before = h.authoritySnapshot();
     await act(async () => { checkbox("Check employee").click(); });
     assert.equal(field("Checked employee ID").value, "10812345"); assert.match(text(), /From the earlier run/u);
-    await fill(field("Checked employee ID"), ""); assert.equal(button("Continue").disabled, true);
+    await fill(field("Checked employee ID"), ""); assert.equal(button("Next").disabled, true);
     await fill(field("Checked employee ID"), "10812346"); assert.doesNotMatch(text(), /From the earlier run/u);
     assert.equal(h.authoritySnapshot(), before); assert.equal(h.finalCommands.length, 0);
-    await press("Continue");
+    await press("Next");
     await press("Start live run");
     const request = StartPlanRequestSchema.parse(h.submissions.at(-1)); assert.deepEqual(request.submissions, [{ eid: "10812345" }]);
     assert.deepEqual(request.stepOmissions, [{ step: "checking", facts: { eid: "10812346" } }]);
@@ -233,7 +233,7 @@ describe("registered Person Lookup and Separations served launch", () => {
   async function prepare(entry: typeof cases[number]) {
     const input = document.querySelector("textarea"); assert.ok(input);
     await readiness.fill(input, entry.text);
-    await readiness.press("Continue");
+    await readiness.press("Next");
     if (entry.dryRun) {
       assert.equal(readiness.checkbox("Dry run").matches(":checked"), false);
       await act(async () => readiness.checkbox("Dry run").click());
@@ -313,8 +313,8 @@ describe("registered Person Lookup and Separations served launch", () => {
       const source = await h.failedSource(entry.submission, entry.dryRun), before = h.retained(source);
       const view = await readiness.mount(h, source);
       await vi.waitFor(() => assert.ok([...document.querySelectorAll("button")]
-        .some(button => button.textContent?.trim() === "Continue" && !button.disabled)));
-      await readiness.press("Continue");
+        .some(button => button.textContent?.trim() === "Next" && !button.disabled)));
+      await readiness.press("Next");
       assert.equal(h.submissions.length, 1);
       assert.deepEqual(h.finalCommands, []);
       await readiness.press(startName(entry));
@@ -337,7 +337,7 @@ describe("registered Person Lookup and Separations served launch", () => {
     await act(async () => match.click());
     const input = document.querySelector("textarea"); assert.ok(input);
     await readiness.fill(input, "Example, Person, x, 123456789");
-    await readiness.press("Continue"); await readiness.press("Start run");
+    await readiness.press("Next"); await readiness.press("Start run");
     await vi.waitFor(() => assert.deepEqual(view.applied, ["person-lookup"]));
     const plan = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.deepEqual(plan.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "123456789",

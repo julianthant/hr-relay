@@ -171,32 +171,19 @@ describe("moving between stages", () => {
   it("goes nowhere while a command is out or its expired plan is being rebuilt", () => {
     const replanning = { kind: "replanning", request: 7, for: FP, planRequest: REQUEST } as const;
     for (const held of [{ activity: submitting() }, { activity: replanning }, { detached: [submitting()] }, { detached: [replanning] }]) {
-      for (const via of ["back", "stage-bar"] as const) assert.equal(refusal(at({ stage: "Start", ...held }), { type: "go-to", stage: "Input", via }), "busy");
+      assert.equal(refusal(at({ stage: "Start", ...held }), { type: "go-to", stage: "Input" }), "busy");
     }
   });
 
-  it("back goes to the previous stage, even while a read is out; not on the first stage", () => {
-    assert.equal(moved(at({ stage: "Start", activity: { kind: "planning", request: 1, for: FP } }), { type: "go-to", stage: "Input", via: "back" }).next.stage, "Input");
-    assert.equal(moved(at({ stage: "Start", source: rerunReady() }), { type: "go-to", stage: "Steps", via: "back" }).next.stage, "Steps");
-    assert.equal(refusal(at({ stage: "Start", source: rerunReady() }), { type: "go-to", stage: "Input", via: "back" }), "not-here", "a rerun has no Input page");
-    assert.equal(refusal(at({ stage: "Input" }), { type: "go-to", stage: "Input", via: "back" }), "not-here");
-    assert.equal(refusal(at({ stage: "Steps", source: rerunReady() }), { type: "go-to", stage: "Steps", via: "back" }), "not-here");
-  });
-
-  it("back from Start goes to Input and the controls name it", () => {
-    const path = ["Input", "Start"] as const;
-    assert.equal(moved(at({ stage: "Start" }), { type: "go-to", stage: "Input", via: "back", path }).next.stage, "Input");
-    assert.equal(runDialogControls(at({ stage: "Start" }), gates({ path }), FP).back, "Input");
-    assert.equal(runDialogControls(at({ stage: "Start", source: rerunReady() }), gates({ path: ["Steps", "Start"] }), FP).back, "Steps");
-  });
-
-  it("the stage bar goes to an earlier stage only, idle and without a saved submission", () => {
-    assert.equal(moved(at({ stage: "Start" }), { type: "go-to", stage: "Input", via: "stage-bar" }).next.stage, "Input");
-    assert.equal(refusal(at({ stage: "Input" }), { type: "go-to", stage: "Start", via: "stage-bar" }), "not-here");
+  it("the stage bar goes back to an earlier stage of the path, even while a read is out or a start is saved", () => {
+    assert.equal(moved(at({ stage: "Start", activity: { kind: "planning", request: 1, for: FP } }), { type: "go-to", stage: "Input" }).next.stage, "Input");
+    assert.equal(moved(at({ stage: "Start", recovery: { state: "retained", command: command(PLAN_A) } }), { type: "go-to", stage: "Input" }).next.stage, "Input");
+    assert.equal(moved(at({ stage: "Start", source: rerunReady() }), { type: "go-to", stage: "Steps" }).next.stage, "Steps");
+    assert.equal(refusal(at({ stage: "Start", source: rerunReady() }), { type: "go-to", stage: "Input" }), "not-here", "a rerun has no Input page");
+    assert.equal(refusal(at({ stage: "Input" }), { type: "go-to", stage: "Start" }), "not-here");
+    assert.equal(refusal(at({ stage: "Input" }), { type: "go-to", stage: "Input" }), "not-here");
     const path = ["Input", "Start", "Steps"] as const;
-    for (const stage of ["Input", "Start"] as const) assert.equal(moved(at({ stage: "Steps" }), { type: "go-to", stage, via: "stage-bar", path }).next.stage, stage);
-    assert.equal(refusal(at({ stage: "Start", recovery: { state: "retained", command: command(PLAN_A) } }), { type: "go-to", stage: "Input", via: "stage-bar" }), "blocked");
-    assert.equal(refusal(at({ stage: "Start", activity: { kind: "planning", request: 1, for: FP } }), { type: "go-to", stage: "Input", via: "stage-bar" }), "busy");
+    for (const stage of ["Input", "Start"] as const) assert.equal(moved(at({ stage: "Steps" }), { type: "go-to", stage, path }).next.stage, stage);
   });
 
   it("continue is busy while a request runs", () => {
@@ -659,7 +646,7 @@ describe("visibleRunDialog", () => {
 
 describe("runDialogControls", () => {
   it("labels the primary button by stage and plan", () => {
-    assert.equal(runDialogControls(at({ stage: "Input" }), gates({ next: "Start" }), FP).primary.label, "Continue");
+    assert.equal(runDialogControls(at({ stage: "Input" }), gates({ next: "Start" }), FP).primary.label, "Next");
     assert.equal(runDialogControls(at({ stage: "Start" }), LAST, FP).primary.label, "Start run");
     assert.equal(runDialogControls(at({ stage: "Start" }), gates({ dryRun: true }), FP).primary.label, "Start dry run");
     assert.equal(runDialogControls(at({ stage: "Start" }), gates({ dryRun: false }), FP).primary.label, "Start live run");
@@ -703,7 +690,6 @@ describe("runDialogControls", () => {
     assert.equal(busy.primary.loading, true);
     const ready = runDialogControls(at({ stage: "Start" }), LAST, FP);
     assert.equal(ready.primary.enabled, true);
-    assert.equal(ready.back, "Input");
     const input = { gates: LAST, authority: { state: "ok" }, planRequest: () => REQUEST, prepare: () => command(PLAN_A) } as const;
     assert.equal(ready.primary.event(input).type, "start");
     assert.equal(runDialogControls(at({ stage: "Input" }), gates({ next: "Start", inputBlocked: true }), FP).primary.enabled, false);

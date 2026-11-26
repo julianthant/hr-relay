@@ -34,7 +34,7 @@ it("normalizes Search people, removes a duplicate identity from the textbox and 
   assert.equal(document.activeElement === box, true, "removing an entry restores focus to the textbox");
   assert.equal(parsed.querySelectorAll(".ds-run-row").length, 3);
   assert.match(parsed.textContent ?? "", /3 runs/u);
-  await dialog.press("Continue");
+  await dialog.press("Next");
   await dialog.press("Start run");
   const submissions = StartPlanRequestSchema.parse(request).submissions;
   const search = { mode: "search", crmCheck: true, keepNonHdh: false, includeCrmDates: true };
@@ -48,8 +48,8 @@ it("clears the final Search entry and disables Continue", async () => {
   await dialog.press("Remove 10000001");
   assert.equal(dialog.typedInput().value, "");
   assert.equal(document.querySelector('[aria-label="Parsed input"]') === null, true);
-  assert.equal(dialog.disabled("Continue"), true);
-  assert.match(dialog.text(), /Type at least one value/u);
+  assert.equal(dialog.disabled("Next"), true);
+  assert.doesNotMatch(dialog.text(), /Type at least one value/u, "an empty input needs no footer line");
 });
 
 it("keeps Match identifiers raw in the editor and masked in its preview", async () => {
@@ -98,7 +98,7 @@ it.each([";", "|"])("preserves two Match tuples through Search blur before the m
   assert.ok(parsed);
   assert.equal(parsed.textContent?.includes("902481357"), false);
   assert.match(parsed.textContent ?? "", /\[masked\]/u);
-  await dialog.press("Continue");
+  await dialog.press("Next");
   await dialog.press("Start run");
   assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [
     { mode: "match", lastName: "Example", firstName: "First", dob: "01/15/2000", crmCheck: false, includeCrmDates: false },

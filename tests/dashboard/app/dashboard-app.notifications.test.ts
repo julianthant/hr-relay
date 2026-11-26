@@ -228,7 +228,7 @@ it("opens a storage notice in Settings > General instead of refusing it", async 
   await act(async () => bell.click());
   const row = document.querySelector<HTMLElement>("li.notice-row"); assert(row);
   assert.equal(row.querySelector(".notice-count")?.textContent, "213 times213", "the count is a badge beside a one-line title");
-  assert.ok(row.querySelector(".notice-context") === null, "a storage notice has no source line");
+  assert.equal(row.querySelector(".notice-title")?.textContent, "Storage needs attention", "a storage notice leads with its title");
   const open = row.querySelector<HTMLButtonElement>("button.notice-main"); assert(open);
   await act(async () => { open.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
   assert.equal(new URLSearchParams(location.search).get("settings"), "general");
@@ -290,6 +290,6 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   assert(days.length > before, "settlement must read current destination authority");
   const read = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 0 unread"]'); assert(read, "the bell count follows the read");
   await act(async () => read.click());
-  assert(rowAction("Delayed read", "Mark as unread"));
+  assert(rowAction("Historical subject", "Mark as unread"));
   assert.equal(writes, 1);
 });
