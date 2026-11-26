@@ -345,3 +345,21 @@ it("shows a plain upload failure in the notice slot with one Retry that sends th
   expect(document.querySelector('[role="alert"]')).toBeNull();
   expect(dialog.text()).toContain("report.pdf");
 });
+
+it("reads dropped PDFs and ignores a drop while it is still reading", async () => {
+  const uploads: string[] = [];
+  await h.openDialog(client({ uploadOcrSource: async request => { uploads.push(request.fileName); return new Promise<never>(() => undefined); } }),
+    { workflows: [workflow], panelWorkflowId: workflow.workflowId });
+  const drop = async (file: File) => {
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input?.parentElement);
+    const event = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: { files: [file] } });
+    await act(async () => { input.parentElement?.dispatchEvent(event); });
+    await h.settle();
+    return event;
+  };
+  expect((await drop(pdf("first.pdf", "%PDF first"))).defaultPrevented).toBe(true);
+  expect(uploads).toEqual(["first.pdf"]);
+  await drop(pdf("second.pdf", "%PDF second"));
+  expect(uploads).toEqual(["first.pdf"]);
+});

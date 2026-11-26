@@ -230,3 +230,19 @@ it("keeps the extra check and holds Continue when the required lookup sheet is r
   assert.equal(dialog.disabled("Next"), true);
   assert.ok(text().includes("Add a reference spreadsheet first."));
 });
+
+it("lists worksheets newest first and narrows them by search", async () => {
+  await h.openDialog(h.stubClient({ ...served }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
+  await h.settle(); await add("References", "Contact roster");
+  await click("Contact roster worksheets, Second");
+  const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].map(node => node.textContent);
+  assert.deepEqual(items(), ["Second", "First"]);
+  const search = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a worksheet"]'); assert.ok(search);
+  const descriptor: { set?: (this: unknown, value: string) => void } | undefined = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+  const find = async (value: string) => act(async () => { descriptor?.set?.call(search, value); search.dispatchEvent(new Event("input", { bubbles: true })); });
+  await find("fir");
+  assert.deepEqual(items(), ["First"]);
+  await find("zzz");
+  assert.deepEqual(items(), []);
+  assert.match(text(), /No worksheets match\./u);
+});
