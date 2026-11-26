@@ -169,7 +169,7 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
           const envelope = AssistantM1RespondEnvelopeSchema.parse(await respond({
             expectedRevision: view.revision, messageId: randomUUID(), message: turn.message,
           }));
-          if (transportError !== undefined) throw transportError;
+          if (transportError !== undefined) throw new Error("Synthetic provider transport failed", { cause: transportError });
           assert.equal(pending.length, 0, `${scenario.name} has unused provider answers for a turn`);
           if (envelope.kind === "result" && envelope.result.state === "answered") {
             for (const part of envelope.result.reply.parts) if (part.kind === "session") privateValues.add(part.runId);

@@ -10,9 +10,10 @@ function answered(envelope: AssistantM1RespondEnvelope) {
 const employee = "[[E1.g1]]";
 const person = "[[P1.g1]]";
 
+// Each budget is the measured request size plus 10%, rounded up.
 export const personLookup: AssistantScenario = {
   name: "Person lookup from reads",
-  budget: { largestRequest: 1800, total: 5300 },
+  budget: { largestRequest: 1383, total: 4040 },
   turns: [{
     message: `Who matches ${SCENARIO_PERSON.eid}?`,
     provider: [{ tool: "read_person", args: { query: employee } }, `The matching person is ${person}.`],
@@ -49,7 +50,7 @@ const proposeStart: AssistantScenario["turns"][number] = {
 
 export const scenarios: readonly AssistantScenario[] = [personLookup, {
   name: "Workflow start approved by typed yes",
-  budget: { largestRequest: 1800, total: 3500 },
+  budget: { largestRequest: 1410, total: 2712 },
   turns: [proposeStart, {
     message: "yes",
     provider: [],
@@ -63,7 +64,7 @@ export const scenarios: readonly AssistantScenario[] = [personLookup, {
   }],
 }, {
   name: "Workflow start refused after plan changes",
-  budget: { largestRequest: 1800, total: 3500 },
+  budget: { largestRequest: 1410, total: 2712 },
   turns: [proposeStart, {
     message: "yes",
     changePlan: true,
@@ -78,7 +79,7 @@ export const scenarios: readonly AssistantScenario[] = [personLookup, {
   }],
 }, {
   name: "Read refusal",
-  budget: { largestRequest: 1800, total: 3500 },
+  budget: { largestRequest: 1406, total: 2708 },
   turns: [{
     message: "Look up the missing person.",
     provider: [{ tool: "read_person", args: { query: "missing" } }, "No person is available."],
@@ -91,7 +92,7 @@ export const scenarios: readonly AssistantScenario[] = [personLookup, {
   }],
 }, {
   name: "Read-only session start",
-  budget: { largestRequest: 1800, total: 3500 },
+  budget: { largestRequest: 1399, total: 2703 },
   turns: [{
     message: `Start a read-only Lookup for ${SCENARIO_PERSON.eid}.`,
     provider: [{ tool: "start_session", args: { workflow: "person-lookup", entries: [employee] } }, "Lookup started."],
@@ -111,7 +112,7 @@ export const scenarios: readonly AssistantScenario[] = [personLookup, {
   }],
 }, {
   name: "No reply after provider disconnects",
-  budget: { largestRequest: 1800, total: 1800 },
+  budget: { largestRequest: 1300, total: 1300 },
   turns: [{
     message: "What can Lookup do?",
     provider: [null],
