@@ -614,11 +614,6 @@ function entryName(entry: AnyWorkflowEntry): string {
   return `workflow entry "${entry.id}"`;
 }
 
-/** A write that follows a write only waits on it; when the earlier one was done by hand there is nothing to wait for. */
-function writeAfterWrite(reader: AnyWorkflowEntry, reference: AnyWorkflowEntry): boolean {
-  return reader.kind === "transaction" && reference.kind === "transaction";
-}
-
 function isParallel(entry: AnyWorkflowEntry): entry is ParallelEntry<string, unknown> {
   return entry.kind === "parallel";
 }
@@ -756,7 +751,7 @@ function validateOmissions(id: string, steps: readonly WorkflowTimelineTuple[]):
       if (readerGroup === group || readerGroup.manual !== undefined) continue;
       for (const reference of reader.references) {
         if (memberGroup.get(reference) !== group || !skipped.has(reference.id) || Object.hasOwn(manual.produces, reference.id)) continue;
-        if (writeAfterWrite(reader, reference)) continue;
+        if (manual.orderOnlyReaders?.includes(reader.id) === true) continue;
         throw new Error(
           `workflow ${id} step "${group.key}" is omittable, but ${entryName(reader)} in step "${readerGroup.key}" reads its `
           + `${reference.kind} entry "${reference.id}", which omitting the step leaves unread; rebuild "${reference.id}" `

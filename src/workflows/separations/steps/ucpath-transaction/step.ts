@@ -360,6 +360,8 @@ export const PENDING_TERMINATION_OMISSION: StepManualDeclaration = {
   produces: {},
   skips: [PENDING_SET_NODE, SWEEP_NODE],
   skipsGatesAndTransactions: true,
+  // The termination files after the sweep and reads none of its output.
+  orderOnlyReaders: [TERMINATION_NODE],
 };
 
 const UcpathTransactionFactsSchema = z.strictObject({

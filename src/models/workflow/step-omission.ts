@@ -184,6 +184,8 @@ export interface StepManualDeclaration {
   readonly refine?: (facts: JsonObject) => readonly StepManualIssue[];
   /** Allows `skips` to name the step's gates and transactions: the typed values stand for their decision or write. */
   readonly skipsGatesAndTransactions?: true;
+  /** Nodes in other steps that depend on a skipped member only to run after it and read none of its output. */
+  readonly orderOnlyReaders?: readonly string[];
 }
 
 /** The descriptor-retained form of one declaration, bound to its step key. */
@@ -339,8 +341,7 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
     for (const dependency of node.dependsOn) {
       const blockedBy = omitted.get(dependency);
       if (blockedBy === undefined) continue;
-      // A write after a write done by hand only waited on it; it reads none of its output.
-      if (node.kind === "transaction" && nodeById.get(dependency)?.kind === "transaction") continue;
+      if (specByStep.get(blockedBy)?.orderOnlyReaders?.includes(node.id) === true) continue;
       const ownStep = stepByNode.get(node.id);
       if (ownStep === undefined) throw new Error(`node "${node.id}" is on no timeline step; a declared timeline is exhaustive`);
       refusals.push({

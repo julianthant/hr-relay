@@ -939,6 +939,12 @@ function deriveStepOmissions(
         throw new Error(`${id}: ${owner} keeps ${node.kind} node "${member}" running, so the step cannot also be switched off`);
       }
     }
+    for (const reader of manual.orderOnlyReaders ?? []) {
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(reader), owner);
+      if (members.has(reader) || !node.dependsOn.some((dependency) => skipped.has(String(dependency)))) {
+        throw new Error(`${id}: ${owner} names order-only reader "${reader}", which is not a node of another step that waits on a skipped member`);
+      }
+    }
     for (const field of form.fields) {
       if (field.replaces === undefined) continue;
       const fieldOwner = `${id}: ${owner} field "${field.key}"`;
@@ -967,6 +973,7 @@ function deriveStepOmissions(
       ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
       ...(manual.refine === undefined ? {} : { refine: manual.refine }),
       ...(manual.skipsGatesAndTransactions === undefined ? {} : { skipsGatesAndTransactions: manual.skipsGatesAndTransactions }),
+      ...(manual.orderOnlyReaders === undefined ? {} : { orderOnlyReaders: Object.freeze([...manual.orderOnlyReaders]) }),
     }));
   }
   return Object.freeze(specs);
