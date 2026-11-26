@@ -22,7 +22,10 @@ interface ScriptedProjection {
 function scriptedProjection(): ScriptedProjection & {
   onChange(listener: (change: RunQueueProjectionChange) => void): () => void;
   health(): { readonly state: "degraded" };
-  buildDashboardDayWire(day: string): never;
+  requestDashboardDay(): never;
+  stampDay(): never;
+  foldCursor(): never;
+  whenFolded(): never;
   recordPublishedDay(): never;
   generation(): number;
   cursor(): ReturnType<typeof ProjectionCursorSchema.parse>;
@@ -39,9 +42,12 @@ function scriptedProjection(): ScriptedProjection & {
       return () => listeners.delete(listener);
     },
     health: () => ({ state: "degraded" }),
-    buildDashboardDayWire: () => {
+    requestDashboardDay: () => {
       throw new Error("phase test reaches the day wire only if connect treats the projection as live");
     },
+    stampDay: () => { throw new Error("phase test frames no day"); },
+    foldCursor: () => { throw new Error("phase test frames no day"); },
+    whenFolded: () => { throw new Error("phase test frames no day"); },
     recordPublishedDay: () => { throw new Error("phase test publishes no day snapshots"); },
     generation: () => 1,
     cursor: () => ProjectionCursorSchema.parse(`pc:${String(cursor)}`),

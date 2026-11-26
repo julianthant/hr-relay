@@ -48,6 +48,9 @@ export interface LaneReadContext {
   retain(resource: Readonly<{ close(): void; inTransaction(): boolean }>): void;
 }
 
+/** What a read's warm step sees at lane boot: no request, so no process facts and no position to report. */
+export type LaneWarmContext = Pick<LaneReadContext, "start" | "native" | "history" | "nowMs" | "retain">;
+
 export interface LaneReadDefinition<Args, Result> {
   readonly id: string;
   readonly module: string;
@@ -61,6 +64,12 @@ export interface LaneReadDefinition<Args, Result> {
   readonly cacheMs: number | undefined;
   readonly args: z.ZodType<Args>;
   run(context: LaneReadContext, args: Args): Result;
+  /** Runs once in its lane's read snapshot before the lane reports ready; a throw fails the lane's boot. */
+  readonly warm: ((context: LaneWarmContext) => void) | undefined;
+  /** Runs once after the lane reports ready, before its first read, in its own read snapshot; a refusal of that snapshot or a throw only skips it. */
+  readonly prebuild: ((context: LaneWarmContext) => void) | undefined;
+  /** per-statement (the default) proves the store's source on every statement; per-read, once at the snapshot and once before the result. */
+  readonly sourceProof: "per-statement" | "per-read";
 }
 
 const definitions = new Map<string, LaneReadDefinition<unknown, unknown>>();
@@ -70,12 +79,14 @@ const laneReadId = (module: string, name: string) => `${module}#${name}`;
 export function defineLaneRead<Args, Result>(module: string, name: string, spec: Readonly<{
   lane: ReadLaneName; priority: "interactive" | "background"; args: z.ZodType<Args>; tables?: readonly AuthorityTableName[];
   timeline?: boolean; processFacts?: boolean; cacheMs?: number; run(context: LaneReadContext, args: Args): Result;
+  warm?(context: LaneWarmContext): void; prebuild?(context: LaneWarmContext): void; sourceProof?: "per-statement" | "per-read";
 }>): LaneReadDefinition<Args, Result> {
   const id = laneReadId(module, name);
   if (definitions.has(id)) throw new Error(`read-lane-read-duplicate: ${name}`);
   const definition: LaneReadDefinition<Args, Result> = Object.freeze({ id, module, name, lane: spec.lane, priority: spec.priority,
     tables: Object.freeze([...spec.tables ?? []]), timeline: spec.timeline ?? false, processFacts: spec.processFacts ?? false,
-    cacheMs: spec.cacheMs, args: spec.args, run: spec.run });
+    cacheMs: spec.cacheMs, args: spec.args, run: spec.run, warm: spec.warm, prebuild: spec.prebuild,
+    sourceProof: spec.sourceProof ?? "per-statement" });
   definitions.set(id, definition);
   return definition;
 }
@@ -624,12 +635,17 @@ function runReadLane(port: MessagePort, data: unknown) {
     port.close();
   };
   const send = (reply: LaneReply) => { port.postMessage(reply); };
+  /** Every statement proves the source, unless the read asks for one proof as its snapshot begins and one before its result returns. */
+  const proved = <T>(definition: LaneReadDefinition<unknown, unknown>, read: () => T): T => {
+    if (definition.sourceProof === "per-read") return lane.withProvedSource(read);
+    lane.assertSource();
+    return read();
+  };
 
   const serve = (definition: LaneReadDefinition<unknown, unknown>, message: LaneReadMessage) => {
     const args = definition.args.parse(message.args);
     const cached = definition.tables.length === 0 ? undefined : cache.get(message.key);
-    return history.withAuthorityReadSnapshot(() => {
-      lane.assertSource();
+    return history.withAuthorityReadSnapshot(() => proved(definition, () => {
       // A read that waited in the lane checks expiry at its own snapshot, not at the host's post.
       const nowMs = clock === "system" ? systemClock.nowMs() : message.nowMs;
       const meta = history.getMeta(), change = history.capturedChangeKey();
@@ -658,7 +674,7 @@ function runReadLane(port: MessagePort, data: unknown) {
         processRevision: message.processRevision, validUntil: definition.cacheMs === undefined ? null : nowMs + definition.cacheMs };
       if (definition.tables.length > 0) cache.set(message.key, { body, position, beginSeq: message.beginSeq });
       return { body, position, cached: false, beginSeq: message.beginSeq };
-    });
+    }));
   };
 
   /** A lane marks itself reading before it picks a read, and backs off while a checkpoint holds the gate. */
@@ -784,7 +800,26 @@ function runReadLane(port: MessagePort, data: unknown) {
     try { accept(input); } catch { process.exit(LANE_FAILURE_EXIT_CODE); }
     schedule();
   });
+  // A read that keeps lane state builds it before ready, so no request waits on it; a failed warm exits through the host's restart.
+  const warmContext = (): LaneWarmContext => ({ start, native, history, nowMs: systemClock.nowMs(), retain: resource => { resources.push(resource); } });
+  const laneDefinitions = [...definitions.values()].filter(definition => definition.lane === start.lane);
+  try {
+    for (const definition of laneDefinitions) {
+      const warm = definition.warm;
+      if (warm !== undefined) history.withAuthorityReadSnapshot(() => proved(definition, () => { warm(warmContext()); }));
+    }
+  } catch (error) { close(); throw error; }
+  if (leftInTransaction()) process.exit(LANE_TRANSACTION_EXIT_CODE);
   send({ kind: "ready" });
+  // Ready waits only for the warm steps. The optional prebuilds run in this turn, so before any read is accepted.
+  for (const definition of laneDefinitions) {
+    const prebuild = definition.prebuild;
+    if (prebuild === undefined) continue;
+    try {
+      history.withAuthorityReadSnapshot(() => proved(definition, () => { prebuild(warmContext()); }));
+    } catch { /* optional: the read that follows builds its own */ }
+  }
+  if (leftInTransaction()) process.exit(LANE_TRANSACTION_EXIT_CODE);
 }
 
 /** A lane entry calls this after importing its read modules; on the main thread it does nothing. */

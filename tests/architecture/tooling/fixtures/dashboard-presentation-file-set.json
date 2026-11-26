@@ -72,6 +72,7 @@
   "src/dashboard/surfaces/run-start/run-start-input.tsx",
   "src/dashboard/surfaces/run-start/run-start-kit.tsx",
   "src/dashboard/surfaces/run-start/run-start-pdf-input.tsx",
+  "src/dashboard/surfaces/run-start/run-start-picker.tsx",
   "src/dashboard/surfaces/run-start/run-start-steps.tsx",
   "src/dashboard/surfaces/run-start/run-start.tsx",
   "src/dashboard/surfaces/sessions/add-workers.tsx",

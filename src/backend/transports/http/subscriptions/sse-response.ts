@@ -1,12 +1,12 @@
 import { systemClock } from "../../../../rules/time/clock.js";
 // Use a pull source so socket demand controls delivery; pushing would bypass backpressure.
 import type { DashboardStreamEnvelope } from "../../../../models/dashboard/subscription.js";
-import type { DashboardStreamConnection } from "./dashboard-stream.js";
+import { framedEnvelopeText, type DashboardStreamConnection } from "./dashboard-stream.js";
 
 /** One envelope as an SSE event: the cursor rides as the event id so `Last-Event-ID` resumes it. */
 export function sseSerialize(envelope: DashboardStreamEnvelope): string {
   const id = "cursor" in envelope ? `id: ${envelope.cursor}\n` : "";
-  return `${id}data: ${JSON.stringify(envelope)}\n\n`;
+  return `${id}data: ${framedEnvelopeText(envelope) ?? JSON.stringify(envelope)}\n\n`;
 }
 
 function streamBody<T>(connection: Readonly<{ initial: readonly T[]; next(): Promise<T | undefined>; close(): void }>,

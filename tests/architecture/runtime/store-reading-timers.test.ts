@@ -28,6 +28,7 @@ const reviewed = new Map([
   ["src/backend/transports/http/subscriptions/dashboard-stream.ts#cancel", "Retries synchronous row reads while subscribers are owed a value."],
   ["src/backend/transports/http/subscriptions/dashboard-stream.ts#cancelTimer", "Retries run-panel reads after a retryable failure."],
   ["src/backend/transports/http/subscriptions/dashboard-stream.ts#begin", "Bounds the run-panel read started on each retry."],
+  ["src/backend/transports/http/subscriptions/dashboard-stream.ts#cancelDeadline", "Bounds a sync row read whose source answers later, from a lane."],
   ["src/backend/app/composition/dashboard/assistant.ts#timer", "Reclaims expired conversation history."],
   ["src/backend/storage/maintenance/session-backups.ts#start", "Checks whether the authority generation needs a session backup."],
   ["src/backend/runs/lifecycle/application-lifecycle.ts#observeQuit", "Waits for run custody to settle after the operator requests quit."],
