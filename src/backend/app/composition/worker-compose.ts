@@ -85,6 +85,19 @@ const STDOUT_LOG_FIELDS: ReadonlySet<string> = new Set(["runId", "workerId", "no
   "state", "status", "code", "capability", "method", "boundary", "captureFailure", "errorName", "HDH department",
   "candidates", "rosterRows", "subjects", "eidCellsUnusable", "nameCellsUnusable"]);
 
+/** The activity a worker publishes: a worker signing in for its claimed run still holds that run, so both panels show it. */
+export function workerActivityOf(input: Readonly<{
+  browsing: readonly ("acquiring" | "authenticating" | "closing")[];
+  claimedRun: RunId | undefined;
+  paused: boolean;
+  standing: WorkerActivity["refusal"];
+}>): WorkerActivity {
+  const { browsing, claimedRun, standing } = input;
+  const base: WorkerActivity = browsing.length !== 0 ? { state: "waiting", waiting: browsing.at(-1), ...(claimedRun === undefined ? {} : { runId: claimedRun }) }
+    : claimedRun !== undefined ? { state: "busy", runId: claimedRun } : { state: input.paused ? "paused" : "idle" };
+  return standing === undefined || base.state !== "idle" ? base : { ...base, refusal: standing };
+}
+
 export function workerSessionDiagnostics(writer: ReturnType<typeof createDebugEventWriter>): NonNullable<Parameters<typeof createRunResourcesFactory>[0]["onDebug"]> {
   return (category, workerId, event) => {
     const emit = () => writer.emit({ category, ...event }, { kind: "worker", workerId });
@@ -554,12 +567,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     const browserActivities = new Map<symbol, "acquiring" | "authenticating" | "closing">();
     let claimedRun: RunId | undefined;
     let standing: WorkerActivity["refusal"];
-    const activityNow = (): WorkerActivity => {
-      // A worker signing in for its claimed run still holds that run, so both panels show it.
-      const base: WorkerActivity = browserActivities.size !== 0 ? { state: "waiting", waiting: [...browserActivities.values()].at(-1), ...(claimedRun === undefined ? {} : { runId: claimedRun }) }
-        : claimedRun !== undefined ? { state: "busy", runId: claimedRun } : { state: paused() ? "paused" : "idle" };
-      return standing === undefined || base.state !== "idle" ? base : { ...base, refusal: standing };
-    };
+    const activityNow = (): WorkerActivity => workerActivityOf({ browsing: [...browserActivities.values()], claimedRun, paused: paused(), standing });
     let channel: WorkerChildChannel | undefined;
     const publish = (next: WorkerActivity): void => {
       if (next.state === current.state && next.runId === current.runId && next.waiting === current.waiting
