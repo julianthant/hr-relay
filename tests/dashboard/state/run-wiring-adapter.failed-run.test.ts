@@ -125,7 +125,7 @@ describe("Logs of a run that failed in its first step", () => {
       children: createElement(LogSample, { selection: { row: failedRow(), workflowLabel: "Onboarding" } }) }) }));
     const text = document.body.textContent ?? "";
     assert.match(text, /Read hire data/u);
-    assert.equal(document.querySelector('nav[aria-label="Run timeline"]'), null, "the run header draws no step chips");
+    assert.ok(document.querySelector('nav[aria-label="Run timeline"]') === null, "the run header draws no step chips");
     assert.match(text, /Nothing was written|No changes were made/u);
     assert.doesNotMatch(text, /TASK_UNHANDLED_FAILURE|crm\/read-hire-data/u);
   });
