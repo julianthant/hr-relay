@@ -74,6 +74,15 @@ export class LogIdentityRefusedError extends Error {
   }
 }
 
+/** A fresh stream handoff whose every snapshot read was overtaken; the client asks again after its reconnect delay. */
+export class DashboardSnapshotOvertakenError extends Error {
+  readonly code = "DASHBOARD_SNAPSHOT_OVERTAKEN";
+  constructor() {
+    super("dashboard-snapshot-overtaken");
+    this.name = "DashboardSnapshotOvertakenError";
+  }
+}
+
 export class DashboardReadFailedError extends Error {
   constructor(cause: unknown) {
     super("dashboard-read-failed", { cause });
