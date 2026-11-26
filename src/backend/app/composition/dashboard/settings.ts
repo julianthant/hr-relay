@@ -39,6 +39,13 @@ const settingsFactsRead = defineLaneRead(import.meta.url, "settings-facts", {
   run: ({ native }) => SettingsFactsWireSchema.parse(buildSettingsFacts({ config: activeSettingsConfig(native.authority), descriptors: DESCRIPTORS })),
 });
 
+/** Read once per editor read, so the same facts key the reuse and build the document. */
+function readProtectedFacts(reader: Readonly<{ read(): ProtectedSettingsRuntimeSnapshot }>):
+  Readonly<{ state: "read"; facts: ProtectedSettingsRuntimeSnapshot }> | Readonly<{ state: "unreadable"; error: unknown }> {
+  try { return { state: "read", facts: reader.read() }; }
+  catch (error) { return { state: "unreadable", error }; }
+}
+
 export function composeProfileSettings(input: Parameters<typeof createSettingsRuntimeReader>[0] & {
   readonly database: Pick<AuthorityDatabase, "withAuthorityReadSnapshot" | "authority">;
 }) {
@@ -95,16 +102,16 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   let last: { key: string; document: EditableSettingsWire } | undefined;
   const editable = async (): Promise<EditableSettingsWire> => {
     const body = await laneRead(settingsStorePartRead);
-    let protectedFacts: ProtectedSettingsRuntimeSnapshot | undefined;
-    try { protectedFacts = routes.settingsEditor.protectedSettings.read(); } catch { protectedFacts = undefined; }
-    const key = canonicalJsonStringify({ body, protectedFacts: protectedFacts ?? null, fiscalYear: clock.fiscalYear() });
+    const protectedFacts = readProtectedFacts(routes.settingsEditor.protectedSettings);
+    const key = canonicalJsonStringify({ body, protectedFacts: protectedFacts.state === "read" ? protectedFacts.facts : null, fiscalYear: clock.fiscalYear() });
     if (last?.key === key) return last.document;
     const { record, active, activeConfig, activePreferences } = SettingsStorePartSchema.parse(JSON.parse(body));
     const document = buildSettingsEditor({ ...routes.settingsEditor,
       settings: { read: () => ({ record, runtimeStatus: settingsRuntimeStatus(input, record, active), activeConfig, activePreferences }) },
+      // The editor shows an unreadable protected store as unknown; the read's own error is what it sees.
       protectedSettings: { read: () => {
-        if (protectedFacts === undefined) throw new Error("settings-protected-facts-unavailable");
-        return protectedFacts;
+        if (protectedFacts.state === "unreadable") throw protectedFacts.error;
+        return protectedFacts.facts;
       } } });
     last = { key, document };
     return document;
