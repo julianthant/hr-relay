@@ -48,10 +48,15 @@ export function useFirstScreen(screen: RefObject<HTMLElement | null>, mounted: b
 
 export type StartupDeadline = ReturnType<typeof startupDeadlineClient>;
 
-/** The dashboard client for the first screen: until `end`, a first-screen read still pending at `expire` fails as a read failure and its late answer is dropped. */
-export function startupDeadlineClient(client: DashboardClient) {
+/**
+ * The dashboard client for the first screen: until `end`, a first-screen read still pending at `expire` fails as a read failure and its late answer is dropped.
+ * A deadline opened after `previous` also expires the reads still pending through it, so a shared read is never sent again for the next loader.
+ */
+export function startupDeadlineClient(client: DashboardClient, previous?: { readonly reads: Set<() => void> }) {
   let open = true;
   const expiries = new Set<() => void>();
+  // Pending reads outlive `end`: a later deadline adopts them.
+  const reads = previous?.reads ?? new Set<() => void>();
   const failure = () => new DashboardClientError({ kind: "network", code: "DASHBOARD_READ_FAILED", message: ERROR_CATALOG.DASHBOARD_READ_FAILED.text, retryable: true });
   const wrap = (key: PropertyKey, value: unknown): unknown => {
     if (typeof value !== "function") return value;
@@ -69,12 +74,12 @@ export function startupDeadlineClient(client: DashboardClient) {
       return subscription;
     } : (...args: unknown[]) => {
       const result = call.apply(client, args);
-      if (!open || !(result instanceof Promise)) return result;
+      if (!(result instanceof Promise)) return result;
       return new Promise((resolve, reject) => {
         const expire = () => reject(failure());
-        expiries.add(expire);
-        result.then(value => { expiries.delete(expire); resolve(value); }, (error: unknown) => {
-          expiries.delete(expire);
+        reads.add(expire);
+        result.then(value => { reads.delete(expire); resolve(value); }, (error: unknown) => {
+          reads.delete(expire);
           reject(error instanceof Error ? error : failure());
         });
       });
@@ -88,7 +93,8 @@ export function startupDeadlineClient(client: DashboardClient) {
   });
   return {
     client: proxy as DashboardClient,
-    expire: () => { open = false; for (const expire of [...expiries]) expire(); expiries.clear(); },
+    reads,
+    expire: () => { if (!open) return; open = false; for (const expire of [...expiries, ...reads]) expire(); expiries.clear(); reads.clear(); },
     end: () => { open = false; expiries.clear(); },
     /** True until `expire` or `end`. */
     pending: () => open,
