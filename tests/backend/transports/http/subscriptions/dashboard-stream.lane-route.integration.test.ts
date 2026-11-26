@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import { createOperatorProjection } from "../../../../../src/backend/app/composition/dashboard/queue.js";
 import { composeQueueSummaries } from "../../../../../src/backend/app/composition/dashboard/queue-summaries.js";
-import { DESCRIPTORS, descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { DESCRIPTORS, descriptorSetHash, READABLE_WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { BackfillGapObservationSchema } from "../../../../../src/backend/runs/notifications/backfill-gap.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
@@ -52,7 +52,9 @@ async function composed() {
   const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader),
     summaries: { ...composeQueueSummaries(f.db), activity: () => { throw new Error("activity-unserved"); } } };
   const options = { database: f.db, stateRoot: f.root, clock: f.clock, appVersion: APP_VERSION, descriptorSetHash: SET_HASH,
-    ledger: createTransactionHistory(f.db.authority), descriptors: { resolve: () => undefined }, reader: servedReader, workerMembers: () => [] };
+    ledger: createTransactionHistory(f.db.authority),
+    // The descriptors the lane's replica resolves, as the dashboard's composition passes them to main.
+    descriptors: { resolve: (workflowId: string) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor }, reader: servedReader, workerMembers: () => [] };
   const main = createOperatorProjection({ ...options, readLanes: lanes });
   const local = createOperatorProjection(options);
   return { f, main, local };
