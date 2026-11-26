@@ -538,8 +538,8 @@ export function Switch({
  * `field`: the 28px bordered 8px field inside a page, toolbar or menu; `menu` is the same field and stays only until the surfaces that pass it drop it. */
 export const SearchInput = forwardRef<
   HTMLInputElement,
-  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; variant?: 'field' | 'sidebar' | 'menu' }
->(function SearchInput({ className, onClear, shortcut, variant = 'field', value, defaultValue, disabled, readOnly, ...props }, ref) {
+  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; trailing?: ReactNode; variant?: 'field' | 'sidebar' | 'menu' }
+>(function SearchInput({ className, onClear, shortcut, trailing, variant = 'field', value, defaultValue, disabled, readOnly, ...props }, ref) {
   const field = useFieldControl();
   return (
     <HeroSearchField className={cn("ds-search-field", variant === 'sidebar' && 'ds-search-field--sidebar', className)} aria-label={props["aria-label"]}
@@ -552,7 +552,8 @@ export const SearchInput = forwardRef<
         {...field}
         {...props}
       />
-      <HeroSearchField.ClearButton aria-label="Clear search" excludeFromTabOrder={false} className="ds-search-clear"><X aria-hidden /></HeroSearchField.ClearButton>
+      {/* `trailing` brings its own controls, including the one that clears. */}
+      {trailing ?? <HeroSearchField.ClearButton aria-label="Clear search" excludeFromTabOrder={false} className="ds-search-clear"><X aria-hidden /></HeroSearchField.ClearButton>}
       {!value && shortcut && <span className="ds-search-shortcut">{shortcut}</span>}
       </HeroSearchField.Group>
     </HeroSearchField>
