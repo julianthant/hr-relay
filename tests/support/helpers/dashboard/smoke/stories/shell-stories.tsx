@@ -77,7 +77,7 @@ const RAIL = {
   "start-focus": rail("The sidebar with keyboard focus on a workflow's Start run +", SHELL_STORY_COUNTS_IDLE, false, page => page.locator(".workflow-rail-start").first().focus()),
 } satisfies Record<RailState, Story>;
 
-type HeaderState = "closed" | "options-open" | "options-changed";
+type HeaderState = "closed" | "options-open" | "options-changed" | "options-changed-open";
 const header = (title: string, changed: boolean, play?: Story["play"]): Story => ({ title, ready: '[aria-label="Queue header"]', ...(play === undefined ? {} : { play }),
   render: () => <StoryFrame><QueueHeader title="Person Lookup" ask={null} startId="story-start-run" onStartRun={noop} day={changed ? "2026-10-29" : "2026-10-30"} today="2026-10-30" onDay={noop}
     sort={changed ? "oldest" : "attention"} order={changed ? "oldest" : "newest"} onSort={noop} active={changed ? ["failed"] : ["all"]} counts={[]} onFilter={noop} /></StoryFrame> });
@@ -91,6 +91,7 @@ const HEADER = {
   closed: header("The queue header with Options closed", false),
   "options-open": header("The Options menu open: Date, Sort by, Status, Attention first, Reset", false, openOptions),
   "options-changed": header("The queue header with options changed from their defaults", true),
+  "options-changed-open": header("The Options menu open with Date, Sort by and Status changed", true, openOptions),
 } satisfies Record<HeaderState, Story>;
 
 type PausedState = "one" | "several" | "resume-unavailable";
