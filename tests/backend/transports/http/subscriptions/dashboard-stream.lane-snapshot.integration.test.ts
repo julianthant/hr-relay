@@ -137,13 +137,15 @@ function lastRead(reads: readonly LaneRead[]): LaneRead {
   return read;
 }
 
+const tick = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
+
 /** Answers each read the hub has asked from `from` on, and each it asks in answer, with the replica's day at that moment. */
 async function answerAll(reads: readonly LaneRead[], from = 0): Promise<void> {
   for (let index = from; index < reads.length; index++) {
     const read = reads[index];
     if (read === undefined) continue;
     read.answer(read.capture());
-    await new Promise(resolve => setImmediate(resolve));
+    await tick();
   }
 }
 
@@ -236,14 +238,16 @@ describe("a stream snapshot read on the navigation lane", () => {
     assert.ok(main.position() > skipped);
     assert.deepEqual(main.foldCursor(skipped), { state: "at", cursor: dispatched }, "a skipped position maps to the cursor before the batch that passed it");
     assert.deepEqual(main.foldCursor(main.position()), { state: "at", cursor: cursorOf(main.cursor()) });
-    for (const pending of reads) pending.answer(pending === read ? reply : pending.capture());
+    read.answer(reply);
+    await tick();
+    await answerAll(reads, 1);
     const connection = await connecting;
     const envelopes = [...connection.initial, ...await drain(connection)];
     const snapshot = assertConverges(main, envelopes);
     assert.ok(cursorOf(snapshot.cursor) >= dispatched);
   });
 
-  it("delivers a publication admitted while the read was pending once, after the snapshot", async () => {
+  it("asks again when a publication is made while the read is pending, and hands it out in the snapshot alone", async () => {
     const { main, hub, reads, publish } = await laneHarness();
     const connecting = hub.connect({ day: DAY });
     const position = main.position();
@@ -251,18 +255,16 @@ describe("a stream snapshot read on the navigation lane", () => {
     assert.equal(main.position(), position, "the publication is at the same timeline position");
     const read = lastRead(reads);
     assert.deepEqual(read.publications, [], "nothing was retained at dispatch");
-    const reply = read.capture();
-    read.answer(reply);
+    await answerAll(reads);
+    assert.equal(reads.length, 2, "a day read under the publication may or may not hold it, so it is asked again");
+    assert.equal(lastRead(reads).publications.length, 1, "the second ask names the publication");
     const connection = await connecting;
     const envelopes = [...connection.initial, ...await drain(connection)];
     assertConverges(main, envelopes);
-    const snapshotAt = envelopes.findIndex(envelope => envelope.type === "snapshot");
-    const arrivals = envelopes.flatMap((envelope, index) => envelope.type === "notification-publication" ? [index] : []);
-    assert.equal(arrivals.length, 1, "exactly one arrival");
-    assert.ok((arrivals[0] ?? -1) > snapshotAt, "the arrival follows the snapshot");
+    assert.deepEqual(sourcesOf(envelopes), [], "the snapshot holds the arrival; it is not handed out live as well");
   });
 
-  it("replays a publication admitted during the read to a resume from the snapshot, when a later fold moved the baseline past it", async () => {
+  it("holds a publication in the snapshot when a later fold moved the baseline past it, live and on a resume from that snapshot", async () => {
     const { w, main, hub, reads, fold, publish } = await laneHarness();
     queuedEventOf(w, { seed: 1 }); fold();
     const connecting = hub.connect({ day: DAY });
@@ -274,20 +276,17 @@ describe("a stream snapshot read on the navigation lane", () => {
     // Main folds the peer write after the publication, so the snapshot is framed above the publication's cursor.
     fold();
     read.answer(reply);
+    await tick();
+    await answerAll(reads, 1);
     const connection = await connecting;
     const envelopes = [...connection.initial, ...await drain(connection)];
-    const snapshot = envelopes.find(envelope => envelope.type === "snapshot");
-    assert.ok(snapshot?.type === "snapshot");
+    const snapshot = assertConverges(main, envelopes);
     assert.ok(cursorOf(snapshot.cursor) > published, "the baseline passed the publication");
-    const live = envelopes.filter(envelope => envelope.type === "notification-publication");
-    assert.equal(live.length, 1, "the live connection gets the arrival once");
-    assert.ok(live.every(envelope => cursorOf(envelope.cursor) > cursorOf(snapshot.cursor)), "the arrival is above the snapshot it follows");
+    assert.deepEqual(sourcesOf(envelopes), [], "the arrival is in the snapshot, never below it on the wire");
 
-    // Disconnect right after the snapshot: the client holds its cursor and never saw the arrival.
     connection.close();
     const resumed = await hub.connect({ day: DAY, lastEventId: snapshot.cursor, lastProjectionGeneration: main.generation() });
-    const replayed = [...resumed.initial, ...await drain(resumed)].filter(envelope => envelope.type === "notification-publication");
-    assert.equal(replayed.length, 1, "the resume replays the arrival the snapshot's connection never received");
+    assert.deepEqual(sourcesOf([...resumed.initial, ...await drain(resumed)]), [], "a resume from the snapshot replays nothing the snapshot holds");
   });
 
   it("hands each publication out once, in publish order, when a fold passes one while the read is pending", async () => {
@@ -308,36 +307,42 @@ describe("a stream snapshot read on the navigation lane", () => {
     fold();
     await publish("b");
     read.answer(reply);
+    await tick();
+    await answerAll(reads, 2);
     const connection = await connecting;
     const order = sourcesOf(await drain(early));
     assert.equal(order.length, 2, "a connection already streaming gets each publication once");
     assert.equal(new Set(order).size, 2);
     const live = [...connection.initial, ...await drain(connection)];
-    assertConverges(main, live);
-    assert.deepEqual(sourcesOf(live), order, "the snapshot's connection gets them once, in the same order");
+    const snapshot = assertConverges(main, live);
+    assert.deepEqual(sourcesOf(live), [], "the snapshot's connection gets both in its snapshot, and neither live");
 
     early.close();
     connection.close();
+    const fromSnapshot = await hub.connect({ day: DAY, lastEventId: snapshot.cursor, lastProjectionGeneration: main.generation() });
+    assert.deepEqual(sourcesOf([...fromSnapshot.initial, ...await drain(fromSnapshot)]), [], "a resume from that snapshot replays neither");
+    fromSnapshot.close();
     const resumed = await hub.connect({ day: DAY, lastEventId: earlySnapshot.cursor, lastProjectionGeneration: main.generation() });
     assert.deepEqual(sourcesOf([...resumed.initial, ...await drain(resumed)]), order, "a resume from before them replays each once, in order");
   });
 
-  it("keeps a publication queued under a handoff's read when a projection snapshot replaces that read", async () => {
+  it("holds a publication made under a handoff's read in its snapshot when a projection snapshot change arrives meanwhile", async () => {
     const { w, main, hub, reads, changes, fold, publish } = await laneHarness();
     const connecting = hub.connect({ day: DAY });
     await publish("a");
     queuedEventOf(w, { seed: 1 }); queuedEventOf(w, { seed: 2 }); claimEventOf(w, 1); claimEventOf(w, 2); fold();
     assert.ok(changes.some(change => change.kind === "snapshot"), "the fold asks for a new snapshot");
-    assert.equal(reads.length, 2, "the newer read answers the handoff's place");
-    for (const pending of reads) pending.answer(pending.capture());
+    assert.equal(reads.length, 1, "the handoff keeps its place and its read");
+    await answerAll(reads);
     const connection = await connecting;
     const live = [...connection.initial, ...await drain(connection)];
     const snapshot = assertConverges(main, live);
-    assert.equal(sourcesOf(live).length, 1, "the arrival is handed out once, above the replacement snapshot");
+    assert.equal(live.filter(envelope => envelope.type === "snapshot").length, 1);
+    assert.deepEqual(sourcesOf(live), [], "the arrival is in the snapshot");
 
     connection.close();
     const resumed = await hub.connect({ day: DAY, lastEventId: snapshot.cursor, lastProjectionGeneration: main.generation() });
-    assert.equal(sourcesOf([...resumed.initial, ...await drain(resumed)]).length, 1, "a resume from the replacement snapshot replays it");
+    assert.deepEqual(sourcesOf([...resumed.initial, ...await drain(resumed)]), [], "a resume from the snapshot replays nothing it holds");
   });
 
   it("re-reads a row whose last handed value was unavailable when that change read was dispatched before the snapshot's", async () => {
@@ -366,7 +371,7 @@ describe("a stream snapshot read on the navigation lane", () => {
     const reply = first.capture();
     const decoded = JSON.parse(reply.body) as { d: unknown; f: { missingPublications: string[] } };
     first.answer({ ...reply, body: JSON.stringify({ d: decoded.d, f: { ...decoded.f, missingPublications: [...first.publications] } }) });
-    await new Promise(resolve => setImmediate(resolve));
+    await tick();
     assert.equal(reads.length, 2, "the read is asked again");
     const second = lastRead(reads);
     second.answer(second.capture());
@@ -382,7 +387,7 @@ describe("a stream snapshot read on the navigation lane", () => {
     const stale = first.capture();
     state.revision += 1;
     first.answer(stale);
-    await new Promise(resolve => setImmediate(resolve));
+    await tick();
     assert.equal(reads.length, 2, "a reply from the old revision is discarded and asked again");
     const second = lastRead(reads);
     second.answer(second.capture());
@@ -407,10 +412,11 @@ describe("a stream snapshot read on the navigation lane", () => {
   });
 
   it("bounds the outbox while the read is pending and resets a connection that overflows it", async () => {
-    const { hub, reads, publish } = await laneHarness({ maxPending: 4 });
+    const { hub, reads, status } = await laneHarness({ maxPending: 4, status: true });
     const connecting = hub.connect({ day: DAY });
     const read = lastRead(reads);
-    for (const identity of ["c", "d", "e"]) await publish(identity);
+    // The place and health are two; each status move queues one row change behind them.
+    for (let move = 0; move < 3; move++) status.move();
     assert.equal(read.signal?.aborted, true, "the overflowed connection gives up its place");
     read.answer(read.capture());
     const connection = await connecting;
@@ -419,15 +425,14 @@ describe("a stream snapshot read on the navigation lane", () => {
     assert.ok(reset?.type === "reset-required" && reset.reason === "cursor-expired");
   });
 
-  it("re-requests the snapshot for a projection change while a handoff read is pending, and answers the place once", async () => {
+  it("keeps a pending handoff read for a projection snapshot change, and answers the place once", async () => {
     const { w, main, hub, reads, changes, fold } = await laneHarness();
     const connecting = hub.connect({ day: DAY });
     queuedEventOf(w, { seed: 1 }); queuedEventOf(w, { seed: 2 }); claimEventOf(w, 1); claimEventOf(w, 2); fold();
-    if (changes.some(change => change.kind === "snapshot")) {
-      assert.equal(reads.length, 2);
-      assert.equal(reads[0]?.signal?.aborted, true, "the newer read answers the place");
-    }
-    for (const read of reads) read.answer(read.capture());
+    assert.ok(changes.some(change => change.kind === "snapshot"), "the fold asks for a new snapshot");
+    assert.equal(reads.length, 1, "no second read is asked for a connection already holding a place");
+    assert.equal(reads[0]?.signal?.aborted, false, "the pending read is not abandoned");
+    await answerAll(reads);
     const connection = await connecting;
     const envelopes = [...connection.initial, ...await drain(connection)];
     assert.equal(envelopes.filter(envelope => envelope.type === "snapshot").length, 1);
