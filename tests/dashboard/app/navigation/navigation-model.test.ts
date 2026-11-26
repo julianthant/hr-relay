@@ -7,8 +7,9 @@ import { DashboardApp } from "../../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient, type DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { createPersonPreferences } from "../../../../src/dashboard/state/person-preferences-model.js";
-import type { DuoReenrolState, PublicProfileState } from "../../../../src/models/profiles/public-profile.js";
+import { PublicProfileStateSchema, type DuoReenrolState } from "../../../../src/models/profiles/public-profile.js";
 import { createFixtureBff } from "../../../support/helpers/dashboard/fixture-bff.js";
+import { loadLazyPages } from "../../../support/helpers/dashboard/lazy-pages.js";
 import { FIXTURE_DAY_WIRE } from "../../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { MOCK_WORKFLOW_COMPOSITION } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 
@@ -16,14 +17,14 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 it("accepts browser Back from Settings while Duo setup is open", async () => {
   const profileId = "00000000-0000-4000-8000-000000000001";
-  const session: PublicProfileState = { state: "active", profileId, epoch: 1, duoState: "ready",
-    account: { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: "2026-11-10T08:30:00-08:00" } };
+  const session = PublicProfileStateSchema.parse({ state: "active", profileId, epoch: 1, duoState: "ready",
+    account: { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: "2026-11-10T08:30:00-08:00" } });
   const setup: DuoReenrolState = { state: "duo-reenrol", profileId, operationId: "00000000-0000-4000-8000-000000000002",
     step: "duo", browser: { state: "open", generation: 1 }, methods: { key: { state: "idle",
       ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false } } };
   const { app } = createFixtureBff();
   const client: DashboardClient = {
-    ...createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: (url, init) => app.request(url, init) }),
+    ...createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) }),
     readProfileSession: async () => session,
     readProfileDuoKeys: async () => ({ revision: 1, keys: [] }),
     beginProfileDuoReenrol: async () => setup,
@@ -55,6 +56,7 @@ it("accepts browser Back from Settings while Duo setup is open", async () => {
       children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION,
         previewPreferences: createPersonPreferences("preview") }),
     })));
+    await loadLazyPages();
     const openSetup = await vi.waitFor(() => {
       assert.ok(settings());
       const control = button("Set up");
@@ -63,7 +65,7 @@ it("accepts browser Back from Settings while Duo setup is open", async () => {
     });
     await act(async () => openSetup.click());
     assert.equal(host.querySelector("h1")?.textContent, "Set up Duo again");
-    assert.equal(settings(), null);
+    assert.ok(settings() === null, "Duo setup unmounts Settings");
 
     await act(async () => {
       const popped = new Promise<void>(resolve => window.addEventListener("popstate", () => resolve(), { once: true }));
@@ -77,7 +79,7 @@ it("accepts browser Back from Settings while Duo setup is open", async () => {
     await vi.waitFor(() => assert.ok(errors.length > 0 || host.querySelector('[data-settings-takeover="false"]')));
     const [error] = errors;
     if (error !== undefined) throw error;
-    assert.equal(settings(), null);
+    assert.ok(settings() === null, "Back leaves Settings closed");
     assert.equal(window.location.search, "");
   } finally {
     window.removeEventListener("error", captureError);
