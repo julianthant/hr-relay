@@ -9,6 +9,10 @@ import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { explorerQueryDeps, readFixtureExplorer } from "../../support/fixtures/explorer-seams.js";
 import { useExplorerWiring } from "../../../src/dashboard/state/explorer-wiring-adapter.js";
+import { createDashboardClient } from "../../../src/dashboard/client/index.js";
+import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
+import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const wire = readFixtureExplorer(explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
@@ -23,6 +27,33 @@ it("serves the review spec of the workflow at its registered version", async () 
     await act(async () => root.render(createElement(Probe)));
     assert.ok(seen?.state.state === "ready");
     assert.deepEqual(seen.state.spec, served.reviewSpec);
+  } finally { await act(async () => root.unmount()); }
+});
+
+it("reopening Explorer under the same descriptor hash displays the loaded workflow without a request", async () => {
+  let requests = 0;
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url) => {
+    assert.equal(url, "http://fixture.test/api/v1/explorer");
+    requests += 1;
+    return Response.json({ ...wire, descriptorHash: FIXTURE_BOOTSTRAP.descriptorHash });
+  } });
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  function Probe() {
+    const { state } = useExplorerWiring(client, served.id, served.version);
+    return createElement("span", null, state.state);
+  }
+  const page = createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, {
+    actorId: "local-operator", children: createElement(Probe),
+  }) });
+  try {
+    await act(async () => root.render(page));
+    assert.equal(container.textContent, "ready");
+    assert.equal(requests, 1);
+    await act(async () => root.render(null));
+    await act(async () => root.render(page));
+    assert.equal(container.textContent, "ready");
+    assert.equal(requests, 1);
   } finally { await act(async () => root.unmount()); }
 });
 
@@ -81,6 +112,8 @@ it("keeps the retained spec when a refresh fails", async () => {
     await act(async () => root.render(createElement(Probe)));
     await act(async () => root.render(null)); seen.length = 0;
     await act(async () => root.render(createElement(Probe)));
+    assert.equal(calls, 1);
+    await act(async () => seen.at(-1)?.retry());
     assert.equal(calls, 2); assert.ok(seen.every(value => value.state.state === "ready"));
     const evidence = new Error("synthetic refresh rejected");
     await act(async () => held.reject(evidence));
