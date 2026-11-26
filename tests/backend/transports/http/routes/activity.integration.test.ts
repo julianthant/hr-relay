@@ -9,35 +9,55 @@ import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboa
 import { ACTIVITY_MEDIAN_ABSENT_REASON, activityReportCaveats } from "../../../../../src/models/dashboard/activity.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 
+async function startFixtureRun(h: Awaited<ReturnType<typeof harness>>) {
+  const planResponse = await json(await h.app.request("/api/v1/start-plans", {
+    method: "POST",
+    headers: OPERATOR_JSON_HEADERS,
+    body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }], dryRun: false }),
+  }));
+  const started = await h.app.request("/api/v1/commands", {
+    method: "POST",
+    headers: OPERATOR_JSON_HEADERS,
+    body: JSON.stringify({
+      commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7e",
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "start-run",
+      family: "start",
+      type: "start-run",
+      target: {
+        workflowId: "fixture-graph",
+        startPlanId: planResponse.startPlanId,
+        expectedVersion: planResponse.expectedVersion,
+      },
+      payload: planResponse.fingerprints,
+    }),
+  });
+
+  assert.equal(started.status, 200, await started.text());
+}
+
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+
+  it("serves the Activity report and population on the navigation lane with the main read connection disabled", async () => {
+    const h = await harness({ activityOnLane: true });
+    await startFixtureRun(h);
+    const snapshot = vi.spyOn(h.database, "withAuthorityReadSnapshot").mockImplementation(() => { throw new Error("main-connection read"); });
+    try {
+      const reportResponse = await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`);
+      assert.equal(reportResponse.status, 200, await reportResponse.clone().text());
+      const report = ActivityReportSelectionSchema.parse(await reportResponse.json());
+      assert.equal(report.totalRuns, 1);
+      const population = await h.app.request(`/api/v1/reports/activity/population?from=${DAY}&to=${DAY}`);
+      assert.equal(population.status, 200, await population.clone().text());
+      ActivityPopulationSelectionSchema.parse(await population.json());
+      assert.equal(snapshot.mock.calls.length, 0);
+    } finally { snapshot.mockRestore(); }
+  });
 
   it("serves the Activity report over a NAMED range and refuses one the caller never named", async () => {
     const h = await harness();
-    const planResponse = await json(await h.app.request("/api/v1/start-plans", {
-      method: "POST",
-      headers: OPERATOR_JSON_HEADERS,
-      body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }], dryRun: false }),
-    }));
-    const started = await h.app.request("/api/v1/commands", {
-      method: "POST",
-      headers: OPERATOR_JSON_HEADERS,
-      body: JSON.stringify({
-        commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7e",
-        requestedAt: h.clock.now().toISOString(),
-        requestedBy: "local-operator",
-        source: "start-run",
-        family: "start",
-        type: "start-run",
-        target: {
-          workflowId: "fixture-graph",
-          startPlanId: planResponse.startPlanId,
-          expectedVersion: planResponse.expectedVersion,
-        },
-        payload: planResponse.fingerprints,
-      }),
-    });
-
-    assert.equal(started.status, 200, await started.text());
+    await startFixtureRun(h);
     const report = ActivityReportSelectionSchema.parse(
       await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
     );

@@ -11,7 +11,7 @@ import type { DashboardApp } from "../../../../../src/backend/transports/http/ro
 import { registerNotificationRoutes } from "../../../../../src/backend/transports/http/routes/notifications.js";
 import { NotificationWireSchema } from "../../../../../src/models/dashboard/projection.js";
 import { NotificationTargetSchema } from "../../../../../src/models/notifications/notification-target.js";
-import { NotificationCollectionTargetSchema } from "../../../../../src/models/notifications/notifications.js";
+import { NotificationCollectionTargetSchema, NotificationObservationStatusSchema } from "../../../../../src/models/notifications/notifications.js";
 import { ActorIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { createProfileFixtureSet, findProfileFixtureAdmission } from "../../../../support/helpers/admission-fixture.js";
 import { uuidOf } from "../../../../support/helpers/backend/dashboard-harness.js";
@@ -96,6 +96,7 @@ it("serves the notification list, collection and target on a read lane with the 
       assert.deepEqual(row.context, { state: "storage", concern: "backup" });
       NotificationCollectionTargetSchema.parse(await read(`${collectionPath}?operation=read`));
       NotificationTargetSchema.parse(await read(`/api/v1/notifications/${row.notificationId}/target`));
+      NotificationObservationStatusSchema.parse(await read("/api/v1/notifications/status"));
       assert.equal(snapshot.mock.calls.length, 0);
     } finally { snapshot.mockRestore(); }
   } finally { await lanes.close(); }

@@ -9,6 +9,7 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
+import { createComposedDashboardReadHost } from "../../../../src/backend/app/composition/dashboard/runtime-resources.js";
 import { queryAssistantUsage } from "../../../../src/backend/assistant/usage-counts.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -230,6 +231,8 @@ export async function harness(options: {
    * authority transaction. Every other repository method passes through.
    */
   readonly commandAuditInsertFault?: CommandAuditInsertFault;
+  /** Serve the Activity routes on a navigation read lane, as the dashboard does. */
+  readonly activityOnLane?: boolean;
 } = {}): Promise<Harness> {
   const profile = await (options.profileFixture ?? createBoundProfileFixture)();
   const root = profile.workspace, stateRoot = profile.stateRoot;
@@ -424,7 +427,10 @@ export async function harness(options: {
       })),
     },
   });
-  const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
+  const activityInput = { database, clock, descriptors, ledger: createTransactionHistory(database.authority) };
+  const activityLanes = options.activityOnLane === true ? createComposedDashboardReadHost({ admission: profile.admission, database, clock }) : undefined;
+  if (activityLanes !== undefined) cleanups.push(() => activityLanes.close());
+  const { activity, activityPopulation } = activityLanes === undefined ? composeActivity(activityInput) : composeActivity({ ...activityInput, readLanes: activityLanes });
   const workbookLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
