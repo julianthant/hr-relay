@@ -1323,6 +1323,7 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/assistant", path: "result.action.targetLabel", origin: "captured-hr-value" },
   ...["action", "proposal"].flatMap(root => ["row.display.fileName", "startPlan.planned[].display.fileName"].map(path => ({ surface: "wire/assistant", path: `result.${root}.${path}`, origin: "local-filesystem-name" as const }))),
   { surface: "wire/assistant", path: "result.proposal.facts[].label", origin: "repository-authored" },
+  ...["action", "proposal"].map(root => ({ surface: "wire/assistant", path: `result.${root}.startPlan.stopBefore`, origin: "repository-authored" as const })),
   { surface: "wire/assistant", path: "result.proposal.facts[].value", origin: "captured-hr-value" },
   { surface: "wire/assistant", path: "result.action.facts[].label", origin: "repository-authored" },
   { surface: "wire/assistant", path: "result.action.facts[].value", origin: "captured-hr-value" },

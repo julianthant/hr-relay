@@ -5,7 +5,10 @@ import { readAuthorityChanges, readSingletonImage, validateAuthorityChanges, val
 import { singletonChangeKeys } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import { dropGuardTriggers, logCursor } from "../../../support/fixtures/storage/raw-authority-writer.js";
 import { AuthorityTableNameSchema, type AuthorityTableName } from "../../../../src/models/config/authority.js";
+import { ASSISTANT_CHAT_TTL_MS } from "../../../../src/models/dashboard/assistant.js";
+import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { seedCheckClosureStore } from "../../../support/fixtures/storage/check-closure-store.js";
+import { seedAssistantPhaseOne } from "../../../support/helpers/assistant-m1-history-fixture.js";
 
 type Row = Record<string, unknown>;
 type Mutation = Readonly<{ label: string; apply: (raw: DatabaseSync) => boolean }>;
@@ -78,8 +81,11 @@ describe("authority check closure", () => {
   let raw: DatabaseSync;
   beforeAll(async () => {
     store = await seedCheckClosureStore();
+    const { profileId } = store.database.getMeta();
     store.closeDatabase();
     raw = new DatabaseSync(store.databasePath);
+    // Seed phase-one rows after the legacy chat expires so the prepared owner's budget reads its own format.
+    seedAssistantPhaseOne(raw, profileId, new Date(Date.parse(NOW) + ASSISTANT_CHAT_TTL_MS).toISOString());
     // Another process's raw writer: no foreign keys and no guard triggers, inside a transaction this test rolls back. The
     // capture triggers stay, as they do for every writer that has not changed the schema.
     raw.exec("PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE");

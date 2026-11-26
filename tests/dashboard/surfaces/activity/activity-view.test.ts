@@ -172,20 +172,20 @@ it('while another range loads, keeps the last report under its own period with E
   assert.equal(link.disabled, false);
   await act(async () => link.click());
   assert.equal(opened.length, 1);
-  assert.equal(document.querySelector('[data-analytics-stale]') === null, true);
+  assert.equal(document.querySelector('[data-analytics-reading] > *') === null, true);
   assert.equal(button().disabled, false);
-  await act(async () => root?.render(createElement(ActivityView, { ...props, range: next, blocked: true })));
+  await act(async () => root?.render(createElement(ActivityView, { ...props, range: next, blocked: true, reading: true })));
   assert(document.querySelector('table[aria-label="Workflows"] button[aria-expanded="true"]'));
   assert.deepEqual(openRuns().map(run => run === link), [true]);
   assert.equal(link.disabled, true);
   await act(async () => link.click());
   assert.equal(opened.length, 1);
   assert.equal(button().disabled, true);
-  const mark = document.querySelector('[data-analytics-stale]'); assert(mark);
-  assert.equal(mark.textContent, 'Updating');
-  assert(mark.classList.contains('invisible'));
+  const spinner = document.querySelector('[data-analytics-reading] > *'); assert(spinner);
+  assert.doesNotMatch(document.body.textContent, /Updating/);
+  assert(spinner.classList.contains('invisible'));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
-  assert.equal(mark.classList.contains('invisible'), false);
+  assert.equal(spinner.classList.contains('invisible'), false);
   assert.match(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
   assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(next)));
   assert.equal(document.querySelector('[aria-label="Loading analytics report"]') === null, true);
@@ -205,11 +205,9 @@ it('a held empty report names its own period until the chosen period arrives', a
   assert.match(document.body.textContent, /No runs in this periodPick another period/);
   await act(async () => root?.render(createElement(ActivityView, { ...props, data: empty, range: next, blocked: true })));
   assert.match(document.body.textContent, new RegExp(`No runs in this period.*${analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)}`));
-  assert(document.querySelector('[data-analytics-stale]'));
   await act(async () => root?.render(createElement(ActivityView, { ...props, data: activitySample(next, 'empty'), range: next })));
   assert.match(document.body.textContent, /No runs in this period/);
   assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
-  assert.equal(document.querySelector('[data-analytics-stale]') === null, true);
 });
 
 it('agrees on one run total across the Runs figure, the status figures and the table for the seeded day', async () => {

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BarChart3 } from "lucide-react";
-import { Spinner, Button, EmptyState, FailureNotice, useSkeletonWait } from "../../ds/ui.js";
-import { cn } from "../../lib/utils.js";
+import { Spinner, Button, EmptyState, FailureNotice } from "../../ds/ui.js";
 import { ActivityBreadcrumbs, ActivityDrilldown } from './activity-drilldown.js';
 import type { ActivityDrilldownData, ActivityBrowse, ActivitySelectionHandler } from './activity-drilldown-model.js';
 import { ActivitySkeleton } from "./activity-loading.js";
@@ -12,17 +11,11 @@ import type { ActivityViewState } from "./activity-view-model.js";
 
 const noRuns = (analytics: AnalyticsData) => analytics.running === 0 && analytics.workflows.every(row => finished(row) === 0);
 
-/** Says the report is from the period last read; like a skeleton, it shows only once the new period has been slow. */
-function StaleMark() {
-  const waiting = useSkeletonWait();
-  return <span role="status" data-analytics-stale className={cn("text-body text-ui-muted", waiting && "invisible")}>Updating</span>;
-}
-
-export function ActivityView({ data, range, today, onRange, onExport, onRetry, notice, selection, onSelection, browse, pending = false, blocked = false }: {
+export function ActivityView({ data, range, today, onRange, onExport, onRetry, notice, selection, onSelection, browse, pending = false, reading = false, blocked = false }: {
   data: ActivityViewState; range: ActivityDateRange; today: string;
   onRange: (range: ActivityDateRange) => void; onRetry?: () => void;
   onExport?: (format: "csv" | "xlsx") => void | Promise<void>; notice?: string;
-  browse?: ActivityDrilldownData; pending?: boolean; blocked?: boolean;
+  browse?: ActivityDrilldownData; pending?: boolean; reading?: boolean; blocked?: boolean;
   selection?: ActivityBrowse | null; onSelection?: ActivitySelectionHandler;
 }) {
   const [exporting, setExporting] = useState<object>();
@@ -44,9 +37,9 @@ export function ActivityView({ data, range, today, onRange, onExport, onRetry, n
   const browsing = data.state === 'loaded' && !!selection && !!onSelection;
   return <section aria-label="Analytics report" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
     {selection && onSelection && data.state === 'loaded' && <ActivityBreadcrumbs report={data.report} selection={selection} onSelection={onSelection} browse={browse} />}
-    {!browsing && <AnalyticsToolbar range={range} shown={held ? data.report.range : range} today={today} onRange={onRange}
+    {!browsing && <AnalyticsToolbar range={range} shown={held ? data.report.range : range} reading={reading} today={today} onRange={onRange}
       workflows={data.state === "loaded" ? data.report.analytics.workflows : []} workflow={workflow} onWorkflow={setWorkflow}
-      exportButton={<span className="flex items-center gap-2">{held && <StaleMark />}<Button variant="secondary" aria-busy={!!exporting || undefined} disabled={data.state !== "loaded" || pending || blocked || !onExport || !!exporting} icon={exporting ? <span aria-hidden><Spinner /></span> : undefined} onClick={() => void exportCsv()}>Export</Button></span>} />}
+      exportButton={<span className="flex items-center gap-2"><Button variant="secondary" aria-busy={!!exporting || undefined} disabled={data.state !== "loaded" || pending || blocked || !onExport || !!exporting} icon={exporting ? <span aria-hidden><Spinner /></span> : undefined} onClick={() => void exportCsv()}>Export</Button></span>} />}
     {exportError?.report === data && <p role="alert" className="m-0 text-body text-ui-danger">{exportError.reason}</p>}
     {notice && data.state === "loaded" && !(browsing && browse?.state === "unavailable") && <p role="status" className="m-0 text-body text-ui-secondary">{notice}</p>}
     <div className="min-w-0" aria-busy={data.state === "loading" || pending || held || undefined}>

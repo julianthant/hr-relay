@@ -7,6 +7,7 @@ import { createRowStore, type RowStore, type SubscriptionState } from "../client
 import { protocolError } from "../client/errors.js";
 import { createKeptResults, dropKeptResults, failed, loaded, loadingWith, type AsyncResource } from "./async-resource.js";
 import { useDashboardClient } from "./client-context.js";
+import { noteRunData } from "./run-data-changes.js";
 
 export interface DashboardDayState {
   readonly request: object;
@@ -80,7 +81,7 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
         } else {
           opened = true;
           // A superseded stream can still deliver between the next render and this effect's cleanup; it keeps nothing.
-          if (owns()) keptDays.keep(client, [authorityEpoch, actorId], day, { value: next, at: cursor });
+          if (owns()) { keptDays.keep(client, [authorityEpoch, actorId], day, { value: next, at: cursor }); noteRunData(client, next); }
           value = { ...value, day: loaded(next) };
         }
         publish();

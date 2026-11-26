@@ -194,6 +194,8 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/assistant|result.proposal.targetLabel|captured-hr-value",
       "wire/assistant|result.action.workflowId|repository-authored",
       "wire/assistant|result.action.label|repository-authored",
+      "wire/assistant|result.proposal.startPlan.stopBefore|repository-authored",
+      "wire/assistant|result.action.startPlan.stopBefore|repository-authored",
       "wire/assistant|result.action.targetLabel|captured-hr-value",
       ...["action", "proposal"].flatMap(root => ["row.display.documentNumber", "row.display.name", "row.subtitle", "row.title",
         "startPlan.planned[].display.documentNumber", "startPlan.planned[].display.name"].map(path => `wire/assistant|result.${root}.${path}|captured-hr-value`)),

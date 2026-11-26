@@ -178,6 +178,8 @@ export function createAssistantService(options: AssistantServiceOptions) {
   async function runTurn(request: AssistantRequest, signal: AbortSignal, history: AssistantHistoryRepository,
     onAccepted: (value: Accepted) => void): Promise<Turn> {
       let current: Accepted | undefined;
+      /** The tool whose call is in flight, so an unclassified failure's log line names it. */
+      let failingTool: string | undefined;
       try {
         let selected: ReturnType<AssistantServiceOptions["selectedModel"]>;
         try { selected = options.selectedModel(); } catch (error) { if (closure(error)) throw error; return stop("ASSISTANT_UNAVAILABLE"); }
@@ -263,6 +265,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           const key = canonicalJsonStringify({ name: tool.name, arguments: parsed });
           let outcome = outcomes.get(key);
           if (outcome === undefined) {
+            failingTool = tool.name.replaceAll("_", "-");
             try {
               if (tool.kind === "session" || tool.kind === "typed-proposal") return stop("ASSISTANT_INVALID");
               if (tool.kind === "proposal") {
@@ -281,6 +284,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
               outcome = { code, output: canonicalJsonStringify({ error: code, text: ASSISTANT_FAILURES[code] }) };
             }
             outcomes.set(key, outcome);
+            failingTool = undefined;
           }
           if (outcome.code === undefined) unrecovered.delete(tool.name);
           else if (!unrecovered.has(tool.name)) unrecovered.set(tool.name, outcome.code);
@@ -309,7 +313,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           if (code.success) return stop(code.data);
         }
         if (error instanceof AssistantProtocolError || error instanceof z.ZodError || error instanceof SyntaxError) return stop("ASSISTANT_INVALID");
-        fault(error, "assistant-turn", "unclassified-failure", "ASSISTANT_UNAVAILABLE");
+        fault(error, failingTool === undefined ? "assistant-turn" : "assistant-tool", failingTool ?? "unclassified-failure", "ASSISTANT_UNAVAILABLE");
         return stop("ASSISTANT_UNAVAILABLE");
       }
   }

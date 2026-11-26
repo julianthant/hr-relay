@@ -1,4 +1,5 @@
-import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
+import { CHANGE_LOG_OBJECTS, changeLogTriggers } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
+import { ASSISTANT_M2_PROPOSAL_STATEMENTS } from "../../../../src/backend/storage/sqlite/assistant-proposals.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -23,6 +24,7 @@ import { CURRENT_AUTHORITY_SCHEMA_VERSION, isWorkerCustodyDroppedTable } from ".
 import { DEBUG_EVENTS_MIGRATION } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { WORKBOOK_PAYLOAD_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { ASSISTANT_PHASE_ONE_TABLES } from "../../../../src/models/config/authority.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
@@ -239,8 +241,9 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
   assert.ok(readdirSync(backups).filter(name => name.endsWith(".manifest.json"))
     .some(name => AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backups, name), "utf8"))).schemaVersion === version));
   const after = read(s.path);
-  const { workflow_workbook_selections: selections, assistant_conversations: conversations, assistant_messages: messages, assistant_attachments: attachments, ...kept } = after.kept;
-  assert.deepEqual([selections, conversations, messages, attachments], [[], [], [], []]);
+  const { workflow_workbook_selections: selections, assistant_conversations: conversations, assistant_messages: messages, assistant_attachments: attachments,
+    assistant_proposals: proposals, assistant_proposal_rows: proposalRows, assistant_session_claims: sessionClaims, ...kept } = after.kept;
+  assert.deepEqual([selections, conversations, messages, attachments, proposals, proposalRows, sessionClaims], [[], [], [], [], [], [], []]);
   // Schema 29 drops the empty grant table.
   const { assistant_grants: grants, ...keptBefore } = before.kept;
   assert.deepEqual(grants, []);
@@ -256,6 +259,8 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
   const addedTriggers = [
     ...WORKBOOK_PAYLOAD_MIGRATION.statements.filter(sql => sql.startsWith("CREATE TRIGGER workbook_payloads_")),
     ...DEBUG_EVENTS_MIGRATION.statements.filter(sql => sql.startsWith("CREATE TRIGGER debug_events_")),
+    ...ASSISTANT_M2_PROPOSAL_STATEMENTS.filter(sql => sql.startsWith("CREATE TRIGGER ")),
+    ...ASSISTANT_PHASE_ONE_TABLES.flatMap(changeLogTriggers),
   ];
   const isAddedTrigger = (row: Record<string, unknown>) => addedTriggers.includes(String(row.sql));
   assert.deepEqual(after.triggers.filter(isAddedTrigger).map(row => String(row.sql)).sort(), addedTriggers.sort());

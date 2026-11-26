@@ -1,6 +1,7 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { COMMAND_ROW_STATE_MIGRATION, CURRENT_AUTHORITY_SCHEMA_VERSION, LIST_INDEXES, SCHEMA_37_QUERY_INDEXES, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
+import { ASSISTANT_HISTORY_MIGRATION } from "../../../../src/backend/storage/sqlite/assistant-history.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -71,10 +72,23 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
   }
 }
 
+/** Removes the empty phase-1 assistant tables and restores the schema-42 message trigger. */
+export function restoreSchema42AssistantStorage(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 43);
+  for (const table of ["assistant_session_claims", "assistant_proposal_rows", "assistant_proposals"]) {
+    assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
+    database.exec(`DROP TABLE ${table}`);
+  }
+  const trigger = ASSISTANT_HISTORY_MIGRATION.statements.find(statement => statement.startsWith("CREATE TRIGGER assistant_messages_settle_only"));
+  assert.ok(trigger);
+  database.exec(`DROP TRIGGER assistant_messages_settle_only; ${trigger}; UPDATE database_states SET schema_version=42; PRAGMA user_version=42`);
+}
+
 /** Steps an authority back to schema 40, which has no OCR terms in the search projection. */
 export function restoreSchema40OcrSearchTerms(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 43) restoreSchema42AssistantStorage(database);
   const version = database.prepare("PRAGMA user_version").get()?.user_version;
-  assert.ok(version === 41 || version === CURRENT_AUTHORITY_SCHEMA_VERSION);
+  assert.ok(version === 41 || version === 42);
   database.exec("ALTER TABLE run_search DROP COLUMN ocr_subject_terms; UPDATE database_states SET schema_version=40; PRAGMA user_version=40");
 }
 

@@ -52,7 +52,7 @@ export async function installFrozenMonotonic(page: Page): Promise<void> {
       writable: true,
       value: () => frozen,
     });
-    // The assistant mark's idle orbit advances by the frame timestamp; a frozen one keeps it at rest.
+    // An animation that advances by the frame timestamp stays at rest on a frozen one.
     const frame = window.requestAnimationFrame.bind(window);
     window.requestAnimationFrame = callback => frame(() => callback(frozen));
   });
@@ -97,9 +97,8 @@ export function rowOf(page: Page, runId: string) {
   return page.locator(`[data-demo-row-id='${runId}']`);
 }
 
-/** A rail row shows its running count as a pill (empty slot at 0) and describes it as "N running". */
+/** A rail row has no visible count; it describes its running runs as "N running". */
 export async function expectRunningPill(row: Locator, running: number): Promise<void> {
-  await expect(row.locator(".workflow-rail-running")).toHaveText(running > 0 ? String(running) : "");
   if (running > 0) await expect(row).toHaveAttribute("aria-description", `${running} running`);
   else await expect(row).not.toHaveAttribute("aria-description");
 }

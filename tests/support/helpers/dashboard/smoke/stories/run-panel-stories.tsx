@@ -19,7 +19,7 @@ import { FullDryRunPreview } from "../../../../../../src/dashboard/surfaces/run-
 import type { DryRunPreviewStage } from "../../../../../../src/dashboard/surfaces/run-detail/logs/dry-run-preview-model.js";
 import type { AnsweredKind, LogDecision } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
 import type { LogEntry, LogScreenshot, LogStep } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
-import { pauseTimeline, type LogTimelineStage, type LogTimelineState } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
+import { pauseTimeline, type LogTimelineStage } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
 import { RecordReview } from "../../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 import type { RecordReviewProps } from "../../../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
 import { ReviewDialog } from "../../../../../../src/dashboard/surfaces/run-detail/review/review-dialog.js";
@@ -91,29 +91,14 @@ const HEADER = {
   "awaiting-approval": header("awaiting-approval", 4), done: header("done", 5), failed: header("failed", 6), cancelled: header("cancelled", 7), partial: header("partial", 8),
 } satisfies Record<QueueStatus, Story>;
 
-function timelineAt(state: LogTimelineState): readonly LogTimelineStage[] {
-  return logTimelineSample("separation").map((stage, index): LogTimelineStage => {
-    if (index < 2) return stage;
-    const later = index > 2 ? (state === "cancelled" ? "cancelled" : state === "skipped" ? "skipped" : "pending") : state;
-    return { ...stage, state: later, ...(later === "completed" ? {} : { durationLabel: undefined }),
-      substeps: stage.substeps.map(substep => ({ id: substep.id, label: substep.label, state: later,
-        ...(later === "completed" && substep.durationLabel !== undefined ? { durationLabel: substep.durationLabel } : {}) })) };
-  });
-}
-const timelineStory = (state: LogTimelineState): Story => panel(`A timeline stage that is ${state}`, { steps: separationLogs.slice(0, 7), timeline: timelineAt(state) });
-const TIMELINE = {
-  completed: timelineStory("completed"), active: timelineStory("active"), waiting: timelineStory("waiting"), failed: timelineStory("failed"),
-  pending: timelineStory("pending"), skipped: timelineStory("skipped"), cancelled: timelineStory("cancelled"),
-} satisfies Record<LogTimelineState, Story>;
-
 const headerRun = (title: string, play: (page: Page) => Promise<void>, ready: string): Story => ({
   ...panel(title, { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("done", 40)} />, rerun: { label: "Rerun", run: noop } }), play, ready });
 const search = (text?: string) => async (page: Page): Promise<void> => {
   await page.getByRole("button", { name: "Search logs" }).click();
-  if (text !== undefined) await page.getByRole("textbox", { name: "Search logs" }).fill(text);
+  if (text !== undefined) await page.getByRole("searchbox", { name: "Search logs" }).fill(text);
 };
 const LOG_HEADER = {
-  default: panel("The run header: steps, search and the menu", { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("done", 40)} />, rerun: { label: "Rerun", run: noop } }),
+  default: panel("The run header: status, search and the menu", { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("done", 40)} />, rerun: { label: "Rerun", run: noop } }),
   "search-matches": headerRun("Search with matches", search("employment"), "text=/\\d+ of \\d+/"),
   "search-none": headerRun("Search with no matches", search("badge"), "text=\"No matches\""),
   "search-child": { ...panel("Search on a running dry-run child run", { steps: readingSteps, timeline: reading, status: <RunStateChips row={queueStoryRow("running", 41, { dryRun: true })} />,
@@ -252,6 +237,6 @@ const REVIEW = {
 } satisfies Record<ReviewCase, Story>;
 
 export const RUN_PANEL_STORIES = defineSurface("run-panel", {
-  header: HEADER, "log-header": LOG_HEADER, timeline: TIMELINE, pause: PAUSE, logs: LOGS, decision: DECISION, card: CARD, answered: ANSWERED,
+  header: HEADER, "log-header": LOG_HEADER, pause: PAUSE, logs: LOGS, decision: DECISION, card: CARD, answered: ANSWERED,
   write: WRITE, failure: FAILURE, capture: CAPTURE, "capture-problem": CAPTURE_PROBLEM, entry: ENTRY, note: NOTE, "dry-run": DRY_RUN, review: REVIEW,
 });
