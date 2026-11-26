@@ -360,7 +360,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox, target: notifications.target }),
     notificationStatus: { read: () => notifications.status(), onChange: listener => notificationObserver.onStatusChange(listener) },
     runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
-    settings: { read: settingsBoundary.editable, onChange: listener => { settingsChanges.add(listener); return () => { settingsChanges.delete(listener); }; } },
+    settings: { read: settingsBoundary.editable, onChange: listener => {
+      settingsChanges.add(listener);
+      const stop = settingsBoundary.onChange(listener);
+      return () => { settingsChanges.delete(listener); stop(); };
+    } },
     preflightReport: () => preflightAuthority.readLatest(),
   });
   const { hub } = shell;

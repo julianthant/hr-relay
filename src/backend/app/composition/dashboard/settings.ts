@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineLaneRead, type DashboardReadLanes, type LaneReadDefinition } from "../../../storage/sqlite/dashboard-read-host.js";
 import { createSettingsApplicationExecutor } from "../../../runs/commands/settings-service.js";
+import type { SettingsApplicationExecutor } from "../../../runs/commands/settings-command.js";
 import { selectActiveRunSettings } from "../../../runs/settings/run-settings.js";
 import { activeSettingsConfig, activeSettingsRuntimeIdentity, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings, settingsRuntimeStatusOf, type ProtectedSettingsRuntimeSnapshot } from "../../../runtime/settings/settings-runtime.js";
 import type { createCredentialStore } from "../../../storage/configuration/credential-store.js";
@@ -77,10 +78,36 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   readLanes?: Pick<DashboardReadLanes, "read">;
   /** The profile's browser-root custody check, run on main for each lane resolution at every editor read. */
   assertBrowserRoot?: (path: string) => void;
+  /** Runs `task` every `ms` until the returned stop; the fiscal-year watch's timer. */
+  every?: (ms: number, task: () => void) => () => void;
 }) {
   const { database, clock, hostFacts } = input;
   const reader = createSettingsRuntimeReader(input);
   const resolveSettings = input.resolveSettings ?? (settings => resolveConfigWithProvenance(settings, hostFacts, clock, input.runtimeStoragePair));
+  // Protected commits and the fiscal-year rollover change the editor without an ordinary settings commit.
+  const listeners = new Set<() => void>();
+  const notify = () => { for (const listener of [...listeners]) listener(); };
+  const every = input.every ?? ((ms, task) => { const timer = setInterval(task, ms); timer.unref(); return () => { clearInterval(timer); }; });
+  let stopRollover: (() => void) | undefined;
+  const onChange = (listener: () => void) => {
+    listeners.add(listener);
+    if (stopRollover === undefined) {
+      let watched = clock.fiscalYear();
+      // shortcut: polls once a minute, so the rollover reaches subscribers up to a minute late; schedule the boundary if that matters.
+      stopRollover = every(60_000, () => { const fiscalYear = clock.fiscalYear(); if (fiscalYear !== watched) { watched = fiscalYear; notify(); } });
+    }
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) { stopRollover?.(); stopRollover = undefined; }
+    };
+  };
+  const applications = createSettingsApplicationExecutor(resolveSettings, input.credentials);
+  const executor: SettingsApplicationExecutor = Object.freeze({ ...applications, commitPrivate: command => {
+    const refusal = applications.commitPrivate(command);
+    // The private store commits here, ahead of the kernel's SQLite transaction; subscribers read after it settles.
+    if (refusal === undefined) queueMicrotask(notify);
+    return refusal;
+  } });
   const read = <T>(project: (repositories: AuthorityDatabase["authority"]) => T) => database.withAuthorityReadSnapshot(() => {
     input.assertCurrent?.();
     const result = project(database.authority);
@@ -107,7 +134,7 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   const lanes = input.readLanes;
   if (lanes === undefined) {
     const editable = () => buildSettingsEditor(routes.settingsEditor);
-    return { routes, editable, executor: createSettingsApplicationExecutor(resolveSettings, input.credentials) };
+    return { routes, editable, onChange, executor };
   }
   const laneRead = async <Args>(definition: LaneReadDefinition<Args, unknown>, args: Args) => {
     input.assertCurrent?.();
@@ -140,6 +167,5 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
     last = { key, browserRoots, document };
     return document;
   };
-  return { routes: { ...routes, settingsLane: { editable, facts: () => laneRead(settingsFactsRead, {}) } }, editable,
-    executor: createSettingsApplicationExecutor(resolveSettings, input.credentials) };
+  return { routes: { ...routes, settingsLane: { editable, facts: () => laneRead(settingsFactsRead, {}) } }, editable, onChange, executor };
 }

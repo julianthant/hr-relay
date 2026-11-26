@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { afterEach, describe, it } from "vitest";
 import {
   createRunQueueProjection,
@@ -22,6 +23,8 @@ import { createComposedDashboardReadHost } from "../../../../../src/backend/app/
 import { composeSettings } from "../../../../../src/backend/app/composition/dashboard/settings.js";
 import { activeSettingsRuntimeIdentity } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/protected-settings.js";
+import { ProtectedSettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import { seedInitialSettingsRuntimeConfig } from "../../../../support/fixtures/operator-command-fixtures.js";
 import { NOW } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { openBoundDatabaseFixture } from "../../../../support/helpers/admission-fixture.js";
@@ -598,8 +601,9 @@ async function settingsLaneHarness() {
   settingsCleanups.push(async () => { await lanes.close(); await fixture.close(); });
   const faults = { lane: false, protected: false };
   const store = createCredentialStore({ stateRoot: fixture.stateRoot });
-  const { editable } = composeSettings({ database: fixture.database, clock, environment: {}, hostFacts: { primaryDisplay: null },
-    active: activeSettingsRuntimeIdentity,
+  const ticks = new Set<() => void>();
+  const { editable, onChange, executor } = composeSettings({ database: fixture.database, clock, environment: {}, hostFacts: { primaryDisplay: null },
+    active: activeSettingsRuntimeIdentity, every: (_ms, task) => { ticks.add(task); return () => { ticks.delete(task); }; },
     credentials: { ...store, read: () => { if (faults.protected) throw new Error("protected store unreadable"); return store.read(); } },
     readLanes: { read: (definition, args, options) => faults.lane ? Promise.reject(new Error("lane read failed")) : lanes.read(definition, args, options) } });
   const listeners = new Set<() => void>();
@@ -607,10 +611,15 @@ async function settingsLaneHarness() {
   // The row-read deadline runs only on `fire`; a cold lane's start on a slow runner is not a late read.
   const hub = createDashboardStreamHub({ projection: world.projection, clock: { monotonicMs: () => 0 },
     backfillGaps: { detected: () => { throw new Error("no gap is expected"); } },
-    settings: { read: editable, onChange: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; } },
+    // As the dashboard wires it: ordinary commits through the kernel's source, protected commits and the rollover through Settings'.
+    settings: { read: editable, onChange: listener => {
+      listeners.add(listener);
+      const stop = onChange(listener);
+      return () => { listeners.delete(listener); stop(); };
+    } },
     schedule: (_delayMs, task) => { const timer = { task, cancelled: false }; timers.push(timer); return () => { timer.cancelled = true; }; } });
   hubs.push(hub);
-  return { hub, clock, faults,
+  return { hub, clock, faults, store, executor, tick: () => { for (const task of [...ticks]) task(); },
     changed: () => { for (const listener of [...listeners]) listener(); },
     fire: () => { for (const timer of timers.splice(0).filter(timer => !timer.cancelled)) timer.task(); } };
 }
@@ -636,7 +645,7 @@ async function nextSettingsRow(connection: DashboardStreamConnection, given: rea
 
 describe("the settings row read on the navigation lane", () => {
   it("hands a cold subscriber the lane-built row, recovers a failed refresh, and rebuilds on a protected-facts change and the fiscal-year rollover", async () => {
-    const { hub, clock, faults, changed, fire } = await settingsLaneHarness();
+    const { hub, clock, faults, store, executor, tick, changed, fire } = await settingsLaneHarness();
     const connection = await hub.connect({ day: DAY });
     const first = await nextSettingsRow(connection, connection.initial);
     assert.ok(first.state === "available", "the first subscriber's handoff waits for the lane's read");
@@ -651,6 +660,15 @@ describe("the settings row read on the navigation lane", () => {
     const recovered = await nextSettingsRow(connection);
     assert.ok(recovered.state === "available", "the retry recovers the row");
 
+    const rosterUrl = "https://sharepoint.example.test/sites/hr/roster.xlsx";
+    assert.equal(executor.commitPrivate(ProtectedSettingsCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: NOW,
+      requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-protected-settings",
+      target: { expectedRevision: store.read().revision },
+      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { sharepointOnboardingRosterUrl: { set: rosterUrl } } } })), undefined);
+    const committed = await nextSettingsRow(connection);
+    assert.ok(committed.state === "available" && committed.value.protectedSettings.state === "available");
+    assert.equal(committed.value.protectedSettings.entries.sharepointOnboardingRosterUrl?.value, rosterUrl, "a protected commit rebuilds the connected row");
+
     faults.protected = true;
     changed();
     const unknown = await nextSettingsRow(connection);
@@ -658,8 +676,9 @@ describe("the settings row read on the navigation lane", () => {
     assert.equal(unknown.value.protectedSettings.state, "unknown", "a protected-facts change rebuilds the document");
     faults.protected = false;
 
+    tick();
     clock.setWall(new Date("2027-07-01T17:00:00.000Z"));
-    changed();
+    tick();
     const rolled = await nextSettingsRow(connection);
     assert.ok(rolled.state === "available");
     assert.equal(rolled.value.currentFiscalYear, 2028, "the fiscal-year rollover rebuilds the document");
