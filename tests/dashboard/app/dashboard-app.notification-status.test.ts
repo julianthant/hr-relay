@@ -28,6 +28,7 @@ const NOTIFICATION = NotificationWireSchema.parse({ kind: "notification", notifi
 const READY = { state: "available", value: { state: "ready", pending: 0 } } as const;
 const UNAVAILABLE = { state: "unavailable", error: { state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true } } as const;
 const statusRow = (value: typeof READY | typeof UNAVAILABLE) => ({ model: "notification-status", key: "local-operator", value });
+const listRow = (value: readonly NotificationWire[]) => ({ model: "notification-list", key: "local-operator", value: { state: "available", value } });
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
 
 /** The app on `?day=`, its day stream answered by envelopes the test pushes; every other read is the fixture BFF's. */
@@ -73,8 +74,8 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
     const { day: streamed, push } = stream();
     await act(async () => {
       push({ type: "hello", wireVersion: 1, descriptorHash: FIXTURE_DAY_WIRE.descriptorHash, projectionGeneration: FIXTURE_DAY_WIRE.projectionGeneration, cursor: "pc:1" });
-      push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", position: 0, rows: [statusRow(status)],
-        payload: { ...FIXTURE_DAY_WIRE, day: streamed, snapshotCursor: "pc:1", notifications: [NOTIFICATION] } });
+      push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", position: 0, rows: [statusRow(status), listRow([NOTIFICATION])],
+        payload: { ...FIXTURE_DAY_WIRE, day: streamed, snapshotCursor: "pc:1" } });
       push({ type: "health", state: "live" });
     });
     await settle();
@@ -94,9 +95,9 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
   };
   let cursor = 1;
   /** A rows-only change carrying the status row, as the hub sends when the status moves or its retry reads it. */
-  const change = async (status: typeof READY | typeof UNAVAILABLE) => {
+  const change = async (status: typeof READY | typeof UNAVAILABLE, handoff = false) => {
     const after = `pc:${cursor}`; cursor += 1;
-    await act(async () => { stream().push({ type: "change", topic: "dashboard-day", cursor: `pc:${cursor}`, after, position: 0, rows: [statusRow(status)] }); });
+    await act(async () => { stream().push({ type: "change", topic: "dashboard-day", cursor: `pc:${cursor}`, after, position: 0, rows: [statusRow(status), ...(handoff ? [listRow([served])] : [])] }); });
     await settle();
   };
   const openBell = async () => {
@@ -109,7 +110,7 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
     const snapshotAt = `pc:${cursor + 1}`, publishedAt = `pc:${cursor + 2}`; cursor += 2;
     await act(async () => {
       push({ type: "snapshot", topic: "dashboard-day", cursor: snapshotAt, position: 0, rows: [statusRow(READY)],
-        payload: { ...FIXTURE_DAY_WIRE, day: streamed, snapshotCursor: snapshotAt, notifications: [NOTIFICATION] } });
+        payload: { ...FIXTURE_DAY_WIRE, day: streamed, snapshotCursor: snapshotAt } });
       push({ type: "notification-publication", cursor: publishedAt, day: streamed, descriptorHash: FIXTURE_DAY_WIRE.descriptorHash, projectionGeneration: FIXTURE_DAY_WIRE.projectionGeneration,
         publication: { sourceId: "b".repeat(64), actorId: row.actorId, durable: "created", notification: row }, listed: row,
         target: { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: streamed } });
@@ -196,6 +197,8 @@ it("keeps served clears off when a resumed stream is live before its status row,
   assert.deepEqual(m.commands, []);
 
   await m.change(READY);
+  assert.equal(clearOf("Run completed").disabled, true, "the held list remains stale");
+  await m.change(READY, true);
 
   assert.equal(clearOf("Run completed").disabled, false);
   assert.equal(clearAll().disabled, false);

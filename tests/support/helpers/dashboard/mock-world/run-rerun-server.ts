@@ -70,8 +70,6 @@ async function serveLaunchAuthority<Source>(h: Awaited<ReturnType<typeof launchH
     ledger: createTransactionHistory(database.authority), descriptors: { resolve: (id) => id === h.descriptor.id ? h.descriptor : undefined },
     authority: {
       queueParents: envelopes => database.authority.dependencies.parents(envelopes),
-      listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
-      listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
       listWorkerPools: () => database.authority.workerPools.list(), listRunBatches: () => database.authority.runSessions.list(),
