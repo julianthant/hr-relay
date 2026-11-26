@@ -14,6 +14,9 @@ on:
       results:
         description: Job results for the caller's proof gate.
         value: ${{ toJSON(jobs) }}
+      coverage-result:
+        description: Full coverage merge and threshold result.
+        value: ${{ jobs.coverage.result }}
 
 permissions:
   contents: read
@@ -207,6 +210,8 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan).ubuntu.include[0] != null }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      COVERAGE_FLAGS: ${{ inputs.kind == 'full' && '--coverage --no-coverage.thresholds --coverage.reporter=json' || '' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.plan).ubuntu }}
@@ -247,7 +252,9 @@ jobs:
         env:
           SUITE: ${{ matrix.suite }}
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3
+        run: |
+          read -ra coverage <<< "$COVERAGE_FLAGS"
+          scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3 "${coverage[@]}" ${COVERAGE_FLAGS:+--coverage.reportsDirectory="$RUNNER_TEMP/full-coverage/ubuntu"}
       - name: Affected integration tests
         if: matrix.files != null
         env:
@@ -262,6 +269,18 @@ jobs:
           path: ${{ runner.temp }}/durations/
           if-no-files-found: ignore
           retention-days: 14
+      - name: Verify coverage report
+        if: inputs.kind == 'full'
+        run: |
+          test -s "$RUNNER_TEMP/full-coverage/ubuntu/coverage-final.json"
+          pwd -P > "$RUNNER_TEMP/full-coverage/root"
+      - uses: actions/upload-artifact@v7
+        if: inputs.kind == 'full'
+        with:
+          name: coverage-ubuntu-${{ matrix.suite }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/full-coverage/
+          if-no-files-found: error
+          retention-days: 7
 
   macos:
     needs: changes
@@ -269,6 +288,8 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan).macos.include[0] != null }}
     runs-on: macos-15
     timeout-minutes: 30
+    env:
+      COVERAGE_FLAGS: ${{ inputs.kind == 'full' && '--coverage --no-coverage.thresholds --coverage.reporter=json' || '' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.plan).macos }}
@@ -321,8 +342,9 @@ jobs:
               sleep 5
             done ) &
           sampler=$!
+          read -ra coverage <<< "$COVERAGE_FLAGS"
           set +e
-          scripts/test/ci-run.sh integration serial "$SLICE" --maxWorkers=1 --no-file-parallelism
+          scripts/test/ci-run.sh integration serial "$SLICE" --maxWorkers=1 --no-file-parallelism "${coverage[@]}" ${COVERAGE_FLAGS:+--coverage.reportsDirectory="$RUNNER_TEMP/full-coverage/integration-serial"}
           status=$?
           kill "$sampler"
           exit "$status"
@@ -330,17 +352,23 @@ jobs:
         if: ${{ !cancelled() && matrix.suite == 'native' && fromJSON(needs.changes.outputs.plan).integration }}
         env:
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh integration storage "$SLICE" --maxWorkers=1 --no-file-parallelism
+        run: |
+          read -ra coverage <<< "$COVERAGE_FLAGS"
+          scripts/test/ci-run.sh integration storage "$SLICE" --maxWorkers=1 --no-file-parallelism "${coverage[@]}" ${COVERAGE_FLAGS:+--coverage.reportsDirectory="$RUNNER_TEMP/full-coverage/integration-storage"}
       - name: Native unit files
         if: ${{ !cancelled() && matrix.suite == 'native' && fromJSON(needs.changes.outputs.plan).unit }}
         env:
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh unit native "$SLICE" --maxWorkers=2
+        run: |
+          read -ra coverage <<< "$COVERAGE_FLAGS"
+          scripts/test/ci-run.sh unit native "$SLICE" --maxWorkers=2 "${coverage[@]}" ${COVERAGE_FLAGS:+--coverage.reportsDirectory="$RUNNER_TEMP/full-coverage/unit-native"}
       - name: Native integration files
         if: ${{ !cancelled() && matrix.suite == 'native' && fromJSON(needs.changes.outputs.plan).integration }}
         env:
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh integration native "$SLICE" --maxWorkers=2
+        run: |
+          read -ra coverage <<< "$COVERAGE_FLAGS"
+          scripts/test/ci-run.sh integration native "$SLICE" --maxWorkers=2 "${coverage[@]}" ${COVERAGE_FLAGS:+--coverage.reportsDirectory="$RUNNER_TEMP/full-coverage/integration-native"}
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() && matrix.suite == 'native' }}
         with:
@@ -348,6 +376,49 @@ jobs:
           path: ${{ runner.temp }}/durations/
           if-no-files-found: ignore
           retention-days: 14
+      - name: Verify coverage reports
+        if: inputs.kind == 'full'
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/full-coverage"
+          for group in integration-serial integration-storage unit-native integration-native; do
+            if [ -f "$RUNNER_TEMP/durations/$RUNNER_OS-$group-$SHARD.json" ]; then
+              test -s "$RUNNER_TEMP/full-coverage/$group/coverage-final.json"
+            fi
+          done
+          pwd -P > "$RUNNER_TEMP/full-coverage/root"
+      - uses: actions/upload-artifact@v7
+        if: inputs.kind == 'full'
+        with:
+          name: coverage-macos-${{ matrix.shard }}
+          path: ${{ runner.temp }}/full-coverage/
+          if-no-files-found: error
+          retention-days: 7
+
+  coverage:
+    name: coverage
+    needs: [changes, ubuntu, macos]
+    if: inputs.kind == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          path: ${{ runner.temp }}/full-coverage
+      - name: Merge coverage and enforce floors
+        env:
+          PLAN: ${{ needs.changes.outputs.plan }}
+        run: |
+          /usr/bin/time -f 'Coverage merge: %e s, peak RSS: %M KiB' \
+            node --max-old-space-size=6144 --import tsx scripts/ci/full-coverage.ts "$RUNNER_TEMP/full-coverage" "$PLAN"
 
   unit-proofs:
     needs: [changes, ubuntu, macos]
@@ -495,7 +566,7 @@ jobs:
 
   unit:
     name: unit
-    needs: [changes, lint, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, perf, smoke]
+    needs: [changes, lint, static, privacy, ubuntu, integration, architecture, macos, coverage, unit-proofs, perf, smoke]
     if: ${{ !cancelled() && inputs.kind != 'fast' }}
     runs-on: ubuntu-latest
     steps:

@@ -85,12 +85,13 @@ jobs:
     steps:
       - env:
           CHECKS: ${{ needs.full-checks.result }}
+          COVERAGE: ${{ needs.full-checks.outputs.coverage-result || 'missing' }}
           CODEQL: ${{ needs.codeql.result }}
           DEPENDENCIES: ${{ needs.dependencies.result }}
         run: |
           verdict=passed
-          for result in "$CHECKS" "$CODEQL" "$DEPENDENCIES"; do
+          for result in "$CHECKS" "$COVERAGE" "$CODEQL" "$DEPENDENCIES"; do
             if [ "$result" != success ]; then verdict=failed; fi
           done
-          printf 'Full run %s %s: checks %s, codeql %s, dependencies %s\n' "$GITHUB_SHA" "$verdict" "$CHECKS" "$CODEQL" "$DEPENDENCIES" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          printf 'Full run %s %s: checks %s, coverage %s, codeql %s, dependencies %s\n' "$GITHUB_SHA" "$verdict" "$CHECKS" "$COVERAGE" "$CODEQL" "$DEPENDENCIES" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
           test "$verdict" = passed
