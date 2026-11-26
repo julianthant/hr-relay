@@ -1,0 +1,21 @@
+.reply-text,.reply-bullets,.reply-session,.reply-answered{overflow-wrap:anywhere}
+.reply-text{margin:0}
+.reply-bullets{margin:4px 0;padding-left:20px;list-style:disc}
+.reply-bold,.reply-value,.reply-failure,.reply-link{font-weight:500}
+.reply-previous{color:var(--ui-muted)}
+.reply-value,.reply-link{color:var(--ui-info)}
+.reply-failure{color:var(--ui-danger)}
+.reply-link{cursor:pointer;text-decoration:none;text-underline-offset:2px}
+.reply-link:hover{text-decoration:underline}
+.reply-link:focus-visible,.reply-stop:focus-visible{outline:2px solid var(--ui-primary);outline-offset:2px}
+.reply-session{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 14px;border:1px solid var(--ui-stroke);border-radius:12px;background:var(--ui-table)}
+.reply-spinner{width:12px;height:12px;flex:none;align-self:flex-start;margin-top:3px;border:2px solid var(--ui-info);border-right-color:transparent;border-radius:50%;animation:reply-spin .8s linear infinite}
+.reply-session-copy{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;font-size:12px;line-height:18px;font-weight:500}
+.reply-session-copy small{font-size:11px;line-height:16px;font-weight:400;color:var(--ui-muted)}
+.reply-stop{flex:none;height:26px;padding:0 12px;border:1px solid var(--ui-stroke-control);border-radius:999px;background:var(--ui-panel);color:var(--ui-primary);font-size:12px;font-weight:500;cursor:pointer}
+.reply-stop:hover{background:var(--ui-hover)}
+.reply-answered{display:flex;align-items:center;gap:6px;align-self:flex-end;margin:-8px 0 0;font-size:11px;color:var(--ui-muted)}
+.reply-answered svg{width:12px;height:12px;flex:none;color:var(--ui-positive)}
+@keyframes reply-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.reply-spinner{animation:none}}
+html[data-motion=off] .reply-spinner{animation:none}
