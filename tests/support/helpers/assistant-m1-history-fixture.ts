@@ -5,10 +5,12 @@ import { ASSISTANT_HISTORY_MIGRATION, ASSISTANT_M1_HISTORY_STATEMENTS, createAss
 import { ASSISTANT_ATTACHMENTS_MIGRATION } from "../../../src/backend/storage/sqlite/assistant-attachments.js";
 import { ASSISTANT_M2_PROPOSAL_STATEMENTS, createAssistantProposalRepository } from "../../../src/backend/storage/sqlite/assistant-proposals.js";
 
-export function assistantM1HistoryFixture(config: Readonly<{ now: string; acceptedAt: string; profileId?: string }>) {
-  const database = new DatabaseSync(":memory:");
-  database.exec("PRAGMA foreign_keys=ON");
-  for (const statement of [...ASSISTANT_HISTORY_MIGRATION.statements, ...ASSISTANT_ATTACHMENTS_MIGRATION.statements, ...ASSISTANT_M1_HISTORY_STATEMENTS]) database.exec(statement);
+export function assistantM1HistoryFixture(config: Readonly<{ now: string; acceptedAt: string; profileId?: string }>, installedDatabase?: DatabaseSync) {
+  const database = installedDatabase ?? new DatabaseSync(":memory:");
+  if (installedDatabase === undefined) {
+    database.exec("PRAGMA foreign_keys=ON");
+    for (const statement of [...ASSISTANT_HISTORY_MIGRATION.statements, ...ASSISTANT_ATTACHMENTS_MIGRATION.statements, ...ASSISTANT_M1_HISTORY_STATEMENTS]) database.exec(statement);
+  }
   const profileId = config.profileId ?? randomUUID();
   let epoch = 7, generation = 0, depth = 0, sequence = 0, dirty = false;
   const callbacks: (() => void)[] = [];
@@ -37,8 +39,8 @@ export function assistantM1HistoryFixture(config: Readonly<{ now: string; accept
     read: work => { if (depth > 0) return work(); database.exec("BEGIN"); try { const result = work(); database.exec("COMMIT"); return result; } catch (error) { database.exec("ROLLBACK"); throw error; } },
     mutate: (_table, work) => transaction(() => { const value = work(); if (value.changes > 0) dirty = true; return value.result; }) };
   const history = createAssistantM1HistoryRepository(ports);
-  let m2 = false;
-  /** Applies the candidate M2 statements once over this populated M1 database and opens the prepared proposal owner over `accepted`. */
+  let m2 = installedDatabase !== undefined;
+  /** Installs M2 in the in-memory fixture once and opens the prepared proposal owner over `accepted`. */
   const proposals = (accepted: Pick<typeof history, "sending"> = history) => {
     if (!m2) for (const statement of ASSISTANT_M2_PROPOSAL_STATEMENTS) database.exec(statement);
     m2 = true;

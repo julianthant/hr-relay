@@ -1,4 +1,6 @@
-import { AssistantAttachmentRecordSchema, AssistantConversationRecordSchema, AssistantMessageRecordSchema, AssistantModelPreferenceRecordSchema } from "../../../models/dashboard/assistant.js";
+import { ASSISTANT_START_ROWS_MAX, AssistantAttachmentRecordSchema, AssistantConversationRecordSchema, AssistantM1MessageRecordSchema, AssistantM2ProposalSnapshotSchema,
+  AssistantM2ProposalStateSchema, AssistantM2RowResultSchema, AssistantMessageRecordSchema, AssistantModelPreferenceRecordSchema,
+  AssistantSessionClaimSchema, AssistantSessionOutcomeSchema } from "../../../models/dashboard/assistant.js";
 import { AssistantChatRecordSchema, AssistantActionRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { EditableWorkbookWireSchema, SavedWorkbookSchema, WorkbookTypeSchema, WorkbookOperationSchema } from "../../../models/dashboard/workbooks.js";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
@@ -21,7 +23,7 @@ import { StoredOcrExtractionSchema } from "../../../models/ocr/stored-extraction
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
-import { DiagnosticBundleIdSchema, IsoInstantSchema } from "../../../rules/identity/ids.js";
+import { CommandIdSchema, DiagnosticBundleIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../../rules/identity/ids.js";
 import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
 import { RunRecordSchema } from "../../../models/run/record.js";
 import { RunResultRecordSchema } from "../../../models/run/result.js";
@@ -42,6 +44,38 @@ export const DiagnosticAttachmentStorageRecordSchema = z.strictObject({
   createdAt: IsoInstantSchema,
 });
 
+function storedJson<T extends z.ZodType>(schema: T) {
+  return z.string().transform((text, context) => {
+    try { const payload: unknown = JSON.parse(text); return payload; }
+    catch { context.addIssue({ code: "custom", message: "assistant-storage-json-invalid" }); return z.NEVER; }
+  }).pipe(schema);
+}
+
+const AssistantProposalStorageRowSchema = z.strictObject({
+  id: z.uuid(), conversation_id: z.uuid(), revision: PositiveIntSchema, rendered_message_id: z.uuid(), rendered_digest: FingerprintSchema,
+  state: z.string(), answer_message_id: z.uuid().nullable(), snapshot_json: storedJson(AssistantM2ProposalSnapshotSchema), created_at: IsoInstantSchema,
+}).refine(row => {
+  const snapshot = row.snapshot_json;
+  return row.id === snapshot.id && row.conversation_id === snapshot.conversationId && row.revision === snapshot.revision
+    && row.rendered_message_id === snapshot.renderedMessageId && row.rendered_digest === snapshot.renderedDigest && row.created_at === snapshot.createdAt
+    && AssistantM2ProposalStateSchema.safeParse(row.answer_message_id === null ? { state: row.state } : { state: row.state, answerMessageId: row.answer_message_id }).success;
+}, "assistant-proposal-storage-row-mismatch");
+
+const AssistantProposalResultStorageRowSchema = z.strictObject({
+  id: z.uuid(), proposal_id: z.uuid(), ordinal: PositiveIntSchema.max(ASSISTANT_START_ROWS_MAX), command_id: CommandIdSchema.nullable(),
+  state: z.string(), result_json: storedJson(AssistantM2RowResultSchema),
+}).refine(row => row.state === row.result_json.state && row.command_id === ("commandId" in row.result_json ? row.result_json.commandId : null),
+  "assistant-proposal-result-storage-row-mismatch");
+
+const AssistantSessionClaimStorageRowSchema = z.strictObject({
+  action_id: z.uuid(), conversation_id: z.uuid(), accepted_message_id: z.uuid(), request_digest: FingerprintSchema,
+  command_id: CommandIdSchema, state: z.string(), claim_json: storedJson(AssistantSessionClaimSchema), outcome_json: storedJson(AssistantSessionOutcomeSchema),
+}).refine(row => {
+  const claim = row.claim_json;
+  return row.action_id === claim.actionId && row.conversation_id === claim.acceptedTurn.conversationId && row.accepted_message_id === claim.acceptedTurn.messageId
+    && row.request_digest === claim.requestDigest && row.command_id === claim.command.commandId && row.state === row.outcome_json.state;
+}, "assistant-session-claim-storage-row-mismatch");
+
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   assistant_model_preference: AssistantModelPreferenceRecordSchema,
   database_upgrades: AuthorityUpgradeRecordSchema,
@@ -52,8 +86,11 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   assistant_chats: AssistantChatRecordSchema,
   assistant_actions: AssistantActionRecordSchema,
   assistant_conversations: AssistantConversationRecordSchema,
-  assistant_messages: AssistantMessageRecordSchema,
+  assistant_messages: z.union([AssistantMessageRecordSchema, AssistantM1MessageRecordSchema]),
   assistant_attachments: AssistantAttachmentRecordSchema,
+  assistant_proposals: AssistantProposalStorageRowSchema,
+  assistant_proposal_rows: AssistantProposalResultStorageRowSchema,
+  assistant_session_claims: AssistantSessionClaimStorageRowSchema,
   run_batches: RunSessionRecordSchema,
   deleted_runs: DeletedRunRecordSchema,
   runs: RunRecordSchema,
