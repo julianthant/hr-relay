@@ -7,7 +7,6 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, expect, it, vi } from "vitest";
 import { composeDashboardRuntime } from "../../../src/backend/app/composition/dashboard/compose.js";
-import { SAMPLE_WORKER_ORDINAL_FLOOR } from "../../../src/backend/app/composition/dashboard/copy-samples.js";
 import { composeProfileRuntime } from "../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { CHILD_ONLY_WORKFLOW_MODULES, READABLE_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
@@ -19,11 +18,19 @@ import { importIsolatedProfileData } from "../../../src/backend/storage/maintena
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
+import { queueBatches } from "../../../src/dashboard/surfaces/queue/queue-model.js";
+import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { sessionsFromDay } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
+import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { workflowProjections } from "../../../src/workflow-kit/workflow.js";
+import workflowSources from "../../../config/dashboard-workflow-sources.json" with { type: "json" };
 import { runtimeProfiles } from "../../../src/models/config/define-runtime-isolation.js";
 import { searchPartitionDay } from "../../../src/models/dashboard/search-calendar.js";
 import { NotificationTriggerSchema } from "../../../src/models/notifications/notifications.js";
 import type { ProfileDatabaseBinding } from "../../../src/models/profiles/profile.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
+import { SAMPLE_WORKER_ORDINAL_FLOOR } from "../../../src/models/run/worker-slot.js";
 import { canonicalInputSamples } from "../../../src/models/workflow/canonical-input.js";
 import { WorkStudyCanonicalInput } from "../../../src/models/workflows/work-study/input.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -37,6 +44,8 @@ import { createBackupFixtures } from "../../support/helpers/storage/backup-fixtu
 
 const entry = fileURLToPath(new URL("../../../scripts/profiles/seed-copy.ts", import.meta.url));
 const cleanups: (() => void | Promise<void>)[] = [];
+const servedModules = WORKFLOW_MODULES.filter(({ descriptor }) => (workflowSources as Record<string, string>)[descriptor.id] === "served");
+const hasBrowsers = (workflowId: string) => WORKFLOW_MODULES.some(({ descriptor }) => descriptor.id === workflowId && workflowProjections(descriptor).systems.length > 0);
 const clock = manualClock(new Date("2026-11-24T20:00:00.000Z"));
 const { openCurrentWorld, takeBackup } = createBackupFixtures(cleanups, clock);
 afterEach(async () => { try { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); } finally { vi.unstubAllGlobals(); } });
@@ -58,11 +67,12 @@ async function openSeededDashboard(workspace: string) {
     return realFetch(url, options);
   }) satisfies typeof fetch);
   const spawn = vi.fn(() => { throw new Error("unexpected-worker-start"); });
+  const preflight = vi.fn(healthyRuntimePreflightRunners);
   const dashboard = await composeDashboardRuntime({ lifetimeLock: lock, admission: machine, profile: { runtime, token: active.token },
     repoRoot: workspace, clock, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
-    preflightRunnerFactory: healthyRuntimePreflightRunners, workerProcess: { spawn } });
+    preflightRunnerFactory: preflight, workerProcess: { spawn } });
   cleanups.push(() => dashboard.stop());
-  return { client: createDashboardClient({ baseUrl: `http://127.0.0.1:${String(dashboard.port)}` }), outbound, spawn };
+  return { client: createDashboardClient({ baseUrl: `http://127.0.0.1:${String(dashboard.port)}` }), outbound, spawn, preflight };
 }
 
 function isolatedHome() {
@@ -209,7 +219,7 @@ it("replaces its synthetic history and retains imported rows outside operational
   assert.deepEqual(await readHistory(), seeded);
   expect(readFileSync(copy.path)).toEqual(localBefore);
 
-  const { client, outbound, spawn } = await openSeededDashboard(workspace);
+  const { client, outbound, spawn, preflight } = await openSeededDashboard(workspace);
   const visible = new Set<string>();
   const days = new Set([imported, ...seeded.generated].map(row => searchPartitionDay(new Date(row.envelope.enqueuedAt))));
   expect(days.size).toBe(90);
@@ -220,7 +230,7 @@ it("replaces its synthetic history and retains imported rows outside operational
   }
   const notificationIds = (await client.notificationSnapshot()).map(row => row.notificationId);
   expect(notificationIds).toEqual(expect.arrayContaining([importedNotice, ...seeded.notices].map(row => row.notificationId)));
-  await expectLiveSamples(client, seeded.generated);
+  await expectLiveSamples(client, seeded.generated, preflight);
   expect(outbound).toEqual([]);
   expect(spawn).not.toHaveBeenCalled();
 
@@ -255,14 +265,17 @@ it("replaces its synthetic history and retains imported rows outside operational
   }
   expect(new Set(seeded.notices.map(row => row.trigger))).toEqual(new Set(NotificationTriggerSchema.options));
   expect(seeded.notices.some(row => row.count > 1)).toBe(true);
-  expect(JSON.parse(first.stdout)).toMatchObject({ todayByState: { queued: workflowIds.length, running: workflowIds.length, "needs-duo": workflowIds.length } });
+  expect(JSON.parse(first.stdout)).toMatchObject({ todayByState: { queued: servedModules.length, running: servedModules.length,
+    "needs-duo": servedModules.filter(({ descriptor }) => hasBrowsers(descriptor.id)).length } });
 });
 
 /** Today's sample queue and Sessions show every live state, and every action on them is refused or stays on the card. */
-async function expectLiveSamples(client: ReturnType<typeof createDashboardClient>, generated: readonly RunRecord[]) {
+async function expectLiveSamples(client: ReturnType<typeof createDashboardClient>, generated: readonly RunRecord[], preflight: { mock: { calls: unknown[] } }) {
   const today = searchPartitionDay(clock.now());
   const live = generated.filter(row => row.displayName?.includes(" today ") === true);
-  for (const { descriptor } of WORKFLOW_MODULES) {
+  const served = new Set(servedModules.map(({ descriptor }) => descriptor.id));
+  expect(live.every(row => served.has(row.envelope.workflow))).toBe(true);
+  for (const { descriptor } of servedModules) {
     const runs = live.filter(row => row.envelope.workflow === descriptor.id);
     expect(new Set(runs.map(row => row.lifecycle.state)), descriptor.id).toEqual(new Set(["queued", "running", "parked-gate", "terminal"]));
     expect(runs.some(row => row.cancelRequested === true), descriptor.id).toBe(true);
@@ -273,7 +286,25 @@ async function expectLiveSamples(client: ReturnType<typeof createDashboardClient
   const rows = day.queueSurfaces.filter(row => live.some(run => run.envelope.runId === row.runId));
   expect(rows).toHaveLength(live.length);
   expect(new Set(rows.map(row => row.status))).toEqual(new Set(["queued", "running", "cancelling", "awaiting-approval", "blocked", "done", "failed", "cancelled"]));
-  const cards = day.workerCards.filter(card => card.member.ordinal > SAMPLE_WORKER_ORDINAL_FLOOR);
+  for (const workflowId of served) {
+    const statuses = rows.filter(row => row.workflowId === workflowId).map(row => row.status);
+    // A browserless workflow has no Duo wait, so it shows exactly one Running row.
+    expect(statuses.filter(status => status === "running"), workflowId).toHaveLength(1);
+    for (const status of ["queued", "cancelling", "done", "failed", "cancelled"]) expect(statuses, workflowId).toContain(status);
+    expect(live.some(row => row.envelope.workflow === workflowId && row.displayName?.endsWith(" needs-duo") === true), workflowId).toBe(hasBrowsers(workflowId));
+  }
+  const groups = queueBatches(day.queueSurfaces).filter(batch => batch.members.every(member => live.some(run => run.envelope.runId === member.runId)));
+  expect(groups.map(batch => [batch.workflowId, batch.status])).toEqual([["person-lookup", "partial"]]);
+  const cards = day.workerCards.filter(card => card.sample === true);
+  expect(day.workerCards.filter(card => card.member.ordinal > SAMPLE_WORKER_ORDINAL_FLOOR)).toEqual(cards);
+  expect(cards.every(card => served.has(card.workflowId))).toBe(true);
+  assert.ok(day.workerAuthority.state === "present");
+  expect(day.workerAuthority.members.filter(member => cards.some(card => card.workerId === member.workerId))).toEqual([]);
+  const boot = await client.bootstrap();
+  const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows), boot.workbookCompatibility), undefined, boot.featureAvailability);
+  const sessions = sessionsFromDay(day, catalog, clock.now().toISOString());
+  assert.ok(sessions.state === "ready", JSON.stringify(sessions));
+  expect(sessions.workers.map(worker => worker.id)).toEqual(expect.arrayContaining(cards.map(card => card.workerId)));
   expect(new Set(cards.map(card => card.state))).toEqual(new Set(["running", "idle", "waiting", "starting", "failed"]));
   expect(cards.some(card => card.directive === "stop")).toBe(true);
   expect(new Set(cards.flatMap(card => card.browsers.map(browser => browser.signIn)))).toEqual(new Set(["signed-in", "needs-duo", "signing-in", "unknown"]));
@@ -293,6 +324,15 @@ async function expectLiveSamples(client: ReturnType<typeof createDashboardClient
     }
     expect(await client.rerunValues({ runId: sample.envelope.runId, expectedVersion: sample.version })).toEqual({ state: "refused", code: "sample-run" });
   }
+  const parked = live.find(row => row.lifecycle.state === "parked-gate");
+  assert.ok(parked?.lifecycle.state === "parked-gate");
+  const answer = { ...envelope("run-detail"), family: "gate", type: "answer-gate-arm",
+    target: { runId: parked.envelope.runId, gateId: parked.lifecycle.gateId, expectedVersion: parked.version }, payload: { arm: "approve" } };
+  expect(await client.executeCommand(answer)).toEqual({ state: "rejected", commandId: answer.commandId, code: "SAMPLE_RUN_REFUSED", message: "Sample run: nothing runs." });
+  const preflights = preflight.mock.calls.length;
+  await expect(client.submitStartPlan({ workflowId: running.envelope.workflow, dryRun: true, submissions: [running.input.raw], browserMode: "headless", captureBrowserScreenshots: false,
+    rerunSource: { runId: running.envelope.runId, expectedVersion: running.version, intent: "rerun" } })).rejects.toMatchObject({ status: 409, code: "SAMPLE_RUN_REFUSED" });
+  expect(preflight.mock.calls).toHaveLength(preflights);
 
   const card = cards.find(entry => entry.state === "running");
   assert.ok(card?.controls?.basis.state === "present");

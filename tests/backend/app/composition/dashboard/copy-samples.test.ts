@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { it } from "vitest";
 import { createCopySamples, sampleWorkerId, type CopySampleSession } from "../../../../../src/backend/app/composition/dashboard/copy-samples.js";
 import type { CommandKernel } from "../../../../../src/backend/runs/commands/command-kernel.js";
+import type { StartPlanService } from "../../../../../src/backend/runs/commands/start-plan-service.js";
 import { WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../../src/models/run/worker-slot.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 
@@ -93,16 +94,19 @@ it("refuses a typed gate answer on a sample run before any gate resolver", () =>
 it("refuses a sample rerun source before its Start plan runs preflight or reads credentials", async () => {
   const { samples } = fixture();
   const calls: string[] = [];
-  const plans = samples.guardStartPlans({
-    prepare: async () => { calls.push("prepare"); }, plan: () => { calls.push("plan"); }, previewWarnings: () => { calls.push("warnings"); },
-  });
+  const served: StartPlanService = {
+    prepare: async () => { calls.push("prepare"); },
+    plan: () => { calls.push("plan"); throw new Error("plan-reached"); },
+    previewWarnings: () => { calls.push("warnings"); throw new Error("warnings-reached"); },
+  };
+  const plans = samples.guardStartPlans(served);
   const sample = { workflowId: "person-lookup", rerunSource: { runId: sampleRun } };
   await assert.rejects(plans.prepare(sample, new AbortController().signal), { name: "SampleRunRefusedError", message: "Sample run: nothing runs." });
   assert.throws(() => plans.plan(sample), { name: "SampleRunRefusedError" });
   assert.throws(() => plans.previewWarnings({ workflowId: "person-lookup", source: { runId: sampleRun } }), { name: "SampleRunRefusedError" });
   assert.deepEqual(calls, []);
   await plans.prepare({ workflowId: "person-lookup", rerunSource: { runId: realRun } }, new AbortController().signal);
-  plans.plan({ workflowId: "person-lookup" });
+  assert.throws(() => plans.plan({ workflowId: "person-lookup" }), /plan-reached/u);
   assert.deepEqual(calls, ["prepare", "plan"]);
 });
 

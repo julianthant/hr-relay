@@ -9,9 +9,9 @@ import { BrowserSystemIdSchema, CommandIdSchema, IsoInstantSchema, PositiveIntSc
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { CommandKernel } from "../../../runs/commands/command-kernel.js";
 import { SampleRunRefusedError } from "../../../runs/commands/refusals.js";
+import type { StartPlanService } from "../../../runs/commands/start-plan-service.js";
 import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 
-export { SAMPLE_WORKER_ORDINAL_FLOOR };
 const namespace = "relay-copy-seed-session";
 const fingerprint = sha256Hex(namespace);
 
@@ -112,8 +112,8 @@ export function createCopySamples(input: Readonly<{ stored: StoredSamples; realS
     /** Refuses a command on a sample run before any resolver, write resolution or intake reads it. */
     refuseRun: runCommand,
     /** A rerun from a sample run is refused before its Start plan runs preflight or reads credentials. */
-    guardStartPlans: <S extends Readonly<{ prepare(input: unknown, signal: AbortSignal): Promise<void>; plan(input: unknown): unknown; previewWarnings(input: unknown): unknown }>>(service: S): S => Object.freeze({ ...service,
-      prepare: async (input: unknown, signal: AbortSignal) => { refuseSource(planSource(input)); return service.prepare(input, signal); },
+    guardStartPlans: (service: StartPlanService): StartPlanService => Object.freeze({
+      prepare: async (input: unknown, signal: AbortSignal) => { refuseSource(planSource(input)); await service.prepare?.(input, signal); },
       plan: (input: unknown) => { refuseSource(planSource(input)); return service.plan(input); },
       previewWarnings: (input: unknown) => { refuseSource(WarningSourceSchema.safeParse(input).data?.source.runId); return service.previewWarnings(input); },
     }),

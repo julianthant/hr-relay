@@ -29,7 +29,8 @@ import { BrowserSystemIdSchema, LOCAL_OPERATOR_ACTOR_ID, NodeIdSchema } from "..
 import { capturedInstantClock, systemClock } from "../../src/rules/time/clock.js";
 import { sha256Hex } from "../../src/rules/validation/sha256.js";
 import { descriptorRuntimeNodes, workflowProjections, type AnyWorkflowDescriptor } from "../../src/workflow-kit/workflow.js";
-import { CopySampleSessionSchema, SAMPLE_WORKER_ORDINAL_FLOOR, sampleWorkerId, type CopySampleSession } from "../../src/backend/app/composition/dashboard/copy-samples.js";
+import { CopySampleSessionSchema, sampleWorkerId, type CopySampleSession } from "../../src/backend/app/composition/dashboard/copy-samples.js";
+import { SAMPLE_WORKER_ORDINAL_FLOOR } from "../../src/models/run/worker-slot.js";
 import configuredWorkflowSources from "../../config/dashboard-workflow-sources.json" with { type: "json" };
 
 const CopyProfileSchema = z.enum(["development", "staging"]);
