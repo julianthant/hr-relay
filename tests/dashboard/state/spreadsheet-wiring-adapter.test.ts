@@ -315,9 +315,9 @@ describe('spreadsheet page writes', () => {
   it('resumes an uncertain import instead of creating a second workbook, even for an edited document', async () => {
     const { client, adapter } = setup(); const first = newEditableWorkbook(), edited = { ...first, name: 'Renamed.xlsx' };
     client.workbookOpen.mockRejectedValueOnce(new Error('lost'));
-    assert.equal((await importWorkbook(adapter, 1, first)).state, 'pending');
+    assert.equal((await importWorkbook(adapter, 'a', first)).state, 'pending');
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...first, libraryId: 'generated' }));
-    assert.equal((await importWorkbook(adapter, 1, edited)).state, 'added');
+    assert.equal((await importWorkbook(adapter, 'a', edited)).state, 'added');
     assert.equal(client.workbookCreate.mock.calls.length, 1);
   });
   it('counts rows without a usable Employee ID on the import it confirms, not on a later dialog document', async () => {
@@ -325,16 +325,16 @@ describe('spreadsheet page writes', () => {
     const roster = (ids: readonly string[]) => { const blank = newEditableWorkbook(); return prepareSpreadsheetColumns({ ...blank, name: 'Roster.csv', sheets: [{ ...blank.sheets[0], width: 2, hidden: [], rows: [['UCPath ID', 'Legal Name'], ...ids.map(id => [id, 'Example, Avery'])].map((cells, index) => ({ id: `row-${index}`, cells: cells.map(value => ({ value })) })) }] }); };
     const missing = roster(['10000001', 'pending', '']), valid = roster(['10000001', '10000006', '10000001']);
     client.workbookOpen.mockRejectedValueOnce(new Error('lost'));
-    assert.equal((await importWorkbook(adapter, 1, missing)).state, 'pending');
+    assert.equal((await importWorkbook(adapter, 'a', missing)).state, 'pending');
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...missing, libraryId: 'generated' }));
-    assert.deepEqual(await importWorkbook(adapter, 1, valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 2 });
+    assert.deepEqual(await importWorkbook(adapter, 'a', valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 2 });
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...valid, libraryId: 'generated' }));
-    assert.deepEqual(await importWorkbook(adapter, 1, valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 0 });
+    assert.deepEqual(await importWorkbook(adapter, 'a', valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 0 });
   });
   it('joins an import that is still saving instead of creating again', async () => {
     const { client, adapter } = setup(); const document = newEditableWorkbook();
     let release!: (record: SavedWorkbook) => void; client.workbookCreate.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const first = importWorkbook(adapter, 1, document), second = importWorkbook(adapter, 1, { ...document, name: 'Again.xlsx' });
+    const first = importWorkbook(adapter, 'a', document), second = importWorkbook(adapter, 'a', { ...document, name: 'Again.xlsx' });
     client.workbookOpen.mockResolvedValue(saved(1, { ...document, libraryId: 'generated' })); release(saved(1, { ...document, libraryId: 'generated' }));
     assert.deepEqual((await Promise.all([first, second])).map(outcome => outcome.state), ['added', 'added']);
     assert.equal(client.workbookCreate.mock.calls.length, 1);
@@ -343,9 +343,9 @@ describe('spreadsheet page writes', () => {
     const { client, adapter } = setup(); const first = { ...newEditableWorkbook(), name: 'A.xlsx' }, second = { ...newEditableWorkbook(), name: 'B.xlsx' };
     client.workbookCatalog.mockResolvedValue([]); client.workbookTypes.mockResolvedValue([]);
     client.workbookOpen.mockRejectedValueOnce(new Error('lost'));
-    assert.equal((await importWorkbook(adapter, 1, first)).state, 'pending');
+    assert.equal((await importWorkbook(adapter, 'a', first)).state, 'pending');
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...second, libraryId: 'generated' }));
-    assert.deepEqual(await importWorkbook(adapter, 2, second), { state: 'added', name: 'B.xlsx', libraryId: 'generated', rowsWithoutEid: 0 });
+    assert.deepEqual(await importWorkbook(adapter, 'b', second), { state: 'added', name: 'B.xlsx', libraryId: 'generated', rowsWithoutEid: 0 });
     assert.deepEqual(client.workbookCreate.mock.calls.map(([workbook]) => (workbook as { name: string }).name), ['A.xlsx', 'B.xlsx']);
   });
   it('refuses "Use for all" on a 4xx, leaves a lost reply uncertain, and does not trust a copy whose draft changed meanwhile', async () => {

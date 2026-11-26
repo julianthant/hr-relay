@@ -18,8 +18,8 @@ export interface Sheet {
   readonly sync?: WorkbookLibrarySyncStatus;
   readonly updatedAt: string; readonly version: number; readonly currentVersionId: string; readonly versions: readonly VersionEntry[];
 }
-/** A picked file before it joins the library; `id` tells one pick from the next, and `document` is absent while the file is read. */
-export interface ImportDraft { readonly id: number; readonly name: string; readonly tags: readonly string[]; readonly document?: EditableWorkbook }
+/** A picked file before it joins the library; `id` is unique to one pick for the session, and `document` is absent while the file is read. */
+export interface ImportDraft { readonly id: string; readonly name: string; readonly tags: readonly string[]; readonly document?: EditableWorkbook }
 export type Mapping = Readonly<Record<string, string | null>>;
 export interface Cell { readonly text: string; readonly fill?: string; readonly align?: 'right' }
 export interface Dataset { readonly headers: readonly string[]; readonly rows: readonly (readonly Cell[])[] }

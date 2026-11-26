@@ -70,7 +70,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   };
   const bank = operatorTags(sheets);
   const rows: RowActions = { open: setOpenId, version: id => setDialog({ kind: 'rollback', id }), menu, logs: sheet => { if (sheet.run) onOpenRun?.(sheet.run.id, sheet.run.day); },
-    tags: (id, tags) => void change(id, { kind: 'set-tags', tags: [...tags] }), bank };
+    tags: (id, tags) => void change(id, { kind: 'set-tags', tags: [...tags] }), bank, pending: pendingLibraries };
   const warned = useRef(false);
   const back = () => {
     const id = openId;
@@ -88,7 +88,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
       if (result && result.state !== 'confirmed' && latest) toast({ tone: 'danger', title: "Couldn't save the columns", description: result.reason });
     });
   };
-  const add = async (draft: number, document: EditableWorkbook, tags: readonly string[]) => {
+  const add = async (draft: string, document: EditableWorkbook, tags: readonly string[]) => {
     const outcome = await importWorkbook(adapter, draft, document);
     if (outcome.state === 'added') {
       const created = outcome.libraryId;
@@ -106,7 +106,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   };
   const pickFile = async (file: File) => {
     const token = ++reading.current;
-    setImportDraft({ id: token, name: file.name.replace(/\.(xlsx|csv)$/iu, ''), tags: [] });
+    setImportDraft({ id: crypto.randomUUID(), name: file.name.replace(/\.(xlsx|csv)$/iu, ''), tags: [] });
     try {
       const document = prepareSpreadsheetColumns(await importSpreadsheetInWorker(file.name, await file.arrayBuffer()));
       if (token === reading.current) setImportDraft(current => current && { ...current, document });

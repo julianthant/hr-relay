@@ -6,7 +6,7 @@ import { withMapping } from './sheets-v2-model.js';
 import { spreadsheetRowsWithoutEid } from '../spreadsheet-column-import-model.js';
 
 type Adapter = ReturnType<typeof createSpreadsheetWiringAdapter>;
-type Held = { key: string; draft: number; document: EditableWorkbook; running?: Promise<ImportOutcome> };
+type Held = { key: string; draft: string; document: EditableWorkbook; running?: Promise<ImportOutcome> };
 type Writes = { held?: Held; queue: Promise<unknown>; edits: number };
 const sessions = new WeakMap<Adapter, Writes>();
 const writesOf = (adapter: Adapter): Writes => { let writes = sessions.get(adapter); if (!writes) { writes = { queue: Promise.resolve(), edits: 0 }; sessions.set(adapter, writes); } return writes; };
@@ -14,7 +14,7 @@ const writesOf = (adapter: Adapter): Writes => { let writes = sessions.get(adapt
 export type ImportOutcome = { state: 'added'; name: string; libraryId?: string; rowsWithoutEid: number } | { state: 'pending' | 'failed'; reason: string };
 
 /** An unconfirmed import is resumed by the same draft, never created again; it outlives the page, and callers during a save join it. Another draft never joins it. */
-export function importWorkbook(adapter: Adapter, draft: number, document: EditableWorkbook): Promise<ImportOutcome> {
+export function importWorkbook(adapter: Adapter, draft: string, document: EditableWorkbook): Promise<ImportOutcome> {
   const writes = writesOf(adapter);
   if (writes.held && writes.held.draft !== draft) {
     if (writes.held.running) return Promise.resolve({ state: 'pending', reason: 'Another spreadsheet is still being added.' });
