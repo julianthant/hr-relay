@@ -363,7 +363,7 @@ export const IDENTITY_REVIEW_OMISSION: StepManualDeclaration = {
       const plan = ReadSeparationPlanOutputSchema.parse(scope.outputs["plan"]);
       const employment = MatchActiveEmploymentOutputSchema.parse(scope.outputs[EMPLOYMENT_NODE]);
       const { emplId } = SeparationsMatchSeparationSubject.output.parse(scope.outputs[SUBJECT_NODE]);
-      if (typed.emplId !== emplId) throw new Error(`the typed Employee ID ${typed.emplId} is not the run's Employee ID ${emplId}; nothing was written`);
+      if (typed.emplId !== emplId) throw new Error("the typed Employee ID is not the run's Employee ID; nothing was written");
       const cell = (value: typeof employment.department) => value.state === "present" ? value.value : `(unreadable: ${value.reason})`;
       return {
         documentNumber: plan.documentNumber,
