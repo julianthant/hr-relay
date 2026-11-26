@@ -6,7 +6,14 @@ import { createProfileFixtureSet } from "../../../support/helpers/admission-fixt
 import { z } from "zod";
 import { DESCRIPTORS, descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectWorkbookCompatibilityFromRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
-import { buildBootstrap,laneAuthorityMeta,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
+import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
+import { randomUUID } from "node:crypto";
+import { Hono } from "hono";
+import { composeShell } from "../../../../src/backend/app/composition/dashboard/shell.js";
+import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { registerShellRoutes } from "../../../../src/backend/transports/http/routes/shell.js";
+import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
 import { projectStartRows, projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
@@ -428,21 +435,33 @@ describe("bootstrap storage summary", () => {
     }
   });
 
-  it("probes authority on the read lane with the main connection's meta read disabled", async () => {
+  it("serves GET /api/v1/bootstrap through the composed shell with authority probed on the read lane and main getMeta disabled", async () => {
     const profiles = createProfileFixtureSet();
     try {
       const profile = await profiles.create();
       const world = await makeWorld({ profileFixture: async () => profile });
       try {
         const lanes = createComposedDashboardReadHost({ admission: profile.admission, database: world.database, clock: world.clock });
+        const artifacts = createContentAddressedArtifactWriter({ admission: profile.admission });
+        await artifacts.ready;
+        const deps = depsOf(world, { authorityReachable: true });
+        const shell = composeShell({ database: world.database, readLanes: lanes, clock: world.clock, ids: { uuid: randomUUID }, artifacts,
+          descriptors: { resolve: () => undefined }, appVersion: deps.appVersion, actorLabel: deps.actorLabel, descriptorSetHash: deps.descriptorSetHash,
+          preflightReport: deps.preflightReport, workbookCompatibility: deps.workbookCompatibility, projection: world.projection,
+          activity: { read: () => { throw new Error("unused activity"); }, readSelected: () => { throw new Error("unused activity"); } },
+          backfillGaps: { detected: () => { throw new Error("unused gap"); } } });
         try {
-          const getMeta = vi.spyOn(world.database, "getMeta").mockImplementation(() => { throw new Error("main-connection read"); });
+          const app: DashboardApp = new Hono();
+          registerShellRoutes(app, shell);
+          // Every main-isolate AuthorityDatabase, so a shell that read meta on the main connection fails the probe.
+          const getMeta = vi.spyOn(AuthorityDatabase.prototype, "getMeta").mockImplementation(() => { throw new Error("main-connection read"); });
           try {
-            const wire = await buildBootstrap({ ...depsOf(world, { authorityReachable: true }), authorityMeta: laneAuthorityMeta(lanes) });
-            assert.deepEqual(wire.storage, { authority: "healthy" });
+            const response = await app.request("/api/v1/bootstrap");
+            assert.equal(response.status, 200, await response.clone().text());
+            assert.deepEqual(FrontendBootstrapWireSchema.parse(await response.json()).storage, { authority: "healthy" });
             assert.equal(getMeta.mock.calls.length, 0);
           } finally { getMeta.mockRestore(); }
-        } finally { await lanes.close(); }
+        } finally { shell.hub.close(); await lanes.close(); }
       } finally { await world.dispose(); }
     } finally { await profiles.close(); }
   });
