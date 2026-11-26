@@ -975,6 +975,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
       commands += 1;
       return Promise.resolve(Response.json(authority.execute(CommandRequestSchema.parse(body))));
     } });
+    await act_m2(async () => { h.settingsRow(authority.read()); });
     assert_m2.equal(preferences.snapshot().state, "ready");
     let saving: ReturnType<typeof preferences.change> | undefined;
     await act_m2(async () => { saving = preferences.change({ "preferences.animations": { set: !preferences.snapshot().value.animations } }); });
