@@ -15,8 +15,10 @@ import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.
 import { RunWorkerStartupError, type RunWorkerCapacity } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
 import { assistantProposalDigest } from "../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
 
+import * as assistantComposition from "../../../../../src/backend/app/composition/dashboard/assistant.js";
 import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { buildRunDetail } from "../../../../../src/backend/runs/queries/run-detail.js";
 import { ASSISTANT_WORKFLOW_FACTS_PATH, assistantWorkflowFacts } from "../../../../../src/backend/assistant/plugins/workflows/facts.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { ASSISTANT_FAILURES, AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionDecisionSchema } from "../../../../../src/models/dashboard/assistant.js";
@@ -181,6 +183,7 @@ function seedAssistantReadRun({ context, clock }: Pick<ServedAssistantFixture, '
 }
 
 it('serves the read tools through authenticated composition without private provider input or command effects', async () => {
+  using pluginComposition = vi.spyOn(assistantComposition, 'createAssistantPluginDeps');
   await withServedAssistant(async fixture => {
     const { context, transport, origin, originalFetch } = fixture, { run, title, subjectRef } = seedAssistantReadRun(fixture);
     const tabId = randomUUID();
@@ -189,7 +192,12 @@ it('serves the read tools through authenticated composition without private prov
     const wire = await response.text();
     assert.equal(response.status, 200, wire);
     const detail = RunDetailWireSchema.parse(JSON.parse(wire));
-    assert.equal(detail.timeline.events.length, 12);
+    assert.equal(detail.timeline.events.length, 12, wire);
+
+    const mainRunDetail = pluginComposition.mock.lastCall?.[0].runDetail;
+    assert.ok(mainRunDetail);
+    await vi.waitFor(() => assert.equal(buildRunDetail(mainRunDetail, run.envelope.runId).timeline.events.length, 12));
+
     const ask = (message: string, selected?: string) => send(clientDoor(client), { message, ...(selected === undefined ? {} : { subjectRef: selected }) });
     const outputs: unknown[] = [];
     let turns = 0;
