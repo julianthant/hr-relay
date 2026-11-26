@@ -5,6 +5,7 @@ import { useViewNavigation, useViewState } from "../../app/navigation/view-route
 import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import "./launch-presentation.css";
 import { RunChoice, RunOptionsLayout } from "./run-launch-layout.js";
+import { RunWorkflowPicker } from "./run-start-picker.js";
 import { RunChecksStage } from "./run-checks.js";
 import { FailureNotice } from "../../ds/primitives/failure-notice.js";
 import { useRunChecks, type RunCheckRow } from "./run-checks-model.js";
@@ -155,6 +156,7 @@ export function RunStartDialog({
   const workflows = useMemo(() => servedLaunchWorkflows(catalog), [catalog]);
   const navigation = useViewNavigation();
   const routed = navigation !== undefined;
+  const [pickerQuery, setPickerQuery] = useState("");
   const client = useDashboardClient();
   const commandBinding = useDashboardCommandBinding();
   const pdfInput = usePdfRunInput(client, commandBinding);
@@ -346,6 +348,7 @@ export function RunStartDialog({
     const changed = restored !== undefined && !sameDefinition(restored, workflows.find(entry => entry.workflowId === restored.workflowId));
     if (reopened && (held.current.sending || !held.current.failed && !changed)) return;
     resetPdfs();
+    setPickerQuery("");
     // Landing on another workflow clears the draft, so there is nothing kept to announce.
     if (lastOpenedWorkflow.current !== (routed ? selectedWorkflowRef.current : defaultWorkflowId(workflows, panelWorkflowId))) keptPending.current = false;
     if (!routed && selectedWorkflowRef.current !== defaultWorkflowId(workflows, panelWorkflowId)) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId), true);
@@ -395,6 +398,20 @@ export function RunStartDialog({
     return () => window.clearTimeout(timer);
   }, [open]);
   useEffect(() => { if (!open) setDraftKept(false); }, [open]);
+
+  const pickWorkflow = useCallback((id: string) => {
+    if (selectedWorkflowRef.current === id || sending) return;
+    const entry = catalog.find(flow => flow.id === id);
+    if (!entry || entry.launch.state === "unavailable") return;
+    selectedWorkflowRef.current = id;
+    if (entry.served) {
+      // A pick starts a clean draft here, so a later reopen on it keeps what was typed and there is nothing kept to announce now.
+      lastOpenedWorkflow.current = id;
+      setDraftKept(false);
+      send({ type: "pick-workflow" });
+      selectWorkflow(id);
+    }
+  }, [catalog, selectWorkflow, send, sending]);
 
   const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Start" || (!isRerun && currentStage === "Steps"), open);
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
@@ -523,8 +540,10 @@ export function RunStartDialog({
         size="lg"
         title={isRerun ? "Rerun" : "Start run"}
         description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? workflow.label : "Choose a workflow to begin"}
-        className={"launch-design launch-dialog"}
+        className={cn("launch-design launch-dialog", isRerun && "launch-rerun")}
       >
+          {!isRerun && <RunWorkflowPicker catalog={catalog} value={workflowId} locked={sending} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />}
+
           {launchRefusal ? <><DialogBody><EmptyState title="Workflow unavailable" description={launchRefusal} /></DialogBody><DialogFooter><Button onClick={() => closeAndReset(false)}>Close</Button></DialogFooter></> : <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ol aria-label="Run configuration path" className="launch-stagebar">

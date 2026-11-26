@@ -98,3 +98,5 @@
 .log-step-card-rows { margin: 0; padding: 8px 0 0; list-style: none; }
 .log-step-card-rows li { display: flex; height: 20px; align-items: center; gap: 8px; line-height: 20px; }
 .log-step-card[data-dense] .log-step-card-rows li { height: 16px; line-height: 16px; }
+::highlight(log-match) { background-color: color-mix(in srgb, var(--ui-warning) 28%, transparent); color: var(--ui-warning); }
+::highlight(log-match-current) { background-color: var(--ui-info); color: var(--ui-canvas); }

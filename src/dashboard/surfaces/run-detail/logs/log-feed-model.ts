@@ -82,18 +82,25 @@ export function logEntryText(entry: LogEntry): string {
   }
 }
 
-export function filterLogSteps(steps: readonly LogStep[], query: string): readonly LogStep[] {
-  const needle = query.trim().toLocaleLowerCase();
-  if (!needle) return steps;
-  return steps.flatMap(step => {
-    if (`${step.title} ${step.system ?? ""}`.toLocaleLowerCase().includes(needle)) return [step];
-    const entries = step.entries.filter(entry => logEntryText(entry).toLocaleLowerCase().includes(needle));
-    return entries.length ? [{ ...step, entries }] : [];
-  });
-}
+/** Text no one can see: screen-reader copies, hidden or collapsed content, and form control values. */
+const UNSEARCHED = ".sr-only, [hidden], textarea, select, details:not([open]) > :not(summary)";
 
-export function logRowCount(steps: readonly LogStep[]): number {
-  return steps.reduce((count, step) => count + step.entries.reduce((total, entry) => total + (entry.kind === "fields" ? entry.fields.length : 1), 0), 0);
+/** Every occurrence of `query` in the text drawn inside `container`, in document order. A match never spans two text nodes. */
+export function matchRanges(container: Element, query: string): Range[] {
+  const needle = query.trim().toLocaleLowerCase();
+  const ranges: Range[] = [];
+  if (!needle) return ranges;
+  const walker = container.ownerDocument.createTreeWalker(container, 4 /* NodeFilter.SHOW_TEXT */);
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    if (node.parentElement?.closest(UNSEARCHED)) continue;
+    const text = (node.textContent ?? "").toLocaleLowerCase();
+    for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length)) {
+      const range = container.ownerDocument.createRange();
+      range.setStart(node, at); range.setEnd(node, at + needle.length);
+      ranges.push(range);
+    }
+  }
+  return ranges;
 }
 
 export function logPlainText(steps: readonly LogStep[]): string {

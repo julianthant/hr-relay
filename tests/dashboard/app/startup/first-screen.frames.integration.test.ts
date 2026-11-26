@@ -99,6 +99,34 @@ it("gives a loader that returns for the same profile its own startup deadline", 
   } finally { await app.stop(); }
 }, STARTUP_READ_DEADLINE_MS + 30_000);
 
+it("fails an account check still pending when the loader returns into General Settings at the new loader's deadline, sending it once", async () => {
+  const server = dashboardServer();
+  const connected = chatGptStatusFixture({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" });
+  const app = await start({}, (url, init) => {
+    const path = new URL(url).pathname;
+    return path === "/api/v1/profile/state" ? Response.json(active) : path === "/api/v1/settings/chatgpt-account" ? Response.json(connected)
+      : path === "/api/v1/settings/chatgpt-account/check" ? never() : server(url, init);
+  });
+  const go = async (to: string) => {
+    const entry: unknown = window.history.state;
+    await act(async () => { window.history.pushState(entry, "", to); window.dispatchEvent(new PopStateEvent("popstate", { state: entry })); });
+  };
+  const checks = () => app.paths.filter(path => path === "/api/v1/settings/chatgpt-account/check").length;
+  try {
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
+    await go("/?settings=general");
+    await vi.waitFor(() => assert.equal(checks(), 1), { timeout: 5_000, interval: 50 });
+    await go("/?settings=activity&activityPreview=missing");
+    await vi.waitFor(() => assert.ok([...app.host.querySelectorAll("button")].some(item => item.textContent === "Open dashboard")), { timeout: 5_000, interval: 50 });
+    const returning = app.frames.length;
+    await go("/?settings=general");
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, STARTUP_READ_DEADLINE_MS - 1_000)); });
+    assert.deepEqual(app.frames.slice(returning), ["loading"], "the returning loader holds while the account check is pending");
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 3_000, interval: 50 });
+    assert.equal(checks(), 1, "the guarded check is sent once");
+  } finally { await app.stop(); }
+}, STARTUP_READ_DEADLINE_MS + 30_000);
+
 const servedSessions: typeof MOCK_WORKFLOW_COMPOSITION = workflows => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows), sessionsHarness: undefined });
 const sessionsOpen = `&view=${encodeURIComponent(JSON.stringify({ sessions: true }))}`;
 for (const [sessions, composition, view] of [["sample", MOCK_WORKFLOW_COMPOSITION, ""], ["served", servedSessions, ""], ["served, expanded", servedSessions, sessionsOpen]] as const)
