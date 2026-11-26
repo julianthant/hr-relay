@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import {
@@ -14,8 +15,36 @@ import { RunIdSchema } from "../../../rules/identity/ids.js";
 import { DateOnlySchema } from "../../../rules/identity/ids.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { DeletedRunRecord } from "../../../models/run/deleted-run.js";
-import type { RunRecordService } from "../lifecycle/run-record-service.js";
+import { RunRecordService } from "../lifecycle/run-record-service.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import { systemIdFactory } from "../../../rules/identity/identifiers.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import { defineLaneRead, type DashboardReadLanes, type DashboardReadOptions } from "../../storage/sqlite/dashboard-read-host.js";
+
+const laneReaders = new WeakMap<AuthorityDatabase, RunRecordService>();
+
+export function createRunReadLaneReader(database: AuthorityDatabase): RunRecordService {
+  let reader = laneReaders.get(database);
+  if (reader === undefined) {
+    reader = new RunRecordService({ database, clock: systemClock, ids: systemIdFactory,
+      publishQueued() { throw new Error("read-lane-write-refused"); } });
+    laneReaders.set(database, reader);
+  }
+  return reader;
+}
+
+const attemptHistoryLaneRead = defineLaneRead(import.meta.url, "item-attempt-history", {
+  lane: "navigation", priority: "interactive",
+  args: z.strictObject({ runId: RunIdSchema, request: ItemAttemptHistoryRequestSchema }),
+  run({ history }, { runId, request }) {
+    return createItemAttemptHistoryQuery({ database: history, reader: createRunReadLaneReader(history) }).read(runId, request);
+  },
+});
+
+export async function readItemAttemptHistoryBody(lanes: DashboardReadLanes, runId: string,
+  request: ItemAttemptHistoryRequest, options: DashboardReadOptions): Promise<string> {
+  return (await lanes.read(attemptHistoryLaneRead, { runId: RunIdSchema.parse(runId), request }, options)).body;
+}
 
 type HistoryRun = Extract<ItemAttemptHistoryRun, { disposition: "live" }>;
 
