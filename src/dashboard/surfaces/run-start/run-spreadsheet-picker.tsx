@@ -24,7 +24,7 @@ export function SpreadsheetPicker({ label, options, busy, onPick }: {
   return <DropdownMenu onOpenChange={open => { if (open) setQuery(""); }}>
     <DropdownMenuTrigger asChild><Button variant="secondary" disabled={busy} icon={<Plus aria-hidden className={dsIcon.md} />}>{label}</Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end" className="max-h-80 w-80 overflow-y-auto">
-      <div className="p-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}>
+      <div className="p-1" onKeyDown={event => { if (!["Escape", "ArrowDown", "ArrowUp"].includes(event.key)) event.stopPropagation(); }}>
         <SearchInput variant="field" aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} autoComplete="off" spellCheck={false} />
       </div>
       {needle === "" && found.length > 0 && <DropdownMenuGroup><DropdownMenuLabel>Pinned</DropdownMenuLabel></DropdownMenuGroup>}
@@ -49,7 +49,7 @@ function WorksheetMenu({ owner, worksheets, picked, mode, disabled, onChange }: 
     <DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={disabled} aria-label={mode === "one" ? `${owner} worksheet, ${names[0] ?? "none chosen"}` : `${owner} worksheets, ${names.length === 0 ? "none chosen" : text}`}
       className="ds-menu-trigger max-w-48 min-w-0" iconAfter={<ChevronDown aria-hidden className={dsIcon.sm} />}><span className="min-w-0 truncate">{text}</span></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end" className="w-64">
-      <div className="p-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}>
+      <div className="p-1" onKeyDown={event => { if (!["Escape", "ArrowDown", "ArrowUp"].includes(event.key)) event.stopPropagation(); }}>
         <SearchInput variant="field" aria-label="Find a worksheet" placeholder="Find a worksheet" value={query} onChange={event => setQuery(event.target.value)} autoComplete="off" spellCheck={false} />
       </div>
       <DropdownMenuGroup aria-label={`${owner} worksheets`} className="max-h-56 overflow-y-auto">

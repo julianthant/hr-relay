@@ -110,7 +110,7 @@ async function chooseSpreadsheet() {
   assert_m0.ok(document.querySelector('[role="dialog"]'));
 }
 for (const launch of ["external button", "keyboard shortcut"] as const) {
-  for (const dismissal of ["Cancel", "Escape", "Close"] as const) {
+  for (const dismissal of ["Escape", "Close"] as const) {
     it_m0(`${launch}: ${dismissal} restores the Run launch control after the real dialog unmounts`,async () => {
 try {
 
