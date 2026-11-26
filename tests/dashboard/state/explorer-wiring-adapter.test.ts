@@ -11,6 +11,7 @@ import { explorerQueryDeps, readFixtureExplorer } from "../../support/fixtures/e
 import { useExplorerWiring } from "../../../src/dashboard/state/explorer-wiring-adapter.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import { dropKeptResults } from "../../../src/dashboard/state/async-resource.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
 
@@ -43,15 +44,18 @@ it("reopening Explorer under the same descriptor hash displays the loaded workfl
     const { state } = useExplorerWiring(client, served.id, served.version);
     return createElement("span", null, state.state);
   }
-  const page = createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, {
-    actorId: "local-operator", children: createElement(Probe),
-  }) });
+  const render = (open: boolean) => act(async () => root.render(createElement(DashboardClientProvider, { client,
+    children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: open ? createElement(Probe) : null }),
+  })));
   try {
-    await act(async () => root.render(page));
+    await render(true);
     assert.equal(container.textContent, "ready");
     assert.equal(requests, 1);
-    await act(async () => root.render(null));
-    await act(async () => root.render(page));
+    await render(false);
+    await render(true);
+    assert.equal(container.textContent, "ready");
+    assert.equal(requests, 1);
+    await act(async () => dropKeptResults(client));
     assert.equal(container.textContent, "ready");
     assert.equal(requests, 1);
   } finally { await act(async () => root.unmount()); }
@@ -112,8 +116,6 @@ it("keeps the retained spec when a refresh fails", async () => {
     await act(async () => root.render(createElement(Probe)));
     await act(async () => root.render(null)); seen.length = 0;
     await act(async () => root.render(createElement(Probe)));
-    assert.equal(calls, 1);
-    await act(async () => seen.at(-1)?.retry());
     assert.equal(calls, 2); assert.ok(seen.every(value => value.state.state === "ready"));
     const evidence = new Error("synthetic refresh rejected");
     await act(async () => held.reject(evidence));

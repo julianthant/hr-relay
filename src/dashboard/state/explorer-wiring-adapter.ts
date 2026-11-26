@@ -31,9 +31,9 @@ export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplore
     if (!selected) return;
     const controller = new AbortController();
     readScope.current = controller;
-    if (resource.snapshot().state !== "loaded") read(false);
+    read(false);
     return () => { readScope.current = undefined; controller.abort(); };
-  }, [read, resource, selected]);
+  }, [read, selected]);
   const held = result.value?.workflows.find(candidate => candidate.id === workflowId);
   const mismatched = held !== undefined && version !== undefined && held.version !== version;
   useEffect(() => {
