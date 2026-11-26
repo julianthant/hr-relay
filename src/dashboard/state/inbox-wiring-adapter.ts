@@ -12,7 +12,6 @@ import { NotificationCommandRequestSchema } from "../../rules/commands/commands.
 import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure, shortFailureText } from "../../models/failures/error-catalog.js";
 import { verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import { notificationAge, type NotificationControl, type NotificationDestination, type NotificationItem, type NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
-import { formatLocalDay, formatMonthDay, formatWeekday } from "../lib/date-format.js";
 
 const policies = {
   "run-failed": { trigger: "failed", tone: "danger", detail: "Review the failed run before continuing." },
@@ -53,14 +52,6 @@ export function notificationTargetMatches(row: NotificationWire, target: Notific
     : (link?.kind === "run" || link?.kind === "failure") && link.runId === target.linkedRunId;
   if (target.kind === "failure") return link?.kind === "failure" && link.runId === target.runId && link.failureId === target.failureId;
   return false;
-}
-
-const PACIFIC = "America/Los_Angeles";
-const pacificDay = (value: Date) => Date.parse(`${formatLocalDay(value, PACIFIC)}T00:00:00Z`);
-/** Day group once out of Priority, by the Pacific day whatever the host zone: Today, Yesterday, the weekday within a week, else the date. */
-export function notificationDay(occurredAt: string, nowIso: string): string {
-  const when = new Date(occurredAt), ago = Math.round((pacificDay(new Date(nowIso)) - pacificDay(when)) / 86_400_000);
-  return ago <= 0 ? "Today" : ago === 1 ? "Yesterday" : ago < 7 ? formatWeekday(when, PACIFIC, "long") : formatMonthDay(when, PACIFIC, "long");
 }
 
 function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): string | undefined {
@@ -121,7 +112,6 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
       detail: notificationDetail(row) ?? "",
       ...(row.kind === "notification" && row.count > 1 ? { count: row.count } : {}),
       age: notificationAge(row.occurredAt, nowIso), at: row.occurredAt,
-      day: notificationDay(row.occurredAt, nowIso),
       ...(row.readOnlyHistory === true ? { readOnlyHistory: true } : {}),
       read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },

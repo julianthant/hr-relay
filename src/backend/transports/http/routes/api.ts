@@ -173,7 +173,8 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
     intake: deps.intake, resolveIdentityGateAnswer: (answer, journaled) => resolveIdentityGateAnswer(deps.runDetail, answer, journaled),
     resolveGateArmAnswer: (answer, journaled) => resolveGateArmAnswer(deps.runDetail, answer, journaled),
-    ...(deps.workerCommandResult === undefined ? {} : { workerCommandResult: deps.workerCommandResult }) });
+    ...(deps.workerCommandResult === undefined ? {} : { workerCommandResult: deps.workerCommandResult }),
+    ...(deps.refuseSampleCommand === undefined ? {} : { refuseSampleCommand: deps.refuseSampleCommand }) });
   if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));
 
   app.notFound((c) => c.json(wireError("ROUTE_NOT_FOUND", `no route serves ${c.req.method} ${c.req.path}`, false), 404));

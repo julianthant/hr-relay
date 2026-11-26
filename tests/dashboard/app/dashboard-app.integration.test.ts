@@ -357,7 +357,7 @@ afterEach_m1(_afterEachFixture0);
     const preference = shellPreferences.snapshot().value.selectedWorkflowId;
     const target = surface === "search"
       ? [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent?.includes(title))
-      : [...document.querySelectorAll<HTMLButtonElement>('.notice-main')].find(item => item.querySelector(".notice-title")?.textContent === title);
+      : [...document.querySelectorAll<HTMLButtonElement>('.notice-main')].find(item => item.querySelector(".notice-title")?.textContent === "Canonical history");
     assert_m1.ok(target);
     await click(target);
     assert_m1.equal(document.body.textContent?.includes("Discard changes?"), false);
