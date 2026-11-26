@@ -546,3 +546,25 @@ for (const failure of ["hung", "rejected"] as const)
       assert.deepEqual(f.port.getSnapshot(), account); assert.equal(f.calls.filter(call => call === "start").length, 1);
     } finally { f.port.dispose(); vi.useRealTimers(); }
   });
+
+it("withholds a connected account read after Cancel until its guarded check settles", async () => {
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  const check = Promise.withResolvers<ReturnType<typeof chatGptStatusFixture>>();
+  let stored = false;
+  const f = setup({ completeChatGptSignIn: () => completion.promise,
+    chatGptAccount: async () => chatGptStatusFixture(stored ? account : { state: "signed-out" }),
+    checkChatGptAccount: () => check.promise });
+  try {
+    await f.port.refresh();
+    const signing = f.port.signIn({ usePlan: true });
+    await vi.waitFor(() => { assert.equal(f.port.getSnapshot().state, "signing-in"); });
+    stored = true;
+    const cancelling = f.port.cancelSignIn();
+    await vi.waitFor(() => { assert.equal(f.port.getChecking(), true); });
+    assert.notDeepEqual(f.port.getSnapshot(), account);
+    check.resolve(chatGptStatusFixture(account)); await cancelling;
+    assert.deepEqual(f.port.getSnapshot(), account);
+    assert.equal(f.port.getChecking(), false);
+    completion.resolve({ state: "completed", attemptId, account }); await signing;
+  } finally { completion.resolve({ state: "completed", attemptId, account }); check.resolve(chatGptStatusFixture(account)); f.port.dispose(); }
+});

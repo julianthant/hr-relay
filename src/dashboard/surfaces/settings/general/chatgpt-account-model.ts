@@ -309,7 +309,9 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
           const account = await queryAccount();
           if (!current(request)) return;
           if (account.state === "signing-in") problem("uncertain", "CHATGPT_AUTH_UNAVAILABLE", account);
-          else accept(account);
+          // A session stored before Cancel settled is only ready once the guarded check confirms it.
+          else if (account.state === "signed-out") accept(account);
+          else await checkCompleted(request);
         } else if (result.state === "uncertain") await reconcileProblem(request, result.code);
         else await reconcileProblem(request, result.code, "refused");
       } catch { await reconcileProblem(request); }
