@@ -64,7 +64,7 @@ describe("separations: every step can be switched off", () => {
   const KUALI = { employeeName: "Quillan, Petra A.", lastDayWorked: "06/18/2026", separationDate: "06/18/2026", terminationType: "Graduated/No longer a Student" };
   const IDENTITY = { emplId: "10873698", emplRecord: "0", department: "000123 - Synthetic Department", payrollTitleCode: "004923", payrollTitle: "STDT 2" };
   const REVIEW = { emplId: "10873698", ucpathName: "Quillan, Petra A." };
-  const RECEIPT = { transactionNumber: "T002204014", approvalStatus: "Approved" };
+  const RECEIPT = { transactionNumber: "T002204014", approvalStatus: "Approved", effectiveDate: "06/20/2026" };
 
   it("forces only the steps that read a skipped page, and blocks on none", () => {
     const rows = stepOmissionCascade(graphView());

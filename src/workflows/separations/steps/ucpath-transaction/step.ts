@@ -28,7 +28,6 @@ import {
 } from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
 import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
-import { ReadSeparationDatesOutputSchema } from "../../../../models/workflows/separations/read-separation-dates.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
 import { SeparationsMatchIdentity } from "../../../../models/workflows/separations/match-identity.js";
 import {
@@ -367,6 +366,7 @@ export const PENDING_TERMINATION_OMISSION: StepManualDeclaration = {
 const UcpathTransactionFactsSchema = z.strictObject({
   transactionNumber: KualiTransactionNumberSchema,
   approvalStatus: z.enum(TERMINATION_RECEIPT_ACCEPTED_STATUSES),
+  effectiveDate: UcpathUsDateSchema,
 });
 
 /** Off: the termination was filed in UCPath by hand; the typed receipt stands for it. */
@@ -378,19 +378,19 @@ export const UCPATH_TRANSACTION_OMISSION: StepManualDeclaration = {
         key: "approvalStatus", label: "Status", kind: "enum", replaces: { nodeId: RECEIPT_NODE, path: "approvalStatus" },
         values: [...TERMINATION_RECEIPT_ACCEPTED_STATUSES],
       },
+      { key: "effectiveDate", label: "Effective date", kind: "us-date", replaces: { nodeId: RECEIPT_NODE, path: "effectiveDate" } },
     ],
   },
   produces: {
     [RECEIPT_NODE]: ({ facts, scope }) => {
       const typed = UcpathTransactionFactsSchema.parse(facts);
       const approval = VerifyIdentityApprovalOutputSchema.parse(scope.outputs["approval"]);
-      const dates = ReadSeparationDatesOutputSchema.parse(scope.outputs["dates"]);
       return assertTerminationReceipt({
         transactionNumber: typed.transactionNumber,
         approvalStatus: typed.approvalStatus,
         approvedEmplId: approval.approved.emplId,
         approvedName: approval.approved.ucpathName,
-        expectedEffectiveDate: dates.terminationEffectiveDate,
+        effectiveDate: typed.effectiveDate,
       });
     },
   },

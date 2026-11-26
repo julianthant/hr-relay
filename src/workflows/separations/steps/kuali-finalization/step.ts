@@ -650,7 +650,7 @@ export const separationsKualiFinalizationDefinition = defineStep({
               approvalStatus: input.transactionApprovalStatus,
               approvedEmplId: outputs["approval"].approved.emplId,
               approvedName: outputs["approval"].approved.ucpathName,
-              expectedEffectiveDate: input.terminationEffectiveDate,
+              effectiveDate: input.terminationEffectiveDate,
             }),
         );
         const finalizeKuali = transaction(

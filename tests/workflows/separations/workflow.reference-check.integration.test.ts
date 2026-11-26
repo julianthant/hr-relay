@@ -276,14 +276,16 @@ describe("Separations composition with a reference spreadsheet", () => {
   it("sends no UCPath write when its form actions were done by hand, and records the typed receipt", async () => {
     const c = await composition();
     // The termination someone filed by hand, as UCPath now shows it.
-    c.ucpath.rows.push({ transactionId: COMPOSITION_RECEIPT, emplId: COMPOSITION_EID, action: "TER", approvalStatus: "Approved", startDate: "06/20/2026", displayedName: COMPOSITION_UCPATH_NAME });
+    c.ucpath.rows.push({ transactionId: COMPOSITION_RECEIPT, emplId: COMPOSITION_EID, action: "TER", approvalStatus: "Approved", startDate: "06/22/2026", displayedName: COMPOSITION_UCPATH_NAME });
     c.ucpath.employmentRecords.push({ transactionId: COMPOSITION_RECEIPT, emplRecord: "0" });
     const run = await c.execute(c.begin([], false, [...OMIT_KRONOS, { step: "pending-termination", facts: {} },
-      { step: "ucpath-transaction", facts: { transactionNumber: COMPOSITION_RECEIPT, approvalStatus: "Approved" } }]));
+      { step: "ucpath-transaction", facts: { transactionNumber: COMPOSITION_RECEIPT, approvalStatus: "Approved", effectiveDate: "06/22/2026" } }]));
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(run.lifecycle));
     assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button"]);
     assert.deepEqual(c.writeIntents(run).map(intent => intent.system), ["kuali"]);
     for (const skipped of ["pending-set", "clear-pending", "file-termination"]) assert.deepEqual(c.nodeSpans(run, skipped), [["skipped", "step-omitted"]], skipped);
+    const receipt = c.database.authority.runCheckpoints.listByItem(separationsDescriptor.id, run.envelope.itemId).find(record => record.nodeId === "receipt");
+    assert.equal((receipt?.output.value as { effectiveDate?: string } | undefined)?.effectiveDate, "06/22/2026", "the receipt carries the typed filing date, not the plan's 06/20/2026");
   });
 
   it("refuses a manual approval whose Employee ID is not the run's before any write", async () => {

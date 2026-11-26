@@ -197,7 +197,7 @@ export function runDialogSeparationsRerunSnapshot(): RerunValuesResponse {
     }),
     values: [], transactions: [],
     typed: [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/18/2026" } },
-      { step: "pending-termination", facts: {} }, { step: "ucpath-transaction", facts: { transactionNumber: "T002204014", approvalStatus: "Approved" } }],
+      { step: "pending-termination", facts: {} }, { step: "ucpath-transaction", facts: { transactionNumber: "T002204014", approvalStatus: "Approved", effectiveDate: "06/20/2026" } }],
   } });
 }
 

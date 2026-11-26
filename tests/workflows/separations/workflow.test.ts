@@ -244,6 +244,7 @@ describe("workflow definition public equivalence characterization", () => {
               fields: [
                 { key: "transactionNumber", label: "Transaction number", help: "T followed by 6–12 digits.", kind: "text" },
                 { key: "approvalStatus", label: "Status", kind: "enum", values: ["Approved", "Manually Processed", "Pending"], replaces: { nodeId: "receipt", path: "approvalStatus" } },
+                { key: "effectiveDate", label: "Effective date", kind: "us-date", replaces: { nodeId: "receipt", path: "effectiveDate" } },
               ]
             },
             produces: ["receipt"],
@@ -289,7 +290,7 @@ describe("workflow definition public equivalence characterization", () => {
       }),
       omissions: {
         kronos: omission([{ step: "kronos-timecard", facts: { lastDayWorked: "08/02/2026", separationDate: "08/02/2026" } }]),
-        ucpath: omission([{ step: "ucpath-transaction", facts: { transactionNumber: "T123456", approvalStatus: "Approved" } }]),
+        ucpath: omission([{ step: "ucpath-transaction", facts: { transactionNumber: "T123456", approvalStatus: "Approved", effectiveDate: "06/20/2026" } }]),
         kuali: omission([{ step: "kuali-finalization", facts: {} }]),
       },
       steps: workflowProjections(separationsDescriptor).steps.map(({ key, nodeId, label, kind, taskId, conditional }) => ({

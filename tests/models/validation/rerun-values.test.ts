@@ -65,6 +65,7 @@ describe("explicit Rerun mapping admission", () => {
       ["lastDayWorked", "kronos-timecard", "lastDayWorked"],
       ["separationDate", "kronos-timecard", "separationDate"],
       ["approvalStatus", "ucpath-transaction", "approvalStatus"],
+      ["effectiveDate", "ucpath-transaction", "effectiveDate"],
     ]);
     const date = mappings.find(({ fieldPath }) => fieldPath === "lastDayWorked"); assert.ok(date);
     assert.equal(rerunTargetAccepts(descriptor, date, "09/08/2026"), true);

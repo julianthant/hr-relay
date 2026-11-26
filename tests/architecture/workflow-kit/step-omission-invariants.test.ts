@@ -195,7 +195,7 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
   },
   {
     descriptor: SEPARATIONS_ID, step: "ucpath-transaction", declaration: UCPATH_TRANSACTION_OMISSION,
-    fieldKeys: ["transactionNumber", "approvalStatus"], produces: ["receipt"],
+    fieldKeys: ["transactionNumber", "approvalStatus", "effectiveDate"], produces: ["receipt"],
   },
   {
     descriptor: SEPARATIONS_ID, step: "kuali-finalization", declaration: KUALI_FINALIZATION_OMISSION,
