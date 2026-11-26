@@ -71,6 +71,11 @@ for (const viewport of VIEWPORTS) {
       await expect(options).toHaveAccessibleName("Options, 1 changed");
       await shot("options-badge");
 
+      await options.press("Enter");
+      await menu.getByRole("menuitem", { name: "Reset to defaults" }).click();
+      await page.keyboard.press("Escape");
+      await expect(options).toHaveAccessibleName("Options");
+
       await page.locator(".workflow-rail-item").first().hover();
       await shot("sidebar-hover");
       const plus = page.locator(".workflow-rail-start").first();

@@ -89,7 +89,7 @@ const openOptions: Story["play"] = async page => {
 };
 const HEADER = {
   closed: header("The queue header with Options closed", false),
-  "options-open": header("The Options menu open: Date, Sort by, Status, Attention first", false, openOptions),
+  "options-open": header("The Options menu open: Date, Sort by, Status, Attention first, Reset", false, openOptions),
   "options-changed": header("The queue header with options changed from their defaults", true),
 } satisfies Record<HeaderState, Story>;
 
