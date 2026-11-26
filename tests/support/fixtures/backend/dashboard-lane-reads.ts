@@ -145,6 +145,15 @@ export const laneMismatchedReply = defineLaneRead(import.meta.url, "lane-mismatc
     return { forged: true };
   } });
 
+/** Posts a forged body for known in-flight ids at a chosen begin position before its real reply: the host must refuse the batch. */
+export const laneForgedBatch = defineLaneRead(import.meta.url, "lane-forged-batch", { lane: "navigation", priority: "interactive",
+  args: z.strictObject({ ids: z.array(z.number().int().positive()).min(1), beginSeq: z.number().int().nonnegative() }), run(_context, args) {
+    parentPort?.postMessage({ kind: "read", ids: args.ids, body: JSON.stringify({ forged: true }), cached: false, beginSeq: args.beginSeq,
+      position: { source: "forged", schemaVersion: 1, schemaCookie: 0, authorityGeneration: 0, changeLogSeq: 0, timelineThrough: null,
+        processRevision: null, validUntil: null } });
+    return { forged: false };
+  } });
+
 /** A read that reports a position from its own snapshot; the reply must carry it. */
 export const laneOwnSnapshot = defineLaneRead(import.meta.url, "lane-own-snapshot", { lane: "navigation", priority: "interactive",
   args: z.strictObject({ authorityGeneration: z.number().int().nonnegative(), changeLogSeq: z.number().int().nonnegative() }),

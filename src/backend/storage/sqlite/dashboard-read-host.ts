@@ -192,6 +192,8 @@ interface LaneReadRequest {
   readonly settle: PromiseWithResolvers<DashboardReadReply>;
   readonly release: () => void;
   waiting: boolean;
+  /** The dispatch sequence its lane message carried; a body built before it never answers this waiter. */
+  postedSeq: number | undefined;
 }
 
 interface Lane {
@@ -290,6 +292,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       settleRequest(request, { error: error instanceof Error ? error : new Error("read-lane-send-failed", { cause: error }) });
       return;
     }
+    request.postedSeq = message.beginSeq;
     lane.sent.set(request.id, request);
   };
   /** Reads held while the lane booted go out interactive first, in arrival order within each class. */
@@ -369,7 +372,14 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       lane.sent.delete(reply.id);
       return;
     }
-    if (!reply.ids.every(id => lane.sent.has(id))) throw new Error("read-lane-reply-unexpected");
+    // The whole batch is checked before any waiter settles: one read key and process revision, and for a body, a begin
+    // position no earlier than any message it answers.
+    const batch = reply.ids.map(id => lane.sent.get(id));
+    const [first] = batch;
+    if (first === undefined || !batch.every(request => request !== undefined && request.key === first.key
+      && request.processRevision === first.processRevision
+      && (reply.kind === "read-failed" || (request.postedSeq !== undefined && request.postedSeq <= reply.beginSeq && reply.beginSeq <= dispatchSeq)))
+      || (reply.kind === "read" && reply.position.processRevision !== first.processRevision)) throw new Error("read-lane-reply-unexpected");
     lane.consecutiveFailures = 0;
     let outcome: { reply: DashboardReadReply } | { error: Error };
     try {
@@ -379,10 +389,9 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
         // A typed refusal crosses the lane boundary as its code, so routes and pollers still see the retryable error.
         : { error: reply.code === undefined ? new ReadLaneReadError(reply.message) : new AuthoritySnapshotChangedError() };
     } catch (error) { outcome = { error: error instanceof Error ? error : new Error("read-lane-admission-failed", { cause: error }) }; }
-    for (const id of reply.ids) {
-      const request = lane.sent.get(id);
+    for (const request of batch) {
       if (request === undefined) continue;
-      lane.sent.delete(id);
+      lane.sent.delete(request.id);
       settleRequest(request, outcome);
     }
     observeWal();
@@ -524,7 +533,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       const request: LaneReadRequest = { id: ++messageId, dispatchSeq: ++dispatchSeq, lane, definition: registered, args: parsed,
         key: canonicalJsonStringify({ lane: lane.name, read: registered.id, args: parsed }), processRevision, processFacts,
         slot: options.slot === undefined ? undefined : canonicalJsonStringify(options.slot), settle: Promise.withResolvers(),
-        release: () => signal?.removeEventListener("abort", onAbort), waiting: true };
+        release: () => signal?.removeEventListener("abort", onAbort), waiting: true, postedSeq: undefined };
       if (signal?.aborted === true) { onAbort(); return request.settle.promise; }
       signal?.addEventListener("abort", onAbort, { once: true });
       if (request.slot !== undefined) {
