@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { aggregateAssistantUsage, type AssistantCallUsage } from "../../models/dashboard/assistant-usage.js";
-import { ASSISTANT_M1_READ_RETRY_FAILURES, AssistantM1RequestSchema, AssistantM1RespondEnvelopeSchema, AssistantReplySchema, type AssistantAcceptedTurn, type AssistantM1RespondEnvelope } from "../../models/dashboard/assistant.js";
+import { ASSISTANT_M1_READ_RETRY_FAILURES, AssistantM1RequestSchema, AssistantM1RespondEnvelopeSchema, AssistantReplySchema, type AssistantAcceptedTurn, type AssistantHistoryWire, type AssistantM1RespondEnvelope } from "../../models/dashboard/assistant.js";
 import type { AssistantM1Acceptance, AssistantM1HistoryRepository } from "../storage/sqlite/assistant-history.js";
 import { assistantSessionPart, readAssistantSession, resolveAssistantReply, type ServerReplyBinding } from "./replies.js";
 import type { QueueSurfaceWire } from "../../models/dashboard/projection.js";
@@ -112,7 +112,7 @@ export interface AssistantM1ServiceOptions extends Omit<AssistantServiceOptions,
   readonly history: () => AssistantM1HistoryRepository;
   readonly debugEvents: NonNullable<AssistantServiceOptions["debugEvents"]>;
   /** The typed-yes proposal owner; its tools come through `tools`. */
-  readonly proposals?: Pick<AssistantTypedProposals, "open" | "supersede" | "issue" | "answer">;
+  readonly proposals?: Pick<AssistantTypedProposals, "open" | "supersede" | "issue" | "answer" | "needsYou">;
   readonly tools: () => Readonly<{ plugins: readonly AssistantPlugin[]; sessions?: Pick<ReturnType<typeof createAssistantSessionAuthorization>, "start">;
     bindings(table: AssistantReferenceTable, acceptedTurn: AssistantAcceptedTurn): readonly ServerReplyBinding[] | Promise<readonly ServerReplyBinding[]> }>;
   /** A session chip's run and its current queue row; a chat read shows the chip's status and Stop from these. */
@@ -420,7 +420,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
         throw error;
       } finally { staging = false; }
     },
-    historyView: () => options.history().list(now()),
+    historyView: (): AssistantHistoryWire => ({ ...options.history().list(now()), needsYou: options.proposals?.needsYou() ?? 0 }),
     conversation(id: string) {
       const view = options.history().conversation(z.uuid().parse(id), now()), read = options.readSession;
       if (view === undefined) return undefined;

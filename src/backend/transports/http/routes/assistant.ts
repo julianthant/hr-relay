@@ -1,7 +1,7 @@
 import { wireError } from "./failure-status.js";
 import { z } from "zod";
 import { ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, AssistantModelPreferenceViewSchema, AssistantM1RequestSchema, AssistantM1RespondEnvelopeSchema,
-  AssistantActivityWireSchema, AssistantM1ConversationWireSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryViewSchema, AssistantStageResultSchema } from "../../../../models/dashboard/assistant.js";
+  AssistantActivityWireSchema, AssistantM1ConversationWireSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryWireSchema, AssistantStageResultSchema } from "../../../../models/dashboard/assistant.js";
 import type { AssistantService } from "../../../assistant/service.js";
 import type { DashboardApp } from "./api-types.js";
 import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
@@ -84,7 +84,7 @@ export function registerAssistantRoutes(app: DashboardApp, service: AssistantSer
     c.header("Cache-Control", "no-store");
     try {
       if (service?.historyView === undefined) return c.json(wireError(...HISTORY_UNAVAILABLE), 503);
-      return c.json(AssistantHistoryViewSchema.parse(service.historyView()));
+      return c.json(AssistantHistoryWireSchema.parse(service.historyView()));
     } catch { return c.json(wireError(...HISTORY_UNAVAILABLE), 503); }
   });
   app.get("/api/v1/assistant/conversations/:conversationId", c => {

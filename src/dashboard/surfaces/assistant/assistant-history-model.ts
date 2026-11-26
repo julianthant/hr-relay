@@ -8,6 +8,7 @@ import { deriveStableUuid } from '../../../rules/identity/stable-uuid.js';
 import { systemClock } from '../../../rules/time/clock.js';
 import type { AssistantQueries } from '../../client/index.js';
 import type { HubChat, HubChatsPort } from '../shell/hub-shell-model.js';
+import { assistantNeeds } from '../shell/assistant-launcher-model.js';
 import type { AssistantMessage, AssistantState } from './assistant-model.js';
 import { replyText } from './assistant-reply-parts-model.js';
 
@@ -98,13 +99,16 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
     return result;
   };
   const reload = async () => {
-    view = await client.assistantHistory(signal);
+    const list = await client.assistantHistory(signal);
+    view = list; assistantNeeds.reportProposals(list.needsYou);
     const loaded = await Promise.all(view.chats.map(chat => client.assistantConversation(chat.id, signal)));
     conversations.clear(); for (const conversation of loaded) conversations.set(conversation.id, conversation);
     changed();
   };
   const refresh = async (id: string) => {
-    const conversation = await client.assistantConversation(id, signal);
+    // A turn can open or answer a proposal, so the needs-you count is re-read with the chat.
+    const [conversation, list] = await Promise.all([client.assistantConversation(id, signal), client.assistantHistory(signal)]);
+    assistantNeeds.reportProposals(list.needsYou);
     conversations.set(id, conversation);
     view = { ...view, chats: view.chats.map(chat => chat.id === id ? { ...chat, title: conversation.title, revision: conversation.revision } : chat) };
     changed();

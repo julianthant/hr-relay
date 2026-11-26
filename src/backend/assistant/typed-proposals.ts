@@ -94,7 +94,7 @@ export function assistantProposalParts(draft: AssistantProposalDraft): Assistant
 export const AssistantProposalToolOutputSchema = z.strictObject({ status: z.literal("awaiting-yes"), count: z.number().int().min(1).max(ASSISTANT_START_ROWS_MAX) });
 
 export interface AssistantTypedProposalPorts {
-  readonly store: Pick<AssistantProposalRepository, "issue" | "open" | "read" | "claimAnswer" | "supersede" | "claimRow" | "settleRow" | "hasRowCommand">;
+  readonly store: Pick<AssistantProposalRepository, "issue" | "open" | "read" | "claimAnswer" | "supersede" | "claimRow" | "settleRow" | "hasRowCommand" | "needsYou">;
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   served(workflowId: string): boolean;
   readonly plans: Pick<StartPlanService, "prepare" | "plan">;
@@ -376,6 +376,8 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
       return answerReply(turn, ports.store.read(shown.snapshot.id) ?? refuse());
     },
     /** The command effect hook: a proposal row's command runs only inside its own claim, unchanged, for a still-current turn. */
+    /** Open proposals waiting on the operator: the launcher's needs-you count. */
+    needsYou: (): number => ports.store.needsYou(now()),
     assertEffect(commandId: string, command?: CommandRequest): void {
       const entry = active.get(commandId);
       if (entry === undefined) {

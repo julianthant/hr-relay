@@ -1,4 +1,4 @@
-import { AssistantHistoryResultSchema, AssistantHistoryViewSchema, AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
+import { AssistantHistoryResultSchema, AssistantHistoryWireSchema, AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
 import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { it } from "vitest";
@@ -96,11 +96,11 @@ it("serves history reads with no-store, guards history writes before the body an
   const conversation = { id: chat, title: "Chat", revision: 2, draft: "", composer: "", importTotal: 0, importNotice: null, messages: [], sessions: [] };
   const app: DashboardApp = new Hono(); const writes: unknown[] = [];
   registerAssistantRoutes(app, { async respond() { throw new Error("unexpected inference"); },
-    historyView: () => ({ chats: [{ id: chat, title: "Chat", revision: 2, createdAt: "2026-11-06T12:00:00.000Z", expiresAt: "2026-12-06T12:00:00.000Z" }], selectedId: chat }),
+    historyView: () => ({ chats: [{ id: chat, title: "Chat", revision: 2, createdAt: "2026-11-06T12:00:00.000Z", expiresAt: "2026-12-06T12:00:00.000Z" }], selectedId: chat, needsYou: 0 }),
     conversation: id => id === chat ? conversation : undefined,
     history(input) { writes.push(input); return { state: "refused", code: "ASSISTANT_CONVERSATION_STALE" }; } });
   const list = await app.request("http://127.0.0.1:3938/api/v1/assistant/history");
-  assert.equal(list.status, 200); assert.equal(list.headers.get("cache-control"), "no-store"); assert.equal(AssistantHistoryViewSchema.parse(await list.json()).selectedId, chat);
+  assert.equal(list.status, 200); assert.equal(list.headers.get("cache-control"), "no-store"); assert.equal(AssistantHistoryWireSchema.parse(await list.json()).selectedId, chat);
   const read = await app.request(`http://127.0.0.1:3938/api/v1/assistant/conversations/${chat}`);
   assert.equal(read.status, 200); assert.deepEqual(await read.json(), conversation);
   assert.equal((await app.request("http://127.0.0.1:3938/api/v1/assistant/conversations/44444444-4444-4444-8444-444444444444")).status, 404);

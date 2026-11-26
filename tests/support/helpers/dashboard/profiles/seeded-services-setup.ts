@@ -195,7 +195,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       const assistant: AssistantService = {
         respond: () => Promise.resolve({ kind: "result", result: { state: "no-reply", reason: "ASSISTANT_UNAVAILABLE", canRetry: false, turn: null } }),
         modelPreference: () => ({ profileId, epoch: 1, revision: 1, preference: { slug: "gpt-5.4", effort: "medium" } }),
-        historyView: () => database.authority.assistantHistory.list(clock.now().toISOString()),
+        historyView: () => { const now = clock.now().toISOString(); return { ...database.authority.assistantHistory.list(now), needsYou: database.authority.assistantProposals.needsYou(now) }; },
         conversation: id => { const view = database.authority.assistantHistory.conversation(id, clock.now().toISOString()); return view && { ...view, sessions: [] }; },
         history: input => database.authority.assistantHistory.apply(AssistantHistoryOperationSchema.parse(input), clock.now().toISOString()),
       };

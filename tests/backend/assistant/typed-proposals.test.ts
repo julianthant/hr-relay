@@ -81,6 +81,18 @@ it("runs each reviewed row under its own claim and command after the typed yes, 
   assert.throws(() => w.f.owner.assertEffect(first.command.commandId, first.command), /custody-unproved/u);
 });
 
+it("counts only open proposals as needing the operator: an answered one leaves the count", async () => {
+  const w = world(), args = { workflow: "person-lookup", entries: entries(1), dryRun: false };
+  assert.equal(w.f.owner.needsYou(), 0);
+  const { record } = await w.propose("propose_workflow_start", args);
+  assert.equal(w.f.owner.needsYou(), 1);
+  const attempt = w.yes(record);
+  w.settle(attempt, [...(await w.answer(attempt)).parts]);
+  assert.equal(w.f.owner.needsYou(), 0);
+  await w.propose("propose_workflow_start", { ...args, entries: [String(20000001)] });
+  assert.equal(w.f.owner.needsYou(), 1);
+});
+
 it("refuses a row whose fresh plan no longer matches what was reviewed while the others still run", async () => {
   const w = world(), { record } = await w.propose("propose_workflow_start", { workflow: "person-lookup", entries: entries(3), dryRun: false });
   let plans = 0;

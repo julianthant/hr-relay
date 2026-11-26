@@ -1,4 +1,4 @@
-import { AssistantActivityWireSchema, AssistantHistoryOperationSchema, AssistantHistoryViewSchema, AssistantM1ConversationWireSchema, AssistantM1RequestSchema, AssistantM1RespondEnvelopeSchema } from "../../../../src/models/dashboard/assistant.js";
+import { AssistantActivityWireSchema, AssistantHistoryOperationSchema, AssistantHistoryWireSchema, AssistantM1ConversationWireSchema, AssistantM1RequestSchema, AssistantM1RespondEnvelopeSchema } from "../../../../src/models/dashboard/assistant.js";
 import { ASSISTANT_PLUGIN_MODULES, assistantToolEgress } from "./assistant-tool-egress.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema } from "../../../../src/models/dashboard/activity-population.js";
 import { ChatGptAccountStatusSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
@@ -807,7 +807,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "request/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantM1RequestSchema },
   { id: "wire/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantM1RespondEnvelopeSchema },
   { id: "request/assistant-history", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantHistoryOperationSchema },
-  { id: "wire/assistant-history", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantHistoryViewSchema },
+  { id: "wire/assistant-history", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantHistoryWireSchema },
   { id: "wire/assistant-activity", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantActivityWireSchema },
   { id: "wire/assistant-conversation", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantM1ConversationWireSchema },
   { id: "egress/assistant-user-message", egress: "process-egress", module: "src/backend/assistant/service.ts", schema: z.strictObject({ content: z.string() }) },

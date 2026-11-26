@@ -1,4 +1,4 @@
-import { AssistantModelCatalogSchema, type AssistantModelCatalog, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, AssistantM1RequestSchema, AssistantM1RespondEnvelopeSchema, type AssistantM1RespondEnvelope, AssistantHistoryViewSchema, type AssistantHistoryView,
+import { AssistantModelCatalogSchema, type AssistantModelCatalog, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, AssistantM1RequestSchema, AssistantM1RespondEnvelopeSchema, type AssistantM1RespondEnvelope, AssistantHistoryWireSchema, type AssistantHistoryWire,
   AssistantM1ConversationWireSchema, type AssistantM1ConversationWire, AssistantHistoryOperationSchema, type AssistantHistoryOperation, AssistantHistoryResultSchema, type AssistantHistoryResult, type AssistantM1Request,
   AssistantStageResultSchema, type AssistantStageResult, AssistantActivityWireSchema, type AssistantActivityWire } from "../../../models/dashboard/assistant.js";
 import type { DashboardTransport } from "../transport.js";
@@ -8,7 +8,7 @@ export interface AssistantQueries {
   assistantModels?(signal?: AbortSignal): Promise<AssistantModelCatalog>;
   assistantModelPreference?(signal?: AbortSignal): Promise<AssistantModelPreferenceView>;
   assistantRespond(input: AssistantM1Request, signal?: AbortSignal): Promise<AssistantM1RespondEnvelope>;
-  assistantHistory?(signal?: AbortSignal): Promise<AssistantHistoryView>;
+  assistantHistory?(signal?: AbortSignal): Promise<AssistantHistoryWire>;
   /** Today's recorded assistant activity. */
   assistantActivity?(signal?: AbortSignal): Promise<AssistantActivityWire>;
   assistantConversation?(conversationId: string, signal?: AbortSignal): Promise<AssistantM1ConversationWire>;
@@ -34,7 +34,7 @@ export function createAssistantQueries(transport: DashboardTransport): Assistant
       return envelope;
     },
     async assistantHistory(signal?: AbortSignal) {
-      return parseOrThrow(AssistantHistoryViewSchema, "assistant-history", await transport.requestJson("/api/v1/assistant/history", signal === undefined ? {} : { signal }));
+      return parseOrThrow(AssistantHistoryWireSchema, "assistant-history", await transport.requestJson("/api/v1/assistant/history", signal === undefined ? {} : { signal }));
     },
     async assistantActivity(signal?: AbortSignal) {
       return parseOrThrow(AssistantActivityWireSchema, "assistant-activity", await transport.requestJson("/api/v1/assistant/activity", signal === undefined ? {} : { signal }));

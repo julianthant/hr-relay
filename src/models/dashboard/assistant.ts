@@ -285,6 +285,9 @@ export type AssistantMessageRecord = z.infer<typeof AssistantMessageRecordSchema
 export const AssistantChatSummarySchema = z.strictObject({ id: z.uuid(), title: Title, revision: Revision, createdAt: z.iso.datetime(), expiresAt: z.iso.datetime() });
 export const AssistantHistoryViewSchema = z.strictObject({ chats: z.array(AssistantChatSummarySchema).max(ASSISTANT_CHATS_MAX), selectedId: z.uuid().nullable() });
 export type AssistantHistoryView = z.infer<typeof AssistantHistoryViewSchema>;
+/** The served chat list and the open proposals waiting on the operator. */
+export const AssistantHistoryWireSchema = AssistantHistoryViewSchema.safeExtend({ needsYou: z.number().int().nonnegative() });
+export type AssistantHistoryWire = z.infer<typeof AssistantHistoryWireSchema>;
 export const AssistantActivityWireSchema = z.strictObject({
   day: z.iso.date(),
   rows: z.array(z.strictObject({ id: z.uuid(), label: z.string().min(1).max(160), at: z.iso.datetime() })),

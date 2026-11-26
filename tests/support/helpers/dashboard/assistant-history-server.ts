@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AssistantHistoryRefusal } from "../../../../src/backend/storage/sqlite/assistant-history.js";
 import type { AssistantQueries } from "../../../../src/dashboard/client/index.js";
 import {
-  AssistantM1ConversationWireSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryViewSchema,
+  AssistantM1ConversationWireSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryWireSchema,
 } from "../../../../src/models/dashboard/assistant.js";
 import { assistantM1HistoryFixture } from "../assistant-m1-history-fixture.js";
 
@@ -13,7 +13,7 @@ export function assistantHistoryServer(profileId: string = randomUUID(), now: ()
   const writes: unknown[] = [];
   let failWrite: ((input: unknown) => "before" | "after" | undefined) | undefined;
   const client: Required<Pick<AssistantQueries, "assistantHistory" | "assistantConversation" | "assistantHistoryWrite">> = {
-    async assistantHistory() { return AssistantHistoryViewSchema.parse(repository.list(now())); },
+    async assistantHistory() { return AssistantHistoryWireSchema.parse({ ...repository.list(now()), needsYou: storage.proposals().needsYou(now()) }); },
     async assistantConversation(id) {
       const view = repository.conversation(id, now());
       if (view === undefined) throw new Error("ASSISTANT_CONVERSATION_STALE");
