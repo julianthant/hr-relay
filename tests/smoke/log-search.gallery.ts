@@ -74,7 +74,7 @@ test("with search open at 1024 Tab runs from Back to More actions in drawn order
     if (stop.name === "More actions") break;
     await page.keyboard.press("Tab");
   }
-  expect(stops[0]!.name).toBe("Back to Emergency Contact batch");
+  expect(stops[0].name).toBe("Back to Emergency Contact batch");
   expect(stops.at(-1)!.name).toBe("More actions");
   expect(stops.some(stop => stop.name === "Search logs")).toBe(true);
   const drawn = [...stops].sort((a, b) => a.row - b.row || a.x - b.x);
