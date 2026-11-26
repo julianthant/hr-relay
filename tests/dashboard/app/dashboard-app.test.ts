@@ -111,7 +111,6 @@ const APP_DAY = DashboardDayWireSchema_m1.parse({
   queueSurfaces: [],
   workerCards: [], workerAuthority: { state: "present", members: [] },
   workerPools: [],
-  notifications: [],
 });
 
 const EDITABLE_SETTINGS = FIXTURE_EDITABLE_SETTINGS_m1;

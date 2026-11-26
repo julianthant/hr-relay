@@ -42,7 +42,7 @@ it.each(["active", "not-found"] as const)("uses the same declared Person Lookup 
   assert.ok(row);
   assert.equal(display.subject, row.title);
   assert.equal(display.workflow, personLookupDescriptor.label);
-  const projected = f.w.projection.buildDashboardDayWire(f.run.envelope.enqueuedAt.slice(0, 10)).notifications[0];
+  const projected = notificationWireOf(f.record, f.w.clock.nowMs(), display);
   assert.ok(projected && "context" in projected);
   assert.deepEqual(projected.context, display);
 });

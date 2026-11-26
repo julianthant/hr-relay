@@ -24,7 +24,7 @@ import type { RequestIdentityCheckpoint } from "../request-identity.js";
 import type { OcrRouteDeps } from "./ocr.js";
 
 /** Shared wiring plus leaf-owned contracts. Existing composed fixtures remain valid. */
-export interface DashboardAppDeps extends OcrRouteDeps, ChatGptAccountRouteDeps, WorkbooksRouteDeps, TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, IntakeRouteDeps, RunDetailRouteDeps, Pick<CommandsRouteDeps, "workerCommandResult" | "resolveWriteCommand"> {
+export interface DashboardAppDeps extends OcrRouteDeps, ChatGptAccountRouteDeps, WorkbooksRouteDeps, TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, IntakeRouteDeps, RunDetailRouteDeps, Pick<CommandsRouteDeps, "workerCommandResult" | "resolveWriteCommand" | "refuseSampleCommand"> {
   readonly debugReportRunReader?: Pick<RunRecordService, "read">;
   readonly notifications?: {
     withSnapshot?(actor: string, respond: PositionedRead<readonly NotificationWire[]>): Response;

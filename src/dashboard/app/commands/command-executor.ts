@@ -1,6 +1,6 @@
 import { createErrorCatalogFailure,ERROR_CATALOG,ErrorCatalogCodeSchema,formatErrorCatalogFailure,type ErrorCatalogMessage } from "../../../models/failures/error-catalog.js";
 import { deriveBulkChildCommand } from "../../../rules/commands/command-groups.js";
-import { bulkChildEffect,commandResultEffect } from "../../../rules/commands/command-lifecycle.js";
+import { allBulkChildrenRefusedAsSamples,bulkChildEffect,commandResultEffect } from "../../../rules/commands/command-lifecycle.js";
 import { BulkRunCommandRequestSchema,DashboardCommandRequestSchema,type BulkRunCommandOutcome,type BulkRunCommandRequest,type BulkRunCommandResponse,type DashboardCommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { checkedBulkCommandResult,checkedCommandResult,type SharedCommands } from "../../client/commands/shared-commands.js";
@@ -66,7 +66,7 @@ interface Attempt {
 const RESOLVABLE: ReadonlySet<DashboardCommandRequest["family"]> = new Set(["settings", "assistant-model-preference", "worker-browser"]);
 interface Reservation { readonly attempt: Attempt; readonly token: object }
 
-function feedback(code: "COMMAND_REFUSED" | "COMMAND_CONFLICT" | "COMMAND_CONFIRMATION_REQUIRED" | "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_RESULT_IDENTITY_MISMATCH" | "COMMAND_READBACK_MISMATCH" | "COMMAND_DISPATCH_FAILED" | "DASHBOARD_AUTHORITY_REPLACED"): ErrorCatalogMessage {
+function feedback(code: "COMMAND_REFUSED" | "COMMAND_CONFLICT" | "COMMAND_CONFIRMATION_REQUIRED" | "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_RESULT_IDENTITY_MISMATCH" | "COMMAND_READBACK_MISMATCH" | "COMMAND_DISPATCH_FAILED" | "DASHBOARD_AUTHORITY_REPLACED" | "SAMPLE_RUN_REFUSED"): ErrorCatalogMessage {
   return formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
 }
 
@@ -219,7 +219,8 @@ export class CommandExecutor {
       switch (bulkChildEffect(reply.outcome)) {
         case "unknown": return uncertainOutcome(commandId, reply, reply);
         case "none": return reply.outcome === "conflict" ? { kind: "conflict", commandId, reply, feedback: feedback("COMMAND_CONFLICT") }
-          : { kind: "refused", commandId, reply, feedback: feedback("COMMAND_REFUSED") };
+          : { kind: "refused", commandId, reply,
+            feedback: feedback(reply.outcome === "refused" && reply.code === "SAMPLE_RUN_REFUSED" ? "SAMPLE_RUN_REFUSED" : "COMMAND_REFUSED") };
         case "landed": break;
       }
     } else {
@@ -227,7 +228,8 @@ export class CommandExecutor {
         && (reply.code === "RUN_START_PLAN_EXPIRED" || reply.code === "RUN_START_READINESS_BLOCKED"
           || reply.code === "RUN_START_READINESS_UNAVAILABLE" || reply.code === "RUN_START_READINESS_CHANGED"
           || reply.code === "PREFLIGHT_EVIDENCE_EXPIRED" || reply.code === "PREFLIGHT_TIMEOUT") ? reply.code : undefined;
-      const code = startCode ?? (request.family === "worker-browser" && (reply.state === "rejected" || reply.state === "conflict")
+      const sampleCode = reply.state === "rejected" && reply.code === "SAMPLE_RUN_REFUSED" ? reply.code : undefined;
+      const code = startCode ?? sampleCode ?? (request.family === "worker-browser" && (reply.state === "rejected" || reply.state === "conflict")
         ? ErrorCatalogCodeSchema.safeParse(reply.message).data : undefined);
       const refusal = code !== undefined && ERROR_CATALOG[code].parameters.safeParse({}).success
         ? formatErrorCatalogFailure(createErrorCatalogFailure(code, {})) : undefined;
@@ -272,8 +274,10 @@ export class CommandExecutor {
     try {
       if ("targets" in request) {
         const reply = checkedBulkCommandResult(request, await options.scope.client.executeBulkCommand(request));
-        if (reply.state === "refused") outcome = { kind: "refused", commandId: request.commandId, reply, feedback: feedback("COMMAND_REFUSED") };
-        else {
+        if (reply.state === "refused") {
+          outcome = { kind: "refused", commandId: request.commandId, reply,
+            feedback: feedback(reply.code === "SAMPLE_RUN_REFUSED" ? "SAMPLE_RUN_REFUSED" : "COMMAND_REFUSED") };
+        } else {
           const outcomes: CommandOutcome[] = [];
           for (const [index, command] of commands.entries()) {
             const child = reply.results[index];
@@ -284,7 +288,8 @@ export class CommandExecutor {
           outcome = unresolved ? { ...unresolved, commandId: request.commandId, reply, children: Object.freeze(outcomes) }
             : conflict ? { ...conflict, commandId: request.commandId, reply, children: Object.freeze(outcomes) }
             : outcomes.every(child => child.kind === "confirmed") ? { kind: "confirmed", commandId: request.commandId, reply, children: Object.freeze(outcomes), readback: outcomes.map(child => child.kind === "confirmed" ? child.readback : undefined) }
-            : { kind: "refused", commandId: request.commandId, reply, children: Object.freeze(outcomes), feedback: feedback("COMMAND_REFUSED") };
+            : { kind: "refused", commandId: request.commandId, reply, children: Object.freeze(outcomes),
+              feedback: feedback(allBulkChildrenRefusedAsSamples(reply.results, reply.requestedCount) ? "SAMPLE_RUN_REFUSED" : "COMMAND_REFUSED") };
         }
       } else outcome = await this.settle(request, checkedCommandResult(request, await options.scope.client.executeCommand(request)), options);
     } catch (cause) {

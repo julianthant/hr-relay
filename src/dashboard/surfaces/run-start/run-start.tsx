@@ -22,7 +22,7 @@ import { Check, CircleAlert, ListChecks, Play } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { useToasts, BareButton, Banner, Button, Switch, Dialog, DialogBody, DialogContent, DialogFooter, EmptyState, KeyValueList, MetaLine, dsFocus, dsIcon } from "../../ds/ui.js";
 
-import { runStartRefusalToast } from "../../app/commands/command-result.js";
+import { runStartRefusalToast, sampleRunRefusalToast } from "../../app/commands/command-result.js";
 import { type InputRunSurface, type UploadRunSurface } from "../../../models/workflow/ingress.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
@@ -258,6 +258,11 @@ export function RunStartDialog({
     effects: {
       loadSource: async source => {
         const response = await launchService.openRerun({ runId: source.runId, expectedVersion: source.expectedVersion });
+        if (response.state === "refused" && response.code === "sample-run") {
+          // A sample run never reruns: say so in a toast and close, never as the dialog's banner.
+          toast(sampleRunRefusalToast());
+          onOpenChange(false);
+        }
         if (response.state === "refused") throw new Error(`Rerun unavailable: ${response.code}`);
         return response.snapshot;
       },

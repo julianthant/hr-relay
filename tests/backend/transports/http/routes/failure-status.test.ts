@@ -16,6 +16,7 @@ SectionUnavailableError,
 TargetNotFoundError,
 } from "../../../../../src/backend/runs/commands/refusals.js";
 import { StartStepOmissionRefusedError } from "../../../../../src/backend/runs/start/step-selection.js";
+import { CommandIdReusedError } from "../../../../../src/rules/commands/commands.js";
 import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
 import { PreflightRunnerTimeoutError, requiredPreflightChecks } from "../../../../../src/models/preflight/preflight.js";
 import { PreflightCheckIdSchema, type PreflightCheckId } from "../../../../../src/models/preflight/preflight-contract.js";
@@ -77,6 +78,14 @@ describe("failureStatus", () => {
     assert.equal(refusal.body.code, "LOGS_IDENTITY_REFUSED");
     assert.equal(refusal.body.retryable, false);
     assert.equal(refusal.body.message, "Logs could not be ordered because some entries are missing or inconsistent.");
+  });
+
+  it("answers 400 with the catalogued code and text for a reused command id, keeping the id private", () => {
+    assert.equal(Object.hasOwn(ERROR_CATALOG, "COMMAND_ID_REUSED"), true);
+    assert.deepEqual(failureStatus(new CommandIdReusedError("cccccccc-0005-4000-8000-000500000000")), {
+      status: 400,
+      body: { state: "error", code: "COMMAND_ID_REUSED", message: ERROR_CATALOG.COMMAND_ID_REUSED.text, retryable: false },
+    });
   });
 
   it("answers 404 for a not-found refusal whose wording carries no retired marker", () => {

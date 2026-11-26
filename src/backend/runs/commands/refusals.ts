@@ -1,6 +1,15 @@
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 
+/** A copy's sample run: nothing runs, so every action on it, a rerun from it and its Start plan are refused. */
+export class SampleRunRefusedError extends Error {
+  readonly code = "SAMPLE_RUN_REFUSED";
+  constructor() {
+    super(ERROR_CATALOG.SAMPLE_RUN_REFUSED.text);
+    this.name = "SampleRunRefusedError";
+  }
+}
+
 export class LogDisplayRefusedError extends Error {
   readonly code = "RUN_LOG_DISPLAY_VALUE_UNMAPPED";
   constructor() {
