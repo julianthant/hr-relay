@@ -11,10 +11,13 @@ import { z } from "zod";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
 import { RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
 import { systemClock } from "../../src/rules/time/clock.js";
+import type { DashboardApp } from "../../src/backend/transports/http/routes/api-types.js";
 
 /** G1: main-thread stall per SSE snapshot and per GET, and the lane's whole-day build against the request thread's. */
 const STALL_LIMIT_MS = 20;
 const BUILD_RATIO_LIMIT = 1.3;
+/** The design's bound on navigation readiness, which the replica's fold and the warm step hold up. */
+const READY_LIMIT_MS = 5000;
 const SAMPLES = 5;
 const SETTLE_MS = 300;
 
@@ -30,6 +33,10 @@ const RunSchema = z.strictObject({
   day: z.iso.date(), dayRuns: z.int().nonnegative(), timelineHighWater: z.int().nonnegative(),
   /** Lane boot to ready, which includes the replica's cold fold; the first lane read reports whether it found the fold done. */
   laneReadyMs: z.number().nonnegative(), coldFoldMs: z.number().nonnegative(), foldBeforeReady: z.boolean(),
+  /** The lane built the measured day in its first read rather than serving one its warm step or an earlier read cached. */
+  laneDayBuilt: z.boolean(),
+  /** GET and SSE samples that did not answer the day: never counted as a measurement. */
+  failedResponses: z.int().nonnegative(),
   /** The whole-day build, first read after the fold: on the lane (round trip) and on the request thread. */
   laneBuildMs: z.number().nonnegative(), requestThreadBuildMs: z.number().nonnegative(),
   stampMs: z.array(z.number().nonnegative()), sse: z.array(SampleSchema), get: z.array(SampleSchema), bodyBytes: z.int().positive(),
@@ -76,7 +83,10 @@ async function measure(workspace: string, lockPort: number, requestedDay: string
   const { createTransactionHistory } = await import("../../src/backend/storage/sqlite/transaction-history.js");
   const { READABLE_WORKFLOW_MODULES, DESCRIPTORS, descriptorSetHash } = await import("../../src/backend/app/registries/workflow-registry.js");
   const { createDashboardStreamHub } = await import("../../src/backend/transports/http/subscriptions/dashboard-stream.js");
-  const { sseSerialize } = await import("../../src/backend/transports/http/subscriptions/sse-response.js");
+  const { registerQueueRoutes } = await import("../../src/backend/transports/http/routes/queue.js");
+  const { registerShellRoutes } = await import("../../src/backend/transports/http/routes/shell.js");
+  const { Hono } = await import("hono");
+  const { getRequestListener } = await import("@hono/node-server");
   const { systemIdFactory } = await import("../../src/rules/identity/identifiers.js");
   const lock = await acquireRuntimeLifetimeLock(lockPort);
   try {
@@ -153,6 +163,7 @@ async function measure(workspace: string, lockPort: number, requestedDay: string
             const first = await main.requestDashboardDay(day);
             const laneBuildMs = performance.now() - reading;
             const foldBeforeReady = first.facts.position === main.position() && laneBuildMs < coldFoldMs;
+            const laneDayBuilt = first.facts.built;
 
             const stampMs: number[] = [];
             for (let index = 0; index < SAMPLES; index++) {
@@ -161,44 +172,62 @@ async function measure(workspace: string, lockPort: number, requestedDay: string
               stampMs.push(performance.now() - stamping);
             }
 
-            const server = createServer((request, response) => {
-              const url = new URL(request.url ?? "/", "http://127.0.0.1");
-              if (url.pathname === "/api/v1/dashboard") {
-                void main.servedDashboardDay(day).then(body => {
-                  response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "private, no-cache" });
-                  response.end(body);
-                }, (error: unknown) => { response.writeHead(500); response.end(String(error)); });
-                return;
-              }
-              const hub = createDashboardStreamHub({ projection: main, backfillGaps: { detected: () => Promise.reject(new Error("queue-day-bench-gap")) } });
-              void hub.connect({ day }).then(connection => {
-                response.writeHead(200, { "Content-Type": "text/event-stream" });
-                for (const envelope of connection.initial) response.write(sseSerialize(envelope));
-                response.end();
-                connection.close();
-                hub.close();
-              }, (error: unknown) => { response.writeHead(500); response.end(String(error)); hub.close(); });
-            });
+            // The dashboard's own GET and SSE routes, ETag hashing and stream framing included, over a node server.
+            const hub = createDashboardStreamHub({ projection: main, backfillGaps: { detected: () => Promise.reject(new Error("queue-day-bench-gap")) } });
+            const app: DashboardApp = new Hono();
+            registerQueueRoutes(app, { startPlans: {} as Parameters<typeof registerQueueRoutes>[1]["startPlans"], queue: { day: (requested, request) => main.servedDashboardDay(requested, { signal: request.signal }) } });
+            registerShellRoutes(app, { bootstrap: {} as Parameters<typeof registerShellRoutes>[1]["bootstrap"],
+              search: {} as Parameters<typeof registerShellRoutes>[1]["search"], hub });
+            const server = createServer(getRequestListener(app.fetch, { overrideGlobalObjects: false }));
             const port = await listen(server);
             try {
               const get: Run["get"] = [], sse: Run["sse"] = [];
-              let bodyBytes = 0;
+              let bodyBytes = 0, failedResponses = 0;
               for (let index = 0; index < SAMPLES; index++) {
-                const served = await stalled(async () => (await fetch(`http://127.0.0.1:${String(port)}/api/v1/dashboard`)).arrayBuffer());
-                bodyBytes = served.result.byteLength;
-                get.push({ wallMs: served.wallMs, stallMs: served.stallMs });
-                const streamed = await stalled(async () => (await fetch(`http://127.0.0.1:${String(port)}/stream`)).arrayBuffer());
-                sse.push({ wallMs: streamed.wallMs, stallMs: streamed.stallMs });
+                const served = await stalled(() => getDay(`http://127.0.0.1:${String(port)}/api/v1/dashboard?day=${day}`, day));
+                if (served.result === undefined) failedResponses += 1;
+                else { bodyBytes = served.result; get.push({ wallMs: served.wallMs, stallMs: served.stallMs }); }
+                const streamed = await stalled(() => streamSnapshot(`http://127.0.0.1:${String(port)}/events/v1?topics=dashboard-day:${day}`, day));
+                if (streamed.result) sse.push({ wallMs: streamed.wallMs, stallMs: streamed.stallMs });
+                else failedResponses += 1;
               }
               const laneWorkerAndTransferMs = laneBuildMs - laneReadPathHere.buildMs - laneReadPathHere.serializeMs;
-              return RunSchema.parse({ day, dayRuns: today.queueSurfaces.length, timelineHighWater, laneReadyMs, coldFoldMs, foldBeforeReady,
+              return RunSchema.parse({ day, dayRuns: today.queueSurfaces.length, timelineHighWater, laneReadyMs, coldFoldMs, foldBeforeReady, laneDayBuilt, failedResponses,
                 laneBuildMs, requestThreadBuildMs, stampMs, sse, get, bodyBytes, phases: { requestThread, laneReadPathHere, laneWorkerAndTransferMs } });
-            } finally { await new Promise(resolve => server.close(resolve)); }
+            } finally { hub.close(); await new Promise(resolve => server.close(resolve)); }
           } finally { await lanes.close(); }
         } finally { database.close(); }
       } finally { admission.release(); }
     } finally { machine.release(); }
   } finally { await lock.close(); }
+}
+
+/** One GET of the day: its body's length when the route answered this day with a matching ETag, otherwise undefined. */
+async function getDay(url: string, day: string): Promise<number | undefined> {
+  const response = await fetch(url);
+  const body = await response.text();
+  if (response.status !== 200 || response.headers.get("etag") === null) return undefined;
+  const parsed = z.object({ day: z.string() }).safeParse(JSON.parse(body));
+  return parsed.success && parsed.data.day === day ? Buffer.byteLength(body) : undefined;
+}
+
+/** One SSE handoff: true once the route framed this day's snapshot; the stream is then closed. */
+async function streamSnapshot(url: string, day: string): Promise<boolean> {
+  const response = await fetch(url);
+  const reader = response.body?.getReader();
+  if (response.status !== 200 || reader === undefined) return false;
+  const decoder = new TextDecoder();
+  let text = "";
+  try {
+    for (;;) {
+      const frame = /data: (\{"type":"snapshot"[^\n]*)\n\n/u.exec(text);
+      if (frame !== null) return z.object({ payload: z.object({ day: z.string() }) }).safeParse(JSON.parse(frame[1] ?? "")).data?.payload.day === day;
+      if (/"type":"reset-required"/u.test(text)) return false;
+      const chunk = await reader.read();
+      if (chunk.done) return false;
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+  } finally { await reader.cancel(); }
 }
 
 /** The day with the most runs over the last twelve months, read from each month's day counts. */
@@ -220,6 +249,9 @@ export function summarize(runs: readonly Run[]) {
   const sseStall = all(run => run.sse.map(sample => sample.stallMs)), getStall = all(run => run.get.map(sample => sample.stallMs));
   const ratios = runs.map(run => run.laneBuildMs / run.requestThreadBuildMs);
   const limiters = [
+    ...(runs.some(run => !run.laneDayBuilt) ? ["lane-day-cached"] : []),
+    ...(runs.some(run => run.failedResponses > 0 || run.get.length === 0 || run.sse.length === 0) ? ["failed-responses"] : []),
+    ...(runs.some(run => run.laneReadyMs > READY_LIMIT_MS) ? ["lane-ready"] : []),
     ...(Math.max(...sseStall) > STALL_LIMIT_MS ? ["sse-stall"] : []),
     ...(Math.max(...getStall) > STALL_LIMIT_MS ? ["get-stall"] : []),
     ...(Math.max(...ratios) > BUILD_RATIO_LIMIT ? ["lane-build-ratio"] : []),
@@ -234,7 +266,7 @@ export function summarize(runs: readonly Run[]) {
       laneReadPathHereFoldMs: range(runs.map(run => run.phases.laneReadPathHere.foldMs)), laneReadPathHereBuildMs: range(runs.map(run => run.phases.laneReadPathHere.buildMs)),
       laneReadPathHereSerializeMs: range(runs.map(run => run.phases.laneReadPathHere.serializeMs)),
       laneWorkerAndTransferMs: range(runs.map(run => run.phases.laneWorkerAndTransferMs)) },
-    limits: { stallMs: STALL_LIMIT_MS, laneBuildRatio: BUILD_RATIO_LIMIT } };
+    limits: { stallMs: STALL_LIMIT_MS, laneBuildRatio: BUILD_RATIO_LIMIT, laneReadyMs: READY_LIMIT_MS } };
 }
 
 const entryPath = process.argv[1];
