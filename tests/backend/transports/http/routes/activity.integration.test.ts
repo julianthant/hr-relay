@@ -37,6 +37,13 @@ async function startFixtureRun(h: Awaited<ReturnType<typeof harness>>) {
   assert.equal(started.status, 200, await started.text());
 }
 
+// A missing range is an unexpected request failure: the wire carries the catalog's fixed text, never the thrown message.
+async function assertInternalFailure(response: Response) {
+  const body = await json(response);
+  assert.equal(body.code, "INTERNAL_FAILURE");
+  assert.equal(body.message, ERROR_CATALOG.INTERNAL_FAILURE.text);
+}
+
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("serves the Activity report and population on the navigation lane with the main read connection disabled", async () => {
@@ -88,11 +95,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const halfRange = await h.app.request(`/api/v1/reports/activity?from=${DAY}`);
     assert.equal(halfRange.ok, false);
-    assert.match(String((await json(halfRange)).message), /requires both from= and to=/);
+    await assertInternalFailure(halfRange);
 
     const noRange = await h.app.request("/api/v1/reports/activity");
     assert.equal(noRange.ok, false);
-    assert.match(String((await json(noRange)).message), /requires both from= and to=/);
+    await assertInternalFailure(noRange);
 
     // A malformed bound is refused by the wire schema, by name.
     const badBound = await h.app.request(`/api/v1/reports/activity?from=today&to=${DAY}`);
@@ -131,11 +138,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const halfRange = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&snapshot=${activityReport.snapshot.token}`);
     assert.equal(halfRange.ok, false);
-    assert.match(String((await json(halfRange)).message), /requires both from= and to=/);
+    await assertInternalFailure(halfRange);
 
     const noRange = await h.app.request("/api/v1/reports/activity.csv");
     assert.equal(noRange.ok, false);
-    assert.match(String((await json(noRange)).message), /requires both from= and to=/);
+    await assertInternalFailure(noRange);
 
     const inverted = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=2026-08-01&snapshot=${activityReport.snapshot.token}`);
     assert.equal(inverted.ok, false);
