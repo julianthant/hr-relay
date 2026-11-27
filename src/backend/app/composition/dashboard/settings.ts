@@ -129,13 +129,14 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   }
   // Reused while the store part, the protected facts and the fiscal year are unchanged; any of them changing builds again.
   let last: { key: string; browserRoots: readonly string[]; document: EditableSettingsWire } | undefined;
+  const readProtected = input.readProtectedSettings ?? (() => routes.settingsEditor.protectedSettings.read());
   // The root on disk can stop qualifying after startup, so a reused document is checked again.
   const assertBrowserRoots = (roots: readonly string[]) => { for (const root of roots) input.assertBrowserRoot?.(root); };
   const editable = async (): Promise<EditableSettingsWire> => {
     input.assertCurrent?.();
     const { body } = await lanes.read(settingsStorePartRead, { hostFacts, ...(input.runtimeStoragePair === undefined ? {} : { runtimeStoragePair: input.runtimeStoragePair }) });
     input.assertCurrent?.();
-    const protectedFacts = await readProtectedFacts(input.readProtectedSettings ?? routes.settingsEditor.protectedSettings.read);
+    const protectedFacts = await readProtectedFacts(readProtected);
     input.assertCurrent?.();
     const key = canonicalJsonStringify({ body, protectedFacts: protectedFacts.state === "read" ? protectedFacts.facts : null, fiscalYear: clock.fiscalYear() });
     if (last?.key === key) {

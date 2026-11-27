@@ -7,6 +7,7 @@ import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
+import { withOperationProof } from "../configuration/credential-safe-file.js";
 import { fileStatus, sameDirectory } from "../file-identity.js";
 import { existingDatabaseLocation } from "./authority-connection.js";
 import { AuthoritySnapshotChangedError } from "./authority-errors.js";
@@ -254,11 +255,11 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   let releaseCustody: (() => void) | undefined, walWatch: ReturnType<typeof setInterval> | undefined;
   const deferred = new Map<Lane, PromiseWithResolvers<void>>();
 
-  const admit = (start: ReadLaneStart) => {
+  const admit = (start: ReadLaneStart) => withOperationProof(() => {
     owner.assertProfileRuntime();
     owner.assertReadOnlyAuthorityDatabase(start.path);
     if (!sameDirectory(readLaneSourceIdentity(start.path), start.identity)) throw new Error("profile-database-open-source-changed");
-  };
+  });
   const walBytes = () => {
     const size = Number(fileStatus(walPath, true)?.size ?? 0);
     walPeakBytes = Math.max(walPeakBytes, size);
