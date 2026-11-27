@@ -1,5 +1,5 @@
-/** Spreadsheets surface stories: the library's read, its three tables, every row action and what comes of it, a spreadsheet opened and its
- * column mapping saved, and the import dialog. The real page runs on an in-page library server that answers the reads and applies the
+/** Spreadsheets surface stories: the library's read, its two tables, every row action and what comes of it, a spreadsheet opened with its
+ * Columns panel, worksheet list and Use for all, and import as a menu, a draft page and a SharePoint link. The real page runs on an in-page library server that answers the reads and applies the
  * library actions. Cell editing and Undo do not exist in the page, and versions is a dialog, so neither has a story. */
 import type { Page } from "@playwright/test";
 import { sheetsStoryServer, type SheetsStoryServerOptions } from "../../../../fixtures/dashboard/spreadsheets-story-fixtures.js";
@@ -19,13 +19,13 @@ function scene(title: string, input: Scene = {}): Story {
 }
 
 const SHEET = "Onboarding list.xlsx";
+const TAGLESS = "Imported contacts.xlsx";
 const click = (name: string | RegExp, role: "button" | "menuitem" | "radio" | "link" = "button") => async (page: Page): Promise<void> => {
   await page.getByRole(role, { name, exact: typeof name === "string" }).first().click();
 };
 const then = (...steps: readonly ((page: Page) => Promise<void>)[]) => async (page: Page): Promise<void> => { for (const step of steps) await step(page); };
 const fill = (label: string, value: string) => async (page: Page): Promise<void> => { await page.getByLabel(label, { exact: true }).fill(value); };
-const openRow = (name: string) => async (page: Page): Promise<void> => { await page.locator(`li[aria-label="${name}"]`).click(); };
-const choose = (label: string) => async (page: Page): Promise<void> => { await page.locator("label", { hasText: label }).first().click(); };
+const openRow = (name: string) => async (page: Page): Promise<void> => { await page.locator(`li[aria-label="${name}"]`).getByText(name, { exact: true }).first().click(); };
 const backToLibrary = async (page: Page): Promise<void> => { await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button").first().click(); };
 /** The button just pressed is still under the pointer, which fills it in its hover color; move the pointer off it and let the fill settle,
  * so the story is measured at the button's resting accent. */
@@ -48,26 +48,24 @@ const CATALOG = {
   "no-match": scene("A search that matches nothing", { play: then(loaded, fill("Search spreadsheets", "zzz")), story: { ready: 'text="No spreadsheets match."' } }),
 } satisfies Record<Catalog, Story>;
 
-type Table = "Pinned" | "SharePoint" | "Spreadsheets";
+type Table = "Pinned" | "Spreadsheets";
 const TABLE = {
   Pinned: scene("Pinned spreadsheets", { story: { ready: 'ul[aria-label="Pinned"]' } }),
-  SharePoint: scene("Spreadsheets linked to SharePoint", { story: { ready: 'ul[aria-label="SharePoint"]' } }),
   Spreadsheets: scene("Spreadsheets added here", { story: { ready: 'ul[aria-label="Spreadsheets"]' } }),
 } satisfies Record<Table, Story>;
 
+const pin = (sheet = SHEET) => then(loaded, click(`Pin ${sheet}`));
+const tagMenu = (sheet = SHEET) => then(loaded, click(`Add a tag to ${sheet}`));
 type Row = "pin" | "sync" | "link" | "clone" | "rename" | "tags" | "delete" | "download" | "rollback";
 const ROW = {
-  pin: act("Pin", 'ul[aria-label="Pinned"] >> text="Onboarding list.xlsx"'),
+  pin: scene("A spreadsheet pinned with its row pin", { play: pin(), story: { ready: 'ul[aria-label="Pinned"] >> text="Onboarding list.xlsx"' } }),
   sync: scene("Sync now chosen from a row's menu", { play: menu("Sync now", "Department roster.xlsx"), story: { ready: 'text="Synced Department roster.xlsx"' } }),
   link: act("Link to SharePoint…", 'role=dialog'),
   clone: act("Clone", 'role=dialog'),
   rename: act("Rename", 'role=dialog'),
-  tags: act("Edit tags", 'role=dialog'),
+  tags: scene("A row's tag menu", { play: tagMenu(), story: { ready: 'role=menu' } }),
   delete: act("Delete", 'role=dialog'),
-  download: scene("A spreadsheet downloaded", { play: then(loaded, async page => {
-    const icon = page.getByRole("button", { name: `Download ${SHEET}`, exact: true });
-    if (await icon.isVisible()) await icon.click(); else await menu("Download")(page);
-  }), story: { ready: `ul[aria-label="Spreadsheets"]` } }),
+  download: scene("A spreadsheet downloaded", { play: menu("Download"), story: { ready: `ul[aria-label="Spreadsheets"]` } }),
   rollback: scene("A spreadsheet's versions", { play: then(loaded, click(/^Versions of Department roster/)), story: { ready: 'role=dialog' } }),
 } satisfies Record<Row, Story>;
 
@@ -77,38 +75,48 @@ const OUTCOME = {
   cloned: scene("A clone added", { play: done(menu("Clone"), click("Clone", "button")), story: { ready: 'text=/Cloned/' } }),
   "clone-refused": scene("A clone the library refused", { server: { add: "refused" }, play: done(menu("Clone"), click("Clone", "button"), still), story: { ready: 'text="That spreadsheet is no longer in the library."' } }),
   renamed: scene("A spreadsheet renamed", { play: done(menu("Rename"), fill("Name", "Onboarding 2026.xlsx"), click("Rename")), story: { ready: 'text="Onboarding 2026.xlsx"' } }),
-  tagged: scene("Tags saved", { play: done(menu("Edit tags"), fill("New tag", "Priority"), async page => { await page.getByLabel("New tag", { exact: true }).press("Enter"); }, click("Save"), async page => { await page.getByRole("dialog").waitFor({ state: "hidden" }); }), story: { ready: 'li[aria-label="Onboarding list.xlsx"]' } }),
+  tagged: scene("A tag created from a row's tag menu", { play: done(tagMenu(TAGLESS), fill("Find or create a tag", "Priority"), async page => { await page.getByLabel("Find or create a tag", { exact: true }).press("Enter"); }),
+    story: { ready: `li[aria-label="${TAGLESS}"] >> text="Priority" >> visible=true` } }),
   linked: scene("A SharePoint link added", { play: done(menu("Link to SharePoint…"), async page => { await page.getByPlaceholder("https://…sharepoint.com/…").fill("https://tenant.sharepoint.com/sites/people/Roster.xlsx"); }, click("Link")), story: { ready: 'text=/Linked/' } }),
   deleted: scene("A spreadsheet deleted", { play: done(menu("Delete"), click("Delete spreadsheet")), story: { ready: 'ul[aria-label="Spreadsheets"]' } }),
   "rolled-back": scene("A version rolled back", { play: done(loaded, click(/^Versions of Department roster/), click(/Version 2|v2/, "radio"), click("Roll back"), click("Roll back")), story: { ready: 'ul[aria-label="Pinned"]' } }),
-  refused: scene("A change the library refused", { server: { action: "refused" }, play: done(menu("Pin")), story: { ready: 'text=/Couldn\'t save the change/' } }),
-  pending: scene("A change whose result is not yet known", { server: { action: "lost" }, play: done(menu("Pin")), story: { ready: 'text=/The library change is not yet confirmed/' } }),
+  refused: scene("A change the library refused", { server: { action: "refused" }, play: done(pin()), story: { ready: 'text=/Couldn\'t save the change/' } }),
+  pending: scene("A change whose result is not yet known", { server: { action: "lost" }, play: done(pin()), story: { ready: 'text=/The library change is not yet confirmed/' } }),
   "sync-failed": scene("A sync the library could not finish", { server: { sync: "fail" }, play: done(menu("Retry sync", "Hiring tracker.xlsx")), story: { ready: "text=/Couldn't sync Hiring tracker.xlsx/" } }),
   synced: scene("A linked spreadsheet synced", { play: done(menu("Retry sync", "Hiring tracker.xlsx")), story: { ready: 'text="Synced Hiring tracker.xlsx"' } }),
 } satisfies Record<Outcome, Story>;
 
 const OPEN = (play = then(loaded, openRow(SHEET))): Pick<Scene, "play"> => ({ play });
-type Detail = "grid" | "opening" | "open-failed" | "mapping-saved" | "mapping-failed" | "back";
+type Detail = "grid" | "opening" | "open-failed" | "mapping-menu" | "mapping-saved" | "mapping-failed" | "worksheets" | "copied" | "back";
 const pickColumn = async (page: Page): Promise<void> => {
-  await page.getByRole("button", { name: /^Columns/ }).first().click();
   await page.getByRole("button", { name: /column, not mapped/ }).first().click();
   await page.getByRole("menuitemradio").first().click();
 };
+const mapped = '[aria-label="Columns"] >> text="1 of 1"';
 const DETAIL = {
   grid: scene("A spreadsheet opened", { ...OPEN(), story: { ready: '[aria-label="Preview"]' } }),
   opening: scene("A spreadsheet being opened", { server: { open: "never" }, ...OPEN(), story: { ready: '[aria-label="Opening Onboarding list.xlsx"]', slowFetch: { region: '[aria-label="Opening Onboarding list.xlsx"]' } } }),
   "open-failed": scene("A spreadsheet that could not be opened", { server: { open: "fail" }, ...OPEN(), story: { ready: `text="This spreadsheet couldn't be opened."` } }),
-  "mapping-saved": scene("A column mapping saved", { ...OPEN(then(loaded, openRow("Imported contacts.xlsx"), pickColumn)), story: { ready: '[aria-label="Preview"]' } }),
+  "mapping-menu": scene("A field's column list open beside the grid", { ...OPEN(then(loaded, openRow("Imported contacts.xlsx"), click(/column, not mapped/))), story: { ready: 'role=menu' } }),
+  "mapping-saved": scene("A column mapping saved", { ...OPEN(then(loaded, openRow("Imported contacts.xlsx"), pickColumn)), story: { ready: mapped } }),
   "mapping-failed": scene("A column mapping that did not save", { server: { save: "refused" }, ...OPEN(then(loaded, openRow("Imported contacts.xlsx"), pickColumn)), story: { ready: "text=/Couldn't save the columns/" } }),
+  worksheets: scene("The worksheet list with matched counts", { ...OPEN(then(loaded, openRow(SHEET), click("Worksheet"))), story: { ready: 'ul[aria-label="Worksheets"]' } }),
+  copied: scene("One worksheet's columns used for all", { ...OPEN(then(loaded, openRow(SHEET), click("Use for all 3 worksheets"))), story: { ready: 'text="Columns copied"' } }),
   back: scene("Back to the library", { ...OPEN(then(loaded, openRow(SHEET), backToLibrary)), story: { ready: 'ul[aria-label="Spreadsheets"]' } }),
 } satisfies Record<Detail, Story>;
 
-type Import = "dialog" | "sharepoint" | "sharepoint-refused";
-const importSharePoint = (link: string) => then(loaded, click("Import"), choose("SharePoint"), async page => {
-  await page.getByLabel("SharePoint workbook link").fill(link); await page.getByLabel("Name", { exact: true }).fill("Roster.xlsx"); }, click("Next"));
+type Import = "menu" | "draft" | "draft-tags" | "added" | "sharepoint" | "sharepoint-refused";
+const CSV = "Employee ID,Name\n10000001,\"Sample, Person 1\"\n10000002,\"Sample, Person 2\"\n";
+const pickFile = then(loaded, async page => {
+  await page.locator('input[type="file"]').first().setInputFiles({ name: "New hires.csv", mimeType: "text/csv", buffer: Buffer.from(CSV) });
+});
+const importSharePoint = (link: string) => then(loaded, click("Import"), click(/SharePoint link/, "menuitem"), fill("Workbook link", link), fill("Name", "Roster.xlsx"), click("Add"));
 const LINK = "https://tenant.sharepoint.com/sites/people/Roster.xlsx";
 const IMPORT = {
-  dialog: scene("The import dialog", { play: then(loaded, click("Import")), story: { ready: 'role=dialog' } }),
+  menu: scene("The Import menu", { play: then(loaded, click("Import")), story: { ready: 'role=menu' } }),
+  draft: scene("A picked file as a draft page", { play: pickFile, story: { ready: '[aria-label="Preview"]' } }),
+  "draft-tags": scene("A draft's tag menu", { play: then(pickFile, click("Add a tag to New hires")), story: { ready: 'role=menu' } }),
+  added: scene("A draft added to the library", { play: then(pickFile, async page => { await page.locator('[aria-label="Preview"]').waitFor(); }, click("Add to library")), story: { ready: 'text="Added New hires"' } }),
   sharepoint: scene("A SharePoint workbook added", { play: importSharePoint(LINK), story: { ready: 'text="Added Roster.xlsx"' } }),
   "sharepoint-refused": scene("A SharePoint workbook the library refused", { server: { add: "refused" }, play: then(importSharePoint(LINK), still), story: { ready: "text=/Couldn't add the spreadsheet/" } }),
 } satisfies Record<Import, Story>;
@@ -117,11 +125,10 @@ const AUDIT_FIXES = "#532";
 const KNOWN_BREAKS = {
    "catalog/loaded": ["named-and-focusable"],
    "detail/back": ["named-and-focusable"],
-   "detail/mapping-saved": ["named-and-focusable", "primary-button-accent"],
-   "detail/mapping-failed": ["named-and-focusable", "primary-button-accent"],
-  "import/dialog": ["named-and-focusable"],
+   "detail/mapping-menu": ["named-and-focusable"],
+   "import/added": ["named-and-focusable"],
+   "import/menu": ["named-and-focusable"],
    "import/sharepoint": ["named-and-focusable"],
-   "import/sharepoint-refused": ["named-and-focusable"],
     "outcome/cloned": ["named-and-focusable"],
    "outcome/deleted": ["named-and-focusable"],
    "outcome/linked": ["named-and-focusable"],
@@ -134,8 +141,8 @@ const KNOWN_BREAKS = {
      "row/download": ["named-and-focusable"],
     "row/pin": ["named-and-focusable"],
      "row/sync": ["named-and-focusable"],
+     "row/tags": ["named-and-focusable"],
     "table/Pinned": ["named-and-focusable"],
-   "table/SharePoint": ["named-and-focusable"],
    "table/Spreadsheets": ["named-and-focusable"],
  } as const;
 

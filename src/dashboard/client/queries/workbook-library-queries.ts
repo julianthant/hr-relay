@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import {
   WorkbookImportRequestSchema, WorkbookImportResultSchema, SavedWorkbookWireSchema, WorkbookRevisionSchema, WorkbookListWireSchema, WorkbookHistoryWireSchema,
-  WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema,
+  WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookCopyMappingRequestSchema, WorkbookIntakeRequestSchema,
   WorkbookIntakeResultSchema, encodeEditableWorkbook, decodeSavedWorkbook, type SavedWorkbook, type WorkbookSummary,
   WorkbookTypeSchema,
 } from "../../../models/dashboard/workbooks.js";
@@ -30,6 +30,7 @@ export interface WorkbookLibraryQueries {
   workbookRevision(libraryId: string, version: number): Promise<SavedWorkbook>;
   workbookCreate(workbook: unknown): Promise<SavedWorkbook>;
   workbookSave(libraryId: string, expectedVersion: number, workbook: unknown): Promise<SavedWorkbook>;
+  workbookCopyMapping(libraryId: string, expectedVersion: number, worksheetId: string): Promise<SavedWorkbook>;
   workbookHistory(libraryId: string): Promise<readonly SavedWorkbook[]>;
   workbookIntake(libraryId: string, expectedVersion: number, workflowId: string): Promise<z.infer<typeof WorkbookIntakeResultSchema>>;
 }
@@ -140,6 +141,13 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
       const record = parseOrThrow(SavedWorkbookWireSchema, path, await transport.requestJson(path, { method: "POST", body: JSON.stringify(request) }));
       if (record.libraryId !== libraryId || record.version !== expectedVersion + 1
         || canonicalContent(record.workbook) !== canonicalContent(request.workbook)) throw schemaError(path, "saved workbook identity, version or content mismatch");
+      return decodeSavedWorkbook(record);
+    },
+    async workbookCopyMapping(libraryId: string, expectedVersion: number, worksheetId: string) {
+      const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/copy-mapping`;
+      const request = parseOrThrow(WorkbookCopyMappingRequestSchema, path, { expectedVersion, worksheetId });
+      const record = parseOrThrow(SavedWorkbookWireSchema, path, await transport.requestJson(path, { method: "POST", body: JSON.stringify(request) }));
+      if (record.libraryId !== libraryId || record.version !== expectedVersion + 1) throw schemaError(path, "copied mapping identity or version mismatch");
       return decodeSavedWorkbook(record);
     },
     async workbookHistory(libraryId: string) {
