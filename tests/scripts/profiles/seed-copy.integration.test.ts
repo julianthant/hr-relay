@@ -308,7 +308,7 @@ async function expectTimelines(client: ReturnType<typeof createDashboardClient>,
     if (state !== "waiting") expect(cards, name).toHaveLength(expected);
     if (state === "paused") expect(cards[0]?.title, name).toBe("Run paused");
     if (state === "cancelled") expect(cards[0]?.title, name).toBe("Run cancelled");
-    if (parkedWrite) expect(cards[0]?.title, name).toMatch(/termination/iu);
+    if (parkedWrite) expect(steps[cards[0]?.index ?? -1]?.entries.flatMap(entry => entry.kind === "decision" ? [entry.decision.title] : []).join(), name).toMatch(/termination/iu);
     else if (state === "needs-review") expect(cards[0]?.title, name).toBe("Run not responding");
     for (const card of cards) expect(card.index, name).toBeGreaterThan(noted.at(-1)?.index ?? Number.POSITIVE_INFINITY);
   }
