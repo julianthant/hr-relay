@@ -141,8 +141,8 @@ export function composeAssistant(options: Readonly<{
     const record = database.authority.startPlans.get(startPlanId);
     return record === undefined ? undefined : { capturedAt: record.plannedAt, runs: record.planned };
   } });
-  // Full access arrives with its own ticket; until then only transaction-free sessions start without a yes.
-  const sessions = createAssistantSessionAuthorization({ ...common, claims: store.sessions, fullAccessAllowed: () => false });
+  const sessions = createAssistantSessionAuthorization({ ...common, claims: store.sessions,
+    fullAccessAllowed: () => database.withAuthorityReadSnapshot(() => readSettings(database.authority).settings.preferences?.assistantFullAccess === true) });
   const assistant = createAssistantM1Service({ ...service, proposals, atomic: work => database.withAuthorityTransaction(() => work()),
     history: () => { service.assertComposition?.(); return database.authority.assistantHistory; },
     tools: () => ({ plugins: [...options.readPlugins(), proposals.plugin, sessionsPlugin()], sessions,

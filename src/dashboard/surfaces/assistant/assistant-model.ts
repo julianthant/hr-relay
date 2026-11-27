@@ -1,6 +1,6 @@
 import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
 import { ASSISTANT_FAILURES, ASSISTANT_MODEL_COMMAND } from '../../../models/dashboard/assistant.js';
-import type { AssistantFailureCode, AssistantReplyPart, AssistantSessionView } from "../../../models/dashboard/assistant.js";
+import type { AssistantApprovalMode, AssistantFailureCode, AssistantReplyPart, AssistantSessionView } from "../../../models/dashboard/assistant.js";
 /** How the panel stands on the saved chat: still being read, unreadable, read with a note to show, or read clean. */
 export type AssistantHistoryState = 'loading' | 'failed' | 'notice' | 'ready';
 export function assistantHistoryState(loading: boolean, notice: string | undefined): AssistantHistoryState {
@@ -31,7 +31,7 @@ export interface AssistantMessage {
 
 export type AssistantTurn =
   | { readonly state: 'idle' }
-  | { readonly state: 'waiting' | 'failed' | 'cancelled' | 'unknown'; readonly requestId: number; readonly prompt: string; readonly staged?: readonly string[];
+  | { readonly state: 'waiting' | 'failed' | 'cancelled' | 'unknown'; readonly requestId: number; readonly prompt: string; readonly staged?: readonly string[]; readonly approvalMode?: AssistantApprovalMode;
       /** The served message id; a Retry of a lost reply resends it, so the server replays a turn it already accepted instead of running it again. */
       readonly messageId?: string };
 
@@ -47,7 +47,7 @@ export interface AssistantState {
 
 export type AssistantAction =
   | { readonly type: 'edit'; readonly value: string }
-  | { readonly type: 'send'; readonly attachments?: readonly { readonly id: string; readonly name: string }[]; /** Staged attachment ids the request names. */ readonly staged?: readonly string[]; readonly messageId?: string }
+  | { readonly type: 'send'; readonly attachments?: readonly { readonly id: string; readonly name: string }[]; /** Staged attachment ids the request names. */ readonly staged?: readonly string[]; readonly messageId?: string; readonly approvalMode?: AssistantApprovalMode }
   | { readonly type: 'retry' | 'cancel' | 'new-chat' }
   | { readonly type: 'settle'; readonly requestId: number; readonly message: AssistantMessage }
   | { readonly type: 'fail' | 'uncertain'; readonly requestId: number };
@@ -62,7 +62,7 @@ export function assistantReducer(state: AssistantState, action: AssistantAction)
     case 'send': {
       if (!state.draft.trim() || turn.state === 'waiting' || turn.state === 'unknown') return state;
       const requestId = state.sequence + 1;
-      return { ...state, sequence: requestId, messages: [...state.messages, { id: `operator-${requestId}`, role: 'operator', text: state.draft, ...(action.attachments?.length ? { attachments: action.attachments } : {}) }], turn: { state: 'waiting', requestId, prompt: state.draft, ...(action.staged?.length ? { staged: action.staged } : {}), ...(action.messageId === undefined ? {} : { messageId: action.messageId }) } };
+      return { ...state, sequence: requestId, messages: [...state.messages, { id: `operator-${requestId}`, role: 'operator', text: state.draft, ...(action.attachments?.length ? { attachments: action.attachments } : {}) }], turn: { state: 'waiting', requestId, prompt: state.draft, ...(action.staged?.length ? { staged: action.staged } : {}), ...(action.messageId === undefined ? {} : { messageId: action.messageId }), ...(action.approvalMode === undefined ? {} : { approvalMode: action.approvalMode }) } };
     }
     case 'retry':
       return turn.state === 'failed' && state.draft === turn.prompt

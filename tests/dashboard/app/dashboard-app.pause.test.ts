@@ -222,3 +222,31 @@ it("clearing one batch's result notice leaves a later batch's failure listed", a
     assert.notEqual(results()[0].dataset.id, first);
   } finally { await f.close(); }
 });
+
+it("dismissing a batch failure's strip keeps its Priority Inbox entry, and a later batch shows a fresh strip", async () => {
+  const f = await mount("paused", FIXTURE_DAY_WIRE, async () => ({ state: "refused", code: "policy-refused", message: "Relay is pausing work to quit." }));
+  const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  const toggleBell = async () => {
+    const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert.ok(bell);
+    await act(async () => bell.click()); await settle();
+  };
+  const results = () => [...document.querySelectorAll<HTMLElement>("li.notice-row")].filter(row => row.querySelector(".notice-title")?.textContent === "Resume: nothing was sent");
+  const strips = () => [...document.querySelectorAll('[role="alert"]')].filter(node => node.textContent === "Resume: nothing was sent");
+  const dismiss = async () => { await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Dismiss"]')?.click()); await settle(); };
+  try {
+    await act(async () => f.button("Resume all").click()); await settle();
+    assert.equal(strips().length, 1);
+    await dismiss();
+    assert.equal(strips().length, 0, "Dismiss hides the strip in place");
+    await toggleBell();
+    assert.equal(results().length, 1, "the same entry stays in the Priority Inbox");
+    const first = results()[0].dataset.id;
+    await toggleBell();
+    await act(async () => f.button("Resume all").click()); await settle();
+    assert.equal(strips().length, 1, "a later failure shows a fresh strip");
+    await dismiss();
+    await toggleBell();
+    assert.equal(results().length, 1, "the newest batch's failure replaces the older one in the Inbox");
+    assert.notEqual(results()[0].dataset.id, first, "and it is its own entry");
+  } finally { await f.close(); }
+});
