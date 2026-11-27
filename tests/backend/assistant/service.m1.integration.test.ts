@@ -144,7 +144,7 @@ it("rolls back a local edit if the same turn cannot save its reply", async () =>
     database.exec("CREATE TABLE edit_fixture (value TEXT NOT NULL); INSERT INTO edit_fixture VALUES ('before')");
     let attempted = false;
     w.offerEdit({ kind: "change", tier: "write-local", name: "change_fixture", description: "Change the test value.",
-      parameters: z.strictObject({}), output: AssistantChangeOutput, privacy: [],
+      parameters: z.strictObject({ value: z.literal("after") }), output: AssistantChangeOutput, privacy: [],
       async change() {
         return () => {
           attempted = true;
@@ -153,7 +153,7 @@ it("rolls back a local edit if the same turn cannot save its reply", async () =>
         };
       },
     });
-    w.script.push(call("change_fixture", {}));
+    w.script.push(call("change_fixture", { value: "after" }));
     w.failHistory("write");
     const reply = await w.send();
     assert.equal(reply.kind, "delivery");

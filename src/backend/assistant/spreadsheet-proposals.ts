@@ -112,7 +112,7 @@ export function spreadsheetChange(deps: Pick<AssistantPluginDeps, "workbooks" | 
                 const url = text(), metadata = WorkbookMetadataSchema.safeParse({ ...entry.metadata, sharePoint: { url, verifiedAt: owner.at } });
                 if (!metadata.success) throw new AssistantToolRefusal("ASSISTANT_SPREADSHEET_REFUSED");
                 return local({ kind: "link", url }, `Changed the link for ${entry.name}`, entry.metadata, metadata.data,
-                  entry.metadata.sharePoint?.url ?? "Unlinked", url);
+                  entry.metadata.sharePoint === null ? "Unlinked" : entry.metadata.sharePoint.url, url);
               }
               case "unlink": {
                 const metadata = { ...entry.metadata, sharePoint: null };
