@@ -16,7 +16,7 @@ import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/helpers/dashboa
 import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 
 
-const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
+const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows));
 const catalog = buildWorkflowCatalog(served, WORKFLOW_SOURCES);
 const noop = () => {};
 
@@ -141,7 +141,7 @@ describe("frontend workflow catalog", () => {
     const publicStarts = WORKFLOW_MODULES.map(({ descriptor, role }) => ({
       workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category, code: descriptor.code, role, icon: descriptor.icon,
       enqueue: descriptor.enqueue, version: descriptor.version, steps: projectWorkflowStartSteps(descriptor),
-      requiredWorkbookFields: descriptor.requiredWorkbookFields, referenceSources: [], spreadsheetIntake: false,
+      requiredWorkbookFields: descriptor.requiredWorkbookFields, spreadsheetIntake: false,
       ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
       uploadRun: descriptor.surfaces.uploadRun,
       inputRun: descriptor.surfaces.inputRun === undefined

@@ -18,7 +18,7 @@ const lookup: RunStartWorkflow = { ...h.WORKFLOWS[0], workbookCheck: CHECK };
 const onboarding = DESCRIPTORS.find(flow => flow.id === "onboarding"); assert.ok(onboarding?.surfaces.inputRun);
 const onboardingFlow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: onboarding.id, label: onboarding.label, version: onboarding.version,
   requiredWorkbookFields: [...onboarding.requiredWorkbookFields], workbookReference: onboarding.workbookReference, workbookCheck: CHECK,
-  referenceSources: [], steps: projectStartSteps(onboarding), inputRun: { state: "present", surface: onboarding.surfaces.inputRun } };
+  steps: projectStartSteps(onboarding), inputRun: { state: "present", surface: onboarding.surfaces.inputRun } };
 
 const libraryEntry = (libraryId: string, name: string, worksheets: readonly string[], pinned = false) => WorkbookLibraryEntrySchema.parse({ libraryId, name, version: 2, updatedAt: "2026-11-01T00:00:00Z", rowCount: 1,
   worksheets: worksheets.map(id => ({ id, name: id })), metadata: { typeId: "any", sharePoint: null },
@@ -194,7 +194,7 @@ it("merges the required roster and the optional check picks into one References 
 });
 
 const rosterLookupReference = { id: "roster-type", keyFieldId: "eid", mode: "keys", writableFields: [] } as const;
-const rosterLookup: RunStartWorkflow = { ...h.WORKFLOWS[0], requiredWorkbookFields: ["eid"], workbookReference: rosterLookupReference, workbookCheck: CHECK, referenceSources: [] };
+const rosterLookup: RunStartWorkflow = { ...h.WORKFLOWS[0], requiredWorkbookFields: ["eid"], workbookReference: rosterLookupReference, workbookCheck: CHECK };
 const rosterLookupReads = () => reads([roster, tracker], [source("roster", { First: ["eid"] }), source("tracker", { Sheet1: ["eid"] })],
   [{ id: rosterLookup.workflowId, label: rosterLookup.label, requiredWorkbookFields: ["eid"], workbookReference: rosterLookupReference }]);
 

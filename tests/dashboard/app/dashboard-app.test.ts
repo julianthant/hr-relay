@@ -68,7 +68,6 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
   protectedSchemaHash: FIXTURE_FINGERPRINT,
   projectionGeneration: 1,
   actor: { id: "local-operator", label: "Local operator" },
-  workbookCompatibility: { workflows: [], libraries: [] },
   serverClock: { now: "2026-08-27T18:00:00.000Z", zone: "America/Los_Angeles" },
   storage: { authority: "healthy" },
   workflows: [{
