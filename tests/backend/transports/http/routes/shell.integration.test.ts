@@ -578,11 +578,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(h.hub.subscriberCount(), 0);
   });
 
-  it("sends the live snapshot's status row only to the connection where it moved", async () => {
+  it("sends only the sync rows that moved for each connection in a live snapshot", async () => {
     const ready = { state: "ready", pending: 0 } as const;
     const failed = { state: "failed", pending: 1, code: "NOTIFICATION_OBSERVATION_FAILED" } as const;
     let status: NotificationObservationStatus = ready;
-    const h = await harness({ profileFixture: profileFixtures.create,
+    const h = await harness({ profileFixture: profileFixtures.create, streamSettings: true,
       notificationStatus: { read: () => status, onChange: () => () => undefined } });
     const readers: ReadableStreamDefaultReader<Uint8Array>[] = [];
     const decoder = new TextDecoder();
@@ -610,11 +610,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     try {
       const first = await connect();
-      assert.deepEqual(first.initial.rows, [row(ready)]);
+      const settings = first.initial.rows.find(syncRow => syncRow.model === "settings");
+      assert.equal(settings?.value.state, "available");
+      assert.deepEqual(first.initial.rows, [row(ready), settings]);
       // The second handoff reads the new status before the first connection receives a status update.
       status = failed;
       const second = await connect();
-      assert.deepEqual(second.initial.rows, [row(failed)]);
+      assert.deepEqual(second.initial.rows, [row(failed), settings]);
 
       const run = currentSeparationsRun({ seed: 340, shape: "single" });
       seedCurrentSeparationsRun(h, run);
