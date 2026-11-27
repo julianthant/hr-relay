@@ -198,6 +198,8 @@ const QueueBaseFields = {
   attempt: z.number().int().positive(),
   parent: QueueParentWireSchema.nullable(),
   actorId: ActorIdSchema.optional(),
+    /* Present when an assistant command started this run; readOnly is a dry run or a workflow with no transaction node. */
+  startedBy: z.strictObject({ kind: z.literal("assistant"), readOnly: z.boolean() }).optional(),
     /* The app build THIS RUN was enqueued under — not the build serving the page; a run enqueued before the stamp existed says so, with its reason. */
   appVersion: RunAppVersionSchema,
   descriptorVersion: PositiveIntSchema,

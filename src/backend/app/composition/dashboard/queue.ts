@@ -34,6 +34,8 @@ function operatorAuthority(input: Readonly<{ database: AuthorityDatabase; reader
   samples?: Pick<CopySamples, "slots" | "leases"> }>): ProjectionAuthority {
   const { database, descriptors } = input;
   const changeKey = database.trackAuthorityTables(["runs", "run_batches", "worker_pools"]);
+  const commandsKey = database.trackAuthorityTables(["commands"]);
+  let assistantRuns: { revision: number; ids: ReadonlySet<string> } | undefined;
   return {
     batchMemberRetryAvailable: run => batchMemberRetryAvailable(database.authority, run, descriptors.resolve(run.envelope.workflow), workflowQueueCapabilities(run.envelope.workflow)),
     aggregateMemberRetryAvailable: run => aggregateMemberRetryAvailable(database.authority, input.reader, run, id => descriptors.resolve(id)),
@@ -65,6 +67,15 @@ function operatorAuthority(input: Readonly<{ database: AuthorityDatabase; reader
     delegationWait: runId => database.authority.dependencies.waitState(runId),
     getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
     canonicalPerson: (runId) => database.canonicalPerson(runId),
+    startedByAssistant: runId => {
+      const revision = commandsKey();
+      if (revision === undefined || assistantRuns?.revision !== revision) {
+        const ids = database.assistantStartedRunIds();
+        if (revision === undefined) return ids.has(runId);
+        assistantRuns = { revision, ids };
+      }
+      return assistantRuns.ids.has(runId);
+    },
     // Ref dashboard-surfaces: the one stored node output a queue row reads — the
     // subject's name, at the leaf the descriptor declares.
     latestCheckpoint: (workflowId, itemId, nodeId) =>
