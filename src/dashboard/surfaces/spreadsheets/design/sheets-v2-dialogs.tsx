@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from 'react';
-import { Chip, ConfirmDialog, Dialog, DialogBody, DialogContent, DialogFooter, Field, Input, dsText } from '../../../ds/ui.js';
-import { type Sheet, addTag, stamp, MAX_TAG_LENGTH } from './sheets-v2-model.js';
+import { ConfirmDialog, Dialog, DialogBody, DialogContent, DialogFooter, Field, Input, dsText } from '../../../ds/ui.js';
+import { type Sheet, stamp } from './sheets-v2-model.js';
 import './sheets-v2.css';
 import { Grey, V2Button } from './sheets-v2-ui.js';
 
-export type DialogKind = 'rename' | 'link' | 'clone' | 'rollback' | 'delete' | 'tags';
+export type DialogKind = 'rename' | 'link' | 'clone' | 'rollback' | 'delete';
 
 function Shell({ title, description, onClose, footer, children, size = 'sm' }: { title: string; description?: ReactNode; onClose: () => void; footer: ReactNode; children?: ReactNode; size?: 'sm' | 'md' }) {
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className="sv2-dialog" size={size} title={title} description={description}>
@@ -14,12 +14,11 @@ function Shell({ title, description, onClose, footer, children, size = 'sm' }: {
 }
 const Cancel = ({ onClose }: { onClose: () => void }) => <V2Button onClick={onClose}>Cancel</V2Button>;
 
-export interface DialogActions { rename: (name: string) => void; clone: (name: string) => Promise<string | undefined>; link: (url: string) => void; rollback: (versionId: string) => void; remove: () => void; tags: (tags: readonly string[]) => void }
+export interface DialogActions { rename: (name: string) => void; clone: (name: string) => Promise<string | undefined>; link: (url: string) => void; rollback: (versionId: string) => void; remove: () => void }
 
 export function SheetDialog({ kind, sheet, actions, onClose }: { kind: DialogKind; sheet: Sheet; actions: DialogActions; onClose: () => void }) {
   const [text, setText] = useState(kind === 'rename' ? sheet.name : kind === 'clone' ? `Copy of ${sheet.name}` : kind === 'link' ? sheet.sharePoint ?? '' : '');
   const [version, setVersion] = useState<string>();
-  const [tags, setTags] = useState<readonly string[]>(sheet.tags);
   const [confirming, setConfirming] = useState(false);
   const [refusal, setRefusal] = useState('');
   const [busy, setBusy] = useState(false);
@@ -32,13 +31,6 @@ export function SheetDialog({ kind, sheet, actions, onClose }: { kind: DialogKin
     return <Shell title="Clone spreadsheet" description={`A copy of ${sheet.name} as it is now.`} onClose={onClose} footer={<><Cancel onClose={onClose} /><V2Button look="primary" disabled={!text.trim() || busy} onClick={send}>Clone</V2Button></>}>
       <Field label="Name"><Input aria-label="Name" value={text} onChange={event => { setText(event.target.value); setRefusal(''); }} /></Field>
       {refusal && <Grey className="mt-2 block text-ui-danger">{refusal}</Grey>}</Shell>;
-  }
-  if (kind === 'tags') {
-    const add = () => { const next = addTag(tags, text); if (next) { setTags(next); setText(''); } };
-    return <Shell title="Edit tags" description={sheet.name} onClose={onClose} footer={<><Cancel onClose={onClose} /><V2Button look="primary" onClick={done(() => actions.tags(tags))}>Save</V2Button></>}>
-      <Field label="Tags"><div className="flex gap-2"><Input aria-label="New tag" maxLength={MAX_TAG_LENGTH} placeholder="Add a tag" value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); add(); } }} />
-        <V2Button disabled={!addTag(tags, text)} onClick={add}>Add</V2Button></div></Field>
-      <div className="mt-3 flex flex-wrap gap-1">{tags.map(tag => <Chip key={tag} onRemove={() => setTags(tags.filter(item => item !== tag))} removeLabel="Remove tag">{tag}</Chip>)}</div></Shell>;
   }
   if (kind === 'link') return <Shell title={sheet.sharePoint ? 'Change SharePoint link' : 'Link to SharePoint'} description="Relay pulls this workbook in. It becomes read-only here." onClose={onClose}
     footer={<><Cancel onClose={onClose} /><V2Button look="primary" disabled={!/^https:\/\//u.test(text.trim())} onClick={done(() => actions.link(text.trim()))}>Link</V2Button></>}>

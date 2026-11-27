@@ -471,6 +471,7 @@ export type ExplorerWorkflowWire = z.infer<typeof ExplorerWorkflowWireSchema>;
 /** The whole projection, served in one document; every registered workflow travels together because the surface's spine needs the list and the payload is static registration metadata. */
 export const WorkflowExplorerWireSchema = z.strictObject({
   wireVersion: DashboardWireVersionSchema,
+  /** Captured when the backend builds the static Explorer document. */
   generatedAt: IsoInstantSchema,
   descriptorHash: FingerprintSchema,
   /** The serving backend's app build id, for comparing a running backend with a fresh tree hash. */

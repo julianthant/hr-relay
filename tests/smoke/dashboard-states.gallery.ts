@@ -55,11 +55,11 @@ test("the keyboard walk reaches controls before the restored sign-up focus", { t
   ]);
 });
 
-// The toggle boards are also reviewed at 1600; these save frames only, the rules run at the desktop sizes below.
+// The toggle boards and the Spreadsheets import, tags, pin and mapping states are also reviewed at 1600; these save frames only, the rules run at the desktop sizes below.
 test.describe("toggle frames at 1600", () => {
   const viewport = { width: 1600, height: 900 };
   test.use({ viewport });
-  for (const { id, surface, story } of CATALOGUE.filter(entry => entry.id.startsWith("shell/toggle/"))) {
+  for (const { id, surface, story } of CATALOGUE.filter(entry => /^(shell\/toggle\/|spreadsheets\/(import|detail|table)\/|spreadsheets\/row\/(tags|pin)$)/u.test(entry.id))) {
     test(`${id} saves its 1600 frame`, { tag: galleryTags(id, surface) }, async ({ mount, page }) => {
       await mount(id);
       await story.play?.(page);

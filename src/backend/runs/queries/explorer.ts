@@ -1,5 +1,6 @@
 
 import { buildExplorerReviewSpec } from "./explorer-review-spec.js";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
@@ -42,7 +43,6 @@ import {
 } from "../../../models/dashboard/explorer.js";
 import type { Fingerprint } from "../../../rules/identity/ids.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { deepFreeze } from "../../../rules/validation/immutability.js";
 import type { UiTaskLink } from "../../systems/ui-task-links.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { currentBuildId } from "../../runtime/build-id.js";
@@ -65,15 +65,14 @@ export interface ExplorerModuleView {
   readonly definition?: AnyWorkflowDefinition;
 }
 
-interface ExplorerReadContext {
+type ScenarioSources = readonly Readonly<{ path: string; text: string }>[];
+
+export interface ExplorerQueryInput {
   readonly clock: Clock;
   readonly descriptorSetHash: Fingerprint;
 
   // Missing executable scenario files report unresolved names; packaging without tests must not discard the Explorer.
-  readonly listScenarioSources: () => readonly Readonly<{ path: string; text: string }>[];
-}
-
-export interface ExplorerQueryInput extends ExplorerReadContext {
+  readonly listScenarioSources: () => ScenarioSources;
   /** The composition root's own tuple — never a re-listed copy of it. */
   readonly modules: readonly ExplorerModuleView[];
   readonly pendingImplBindings: PendingImplBindings;
@@ -81,8 +80,9 @@ export interface ExplorerQueryInput extends ExplorerReadContext {
   readonly uiTaskLinks: readonly UiTaskLink[];
 }
 
-export interface ExplorerQueryDeps extends ExplorerReadContext {
-  readonly catalog: readonly Readonly<{ workflow: ExplorerWorkflowWire; scenarios: (sources: ReturnType<ExplorerReadContext["listScenarioSources"]>) => readonly ExplorerScenarioWire[] }>[];
+export interface ExplorerQueryDeps {
+  readonly body: string;
+  readonly etag: string;
 }
 
 const SCENARIO_DIRECTORY = "tests/scenario";
@@ -94,7 +94,7 @@ const DetailDisplaySchema = z.enum(["text", "eid", "date", "count", "badge", "pe
 export const EXPLORER_SOURCE_ROOT = resolve(import.meta.dirname, "..", "..", "..", "..");
 
 
-export function readScenarioSources(sourceRoot: string): readonly Readonly<{ path: string; text: string }>[] {
+export function readScenarioSources(sourceRoot: string): ScenarioSources {
   const root = join(sourceRoot, SCENARIO_DIRECTORY);
   if (!existsSync(root)) return [];
   const collected: { path: string; text: string }[] = [];
@@ -518,7 +518,7 @@ function edgesOf(nodes: readonly RuntimeFlowNode[]): readonly ExplorerEdgeWire[]
 function scenarioWires(
   descriptor: AnyWorkflowDescriptor,
   scenarioIds: readonly string[],
-  sources: readonly Readonly<{ path: string; text: string }>[],
+  sources: ScenarioSources,
 ): readonly ExplorerScenarioWire[] {
   return [...scenarioIds].sort().map((scenarioId) => {
     const matches = sources.filter(({ text }) => text.includes(scenarioId)).map(({ path }) => path);
@@ -551,7 +551,8 @@ function workflowWire(
   module: ExplorerModuleView,
   deps: ExplorerQueryInput,
   ui: ReadonlyMap<string, readonly ExplorerUiLinkWire[]>,
-): ExplorerQueryDeps["catalog"][number] {
+  scenarioSources: ScenarioSources,
+): ExplorerWorkflowWire {
   const descriptor = module.descriptor;
   const workflowId = String(descriptor.id);
   const projections = workflowProjections(descriptor);
@@ -634,7 +635,7 @@ function workflowWire(
       coveragePoints: coverageByNode.get(String(node.id)) ?? [],
     }));
 
-  const workflow = ExplorerWorkflowWireSchema.parse({
+  return ExplorerWorkflowWireSchema.parse({
     id: descriptor.id,
     label: descriptor.label,
     summary: proseWire(descriptor.summary, `${workflowId}`, `${descriptorPath}'s \`summary\``),
@@ -700,36 +701,37 @@ function workflowWire(
       nodes: group.nodes.map((node) => node.id),
     })),
     edges: edgesOf(nodes),
-    scenarios: [],
+    scenarios: scenarioWires(descriptor, projections.scenarios.map(String), scenarioSources),
     sources: {
       descriptor: sourceLink(descriptorPath, "no workflow definition exists at this path"),
 
       module: resolved(modulePath),
     },
   });
-  const scenarioIds = projections.scenarios.map(String);
-  return { workflow, scenarios: sources => scenarioWires(descriptor, scenarioIds, sources) };
 }
 
-export function registerExplorerCatalog(deps: ExplorerQueryInput): ExplorerQueryDeps {
+export function buildWorkflowExplorer(deps: ExplorerQueryInput): WorkflowExplorerWire {
   const ui = uiLinkIndex(deps.uiTaskLinks);
-  const catalog = deepFreeze(deps.modules.map(module => {
-    try { return workflowWire(module, deps, ui); }
+  const scenarioSources = deps.listScenarioSources();
+  const workflows = deps.modules.map(module => {
+    try { return workflowWire(module, deps, ui, scenarioSources); }
     catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       throw new Error(`workflow ${module.descriptor.id} Explorer registration failed: ${detail}`, { cause });
     }
-  }));
-  return Object.freeze({ clock: deps.clock, descriptorSetHash: deps.descriptorSetHash, listScenarioSources: deps.listScenarioSources, catalog });
-}
-
-export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorerWire {
-  const scenarioSources = deps.listScenarioSources();
+  });
   return WorkflowExplorerWireSchema.parse({
     wireVersion: 1,
     generatedAt: deps.clock.now().toISOString(),
     descriptorHash: deps.descriptorSetHash,
     buildId: currentBuildId(),
-    workflows: deps.catalog.map(({ workflow, scenarios }) => ({ ...workflow, scenarios: scenarios(scenarioSources) })),
+    workflows,
   });
+}
+
+export function registerExplorerCatalog(deps: ExplorerQueryInput): ExplorerQueryDeps {
+  const wire = buildWorkflowExplorer(deps);
+  const body = JSON.stringify(wire);
+  const digest = createHash("sha256").update(body).digest("base64url");
+  return Object.freeze({ body, etag: `"${wire.buildId}-${digest}"` });
 }

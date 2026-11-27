@@ -199,6 +199,29 @@ it("serves create/list/open/save/conflict/history with exact Date transport and 
   assert.equal(unavailable.status, 404); assert.equal((await unavailable.json() as { code: string }).code, 'WORKBOOK_REVISION_UNAVAILABLE');
   for (const invalid of ['0', '-1', 'NaN', '1.5', '1e0', '01', '0x1', '%201']) assert.equal((await h.app.request(`${path}/revisions/${invalid}`)).status, 400);
 });
+it('copies a worksheet\'s column mapping to the worksheets with its headers through the served route', async () => {
+  const h = await harness();
+  const client = workbookClient(h.app);
+  const sheet = (id: string, headers: readonly string[], fields: readonly (string | null)[]) => ({ id, name: id, width: headers.length, hidden: [],
+    columnBindings: headers.map((header, column) => ({ id: `${id}:${column}`, sourceColumn: column, sourceHeader: header, fieldId: fields[column], basis: fields[column] === null ? 'unmapped' : 'manual' })),
+    rows: [{ id: `${id}:header`, cells: headers.map(value => ({ value })) }, { id: `${id}:row`, cells: headers.map(() => ({ value: 'x' })) }] });
+  const created = await client.workbookCreate({ name: 'Separations.xlsx', themes: [], hasFormulas: false, sheets: [
+    sheet('july', ['Email', 'UCPath ID', 'Last Day'], ['email', 'eid', null]),
+    sheet('august', ['Email', 'UCPath ID', 'Last Day'], [null, null, null]),
+    sheet('notes', ['Email', 'Note'], [null, null]),
+  ] });
+  const copied = await client.workbookCopyMapping(created.libraryId, created.version, 'july');
+  assert.equal(copied.version, created.version + 1);
+  const fields = (id: string) => copied.workbook.sheets.find(item => item.id === id)?.columnBindings?.map(binding => binding.fieldId);
+  assert.deepEqual(fields('august'), ['email', 'eid', null]);
+  assert.deepEqual(fields('notes'), [null, null]);
+  assert.deepEqual(await client.workbookOpen(created.libraryId), copied);
+  const stale = await h.app.request(`http://localhost/api/v1/workbooks/${created.libraryId}/copy-mapping`, { method: 'POST', headers, body: JSON.stringify({ expectedVersion: created.version, worksheetId: 'july' }) });
+  assert.equal(stale.status, 409); assert.equal((await stale.json() as { code: string }).code, 'WORKBOOK_VERSION_CONFLICT');
+  const missing = await h.app.request(`http://localhost/api/v1/workbooks/${created.libraryId}/copy-mapping`, { method: 'POST', headers, body: JSON.stringify({ expectedVersion: copied.version, worksheetId: 'absent' }) });
+  assert.equal(missing.status, 400); assert.equal((await missing.json() as { code: string }).code, 'WORKBOOK_INVALID');
+  assert.deepEqual(await client.workbookOpen(created.libraryId), copied);
+});
 it('returns a named conflict and retains the master when formula metadata makes Save unsafe', async () => {
   const h = await harness();
   const created = await h.app.request('http://localhost/api/v1/workbooks', { method: 'POST', headers, body: JSON.stringify({ workbook: encodeEditableWorkbook({ ...workbook, hasFormulas: true }) }) });
@@ -210,14 +233,14 @@ it('returns a named conflict and retains the master when formula metadata makes 
   assert.equal((await response.json() as { code: string }).code, 'WORKBOOK_METADATA_UNSUPPORTED');
   assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(path)).json()), first);
 });
-it.each(["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/library-actions"])("requires JSON before effects for %s", async path => {
+it.each(["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/copy-mapping", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/library-actions"])("requires JSON before effects for %s", async path => {
   const h = await harness(), beforeFault = faultAuthoritySnapshot(h);
   const response = await h.app.request(`http://localhost${path}`, { method: "POST", headers: { host: "localhost", origin: "http://localhost", "content-type": "text/plain" }, body: "{}" });
   assert.equal(response.status, 415); assertHttpFaultOnly(h, beforeFault, 1);
 });
 it.each(foreignOriginCases())("rejects foreign workbook mutation %s before reading the body", async (_label, originHeaders) => {
   const h = await harness();
-  for (const path of ["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/library-actions"]) {
+  for (const path of ["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/copy-mapping", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/library-actions"]) {
     const request = new Request(`http://localhost${path}`, { method: "POST", headers: { ...originHeaders, "content-type": "application/json" }, body: "{}" });
     const read = vi.spyOn(request, "json");
     assert.equal((await h.app.request(request)).status, 403); assert.equal(request.bodyUsed, false); assert.equal(read.mock.calls.length, 0);

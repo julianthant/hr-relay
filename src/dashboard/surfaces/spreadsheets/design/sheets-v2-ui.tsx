@@ -1,6 +1,7 @@
 import { forwardRef, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
-import { ChevronDown, Download, Loader2, LogOut, MoreHorizontal, Search, UserPlus, Users, type LucideIcon } from 'lucide-react';
-import { Button, Chip, IconButton, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus, dsIcon, dsText } from '../../../ds/ui.js';
+import { Check, ChevronDown, Loader2, LogOut, MoreHorizontal, Pin, Plus, Search, UserPlus, Users, type LucideIcon } from 'lucide-react';
+import { Button, Chip, IconButton, SearchInput, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus, dsIcon, dsRadius, dsText } from '../../../ds/ui.js';
+import { DropdownMenuCheckboxItem } from '../../../ds/primitives/dropdown-menu.js';
 import { type Sheet, addTag, stamp, syncFailureWhy, tagsOf, MAX_TAG_LENGTH } from './sheets-v2-model.js';
 import { MENU } from './sheets-v2-menu.js';
 
@@ -29,15 +30,15 @@ export const Tag = ({ children, onRemove, workflow }: { children: string; onRemo
 export const SheetChips = ({ sheet }: { sheet: Sheet }) => <>{tagsOf(sheet).map(tag => <Tag key={tag} workflow={tag === sheet.workflow}>{tag}</Tag>)}</>;
 
 const GAP = 4;
-/** Shows the chips that fit the available width, then a +N chip whose tooltip lists every tag. */
-export function TagsFit({ sheet }: { sheet: Sheet }) {
+/** Shows the chips that fit the available width, then a +N chip whose tooltip lists every tag, then `after`. */
+export function TagsFit({ sheet, after }: { sheet: Sheet; after?: ReactNode }) {
   const tags = tagsOf(sheet), key = tags.join('\u0000');
-  const box = useRef<HTMLDivElement>(null), probe = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null), probe = useRef<HTMLDivElement>(null), tail = useRef<HTMLSpanElement>(null);
   const [count, setCount] = useState(tags.length);
   useLayoutEffect(() => {
     const element = box.current, ruler = probe.current; if (!element || !ruler) return;
     const fit = () => {
-      const sizes = [...ruler.children].map(child => (child as HTMLElement).offsetWidth), plus = sizes.pop() ?? 0, room = element.clientWidth;
+      const sizes = [...ruler.children].map(child => (child as HTMLElement).offsetWidth), plus = sizes.pop() ?? 0, room = element.clientWidth - (tail.current ? tail.current.offsetWidth + GAP : 0);
       let next = tags.length;
       while (next > 0 && sizes.slice(0, next).reduce((sum, size) => sum + size + GAP, -GAP) + (next < tags.length ? GAP + plus : 0) > room) next -= 1;
       setCount(next);
@@ -45,23 +46,43 @@ export function TagsFit({ sheet }: { sheet: Sheet }) {
     fit(); const observer = new ResizeObserver(fit); observer.observe(element); return () => observer.disconnect();
   }, [key, tags.length]);
   const hidden = tags.length - count;
-  return <div ref={box} className="relative flex h-5 min-w-0 flex-1 items-center gap-1 overflow-hidden">
+  return <div ref={box} className="relative flex min-h-6 min-w-0 flex-1 items-center gap-1 overflow-hidden">
     <div ref={probe} aria-hidden className="pointer-events-none invisible absolute left-0 top-0 flex gap-1 whitespace-nowrap"><SheetChips sheet={sheet} /><Tag>{`+${tags.length}`}</Tag></div>
     {tags.slice(0, count).map(tag => <Tag key={tag} workflow={tag === sheet.workflow}>{tag}</Tag>)}
     {hidden > 0 && <Tooltip content={<span className="grid gap-0.5">{tags.map(tag => <span key={tag}>{tag}</span>)}</span>}><span tabIndex={0} role="img" aria-label={`${hidden} more tags: ${tags.join(', ')}`} className={`shrink-0 rounded-[var(--ds-radius-sm)] ${dsFocus}`}><Chip>{`+${hidden}`}</Chip></span></Tooltip>}
+    {after && <span ref={tail} className="flex shrink-0">{after}</span>}
   </div>;
 }
 
-/** Chips with an input that adds a tag on Enter, comma or blur; the library's tag limits apply. */
-export function TagEditor({ tags, onChange }: { tags: readonly string[]; onChange: (tags: readonly string[]) => void }) {
-  const [draft, setDraft] = useState('');
-  const add = () => { const next = addTag(tags, draft); if (next) onChange(next); setDraft(''); };
-  return <div className="flex min-h-8 flex-wrap items-center gap-1.5 rounded-md border border-ui-stroke px-2 py-1">
-    {tags.map(tag => <Tag key={tag} onRemove={() => onChange(tags.filter(item => item !== tag))}>{tag}</Tag>)}
-    <input aria-label="Add a tag" maxLength={MAX_TAG_LENGTH} placeholder={tags.length ? '' : 'Add a tag'} value={draft} onChange={event => setDraft(event.target.value)} onBlur={add}
-      onKeyDown={event => { if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); add(); } }} className="h-5 min-w-16 flex-1 bg-transparent ds-text-ui outline-none placeholder:text-ui-muted" />
-  </div>;
+/** The + beside a spreadsheet's tags: the library's tags to check or uncheck, and a new one typed into the search to create it. */
+export function TagMenu({ name, tags, bank, onChange }: { name: string; tags: readonly string[]; bank: readonly string[]; onChange: (tags: readonly string[]) => void }) {
+  const [query, setQuery] = useState('');
+  const text = query.trim(), all = [...new Set([...bank, ...tags])].toSorted((a, b) => a.localeCompare(b));
+  const shown = all.filter(tag => tag.toLowerCase().includes(text.toLowerCase()));
+  const creatable = !all.some(tag => tag.toLowerCase() === text.toLowerCase()) && addTag(tags, text) !== undefined;
+  const create = () => { const next = addTag(tags, text); if (next) { onChange(next); setQuery(''); } };
+  const toggle = (tag: string) => (checked: boolean) => { const next = checked ? addTag(tags, tag) : tags.filter(item => item !== tag); if (next) onChange(next); };
+  return <DropdownMenu onOpenChange={open => { if (!open) setQuery(''); }}>
+    <DropdownMenuTrigger render={<IconButton variant="outline" size="xs" label={`Add a tag to ${name}`} icon={<Plus aria-hidden className={dsIcon.sm} />} onClick={event => event.stopPropagation()} />} />
+    <DropdownMenuContent align="start" className="flex w-[232px] flex-col overflow-hidden" onClick={event => event.stopPropagation()}>
+      <div className="mb-1 shrink-0" onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); create(); } if (!['Escape', 'ArrowDown', 'ArrowUp'].includes(event.key)) event.stopPropagation(); }}>
+        <SearchInput variant="menu" aria-label="Find or create a tag" placeholder="Find or create a tag" maxLength={MAX_TAG_LENGTH} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} /></div>
+      <div className={`min-h-0 ${MENU}`}>
+        {shown.map(tag => { const on = tags.includes(tag); return <DropdownMenuCheckboxItem key={tag} className="sv2-tag-item" checked={on} onCheckedChange={toggle(tag)} onSelect={event => event.preventDefault()}>
+          {/* The checkbox look, not the ds Checkbox: a button inside a menu item would nest two controls. */}
+          <span aria-hidden className={`ds-checkbox-control inline-flex size-4 shrink-0 items-center justify-center border ${dsRadius.xs} ${on ? 'border-transparent bg-[var(--ds-accent)]' : 'border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]'}`}>
+            {on && <Check className="size-3 text-[color:var(--ds-accent-fg)]" />}</span>{tag}</DropdownMenuCheckboxItem>; })}
+        {creatable && <DropdownMenuItem closeOnClick={false} onSelect={create}>Create “{text}”</DropdownMenuItem>}
+        {!shown.length && !creatable && <div className={`px-2 py-1.5 ${dsText.body} text-ui-muted`}>No tags match.</div>}
+      </div>
+    </DropdownMenuContent>
+  </DropdownMenu>;
 }
+
+/** Filled while the spreadsheet is pinned. */
+export const PinButton = ({ sheet, onClick }: { sheet: Sheet; onClick: () => void }) =>
+  <IconButton label={`${sheet.pinned ? 'Unpin' : 'Pin'} ${sheet.name}`} aria-pressed={sheet.pinned} onClick={onClick}
+    icon={<Pin aria-hidden className={dsIcon.lg} fill={sheet.pinned ? 'currentColor' : 'none'} />} className={sheet.pinned ? 'text-[color:var(--ds-fg)]' : ''} />;
 
 /** One line under the SharePoint link: syncing, last synced, last sync failed, or not synced yet. */
 export function SyncStatus({ sheet }: { sheet: Sheet }) {
@@ -75,20 +96,17 @@ export function SyncStatus({ sheet }: { sheet: Sheet }) {
   return failed ? <Tooltip content={`${syncFailureWhy(sheet)} (${stamp(sync.lastFinishedAt!)})`}>{line}</Tooltip> : line;
 }
 
-export type MenuAction = 'pin' | 'sync' | 'link' | 'clone' | 'rename' | 'tags' | 'delete' | 'download';
+export type MenuAction = 'pin' | 'sync' | 'link' | 'clone' | 'rename' | 'delete' | 'download';
 /** Same menu on every row and on the detail page. */
-export function SheetMenu({ sheet, onAction, withDownload, label }: { sheet: Sheet; onAction: (action: MenuAction) => void; withDownload: boolean; label: string }) {
+export function SheetMenu({ sheet, onAction, label }: { sheet: Sheet; onAction: (action: MenuAction) => void; label: string }) {
   const item = (action: MenuAction, text: string) => <DropdownMenuItem onSelect={() => onAction(action)}>{text}</DropdownMenuItem>;
   return <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Actions for ${label}`}><MoreHorizontal aria-hidden className={dsIcon.lg} /></V2Icon>} /><DropdownMenuContent align="end" className={`min-w-[210px] ${MENU}`}>
-    {withDownload && item('download', 'Download')}
-    {item('pin', sheet.pinned ? 'Unpin' : 'Pin')}
+    {item('download', 'Download')}
     {sheet.sharePoint && (sheet.sync?.state === 'running' ? <DropdownMenuItem disabled>Syncing…</DropdownMenuItem> : item('sync', sheet.sync?.lastResult === 'failed' ? 'Retry sync' : 'Sync now'))}
     {item('link', sheet.sharePoint ? 'Change SharePoint link…' : 'Link to SharePoint…')}
     {item('clone', 'Clone')}
     {item('rename', 'Rename')}
-    {item('tags', 'Edit tags')}
     <DropdownMenuSeparator />
     <DropdownMenuItem variant="destructive" onSelect={() => onAction('delete')}>Delete</DropdownMenuItem>
   </DropdownMenuContent></DropdownMenu>;
 }
-export const DownloadIcon = ({ name, onClick }: { name: string; onClick: () => void }) => <V2Icon label={`Download ${name}`} onClick={onClick}><Download aria-hidden className={dsIcon.lg} /></V2Icon>;
