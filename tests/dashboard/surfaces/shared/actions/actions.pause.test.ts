@@ -48,6 +48,23 @@ it("keeps Resume after the command confirms before the stream moves, and sends a
   assert.deepEqual(m.sent, ["pause@7", "resume@8"]);
 });
 
+it("holds a queued Resume until the Pause confirms when the stream arrives first", async () => {
+  const m = mount(); await m.draw("a", "pause", 7);
+  await m.click(); await m.click();
+  await m.draw("a", "resume", 8);
+  assert.deepEqual(m.sent, ["pause@7"]);
+  await m.settle(true);
+  assert.deepEqual(m.sent, ["pause@7", "resume@8"]);
+});
+
+it("drops a queued Resume when the stream arrives first and the Pause is then refused", async () => {
+  const m = mount(); await m.draw("a", "pause", 7);
+  await m.click(); await m.click();
+  await m.draw("a", "resume", 8);
+  await m.settle(false);
+  assert.deepEqual(m.sent, ["pause@7"]);
+});
+
 it("sends nothing extra when Resume was not pressed during the interval", async () => {
   const m = mount(); await m.draw("a", "pause", 7);
   await m.click(); await m.settle(true); await m.draw("a", "resume", 8);

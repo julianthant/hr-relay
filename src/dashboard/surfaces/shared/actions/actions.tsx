@@ -125,12 +125,13 @@ export function FooterActions({
   // Pause and Resume show their opposite at once and keep it until the run's served control changes;
   // a refused or unconfirmed press restores the served control. A press on the shown opposite is kept
   // (`queued`) and sent once against the fresh served descriptor.
-  const [flip, setFlip] = useState<{ runId: string; command: string; version: number; queued: boolean } | null>(null);
+  const [flip, setFlip] = useState<{ runId: string; command: string; version: number; queued: boolean; confirmed: boolean } | null>(null);
   const servedToggle = footer.find((entry): entry is CommandAction => entry.kind === "command" && (entry.command === "pause" || entry.command === "resume"));
   const flipHolds = flip !== null && servedToggle !== undefined && flip.runId === target.runId
     && flip.command === servedToggle.command && flip.version === target.expectedVersion;
   useEffect(() => {
-    if (flip === null || flipHolds) return;
+    // The queued press waits for the Pause's own confirmation: sending earlier would race its settlement.
+    if (flip === null || flipHolds || !flip.confirmed) return;
     if (flip.runId === target.runId && flip.queued && servedToggle !== undefined && servedToggle.command !== flip.command) void onAction(servedToggle, target);
     setFlip(null);
   }, [flip, flipHolds, servedToggle, target, onAction]);
@@ -169,14 +170,15 @@ export function FooterActions({
             const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id]')?.querySelector<HTMLElement>("[data-queue-open]") ?? null;
             if (isFlipped) { setFlip(now => now === null ? now : { ...now, queued: true }); return; }
             const press = { key: a.key, runId: target.runId, version: target.expectedVersion };
-            if (toggle) setFlip({ runId: press.runId, command: a.key, version: press.version, queued: false });
+            if (toggle) setFlip({ runId: press.runId, command: a.key, version: press.version, queued: false, confirmed: false });
             else if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });
             const settled = onAction(a, target);
             if (toggle) {
               // Only a confirmed command keeps the flip, until the stream serves the new control.
-              const unconfirmed = (confirmed: unknown) => { if (confirmed !== true) setFlip(now => now?.runId === press.runId && now.version === press.version ? null : now); };
-              if (settled === undefined) unconfirmed(false);
-              else void settled.then(unconfirmed, (cause: unknown) => { window.reportError(cause); unconfirmed(false); });
+              const settle = (confirmed: unknown) => setFlip(now => now?.runId !== press.runId || now.version !== press.version ? now
+                : confirmed === true ? { ...now, confirmed: true } : null);
+              if (settled === undefined) settle(false);
+              else void settled.then(settle, (cause: unknown) => { window.reportError(cause); settle(false); });
             } else if (a.kind === "command" && !a.confirm) {
               if (settled === undefined) setPressed(null);
               else void settled.catch((cause: unknown) => { window.reportError(cause); })
