@@ -34,7 +34,10 @@ function scanNotificationSources(database: AuthorityDatabase, reader: Pick<RunRe
   const failures = new Map<string, FailureRecord>();
   const result: NotificationObservation[] = [];
   const diagnostics: "NOTIFICATION_RECEIPT_MISSING"[] = [];
-  const repeated = new Map(database.authority.notificationPublications.list().flatMap(source => source.event.kind === "repeating-failure" ? [[source.event.failureId, source.event] as const] : []));
+  const publications = database.authority.notificationPublications.list();
+  // A failure already published as run-failed keeps that publication; a mismatch never adds a second alert for it.
+  const publishedFailed = new Set(publications.flatMap(source => source.event.kind === "run-failed" ? [source.event.failureId] : []));
+  const repeated = new Map(publications.flatMap(source => source.event.kind === "repeating-failure" ? [[source.event.failureId, source.event] as const] : []));
   const consumeFailure = (input: unknown, run: RunRecord) => {
     const failure = FailureRecordSchema.parse(input);
     if (failure.runId !== run.envelope.runId || failure.workflowId !== run.envelope.workflow || failure.attempt !== run.envelope.attempt || failure.traceId !== run.envelope.traceId) throw new Error("NOTIFICATION_FAILURE_IDENTITY_MISMATCH");
@@ -62,8 +65,9 @@ function scanNotificationSources(database: AuthorityDatabase, reader: Pick<RunRe
   for (const failure of [...failures.values()].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.failureId.localeCompare(b.failureId))) {
     if (!runs.has(failure.runId)) throw new Error("NOTIFICATION_FAILURE_RUN_MISSING");
     const shared = { runId: failure.runId, workflowId: failure.workflowId, failureId: failure.failureId, failureFingerprint: failure.fingerprint };
-    result.push(observation({ kind: "run-failed", ...shared, code: failure.code }, failure.failureId, failure.occurredAt));
-    if (failure.code === "SUBJECT_MISMATCH" || (failure.subject?.expected !== undefined && failure.subject.observed !== undefined)) result.push(observation({ kind: "subject-mismatch", ...shared }, failure.failureId, failure.occurredAt));
+    // One alert per failure: a subject mismatch is the more specific notice of the same failure.
+    const mismatch = !publishedFailed.has(failure.failureId) && (failure.code === "SUBJECT_MISMATCH" || (failure.subject?.expected !== undefined && failure.subject.observed !== undefined));
+    result.push(observation(mismatch ? { kind: "subject-mismatch", ...shared } : { kind: "run-failed", ...shared, code: failure.code }, failure.failureId, failure.occurredAt));
     const fingerprint = sha256Hex(canonicalJsonStringify({ workflow: failure.workflowId, step: failure.nodeId ?? failure.taskId ?? null, code: failure.code }));
     const count = (groups.get(fingerprint) ?? 0) + 1; groups.set(fingerprint, count);
     if (count >= 3 || repeated.has(failure.failureId)) result.push(observation(repeated.get(failure.failureId) ?? { kind: "repeating-failure", ...shared, failureFingerprint: fingerprint, occurrences: count, threshold: 3 }, failure.failureId, failure.occurredAt));

@@ -17,7 +17,7 @@ import { DashboardClientError } from '../../../../../src/dashboard/client/errors
 import assert from "node:assert/strict";
 import { afterEach, expect, it, vi } from "vitest";
 import { WorkbookImportResultSchema, encodeEditableWorkbook, decodeSavedWorkbook } from "../../../../../src/models/dashboard/workbooks.js";
-import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema } from "../../../../../src/models/dashboard/workbook-library.js";
+import { WorkbookLibraryActionStatusSchema, WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema } from "../../../../../src/models/dashboard/workbook-library.js";
 import { assertHttpFaultOnly,faultAuthoritySnapshot,disposeHttpRouteHarness, foreignOriginCases, harness } from "../../../../support/helpers/backend/http-route-harness.js";
 
 afterEach(disposeHttpRouteHarness);
@@ -311,7 +311,69 @@ it('serves persisted types and manual named versions, refusing forged sources an
   const sync = await post({ operationId: 'sync', expectedVersion: first.version, expectedRevision: after.state.revision, change: { kind: 'sync' } });
   assert.equal(sync.status, 409);
   assert.equal((await sync.json() as { code: string }).code, 'WORKBOOK_SYNC_LINK_REQUIRED');
+  const action = async (operationId: string, change: unknown) => {
+    const entry = await catalog();
+    return post({ operationId, expectedVersion: entry.version, expectedRevision: entry.state.revision, change });
+  };
+  const inUse = await action('delete-current', { kind: 'delete-version', versionId: before.state.selectedVersionId });
+  assert.equal(inUse.status, 409);
+  assert.equal((await inUse.json() as { code: string }).code, 'WORKBOOK_VERSION_IN_USE');
+  assert.equal((await action('rename-reviewed', { kind: 'rename-version', versionId: request.operationId, name: 'Approved' })).status, 200);
+  const renamed = await h.app.request(`${path}/versions/${encodeURIComponent(request.operationId)}`);
+  assert.equal(WorkbookLibraryVersionViewSchema.parse(await renamed.json()).version.name, 'Approved');
+  const branch = await action('archive-review', { kind: 'create-version', name: 'Archived review', from: { kind: 'version', versionId: request.operationId }, useNow: false });
+  assert.equal(branch.status, 200);
+  assert.equal((await action('delete-reviewed', { kind: 'delete-version', versionId: request.operationId })).status, 200);
+  assert.equal((await h.app.request(`${path}/versions/${encodeURIComponent(request.operationId)}`)).status, 404);
+  const unavailable = await action('copy-deleted', { kind: 'create-version', name: 'Unavailable', from: { kind: 'version', versionId: request.operationId }, useNow: false });
+  assert.equal(unavailable.status, 404);
+  assert.equal((await unavailable.json() as { code: string }).code, 'WORKBOOK_REVISION_UNAVAILABLE');
+  assert.deepEqual((await catalog()).state.versions.map(({ name }) => name), ['Original version', 'Archived review']);
   assert.equal(h.database.authority.workbooks.read(first.libraryId)?.version, 1);
+});
+
+it('creates a named version from SharePoint only after its download settles', async () => {
+  let available = false, downloads = 0;
+  const h = await harness({ workbookSync: { async withDownload(command, use) {
+    downloads++;
+    const bytes = new TextEncoder().encode('Label\r\nRemote\r\n').buffer;
+    const result = await use({ name: 'Remote.csv', bytes }, { signal: command.signal, assertCurrent: () => command.signal.throwIfAborted() });
+    if (!available) throw new WorkbookLibraryError('WORKBOOK_SYNC_CONTEXT_CHANGED');
+    return result;
+  } } });
+  const client = workbookClient(h.app);
+  const saved = await client.workbookCreate({ name: 'Local.csv', themes: [], hasFormulas: false, sheets: [{ id: 'label', name: 'Sheet 1',
+    hidden: [], width: 1, rows: [{ id: 'header', cells: [{ value: 'Label' }] }, { id: 'local', cells: [{ value: 'Local' }] }] }] });
+  const path = `http://localhost/api/v1/workbooks/${saved.libraryId}`;
+  const action = (body: unknown) => h.app.request(`${path}/library-actions`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const change = { kind: 'create-version', name: 'Remote review', from: { kind: 'sharepoint' }, useNow: false };
+  const unlinked = await action({ operationId: 'unlinked', expectedVersion: 1, expectedRevision: 1, change });
+  assert.equal(unlinked.status, 409);
+  assert.equal((await unlinked.json() as { code: string }).code, 'WORKBOOK_SYNC_LINK_REQUIRED');
+  assert.equal(downloads, 0);
+
+  await client.workbookLibraryAction(saved.libraryId, { operationId: 'link', expectedVersion: 1, expectedRevision: 1,
+    change: { kind: 'link', url: 'https://example.sharepoint.com/sites/hr/Remote.csv' } });
+  const [before] = await client.workbookCatalog();
+  const request = { operationId: 'import-version', expectedVersion: before.version, expectedRevision: before.state.revision, change };
+  const unsettled = await action(request);
+  assert.equal(unsettled.status, 409);
+  assert.equal((await unsettled.json() as { code: string }).code, 'WORKBOOK_SYNC_CONTEXT_CHANGED');
+  assert.deepEqual((await client.workbookCatalog())[0], before);
+  const status = await h.app.request(`${path}/library-actions/${request.operationId}`);
+  assert.deepEqual(WorkbookLibraryActionStatusSchema.parse(await status.json()), { state: 'absent' });
+
+  available = true;
+  assert.equal((await action(request)).status, 200);
+  const read = await h.app.request(`${path}/versions/${request.operationId}`);
+  assert.equal(read.status, 200);
+  const named = WorkbookLibraryVersionViewSchema.parse(await read.json());
+  assert.equal(named.version.name, 'Remote review');
+  assert.equal(named.version.source, 'sharepoint');
+  assert.equal(named.workbook.sheets[0].rows[1].cells[0].value, 'Remote');
+  assert.equal((await client.workbookCatalog())[0].state.selectedVersionId, before.state.selectedVersionId);
+  assert.equal((await action(request)).status, 200);
+  assert.equal(downloads, 2);
 });
 
 

@@ -2,6 +2,13 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
+import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
+import { workerActivityOf } from "../../../../src/backend/app/composition/worker-compose.js";
+import { WorkerChildMessageSchema } from "../../../../src/backend/runtime/workers/worker-messages.js";
+import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
+import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
+import { runningWorkerView } from "../../../support/helpers/backend/fake-worker-port.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import { DAY, DESCRIPTOR_SET_HASH, declareProjectionWorker, uuidOf, workerMemberOf } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -54,6 +61,46 @@ describe("the served queue's Duo wait", () => {
     assert.deepEqual(released.queueSurfaces[0]?.operatorWait, { state: "absent" });
     assert.equal(released.queueSurfaces[0]?.status, "running");
     assert.deepEqual(released.statusCounts, [{ status: "running", count: 1 }]);
+  });
+
+  it("serves the claimed run on the worker card and Needs Duo on its row while the worker waits on Duo sign-in", async () => {
+    const w = await world();
+    const queued = queuedEventOf(w, { seed: 1, descriptor: personLookupDescriptor });
+    const slot = w.database.withAuthorityTransaction(({ workerPools, workerSlots }) => {
+      assert.equal(workerPools.plan({ workflow: queued.workflow, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: queued.ts }).state, "applied");
+      return workerSlots.allocate({ workflow: queued.workflow, poolIndex: 1, now: queued.ts });
+    });
+    const unexpected = (): never => { throw new Error("unexpected write or Activity read"); };
+    const runReader = new RunRecordService({ database: w.database, clock: w.clock, ids: { uuid: unexpected }, publishQueued: unexpected });
+    const runtime = w.database.authority.runtimeConfig.get();
+    assert.ok(runtime);
+    const claimed = runReader.claimNext({ commandId: uuidOf(30), workflow: queued.workflow, workerId: slot.workerId,
+      runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
+        settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+    assert.ok(claimed.state === "applied");
+    // What the claimed worker publishes once its browser starts Duo sign-in.
+    const emitted = workerActivityOf({ browsing: ["authenticating"], claimedRun: claimed.run.envelope.runId, paused: false, standing: undefined });
+    // The pool parses every child message with this schema and faults the worker on a refusal.
+    const received = WorkerChildMessageSchema.parse(JSON.parse(JSON.stringify({ kind: "worker-activity", activity: emitted })));
+    assert.ok(received.kind === "worker-activity");
+    const worker = runningWorkerView(slot, { activity: received.activity });
+    const since = w.clock.now().toISOString();
+    w.database.authority.duoCeremonyLeases.acquire({ credentialKey: "a".repeat(64), workerId: slot.workerId, system: "ucpath", now: since, ttlMs: 80_000 });
+    const projection = createOperatorProjection({ database: w.database, stateRoot: w.stateRoot, clock: w.clock,
+      appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, ledger: createTransactionHistory(w.database.authority),
+      descriptors: { resolve: () => personLookupDescriptor }, workerMembers: () => [worker],
+      reader: { read: runId => runReader.read(runId), list: input => runReader.list(input),
+        withRunTreeSnapshot: (ids, read) => runReader.withRunTreeSnapshot(ids, read),
+        summaries: { ...composeQueueSummaries(w.database), activity: unexpected } } });
+    projection.rebuildFromTimeline();
+    const day = DashboardDayWireSchema.parse(JSON.parse(await projection.servedDashboardDay(DAY)));
+    assert.equal(day.queueSurfaces.length, 1);
+    const row = day.queueSurfaces[0];
+    assert.equal(row?.runId, queued.runId);
+    assert.equal(row?.status, "awaiting-approval");
+    assert.deepEqual(row?.operatorWait, { state: "present", kind: "duo", system: "ucpath", since });
+    assert.equal(day.workerCards[0]?.state, "waiting");
+    assert.deepEqual(day.workerCards[0]?.currentRun, { state: "present", runId: row?.runId, traceId: row?.traceId });
   });
 
   it("publishes expiry without a span or authority mutation and keeps the acquisition time while held", async () => {

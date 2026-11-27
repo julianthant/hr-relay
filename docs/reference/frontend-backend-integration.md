@@ -181,11 +181,11 @@ field membership and discriminated states. The client checks identity as well as
 | Lazy run sections and rerun values | `queries/detail-queries.ts`, `queries/rerun-queries.ts` | `data.ts`, `trust.ts`: `GET /api/v1/runs/:runId/:section`; `data.ts`: `/rerun-values` |
 | Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId/manifest` and `/attachments/:artifactId` under the bundle path; verified artifact URL `/artifacts/v1/:artifactId` |
 | ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /check`, `/sign-in`, `/sign-in/:attemptId/cancel` under the account path |
-| Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
+| Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
 | Preflight | `queries/preflight-queries.ts`, `queries/chatgpt-account-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun`; explicit diagnostic through the existing `chatgpt-account.ts`: `POST /api/v1/settings/chatgpt-account/test-ocr` |
-| Clear run history | `queries/storage-queries.ts`, `commands/settings-commands.ts` | `storage.ts`: `GET /api/v1/storage/run-history`, confirmed `POST /api/v1/storage/run-history/clear`, result-only `POST /api/v1/storage/run-history/result` (never starts an unrecorded command); requires the selected-person `runHistory` service in composition; Clear/result carry the confirmed profile ID and session epoch, admitted before effects and stripped from the internal journal request |
+| Clear run history | `commands/settings-commands.ts` | `storage.ts`: confirmed `POST /api/v1/storage/run-history/clear`, result-only `POST /api/v1/storage/run-history/result` (never starts an unrecorded command); requires the selected-person `runHistory` service in composition; Clear/result carry the confirmed profile ID and session epoch, admitted before effects and stripped from the internal journal request |
 | Notifications | `queries/notification-queries.ts` | `notifications.ts`: `GET /api/v1/notifications`, `/:notificationId/target` and `/collection` under the notifications path |
-| Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity.csv`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
+| Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
 | Explorer | `queries/explorer-queries.ts` | `explorer.ts`: read-only `GET /api/v1/explorer` |
 | Intake | `queries/intake-queries.ts` | `intake.ts`: `GET /api/v1/intake/:sessionId` and `/commands/:commandId` under the session path |
 | Workbook revisions | `queries/workbook-library-queries.ts` | `workbooks.ts`: read-only `GET /api/v1/workbooks/:libraryId/revisions/:version`; exact CAS revision for attachment open/download, independent of named-version history |
@@ -306,8 +306,8 @@ source/type changes and removal. Its catalogue revision and editable workbook re
 mutation. The immutable action record supports a read-only result check after a lost response;
 a refresh never resubmits a change. Removing catalogue membership keeps retained snapshot evidence.
 `workbookLibraryVersion` reads exact named bytes independently of the numeric editable revision.
-Reference requests may choose `versionId`; the retained snapshot carries its matching `versionId`
-and `versionName`, while `version` remains the current library CAS revision. Row-choice producers
+Reference requests may choose `versionId` or omit it to use the current named version. The retained
+snapshot carries the resolved `versionId` and `versionName`, while `version` remains the current library CAS revision. Row-choice producers
 read named bytes through `WorkbookLibraryRepository.libraryVersion`, preserving selected worksheet
 and row identities even when a run chooses a version other than the one in use.
 
@@ -573,12 +573,12 @@ before the account owner when the active profile changes or the page closes.
 
 `WorkflowStartWire.requiredWorkbookFields` and `workbookReference` declare the required fields,
 logical capture ID, key, mode and writable outputs. The dashboard sends one explicit
-`workbookReferences: [{entry, libraryId, versionId, sheetId, expectedVersion, selectedRow?}]` selection
+`workbookReferences: [{entry, libraryId, versionId?, sheetId, expectedVersion, selectedRow?}]` selection
 per entry. The browser cannot supply lookup keys, fields or write authority. Keyed workflows
 declare `referenceKeys(input)`; planning derives the captured request from that callback and the
 frozen static declaration. Each selected worksheet must map every required field exactly once.
 
-`selectedRow` requires an explicit library, an immutable named version and exactly one derived key.
+`selectedRow` binds to the supplied library, the resolved immutable named version and exactly one derived key.
 The descriptor's `inputRun.workbookRows` must declare that logical capture ID, and its input field must equal
 the derived key. The selected sheet/row pair must occur exactly once among that key's retained matches.
 Expected unavailable selections produce entry refusals. Captured references bind canonical input before

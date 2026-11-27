@@ -47,9 +47,15 @@ interface OperatorXlsxExportMainDependencies {
   readonly sourceIdentity: string;
   readonly artifacts: ContentAddressedArtifactWriter;
   readonly authority: OperatorXlsxExportRepository;
-  /** Reserved for the Activity arm; search composition must never read it. */
-  readonly activityReport: (from: string, to: string, token: string) => ActivityReportSelection;
 }
+
+type ActivitySelection = Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "activity" }>;
+/** The Activity arm: the selected report read here, or the whole document collected on a read lane. */
+type ActivityDocumentDependencies = {
+  readonly activityReport: (from: string, to: string, token: string) => ActivityReportSelection | Promise<ActivityReportSelection>;
+} | {
+  readonly readActivityDocument: (selection: ActivitySelection) => Promise<ReturnType<typeof activityDocumentOf>>;
+};
 
 type SearchSelection = Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "search" }>;
 interface SearchDocumentDependencies {
@@ -58,7 +64,7 @@ interface SearchDocumentDependencies {
   readonly withSearchSnapshot: <Result>(read: () => Result) => Result;
 }
 
-export type OperatorXlsxExportServiceDependencies = OperatorXlsxExportMainDependencies & (SearchDocumentDependencies | {
+export type OperatorXlsxExportServiceDependencies = OperatorXlsxExportMainDependencies & ActivityDocumentDependencies & (SearchDocumentDependencies | {
   readonly readSearchDocument: (selection: SearchSelection) => Promise<ReturnType<typeof collectSearchDocument>>;
 });
 
@@ -167,11 +173,9 @@ function readSearchDocument(
   });
 }
 
-function collectActivityDocument(
-  deps: OperatorXlsxExportMainDependencies,
-  selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "activity" }>,
-) {
-  const selectedReport = ActivityReportSelectionSchema.parse(deps.activityReport(selection.from, selection.to, selection.snapshotToken));
+/** The Activity XLSX document for a selected report; pure, so a read lane collects it inside its snapshot. */
+export function activityDocumentOf(sourceIdentity: string, selected: unknown, selection: ActivitySelection) {
+  const selectedReport = ActivityReportSelectionSchema.parse(selected);
   if(selectedReport.snapshot.token!==selection.snapshotToken)throw new Error("activity-export-selection-identity-mismatch");
   const report = ActivityReportWireSchema.parse(Object.fromEntries(Object.entries(selectedReport).filter(([key])=>key!=="snapshot")));
   return OperatorXlsxActivityDocumentSchema.parse({
@@ -181,7 +185,7 @@ function collectActivityDocument(
         from: report.from,
         to: report.to,
         generatedAt: report.generatedAt,
-        sourceIdentity: FingerprintSchema.parse(deps.sourceIdentity),
+        sourceIdentity: FingerprintSchema.parse(sourceIdentity),
         totalRuns: report.totalRuns,
         authorityGeneration:selectedReport.snapshot.authorityGeneration,
         reportDigest:selectedReport.snapshot.reportDigest,
@@ -224,7 +228,9 @@ export function createOperatorXlsxExportService(
         ? "readSearchDocument" in deps
           ? await deps.readSearchDocument(request.selection)
           : collectSearchDocument({ ...deps, sourceIdentity }, request.selection)
-        : collectActivityDocument({ ...deps, sourceIdentity }, request.selection);
+        : "readActivityDocument" in deps
+          ? await deps.readActivityDocument(request.selection)
+          : activityDocumentOf(sourceIdentity, await deps.activityReport(request.selection.from, request.selection.to, request.selection.snapshotToken), request.selection);
       const workbook = await composeOperatorXlsxWorkbook(document);
       const exportId = OperatorXlsxExportIdSchema.parse(deps.ids.uuid());
       const previous = deps.authority.getFile(exportId);

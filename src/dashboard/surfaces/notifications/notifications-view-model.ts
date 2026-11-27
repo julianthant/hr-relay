@@ -15,6 +15,8 @@ export type NotificationItem = Readonly<{
   tone: "danger" | "warning" | "positive" | "info"; age: string;
   read: boolean; action: string; destination: NotificationDestination;
   readOnlyHistory?: true;
+  /** Lists in the bell without a toast: it adds to a failure already announced. */
+  quiet?: true;
   kind?: NotificationKind;
   /** Repeats folded into this notice; shown only above one. */
   count?: number;

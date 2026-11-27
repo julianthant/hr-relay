@@ -1,10 +1,19 @@
 
 import assert from "node:assert/strict";
-import { describe,expect,it } from "vitest";
+import { describe,expect,it,vi } from "vitest";
+import { createComposedDashboardReadHost } from "../../../../src/backend/app/composition/dashboard/runtime-resources.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { z } from "zod";
 import { DESCRIPTORS, descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectWorkbookCompatibilityFromRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
+import { randomUUID } from "node:crypto";
+import { Hono } from "hono";
+import { composeShell } from "../../../../src/backend/app/composition/dashboard/shell.js";
+import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { registerShellRoutes } from "../../../../src/backend/transports/http/routes/shell.js";
+import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
 import { projectStartRows, projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
@@ -93,7 +102,7 @@ describe("bootstrap start-surface block", () => {
     try {
       // Re-parsed on purpose: the producer's own `.parse` is what makes this a
       // statement about the WIRE rather than about an object literal.
-      const wire = FrontendBootstrapWireSchema.parse(buildBootstrap(depsOf(world)));
+      const wire = FrontendBootstrapWireSchema.parse(await buildBootstrap(depsOf(world)));
       const served = new Map(
         WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)
           .map((entry) => [String(entry.id), entry.start] as const),
@@ -161,7 +170,7 @@ describe("bootstrap start-surface block", () => {
   it("serves a synthetic bumped descriptor version verbatim", async () => {
     const world = await makeWorld();
     try {
-      const wire = FrontendBootstrapWireSchema.parse(buildBootstrap({
+      const wire = FrontendBootstrapWireSchema.parse(await buildBootstrap({
         ...depsOf(world),
         modules: [{
           descriptor: VERSION_SEVEN_DESCRIPTOR,
@@ -180,7 +189,7 @@ describe("bootstrap start-surface block", () => {
   it("serves a declared omission's form and cascade on the step's control", async () => {
     const world = await makeWorld();
     try {
-      const wire = FrontendBootstrapWireSchema.parse(buildBootstrap({
+      const wire = FrontendBootstrapWireSchema.parse(await buildBootstrap({
         ...depsOf(world),
         modules: [{
           descriptor: omissionCascadingDescriptor,
@@ -219,7 +228,7 @@ describe("bootstrap start-surface block", () => {
 it('serves implemented saved-row and CRM starts without stale implementation refusals', async () => {
   const world = await makeWorld();
   try {
-    const wire = buildBootstrap(depsOf(world));
+    const wire = await buildBootstrap(depsOf(world));
     expect(wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'i9-check-start')?.start?.uploadRun?.pdfInput).toEqual({
       documentsField: 'documents', asOfField: 'asOf', reviewerField: 'reviewerName',
     });
@@ -295,7 +304,7 @@ describe("bootstrap storage summary", () => {
     const world = await makeWorld();
     try {
       const deps = depsOf(world, { authorityReachable: true });
-      const wire = buildBootstrap(deps);
+      const wire = await buildBootstrap(deps);
       assert.equal(wire.settingsSchemaHash, deps.settingsSchemaHash);
       assert.equal(wire.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
       assert.equal(FrontendBootstrapWireSchema.safeParse({
@@ -310,7 +319,7 @@ describe("bootstrap storage summary", () => {
   it("projects the retained strict preflight report in registry order", async () => {
     const world = await makeWorld();
     try {
-      const wire = buildBootstrap(depsOf(world, { authorityReachable: true }));
+      const wire = await buildBootstrap(depsOf(world, { authorityReachable: true }));
       assert.deepEqual(wire.preflight, [
         {
           id: "runtime.compatibility",
@@ -385,7 +394,7 @@ describe("bootstrap storage summary", () => {
           : result),
       });
 
-      const wire = buildBootstrap({ ...deps, preflightReport: () => failing });
+      const wire = await buildBootstrap({ ...deps, preflightReport: () => failing });
 
       assert.ok(wire.preflight);
       assert.deepEqual(wire.preflight.find(({ id }) => id === "filesystem.health"), {
@@ -407,7 +416,7 @@ describe("bootstrap storage summary", () => {
     try {
       const reached = new Set<string>();
       for (const authorityReachable of [true, false]) {
-        const wire = buildBootstrap(depsOf(world, { authorityReachable }));
+        const wire = await buildBootstrap(depsOf(world, { authorityReachable }));
         // Parsed again on purpose: the producer's own `.parse` is what makes
         // this a statement about the WIRE and not about a literal.
         reached.add(FrontendBootstrapWireSchema.parse(wire).storage.authority);
@@ -418,11 +427,42 @@ describe("bootstrap storage summary", () => {
     }
   });
 
+  it("serves GET /api/v1/bootstrap through the composed shell with authority probed on the read lane and main getMeta disabled", async () => {
+    const profiles = createProfileFixtureSet();
+    try {
+      const profile = await profiles.create();
+      const world = await makeWorld({ profileFixture: async () => profile });
+      try {
+        const lanes = createComposedDashboardReadHost({ admission: profile.admission, database: world.database, clock: world.clock });
+        const artifacts = createContentAddressedArtifactWriter({ admission: profile.admission });
+        await artifacts.ready;
+        const deps = depsOf(world, { authorityReachable: true });
+        const shell = composeShell({ database: world.database, readLanes: lanes, clock: world.clock, ids: { uuid: randomUUID }, artifacts,
+          descriptors: { resolve: () => undefined }, appVersion: deps.appVersion, actorLabel: deps.actorLabel, descriptorSetHash: deps.descriptorSetHash,
+          preflightReport: deps.preflightReport, workbookCompatibility: deps.workbookCompatibility, projection: world.projection,
+          activity: { read: () => { throw new Error("unused activity"); }, readSelected: () => { throw new Error("unused activity"); } },
+          backfillGaps: { detected: () => { throw new Error("unused gap"); } } });
+        try {
+          const app: DashboardApp = new Hono();
+          registerShellRoutes(app, shell);
+          // Every main-isolate AuthorityDatabase, so a shell that read meta on the main connection fails the probe.
+          const getMeta = vi.spyOn(AuthorityDatabase.prototype, "getMeta").mockImplementation(() => { throw new Error("main-connection read"); });
+          try {
+            const response = await app.request("/api/v1/bootstrap");
+            assert.equal(response.status, 200, await response.clone().text());
+            assert.deepEqual(FrontendBootstrapWireSchema.parse(await response.json()).storage, { authority: "healthy" });
+            assert.equal(getMeta.mock.calls.length, 0);
+          } finally { getMeta.mockRestore(); }
+        } finally { shell.hub.close(); await lanes.close(); }
+      } finally { await world.dispose(); }
+    } finally { await profiles.close(); }
+  });
+
   it("an unreachable authority stays explicitly unavailable", async () => {
     const world = await makeWorld();
     try {
 
-      const wire = buildBootstrap(depsOf(world, { authorityReachable: false }));
+      const wire = await buildBootstrap(depsOf(world, { authorityReachable: false }));
       assert.deepEqual(
         wire.storage,
         { authority: "unavailable" },

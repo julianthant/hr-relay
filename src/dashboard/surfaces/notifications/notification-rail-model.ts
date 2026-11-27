@@ -33,7 +33,7 @@ export type NotificationRailModel = Readonly<{
 
 /** Which Settings > General > Notifications switch governs an arriving item, by its tone. */
 export function alertSwitch(item: NotificationItem, preferences: PersonPreferences["notifications"]): boolean {
-  if (item.read) return false;
+  if (item.read || item.quiet === true) return false;
   if (item.tone === "positive") return preferences.runFinished !== "never";
   if (item.tone === "warning") return preferences.needsYou;
   if (item.tone === "danger") return preferences.failures;

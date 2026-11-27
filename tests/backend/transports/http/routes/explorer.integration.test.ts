@@ -233,7 +233,7 @@ it("lists main workflows in the picker and serves delegated workflows on the ste
 
   const world = await makeWorld();
   try {
-    const boot = buildBootstrap({ appVersion: "0.1.0", clock: manualClock(AT), modules: DASHBOARD_CATALOG_MODULES,
+    const boot = await buildBootstrap({ appVersion: "0.1.0", clock: manualClock(AT), modules: DASHBOARD_CATALOG_MODULES,
       descriptorSetHash: descriptorSetHash(DASHBOARD_CATALOG_MODULES.map(({ descriptor }) => descriptor.contractFingerprint)),
       settingsSchemaHash: descriptorSetHash(["settings-schema"]), projection: world.projection, actorLabel: () => "Fixture Operator",
       authorityMeta: () => world.database.getMeta(), preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),

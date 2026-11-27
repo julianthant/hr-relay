@@ -4,8 +4,6 @@ import { ActivityPopulationError } from "../../../runs/queries/activity-populati
 import { ActivitySnapshotError } from "../../../runs/queries/activity-selection.js";
 import { DashboardReadFailedError } from "../../../runs/commands/refusals.js";
 import { selectionDownload } from "../../../runs/exports/selection-download.js";
-import { ActivitySnapshotTokenSchema } from "../../../../models/dashboard/activity-selection.js";
-import { activityReportCsv, activityReportCsvFileName } from "../../../runs/queries/activity-export.js";
 
 import type { DashboardApp } from "./api-types.js";
 import type { ActivityRouteDeps } from "./activity-types.js";
@@ -24,32 +22,27 @@ function populationFailure(error: unknown): never {
   throw new DashboardReadFailedError(error);
 }
 
+const laneJson = (body: string) => new Response(body, { headers: { "content-type": "application/json" } });
+
 export function registerActivityRoutes(app: DashboardApp, deps: ActivityRouteDeps): void {
-  app.get("/api/v1/reports/activity", (c) => {
+  app.get("/api/v1/reports/activity", async (c) => {
     const parameters=[...new URL(c.req.url).searchParams];
     if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-report-duplicate-query");
     const {from,to}=z.strictObject(reportRange).parse(Object.fromEntries(parameters));
-    return c.json(deps.activity.read(from, to));
+    const report = await deps.activity.read(from, to);
+    return typeof report === "string" ? laneJson(report) : c.json(report);
   });
 
-
-  app.get("/api/v1/reports/activity.csv", (c) => {
-    const parameters=[...new URL(c.req.url).searchParams];
-    if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-export-duplicate-query");
-    const selection=z.strictObject({...reportRange,snapshot:ActivitySnapshotTokenSchema}).parse(Object.fromEntries(parameters));
-    const report = deps.activity.readSelected(selection.from, selection.to, selection.snapshot);
-    return selectionDownload(activityReportCsv(report),activityReportCsvFileName(report),"text/csv; charset=utf-8",selection.snapshot);
-  });
-
-  app.get("/api/v1/reports/activity/population", (c) => {
+  app.get("/api/v1/reports/activity/population", async (c) => {
     try {
       const range = ActivityPopulationRangeSchema.safeParse(populationParameters(c.req.url));
       if (!range.success) throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
-      return c.json(ActivityPopulationSelectionSchema.parse(deps.activityPopulation.read(range.data)));
+      const selection = await deps.activityPopulation.read(range.data);
+      return typeof selection === "string" ? laneJson(selection) : c.json(ActivityPopulationSelectionSchema.parse(selection));
     } catch (error) { populationFailure(error); }
   });
 
-  app.get("/api/v1/reports/activity/population/selected", (c) => {
+  app.get("/api/v1/reports/activity/population/selected", async (c) => {
     try {
       const parameters = populationParameters(c.req.url);
       const range = ActivityPopulationRangeSchema.safeParse({ from: parameters.from, to: parameters.to });
@@ -65,11 +58,12 @@ export function registerActivityRoutes(app: DashboardApp, deps: ActivityRouteDep
       const parsed = z.strictObject({ from: z.string(), to: z.string(), snapshot: z.string(), browse: z.string().optional() }).safeParse(parameters);
       if (!parsed.success) throw new ActivityPopulationError("ACTIVITY_POPULATION_BROWSE_INVALID");
       const request = ActivityPopulationSelectedRequestSchema.parse({ ...range.data, snapshot: token.data, ...(browse === undefined ? {} : { browse }) });
-      return c.json(ActivityPopulationSelectedReadSchema.parse(deps.activityPopulation.readSelected(range.data, request.snapshot, request.browse)));
+      const read = await deps.activityPopulation.readSelected(range.data, request.snapshot, request.browse);
+      return typeof read === "string" ? laneJson(read) : c.json(ActivityPopulationSelectedReadSchema.parse(read));
     } catch (error) { populationFailure(error); }
   });
 
-  app.get("/api/v1/reports/activity/population.csv", (c) => {
+  app.get("/api/v1/reports/activity/population.csv", async (c) => {
     try {
       const parameters = populationParameters(c.req.url);
       const range = ActivityPopulationRangeSchema.safeParse({ from: parameters.from, to: parameters.to });
@@ -77,7 +71,7 @@ export function registerActivityRoutes(app: DashboardApp, deps: ActivityRouteDep
       const token = ActivityPopulationTokenSchema.safeParse(parameters.snapshot);
       if (!token.success) throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED");
       if (!z.strictObject({ from: z.string(), to: z.string(), snapshot: z.string() }).safeParse(parameters).success) throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
-      const exported = deps.activityPopulation.exportSelected(range.data, token.data);
+      const exported = await deps.activityPopulation.exportSelected(range.data, token.data);
       return selectionDownload(exported.csv, exported.filename, exported.mediaType, token.data);
     } catch (error) { populationFailure(error); }
   });

@@ -66,7 +66,9 @@ for (const mode of ["none", "attempting", "parked"] as const) it(`recovers an in
   assert.equal(f.database.authority.duoCeremonyLeases.get(credentialKey)?.state, "released");
   const notifications = f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID);
   assert.equal(notifications.filter(note => note.title === "RUN_CRASH_RESOURCES_RELEASED").length, 1);
-  assert.ok(notifications.some(note => note.title === (intent === undefined ? "RUN_INTERRUPTED_BY_CRASH" : "RUN_CRASH_WRITE_UNRESOLVED")));
+  // A crash-ended run is announced once by the canonical failure publisher, so recovery adds only the unresolved-write notice.
+  assert.equal(notifications.some(note => note.title === "RUN_INTERRUPTED_BY_CRASH"), false);
+  assert.equal(notifications.some(note => note.title === "RUN_CRASH_WRITE_UNRESOLVED"), intent !== undefined);
   reconcile();
   assert.deepEqual(f.database.authority.runs.get(f.run.envelope.runId), recovered);
   assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), notifications);
