@@ -40,5 +40,5 @@ export function registeredExplorerQueryDeps(clock: Clock, descriptorSetHash: Fin
 }
 
 export function readFixtureExplorer(input: ExplorerQueryInput) {
-  return buildWorkflowExplorer(registerExplorerCatalog(input));
+  return buildWorkflowExplorer(input);
 }

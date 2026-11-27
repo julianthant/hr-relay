@@ -296,6 +296,9 @@ Log in, sign-up, Duo and ready share one 440px column whose left edge and title 
 ## Data screens and notifications
 
 - Spreadsheets: in the dark theme a workbook cell fill is drawn as an 18% tint with the normal text colour; the light theme draws it in full.
+- Spreadsheets import: Import is a menu (From this computer, SharePoint link), never a dialog first. A picked file opens a draft page (name, tags, preview) with Discard and Add to library; the draft is not in the library until added, and Discard drops it.
+- Spreadsheets tags and pins: + on the draft page and on every list row opens one tag menu: search the library's tags, check to add, type to create. A list row shows a pin where Download was, filled when pinned; Download lives in ⋯.
+- Spreadsheets mapping: a Columns side panel sits beside the grid. Its top control lists the worksheets with "matched of total" and a search; a fully matched worksheet shows no note. Below it every field shows its column and sample values; picking one marks and scrolls its column. "Use for all N worksheets" copies this worksheet's mapping to worksheets with the same headers.
 - Analytics: Runs is the one chart, stacked bars in the Done, Failed and Needs attention status colours, under five figures that double as its legend. Each Workflows row carries a thin result bar in the same colours; Messages and Proposed actions are small neutral lines. Counts and times in one row come from the same runs.
 - Notifications: items of the same kind and subject fold into one with a count and the latest time. Every item names its workflow and run and shows a relative time.
 

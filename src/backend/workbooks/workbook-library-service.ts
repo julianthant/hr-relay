@@ -12,6 +12,7 @@ import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema, encode
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { WorkbookLibraryError } from "./workbook-library-error.js";
+import { copyColumnMapping } from "../../rules/spreadsheets/column-mapping.js";
 import { workbookKey } from "./master-changes.js";
 import { projectWorkbookCompatibility, workbookFieldCoverage, WorkbookActiveSnapshotRequestSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryActionResult, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibrarySyncRecord, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema, type WorkflowWorkbookRequirementInput } from "../../models/dashboard/workbook-library.js";
 import { MAX_SELECTED_WORKBOOK_SOURCES, MAX_WORKBOOK_GRID_CELLS, MAX_WORKBOOK_POPULATED_CELLS, populatedSpreadsheetValue } from "../../rules/spreadsheets/workbook-size.js";
@@ -364,6 +365,14 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     return withImportedDownload({ libraryId, operationId, expectedVersion: record.version, link, signal }, workbook =>
       use(encodeSavedWorkbook({ ...record, workbook: { ...workbook, name: record.workbook.name, libraryId } }).workbook));
   };
+  const save = (libraryId: string, expectedVersion: number, value: unknown): SavedWorkbook => {
+    const workbook = input(EditableWorkbookSchema, value);
+    input(z.number().int().positive(), expectedVersion);
+    const current = read(libraryId);
+    if (current.workbook.hasFormulas || current.workbook.unsupportedMetadata || workbook.hasFormulas || workbook.unsupportedMetadata) throw new WorkbookLibraryError("WORKBOOK_METADATA_UNSUPPORTED");
+    if (workbook.libraryId !== libraryId) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    return deps.repository.save(input(SavedWorkbookSchema, { ...current, version: expectedVersion + 1, savedAt: deps.clock.now().toISOString(), workbook }), expectedVersion);
+  };
   return Object.freeze({
     compatibility(workflows: readonly WorkbookReferenceWorkflow[]) {
       return projectWorkbookCompatibilityFromRepository(deps.repository, workflows);
@@ -441,13 +450,13 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       encoded.set(record, wire);
       return wire;
     }),
-    save(libraryId: string, expectedVersion: number, value: unknown): SavedWorkbook {
-      const workbook = input(EditableWorkbookSchema, value);
-      input(z.number().int().positive(), expectedVersion);
+    save,
+    /** Saves a new version in which every worksheet with `worksheetId`'s headers takes its column mapping. */
+    copyMapping(libraryId: string, expectedVersion: number, worksheetId: string): SavedWorkbook {
       const current = read(libraryId);
-      if (current.workbook.hasFormulas || current.workbook.unsupportedMetadata || workbook.hasFormulas || workbook.unsupportedMetadata) throw new WorkbookLibraryError("WORKBOOK_METADATA_UNSUPPORTED");
-      if (workbook.libraryId !== libraryId) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-      return deps.repository.save(input(SavedWorkbookSchema, { ...current, version: expectedVersion + 1, savedAt: deps.clock.now().toISOString(), workbook }), expectedVersion);
+      if (current.version !== expectedVersion) throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+      if (!current.workbook.sheets.some(sheet => sheet.id === worksheetId && sheet.columnBindings !== undefined)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+      return save(libraryId, expectedVersion, copyColumnMapping(current.workbook, worksheetId));
     },
     history(libraryId: string): readonly SavedWorkbook[] { read(libraryId); return deps.repository.history(libraryId); },
     versions: (libraryId: string) => deps.repository.versions(libraryId),

@@ -115,6 +115,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/workbooks/:libraryId/clone", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/library-actions", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/save", operatorMutationIngressGuard);
+  app.use("/api/v1/workbooks/:libraryId/copy-mapping", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/intake", operatorMutationIngressGuard);
 
   app.post("/api/v1/debug/errors", async c => {
