@@ -119,15 +119,53 @@ it('sends a SharePoint import with the link and name', async () => {
   assert.deepEqual(wiring.adapter.importSharePoint?.mock.calls.at(-1), [{ source: 'sharepoint', url: LINK, name: 'Roster 2' }]);
 });
 
-it('titles the version dialog "Roll back" and confirms with "Roll back to v<n>?"', async () => {
-  await render();
-  await click(host.querySelector('button[aria-label="Versions of Keys.xlsx, now v2"]'));
-  const dialog = document.body.querySelector('[role="dialog"]'); assert.ok(dialog);
-  assert.equal(dialog.querySelector('h2, [data-slot="dialog-title"]')?.textContent?.trim(), 'Roll back');
-  assert.equal((byText('button', 'Roll back') as HTMLButtonElement).disabled, true);
+const openVersions = async () => { await render(); await click(host.querySelector('button[aria-label="Versions of Keys.xlsx, now v2"]')); return document.body.querySelector('[role="dialog"]')!; };
+const lastChange = (): unknown => wiring.adapter.changeLibrary?.mock.calls.at(-1)?.[1];
+
+it('lists versions by name and uses a chosen one after a confirm', async () => {
+  const dialog = await openVersions();
+  assert.equal(dialog.querySelector('h2, [data-slot="dialog-title"]')?.textContent?.trim(), 'Versions');
+  assert.equal((byText('button', 'Use version') as HTMLButtonElement).disabled, true);
   await click([...dialog.querySelectorAll('[role="radio"]')].find(node => node.textContent?.includes('v1')));
-  await click(byText('button', 'Roll back'));
-  assert.match(document.body.textContent ?? '', /Roll back to v1\?/u);
-  await click(byText('button', 'Roll back'));
-  assert.deepEqual(wiring.adapter.changeLibrary?.mock.calls.at(-1)?.[1], { kind: 'use-version', versionId: 'v1' });
+  await click(byText('button', 'Use version'));
+  assert.match(document.body.textContent ?? '', /Use v1\?/u);
+  await click(byText('button', 'Use version'));
+  assert.deepEqual(lastChange(), { kind: 'use-version', versionId: 'v1' });
+});
+
+it('creates a version from another version under a name', async () => {
+  await openVersions();
+  await click(byText('button', 'New version'));
+  assert.equal((byText('button', 'Create') as HTMLButtonElement).disabled, true);
+  await type(document.body.querySelector('input[aria-label="Name"]'), '  Before audit ');
+  await click(byText('button', 'Create'));
+  assert.deepEqual(lastChange(), { kind: 'create-version', name: 'Before audit', from: { kind: 'version', versionId: 'v2' }, useNow: false });
+});
+
+it('creates a version from SharePoint when the spreadsheet is linked', async () => {
+  await render();
+  await click(host.querySelector('button[aria-label="Versions of Roster.xlsx, now v2"]'));
+  await click(byText('button', 'New version'));
+  await type(document.body.querySelector('input[aria-label="Name"]'), 'Fresh pull');
+  await click(byText('button', 'Create'));
+  assert.deepEqual(lastChange(), { kind: 'create-version', name: 'Fresh pull', from: { kind: 'sharepoint' }, useNow: false });
+});
+
+it('renames a version', async () => {
+  await openVersions();
+  await click(document.body.querySelector('button[aria-label="Rename v1"]'));
+  const name = document.body.querySelector<HTMLInputElement>('input[aria-label="Name"]'); assert.equal(name?.value, 'v1');
+  await type(name, 'Original');
+  await click(byText('button', 'Rename'));
+  assert.deepEqual(lastChange(), { kind: 'rename-version', versionId: 'v1', name: 'Original' });
+});
+
+it('deletes a version after a confirm, and turns Delete off with the reason for the version in use', async () => {
+  await openVersions();
+  assert.equal((document.body.querySelector('button[aria-label="Delete v2"]') as HTMLButtonElement).disabled, true);
+  assert.match(document.body.textContent ?? '', /The version in use can't be deleted\./u);
+  await click(document.body.querySelector('button[aria-label="Delete v1"]'));
+  assert.match(document.body.textContent ?? '', /Delete v1\?/u);
+  await click(byText('button', 'Delete version'));
+  assert.deepEqual(lastChange(), { kind: 'delete-version', versionId: 'v1' });
 });

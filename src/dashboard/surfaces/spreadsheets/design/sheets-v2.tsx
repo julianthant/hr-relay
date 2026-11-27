@@ -69,7 +69,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     else setDialog({ kind: action, id });
   };
   const bank = operatorTags(sheets);
-  const rows: RowActions = { open: setOpenId, version: id => setDialog({ kind: 'rollback', id }), menu, logs: sheet => { if (sheet.run) onOpenRun?.(sheet.run.id, sheet.run.day); },
+  const rows: RowActions = { open: setOpenId, version: id => setDialog({ kind: 'versions', id }), menu, logs: sheet => { if (sheet.run) onOpenRun?.(sheet.run.id, sheet.run.day); },
     tags: (id, tags) => void change(id, { kind: 'set-tags', tags: [...tags] }), bank };
   const warned = useRef(false);
   const back = () => {
@@ -156,7 +156,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const pending = pendingLibraries.map(id => catalog.find(item => item.libraryId === id)).filter(Boolean);
   return <section aria-label="Spreadsheets" className="hub-sheets-library settings-compact-page min-w-0">
     {importDraft ? <DraftDetail draft={importDraft} bank={bank} fields={fields} adding={adding} onChange={setImportDraft} onDiscard={discardDraft} onAdd={() => addDraft(importDraft)} />
-    : openId && open ? (<SheetDetail key={openId} sheet={open} onBack={back} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })}>
+    : openId && open ? (<SheetDetail key={openId} sheet={open} onBack={back} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'versions', id: openId })}>
       {draft ? <SheetDetailGrid sheet={open} document={draft.document} fields={fields} onMap={(worksheet, patch) => void saveMapping(worksheet, patch)} onCopy={copyAll} copying={copying} />
         : openError ? <Grey className="ds-text-ui">This spreadsheet couldn't be opened. <V2Button look="plain" onClick={back}>Back</V2Button></Grey>
         : <SheetDetailGridSkeleton name={open.name} />}
@@ -179,7 +179,10 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
         return result.message;
       },
       link: url => void change(target.id, { kind: 'link', url }, `Linked ${target.name}`),
-      rollback: versionId => void change(target.id, { kind: 'use-version', versionId }),
+      useVersion: versionId => void change(target.id, { kind: 'use-version', versionId }),
+      createVersion: (name, from) => void change(target.id, { kind: 'create-version', name, from, useNow: false }, `Created ${name}`, "Couldn't create the version"),
+      renameVersion: (versionId, name) => void change(target.id, { kind: 'rename-version', versionId, name }, `Renamed to ${name}`, "Couldn't rename the version"),
+      deleteVersion: versionId => void change(target.id, { kind: 'delete-version', versionId }, 'Deleted the version', "Couldn't delete the version"),
       remove: () => void change(target.id, { kind: 'remove' }).then(removed => { if (removed && openId === target.id) setOpenId(undefined); }),
     }} />}
     {sharePoint && <SharePointImport onClose={() => setSharePoint(false)} onAdd={addSharePoint} />}

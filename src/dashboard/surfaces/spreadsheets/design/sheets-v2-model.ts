@@ -8,7 +8,7 @@ import { setSpreadsheetColumnField, spreadsheetHeaderRow } from '../spreadsheet-
 import { formatDayTime } from '../../../lib/date-format.js';
 
 export interface Field { readonly key: string; readonly label: string }
-export interface VersionEntry { readonly id: string; readonly n: number; readonly at: string; readonly note: string }
+export interface VersionEntry { readonly id: string; readonly n: number; readonly at: string; readonly name: string }
 /** One library entry as the list and detail pages show it. */
 export interface Sheet {
   readonly id: string; readonly name: string; readonly sharePoint: string | null;
@@ -16,7 +16,7 @@ export interface Sheet {
   readonly workflow?: string; readonly run?: { readonly id: string; readonly day: string };
   /** Served on SharePoint-linked entries only. */
   readonly sync?: WorkbookLibrarySyncStatus;
-  readonly updatedAt: string; readonly version: number; readonly currentVersionId: string; readonly versions: readonly VersionEntry[];
+  readonly updatedAt: string; readonly version: number; readonly currentVersionId: string; readonly versionName: string; readonly versions: readonly VersionEntry[];
 }
 /** A picked file before it joins the library; `id` is unique to one pick for the session, and `document` is absent while the file is read. */
 export interface ImportDraft { readonly id: string; readonly name: string; readonly tags: readonly string[]; readonly document?: EditableWorkbook }
@@ -32,7 +32,8 @@ export const sheetOf = (entry: WorkbookLibraryEntry): Sheet => ({
   workflow: entry.state.origin.kind === 'workflow' ? entry.state.origin.workflowLabel : undefined,
   run: entry.state.origin.kind === 'workflow' ? { id: entry.state.origin.runId, day: entry.state.origin.partitionDay } : undefined,
   sync: entry.sync, updatedAt: entry.updatedAt, version: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.version ?? entry.version, currentVersionId: entry.state.selectedVersionId,
-  versions: entry.state.versions.map(version => ({ id: version.id, n: version.version, at: version.savedAt, note: version.name })).toSorted((a, b) => b.n - a.n),
+  versionName: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.name ?? '',
+  versions: entry.state.versions.map(version => ({ id: version.id, n: version.version, at: version.savedAt, name: version.name })).toSorted((a, b) => b.n - a.n),
 });
 
 const SYNC_WHY = ['WORKBOOK_SYNC_FAILED', 'WORKBOOK_SYNC_NOT_APPLIED', 'WORKBOOK_VERSION_CONFLICT', 'WORKBOOK_METADATA_UNSUPPORTED'] as const;

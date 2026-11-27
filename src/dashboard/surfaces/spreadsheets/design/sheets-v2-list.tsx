@@ -28,7 +28,7 @@ export function SheetRow({ sheet, actions }: { sheet: Sheet; actions: RowActions
     </div>
     <TagsFit sheet={sheet} after={<TagMenu name={sheet.name} tags={sheet.tags} bank={actions.bank} onChange={tags => actions.tags(sheet.id, tags)} />} />
     <div className="min-w-0 text-ui-muted"><SourceCell sheet={sheet} /></div>
-    <div onClick={stop}><V2Button look="plain" className="-ml-3 tabular-nums" aria-label={`Versions of ${sheet.name}, now v${sheet.version}`} onClick={() => actions.version(sheet.id)}>v{sheet.version}</V2Button></div>
+    <div onClick={stop}><V2Button look="plain" className="-ml-3 tabular-nums" aria-label={`Versions of ${sheet.name}, now ${sheet.versionName}`} onClick={() => actions.version(sheet.id)}>{sheet.versionName}</V2Button></div>
     <div className="flex justify-end" onClick={stop}><PinButton sheet={sheet} onClick={() => actions.menu(sheet.id, 'pin')} /><SheetMenu sheet={sheet} label={sheet.name} onAction={action => actions.menu(sheet.id, action)} /></div>
   </li>;
 }
