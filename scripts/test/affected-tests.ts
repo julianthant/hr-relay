@@ -17,6 +17,7 @@ const globalInputs = [
   "tests/support/duo-ceremony-setup.ts",
   "tests/support/private-temp-setup.ts",
 ];
+const workflowExplorerTest = /^tests\/backend\/transports\/http\/routes\/explorer\.[^/]+\.integration\.test\.ts$/u;
 const excludedTests = new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES]);
 
 type FileTree = ReadonlyMap<string, string>;
@@ -181,6 +182,10 @@ export function createAffectedTestsPlanner(root: string): (base: string, head: s
       for (const [file, distance] of distancesFrom(removed, reverseImports(before, tree(before)))) {
         if (distance < (distances.get(file) ?? Infinity)) distances.set(file, distance);
       }
+    }
+    // Explorer tests assert a workflow's whole step graph but import it many hops away; rank them first so the shard limit keeps them.
+    if (changed.some(file => file.startsWith("src/workflows/"))) {
+      for (const file of files.keys()) if (workflowExplorerTest.test(file)) distances.set(file, 0);
     }
     const global = changed.some(file => /^(?:package(?:-lock)?\.json|(?:vitest\.config|tsconfig)(?:\.[\w-]+)*\.[\w]+)$/u.test(file))
       || globalInputs.some(file => distances.has(file));
