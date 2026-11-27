@@ -1,6 +1,6 @@
 /** Assistant surface stories: the ChatGPT account the panel needs, every turn it can be in, each reply it shows (an answer, a proposal waiting on a typed yes,
  * the answered yes with its session chip), the refusals it shows, files attached to a message, the history it opens on, and the list of chats.
- * The real panel runs on the real controller; a scripted client answers it. The turn's `unknown` state is reached by cancelling a reply that has not answered.
+ * The real panel runs on the real controller; a scripted client answers it.
  * The turn's `cancelled` state comes only from typing while a reply is pending, and the composer is disabled then, so no person reaches it. */
 import type { Page } from "@playwright/test";
 import type { ChatGptAccountSnapshot } from "../../../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
