@@ -153,7 +153,7 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
           const runIds = command.family === "start" ? [proposals.run().envelope.runId] : command.family === "run" ? [command.target.runId] : [];
           return Promise.resolve(CommandResultSchema.parse({ state: "applied", commandId: command.commandId, affectedTargets: runIds.map(runId => ({ family: "run", runId })) }));
         } };
-        const composed = composeAssistant({ database: { authority, withAuthorityReadSnapshot: (work: () => unknown) => work() } as unknown as Parameters<typeof composeAssistant>[0]["database"], starts,
+        const composed = composeAssistant({ database: { authority, withAuthorityReadSnapshot: (work: () => unknown) => work(), withAuthorityTransaction: (work: (repositories: unknown) => unknown) => work(authority) } as unknown as Parameters<typeof composeAssistant>[0]["database"], starts,
           readPlugins: () => [{ domain: "people", tools: [readPerson] }],
           service: { account, clock, actorId: "local-operator", owner,
             selectedModel: () => ({ preference: { slug: MODEL, effort: "medium" }, assertCurrent() {} }),

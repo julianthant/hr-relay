@@ -110,7 +110,7 @@ export const assistantValueBindings = (table: AssistantReferenceTable): readonly
 /** The served assistant: the turn-accounting service over the typed-yes proposal owner and read-only sessions. */
 export function composeAssistant(options: Readonly<{
   service: Omit<AssistantM1ServiceOptions, 'history' | 'proposals' | 'tools'>;
-  database: Pick<AuthorityDatabase, 'authority' | 'withAuthorityReadSnapshot'>;
+  database: Pick<AuthorityDatabase, 'authority' | 'withAuthorityReadSnapshot' | 'withAuthorityTransaction'>;
   starts: Pick<AssistantTypedProposalPorts, 'descriptors' | 'served' | 'plans' | 'runs' | 'rerunValues' | 'attachment' | 'ocrSources' | 'submit'>;
   readPlugins: () => readonly AssistantPlugin[];
 }>) {
@@ -123,7 +123,7 @@ export function composeAssistant(options: Readonly<{
   } });
   // Full access arrives with its own ticket; until then only transaction-free sessions start without a yes.
   const sessions = createAssistantSessionAuthorization({ ...common, claims: store.sessions, fullAccessAllowed: () => false });
-  const assistant = createAssistantM1Service({ ...service, proposals,
+  const assistant = createAssistantM1Service({ ...service, proposals, atomic: work => database.withAuthorityTransaction(() => work()),
     history: () => { service.assertComposition?.(); return database.authority.assistantHistory; },
     tools: () => ({ plugins: [...options.readPlugins(), proposals.plugin, sessionsPlugin()], sessions,
       bindings: assistantValueBindings }) });

@@ -111,6 +111,8 @@ export type AssistantService = Pick<ReturnType<typeof createAssistantM1Service>,
 
 export interface AssistantM1ServiceOptions extends Omit<AssistantServiceOptions, "debugEvents"> {
   readonly history: () => AssistantM1HistoryRepository;
+  /** One authority transaction: a reply and the proposal it renders commit together or not at all. */
+  readonly atomic?: <T>(work: () => T) => T;
   readonly debugEvents: NonNullable<AssistantServiceOptions["debugEvents"]>;
   /** The typed-yes proposal owner; its tools come through `tools`. */
   readonly proposals?: Pick<AssistantTypedProposals, "open" | "supersede" | "issue" | "answer" | "needsYou">;
@@ -228,13 +230,16 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
         assertOwner();
         const reason = "reason" in outcome ? outcome.reason : undefined;
         const reply = "parts" in outcome ? { id: randomUUID(), kind: "answer" as const, parts: outcome.parts, modelText: outcome.modelText } : undefined;
-        const revision = history.settle(attempt, { delivery: "uncertain" in outcome ? "delivery-unknown" : reason === undefined ? "answered" : "refused",
-          usage, ...(reason === undefined ? {} : { code: reason }), ...(reply === undefined ? {} : { reply }) }, now());
-        if (revision === undefined) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE");
+        const revision = (options.atomic ?? (work => work()))(() => {
+          const settledRevision = history.settle(attempt, { delivery: "uncertain" in outcome ? "delivery-unknown" : reason === undefined ? "answered" : "refused",
+            usage, ...(reason === undefined ? {} : { code: reason }), ...(reply === undefined ? {} : { reply }) }, now());
+          if (settledRevision === undefined) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE");
+          if (reply !== undefined && "parts" in outcome && outcome.proposal !== undefined)
+            options.proposals?.issue(outcome.proposal, { conversationId, renderedMessageId: reply.id, sourceMessageId: messageId, revision: settledRevision });
+          return settledRevision;
+        });
         settled = true;
         observedRevision = revision;
-        if (reply !== undefined && "parts" in outcome && outcome.proposal !== undefined)
-          options.proposals?.issue(outcome.proposal, { conversationId, renderedMessageId: reply.id, sourceMessageId: messageId, revision });
         const stored = readback();
         if ("uncertain" in outcome) return repeated(stored);
         if (stored.usage.state === "pending") throw new AssistantProtocolError("assistant-settled-usage-missing");
