@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Form } from "@heroui/react";
-import { Banner, Button, FormGroup, PageHeading, Spinner, dsText, Notice } from "../../../ds/ui.js";
+import { Banner, Button, FailureNotice, FormGroup, PageHeading, Spinner, dsText, Notice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { settingsSectionGroups, formatSetting } from "./settings-draft-model.js";
@@ -25,10 +25,10 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
   if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
   if (sectionId === "providers") return <Banner tone="info" title="Provider settings retired">ChatGPT sign-in is available in General.</Banner>;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings unavailable" description="Reopen Settings to try again." />;
+  if (editor.editor.state === "failed") return <FailureNotice sentence="Settings unavailable. Reopen Settings to try again." />;
   const document = editor.editor.document;
   const sections = document.sections.filter(section => section.id === sectionId);
-  if (sections.length === 0) return <Notice tone="danger" title="Section unavailable" />;
+  if (sections.length === 0) return <FailureNotice sentence="Section unavailable." />;
   const leaves = sections.flatMap(section => section.leaves);
   const pageTitle = sections[0]?.label ?? sectionId;
   return <section className="settings-editor">
