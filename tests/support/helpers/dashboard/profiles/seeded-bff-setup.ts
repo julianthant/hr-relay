@@ -29,8 +29,6 @@ import { createTimelineEmitter } from "../../../../../src/backend/storage/events
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import type { DashboardAppDeps } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { type DashboardApp } from "../../../../../src/backend/transports/http/routes/api.js";
-import { serializeErrorCauses } from "../../../../../src/models/failures/error-origins.js";
-import { sanitizeDebugText } from "../../../../../src/rules/redaction/redaction.js";
 import type { Clock } from "../../../../../src/rules/time/clock.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { type MockBundleProof } from "../served-fixtures/bundle.js";
@@ -98,7 +96,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     return Buffer.concat(chunks);
   }
 
-  async function bridge(app: DashboardApp, req: IncomingMessage, res: ServerResponse, url: URL, timeline: AuthorityDatabase["authority"]["timelineEvents"]): Promise<void> {
+  async function bridge(app: DashboardApp, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
     const response = await app.fetch(new Request(`http://127.0.0.1${url.pathname}${url.search}`, {
       method: req.method ?? "GET",
@@ -107,13 +105,6 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       ),
       ...(body === undefined ? {} : { body: new Uint8Array(body) }),
     }));
-    if (url.pathname === "/events/v1" && response.status >= 500) {
-      const after = Math.max(0, timeline.debugHighWaterMark() - 16);
-      const faults = timeline.debugPage({ after }).flatMap(({ payload }) => payload.kind === "debug"
-        && payload.event.category === "http" && payload.event.phase === "failed" ? [payload.event] : []);
-      const failure = sanitizeDebugText(await response.clone().text());
-      process.stderr.write(`[DEBUG-1072] ${JSON.stringify({ status: response.status, resumed: req.headers["last-event-id"] !== undefined, failure, faults })}\n`);
-    }
     res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
     if (response.body === null) {
       res.end(Buffer.from(await response.arrayBuffer()));
@@ -267,7 +258,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
           return;
         }
         if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/events/")) {
-          await bridge(app, req, res, url, database.authority.timelineEvents);
+          await bridge(app, req, res, url);
           return;
         }
         await serveStatic(input.distDir, url.pathname, res);
@@ -275,9 +266,6 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
         if (res.headersSent) {
           res.end();
           return;
-        }
-        if (req.url?.startsWith("/events/v1?") === true) {
-          process.stderr.write(`[DEBUG-1072] ${JSON.stringify({ bridge: serializeErrorCauses(error) })}\n`);
         }
         res.writeHead(500, { "content-type": "application/json" });
         res.end(JSON.stringify({

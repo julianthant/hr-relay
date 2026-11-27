@@ -606,7 +606,9 @@ async function holdDayCursor(seeded: SeededServer): Promise<Record<string, strin
   finally { stream.close(); }
 }
 
-for (const probe of [1, 2, 3, 4]) test(`Onboarding: a hire submit whose answer is lost parks the run and is asked for once (probe ${probe})`, async ({ dashboard, seeded, page, failures }) => {
+test("Onboarding: a hire submit whose answer is lost parks the run and is asked for once", async ({ dashboard, seeded, page, failures }) => {
+  // Queuing the hire changes the day counts and publishes a snapshot above this cursor.
+  const resume = await holdDayCursor(seeded);
   const { request, runId } = await onboardingStarted({ dashboard, seeded, page, failures });
   const first = await seeded.scripted.drive(runId);
   let position = first.position;
@@ -617,17 +619,11 @@ for (const probe of [1, 2, 3, 4]) test(`Onboarding: a hire submit whose answer i
   expect(await run.advance()).toEqual({ at: "step", nodeId: "ucpath-source" });
   expect(await run.advance()).toEqual({ at: "step", nodeId: "hire-create" });
   expect(await run.advance()).toEqual({ at: "step", nodeId: "hire-create" });
-  const streamUrl = `${seeded.baseUrl}/events/v1?topics=dashboard-day:${seeded.day},run:${runId}`;
-  const resume = probe === 1 ? undefined : await holdDayCursor(seeded);
-  const probeStreams = () => Promise.all(Array.from({ length: 8 }, async (_, index) => {
-    const response = await fetch(streamUrl, index % 2 === 0 && resume !== undefined ? { headers: resume } : undefined);
-    try { expect(response.status, "Onboarding run-topic subscription").toBe(200); }
-    finally { await response.body?.cancel(); }
-  }));
-  const [settled] = await Promise.all([run.parkWrite(), probe === 1 ? undefined : probeStreams()]);
-  expect(settled).toMatchObject({ at: "settled", outcome: { state: "parked-write" } });
+  expect(await run.parkWrite()).toMatchObject({ at: "settled", outcome: { state: "parked-write" } });
   await expect.poll(async () => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status, { message: "the parked write is not Done" }).toBe("blocked");
-  if (probe !== 1) await probeStreams();
+  const resumed = await fetch(`${seeded.baseUrl}/events/v1?topics=dashboard-day:${seeded.day},run:${runId}`, { headers: resume });
+  try { expect(resumed.status, "resuming across the queue snapshot opens a fresh stream").toBe(200); }
+  finally { await resumed.body?.cancel(); }
   await dashboard.openRun(runId);
   await dashboard.reloadRun(runId);
   await expect(page.locator(`[data-demo-row-id="${runId}"]`)).toContainText("Write parked");
