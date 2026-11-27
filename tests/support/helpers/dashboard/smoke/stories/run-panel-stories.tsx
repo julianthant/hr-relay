@@ -255,7 +255,7 @@ const REVIEW_NOTICE = {
       const client = createDashboardClient({ baseUrl: "http://relay.story.test", fetchImpl: async input => String(input).endsWith("/review")
         ? Response.json({ section: "review", payload: ocrReviewPageFixture(row.runId) }) : Promise.reject(new Error("offline")) });
       return <StoryFrame><DashboardClientProvider client={client}>
-        <ReviewDialog open onOpenChange={noop} subject="Emergency Contact scan"><RunReview selection={{ row, workflowLabel: "Emergency Contact" }} focus={{ runId: row.runId, recordId: StableRecordIdSchema.parse("00000000-0000-4000-8000-000000000999") }} /></ReviewDialog>
+        <ReviewDialog open onOpenChange={noop} subject="Emergency Contact scan"><RunReview selection={{ row, workflowLabel: "Emergency Contact" }} focus={{ runId: row.runId, recordId: StableRecordIdSchema.parse(`${"a".repeat(64)}#emergency-contact#9`) }} /></ReviewDialog>
       </DashboardClientProvider></StoryFrame>;
     },
     expects: [{ pattern: /offline|Failed to fetch|relay\.story\.test/u, reason: "every read but the review page fails on purpose" }],

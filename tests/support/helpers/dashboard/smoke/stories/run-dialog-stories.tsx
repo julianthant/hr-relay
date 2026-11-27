@@ -213,8 +213,10 @@ const REFERENCE = {
 } satisfies Record<ReferenceState, Story>;
 
 /** Saved onboarding rows: the version read behind the row list fails after the spreadsheet itself read fine. */
-const rowsFailing = (): Partial<DashboardClient> => { let reads = 0; const served = RUN_DIALOG_REFERENCE_READS;
-  return { ...served, workbookLibraryVersion: async (...args) => { if (reads++ < 1 && served.workbookLibraryVersion) return served.workbookLibraryVersion(...args); throw new Error("The saved rows could not be read."); } }; };
+const rowsFailing = (): Partial<DashboardClient> => { const served = RUN_DIALOG_REFERENCE_READS; let first: ReturnType<NonNullable<DashboardClient["workbookLibraryVersion"]>> | undefined; let settled = false;
+  return { ...served, workbookLibraryVersion: (...args) => {
+    if (first === undefined) { first = served.workbookLibraryVersion!(...args); void first.finally(() => { settled = true; }); }
+    return settled ? Promise.reject(new Error("The saved rows could not be read.")) : first; } }; };
 const SAVED_ROWS = {
   unavailable: reference("Saved rows that could not be read", rowsFailing(), RUN_DIALOG_SAVED_ROWS_CATALOG, { then: chooseRoster, ready: 'text=/Saved rows unavailable/' }),
 } satisfies Record<"unavailable", Story>;
