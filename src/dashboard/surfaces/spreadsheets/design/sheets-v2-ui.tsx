@@ -55,7 +55,7 @@ export function TagsFit({ sheet, after }: { sheet: Sheet; after?: ReactNode }) {
 }
 
 /** The + beside a spreadsheet's tags: the library's tags to check or uncheck, and a new one typed into the search to create it. */
-export function TagMenu({ name, tags, bank, disabled, onChange }: { name: string; tags: readonly string[]; bank: readonly string[]; disabled?: boolean; onChange: (tags: readonly string[]) => void }) {
+export function TagMenu({ name, tags, bank, onChange }: { name: string; tags: readonly string[]; bank: readonly string[]; onChange: (tags: readonly string[]) => void }) {
   const [query, setQuery] = useState('');
   const text = query.trim(), all = [...new Set([...bank, ...tags])].toSorted((a, b) => a.localeCompare(b));
   const shown = all.filter(tag => tag.toLowerCase().includes(text.toLowerCase()));
@@ -63,7 +63,7 @@ export function TagMenu({ name, tags, bank, disabled, onChange }: { name: string
   const create = () => { const next = addTag(tags, text); if (next) { onChange(next); setQuery(''); } };
   const toggle = (tag: string) => (checked: boolean) => { const next = checked ? addTag(tags, tag) : tags.filter(item => item !== tag); if (next) onChange(next); };
   return <DropdownMenu onOpenChange={open => { if (!open) setQuery(''); }}>
-    <DropdownMenuTrigger render={<IconButton variant="outline" size="xs" disabled={disabled} label={`Add a tag to ${name}`} icon={<Plus aria-hidden className={dsIcon.sm} />} onClick={event => event.stopPropagation()} />} />
+    <DropdownMenuTrigger render={<IconButton variant="outline" size="xs" label={`Add a tag to ${name}`} icon={<Plus aria-hidden className={dsIcon.sm} />} onClick={event => event.stopPropagation()} />} />
     <DropdownMenuContent align="start" className="flex w-[232px] flex-col overflow-hidden" onClick={event => event.stopPropagation()}>
       <div className="mb-1 shrink-0" onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); create(); } if (!['Escape', 'ArrowDown', 'ArrowUp'].includes(event.key)) event.stopPropagation(); }}>
         <SearchInput variant="menu" aria-label="Find or create a tag" placeholder="Find or create a tag" maxLength={MAX_TAG_LENGTH} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} /></div>
