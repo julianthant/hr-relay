@@ -108,8 +108,8 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         ocrCalls++;
         assert.equal(options.ocrProviderAvailable?.(), true, "Unexpected OCR provider call while unavailable");
         const { formType, page, sourcePage } = OcrExtractionRequestSchema.parse(request.payload.value);
-        const value = { ...submittedPage({ formType, sourcePage, image: page, document: page, readingId: READING_ID }, undefined, "blank"),
-          readAt: clock.now().toISOString() };
+        const value = { formType, sourcePage, sourceSha256: page.sha256, pageKind: "blank", record: null,
+          source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "synthetic-test-model" }, readAt: clock.now().toISOString() };
         return ProviderAdapterOutcomeSchema.parse({ response: { state: "produced", value: { schemaHash: OCR_EXTRACTION_RESPONSE_HASH, value } },
           evidence: { summary: "Synthetic blank page", capturedAt: value.readAt } });
       } };
