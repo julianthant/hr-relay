@@ -1,7 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import { ChartNoAxesColumn, Circle, CircleAlert, CircleCheck, Clock, FileSpreadsheet, ListTree, LoaderCircle, Play, Settings, Table2, type LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Kbd, Skeleton } from "../../../ds/ui.js";
 import { workflowIcon } from "../../workflows/workflow-icons.js";
 import { dsLayer } from "../../../ds/theme/tokens.js";
@@ -22,15 +22,18 @@ function RowIcon({ row }: { row: PaletteRow }) {
 }
 
 /** Search Relay: quick actions, runs, workflows and spreadsheets in one palette. The input is its first row. */
-export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMatched, loading = false, workflows, sheets, startKey, onAction, onWorkflow, onRun, notice, onCloseAutoFocus }: {
+export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMatched, onMoreRuns, loading = false, workflows, sheets, startKey, onAction, onWorkflow, onRun, notice, onCloseAutoFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void; query: string; onQuery: (query: string) => void;
-  runs: readonly NavbarSearchResult[]; /** The served search already matched the query. */ runsMatched?: boolean; /** The served search has not answered yet. */ loading?: boolean; workflows: readonly PaletteWorkflow[]; sheets: readonly PaletteSheet[]; startKey?: string;
+  runs: readonly NavbarSearchResult[]; /** The served search already matched the query. */ runsMatched?: boolean; /** Reads the next page of runs; absent when none remain. */ onMoreRuns?: () => void; /** The served search has not answered yet. */ loading?: boolean; workflows: readonly PaletteWorkflow[]; sheets: readonly PaletteSheet[]; startKey?: string;
   onAction: (action: PaletteAction) => void; onWorkflow: (id: string) => void; onRun: (result: NavbarSearchResult) => void; notice: string;
   onCloseAutoFocus: (event: Event) => void;
 }) {
   const [filter, setFilter] = useState<PaletteFilter>("all");
   const sections = useMemo(() => paletteSections({ query, filter, runs, runsMatched, workflows, sheets }), [query, filter, runs, runsMatched, workflows, sheets]);
   useEffect(() => { if (!open) setFilter("all"); }, [open]);
+  const list = useRef<HTMLDivElement>(null);
+  // A Runs list that fits without scrolling can never fire a scroll, so it asks for the next page itself.
+  useEffect(() => { const el = list.current; if (open && filter === "runs" && onMoreRuns && el && el.scrollHeight <= el.clientHeight) onMoreRuns(); }, [open, filter, onMoreRuns, sections]);
   // cmdk leaves aria-activedescendant unset until the selection first moves
   const watchSelection = (root: HTMLElement | null) => {
     if (!root) return;
@@ -56,7 +59,7 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
         <DialogPrimitive.Title className="sr-only">Search Relay</DialogPrimitive.Title>
         <Command ref={watchSelection} shouldFilter={false} loop label="Search Relay" className="flex min-h-0 flex-1 flex-col">
           <Command.Input autoFocus aria-label="Search Relay" placeholder="Search Relay" value={query} onValueChange={onQuery} className="search-palette-input" />
-          <Command.List label="Results" className="search-palette-list">
+          <Command.List ref={list} label="Results" className="search-palette-list" onScroll={event => { const list = event.currentTarget; if (onMoreRuns && list.scrollHeight - list.scrollTop - list.clientHeight < list.clientHeight) onMoreRuns(); }}>
             {sections.length === 0 && !loading && <p role="status" className="search-palette-empty">No matches</p>}
             {sections.map(section => <Command.Group key={section.id} aria-label={section.label}>
               <div aria-hidden className="search-palette-label">{section.label}</div>
