@@ -963,11 +963,10 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
   };
   const inUse = (id: string, at: string, version?: WorkbookLibraryState["versions"][number]) => database.prepare('SELECT 1 FROM workbook_operations WHERE workbook_id=? AND receipt_json IS NULL LIMIT 1').get(id) !== undefined
     || database.prepare(`SELECT 1 FROM runs,json_each(runs.lifecycle_json,'$.input.workbookReferences') reference
-    WHERE (runs.state<>'terminal' OR (? IS NOT NULL AND json_type(reference.value,'$.value.snapshot.versionId')='text'))
-      AND json_extract(reference.value,'$.value.snapshot.libraryId')=?
+    WHERE runs.state<>'terminal' AND json_extract(reference.value,'$.value.snapshot.libraryId')=?
       AND (? IS NULL OR json_extract(reference.value,'$.value.snapshot.versionId')=?
         OR (json_type(reference.value,'$.value.snapshot.versionId') IS NULL AND json_extract(reference.value,'$.value.snapshot.version')=?)) LIMIT 1`)
-      .get(version?.id ?? null, id, version?.id ?? null, version?.id ?? null, version?.version ?? null) !== undefined
+      .get(id, version?.id ?? null, version?.id ?? null, version?.version ?? null) !== undefined
     || database.prepare(`SELECT 1 FROM run_requests,json_each(run_requests.payload_json,'$.planned') planned,
       json_each(planned.value,'$.workbookReferences') reference
       WHERE json_type(run_requests.payload_json,'$.consumedBy') IS NULL
@@ -975,7 +974,10 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
         AND json_extract(reference.value,'$.value.snapshot.libraryId')=?
         AND (? IS NULL OR json_extract(reference.value,'$.value.snapshot.versionId')=?
           OR (json_type(reference.value,'$.value.snapshot.versionId') IS NULL AND json_extract(reference.value,'$.value.snapshot.version')=?)) LIMIT 1`)
-      .get(at, id, version?.id ?? null, version?.id ?? null, version?.version ?? null) !== undefined;
+      .get(at, id, version?.id ?? null, version?.id ?? null, version?.version ?? null) !== undefined
+    || (version !== undefined && database.prepare(`SELECT 1 FROM runs,json_each(runs.lifecycle_json,'$.input.workbookReferences') reference
+      WHERE runs.state='terminal' AND json_extract(reference.value,'$.value.snapshot.libraryId')=?
+        AND json_extract(reference.value,'$.value.snapshot.versionId')=? LIMIT 1`).get(id, version.id) !== undefined);
   const repository: WorkbookLibraryRepository = {
     lastUsed: workflowId => storage(() => deps.read(() => lastUsed(workflowId))),
     rememberLastUsed: value => storage(() => deps.mutate(() => {
