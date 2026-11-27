@@ -1,5 +1,5 @@
 import { faultAuthoritySnapshot, assertHttpFaultOnly, assertOnlyLoopStallWrites, exactHttpFaultLoopDelay } from "../../../../support/helpers/backend/http-route-harness.js";
-import { AssistantM1RespondEnvelopeSchema, assistantSessionAttribution, type AssistantM1Request } from "../../../../../src/models/dashboard/assistant.js";
+import { AssistantM1RespondEnvelopeSchema, assistantSessionAttribution, type AssistantM1Request, type AssistantM1RespondEnvelope } from "../../../../../src/models/dashboard/assistant.js";
 import { replyText } from "../../../../../src/dashboard/surfaces/assistant/assistant-reply-parts-model.js";
 import { AssistantHistoryResultSchema, AssistantModelPreferenceViewSchema, type AssistantHistoryOperation } from '../../../../../src/models/dashboard/assistant.js';
 import { withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
@@ -367,10 +367,18 @@ it('admits no assistant command outside a claimed proposal row or session claim'
   });
 });
 
-it('starts a read-only session through the composed kernel, serves it in Queue and Logs, and its Stop cancels it', async () => {
+it('recovers a served read-only session after a lost reply, serves it in Queue and Logs, and cancels it with Stop', async () => {
   // A worker that never becomes ready keeps the started run queued, so Stop has a live run to cancel.
   await withServedAssistant(async ({ context, transport, origin, originalFetch, clock }) => {
-    const client = createDashboardClient({ baseUrl: origin });
+    const served = createDashboardClient({ baseUrl: origin });
+    const deliveries: { messageId: string; kind: AssistantM1RespondEnvelope['kind'] }[] = [];
+    const client = { ...served, async assistantRespond(...args: Parameters<typeof served.assistantRespond>) {
+      const [request] = args;
+      const envelope = await served.assistantRespond(...args);
+      deliveries.push({ messageId: request.messageId, kind: envelope.kind });
+      if (deliveries.length === 1) throw new Error('lost reply after the session started');
+      return envelope;
+    } };
     let turns = 0;
     transport.setResponse(init => {
       if (typeof init.body !== 'string') throw Error('synthetic request body required');
@@ -385,12 +393,21 @@ it('starts a read-only session through the composed kernel, serves it in Queue a
     if (history.chats.read().length === 0) await history.chats.create();
     const chatId = history.chats.selectedId?.() ?? history.chats.read()[0]?.id; assert.ok(chatId);
     const scope: CommandExecutionScope = { actorId: LOCAL_OPERATOR_ACTOR_ID, client, authority: {}, dayRequest: {} }, feedback: CommandOutcome[] = [];
+    let outcomeReads = 0;
     const controller = createAssistantController(client, { authority: 'a', commands: { executor: new CommandExecutor(() => scope), scope, feedback: value => { feedback.push(value); } } }, {
       conversationId: chatId, read: () => history.read(chatId), retain: state => { history.retain(chatId, state); }, revision: () => history.revision(chatId),
-      receipt: receipt => { history.receipt(receipt); }, local: text => history.local(chatId, text), outcome: messageId => history.outcome(chatId, messageId),
+      receipt: receipt => { history.receipt(receipt); }, local: text => history.local(chatId, text), async outcome(messageId) {
+        if (++outcomeReads === 1) throw new Error('first history read unavailable');
+        return history.outcome(chatId, messageId);
+      },
       refresh: () => history.refresh(chatId), unsaved: () => { history.unsaved(); } });
     controller.action({ type: 'edit', value: `Look up ${EXECUTOR_EID}` }); controller.action({ type: 'send' });
+    await vi.waitFor(() => assert.equal(controller.snapshot().turn.state, 'failed'), { timeout: 30_000, interval: 50 });
+    assert.equal(controller.snapshot().sessions?.length ?? 0, 0);
+    controller.action({ type: 'retry' });
     await vi.waitFor(() => assert.ok(controller.snapshot().sessions?.[0]?.stop), { timeout: 30_000, interval: 50 });
+    const [accepted] = deliveries; assert.ok(accepted);
+    assert.deepEqual(deliveries, [{ messageId: accepted.messageId, kind: 'result' }, { messageId: accepted.messageId, kind: 'delivery' }]);
     const chip = controller.snapshot().sessions?.[0]; assert.ok(chip?.stop);
     const { runId } = chip;
 
