@@ -95,9 +95,11 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
     }
     return result;
   };
-  const reload = async () => {
+  /** Boot and every re-read load the open conversation only; the one-time import check loads all. */
+  const reload = async (all = false) => {
     view = await client.assistantHistory(signal);
-    const loaded = await Promise.all(view.chats.map(chat => client.assistantConversation(chat.id, signal)));
+    const open = view.selectedId ?? view.chats[0]?.id;
+    const loaded = await Promise.all(view.chats.filter(chat => all || chat.id === open).map(chat => client.assistantConversation(chat.id, signal)));
     conversations.clear(); for (const conversation of loaded) conversations.set(conversation.id, conversation);
     changed();
   };
@@ -119,8 +121,8 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
     try {
       for (const chat of old.chats) for (const batch of importBatches(chat.id, chat.title, old.transcripts[chat.id])) await write(batch);
       const selected = old.selected ?? old.chats[0]?.id;
-      await reload();
-      if (selected !== undefined && view.selectedId !== selected) { await write({ operation: 'select', conversationId: selected, expectedRevision: requireRevision(selected) }); await reload(); }
+      await reload(true);
+      if (selected !== undefined && view.selectedId !== selected) { await write({ operation: 'select', conversationId: selected, expectedRevision: requireRevision(selected) }); await reload(true); }
       const complete = view.selectedId === (selected ?? null) && old.chats.every(chat => {
         const served = conversations.get(chat.id), transcript = old.transcripts[chat.id], expected = importBatches(chat.id, chat.title, transcript).flatMap(batch => batch.messages);
         return served !== undefined && served.title === chat.title && served.draft === (transcript?.draft ?? '') && served.composer === (transcript?.composer ?? '')

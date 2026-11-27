@@ -147,3 +147,16 @@ it('keeps unparseable, foreign or unsaved source bytes and disables sending', as
   assert.equal(store.blocked(), true); assert.equal(store.notice(), ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNSAVED); assert.equal(w.bytes.get(w.key), raw);
   store.draft(id).retain('ignored while blocked'); assert.equal(w.server.writes.length, 1);
 });
+
+it('loads only the open conversation at boot and the others when selected', async () => {
+  const w = world(), first = await w.open(), a = first.chats.read()[0]?.id; assert.ok(a);
+  const b = (await first.chats.create()).id;
+  await first.chats.select?.(a);
+  const read: string[] = [];
+  const client = { ...w.server.client, assistantConversation: (id: string, signal: AbortSignal) => { read.push(id); return w.server.client.assistantConversation(id, signal); } };
+  const store = await createAssistantHistory(client, w.storage, w.server.profileId, new AbortController().signal);
+  assert.deepEqual(read, [a]);
+  assert.equal(store.has(b), false);
+  await store.chats.select?.(b);
+  assert.equal(store.has(b), true);
+});
