@@ -79,13 +79,22 @@ it("ends an Emergency Contact PDF containing only blank pages before approval", 
   assert.equal(database.authority.ocrReviews.latest(run.envelope.runId), undefined);
 });
 
-it.each([false, true])("checks subscription OCR on interruption with extraction checkpoint = %s", async extracted => {
+it.each([
+  { coordinator: true, extraction: "pending" },
+  { coordinator: false, extraction: "checkpointed" },
+  { coordinator: true, extraction: "settled" },
+] as const)("checks subscription OCR on interruption with extraction $extraction", async ({ coordinator, extraction }) => {
   let available = true;
   const abort = new AbortController();
-  const f = await world.fixture({ coordinator: true, dryRun: true, holdPages: true, ocrProviderAvailable: () => available,
-    onSpan: event => { if (event.t === "span.ended" && event.kind === "task" && event.outcome === "done" && /\/extract#\d+\.\d+$/u.test(event.spanPath)) abort.abort(); } });
+  const f = await world.fixture({ coordinator, dryRun: true, holdPages: true, ocrProviderAvailable: () => available,
+    onSpan: event => {
+      if (extraction === "checkpointed" && event.t === "span.ended" && event.kind === "task" && event.outcome === "done"
+        && /\/extract#\d+\.\d+$/u.test(event.spanPath)) abort.abort();
+    } });
   const [page] = f.database.authority.runs.listChildren(f.run.envelope.runId); assert.ok(page);
-  if (extracted) assert.equal((await f.canonical.step(f.parentRun, abort.signal)).outcome.state, "abandoned");
+  const extracted = extraction !== "pending";
+  if (extracted) assert.equal((await f.canonical.step(f.parentRun, abort.signal)).outcome.state,
+    extraction === "checkpointed" ? "abandoned" : "done");
   const checkpoint = f.database.authority.runCheckpoints.listByRunAttempt(page.envelope.workflow, page.envelope.itemId, page.envelope.runId, page.envelope.attempt);
   assert.equal(checkpoint.some(row => row.nodeId === "extract"), extracted);
   assert.equal(f.ocrCalls(), Number(extracted));
@@ -104,8 +113,8 @@ it.each([false, true])("checks subscription OCR on interruption with extraction 
       claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
       now: f.clock.now().toISOString() }, lock));
   };
-  interrupt(page.envelope.runId);
-  interrupt(f.run.envelope.runId);
+  if (extraction !== "settled") interrupt(page.envelope.runId);
+  if (coordinator) interrupt(f.run.envelope.runId);
   const source = interrupt(f.parentRun.envelope.runId);
   const planner = createStartPlanService({ authority: f.database, authorityRead: f.database, descriptors: { resolve: f.resolve },
     ocrProviderAvailable: () => available, clock: f.clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: "local-operator",
@@ -125,15 +134,19 @@ it.each([false, true])("checks subscription OCR on interruption with extraction 
     const replacement = f.database.authority.runs.listByWorkflow(descriptor.id).find(candidate => candidate.envelope.retryOf === source.envelope.runId);
     assert.ok(replacement);
     const signal = new AbortController().signal;
-    const replayed = await f.canonical.step(replacement, signal);
-    assert.equal(replayed.run.envelope.workflow, "ocr-page");
-    assert.equal(replayed.outcome.state, "done");
+    const next = await f.canonical.step(replacement, signal);
+    if (extraction === "checkpointed") {
+      assert.equal(next.run.envelope.workflow, "ocr-page");
+      assert.equal(next.outcome.state, "done");
+    } else {
+      assert.equal(next.run.envelope.workflow, "ocr");
+      assert.equal(next.outcome.state, "failed");
+      const parent = await f.canonical.step(replacement, signal);
+      assert.equal(parent.run.envelope.runId, replacement.envelope.runId);
+      assert.ok(parent.outcome.state === "failed");
+      assert.equal(f.database.authority.failures.get(parent.outcome.failureId)?.code, "OCR_NO_REVIEWABLE_RECORDS");
+    }
     assert.equal(f.ocrCalls(), 1);
-    assert.equal((await f.canonical.step(replacement, signal)).outcome.state, "failed");
-    const parent = await f.canonical.step(replacement, signal);
-    assert.equal(parent.run.envelope.runId, replacement.envelope.runId);
-    assert.ok(parent.outcome.state === "failed");
-    assert.equal(f.database.authority.failures.get(parent.outcome.failureId)?.code, "OCR_NO_REVIEWABLE_RECORDS");
   } else {
     assert.ok(result.state === "rejected", JSON.stringify(result));
     assert.equal(result.message, ERROR_CATALOG.PROVIDER_UNAVAILABLE.text);
