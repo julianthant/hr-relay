@@ -83,6 +83,7 @@ it("probes again after losing the fence to a committed contact Save", async () =
     })),
     commitWriteAttempt: database.commitWriteAttempt.bind(database),
     commitRecheckedParkedWrite: database.commitRecheckedParkedWrite.bind(database),
+    settleResolvedParkedAbsence: database.settleResolvedParkedAbsence.bind(database),
   }) });
   const [winner] = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
   assert.ok(winner?.status === "committed");

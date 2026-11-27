@@ -84,15 +84,12 @@ export function createParkedWriteRoundTripTestWorld() {
       descriptors: {
         resolve: (workflowId) => (workflowId === WRITE_FIXTURE_WORKFLOW_ID ? resolutionDescriptor : undefined),
       },
-      // The deliverable's exact requirement: the SAME AuthorityDatabase instance
-      // the kernel transacts on, so `commitWriteAttempt` nests as a savepoint.
       writeResolution: createWriteResolutionExecutor({
         hooks: resolutionHooks,
         continuation: testRunContinuation(database, clock),
         descriptors: {
           resolve: (workflowId) => (workflowId === WRITE_FIXTURE_WORKFLOW_ID ? resolutionDescriptor : undefined),
         },
-        authority: database,
         ids
       }),
       workerRuntime: { pool: unusedWorkerPool() },

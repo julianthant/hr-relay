@@ -19,7 +19,7 @@ import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks
 import { delegationEvidenceOutput, resolveDelegationEvidenceOutput } from "../../../models/run/result.js";
 import { lifecycleCommandId } from "../../runs/lifecycle/run-record-service.js";
 import type { ChildRunRuntimeNode, RunExecutionContext, RunExecutionState, TaskRuntimeNode } from "./run-execution-contract.js";
-import { requestedPayPathRecheck } from "./run-execution-write.js";
+import { requestedParkedWriteRecheck } from "./run-execution-write.js";
 
 function requireStoredCheckpoint(stored: RunCheckpointRecord | undefined, nodeId: string): RunCheckpointRecord {
   if (stored === undefined) {
@@ -117,19 +117,21 @@ export function prepareRunPlan(
 
   const startNode = startIndex === undefined ? undefined : nodes[startIndex];
   const startsAtPayPath = startNode?.kind === "transaction" && startNode.commit.uses.id === "ucpath/submit-paypath-work-study";
-  // A Saved recheck needs the original fenced target. Fresh reads could bind it to another position.
-  const payPathRecheckInputs = !startsAtPayPath ? undefined : deps.authority.withAuthorityTransaction?.(repositories => {
-    const intent = requestedPayPathRecheck(repositories, initial, startNode);
-    if (intent === undefined) return undefined;
+  // A PayPath recheck needs the original fenced target. Fresh inputs could bind it to another position.
+  const payPathRecheck = !startsAtPayPath ? undefined : deps.authority.withAuthorityTransaction?.(repositories => {
+    const request = requestedParkedWriteRecheck(repositories, initial, startNode);
+    if (request === undefined) return undefined;
+    const { intent, command } = request;
     const ancestors = new Set(nodes.slice(0, startIndex).filter(node => node.kind === "task").map(node => node.id));
     const checkpoints = new Map<string, RunCheckpointRecord>();
+    const replay = { checkpoints, readOnly: command.type === "recheck-write" };
     const fencedAt = Date.parse(intent.fencedAt);
     // Native replay records retain the source checkpoint, even when it belongs to another run.
     for (let after = 0; ;) {
       const page = repositories.timelineEvents.page({ runId, after, limit: 1000 });
       for (const { eventId, source, payload, occurredAt } of page) {
         if (source.kind !== "native") continue;
-        if (payload.kind === "write-parked" && payload.writeIntentId === intent.writeIntentId && payload.generation === intent.generation) return checkpoints;
+        if (payload.kind === "write-parked" && payload.writeIntentId === intent.writeIntentId && payload.generation === intent.generation) return replay;
         if (payload.kind !== "checkpoint-recorded" && payload.kind !== "checkpoint-replayed") continue;
         const reference = payload.checkpoint;
         if (payload.runId !== runId || payload.workflow !== descriptor.id || payload.attempt !== envelope.attempt
@@ -145,10 +147,11 @@ export function prepareRunPlan(
         checkpoints.set(reference.nodeId, record);
       }
       const last = page.at(-1);
-      if (last === undefined || page.length < 1000) return checkpoints;
+      if (last === undefined || page.length < 1000) return replay;
       after = last.cursor;
     }
   });
+  const payPathRecheckInputs = payPathRecheck?.checkpoints;
   const previousNode = startIndex === undefined ? undefined : nodes[startIndex - 1];
   const resolvedResumeGate = envelope.continuation === undefined
     ? (startNode?.kind === "gate" ? readContinuationGate(deps.authority.authority, envelope, String(startNode.id)) : undefined)
@@ -178,7 +181,7 @@ export function prepareRunPlan(
   });
 
   const retainedTransaction = (node: RuntimeFlowNode) => node.kind === "transaction"
-    && (payPathRecheckInputs !== undefined && node === startNode
+    && (payPathRecheck?.readOnly === true && node === startNode
       || envelope.continuation?.checkpoints.some(row => row.nodeId === node.id) === true);
   const pendingCommits = nodes.filter(node => node.kind === "transaction" && !retainedTransaction(node)
     && !omissionPlan.omitted.has(String(node.id)) && !omissionPlan.asserted.has(String(node.id))).map(node => node.id);

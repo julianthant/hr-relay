@@ -146,6 +146,7 @@ export const ResolvedParkedWriteCommitInputSchema = z.strictObject({
 export const ResolvedParkedWriteAbsenceInputSchema = z.strictObject({
   writeIntentId:WriteIntentIdSchema,generation:PositiveIntSchema,expectedIntentVersion:PositiveIntSchema,
   settlement:WriteRetrySettlementSchema,resolution:ParkedWriteResolutionBindingSchema.extend({decision:z.literal("absent")}),
+  claim: RunClaimTokenSchema.optional(),
 });
 
 export const WriteIntentParkCodeSchema = WriteParkCodeSchema;
