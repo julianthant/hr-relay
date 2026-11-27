@@ -161,7 +161,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerAssistantRoutes(app, deps.assistant);
   registerStorageRoutes(app, deps);
   registerExplorerRoutes(app, deps);
-  registerActivityRoutes(app, { activityPopulation: deps.activityPopulation, activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); }, readSelected: () => { throw new Error("activity-service-not-configured"); } } });
+  registerActivityRoutes(app, { activityPopulation: deps.activityPopulation, activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); } } });
   registerQueueRoutes(app, { startPlans: deps.startPlans, queue: { day: (day, request) => deps.projection.servedDashboardDay(day, {
     signal: request.signal, ...(request.tab === undefined ? {} : { slot: { subscriberId: request.tab, slot: "queue-day" } }) }) } });
   registerIntakeRoutes(app, deps);

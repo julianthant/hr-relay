@@ -2,7 +2,7 @@ import { ReadApprovedOcrRecord } from "../../../models/processing/ocr/read-appro
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { RunClaimToken } from "../../../models/run/worker.js";
 import { z } from "zod";
-import { RunHistoryCommandSchema, type ClearRunHistoryResult, type RunHistoryStatus } from "../../../models/dashboard/run-history.js";
+import { RunHistoryCommandSchema, type ClearRunHistoryResult } from "../../../models/dashboard/run-history.js";
 import {
 RunExistenceSchema,
 type RunExistence,
@@ -1285,13 +1285,6 @@ export class RunRecordService {
       if (error instanceof RunDeletionRefusedError) return refused({ reason: error.reason });
       throw error;
     }
-  }
-
-  historyStatus(): RunHistoryStatus {
-    return this.dependencies.database.withAuthorityReadSnapshot(() => {
-      const { finished, active } = this.dependencies.database.authority.runs.countByTerminal();
-      return { state: "available", finishedRuns: finished, activeRuns: active };
-    });
   }
 
   clearHistory(input: unknown): ClearRunHistoryResult {

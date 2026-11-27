@@ -43,7 +43,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
 
     const world = await makeWorld();
     try {
-      const bootstrap = buildBootstrap({
+      const bootstrap = await buildBootstrap({
         appVersion: "0.1.0",
         clock: manualClock(AT),
         modules,

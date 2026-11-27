@@ -51,12 +51,12 @@ describe("canonical run-record service", () => {
     assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
   });
 
-  it("counts history status in SQL without loading run records", async () => {
-    const { service, request } = await fixture();
+  it("counts terminal and active runs in SQL without loading run records", async () => {
+    const { service, request, database } = await fixture();
     created(service, { ...request, matchKey: "history-count",
       descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint });
-    const { value, statements } = traceSqliteStatements(() => service.historyStatus());
-    assert.deepEqual(value, { state: "available", finishedRuns: 0, activeRuns: 1 });
+    const { value, statements } = traceSqliteStatements(() => database.authority.runs.countByTerminal());
+    assert.deepEqual(value, { finished: 0, active: 1 });
     assert.deepEqual(statements.filter(({ sql }) => /SELECT \* FROM runs/u.test(sql)), []);
   });
 
@@ -76,7 +76,7 @@ describe("canonical run-record service", () => {
       raw.prepare("UPDATE runs SET state='terminal', outcome='cancelled' WHERE id=?").run(columnOnly.envelope.runId);
       raw.prepare("UPDATE runs SET state='queued', outcome=NULL WHERE id=?").run(jsonOnly.envelope.runId);
     } finally { raw.close(); }
-    assert.deepEqual(service.historyStatus(), { state: "available", finishedRuns: 1, activeRuns: 2 });
+    assert.deepEqual(database.authority.runs.countByTerminal(), { finished: 1, active: 2 });
   });
 
   it("table-class coverage drives every public service method and generation class", async () => {
@@ -93,8 +93,6 @@ describe("canonical run-record service", () => {
     };
 
     const historyCommand = { commandId: commandId() };
-    assert.deepEqual(measure("historyStatus", 0, () => service.historyStatus()),
-      { state: "available", finishedRuns: 0, activeRuns: 0 });
     assert.deepEqual(measure("clearHistoryResult", 0, () => service.clearHistoryResult(historyCommand)),
       { state: "not-recorded", commandId: historyCommand.commandId });
     assert.equal(database.authority.lifecycleJournal.getCommand(historyCommand.commandId), undefined);
@@ -103,8 +101,6 @@ describe("canonical run-record service", () => {
       ...request, commandId: commandId(), matchKey: "coverage-history",
       descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
     }));
-    assert.deepEqual(measure("historyStatus", 0, () => service.historyStatus()),
-      { state: "available", finishedRuns: 0, activeRuns: 1 });
     assert.deepEqual(measure("clearHistory", 0, () => service.clearHistory(historyCommand)),
       { state: "refused", commandId: historyCommand.commandId, reason: "active-runs" });
     assert.deepEqual(measure("clearHistoryResult", 0, () => service.clearHistoryResult(historyCommand)),
@@ -116,14 +112,10 @@ describe("canonical run-record service", () => {
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
     }));
     assert.equal(historyTerminal.state, "applied");
-    assert.deepEqual(measure("historyStatus", 0, () => service.historyStatus()),
-      { state: "available", finishedRuns: 1, activeRuns: 0 });
     const historyResult = measure("clearHistory", 1, () => service.clearHistory(historyCommand));
     assert.deepEqual(historyResult, { state: "cleared", commandId: historyCommand.commandId, deletedRuns: 1 });
     assert.equal(database.authority.runs.get(historyRun.envelope.runId), undefined);
     assert.equal(database.authority.deletedRuns.get(historyRun.envelope.runId)?.commandId, historyCommand.commandId);
-    assert.deepEqual(measure("historyStatus", 0, () => service.historyStatus()),
-      { state: "available", finishedRuns: 0, activeRuns: 0 });
     assert.deepEqual(measure("clearHistory", 0, () => service.clearHistory(historyCommand)), historyResult);
     assert.deepEqual(measure("clearHistoryResult", 0, () => service.clearHistoryResult(historyCommand)), historyResult);
 
