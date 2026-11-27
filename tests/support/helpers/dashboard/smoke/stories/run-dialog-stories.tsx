@@ -212,11 +212,8 @@ const REFERENCE = {
   start: reference("Start, with the chosen spreadsheet", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page); await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED); await press(page, "Next"); await at(page, "Start"); } }),
 } satisfies Record<ReferenceState, Story>;
 
-/** Saved onboarding rows: the version read behind the row list fails after the spreadsheet itself read fine. */
-const rowsFailing = (): Partial<DashboardClient> => { const served = RUN_DIALOG_REFERENCE_READS; let first: ReturnType<NonNullable<DashboardClient["workbookLibraryVersion"]>> | undefined; let settled = false;
-  return { ...served, workbookLibraryVersion: (...args) => {
-    if (first === undefined) { first = served.workbookLibraryVersion!(...args); void first.finally(() => { settled = true; }); }
-    return settled ? Promise.reject(new Error("The saved rows could not be read.")) : first; } }; };
+/** Saved onboarding rows: the spreadsheet is listed and checked, but the version behind its row list cannot be read. */
+const rowsFailing = (): Partial<DashboardClient> => ({ ...RUN_DIALOG_REFERENCE_READS, workbookLibraryVersion: async () => unreadable() });
 const SAVED_ROWS = {
   unavailable: reference("Saved rows that could not be read", rowsFailing(), RUN_DIALOG_SAVED_ROWS_CATALOG, { then: chooseRoster, ready: 'text=/Saved rows unavailable/' }),
 } satisfies Record<"unavailable", Story>;
