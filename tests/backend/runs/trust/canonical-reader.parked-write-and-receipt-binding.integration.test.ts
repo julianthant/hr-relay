@@ -125,6 +125,32 @@ afterEach(cleanup);
     );
   });
 
+  it("keeps the original intent parked until the requested fresh read can resolve it", async () => {
+    const harness = await roundTrip();
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+
+    const result = harness.kernel.execute(resolutionCommand("resolve-write-absent", {
+      runId: WRITE_FIXTURE_RUN_ID,
+      expectedVersion: parked.version,
+      writeIntentId: intent.writeIntentId,
+      intentGeneration: intent.generation,
+    }, {}));
+    assert.equal(result.state, "applied");
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked",
+      "the operator's answer cannot make the generation retryable before a fresh system read");
+
+    const eventsBeforeRead = harness.world.events.length;
+    harness.world.probeResults.push({ state: "present", proof: { transactionId: "T998877" } });
+    assert.equal((await harness.resume()).outcomes[0]?.state, "done");
+    assert.deepEqual(harness.world.events.slice(eventsBeforeRead), ["probe"]);
+    const saved = harness.database.authority.writeIntents.get(intent.writeIntentId);
+    assert.equal(saved?.status, "committed");
+    assert.equal(saved?.generation, intent.generation);
+  });
+
 
   it("resolves confirmed-absent after an unrelated edit moved the contract closure", async () => {
     const harness = await roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
