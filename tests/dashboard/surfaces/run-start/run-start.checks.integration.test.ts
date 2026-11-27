@@ -315,6 +315,7 @@ describe("asking for a re-check", () => {
     await dialog.rerender({ hidden: true });
     await dialog.rerender({ hidden: false });
     assert.deepEqual(reruns, [h.WORKFLOW_ID, separations.id], "an already checked workflow gets no second automatic check");
+    await dialog.press("1 Input");
     await dialog.rerender({ open: false });
     await dialog.rerender({ open: true });
     await reachChecks(dialog);
