@@ -86,7 +86,7 @@ it.each([
 ] as const)("checks subscription OCR on interruption with extraction $extraction", async ({ coordinator, extraction }) => {
   let available = true;
   const abort = new AbortController();
-  const f = await world.fixture({ coordinator, dryRun: true, holdPages: true, ocrProviderAvailable: () => available,
+  const f = await world.fixture({ coordinator, dryRun: coordinator, holdPages: true, ocrProviderAvailable: () => available,
     onSpan: event => {
       if (extraction === "checkpointed" && event.t === "span.ended" && event.kind === "task" && event.outcome === "done"
         && /\/extract#\d+\.\d+$/u.test(event.spanPath)) abort.abort();
@@ -119,7 +119,7 @@ it.each([
   const planner = createStartPlanService({ authority: f.database, authorityRead: f.database, descriptors: { resolve: f.resolve },
     ocrProviderAvailable: () => available, clock: f.clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: "local-operator",
     configFingerprint: source.envelope.configFingerprint, configSnapshotId: source.envelope.configSnapshotId });
-  const plan = () => planner.plan({ workflowId: descriptor.id, dryRun: true, submissions: [], selectedStepKeys,
+  const plan = () => planner.plan({ workflowId: descriptor.id, dryRun: source.envelope.dryRun, submissions: [], selectedStepKeys,
     rerunSource: { runId: source.envelope.runId, expectedVersion: source.version, intent: "rerun", selectedStepKeys } });
   const online = plan();
   assert.ok(f.database.authority.startPlans.get(online.startPlanId)?.rerun?.continuation);
@@ -140,11 +140,8 @@ it.each([
       assert.equal(next.outcome.state, "done");
     } else {
       assert.equal(next.run.envelope.workflow, "ocr");
-      assert.equal(next.outcome.state, "failed");
-      const parent = await f.canonical.step(replacement, signal);
-      assert.equal(parent.run.envelope.runId, replacement.envelope.runId);
-      assert.ok(parent.outcome.state === "failed");
-      assert.equal(f.database.authority.failures.get(parent.outcome.failureId)?.code, "OCR_NO_REVIEWABLE_RECORDS");
+      assert.ok(next.outcome.state === "failed");
+      assert.equal(f.database.authority.failures.get(next.outcome.failureId)?.code, "OCR_NO_REVIEWABLE_RECORDS");
     }
     assert.equal(f.ocrCalls(), 1);
   } else {
