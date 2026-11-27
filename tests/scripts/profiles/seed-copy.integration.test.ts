@@ -304,7 +304,7 @@ async function expectTimelines(client: ReturnType<typeof createDashboardClient>,
     expect(noted.map(note => note.message), name).toEqual(setup.slice(0, noted.length));
     const cards = steps.flatMap((step, index) => step.entries.some(entry => entry.kind === "decision") || step.title === "Run cancelled" ? [{ index, title: step.title }] : []);
     const parkedWrite = run.lifecycle.state === "parked-write";
-    const expected = state === "paused" || state === "cancelled" || state === "needs-review" ? 1 : 0;
+    const expected = ["paused", "cancelled", "needs-review", "failed"].includes(state) ? 1 : 0;
     if (state !== "waiting") expect(cards, name).toHaveLength(expected);
     if (state === "paused") expect(cards[0]?.title, name).toBe("Run paused");
     if (state === "cancelled") expect(cards[0]?.title, name).toBe("Run cancelled");
