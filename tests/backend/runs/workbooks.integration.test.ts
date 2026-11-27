@@ -419,3 +419,13 @@ it("loads each selected source once in each planning and confirmation scope acro
   f.plan();
   expect(read).toHaveBeenCalledTimes(3);
 });
+
+it("captures the rows of every selected worksheet into the started run's references", async () => {
+  const f = await fixture();
+  const sheets = ["people", "archive"];
+  const wire = f.planner.plan({ ...f.request, workbookReferences: sheets.map(sheetId => ({ ...f.selection, sheetId })) });
+  const record = f.database.authority.startPlans.get(wire.startPlanId); assert.ok(record);
+  const references = (f.start(record).input.workbookReferences ?? []).map(bound => parseRunWorkbookReference(bound));
+  expect(references.map(reference => reference.snapshot.worksheets.map(sheet => sheet.sheetId))).toEqual([["people"], ["archive"]]);
+  expect(references.map(reference => reference.snapshot.rows[0]?.matches.map(match => match.rowId))).toEqual([["people-person"], []]);
+});

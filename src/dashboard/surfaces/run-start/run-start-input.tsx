@@ -65,13 +65,14 @@ export function RunStartInput({
         versions: entry.state.versions.map((version, index) => ({ id: version.id, savedAt: version.savedAt, name: version.name || `v${entry.state.versions.length - index}` })), currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
       return <RunSpreadsheets key={typeId} check={check !== undefined && checkSheets.length > 0 ? check : undefined} busy={library.catalogRefreshing || library.compatibility === undefined} locked={sending} catalogError={library.catalogError}
         onRefresh={() => void library.adapter.refreshCatalog()}
-        reference={{ requiredLabel: requiredLabelOf(requiredFields), sheets, chosenLibraryId: draft?.libraryId, chosenVersionId: draft?.versionId, chosenSheetId: referenceSelections[typeId]?.sheetId ?? '',
+        reference={{ requiredLabel: requiredLabelOf(requiredFields), sheets, chosenLibraryId: draft?.libraryId, chosenVersionId: draft?.versionId, chosenSheetIds: referenceSelections[typeId]?.sheetIds ?? [], several: launchDraft.readsSeveralWorksheets(selectedWorkflow?.workbookReference),
           worksheets: sheetOptions.map(source => ({ sheetId: source.sheetId, sheetName: source.sheetName })), worksheetsState: versionSources.state, worksheetsError: versionSources.error,
           onPick: (libraryId, versionId) => update(current => launchDraft.pickReference(current, typeId, libraryId, versionId)),
           onVersion: versionId => update(current => launchDraft.pickReferenceVersion(current, typeId, versionId)),
-          onWorksheet: sheetId => {
-            const source = sheetOptions.find(candidate => candidate.sheetId === sheetId);
-            if (source !== undefined) update(current => launchDraft.pickWorksheet(current, typeId, { libraryId: source.libraryId, versionId: source.versionId, sheetId: source.sheetId }));
+          onWorksheets: sheetIds => {
+            const sources = sheetOptions.filter(candidate => sheetIds.includes(candidate.sheetId));
+            const [source] = sources;
+            if (source !== undefined) update(current => launchDraft.pickWorksheet(current, typeId, { libraryId: source.libraryId, versionId: source.versionId, sheetIds: sources.map(picked => picked.sheetId) }));
           },
           onRemove: () => update(current => launchDraft.removeReference(current, typeId)) }} />;
     })}</>;
