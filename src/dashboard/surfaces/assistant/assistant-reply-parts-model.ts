@@ -26,3 +26,11 @@ export function replyBlocks(parts: readonly AssistantReplyPart[]): ReplyBlock[] 
   }
   return blocks;
 }
+
+type Inline = Extract<AssistantReplyPart, { kind: "text" }>["runs"][number];
+const inlineText = (run: Inline) => run.kind === "value" ? run.value : run.kind === "link" ? run.label : run.text;
+/** A reply's words as plain text, for a chat title or a caption. */
+export function replyText(parts: readonly AssistantReplyPart[]): string {
+  return parts.flatMap(part => part.kind === "text" ? [part.runs.map(inlineText).join("")]
+    : part.kind === "bullets" ? part.items.map(runs => runs.map(inlineText).join("")) : part.kind === "session" ? [part.label] : []).join("\n");
+}

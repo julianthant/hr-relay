@@ -53,7 +53,7 @@ export const RUN_DECISIONS: Readonly<Record<RunDecisionType, LogDecision>> = {
     { id: "reopen-browser", label: "Reopen browser", send: { via: "command", family: "worker-browser", type: "reopen-browser" } },
   ] }), "UCPath signed this browser out."),
   paused: decision("Run paused", "held", projectDecision("paused", [rowAction("resume", "resume"), rowAction("cancel-run", "cancel")])),
-  stalled: decision("Run not responding", "held", projectDecision("stalled", [rowAction("recover", "recover-run"), rowAction("cancel-run", "cancel")]),
+  stalled: decision("Run not responding", "held", projectDecision("stalled", [rowAction("rerun", "rerun"), rowAction("cancel-run", "cancel")]),
     "No step has finished in 10 minutes."),
   refused: decision("Request refused", "failed", RunDecisionWireSchema.parse({ type: "refused", title: "Request refused", options: [] }),
     "The run changed before Relay could send this. Reload and try again."),

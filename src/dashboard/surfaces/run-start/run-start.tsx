@@ -193,19 +193,20 @@ export function RunStartDialog({
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
 
   const inputRun = workflow?.inputRun ?? NO_WORKFLOW_SELECTED;
-  const pdfSurface = workflow?.uploadRun?.pdfInput === undefined ? undefined : workflow.uploadRun;
+  const pdfSurface = draft.interruptedRerun || workflow?.uploadRun?.pdfInput === undefined ? undefined : workflow.uploadRun;
   const typedDeclaration = inputRun.state === "present" ? inputRun.surface.typedInput : undefined;
   const declaredInput = typedDeclaration !== undefined;
   const typedValues = useMemo(() => {
     if (typedDeclaration === undefined) return typedDraft;
     const values = { ...typedInputDefaults(typedDeclaration), ...typedDraft };
+    if (draft.interruptedRerun) return values;
     for (const step of workflow?.steps ?? []) {
       const control = step.control;
       if (control.state === "selectable" && typedDeclaration.controls.some(field => field.field === control.inputField && field.placement === "step"))
         values[control.inputField] = typedControlAvailable(typedDeclaration, values, control.inputField) && (customizeSteps || isRerun ? customizedStepKeys.includes(step.key) : step.includedByDefault);
     }
     return values;
-  }, [typedDeclaration, typedDraft, workflow, customizeSteps, isRerun, customizedStepKeys]);
+  }, [typedDeclaration, typedDraft, workflow, customizeSteps, isRerun, customizedStepKeys, draft.interruptedRerun]);
   const defaultStepKeys = useMemo(() => workflow?.steps.filter(step => {
     const control = step.control;
     return declaredInput && control.state === "selectable"
@@ -231,10 +232,10 @@ export function RunStartDialog({
   const handOffByStep = useMemo(() => handOffStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
   const rows = useMemo(() => startRowsOf({ steps, rows: workflow?.rows }), [steps, workflow?.rows]);
   const inputDriven = useCallback((row: StepRow): boolean => launchDraft.rowInputDriven(workflow, typedValues, row), [workflow, typedValues]);
-  const openRows: readonly OpenStepRow[] = useMemo(() => customizeSteps ? rows.flatMap(row => {
+  const openRows: readonly OpenStepRow[] = useMemo(() => customizeSteps && !draft.interruptedRerun ? rows.flatMap(row => {
     if (row.form === undefined || inputDriven(row) || !rowFieldsOpen(row, selectedStepKeys, manualRows)) return [];
     return [rowOpenFold(row, row.form, stepDrafts[row.key] ?? initialStepOmissionDraft(row.form))];
-  }) : [], [customizeSteps, rows, selectedStepKeys, manualRows, stepDrafts, inputDriven]);
+  }) : [], [customizeSteps, rows, selectedStepKeys, manualRows, stepDrafts, inputDriven, draft.interruptedRerun]);
   const stepOmissions = useMemo(() => stepEntries(openRows), [openRows]);
   const requestFingerprint = runStartRequestFingerprint(draft, spreadsheets, savedRows, pdfInput, rerunSource, workflowId, typedValues,
     customizeSteps, dryRun, captureBrowserScreenshots, selectedStepKeys, openRows);
@@ -268,7 +269,7 @@ export function RunStartDialog({
       restoreSource: restored => {
         const sourceWorkflow = workflowsRef.current.find(entry => entry.workflowId === restored.source.workflow);
         if (sourceWorkflow === undefined) throw new Error("RERUN_WORKFLOW_UNAVAILABLE");
-        if (sourceWorkflow.uploadRun?.pdfInput !== undefined) {
+        if (restored.retainedSteps === undefined && sourceWorkflow.uploadRun?.pdfInput !== undefined) {
           const pdfs = restored.sourceInput.state === "available" ? restorePdfRun(sourceWorkflow.uploadRun, restored.sourceInput.value, actorId) : null;
           if (pdfs === null) throw new Error(RERUN_INPUT_GONE);
           pdfInput.restore(pdfs);
@@ -449,7 +450,7 @@ export function RunStartDialog({
   const spreadsheetReadiness = runStartSpreadsheetReadiness(spreadsheets, referenceSelections, isRerun, snapshot);
   const { spreadsheetsError, spreadsheetsReading } = spreadsheetReadiness;
   const handOff = [...handOffByStep.keys()].map(key => rows.find(row => row.stepKey === key)?.label ?? steps.find(step => step.key === key)?.label ?? key);
-  const handOffReason = handOff.length === 0 ? null : `Turn off ${handOff.join(", ")} if done by hand.`;
+  const handOffReason = draft.interruptedRerun || handOff.length === 0 ? null : `Turn off ${handOff.join(", ")} if done by hand.`;
   const { gates, blockedReason, launchFields, optionsBlockedReason, multiSubject, stepsFailure, stepsBlockedReason,
     sentOmittedSteps, planOmittedSteps, omissionMismatch, onLastStage, rerunInputGone, dryRunGone } = runStartGates(
     draft, spreadsheets, savedRows, spreadsheetReadiness, { workflowId, inputRun, pdfSurface, pdfInput, preview, declaredInput,
@@ -500,7 +501,7 @@ export function RunStartDialog({
   }, [oneClickReady, send]);
   /** What a workflow's last stage still shows before Start: its chosen references and typed dates. */
   const lastStageFacts = [
-    ...(typedDeclaration === undefined ? [] : typedDateControls(typedDeclaration, typedInputMode(typedDeclaration, typedValues)?.value ?? "").flatMap(control => {
+    ...(draft.interruptedRerun || typedDeclaration === undefined ? [] : typedDateControls(typedDeclaration, typedInputMode(typedDeclaration, typedValues)?.value ?? "").flatMap(control => {
       const date = typeof typedValues[control.field] === "string" ? usDateText(String(typedValues[control.field]).trim()) : undefined;
       return date === undefined ? [] : [{ key: control.label, value: date }];
     })),
@@ -655,7 +656,7 @@ export function RunStartDialog({
               tone="faint"
               items={[
                 workflow?.label,
-                workflow === undefined ? undefined : `${includedRowCount(rows, selectedStepKeys, manualRows)} of ${rows.length} steps`,
+                workflow === undefined ? undefined : `${includedRowCount(rows, selectedStepKeys, manualRows, snapshot)} of ${rows.length} steps`,
                 pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.draft, pdfInput.picks),
                 priority === "interactive" ? "Priority" : undefined,
               ].filter((item): item is string => item !== undefined)}

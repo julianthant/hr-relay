@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, it, vi } from "vitest";
@@ -10,6 +11,8 @@ import { assistantOpen } from "../../../../src/dashboard/surfaces/shell/assistan
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { createFixtureBff } from "../../../support/helpers/dashboard/fixture-bff.js";
+import type { AssistantReplyPart } from "../../../../src/models/dashboard/assistant.js";
+import { assistantHistoryServer } from "../../../support/helpers/dashboard/assistant-history-server.js";
 import { MeasurementFreeResizeObserver } from "../../../support/helpers/settings-storage-doctor-fixtures.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -17,9 +20,19 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const CHAT = "11111111-1111-4111-8111-111111111111";
 const NOW = new Date().toISOString(), LATER = new Date(Date.now() + 86_400_000).toISOString();
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-const conversation = (text: string) => ({ id: CHAT, title: "Filed forms", revision: 2, draft: "", composer: "", importTotal: 0, importNotice: null, messages: [
-  { id: "22222222-2222-4222-8222-222222222222", ordinal: 1, role: "operator", kind: "turn", text: "Who filed this week?", delivery: "answered", code: null, actionId: null, attachments: [] },
-  { id: "33333333-3333-4333-8333-333333333333", ordinal: 2, role: "assistant", kind: "answer", text, delivery: "settled", code: null, actionId: null, attachments: [] }] });
+const usage = { state: "measured", callCount: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 } as const;
+/** One served chat holding an answered turn whose reply is `parts`, read back through the served history routes. */
+async function served(parts: AssistantReplyPart[]) {
+  const server = assistantHistoryServer();
+  await server.client.assistantHistoryWrite({ operation: "create", conversationId: CHAT, title: "Filed forms" });
+  const created = await server.client.assistantConversation(CHAT), now = server.now();
+  const accepted = server.repository.accept({ conversationId: CHAT, expectedRevision: created.revision, messageId: randomUUID(), text: "Who filed this week?",
+    modelText: "Who filed this week?", subjectRef: null, attachments: [], proposalAnswer: null, now });
+  assert.ok(accepted.state === "accepted");
+  assert.ok(server.repository.settle(accepted, { delivery: "answered", usage, reply: { id: randomUUID(), kind: "answer", parts, modelText: "x" } }, now));
+  const conversation = await server.client.assistantConversation(CHAT);
+  return { history: { chats: [{ id: CHAT, title: "Filed forms", revision: conversation.revision, createdAt: NOW, expiresAt: LATER }], selectedId: CHAT, needsYou: 0 }, conversation };
+}
 
 beforeEach(() => { vi.stubGlobal("ResizeObserver", MeasurementFreeResizeObserver); sessionStorage.clear(); });
 afterEach(() => { assistantOpen.set(false); vi.unstubAllGlobals(); });
@@ -43,7 +56,7 @@ function servedShell(reads: { history: unknown; conversation?: unknown }, gate?:
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
 
 it("opens an empty New chat panel with a header, empty state and composer when no chat is stored", async () => {
-  const shell = servedShell({ history: { chats: [], selectedId: null } });
+  const shell = servedShell({ history: { chats: [], selectedId: null, needsYou: 0 } });
   try {
     await shell.render(); await act(async () => assistantOpen.set(true)); await settle();
     const panel = shell.host.querySelector("#hub-panel-assistant"); assert.ok(panel, "the panel renders");
@@ -57,7 +70,7 @@ it("opens an empty New chat panel with a header, empty state and composer when n
 it("shows skeleton title, model chip and transcript while history loads, never the loading text, then the loaded chat", async () => {
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
-  const shell = servedShell({ history: { chats: [{ id: CHAT, title: "Filed forms", revision: 2, createdAt: NOW, expiresAt: LATER }], selectedId: CHAT }, conversation: conversation("Done.") }, gate);
+  const shell = servedShell(await served([{ kind: "text", runs: [{ kind: "plain", text: "Done." }] }]), gate);
   try {
     await shell.render(); await act(async () => assistantOpen.set(true)); await settle();
     const panel = shell.host.querySelector("#hub-panel-assistant"); assert.ok(panel);
@@ -72,9 +85,10 @@ it("shows skeleton title, model chip and transcript while history loads, never t
   } finally { release(); await shell.close(); }
 });
 
-it("renders a served reply's bullets and bold as a list and strong text, and leaves mock-only markup literal", async () => {
-  const text = "Two people filed:\n- Lin Ortega: filed 04/30\n- Sam Patel: filed 05/02\n**Next steps:** confirm. {{link}} ~~gone~~";
-  const shell = servedShell({ history: { chats: [{ id: CHAT, title: "Filed forms", revision: 2, createdAt: NOW, expiresAt: LATER }], selectedId: CHAT }, conversation: conversation(text) });
+it("renders a served reply's bullets and bold parts as a list and strong text, and leaves markup in text literal", async () => {
+  const shell = servedShell(await served([{ kind: "text", runs: [{ kind: "plain", text: "Two people filed:" }] },
+    { kind: "bullets", items: [[{ kind: "plain", text: "Lin Ortega: filed 04/30" }], [{ kind: "plain", text: "Sam Patel: filed 05/02" }]] },
+    { kind: "text", runs: [{ kind: "bold", text: "Next steps:" }, { kind: "plain", text: " confirm. {{link}} ~~gone~~" }] }]));
   try {
     await shell.render(); await act(async () => assistantOpen.set(true)); await settle(); await settle();
     const log = shell.host.querySelector('[role="log"]'); assert.ok(log);
@@ -86,7 +100,7 @@ it("renders a served reply's bullets and bold as a list and strong text, and lea
   } finally { await shell.close(); }
 });
 
-it("shows the typing row with Cancel while a reply is prepared, and Cancel cancels the turn", async () => {
+it("shows the typing row with no button while a reply is prepared", async () => {
   const actions: unknown[] = [];
   const served = { state: { draft: "", messages: [{ id: "m1", role: "operator" as const, text: "Hello" }], sequence: 1, turn: { state: "waiting" as const } }, canCompose: true, accountAvailable: true,
     accountAction: "settings" as const, accountNotice: "", accountRetry() {}, accountHeading: "", models: undefined, chooseModel() {}, onAction: (action: unknown) => { actions.push(action); }, revision: "",
@@ -100,8 +114,7 @@ it("shows the typing row with Cancel while a reply is prepared, and Cancel cance
     assert.equal(row.querySelectorAll(".hub-typing-dots i").length, 3);
     assert.match(row.textContent ?? "", /Preparing a reply…/u);
     assert.ok(row.closest(".hub-assistant-line"), "aligned with the assistant messages");
-    const cancel = [...row.querySelectorAll("button")].find(button => button.textContent === "Cancel"); assert.ok(cancel);
-    await act(async () => cancel.click());
-    assert.deepEqual(actions, [{ type: "cancel" }]);
+    assert.equal(row.querySelectorAll("button").length, 0);
+    assert.deepEqual(actions, []);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

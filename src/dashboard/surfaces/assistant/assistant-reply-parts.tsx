@@ -50,7 +50,7 @@ export function AssistantReplyParts({ parts, sessions, onOpen, onStop }: ReplyAc
     switch (block.kind) {
       case "session": return <AssistantReply key={index}><SessionChip part={block} view={sessions?.get(block.runId)} onStop={onStop} /></AssistantReply>;
       case "answered": return block.attribution.kind === "assistant"
-        ? <p key={index} className="reply-answered"><Check aria-hidden />Filed by you · {formatTime(block.at)}</p> : null;
+        ? <p key={index} className="reply-answered"><Check aria-hidden />You replied yes · {formatTime(block.at)}</p> : null;
       default: return block satisfies never;
     }
   })}</>;

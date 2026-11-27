@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../../support/helpers/backend/record-historical-recover.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
@@ -70,7 +71,7 @@ function transactionEffects(h: Harness) {
 }
 
 function operatorRecover(h: Harness, source: ReturnType<Harness["fresh"]>) {
-  const result = h.kernel.execute({ commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+  const result = recordHistoricalRecover(h, h.descriptor, { commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
     source: "dashboard", family: "run", type: "recover-run", target: { runId: source.envelope.runId, expectedVersion: source.version } });
   assert.equal(result.state, "applied"); assert.ok(result.state === "applied");
   const target = result.affectedTargets[0]; assert.ok(target?.family === "run");

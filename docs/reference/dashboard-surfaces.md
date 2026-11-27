@@ -164,7 +164,7 @@ The focus toolbar adds no selection toggle. The batch footer keeps stable sessio
 Its single footer also uses `FooterActions` for the explicitly selected person's exact attempt and
 served revision. An accessible person/attempt name and tooltip identify the action scope. With no
 person selected it exposes no run action; it never chooses a representative or claims a batch mutation. Cancel,
-Pause/Resume, Rerun/Recover and Delete retain their existing confirmation and command paths when
+Pause/Resume, Rerun and Delete use their existing dialogs and command paths when
 served. There is no grouping toggle. Queue bands and the finished digest count drawn
 rows; status-filter controls, calendar and Analytics retain their run-based populations.
 
@@ -301,7 +301,8 @@ choice, with no fresh text-entry alternative. [Run reference planning](frontend-
 owns entry admission, partial refusals and independent run creation.
 
 Rerun prefills safe source identity fields in Values, using the declared input parser. Protected
-values and identities that no longer satisfy the current input stay uncopied. Onboarding Rerun remains
+values and identities that no longer satisfy the current input stay uncopied. Interrupted Rerun
+uses the source run's retained input and workbook references. Ordinary Onboarding Rerun remains
 one source input with a fresh visible library/version lookup, without a selected-row picker or retained
 source selector. Its [trusted input projection](workflow-model.md#56-recovery-and-rerun) removes server-owned roster data.
 
@@ -754,14 +755,14 @@ strictly later generation, so an old token returns "reference expired" instead o
 Every inference passes the service's currentness check to `inferAssistant`; the account runs it after each credential
 await, immediately before the Responses POST and on every streamed chunk, and closes the operation on every exit.
 Verification expiry, model policy, profile runtime and account authority changes therefore stop the next POST.
-Confirm applies only to runs. Proposal tools (`src/backend/assistant/proposals.ts`) only prepare a card; their result goes to the operator and ends the turn:
-- `propose_workflow_start`: 1–20 entries in the workflow's Input Run grammar, or a run reference to reuse that run's input. One canonical plan, all or none; a dry run when supported, a live read when the workflow has no transaction node.
+The served assistant is conversation only; the panel has no Confirm card and no button except Stop on a session chip. Proposal tools (`src/backend/assistant/typed-proposals.ts`) put the plan in the reply as sentences and bullets ending "Reply yes to file it, or tell me what to change." (or "Reply yes to save all N, or tell me which to skip or change.") and end the turn:
+- `propose_workflow_start`: 1–20 entries in the workflow's Input Run grammar, or a run reference to reuse that run's input. Each row gets its own fresh plan; a dry run when supported names the step it stops before ("Stops before the commit: …"), a live read is used when the workflow has no transaction node.
 - `propose_rerun`: the run's own input with all of its steps.
 - `propose_run_action`: pause, resume or cancel one run through the existing run command.
 
-The change tool `change_notifications` marks all current notifications or one read or unread, or snoozes or unsnoozes them, at once with no card: the assistant authorization record is approved by policy and consumed in the same authority transaction as the target check, and the model receives `{ state, count }` and answers in words.
+Relay runs an open proposal only on a short explicit operator yes ("yes", "yes file it", "approve", "go ahead", "do it", ignoring case, spacing and `. , !`); anything else goes to the model, which cannot approve. On a yes each row is claimed once in `assistant_proposal_rows`, its fresh plan must still match the reviewed inputs, config and workbooks or the row refuses before any claim, and an unproved outcome is UNKNOWN and never retried. The reply's `answered` part records the yes.
 
-Each card is an existing authorization record (`createChat`, `prepare`) with the earlier of the 60-second action expiry and the plan expiry. Card rows show the planned canonical input's typed identity (Person, EID or Name; document number) from the server's plan, never model text. Confirm sends the SHA-256 of the canonical JSON of the card it rendered; the server refuses a missing or different digest, a foreign chat, an old revision, an expired card and any changed plan, settings, source run, grant, manifest or model authority before approval. A card is claimed once. A failure after dispatch may have begun is `unknown`, shown as one line "Couldn't finish this.", and is never retried.
+`start_session` starts a transaction-free read-only workflow without a yes, under a durable session claim; its chip shows the run in Queue and Logs and offers Stop, which sends the run's cancel. The command kernel's effect hook refuses any assistant command outside its claimed proposal row or session claim. Proposal and decision rows from before the upgrade read as inert captions. The launcher's needs-you badge adds open proposals, served as `needsYou` with the chat list.
 
 `scripts/build/generate-assistant-knowledge.ts` writes, and with `--check` verifies, the hash-pinned
 `src/backend/assistant/plugins/workflows/facts.json` from the served workflow definitions. Boot compares it byte
@@ -787,7 +788,7 @@ trace and other actions. A recorded pause uses the outline Queued style with a P
 remain Pausing until recorded. Logs marks the corresponding timeline boundary. The queue toolbar
 pauses every run in the application lifecycle snapshot, including runs outside the selected day.
 When every target is paused it offers Resume all, retaining each command outcome. A single Resume,
-Retry or Recover shows the queued-run worker warning instead of the confirmed toast when that result
+Retry shows the queued-run worker warning instead of the confirmed toast when that result
 carries worker startup. Resume all keeps the confirmed toast and adds one warning naming how many
 runs have no worker, including when another run keeps the batch from confirming. While a workflow
 has unpaused queued runs and every one of its workers has stopped, a sticky warning names how the
@@ -800,7 +801,7 @@ the Cancelled pill credits the operator only for their own cancel and otherwise 
 “Pause all and quit?” with Keep working and confirmation, without a run list. A pending quit shows a
 banner until the runtime settles; no submit is interrupted. Unavailable authority disables controls,
 and unknown closure never becomes a completed pause or clean shutdown. Exact command recovery keeps
-the original targets and request identity. Crash-failed rows offer one checkpoint Rerun and Delete.
+the original targets and request identity. Interrupted runs open Rerun with unfinished steps selected.
 
 ### UCPath found transactions presentation
 

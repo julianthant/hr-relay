@@ -322,6 +322,7 @@ const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync, format: 
     }
   },
   42: () => undefined, // The new assistant tables live in the person database.
+  43: () => undefined, // Assistant message payloads live in the person database.
 };
 const ArchiveVersion = z.strictObject({ format: z.literal([1, archiveFormat]), schema_version: z.number().int(), installation_id: z.uuid(), profile_id: z.uuid() });
 

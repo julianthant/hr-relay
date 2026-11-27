@@ -1,6 +1,7 @@
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
-import { validateRerunSourcePlan, RerunRefusedError, rerunEvidenceReader, validateRerunWriteProof, validateRerunTransactionEvidence } from "./rerun.js";
+import { rerunEvidenceReader, validateRerunWriteProof, validateRerunTransactionEvidence } from "./rerun.js";
+import { validateRerunSourcePlan, RerunRefusedError } from "./rerun-source.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowDelegatedDescriptor, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunExistenceSchema, type RunExistence } from "../../../models/config/authority.js";
@@ -25,6 +26,8 @@ import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.
 import { rerunInputFieldAccepts, rerunTargetAccepts } from "../../../models/validation/rerun-values.js";
 import { workbookInputBinding } from "../workbooks.js";
 import { parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
+import { interruptedRetainedSteps, isInterruptedRerunSource } from "./recovery-plan.js";
+import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 
 export interface RerunValuesDependencies {
   readonly reader: { read(runId: string): RunExistence };
@@ -441,20 +444,22 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           ...("selectedRow" in picked && picked.selectedRow?.sheetId === sheetId ? { selectedRow: picked.selectedRow } : {}) })) : [];
       });
       const browserMode = sourceBrowserMode(repositories, run);
+      const retainedSteps = !older && isInterruptedRerunSource(repositories, run) && run.envelope.parent === undefined
+        ? interruptedRetainedSteps(repositories, descriptor, run) : undefined;
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
         sourceInput,
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,
           descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, outcome: lifecycle.outcome,
           dryRun: run.envelope.dryRun, priority: run.envelope.priority, ...(browserMode === undefined ? {} : { browserMode }) },
         ...(spreadsheets.length === 0 ? {} : { spreadsheets }),
-        steps, values, transactions,
+        steps, values, transactions, ...(retainedSteps === undefined ? {} : { retainedSteps }),
         ...(children.length === 0 ? {} : { children }),
         ...(failedMembers.length === 0 ? {} : { failedMembers }),
         ...(typed.length === 0 ? {} : { typed }),
       } });
     });
   } catch (error) {
-    if (error instanceof RerunRefusedError) return { state: "refused", code: "source-invalid" };
+    if (error instanceof RerunRefusedError || error instanceof RunContinuationRefusedError) return { state: "refused", code: "source-invalid" };
     if (error instanceof SourceRefused) return { state: "refused", code: error.code };
     if (error instanceof z.ZodError || error instanceof SyntaxError) return { state: "refused", code: "source-invalid" };
     throw error;

@@ -7,6 +7,7 @@ type ActionCommand = z.infer<typeof ActionCommandKeySchema>;
 /** How an option is sent, as declared; the projection binds it to the instance's served key. */
 export type DeclaredSend =
   | Readonly<{ via: "action" | "row-action"; command: ActionCommand }>
+  | Readonly<{ via: "row-action"; navigation: "rerun" }>
   | Readonly<{ via: "gate-arm" }>
   | Readonly<{ via: "start-plan" }>
   | Readonly<{ via: "command"; family: string; type: string }>;
@@ -94,8 +95,8 @@ export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclarat
     { id: "resume", label: "Resume", send: { via: "row-action", command: "resume" } },
     cancelRun,
   ] },
-  stalled: { title: "Run not responding", recommended: ["recover"], options: [
-    { id: "recover", label: "Recover", hint: "From the last completed step.", send: { via: "row-action", command: "recover-run" } },
+  stalled: { title: "Run not responding", recommended: ["rerun"], options: [
+    { id: "rerun", label: "Rerun", send: { via: "row-action", navigation: "rerun" } },
     cancelRun,
   ] },
   refused: { title: "Request refused", recommended: [], projected: false, options: [] },

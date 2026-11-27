@@ -32,7 +32,7 @@ import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow } from "./ass
 import { FAILURE_NOTE_REMOVAL_SCHEMA_VERSION, convertFailureNoteRow } from "./failure-note-removal-migration.js";
 import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertAssistantHistoryRetirable } from "./assistant-grant-retirement.js";
 import { assistantAttachmentFromRow } from "./assistant-attachments.js";
-import { ASSISTANT_PHASE_ONE_SCHEMA_VERSION, BUILD_ID_ENVELOPE_SCHEMA_VERSION, COMMAND_ROW_STATE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, type WORKER_CUSTODY_DROPPED_TABLES, WORKER_CUSTODY_SCHEMA_VERSION, isWorkerCustodyDroppedTable, migrationTableNames } from "./migrations.js";
+import { ASSISTANT_HISTORY_PAYLOAD_SCHEMA_VERSION, ASSISTANT_PHASE_ONE_SCHEMA_VERSION, BUILD_ID_ENVELOPE_SCHEMA_VERSION, COMMAND_ROW_STATE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, type WORKER_CUSTODY_DROPPED_TABLES, WORKER_CUSTODY_SCHEMA_VERSION, isWorkerCustodyDroppedTable, migrationTableNames } from "./migrations.js";
 import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "./storage-records.js";
 import { readIntPragma, CountRowSchema, errorMessage, readMetaRow } from "./authority-connection.js";
 import { authorityIntegrityError } from "./authority-errors.js";
@@ -380,7 +380,7 @@ export function validateStoredRow(context: StoredRowContext, table: AuthorityTab
         else if (table === "assistant_conversations") assistantConversationFromRow(raw);
         else if (table === "assistant_messages") {
           const payload: unknown = expectedSchemaVersion >= ASSISTANT_PHASE_ONE_SCHEMA_VERSION && typeof raw.payload_json === "string" ? JSON.parse(raw.payload_json) : undefined;
-          if (payload !== null && typeof payload === "object" && Object.hasOwn(payload, "recording")) assistantM1MessageFromRow(raw);
+          if (expectedSchemaVersion >= ASSISTANT_HISTORY_PAYLOAD_SCHEMA_VERSION || payload !== null && typeof payload === "object" && Object.hasOwn(payload, "recording")) assistantM1MessageFromRow(raw);
           else assistantMessageFromRow(raw);
         }
         else if (table === "assistant_attachments") assistantAttachmentFromRow(raw);
