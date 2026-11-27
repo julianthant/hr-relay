@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { COMPOSITION_EID } from "../support/helpers/separations-composition-fixtures.js";
 import { appliedRunIds } from "../support/fixtures/operator-command-fixtures.js";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
+import { DashboardStreamEnvelopeSchema } from "../../src/models/dashboard/subscription.js";
+import { createDashboardTransport } from "../../src/dashboard/client/transport.js";
 import type { SeededServer } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { SEEDED_PREFERENCE_WRITE } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 import readXlsxFile from "read-excel-file/node";
@@ -586,6 +588,24 @@ test("Onboarding: a failed first read shows Failed on the row and writes nothing
   expect(seeded.scripted.writes()).toHaveLength(0);
 });
 
+async function holdDayCursor(seeded: SeededServer): Promise<Record<string, string>> {
+  const { promise, resolve, reject } = Promise.withResolvers<Record<string, string>>();
+  let generation: number | undefined;
+  const stream = createDashboardTransport({ baseUrl: seeded.baseUrl }).openStream(`/events/v1?topics=dashboard-day:${seeded.day}`, {
+    onMessage: ({ data }) => {
+      const envelope = DashboardStreamEnvelopeSchema.parse(JSON.parse(data));
+      if (envelope.type === "hello") generation = envelope.projectionGeneration;
+      if (envelope.type === "snapshot") {
+        if (generation === undefined) throw new Error("day snapshot preceded its stream hello");
+        resolve({ "last-event-id": envelope.cursor, "dashboard-projection-generation": String(generation) });
+      }
+    },
+  });
+  void stream.done.then(() => reject(new Error("day stream ended before its snapshot")), reject);
+  try { return await promise; }
+  finally { stream.close(); }
+}
+
 for (const probe of [1, 2, 3, 4]) test(`Onboarding: a hire submit whose answer is lost parks the run and is asked for once (probe ${probe})`, async ({ dashboard, seeded, page, failures }) => {
   const { request, runId } = await onboardingStarted({ dashboard, seeded, page, failures });
   const first = await seeded.scripted.drive(runId);
@@ -598,8 +618,9 @@ for (const probe of [1, 2, 3, 4]) test(`Onboarding: a hire submit whose answer i
   expect(await run.advance()).toEqual({ at: "step", nodeId: "hire-create" });
   expect(await run.advance()).toEqual({ at: "step", nodeId: "hire-create" });
   const streamUrl = `${seeded.baseUrl}/events/v1?topics=dashboard-day:${seeded.day},run:${runId}`;
-  const probeStreams = () => Promise.all(Array.from({ length: 8 }, async () => {
-    const response = await fetch(streamUrl);
+  const resume = probe === 1 ? undefined : await holdDayCursor(seeded);
+  const probeStreams = () => Promise.all(Array.from({ length: 8 }, async (_, index) => {
+    const response = await fetch(streamUrl, index % 2 === 0 && resume !== undefined ? { headers: resume } : undefined);
     try { expect(response.status, "Onboarding run-topic subscription").toBe(200); }
     finally { await response.body?.cancel(); }
   }));
