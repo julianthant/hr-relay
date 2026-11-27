@@ -88,8 +88,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   // A row the stream could not read keeps the shown document display-only until the next good row.
   const readProblem = reportedReadProblem ?? (streamed?.unavailable === true
     ? formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_REFRESH_UNAVAILABLE", {})).text : undefined);
-  // A document this visit's authority verified stays editable through a re-read; only a kept copy from another authority, or a read problem, locks it.
-  const verified = acceptedRequest.current === request && editor.state === "loaded";
+  // A document this visit's authority verified stays editable through a re-read; only a read problem, or a document this authority's read does not hold, locks it.
+  const verified = editor.state === "loaded" && (acceptedRequest.current === request || editor.document === observation.value);
   const editable = verified && readProblem === undefined;
   const refresh = useCallback(async (publish = true): Promise<EditableSettingsWire> => {
     try {
