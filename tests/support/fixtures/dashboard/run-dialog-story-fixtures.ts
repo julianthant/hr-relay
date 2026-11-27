@@ -6,6 +6,8 @@ import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-m
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { FrontendBootstrapWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { z } from "zod";
+import { CRM_DOCUMENT_ROSTER_FIELDS } from "../../../../src/models/workflows/crm-doc-download/documents.js";
+import { ONBOARDING_ROSTER_TYPE_ID } from "../../../../src/models/workflows/onboarding/roster.js";
 import { RerunValuesRequestSchema, RerunValuesResponseSchema, type RerunValuesResponse } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningWireSchema, type RerunWarningWire } from "../../../../src/models/dashboard/rerun-warning.js";
 import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
@@ -57,8 +59,11 @@ const typedInput = (flow: RunStartWorkflow, supportsDryRun: boolean): RunStartWo
 export const RUN_DIALOG_DRY_RUN_CATALOG = catalogOf(flow => typedInput(flow, true));
 /** The entry as a workflow that reads its people from a required reference spreadsheet. */
 export const RUN_DIALOG_REFERENCE_CATALOG = catalogOf(flow => ({ ...flow, requiredWorkbookFields: ["eid"], workbookReference: { id: "roster-type", keyFieldId: "eid", mode: "keys", writableFields: [] } }));
-/** The entry as CRM Doc Download declares its reference: the one workflow whose reference takes several worksheets. */
-export const RUN_DIALOG_SEVERAL_SHEETS_CATALOG = catalogOf(flow => ({ ...flow, label: "CRM Doc Download", requiredWorkbookFields: ["eid"], workbookReference: { id: "onboarding-roster", keyFieldId: "eid", mode: "keys", writableFields: [] } }));
+/** CRM Document Download as its descriptor declares it: the one workflow whose reference takes several worksheets. */
+export const RUN_DIALOG_CRM = "crm-doc-download";
+export const RUN_DIALOG_SEVERAL_SHEETS_CATALOG = catalogOf(flow => ({ ...flow, workflowId: RUN_DIALOG_CRM, label: "CRM Document Download", icon: "FileText", code: "cd",
+  requiredWorkbookFields: [...CRM_DOCUMENT_ROSTER_FIELDS], workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [] },
+  inputRun: flow.inputRun.state === "present" ? { state: "present", surface: { ...flow.inputRun.surface, placeholder: "Enter employee IDs or emails for one batch" } } : flow.inputRun }));
 /** The entry as a workflow with the optional second check. */
 export const RUN_DIALOG_CHECK_CATALOG = catalogOf(flow => ({ ...flow, workbookCheck: { id: "reference-check", keyFieldId: "eid" } }));
 /** The entry as a PDF workflow: documents in, an OCR switch and a required choice on the Options stage. */

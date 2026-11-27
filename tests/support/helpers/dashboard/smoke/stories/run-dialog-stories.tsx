@@ -12,11 +12,11 @@ import { ERROR_CATALOG } from "../../../../../../src/models/failures/error-catal
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
-  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_PDF_REFERENCE_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, RUN_DIALOG_SEVERAL_SHEETS_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
+  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_PDF_REFERENCE_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, RUN_DIALOG_CRM, RUN_DIALOG_SEVERAL_SHEETS_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
   never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, runDialogWriteRerunSnapshot, runDialogWriteRerunWarning, RUN_DIALOG_WRITE_RERUN_CATALOG, RUN_DIALOG_WORK_STUDY, type ServedCheck,
   RUN_DIALOG_SEPARATIONS, RUN_DIALOG_SEPARATIONS_CATALOG, RUN_DIALOG_SEPARATIONS_TYPED, runDialogSeparationsRerunSnapshot,
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
-import { RUN_DIALOG_REFERENCE_READS, runDialogReferenceReads } from "../../../../fixtures/dashboard/run-dialog-reference-fixtures.js";
+import { RUN_DIALOG_CRM_SHAPE, RUN_DIALOG_REFERENCE_READS, runDialogReferenceReads } from "../../../../fixtures/dashboard/run-dialog-reference-fixtures.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import { SceneBinding } from "./scene-binding.js";
 import { StoryFrame } from "./story-frame.js";
@@ -191,7 +191,7 @@ const worksheetSearch = (page: Page) => page.getByRole("searchbox", { name: "Fin
 const chooseThree = async (page: Page) => { await chooseRoster(page);
   await dialog(page).getByRole("button", { name: /worksheets, /u }).click(); await worksheetSearch(page).waitFor();
   for (const name of ["Nov. 16", "Nov 9"]) await page.getByRole("menuitemcheckbox", { name }).click(); };
-const several = (title: string, then: (page: Page) => Promise<void>) => reference(title, runDialogReferenceReads(SHEETS, "onboarding-roster"), RUN_DIALOG_SEVERAL_SHEETS_CATALOG, { then });
+const several = (title: string, then: (page: Page) => Promise<void>) => reference(title, runDialogReferenceReads(SHEETS, "onboarding-roster", RUN_DIALOG_CRM_SHAPE), RUN_DIALOG_SEVERAL_SHEETS_CATALOG, { then, workflowId: RUN_DIALOG_CRM });
 const REFERENCE = {
   "none-added": reference("The reference field before any spreadsheet is picked", RUN_DIALOG_REFERENCE_READS),
   "pdfs-none-added": reference("PDFs chosen, the reference field still empty", { ...RUN_DIALOG_REFERENCE_READS, uploadOcrSource: runDialogUpload }, RUN_DIALOG_PDF_REFERENCE_CATALOG, { then: afterAttach(pdfFile("first.pdf"), pdfFile("second.pdf", "%PDF-1.4 two")) }),
