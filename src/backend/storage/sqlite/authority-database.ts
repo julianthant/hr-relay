@@ -1855,22 +1855,45 @@ export class AuthorityDatabase implements Disposable {
 
   checkQueueDaySources(day: string, previous?: number | Readonly<{
     through: number;
+    retryConfigFingerprint: string | undefined;
     runIds: readonly string[];
     timelineRunIds: readonly string[];
     lastWorkerClaims: readonly { workerId: string; cursor: number | null }[];
     relationships: readonly { runId: string; parentId: string | null; workflowId: string; itemId: string; day: string }[];
     month: { from: string; to: string; counts: readonly { day: string; count: number }[] };
-  }>): { through: number; kind: "full" | "unchanged" } | { through: number; kind: "runs"; runIds: readonly string[]; dayRunIds: readonly string[]; countDays: readonly string[] } | undefined {
+  }>): { through: number; kind: "full"; retryConfigFingerprint: string | undefined } | { through: number; kind: "unchanged" }
+    | { through: number; kind: "runs"; runIds: readonly string[]; dayRunIds: readonly string[]; countDays: readonly string[] } | undefined {
     if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
     return this.#withReadSnapshot(() => {
       this.#validateExternalQuerySources();
       const through = changeLogHighWater(this.#database);
-      if (previous === undefined) return { through, kind: "full" };
-      if (typeof previous === "number") return { through, kind: through === previous ? "unchanged" : "full" };
+      const retryConfigFingerprint = () => {
+        const settings = readAppSettings(this.#database);
+        const active = settings?.active;
+        if (active == null || settings?.saved != null && (settings.saved.revision !== active.settingsRevision
+          || settings.saved.settingsFingerprint !== active.settingsFingerprint)) return undefined;
+        return active.configFingerprint;
+      };
+      const full = () => ({ through, kind: "full" as const, retryConfigFingerprint: retryConfigFingerprint() });
+      if (previous === undefined) return full();
+      if (typeof previous === "number") return through === previous ? { through, kind: "unchanged" }
+        : { through, kind: "full", retryConfigFingerprint: undefined };
       if (through === previous.through) return { through, kind: "unchanged" };
       const retained = z.object({ count: z.number().int().nonnegative() }).parse(
         this.#database.prepare(`SELECT count(*) AS count FROM ${CHANGE_LOG_TABLE} WHERE seq > ?`).get(previous.through));
-      if (retained.count !== through - previous.through) return { through, kind: "full" };
+      if (retained.count !== through - previous.through) return full();
+
+      // Ordinary preferences can advance Settings and append a snapshot while leaving Retry eligibility unchanged.
+      const settingsChange = this.#database.prepare(`SELECT op, table_name FROM ${CHANGE_LOG_TABLE}
+        WHERE seq > ? AND table_name IN ('settings','settings_snapshots')
+        ORDER BY (table_name = 'settings_snapshots' AND op <> 'insert') DESC LIMIT 1`).get(previous.through);
+      if (settingsChange !== undefined) {
+        const fingerprint = retryConfigFingerprint();
+        if (fingerprint === undefined || fingerprint !== previous.retryConfigFingerprint
+          || settingsChange.table_name === "settings_snapshots" && settingsChange.op !== "insert") {
+          return { through, kind: "full", retryConfigFingerprint: fingerprint };
+        }
+      }
 
       const sharedChange = this.#database.prepare(`WITH changed_runs(id) AS (
           SELECT DISTINCT json_extract(row_key,'$[0]') FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name = 'runs'
@@ -1886,8 +1909,7 @@ export class AuthorityDatabase implements Disposable {
         SELECT 1 FROM ${CHANGE_LOG_TABLE} change WHERE seq > ? AND (
         table_name IN ('run_batches','run_delegations','delegation_dependencies','run_checkpoints',
           'gate_results','run_failures','run_receipts','write_intents','write_attempts','dryrun_results',
-          'worker_pools','worker_slots','auth_leases','ocr_review_revisions','ocr_approved_snapshots','ocr_source_uploads',
-          'settings','settings_snapshots')
+          'worker_pools','worker_slots','auth_leases','ocr_review_revisions','ocr_approved_snapshots','ocr_source_uploads')
         OR (table_name = 'run_results' AND (
           NOT EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%')
           OR EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%' AND substr(value,5) NOT IN (SELECT id FROM changed_runs))
@@ -1928,7 +1950,7 @@ export class AuthorityDatabase implements Disposable {
         ))
       ) LIMIT 1`).get(previous.through, previous.through, JSON.stringify(previous.runIds), JSON.stringify(previous.timelineRunIds),
         JSON.stringify(previous.lastWorkerClaims), previous.through);
-      if (sharedChange !== undefined) return { through, kind: "full" };
+      if (sharedChange !== undefined) return full();
 
       const changedRuns = this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE}
         WHERE seq > ? AND table_name = 'runs' LIMIT 1`).get(previous.through);
@@ -1962,7 +1984,7 @@ export class AuthorityDatabase implements Disposable {
         HAVING min(CASE op WHEN 'insert' THEN seq END) IS NOT min(seq)
           AND json_extract(row_key,'$[0]') NOT IN (SELECT json_extract(value,'$.runId') FROM json_each(?))
         LIMIT 1`).get(previous.through, relationships);
-      if (unknown !== undefined) return { through, kind: "full" };
+      if (unknown !== undefined) return full();
 
       const rows = this.#database.prepare(`WITH RECURSIVE facts(id,parent,workflow,item) AS (
           SELECT id,parent_id,workflow,item_id FROM runs
