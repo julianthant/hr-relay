@@ -301,7 +301,7 @@ async function expectTimelines(client: ReturnType<typeof createDashboardClient>,
     expect(steps.map(step => step.title), name).not.toContain("Run note");
     // Every started step has a row under its descriptor title, in descriptor order.
     const spanless = new Set<string>(descriptorRuntimeNodes(descriptor).filter(node => node.kind === "gate" || node.kind === "child-run").map(node => node.id));
-    const order = descriptor.timeline.filter(group => group.nodes.some(node => !spanless.has(node)));
+    const order = descriptor.timeline.filter(group => group.nodes.some(node => !spanless.has(node.id)));
     const positions = noted.map(note => order.findIndex(group => group.label === note.title));
     expect(noted.length, name).toBeGreaterThan(0);
     expect(positions.every(position => position >= 0), name).toBe(true);
