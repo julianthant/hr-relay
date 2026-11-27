@@ -2,29 +2,30 @@ import { queryAssistantUsage } from "../../assistant/usage-counts.js";
 import { z } from "zod";
 import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
-import { RunSummaryQuerySchema } from "../../storage/sqlite/run-summaries.js";
+import type { RunSummaryQuery } from "../../storage/sqlite/run-summaries.js";
 import { PACIFIC_TIME_ZONE } from "../../../models/dashboard/search-calendar.js";
 import { deriveRunStatus } from "../../../rules/runs/run-status.js";
 import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
-type SummaryRow = ReturnType<AuthorityDatabase["queryRunSummaries"]>["items"][number];
-/** Selected live summary rows, streamed in bounded indexed pages inside one database snapshot. */
-function visitRange(database:AuthorityDatabase,from:string,to:string,visit:(row:SummaryRow)=>void) {
-  for(const workflow of database.summaryWorkflows()) {
-    let after: z.output<typeof RunSummaryQuerySchema>["after"];
-    do {
-      const page=database.queryRunSummaries({workflow,fromDay:from,toDay:to,limit:500,...(after===undefined?{}:{after})});
-      page.items.forEach(visit);
-      after=page.next??undefined;
-    }while(after!==undefined);
-  }
-}
-
-
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { ActivityReportWire } from "../../../models/dashboard/activity.js";
 import type { RunSummary } from "../../../models/run/summary.js";
 import { buildActivityReport, failureStepOfTaskSpans, taskSpansForRun, type ActivityReportRow } from "./activity-analytics.js";
 import { createActivityDatePartReader } from "../../../models/dashboard/activity-volume.js";
+
+type SummaryRow = ReturnType<AuthorityDatabase["queryRunSummaries"]>["items"][number];
+/** Selected live summary rows, streamed in bounded indexed pages inside one database snapshot. */
+function visitRange(database:AuthorityDatabase,from:string,to:string,topLevel:boolean,visit:(row:SummaryRow)=>void) {
+  for(const workflow of database.summaryWorkflows()) {
+    let after: RunSummaryQuery["after"];
+    do {
+      // Separations uses canonical person evidence from inline runs as well.
+      const page=database.queryRunSummaries({workflow,fromDay:from,toDay:to,limit:500,
+        topLevel:topLevel&&workflow!=="separations",...(after===undefined?{}:{after})});
+      page.items.forEach(visit);
+      after=page.next??undefined;
+    }while(after!==undefined);
+  }
+}
 
 /** A zone change can shift a local date by at most two days; inspect that bounded edge so it cannot hide a run as zero. */
 function shiftActivityDay(value:string,days:number):string {
@@ -37,7 +38,8 @@ function shiftActivityDay(value:string,days:number):string {
 
 export function visitActivitySummaryRange(database: AuthorityDatabase, from: string, to: string, timeZone: string, visit: (row: SummaryRow) => void) {
   const reportDayOf = createActivityDatePartReader(timeZone);
-  visitRange(database, shiftActivityDay(from, -2), shiftActivityDay(to, 2), row => {
+  // In other zones, the date-mismatch check also needs to see inline runs.
+  visitRange(database, shiftActivityDay(from, -2), shiftActivityDay(to, 2), timeZone === PACIFIC_TIME_ZONE, row => {
     const enqueuedDay = reportDayOf(row.enqueuedAt);
     const storedDayIsInRange = row.localDay >= from && row.localDay <= to;
     if (row.localDay !== enqueuedDay) {

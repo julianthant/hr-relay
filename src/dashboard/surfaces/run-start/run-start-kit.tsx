@@ -30,6 +30,7 @@ import { newestWorksheet } from "./run-start-spreadsheets-model.js";
 import { FailureNotice } from "../../ds/primitives/failure-notice.js";
 import { RunList, RunListRow, RunSection } from "../../ds/primitives/run-list.js";
 import { RunChoice } from "./run-launch-layout.js";
+import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
 import { SpreadsheetPicker, SpreadsheetRow, SpreadsheetSection, type PickerOption, type SheetVersion, type SheetWorksheet } from "./run-spreadsheet-picker.js";
 import { typedInputMode, typedInputDefaults, inputRunFieldLabel, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft } from "./run-start-model.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
@@ -428,12 +429,12 @@ export interface CheckSheet {
 }
 export type ReferenceWorksheet = SheetWorksheet;
 
-/** The reference spreadsheet a run looks people up in: one per run, with the worksheets of the chosen version that carry the key fields. */
+/** The reference spreadsheet a run looks people up in: one per run, with the worksheets of the chosen version that carry the key fields. `several` lets more than one be chosen. */
 export interface RunReferenceSheet {
   readonly requiredLabel: string; readonly sheets: readonly ReferenceSheet[];
-  readonly chosenLibraryId?: string | undefined; readonly chosenVersionId?: string | undefined; readonly chosenSheetId: string;
+  readonly chosenLibraryId?: string | undefined; readonly chosenVersionId?: string | undefined; readonly chosenSheetIds: readonly string[]; readonly several: boolean;
   readonly worksheets: readonly ReferenceWorksheet[]; readonly worksheetsState: "loading" | "ready" | "error"; readonly worksheetsError: string | null;
-  readonly onPick: (libraryId: string, versionId: string) => void; readonly onVersion: (versionId: string) => void; readonly onWorksheet: (sheetId: string) => void; readonly onRemove: () => void;
+  readonly onPick: (libraryId: string, versionId: string) => void; readonly onVersion: (versionId: string) => void; readonly onWorksheets: (sheetIds: readonly string[]) => void; readonly onRemove: () => void;
 }
 
 /** The served Run and Rerun dialogs' one Spreadsheets field: the reference spreadsheet the run looks people up in and the optional extra spreadsheets it checks each person against. One Add spreadsheet button: it fills the reference first, then adds checks; with no check available it changes the reference. */
@@ -443,16 +444,17 @@ export function RunSpreadsheets({ reference, check, busy: reading, locked = fals
 }) {
   const busy = reading || locked;
   const chosen = reference?.sheets.find(sheet => sheet.libraryId === reference.chosenLibraryId);
-  const chosenSheetId = reference?.chosenSheetId ?? "";
+  const chosenSheetIds = reference?.chosenSheetIds ?? [];
   const referenceWorksheets = reference?.worksheets;
   const worksheets = useMemo(() => referenceWorksheets ?? [], [referenceWorksheets]);
   const worksheetsState = reference?.worksheetsState ?? "ready";
-  const missingSheet = chosenSheetId !== "" && !worksheets.some(sheet => sheet.sheetId === chosenSheetId);
-  const onWorksheet = reference?.onWorksheet;
+  const missingSheet = !chosenSheetIds.every(sheetId => worksheets.some(sheet => sheet.sheetId === sheetId));
+  const onWorksheets = reference?.onWorksheets;
+  const unpicked = chosenSheetIds.length === 0;
   useEffect(() => {
     const newest = newestWorksheet(worksheets);
-    if (onWorksheet !== undefined && chosenSheetId === "" && worksheetsState === "ready" && newest !== undefined) onWorksheet(newest.sheetId);
-  }, [chosenSheetId, worksheetsState, worksheets, onWorksheet]);
+    if (onWorksheets !== undefined && unpicked && worksheetsState === "ready" && newest !== undefined) onWorksheets([newest.sheetId]);
+  }, [unpicked, worksheetsState, worksheets, onWorksheets]);
   const title = "References";
   const description = reference === undefined ? "Optional." : `Needs ${reference.requiredLabel}.`;
   if (catalogError) return <div className="flex min-w-0 flex-col gap-3"><RunSection title={title} description={description}><ReferenceFailure locked={locked} onRefresh={onRefresh} /></RunSection></div>;
@@ -471,8 +473,8 @@ export function RunSpreadsheets({ reference, check, busy: reading, locked = fals
     <SpreadsheetSection title={title} description={description} picker={picker}>
       {(reference !== undefined && chosen !== undefined || check?.sheets.some(sheet => sheet.pickedSheetIds !== undefined)) && <>
       {reference !== undefined && chosen && <SpreadsheetRow name={chosen.name} versions={chosen.versions} versionId={reference.chosenVersionId ?? chosen.currentVersionId} note={note}
-        worksheets={worksheets} picked={chosenSheetId === "" ? [] : [chosenSheetId]} mode="one" busy={busy} locked={locked} worksheetsReady={worksheetsState === "ready"}
-        onVersion={reference.onVersion} onWorksheets={ids => { if (ids[0] !== undefined) reference.onWorksheet(ids[0]); }} onRemove={reference.onRemove} />}
+        worksheets={worksheets} picked={chosenSheetIds} mode={reference.several ? "many" : "one"} max={reference.several ? MAX_SELECTED_WORKBOOK_SOURCES : undefined} busy={busy} locked={locked} worksheetsReady={worksheetsState === "ready"}
+        onVersion={reference.onVersion} onWorksheets={reference.onWorksheets} onRemove={reference.onRemove} />}
       {check !== undefined && <CheckPickedRows busy={busy} locked={locked} {...check} />}
       </>}
     </SpreadsheetSection>
