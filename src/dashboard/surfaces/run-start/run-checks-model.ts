@@ -49,6 +49,7 @@ function runCheckFailure(error: unknown, fallback: string): string {
   const cause = error instanceof DashboardClientError && error.cause instanceof DashboardClientError ? error.cause : error;
   if (readDeadlineExpired(cause)) return "The readiness check request timed out.";
   if (cause instanceof DashboardClientError) {
+    if (cause.code === "COMMAND_RESULT_IDENTITY_MISMATCH") return ERROR_CATALOG.COMMAND_RESULT_IDENTITY_MISMATCH.text;
     if (cause.kind === "network") return "Relay lost the connection while checking readiness.";
     if (cause.kind === "http" && cause.status !== undefined && cause.status >= 400) {
       if ((cause.status === 409 || cause.status === 429) && cause.code?.startsWith("PREFLIGHT_")) return cause.message;

@@ -7,10 +7,12 @@ import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/
 import { FIXTURE_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-start.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/fixtures/dashboard/fixture-settings.js";
+import { healthyDashboardPreflightReport } from "../../../support/fixtures/preflight-seams.js";
 import { PreflightRerunCommandRequestSchema } from "../../../../src/models/preflight/preflight-contract.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
@@ -352,7 +354,7 @@ async function reachChecksWith(client: Parameters<typeof h.openDialog>[0]) {
 
 describe("a refused re-check through the real client", () => {
   const ACTIVE = { state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready" };
-  async function served(rerunStatus: number) {
+  async function served(rerunStatus: number, rerunBody?: unknown) {
     const reports: unknown[] = [];
     const real = createDashboardClient({ baseUrl: "http://relay.test", surface: () => "app", fetchImpl: async (url, init) => {
       const path = new URL(url).pathname;
@@ -366,7 +368,7 @@ describe("a refused re-check through the real client", () => {
       if (path === "/api/v1/preflight") return Response.json({ state: "unavailable", reason: "Not checked yet." });
       if (path === "/api/v1/settings/editable") return Response.json(FIXTURE_EDITABLE_SETTINGS);
       if (path === "/api/v1/bootstrap") return Response.json(FIXTURE_BOOTSTRAP);
-      if (path === "/api/v1/preflight/rerun") return Response.json({ state: "error", code: rerunStatus === 429 ? "PREFLIGHT_RATE_LIMITED" : "PREFLIGHT_RERUN_FAILED",
+      if (path === "/api/v1/preflight/rerun") return Response.json(rerunBody ?? { state: "error", code: rerunStatus === 429 ? "PREFLIGHT_RATE_LIMITED" : "PREFLIGHT_RERUN_FAILED",
         message: rerunStatus === 429 ? "Relay allows six readiness checks per minute." : "refused", retryable: true }, { status: rerunStatus });
       throw new Error(`unexpected request ${path}`);
     } });
@@ -406,5 +408,19 @@ describe("a refused re-check through the real client", () => {
     await toChecks(dialog);
     await vi.waitFor(() => assert.equal(reports.length, before + 1));
     assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /The readiness service returned HTTP 500/u);
+  });
+
+  it("explains a mismatched rerun response and keeps Start disabled", async () => {
+    const workflow = FIXTURE_BOOTSTRAP.workflows.find(candidate => candidate.id === h.WORKFLOW_ID);
+    assert.ok(workflow);
+    const { client, reports } = await served(200, {
+      state: "completed", commandId: "00000000-0000-4000-8000-000000000002",
+      report: { ...healthyDashboardPreflightReport(manualClock(new Date("2026-11-17T12:00:00Z"))),
+        configFingerprint: FIXTURE_EDITABLE_SETTINGS.activeConfigFingerprint, descriptorFingerprint: workflow.descriptorFingerprint },
+    });
+    const { dialog } = await openSettled(client, reports);
+    await toChecks(dialog);
+    assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /The response did not match the request\./u);
+    assert.equal(dialog.disabled("Start run"), true);
   });
 });
