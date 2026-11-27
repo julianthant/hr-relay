@@ -66,7 +66,7 @@ export function TagMenu({ name, tags, bank, onChange }: { name: string; tags: re
     <DropdownMenuTrigger render={<IconButton variant="outline" size="xs" label={`Add a tag to ${name}`} icon={<Plus aria-hidden className={dsIcon.sm} />} onClick={event => event.stopPropagation()} />} />
     <DropdownMenuContent align="start" className="flex w-[232px] flex-col overflow-hidden" onClick={event => event.stopPropagation()}>
       <div className="mb-1 shrink-0" onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); create(); } if (!['Escape', 'ArrowDown', 'ArrowUp'].includes(event.key)) event.stopPropagation(); }}>
-        <SearchInput variant="menu" aria-label="Find or create a tag" placeholder="Find or create a tag" maxLength={MAX_TAG_LENGTH} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} /></div>
+        <SearchInput aria-label="Find or create a tag" placeholder="Find or create a tag" maxLength={MAX_TAG_LENGTH} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} /></div>
       <div className={`min-h-0 ${MENU}`}>
         {shown.map(tag => { const on = tags.includes(tag); return <DropdownMenuCheckboxItem key={tag} className="sv2-tag-item" checked={on} onCheckedChange={toggle(tag)} onSelect={event => event.preventDefault()}>
           {/* The checkbox look, not the ds Checkbox: a button inside a menu item would nest two controls. */}

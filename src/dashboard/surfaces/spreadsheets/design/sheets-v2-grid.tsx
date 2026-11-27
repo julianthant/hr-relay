@@ -45,7 +45,7 @@ function ColumnsPanel({ fields, dataset, mapping, onMap, field, onField, workshe
     {worksheets && worksheets.items.length > 1 && <div className="pb-2"><Picker aria-label="Worksheet" aria-expanded={listing} className="w-full" onClick={() => listing ? close() : setListing(true)}>
       {current && partial(current.matched) && <span aria-hidden className="mr-1.5 inline-block size-1.5 rounded-full align-middle bg-[var(--warning)]" />}{worksheets.current}</Picker></div>}
     {listing && worksheets ? <>
-      <SearchInput variant="menu" aria-label="Find a worksheet" placeholder="Find a worksheet" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />
+      <SearchInput aria-label="Find a worksheet" placeholder="Find a worksheet" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />
       <ul aria-label="Worksheets" className="mt-1">{worksheets.items.filter(item => item.name.toLowerCase().includes(query.trim().toLowerCase())).map(item => <li key={item.name}>
         <button type="button" aria-current={item.name === worksheets.current || undefined} onClick={() => { worksheets.onSelect(item.name); close(); }}
           className={`flex min-h-8 w-full items-center justify-between gap-3 rounded-md pl-2 pr-1 text-left ds-text-ui hover:bg-ui-hover ${item.name === worksheets.current ? 'bg-ui-hover' : ''} ${dsFocus}`}>
@@ -98,7 +98,7 @@ export function MappingGrid({ fields, dataset, mapping, onMap, worksheets, copy 
   };
   return <section aria-label="Preview" onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'c' && box) { event.preventDefault(); void copyCells(); } }}>
     <div className="ds-toolbar-row mb-2 flex items-center gap-2">
-      <SearchInput aria-label="Search this sheet" placeholder="Search this sheet" value={query} onChange={event => { setSelection(undefined); setQuery(event.target.value); }} onClear={() => setQuery('')} className="sv2-search min-w-0 flex-1" />
+      <SearchInput aria-label="Search this sheet" placeholder="Search this sheet" value={query} onChange={event => { setSelection(undefined); setQuery(event.target.value); }} onClear={() => setQuery('')} className="min-w-0 flex-1" />
       {box && <V2Button onClick={() => void copyCells()}>Copy</V2Button>}
     </div>
     <div className="grid grid-cols-[minmax(0,1fr)_304px] items-start gap-3">
