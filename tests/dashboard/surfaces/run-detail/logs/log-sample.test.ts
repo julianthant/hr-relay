@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
-import { act, createElement, type ComponentProps } from 'react';
+import { act, createElement, useState, type ComponentProps, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach,beforeEach,describe,it,vi } from 'vitest';
-import { TooltipProvider } from '../../../../../src/dashboard/ds/ui.js';
+import { ToastProvider,TooltipProvider } from '../../../../../src/dashboard/ds/ui.js';
+import { PersonPreferencesContext } from '../../../../../src/dashboard/lib/person-preferences.js';
+import type { InboxWiring } from '../../../../../src/dashboard/state/inbox-wiring-adapter.js';
+import { useNotificationAlert,useNotificationRailModel } from '../../../../../src/dashboard/surfaces/notifications/notification-rail-model.js';
+import type { NotificationItem } from '../../../../../src/dashboard/surfaces/notifications/notifications-view-model.js';
+import { NEUTRAL_PERSON_PREFERENCES } from '../../../../../src/models/config/person-preferences.js';
 import { LogSample } from '../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js';
 import { LogPreview } from '../../../../support/fixtures/dashboard/log-preview/log-preview.js';
 import { initialMockDraft,type MockRun } from '../../../../support/fixtures/dashboard/workflow-mocks/workflow-mock-model.js';
@@ -21,6 +26,7 @@ vi.mock('../../../../../src/dashboard/state/client-context.js', async importOrig
 vi.mock('../../../../../src/dashboard/state/run-wiring-adapter.js', () => ({ projectRunLogs, useRunWiring }));
 vi.mock('../../../../../src/dashboard/surfaces/run-detail/review/review.js', () => ({ RunReview: () => null }));
 
+type Arrival = Parameters<Parameters<InboxWiring['onPublication']>[0]>[0];
 const sample = (props: ComponentProps<typeof LogSample>) => createElement(TooltipProvider, null, createElement(LogSample, props));
 
 beforeEach(() => {
@@ -250,12 +256,61 @@ describe('compact run headers', () => {
     assert.ok(check); assert.equal(check.disabled, false);
     assert.equal(container.querySelectorAll('[aria-label="Full dry-run preview"]').length, previewState === 'available' ? 1 : 0);
     if (previewState === 'available') assert.match(container.querySelector('[aria-label="Full dry-run preview"]')?.textContent ?? '', /Not clicked/);
-    if (previewState === 'unavailable') assert.match(markup, /Dry-run preview unavailable/);
-    else assert.doesNotMatch(markup, /Dry-run preview unavailable/);
+    assert.doesNotMatch(markup, /Dry-run preview unavailable/);
     if (trailingStep) {
       const tail = markup.indexOf('Additional retained step'); assert.ok(tail > 0);
       assert.ok(markup.indexOf('aria-label="UCPath found transactions"') < tail);
-      assert.ok(markup.indexOf(previewState === 'available' ? 'aria-label="Full dry-run preview"' : 'Dry-run preview unavailable') > tail);
+      if (previewState === 'available') assert.ok(markup.indexOf('aria-label="Full dry-run preview"') > tail);
+    }
+  });
+
+  for (const status of ['failed', 'cancelled'] as const) it(`keeps the toast count when a ${status} dry run is closed and reopened`, async () => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: { ...initialMockDraft('person-lookup'), dryRun: true }, approved: true, seeded: true };
+    const row = { ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), dryRun: true, status };
+    const dryRunPreview = DryRunPreviewWireSchema.parse({ state: 'unavailable', reason: 'preview-not-completed' });
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Dry run' }, availableSections: ['logs'] }, logs: { dryRunPreview }, unavailableEvidence: [] } });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const listeners = new Set<(arrival: Arrival) => void>();
+    const inbox: InboxWiring = { state: { state: 'ready', items: [], pinned: [] }, notice: '', control: async () => true, canAct: () => true, canClear: () => true, readAll: async () => undefined, clear: async () => true, clearAll: async () => undefined, open: () => undefined,
+      onPublication: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; } };
+    const emissions: string[] = [];
+    const session: { setOpen: (open: boolean) => void } = { setOpen: () => undefined };
+    function Session() {
+      const [open, setOpen] = useState(true); session.setOpen = setOpen;
+      const deliver = useNotificationAlert(() => undefined);
+      useNotificationRailModel({ setOpen: () => undefined, onRefused: () => undefined, onOpenNotification: () => undefined, served: inbox,
+        onAlert: (item, sound) => { emissions.push(item.id); deliver(item, sound); } });
+      return open ? sample({ selection: { row, workflowLabel: 'Person lookup' } }) : null;
+    }
+    const host = document.createElement('div'); document.body.append(host);
+    const root = createRoot(host);
+    const preferences = { value: NEUTRAL_PERSON_PREFERENCES, state: 'ready' as const };
+    const wrap = (children: ReactNode) => createElement(PersonPreferencesContext.Provider, { value: { snapshot: () => preferences, subscribe: () => () => undefined, change: async () => true } },
+      createElement(ToastProvider, null, children));
+    await act(async () => root.render(wrap(createElement(Session))));
+    const failure: NotificationItem = { id: 'failed', title: 'Run failed notice', tone: 'danger', subject: 'Jordan', workflow: 'Person Lookup', detail: 'Review the failed run.', age: 'Just now', read: false, action: 'Open log', kind: 'run', destination: { kind: 'refused', reason: 'target-unavailable' } };
+    // A cancelled run publishes nothing; a failed one is published once through the rail while its run is open.
+    await act(async () => { if (status === 'failed') for (const listener of listeners) listener({ sourceId: 'failed', item: failure }); });
+    const delivered = (document.body.textContent ?? '').match(/Run failed notice/g)?.length ?? 0;
+    assert.deepEqual(emissions, status === 'failed' ? ['failed'] : []);
+    for (let open = 0; open < 2; open += 1) {
+      await act(async () => session.setOpen(false));
+      await act(async () => session.setOpen(true));
+      assert.deepEqual(emissions, status === 'failed' ? ['failed'] : [], 'reopening the run emits nothing new');
+      assert.equal((document.body.textContent ?? '').match(/Run failed notice/g)?.length ?? 0, delivered);
+      assert.doesNotMatch(document.body.textContent ?? '', /preview unavailable|did not complete/i);
+    }
+    await act(async () => root.unmount()); host.remove();
+  });
+
+  it('says inline why a completed dry run has no preview', () => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: { ...initialMockDraft('person-lookup'), dryRun: true }, approved: true, seeded: true };
+    const row = { ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), dryRun: true, status: 'done' as const };
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    for (const [reason, text] of [['preview-result-unreadable', /The result could not be read/], ['preview-authority-unavailable', /Preview is unavailable/]] as const) {
+      useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Dry run' }, availableSections: ['logs'] }, logs: { dryRunPreview: DryRunPreviewWireSchema.parse({ state: 'unavailable', reason }) }, unavailableEvidence: [] } });
+      const markup = renderToStaticMarkup(sample({ selection: { row, workflowLabel: 'Person lookup' } }));
+      assert.match(markup, /Dry-run preview unavailable/); assert.match(markup, text);
     }
   });
 
