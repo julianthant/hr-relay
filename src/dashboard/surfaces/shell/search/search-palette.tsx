@@ -35,12 +35,14 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
   const field = useRef<HTMLInputElement>(null);
   // A Runs list that fits without scrolling can never fire a scroll, so it asks for the next page itself.
   useEffect(() => { const el = list.current; if (open && filter === "runs" && onMoreRuns && el && el.scrollHeight <= el.clientHeight) onMoreRuns(); }, [open, filter, onMoreRuns, sections]);
-  // cmdk owns the list id and leaves aria-activedescendant unset until the selection first moves; the shared field is not its Input, so both are wired here
+  // cmdk owns the list id and leaves aria-activedescendant unset until the selection first moves; the shared field is not its Input, so the input id, label link and both are wired here
   const watchSelection = (root: HTMLElement | null) => {
     if (!root) return;
     const sync = () => {
       const input = root.querySelector("[cmdk-input]");
       const selected = root.querySelector('[cmdk-item][aria-selected="true"]');
+      const label = root.querySelector<HTMLLabelElement>("[cmdk-label]");
+      if (input && label) { input.id = label.htmlFor; input.setAttribute("aria-labelledby", label.id); }
       const results = root.querySelector("[cmdk-list]");
       if (input && results) input.setAttribute("aria-controls", results.id);
       if (input && selected) input.setAttribute("aria-activedescendant", selected.id);

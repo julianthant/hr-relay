@@ -94,6 +94,7 @@ it("is the shared search field and still a combobox driven by the arrow keys and
   const input = document.querySelector<HTMLInputElement>('input[aria-label="Search Relay"]')!;
   assert(input.closest(".ds-search-field"));
   assert.equal(input.getAttribute("role"), "combobox");
+  assert.equal(input.id, document.querySelector<HTMLLabelElement>("[cmdk-label]")!.htmlFor);
   assert.equal(input.getAttribute("aria-controls"), document.querySelector("[cmdk-list]")!.id);
   await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })); });
   await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
