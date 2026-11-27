@@ -76,6 +76,7 @@ it('imports drafts and a selected chat that is not first, retries a lost select 
   assert.equal(w.server.writes.slice(before).some(write => typeof write === 'object' && write !== null && 'operation' in write && write.operation === 'select'), false);
   assert.equal(store.chats.selectedId?.(), second);
   assert.equal(store.draft(second).read(), 'hub draft'); assert.equal(store.read(second)?.draft, 'panel draft');
+  await store.chats.select?.(first);
   assert.deepEqual(store.read(first)?.messages.map(message => message.text), ['Hello']);
 });
 
@@ -146,4 +147,17 @@ it('keeps unparseable, foreign or unsaved source bytes and disables sending', as
   const store = await w.open();
   assert.equal(store.blocked(), true); assert.equal(store.notice(), ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNSAVED); assert.equal(w.bytes.get(w.key), raw);
   store.draft(id).retain('ignored while blocked'); assert.equal(w.server.writes.length, 1);
+});
+
+it('loads only the open conversation at boot and the others when selected', async () => {
+  const w = world(), first = await w.open(), a = first.chats.read()[0]?.id; assert.ok(a);
+  const b = (await first.chats.create()).id;
+  const read: string[] = [];
+  const client = { ...w.server.client, assistantConversation: (id: string, signal: AbortSignal) => { read.push(id); return w.server.client.assistantConversation(id, signal); } };
+  const store = await createAssistantHistory(client, w.storage, w.server.profileId, new AbortController().signal);
+  const open = store.chats.selectedId?.(), other = open === a ? b : a;
+  assert.ok(open); assert.deepEqual(read, [open]);
+  assert.equal(store.has(other), false);
+  await store.chats.select?.(other);
+  assert.equal(store.has(other), true);
 });
