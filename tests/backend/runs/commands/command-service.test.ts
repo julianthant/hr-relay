@@ -6,9 +6,11 @@ import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js"
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardCommandService } from "../../../../src/backend/runs/commands/command-service.js";
+import { createOperatorCommandIngress } from "../../../../src/backend/runs/commands/operator-command-ingress.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 
-it("awaits the selected ordinary Settings worker and leaves protected commands with the kernel", async () => {
+it("routes admitted ordinary Settings commands to the worker and protected commands to the kernel", async () => {
   const base = { family: "settings", source: "settings-surface", requestedBy: "local-operator",
     requestedAt: "2026-11-02T12:00:00.000Z", target: { expectedRevision: 1 } };
   const patch = { "preferences.notifications.sound": { set: "none" } };
@@ -21,16 +23,19 @@ it("awaits the selected ordinary Settings worker and leaves protected commands w
   const protectedResult = CommandResultSchema.parse({ state: "rejected", commandId: protectedCommand.commandId, code: "invalid-state", message: "Refused" });
   const held = Promise.withResolvers<typeof result>();
   const unexpected = () => { throw new Error("unexpected command route"); };
+  const ingress = createOperatorCommandIngress({ clock: manualClock(new Date(base.requestedAt)), journal: { get: () => undefined },
+    protectedCommandAcceptedAt: () => undefined, bulkAcceptances: { withTransaction: unexpected },
+    resolveIdentityGateAnswer: unexpected, resolveGateArmAnswer: unexpected });
   const service = createDashboardCommandService({
-    kernel: { execute(input) { assert.deepEqual(input, protectedCommand); return protectedResult; },
+    kernel: { execute(input) { assert.deepEqual(input, { ...protectedCommand, source: "dashboard" }); return protectedResult; },
       assistantAvailability: unexpected, assistantManifest: unexpected, executeStart: unexpected, executeWorkerPool: unexpected,
       executeAssistantModelPreference: unexpected },
     projection: { ingestFromTimeline: unexpected, refreshRun: unexpected },
-    executeOrdinarySettings(command) { assert.deepEqual(command, ordinary); return held.promise; },
+    executeOrdinarySettings(command) { assert.deepEqual(command, { ...ordinary, source: "dashboard" }); return held.promise; },
   });
 
-  const submitted = service.submit(ordinary);
-  assert.deepEqual(await service.submit(protectedCommand), protectedResult);
+  const submitted = ingress.submit(ordinary, accepted => service.submit(accepted));
+  assert.deepEqual(await ingress.submit(protectedCommand, accepted => service.submit(accepted)), protectedResult);
   held.resolve(result);
   assert.deepEqual(await submitted, result);
 });

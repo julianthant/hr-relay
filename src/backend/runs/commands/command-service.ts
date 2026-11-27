@@ -137,7 +137,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
     }
     if (!parsed.success || parsed.data.type === "recover-run") return executeOne(input);
     const request = parsed.data;
-    if (request.family === "settings" && request.type === "apply-settings" && request.source === "settings-surface"
+    if (request.family === "settings" && request.type === "apply-settings" && request.source === "dashboard"
       && deps.executeOrdinarySettings !== undefined) {
       const result = await deps.executeOrdinarySettings(request);
       publish(request, result);
