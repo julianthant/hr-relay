@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../../support/helpers/backend/record-historical-recover.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { GateResultRecordSchema } from "../../../../src/models/workflow/gates.js";
 import { launchDescriptor, launchHarness as createLaunchHarness } from "../../../support/fixtures/run-launch-fixtures.js";
@@ -721,7 +722,7 @@ describe("source-bound Rerun value read", () => {
     assert.deepEqual(plan.rerun?.warnings.map(warning => warning.writeIntentId), receipts.map(intent => intent.writeIntentId));
     assert.equal(h.kernel.execute(h.command(plan)).state, "confirmation-required");
   });
-  it("offers ordinary Rerun for successful and interrupted sources with completed evidence", async () => {
+  it("offers ordinary Rerun for a successful source and retained input for an interrupted source", async () => {
     const h = await harness(); await failed(h);
     const queued = h.start(h.proposal()); assert.equal((await h.execute(queued)).state, "done");
     const done = h.fresh(queued);
@@ -736,7 +737,11 @@ describe("source-bound Rerun value read", () => {
       claim: { workerId: owner.workerId, claimGeneration: claimed.claimGeneration }, lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() } }).state, "applied");
     const interrupted = h.fresh(next);
     assert.equal(readRerunValues(rerunValuesDeps(h), request(interrupted)).state, "available");
-    assert.equal(h.proposal(interrupted).rerun?.source.runId, interrupted.envelope.runId);
+    assert.throws(() => h.proposal(interrupted), error => error instanceof RerunRefusedError && error.code === "invalid-value");
+    const selectedStepKeys = h.descriptor.timeline.map(step => step.key);
+    const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [], dryRun: false, selectedStepKeys,
+      rerunSource: { ...request(interrupted), intent: "rerun", selectedStepKeys } });
+    assert.equal(plan.rerun?.source.runId, interrupted.envelope.runId);
   });
   it("never borrows another run's checkpoint", async () => {
     const h = await harness(); const run = await failed(h); const cp = firstCheckpoint(h, run);
@@ -878,7 +883,7 @@ describe("source-bound Rerun value read", () => {
       intents: h.database.authority.writeIntents.listByRun(run.envelope.runId), checkpoints: h.database.authority.runCheckpoints.listByItem(h.descriptor.id, run.envelope.itemId).filter(row => row.nodeId === WRITE_FIXTURE_NODE_ID),
       confirmations: h.database.authority.timelineEvents.page({}).filter(row => row.payload.kind === "operation-confirmed") });
     const before = effects();
-    const recovered = h.kernel.execute({ commandId: h.ids.uuid(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+    const recovered = recordHistoricalRecover(h, h.descriptor, { commandId: h.ids.uuid(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
       source: "dashboard", family: "run", type: "recover-run", target: request(run) });
     assert.equal(recovered.state, "applied"); assert.ok(recovered.state === "applied");
     const target = recovered.affectedTargets[0]; assert.ok(target?.family === "run");

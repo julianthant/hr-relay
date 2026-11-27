@@ -18,8 +18,8 @@ const unknown = startup("unknown");
 const refusedToast = { tone: "warning", title: "Run queued, but no worker is available." };
 
 describe("applied worker startup toast", () => {
-  it("uses Start's warning for an applied Resume, Retry or Recover", () => {
-    for (const type of ["resume", "retry", "recover-run"]) {
+  it("uses Start's warning for an applied Resume or Retry", () => {
+    for (const type of ["resume", "retry"]) {
       assert.deepEqual(appliedWorkerStartupToast({ family: "run", type }, { state: "applied", workerStartup: refused }), refusedToast);
       assert.deepEqual(appliedWorkerStartupToast({ family: "run", type }, { state: "applied", workerStartup: unknown }), {
         tone: "warning", title: "Run queued; worker not confirmed yet.",
@@ -30,7 +30,7 @@ describe("applied worker startup toast", () => {
   it("stays quiet when the applied command has a worker", () => {
     assert.equal(appliedWorkerStartupToast({ family: "run", type: "resume" }, { state: "applied" }), undefined);
     assert.equal(appliedWorkerStartupToast({ family: "run", type: "retry" }, { state: "already-applied" }), undefined);
-    assert.equal(appliedWorkerStartupToast({ family: "run", type: "recover-run" }, { state: "applied" }), undefined);
+    assert.equal(appliedWorkerStartupToast({ family: "run", type: "recover-run" }, { state: "applied", workerStartup: refused }), undefined);
     assert.equal(appliedWorkerStartupToast({ family: "run", type: "pause" }, { state: "applied", workerStartup: refused }), undefined);
     assert.equal(runLaunchAppliedToast({ label: "Separations", count: 1, rerun: false }).title, "Run started");
   });

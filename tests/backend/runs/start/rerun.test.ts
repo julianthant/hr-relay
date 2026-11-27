@@ -35,6 +35,7 @@ function fixture(outcome: "done" | "failed" | "interrupted" | "cancelled", older
     switch (key) {
       case "deletedRuns": return { get: () => undefined };
       case "runs": return { get: () => run };
+      case "failures": return { get: () => undefined };
       case "writeIntents": return { listAttemptingByItem: () => uncertain === "attempting" ? [{}] : [],
         listByRun: () => uncertain === "parked" ? [{ status: "parked" }] : [] };
       case "runCheckpoints": return { listByItem: () => [] };
@@ -46,7 +47,7 @@ function fixture(outcome: "done" | "failed" | "interrupted" | "cancelled", older
     selectedStepKeys: descriptor.timeline.map(step => step.key) };
   return { repositories, source };
 }
-it.each(["done", "failed", "interrupted", "cancelled"] as const)("ordinary Rerun accepts %s without inheriting saved work", outcome => {
+it.each(["done", "failed", "cancelled"] as const)("ordinary Rerun accepts %s without inheriting saved work", outcome => {
   for (const older of [false, true]) {
     const f = fixture(outcome, older);
     const plan = previewRerunWarnings(f.repositories, descriptor, f.source);
@@ -54,6 +55,16 @@ it.each(["done", "failed", "interrupted", "cancelled"] as const)("ordinary Rerun
     assert.deepEqual(plan.warnings, []);
     assert.equal(Object.hasOwn(plan, "continuation"), false);
   }
+});
+it("interrupted Rerun refuses continuation across a changed workflow contract", () => {
+  const f = fixture("interrupted", true);
+  assert.throws(() => previewRerunWarnings(f.repositories, descriptor, f.source),
+    error => error instanceof RerunRefusedError && error.code === "schema-mismatch");
+});
+it.each(["parked", "attempting"] as const)("interrupted Rerun refuses %s write authority", uncertain => {
+  const f = fixture("interrupted", false, uncertain);
+  assert.throws(() => previewRerunWarnings(f.repositories, descriptor, f.source),
+    error => error instanceof RerunRefusedError && error.code === "invalid-state");
 });
 it.each(["parked", "attempting"] as const)("ordinary Rerun still refuses %s write authority", uncertain => {
   for (const older of [false, true]) {

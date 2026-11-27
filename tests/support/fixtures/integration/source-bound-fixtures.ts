@@ -154,7 +154,7 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
     }, clock, ids, lifecycleIds, planIds, get queueRoots() {
     return readTimelineRecords(database.authority.timelineEvents).records.flatMap((record) =>
       record.payload.kind === "span" && record.payload.event.t === "run.queued" ? [record.payload.event] : []);
-  }, lifecycle, kernel, planner, world, stores, manager,
+  }, lifecycle, kernel, planner, world, stores, manager, descriptors,
     proposal, command, start, execute, fresh, resolution,
     dispose: async () => {
       if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }
