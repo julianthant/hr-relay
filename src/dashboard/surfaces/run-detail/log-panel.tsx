@@ -41,8 +41,8 @@ function LogHeader({ title, status, searching, layoutKey, children }: { title: s
     return () => observer.disconnect();
   }, []);
   const stacked = level === 2;
-  return <header className="shrink-0 border-b border-ui-stroke bg-ui-table px-4 py-3">
-    <div ref={row} className={cn("flex min-h-6 min-w-0 items-center gap-3", stacked && "flex-wrap")}><h2 ref={heading} className={cn("m-0 truncate text-heading", searching ? "min-w-24" : "min-w-0")} title={title}>{title}</h2>{status && <span className="flex shrink-0 items-center gap-2">{status}</span>}
+  return <header className="shrink-0 border-b border-ui-stroke bg-ui-table px-4 py-[7px] min-h-11">
+    <div ref={row} className={cn("flex min-h-7 min-w-0 items-center gap-3", stacked && "flex-wrap")}><h2 ref={heading} className={cn("m-0 truncate text-heading", searching ? "min-w-24" : "min-w-0")} title={title}>{title}</h2>{status && <span className="flex shrink-0 items-center gap-2">{status}</span>}
       <LogHeaderCompact.Provider value={level > 0}><span className={cn("ml-auto flex items-center gap-2", searching ? "min-w-0 [&>:not([role=search])]:shrink-0" : "shrink-0", stacked && "w-full flex-wrap justify-end [&>[role=search]]:w-auto [&>[role=search]]:min-w-[300px] [&>[role=search]]:flex-1")}>{children}</span></LogHeaderCompact.Provider>
     </div>
   </header>;

@@ -105,7 +105,7 @@
 .workflow-rail[data-collapsed] .workflow-rail .workflow-rail-start { display: none; }
 
 /* The queue header card: the workflow's title, then icon buttons with no button background. */
-.queue-header { display: flex; flex-shrink: 0; align-items: center; gap: 8px; height: 56px; padding: 0 12px 0 16px; border: 1px solid var(--ui-stroke); border-radius: var(--ds-radius-lg); background: var(--ui-panel); margin-bottom: var(--ds-space-cozy); }
+.queue-header { display: flex; flex-shrink: 0; align-items: center; gap: 8px; height: 44px; padding: 0 12px 0 16px; border: 1px solid var(--ui-stroke); border-radius: var(--ds-radius-lg); background: var(--ui-panel); margin-bottom: var(--ds-space-cozy); }
 .queue-header-title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; }
 .queue-paused-strip { display: flex; flex-shrink: 0; align-items: center; justify-content: flex-start; gap: 8px; padding: 4px 8px 4px 16px; border: 1px solid var(--ui-stroke); border-radius: var(--ds-radius-lg); background: var(--ui-panel); margin-bottom: var(--ds-space-cozy); color: var(--ui-secondary); font-size: 13px; }
 .queue-header-actions { display: flex; flex-shrink: 0; align-items: center; gap: 14px; }
@@ -124,6 +124,17 @@
 .queue-options-toggle .ds-menu-indicator { display: none; }
 .queue-options-switch { display: inline-flex; flex: none; }
 .queue-options-menu > .queue-options-reset.ds-menu-item { color: var(--ds-fg-link); }
-.queue-options-note { margin: 0; padding: 6px 10px 8px; max-width: 240px; color: var(--ui-secondary); font-size: 12px; line-height: 1.4; }
-.queue-date-footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--ui-stroke); padding: 8px 8px 4px; color: var(--ui-secondary); font-size: 12px; }
+/* Sort and Status submenus share the Options menu's row, label, note and check geometry. */
+.queue-options-sub.ds-menu-surface { padding: 6px; }
+.queue-options-sub .ds-menu-item { min-height: 36px; padding-left: 10px; gap: 10px; }
+.queue-options-sub .ds-menu-label { padding: 6px 10px 4px; }
+.queue-options-count { margin-left: auto; color: var(--ui-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.queue-options-note { margin: 0; padding: 0 10px 4px; color: var(--ui-secondary); font-size: 12px; line-height: 1.4; }
+/* The calendar's 7 x 32px columns sit centred with equal insets; the footer shares them. */
+.queue-date-menu.ds-menu-surface { padding: 8px; }
+.queue-date-menu .ds-calendar { margin-inline: auto; }
+.queue-date-menu .ds-calendar .calendar__header { padding: 0 0 8px; }
+.queue-date-menu .ds-calendar :is(table, .calendar__grid) { width: 224px; margin-inline: auto; }
+.queue-date-menu .ds-calendar .calendar__header-cell { width: 32px; text-align: center; }
+.queue-date-footer { display: flex; width: 224px; margin: 8px auto 0; box-sizing: border-box; align-items: center; justify-content: space-between; border-top: 1px solid var(--ui-stroke); padding: 8px 0 0; color: var(--ui-secondary); font-size: 12px; }
 .queue-date-today { padding: 0; border: 0; background: transparent; color: var(--ds-fg-link); cursor: pointer; font-size: 13px; }
