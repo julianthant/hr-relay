@@ -11,6 +11,7 @@ import { parseArgs } from "node:util";
 import { z } from "zod";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
 import { RUNTIME_PROFILE_ENV, workerBootstrapEnvironment } from "../../src/models/config/secrets.js";
+import { WorkflowIdSchema } from "../../src/rules/identity/ids.js";
 import { systemClock } from "../../src/rules/time/clock.js";
 
 /** G2: each shape passes on its own when every run is ready within this time and adds at most this RSS. */
@@ -222,7 +223,7 @@ async function withG4Cleanup<T>(run: () => Promise<T>, close: () => Promise<void
   return work.value;
 }
 
-async function measureG4(shape: Shape, profile: CopyProfile, input: { days: readonly [string, string]; query: string; profileId: string }) {
+async function measureG4(shape: Shape, profile: CopyProfile, input: { days: readonly [string, string]; workflow: string; query: string; profileId: string }) {
   const [
     { chromium }, { createDashboardClient }, { operatorCredentials, resumeKey }, { CrossDateSearchPageSchema },
     { CalendarWireSchema }, { DashboardStreamEnvelopeSchema }, { CommandResultSchema }, { deriveSettingsPatchFingerprint, SettingsPatchSchema },
@@ -290,12 +291,12 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
       await context.addInitScript(({ owner, key, value }) => {
         if (location.origin === owner && localStorage.getItem(key) === null) localStorage.setItem(key, value);
       }, { owner: origin, key: resumeKey, value: proof });
-      const dayPath = `/?day=${input.days[0]}`;
+      const dayPath = `/?${new URLSearchParams({ day: input.days[0], view: JSON.stringify({ workflow: input.workflow }) })}`;
       const boot = queue.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/bootstrap");
       await queue.goto(origin + dayPath);
       const bootstrap = FrontendBootstrapWireSchema.parse(await (await boot).json());
       await Promise.all([search.goto(origin + dayPath), settings.goto(origin + dayPath + "&settings=general")]);
-      for (const page of [queue, search, settings]) await page.getByRole("complementary", { name: "Workspace" }).waitFor();
+      for (const page of [queue, search]) await page.getByRole("complementary", { name: "Workspace" }).waitFor();
       if (context.pages().length !== 3) throw new Error("read-lanes-g4-tab-count");
       const option = queue.getByRole("button", { name: /^Options/u });
       const calendar = queue.getByRole("menu", { name: "Pick a date" });
@@ -479,10 +480,11 @@ function summarizeG4(shape: Shape, runs: readonly G4Run[], startGate: z.infer<ty
 }
 
 // After importing a fresh signed-in copy with profile-copy.ts and running npm run web:build:
-// node --import tsx scripts/bench/read-lanes.ts development --g4 --days YYYY-MM-DD,YYYY-MM-DD --query <matching-text> --g2 <G2-report.json>
-async function runG4(profile: CopyProfile, workspace: string, args: { days: string | undefined; query: string | undefined; g2: string | undefined; runs: string | undefined }) {
+// node --import tsx scripts/bench/read-lanes.ts development --g4 --days YYYY-MM-DD,YYYY-MM-DD --workflow <workflow-id> --query <matching-text> --g2 <G2-report.json>
+async function runG4(profile: CopyProfile, workspace: string, args: { days: string | undefined; workflow: string | undefined; query: string | undefined; g2: string | undefined; runs: string | undefined }) {
   const days = z.tuple([z.iso.date(), z.iso.date()]).parse(args.days?.split(","));
   if (days[0] === days[1] || days[0].slice(0, 7) !== days[1].slice(0, 7)) throw new Error("read-lanes-g4-requires-two-distinct-days-in-one-month");
+  const workflow = WorkflowIdSchema.parse(args.workflow);
   const query = z.string().min(1).max(160).parse(args.query);
   const startGate = G2EvidenceSchema.parse(JSON.parse(readFileSync(z.string().min(1).parse(args.g2), "utf8")));
   if (new Set(startGate.shapes.map(row => row.shape)).size !== 2) throw new Error("read-lanes-g4-g2-shapes-invalid");
@@ -491,7 +493,7 @@ async function runG4(profile: CopyProfile, workspace: string, args: { days: stri
   const results: Record<Shape, G4Run[]> = { A: [], B: [] };
   for (let index = 0; index < repetitions; index++) {
     for (const shape of ShapeSchema.options) {
-      results[shape].push(await measureG4(shape, profile, { days, query, profileId }));
+      results[shape].push(await measureG4(shape, profile, { days, workflow, query, profileId }));
     }
   }
   const shapes = ShapeSchema.options.map(shape => summarizeG4(shape, results[shape], startGate));
@@ -509,7 +511,7 @@ async function runG4(profile: CopyProfile, workspace: string, args: { days: stri
 const entryPath = process.argv[1];
 if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
   const { positionals, values } = parseArgs({ allowPositionals: true, options: { runs: { type: "string" }, shape: { type: "string" },
-    g4: { type: "boolean" }, "g4-backend": { type: "string" }, days: { type: "string" }, query: { type: "string" }, g2: { type: "string" } } });
+    g4: { type: "boolean" }, "g4-backend": { type: "string" }, days: { type: "string" }, workflow: { type: "string" }, query: { type: "string" }, g2: { type: "string" } } });
   const [profile] = z.tuple([CopyProfileSchema]).parse(positionals);
   // Runtime isolation and key custody bind the profile at module initialization.
   process.env[RUNTIME_PROFILE_ENV] = profile;
@@ -518,7 +520,7 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
   if (values["g4-backend"] !== undefined) {
     await serveG4(ShapeSchema.parse(values["g4-backend"]));
   } else if (values.g4 === true) {
-    await runG4(profile, workspace, { days: values.days, query: values.query, g2: values.g2, runs: values.runs });
+    await runG4(profile, workspace, { days: values.days, workflow: values.workflow, query: values.query, g2: values.g2, runs: values.runs });
   } else if (values.shape !== undefined) {
     process.stdout.write(`${JSON.stringify(await measure(ShapeSchema.parse(values.shape), workspace, lockPort))}\n`);
   } else {
