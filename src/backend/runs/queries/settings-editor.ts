@@ -47,9 +47,13 @@ function atPath(value: unknown, path: string): unknown {
   }
   return current;
 }
+export type ProtectedSettingsEditorFacts = Omit<ProtectedSettingsRuntimeSnapshot, "record"> & {
+  readonly record: Pick<ProtectedSettingsRuntimeSnapshot["record"], "entries">;
+};
+
 export interface SettingsEditorQueryDeps {
   readonly settings: { read(): SettingsRuntimeSnapshot & { readonly activeConfig?: StoredConfig; readonly activePreferences?: PersonPreferences } };
-  readonly protectedSettings: { read(): ProtectedSettingsRuntimeSnapshot };
+  readonly protectedSettings: { read(): ProtectedSettingsEditorFacts };
   readonly environment: NodeJS.ProcessEnv;
   readonly clock: Clock;
   /** Injected resolution stays Settings-local; tests supply deterministic synthetic path facts. */

@@ -151,9 +151,12 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   })();
   const { persistedSettings, resolved } = bootConfig;
   const protectedSettingsAuthority = context.credentials;
+  const protectedEditor = input.protectedSettingsReader?.(admission, input.lifetimeLock);
+  if (protectedEditor !== undefined) startupCleanups.push(requiredClosure(() => protectedEditor.close()));
   const protectedSecrets = { read: () => { assertCurrent(); const result = context.protectedSecrets.read(); assertCurrent(); return result; } };
   const settingsBoundary = composeSettings({ database, readLanes, hostFacts, clock, active: activeSettingsRuntimeIdentity,
     environment: env, credentials: protectedSettingsAuthority,
+    ...(protectedEditor === undefined ? {} : { readProtectedSettings: protectedEditor.read }),
     runtimeStoragePair,
     resolveSettings: settings => { assertCurrent(); const result = context.resolveSettings(settings); assertCurrent(); return result; }, assertCurrent,
     assertBrowserRoot: path => { assertRetainedProfileBrowserRoot(context.admission, path); } });
@@ -253,5 +256,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, protectedEditor, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }
