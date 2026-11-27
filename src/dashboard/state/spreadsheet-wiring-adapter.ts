@@ -50,6 +50,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
   let opening = 0;
   let catalogRequest = 0;
   let pendingCatalog: ReturnType<typeof refreshCatalog> | undefined;
+  let catalogRead: Promise<readonly WorkbookLibraryEntry[]> | undefined;
   const libraryIntents = new Map<string, WorkbookLibraryAction>();
   const typeIntents = new Map<string, WorkbookType>();
   const pendingLibraryIds = () => [...libraryIntents.keys()];
@@ -72,26 +73,41 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
     if (next === undefined || isDraftRefusal(next)) throw new Error('SPREADSHEET_DRAFT_UNAVAILABLE');
     return next;
   };
-  function refreshCatalog() {
+  function readCatalog(force = false) {
+    if (!force && catalogRead !== undefined) return catalogRead;
+    const read = (async () => client.workbookCatalog())().then(catalog => {
+      if (catalogRead === read) publish({ catalog, catalogReadFailed: false });
+      return catalog;
+    }, error => {
+      if (catalogRead === read) {
+        catalogRead = undefined;
+        publish({ catalogReadFailed: true });
+      }
+      throw error;
+    });
+    catalogRead = read;
+    if (snapshot.catalogReadFailed) publish({ catalogReadFailed: false });
+    return read;
+  }
+  function refreshCatalog(force = true) {
     const request = ++catalogRequest;
     const refresh = (async () => {
-      publish({ catalogRefreshing: true, catalogError: '', catalogReadFailed: false, compatibility: undefined });
-      const [catalogRead, compatibilityRead, typesRead] = await Promise.allSettled([
-        client.workbookCatalog(), client.workbookCompatibility(), client.workbookTypes(),
+      publish({ catalogRefreshing: true, catalogError: '', compatibility: undefined });
+      const [catalogResult, compatibilityRead, typesRead] = await Promise.allSettled([
+        readCatalog(force), (async () => client.workbookCompatibility())(), (async () => client.workbookTypes())(),
       ]);
       if (request !== catalogRequest) return undefined;
       const types = typesRead.status === 'fulfilled' ? typesRead.value : undefined;
       const typesPatch = types === undefined ? { typesError: ERROR_CATALOG.DASHBOARD_READ_FAILED.text } : { types, typesError: '' };
       try {
-        if (catalogRead.status === 'rejected') throw catalogRead.reason;
+        if (catalogResult.status === 'rejected') throw catalogResult.reason;
         if (compatibilityRead.status === 'rejected') throw compatibilityRead.reason;
-        const catalog = catalogRead.value, compatibility = compatibilityRead.value;
+        const catalog = catalogResult.value, compatibility = compatibilityRead.value;
         assertCatalogCompatibility(catalog, compatibility);
-        publish({ catalog, compatibility, ...typesPatch, catalogLoading: false, catalogRefreshing: false });
+        publish({ compatibility, ...typesPatch, catalogLoading: false, catalogRefreshing: false });
         return { state: 'ready' as const, catalog, types };
       } catch (error) {
-        publish({ ...typesPatch, ...(catalogRead.status === 'fulfilled' ? { catalog: catalogRead.value } : {}),
-          catalogLoading: false, catalogRefreshing: false, catalogError: ERROR_CATALOG.DASHBOARD_READ_FAILED.text, catalogReadFailed: catalogRead.status === 'rejected' });
+        publish({ ...typesPatch, catalogLoading: false, catalogRefreshing: false, catalogError: ERROR_CATALOG.DASHBOARD_READ_FAILED.text });
         return { state: 'failed' as const, error, types };
       }
     })().finally(() => { if (pendingCatalog === refresh) pendingCatalog = undefined; });
@@ -106,14 +122,15 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       if (readAuthority === authority) return;
       readAuthority = authority; readReady = false; listed = false;
       listing++; opening++; pendingList = undefined;
-      catalogRequest++; pendingCatalog = undefined;
+      catalogRequest++; pendingCatalog = undefined; catalogRead = undefined;
       snapshot = { files: [], loading: true, refreshing: false, openError: '', error: '', catalog: [], types: [], typesError: '', catalogLoading: true, catalogRefreshing: false, catalogError: '', catalogReadFailed: false, pendingLibraries: pendingLibraryIds(), pendingTypes: [...typeIntents.values()] };
     },
     draft(id: string | null) { return id === null ? undefined : drafts.get(keyFor(id)); },
-    refreshCatalog,
+    refreshCatalog: () => refreshCatalog(),
     loadCatalog() {
-      return pendingCatalog ?? (snapshot.compatibility === undefined || snapshot.typesError ? refreshCatalog() : undefined);
+      return pendingCatalog ?? (snapshot.compatibility === undefined || snapshot.typesError ? refreshCatalog(Boolean(snapshot.catalogError)) : undefined);
     },
+    loadCatalogOnly: () => readCatalog().catch(() => undefined),
     async saveType(type: WorkbookType): Promise<LibraryChangeResult> {
       const retained = typeIntents.get(type.id), authority = readAuthority;
       if (retained && canonicalJsonStringify(retained) !== canonicalJsonStringify(type)) return { state: 'refused', message: 'Check the pending type change before editing it again.' };
@@ -312,7 +329,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
           const expected = { ...intent.draft, libraryId };
           const result: SpreadsheetSaveResult = { state: 'confirmed', version: opened.version, readback: opened.workbook };
           if (opened.libraryId !== libraryId || opened.version !== intent.expectedVersion + 1 || !spreadsheetSaveMatches(expected, result)) { move(key, { type: 'readback-mismatch' }); return { state: 'uncertain', reason: 'The library readback does not match the saved draft.' }; }
-          const confirmed = step(key, { type: 'confirmed', opened, refreshes: pendingCatalog !== undefined || !snapshot.catalogLoading });
+          const confirmed = step(key, { type: 'confirmed', opened, refreshes: catalogRead !== undefined || !snapshot.catalogLoading });
           aliases.set(libraryId, key); updateRow(key, confirmed);
           if (confirmed.phase === 'edited') return { state: 'uncertain', reason: 'The original save was confirmed. The current draft still has unsaved changes.' };
           return result;
@@ -329,23 +346,23 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
 }
 
 const sessions = new WeakMap<WorkbookLibraryQueries, ReturnType<typeof createSpreadsheetWiringAdapter>>();
-export function useWorkbookSession(client: WorkbookLibraryQueries, loadCatalog: boolean, authority?: object) {
+export function useWorkbookSession(client: WorkbookLibraryQueries, authority?: object) {
   const adapter = useMemo(() => {
     let value = sessions.get(client);
     if (value === undefined) { value = createSpreadsheetWiringAdapter(client); sessions.set(client, value); }
     return value;
   }, [client]);
   if (authority !== undefined) adapter.setReadAuthority(authority);
-  useEffect(() => { if (loadCatalog) void adapter.loadCatalog(); }, [adapter, loadCatalog, authority]);
   return adapter;
 }
 
 export function useSpreadsheetWiringAdapter(enabled: boolean, selectedId: string | null, loadCatalog = false, loadList = true) {
   const client = useDashboardClient();
   const authority = useDashboardCommandBinding()?.authority.epoch;
-  const adapter = useWorkbookSession(client, enabled && loadCatalog, authority);
+  const adapter = useWorkbookSession(client, authority);
   const snapshot = useSyncExternalStore(adapter.subscribe, adapter.snapshot, adapter.snapshot);
   useEffect(() => { if (enabled && loadList) void adapter.list(); }, [adapter, enabled, loadList, authority]);
+  useEffect(() => { if (enabled && loadCatalog) void adapter.loadCatalog(); }, [adapter, enabled, loadCatalog, authority]);
   useEffect(() => { if (enabled) void adapter.open(selectedId); }, [adapter, enabled, selectedId, authority]);
   return { ...snapshot, adapter, key: selectedId === null ? null : adapter.key(selectedId), draft: adapter.draft(selectedId) };
 }

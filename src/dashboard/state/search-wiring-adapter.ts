@@ -77,7 +77,8 @@ export function workspaceSearchQuery(query: string, workflows: readonly Pick<Wor
 
 /** The saved library as palette rows, read while the palette is open. */
 export function useLibrarySheets(client: DashboardClient, enabled: boolean, authority?: object): Readonly<{ sheets: readonly PaletteSheet[]; unavailable?: string }> {
-  const adapter = useWorkbookSession(client, enabled, authority);
+  const adapter = useWorkbookSession(client, authority);
+  useEffect(() => { if (enabled) void adapter.loadCatalogOnly(); }, [adapter, enabled, authority]);
   const catalog = useSyncExternalStore(adapter.subscribe, () => enabled ? adapter.snapshot().catalog : undefined, () => undefined);
   const failed = useSyncExternalStore(adapter.subscribe, () => enabled && adapter.snapshot().catalogReadFailed, () => false);
   const sheets = useMemo(() => catalog === undefined ? [] : paletteSheets(catalog), [catalog]);

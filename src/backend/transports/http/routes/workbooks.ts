@@ -41,8 +41,8 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
   const workbookRead = <Wire extends object>(read: () => Wire, volatile?: () => boolean) => {
     const cacheControl = "private, no-cache";
     const respond = createPositionedReadResponse<Wire>(cacheControl);
-    return (c: Pick<Context, "header" | "json">) => {
-      c.header("Vary", "X-Relay-Session", { append: true });
+    return (c: Pick<Context, "res" | "json">) => {
+      c.res.headers.append("Vary", "X-Relay-Session");
       const serve = (position: number | undefined) => {
         if (position !== undefined && volatile?.() !== true) return respond(position, read);
         return c.json(read(), 200, { "Cache-Control": cacheControl });

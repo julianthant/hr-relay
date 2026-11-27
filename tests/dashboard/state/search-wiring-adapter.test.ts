@@ -73,13 +73,15 @@ it("tells a rejected library read apart from an empty library", async () => {
 it("reports a pending library read as loading and keeps loaded rows through a failed re-read", async () => {
   const sheet = entry("x", "Roster", "v1", [["v1", 1, "2026-11-01T12:00:00Z"]]);
   const reads: { finish: (records: readonly typeof sheet[]) => void; fail: () => void }[] = [];
+  let compatibilityReads = 0;
   const client = { ...createDashboardClient({ baseUrl: "http://fixture.test" }),
     workbookCatalog: () => new Promise<readonly typeof sheet[]>((resolve, reject) => { reads.push({ finish: resolve, fail: () => reject(new Error("storage")) }); }),
-    workbookCompatibility: async () => ({ workflows: [], libraries: [{ libraryId: "x", versionId: "v1", sheets: [] }] }), workbookTypes: async () => [] };
+    workbookCompatibility: async () => { compatibilityReads++; return { workflows: [], libraries: [{ libraryId: "x", versionId: "v1", sheets: [] }] }; },
+    workbookTypes: async () => [] };
   let seen: ReturnType<typeof useLibrarySheets> | undefined;
   let adapter: ReturnType<typeof useWorkbookSession> | undefined;
   function Probe({ open }: { open: boolean }) {
-    adapter = useWorkbookSession(client, open);
+    adapter = useWorkbookSession(client);
     seen = useLibrarySheets(client, open);
     return null;
   }
@@ -91,6 +93,9 @@ it("reports a pending library read as loading and keeps loaded rows through a fa
   await act(async () => root?.render(createElement(Probe, { open: false })));
   await act(async () => root?.render(createElement(Probe, { open: true })));
   assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, undefined);
+  assert.equal(compatibilityReads, 0);
+  await act(async () => { await adapter?.loadCatalog(); });
+  assert.equal(compatibilityReads, 1);
   assert.equal(reads.length, 1);
   await act(async () => { const refresh = adapter?.refreshCatalog(); reads[1].fail(); await refresh; });
   assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, searchMessage("SEARCH_LIBRARY_UNAVAILABLE"));
