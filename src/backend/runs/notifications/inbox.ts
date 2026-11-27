@@ -60,8 +60,8 @@ export interface NotificationInboxDependencies {
   readonly actorId: string;
 }
 
-export function notificationSourceId(actorId: string, occurrence: string): string {
-  return sha256Hex(`hrauto:notification-source:v1\0${actorId}\0${occurrence}`);
+export function notificationSourceId(actorId: string, occurrence: string) {
+  return FingerprintSchema.parse(sha256Hex(`hrauto:notification-source:v1\0${actorId}\0${occurrence}`));
 }
 
 export function createNotificationInbox(
