@@ -16,7 +16,8 @@ it("awaits the selected ordinary Settings worker and leaves protected commands w
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
   const protectedCommand = CommandRequestSchema.parse({ ...base, commandId: randomUUID(), type: "apply-protected-settings",
     payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { sharepointOnboardingRosterUrl: { clear: true } } } });
-  const result = CommandResultSchema.parse({ state: "applied", commandId: ordinary.commandId, affectedTargets: [{ family: "settings", revision: 2 }] });
+  const result = CommandResultSchema.parse({ state: "applied", commandId: ordinary.commandId, affectedTargets: [{ family: "settings", revision: 2 }],
+    restartRequired: false, settingsRevision: 2, settingsFingerprint: "a".repeat(64) });
   const protectedResult = CommandResultSchema.parse({ state: "rejected", commandId: protectedCommand.commandId, code: "invalid-state", message: "Refused" });
   const held = Promise.withResolvers<typeof result>();
   const unexpected = () => { throw new Error("unexpected command route"); };
