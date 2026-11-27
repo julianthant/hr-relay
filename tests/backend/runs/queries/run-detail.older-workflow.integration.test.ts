@@ -27,9 +27,9 @@ afterAll(() => profileFixtures.close());
 const { world, queuedEventOf, runRecordOf, cleanup } = createRunQueueProjectionTestWorld(profileFixtures.create);
 afterEach(cleanup);
 
-async function fixture() {
+async function fixture(attempt = 1) {
   const w = await world();
-  queuedEventOf(w, { seed: 81, descriptor: personLookupModule.descriptor });
+  queuedEventOf(w, { seed: 81, attempt, descriptor: personLookupModule.descriptor });
   const run = w.authority.getRun(uuidOf(81));
   assert.ok(run);
   const descriptor = {
@@ -75,25 +75,26 @@ it.each([0, 1])("loads older run detail and Logs with current names after a fing
 });
 
 it("opens a historical run's timeline across attempts when its earlier screenshot is unavailable", async () => {
-  const { w, run, descriptor, deps } = await fixture();
+  const { w, run, descriptor, deps } = await fixture(2);
   descriptor.version++;
   const { runId, traceId, workflow, enqueuedAt } = run.envelope;
   const at = w.clock.now().toISOString();
   const notes = createNoteTimelineWriter({ repository: w.timeline, clock: w.clock, pid: 4242 });
   const identity = { workflow, runId, traceId };
   const [bundleId, artifactId, sessionId] = [uuidOf(82), uuidOf(83), uuidOf(84)];
-  taskEventsOf(w, 81, "searching");
+  const firstTask = { ...identity, ts: at, attempt: 1, kind: "task", spanPath: `${traceId}/searching#1` } as const;
+  w.writer.emit({ ...firstTask, t: "span.started", parentSpanPath: traceId, name: "searching" });
+  const firstAttempt = runRecordOf({ seed: 81, enqueuedAt, descriptor: personLookupModule.descriptor });
   notes.emitRunAction({
     workflow,
-    address: { runId, traceId, attempt: 1, spanPath: `${traceId}/searching#1` },
+    address: { runId, traceId, attempt: 1, spanPath: firstTask.spanPath },
     action: { kind: "screenshot", targetId: "ucpath.task-capture", value: `${bundleId}:${artifactId}`, physicalSessionId: sessionId, at },
-  }, run);
-  w.writer.emit({ ...identity, t: "span.ended", kind: "task", ts: at, spanPath: `${traceId}/searching#1`, attempt: 1, outcome: "done" });
+  }, firstAttempt);
+  w.writer.emit({ ...firstTask, t: "span.ended", outcome: "done" });
   w.writer.emit({ ...identity, t: "run.requeued", ts: at, spanPath: traceId, attempt: 1, nextAttempt: 2, cause: "recovery" });
+  taskEventsOf(w, 81, "active-status", "done");
   w.authority.put(runRecordOf({ seed: 81, enqueuedAt, attempt: 2, descriptor: personLookupModule.descriptor,
     lifecycle: { state: "terminal", outcome: "done", endedAt: at } }));
-  taskEventsOf(w, 81, "active-status", "done");
-  w.projection.ingestFromTimeline();
   const content = {
     runId, origin: { kind: "operator-request", requestedBy: "local-operator" },
     configFingerprint: run.envelope.configFingerprint, descriptorFingerprint: run.envelope.contractFingerprint,
