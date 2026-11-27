@@ -3,11 +3,16 @@ NativePathPickerRequestSchema,NativePathPickerResponseSchema,
 type NativePathPickerRequest,type NativePathPickerResponse
 } from "../../../models/dashboard/native-path-picker.js";
 import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../../models/dashboard/settings-editor.js";
+import { SettingsFactsWireSchema,type SettingsFactsWire } from "../../../models/dashboard/settings.js";
 import { DashboardClientError,httpError,schemaError } from "../errors.js";
 import type { DashboardTransport } from "../transport.js";
+import { parseOrThrow } from "./query-parse.js";
 
 
 export interface SettingsQueries {
+
+  /** Settings' System hosts + Workflow capabilities, read-only. */
+  settingsFacts(): Promise<SettingsFactsWire>;
 
   /** The closed server-owned editable leaves with current revision and provenance. */
   /** `retry` is for the run-start checks, which ask a lost or late read again. */
@@ -16,6 +21,14 @@ export interface SettingsQueries {
 }
 
 export function createSettingsQueries(transport: DashboardTransport): SettingsQueries { return Object.freeze({
+
+    async settingsFacts(): Promise<SettingsFactsWire> {
+      return parseOrThrow(
+        SettingsFactsWireSchema,
+        "GET /api/v1/settings/facts",
+        await transport.requestJson("/api/v1/settings/facts"),
+      );
+    },
 
     async editableSettings(options?: Readonly<{ retry?: boolean }>): Promise<EditableSettingsWire> {
       try { return EditableSettingsWireSchema.parse(await transport.requestJson("/api/v1/settings/editable", undefined, options)); }

@@ -1,11 +1,19 @@
+import { etag } from "hono/etag";
 import { buildSettingsEditor } from "../../../runs/queries/settings-editor.js";
+import { buildSettingsFacts } from "../../../runs/queries/settings.js";
 import { NativePathPickerRequestSchema,NativePathPickerResponseSchema } from "../../../../models/dashboard/native-path-picker.js";
+import { createPositionedReadResponse } from "../read-reuse.js";
 import { InvalidNativePickerHintError } from "../native-path-picker.js";
 import type { DashboardApp } from "./api-types.js";
 import { wireError } from "./failure-status.js";
 import type { SettingsRouteDeps } from "./settings-types.js";
 
 export function registerSettingsRoutes(app: DashboardApp, deps: SettingsRouteDeps): void {
+  // Compatibility facts and workflow capabilities are read-only.
+  const factsResponse = createPositionedReadResponse("private, no-cache");
+  app.get("/api/v1/settings/facts", etag(), c => deps.withSettingsFacts === undefined
+    ? c.json(buildSettingsFacts(deps.settings)) : deps.withSettingsFacts(factsResponse));
+
   // values, provenance and editability are server-owned; this route has no mutation arm.
   app.get("/api/v1/settings/editable", (c) => c.json(buildSettingsEditor(deps.settingsEditor)));
 

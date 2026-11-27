@@ -17,12 +17,13 @@ import type { DashboardApp } from "../../../../../src/backend/transports/http/ro
 import { registerSettingsRoutes } from "../../../../../src/backend/transports/http/routes/settings.js";
 import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
 import { EditableSettingsWireSchema } from "../../../../../src/models/dashboard/settings-editor.js";
+import { SettingsFactsWireSchema } from "../../../../../src/models/dashboard/settings.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { seedInitialSettingsRuntimeConfig } from "../../../../support/fixtures/operator-command-fixtures.js";
 import { openBoundDatabaseFixture, syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
 import { createCredentialStore } from "../../../../support/helpers/synthetic-storage-admission.js";
 
-it("serves the same editable Settings while another connection holds the writer reservation", async () => {
+it("serves the same Settings facts and editable settings while another connection holds the writer reservation", async () => {
   const clock = manualClock(new Date("2026-10-01T12:00:00Z"));
   const fixture = await openBoundDatabaseFixture("request-proofs", clock);
   let writer: DatabaseSync | undefined;
@@ -35,9 +36,11 @@ it("serves the same editable Settings while another connection holds the writer 
     app.onError(error => { throw error; });
     registerSettingsRoutes(app, routes);
     const read = async () => {
+      const facts = await app.request("/api/v1/settings/facts");
+      assert.equal(facts.status, 200);
       const editable = await app.request("/api/v1/settings/editable");
       assert.equal(editable.status, 200);
-      return EditableSettingsWireSchema.parse(await editable.json());
+      return [SettingsFactsWireSchema.parse(await facts.json()), EditableSettingsWireSchema.parse(await editable.json())];
     };
     const expected = await read();
     writer = new DatabaseSync(fixture.path);

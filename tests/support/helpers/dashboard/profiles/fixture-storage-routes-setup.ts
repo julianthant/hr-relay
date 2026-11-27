@@ -13,6 +13,8 @@ export function createFixtureStorageRoutesSetup({ FIXTURE_STORAGE_DOCTOR }: {
       const { commandId } = ClearRunHistoryRequestSchema.parse(await c.req.json());
       return c.json(settled.get(commandId) ?? { state: "not-recorded", commandId });
     });
+    app.get("/api/v1/storage/run-history", c => c.json(runHistory === undefined ? { state: "unavailable" }
+      : { state: "available", finishedRuns, activeRuns: runHistory === "active" ? 1 : 0 }));
     app.post("/api/v1/storage/run-history/clear", async c => {
       const { commandId } = ClearRunHistoryRequestSchema.parse(await c.req.json());
       const result = settled.get(commandId) ?? (runHistory === undefined || runHistory === "active"

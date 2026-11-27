@@ -2,6 +2,7 @@ import { createFixtureSettingsSetup } from "../profiles/fixture-settings-setup.j
 import { FIXTURE_NOW } from "./fixture-identity.js";
 
 export const {
+  FIXTURE_SETTINGS_FACTS,
   fixtureSettingsDocument,
   FIXTURE_EDITABLE_SETTINGS
 } = createFixtureSettingsSetup( {

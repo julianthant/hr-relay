@@ -489,6 +489,7 @@ export async function harness(options: {
     startPlans,
     hub,
 
+    settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [fixtureDescriptor] },
     settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),
       environment: {}, clock },
     storage: {

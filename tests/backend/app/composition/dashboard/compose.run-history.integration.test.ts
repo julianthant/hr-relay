@@ -59,7 +59,7 @@ async function seedHistory(database: AuthorityDatabase, admission: RuntimeAdmiss
   return { run, runId, eventId, bundleId, path };
 }
 
-it("refuses active history deletion, then clears a finished run and its retained files over HTTP", async () => {
+it("serves history counts, refuses active deletion, then clears a finished run and its retained files over HTTP", async () => {
   const clock = manualClock(new Date(NOW));
   const profile = await world.createProfileFixture(clock);
   const runtime = await world.composeDashboardRuntime({ lifetimeLock: profile.lifetime, ...profile.dashboardInput,
@@ -69,14 +69,17 @@ it("refuses active history deletion, then clears a finished run and its retained
   const { database, admission, profileEpoch } = owner.selectedContext(token);
   const target = { profileId: admission.profileBinding.profileId, epoch: profileEpoch };
   const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${runtime.port}` });
+  assert.deepEqual(await client.runHistoryStatus(), { state: "available", finishedRuns: 0, activeRuns: 0 });
   const { run, runId, eventId, bundleId, path } = await seedHistory(database, admission);
   assert.equal(existsSync(path), true);
+  assert.deepEqual(await client.runHistoryStatus(), { state: "available", finishedRuns: 0, activeRuns: 1 });
   const refused = ClearRunHistoryRequestSchema.parse({ commandId: randomUUID(), target });
   assert.deepEqual(await client.clearRunHistory(refused), { state: "refused", commandId: refused.commandId, reason: "active-runs" });
   assert.ok(database.authority.runs.get(runId)); assert.equal(existsSync(path), true);
   const lifecycle = new RunRecordService({ database, clock, ids: sequentialIdFactory(), publishQueued() {} });
   assert.equal(lifecycle.transition({ commandId: randomUUID(), runId, expectedVersion: run.version,
     lifecycle: { state: "terminal", outcome: "discarded", endedAt: NOW } }).state, "applied");
+  assert.deepEqual(await client.runHistoryStatus(), { state: "available", finishedRuns: 1, activeRuns: 0 });
   const command = ClearRunHistoryRequestSchema.parse({ commandId: randomUUID(), target });
   assert.deepEqual(await client.clearRunHistory(command), { state: "cleared", commandId: command.commandId, deletedRuns: 1 });
   assert.deepEqual(RunLifecycleCommandRecordSchema.parse(database.authority.lifecycleJournal.getCommand(command.commandId)).request, { commandId: command.commandId });
@@ -84,6 +87,7 @@ it("refuses active history deletion, then clears a finished run and its retained
   assert.equal(database.authority.timelineEvents.get(eventId), undefined);
   assert.equal(database.authority.diagnosticBundles.get(bundleId), undefined);
   assert.equal(existsSync(path), false);
+  assert.deepEqual(await client.runHistoryStatus(), { state: "available", finishedRuns: 0, activeRuns: 0 });
   assert.deepEqual(await client.checkClearRunHistoryResult(command), { state: "cleared", commandId: command.commandId, deletedRuns: 1 });
 });
 
@@ -168,7 +172,7 @@ it("binds Clear and result to the confirmed person and epoch despite a shared cr
     const beforeA = snapshot()[0];
     assert.deepEqual(await aTab.clearRunHistory(bound), { state: "cleared", commandId: bound.commandId, deletedRuns: 1 });
     assert.deepEqual(await aTab.checkClearRunHistoryResult(bound), { state: "cleared", commandId: bound.commandId, deletedRuns: 1 });
-    assert.deepEqual(await bTab.checkClearRunHistoryResult(bound), { state: "cleared", commandId: bound.commandId, deletedRuns: 1 });
+    assert.deepEqual(await bTab.runHistoryStatus(), { state: "available", finishedRuns: 0, activeRuns: 0 });
     assert.equal(existsSync(bHistory.path), false); assert.equal(existsSync(aHistory.path), true);
     using aDb = new DatabaseSync(aHistory.databasePath, { readOnly: true });
     assert.equal(aDb.prepare("SELECT count(*) AS n FROM runs WHERE id=?").get(aHistory.runId)?.n, 1);

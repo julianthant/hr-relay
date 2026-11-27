@@ -52,14 +52,3 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);
-
-it.each([
-  "/api/v1/settings/facts",
-  "/api/v1/storage/run-history",
-  "/api/v1/reports/activity.csv",
-])("does not serve the retired read %s", async path => {
-  const { app } = await harness();
-  const response = await app.request(path);
-  assert.equal(response.status, 404);
-  assert.equal((await json(response)).code, "ROUTE_NOT_FOUND");
-});

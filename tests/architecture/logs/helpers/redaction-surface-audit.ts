@@ -32,10 +32,11 @@ import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/
 import { OcrCommandResultWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { WorkerCommandResultWireSchema } from "../../../../src/models/dashboard/worker-command-result.js";
 import { CrossDateSearchPageSchema } from "../../../../src/models/dashboard/search.js";
+import { SettingsFactsWireSchema } from "../../../../src/models/dashboard/settings.js";
 import { EditableSettingsPathSchema, EditableSettingsWireSchema } from "../../../../src/models/dashboard/settings-editor.js";
 import { StorageDoctorWireSchema, StorageDoctorLatestWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { ProtectedSettingsInspectionSchema } from "../../../../src/models/storage/storage-status.js";
-import { ClearRunHistoryRequestSchema, ClearRunHistoryResultSchema } from "../../../../src/models/dashboard/run-history.js";
+import { ClearRunHistoryRequestSchema, RunHistoryStatusSchema, ClearRunHistoryResultSchema } from "../../../../src/models/dashboard/run-history.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/models/dashboard/subscription.js";
 import { OperatorXlsxExportEvidenceSchema } from "../../../../src/models/dashboard/xlsx-export.js";
 import { RerunValuesResponseSchema } from "../../../../src/models/dashboard/rerun-values.js";
@@ -796,8 +797,10 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/capture-pointer", egress: "operator-loopback", module: "src/models/dashboard/artifacts.ts", schema: CapturePointerWireSchema },
   { id: "wire/storage-doctor", egress: "operator-loopback", module: "src/models/dashboard/storage.ts", schema: StorageDoctorWireSchema },
   { id: "request/clear-run-history", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: ClearRunHistoryRequestSchema },
+  { id: "wire/run-history-status", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: RunHistoryStatusSchema },
   { id: "wire/clear-run-history-result", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: ClearRunHistoryResultSchema },
   { id: "wire/storage-doctor-latest", egress: "operator-loopback", module: "src/models/dashboard/storage.ts", schema: StorageDoctorLatestWireSchema },
+  { id: "wire/settings-facts", egress: "operator-loopback", module: "src/models/dashboard/settings.ts", schema: SettingsFactsWireSchema },
   { id: "wire/editable-settings", egress: "operator-loopback", module: "src/models/dashboard/settings-editor.ts", schema: EditableSettingsWireSchema },
   { id: "request/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRequestSchema },
   { id: "wire/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRespondEnvelopeSchema },
@@ -2022,7 +2025,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/failure-display.ts", state: "audited", reason: "Failure captions are repository-authored; the separate value strip is captured HR data and retry has closed literal text." },
     { module: "src/models/dashboard/actions.ts", state: "audited", reason: "the action descriptor and its confirmation copy ride the queue row" },
     { module: "src/models/dashboard/run-decision.ts", state: "audited", reason: "Served run decisions carry catalog and workflow-declared option text, served action keys, candidate rows (names, last-4 EIDs, workbook cells) and the answer actor's profile name; loopback only." },
-    { module: "src/models/dashboard/run-history.ts", state: "audited", reason: "Loopback request and result surfaces carry UUID command identity, nonnegative counts and closed states/refusals; no HR text or protected values." },
+    { module: "src/models/dashboard/run-history.ts", state: "audited", reason: "Loopback request/status/result surfaces carry UUID command identity, nonnegative counts and closed states/refusals; no HR text or protected values." },
     { module: "src/models/dashboard/application-lifecycle.ts", state: "audited", reason: "the queue projection embeds only closed application/update states, runtime generation and opaque run/version targets; no free text or HR values" },
     { module: "src/models/dashboard/activity-population.ts", state: "audited", reason: "Loopback Analytics population, selected browse and CSV export retain captured run titles, operator-authored query text and nested report origins under exact snapshot identity." },
     { module: "src/models/dashboard/activity-volume.ts", state: "audited", reason: "the Activity report embeds validated host-zone boundaries calculated from selected dates" },
@@ -2045,9 +2048,9 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/search-export.ts", state: "audited", reason: "The request reuses the strict reviewed XLSX selection; diagnostic and CSV producers explicitly omit values and identifiers." },
     { module: "src/models/dashboard/search-index.ts", state: "audited", reason: "Private durable metadata, declared subject projection addresses, grams and authentic actor links; only approved public projection values are indexed." },
     { module: "src/models/dashboard/search.ts", state: "audited", reason: "cross-date search serves redacted run authority and an opaque continuation" },
+    { module: "src/models/dashboard/settings.ts", state: "audited", reason: "the read-only Settings sections state configured system hosts and descriptor-derived capabilities" },
     { module: "src/models/dashboard/settings-catalog.ts", state: "audited", reason: "catalog-derived Settings controls and classifications are embedded by the audited editable Settings wire" },
     { module: "src/models/dashboard/settings-editor.ts", state: "audited", reason: "the server-listed editable Settings inventory carries strict values, provenance and runtime identity" },
-    { module: "src/models/dashboard/settings.ts", state: "no-surface", reason: "Only a Settings navigation section identifier is declared here." },
     { module: "src/models/dashboard/status-vocabulary.ts", state: "audited", reason: "the closed status vocabulary is operator-visible prose and pill copy" },
     { module: "src/models/dashboard/storage.ts", state: "audited", reason: "the storage doctor reports on backups, files and health causes" },
     { module: "src/models/dashboard/subscription.ts", state: "audited", reason: "the stream envelope carries every live patch of the surfaces above" },

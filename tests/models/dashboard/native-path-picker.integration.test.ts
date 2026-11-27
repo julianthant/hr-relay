@@ -13,7 +13,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe("Settings native picker route", () => {
-  const minimal = {} as Pick<SettingsRouteDeps, "settingsEditor">;
+  const minimal = {} as Pick<SettingsRouteDeps, "settings" | "settingsEditor">;
   const headers = { host: "127.0.0.1:3210", origin: "http://127.0.0.1:3210", "content-type": "application/json" };
   function appWith(execute: NativePickerExecutor) {
     const app = new Hono<{ Variables: { requestActorId: ActorId } }>();

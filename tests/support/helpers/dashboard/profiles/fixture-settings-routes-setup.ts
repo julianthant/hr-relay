@@ -8,8 +8,9 @@ import { assistantHistoryServer } from "../assistant-history-server.js";
 
 const FIXTURE_ASSISTANT_PROFILE_ID = "00000000-0000-4000-8000-000000000001";
 
-export function createFixtureSettingsRoutesSetup({ FIXTURE_EDITABLE_SETTINGS }: {
+export function createFixtureSettingsRoutesSetup({ FIXTURE_EDITABLE_SETTINGS, FIXTURE_SETTINGS_FACTS }: {
   FIXTURE_EDITABLE_SETTINGS: typeof FixtureSettingsTypes.FIXTURE_EDITABLE_SETTINGS;
+  FIXTURE_SETTINGS_FACTS: typeof FixtureSettingsTypes.FIXTURE_SETTINGS_FACTS;
 }) {
   function registerFixtureSettingsRoutes({ app }: { app: Hono }): void {
     app.get("/api/v1/assistant/model-preference", c => c.json(AssistantModelPreferenceViewSchema.parse({
@@ -37,6 +38,7 @@ export function createFixtureSettingsRoutesSetup({ FIXTURE_EDITABLE_SETTINGS }: 
 
 
 
+    app.get("/api/v1/settings/facts", (c) => c.json(FIXTURE_SETTINGS_FACTS as unknown));
 
     app.get("/api/v1/settings/editable", (c) => c.json(FIXTURE_EDITABLE_SETTINGS as unknown));
   }
