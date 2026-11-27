@@ -76,6 +76,7 @@ it('imports drafts and a selected chat that is not first, retries a lost select 
   assert.equal(w.server.writes.slice(before).some(write => typeof write === 'object' && write !== null && 'operation' in write && write.operation === 'select'), false);
   assert.equal(store.chats.selectedId?.(), second);
   assert.equal(store.draft(second).read(), 'hub draft'); assert.equal(store.read(second)?.draft, 'panel draft');
+  await store.chats.select?.(first);
   assert.deepEqual(store.read(first)?.messages.map(message => message.text), ['Hello']);
 });
 

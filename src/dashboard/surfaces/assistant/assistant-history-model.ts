@@ -95,11 +95,11 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
     }
     return result;
   };
-  /** Boot and every re-read load the open conversation only; the one-time import check loads all. */
+  /** Boot loads the open conversation only; a re-read refreshes it and the chats already opened; the one-time import check loads all. */
   const reload = async (all = false) => {
     view = await client.assistantHistory(signal);
     const open = view.selectedId ?? view.chats[0]?.id;
-    const loaded = await Promise.all(view.chats.filter(chat => all || chat.id === open).map(chat => client.assistantConversation(chat.id, signal)));
+    const loaded = await Promise.all(view.chats.filter(chat => all || chat.id === open || conversations.has(chat.id)).map(chat => client.assistantConversation(chat.id, signal)));
     conversations.clear(); for (const conversation of loaded) conversations.set(conversation.id, conversation);
     changed();
   };
