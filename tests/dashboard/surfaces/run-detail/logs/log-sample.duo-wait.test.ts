@@ -38,11 +38,16 @@ describe("Needs Duo banner in Logs", () => {
       createElement(TooltipProvider, null, createElement(LogSample, { selection: { row, workflowLabel: "Person Lookup" } })))));
     assert.match(host.textContent ?? "", /Approving Duo for UCPath/u);
     assert.match(host.textContent ?? "", /Waiting 5s/u);
-    const buttons = host.querySelectorAll("button").length;
     await act(async () => { vi.advanceTimersByTime(125_000); });
     assert.match(host.textContent ?? "", /Waiting 2m 10s/u);
-    assert.equal(host.querySelectorAll("button").length, buttons);
-    assert.equal([...host.querySelectorAll("button")].some(button => /Duo|Approve|Retry/u.test(button.textContent ?? "")), false);
+    const live = [...host.querySelectorAll('[role="status"]')].find(node => /Approving Duo/u.test(node.textContent ?? ""));
+    assert.ok(live);
+    assert.equal(live.querySelectorAll('button, a[href], [role="button"], [role="link"]').length, 0);
+    // A tick must not announce: the live region's elapsed text is aria-hidden and the readable copy sits outside it.
+    const ticking = [...live.querySelectorAll("span")].filter(span => /^Waiting /u.test(span.textContent ?? ""));
+    assert.ok(ticking.length > 0 && ticking.every(span => span.closest('[aria-hidden="true"]') !== null));
+    const readable = [...host.querySelectorAll(".sr-only")].find(span => /^Waiting 2m 10s$/u.test(span.textContent ?? ""));
+    assert.ok(readable && !live.contains(readable));
     assert.doesNotMatch(host.textContent ?? "", /Approve|Retry Duo/u);
     await act(async () => root.unmount());
   });

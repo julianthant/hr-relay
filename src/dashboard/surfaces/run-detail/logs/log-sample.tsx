@@ -41,7 +41,9 @@ function withoutConfirm(action: ActionDescriptorWire): ActionDescriptorWire {
 /** Status only: fast-duo approves on its own; a failed approval fails the run and the operator reruns it. */
 function DuoWaitBanner({ wait, nowIso }: { wait: Extract<QueueSurfaceWire["operatorWait"], { state: "present" }>; nowIso: string }) {
   const elapsed = useServedView(nowIso, now => formatDuration(Math.max(0, elapsedSecondsBetween(wait.since, now))));
-  return <div className="px-3 py-2"><Banner tone="info" title={`Approving Duo for ${SYSTEM_NAME[wait.system]}`}><span className="tabular-nums">Waiting {elapsed}</span></Banner></div>;
+  // The banner is a live region: the ticking text is hidden from it so a tick never announces; the same text sits outside it for reading.
+  return <div className="px-3 py-2"><Banner tone="info" title={`Approving Duo for ${SYSTEM_NAME[wait.system]}`}><span aria-hidden className="tabular-nums">Waiting {elapsed}</span></Banner>
+    <span className="sr-only">Waiting {elapsed}</span></div>;
 }
 
 export function LogSample({ selection, initialStepId, confirm, ...navigation }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
