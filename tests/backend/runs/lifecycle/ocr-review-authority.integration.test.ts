@@ -100,7 +100,8 @@ it.each([false, true])("checks subscription OCR on interruption with extraction 
     }));
     assert.equal(claimed.envelope.runId, runId);
     const claim = runClaim(claimed); assert.ok(claim);
-    return requireLifecycleApplied(lifecycle.recoverCrash({ commandId: randomUUID(), runId, expectedVersion: claimed.version, claim,
+    return requireLifecycleApplied(lifecycle.recoverCrash({ commandId: randomUUID(), runId, expectedVersion: claimed.version,
+      claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
       now: f.clock.now().toISOString() }, lock));
   };
   interrupt(page.envelope.runId);
