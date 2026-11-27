@@ -150,6 +150,7 @@ const ReplySchema = z.discriminatedUnion("kind", [
     code: z.literal("STORAGE_SNAPSHOT_CHANGED").optional() }),
   z.strictObject({ kind: z.literal("cancelled"), id: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("checkpoint"), id: z.number().int().positive(), ...CheckpointRowSchema.shape, ...CheckpointSpanSchema.shape }),
+  z.strictObject({ kind: z.literal("checkpoint-deferred"), id: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("checkpoint-failed"), id: z.number().int().positive(), message: z.string().min(1) }),
 ]);
 type LaneReply = z.infer<typeof ReplySchema>;
@@ -371,7 +372,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       return;
     }
     // A mismatched reply changes nothing here, so the restart its exit triggers settles the lane's in-flight waiters.
-    if (reply.kind === "checkpoint" || reply.kind === "checkpoint-failed") {
+    if (reply.kind === "checkpoint" || reply.kind === "checkpoint-deferred" || reply.kind === "checkpoint-failed") {
       if (lane.checkpoint !== reply.id) throw new Error("read-lane-reply-unexpected");
       lane.checkpoint = undefined;
       finishCheckpoint(reply.kind === "checkpoint" ? { busy: reply.busy, log: reply.log, checkpointed: reply.checkpointed,
@@ -708,7 +709,7 @@ function runReadLane(port: MessagePort, data: unknown) {
     Atomics.notify(gate, readingAt(self));
   };
 
-  /** The checkpoint holds the gate, so no other lane starts a read, and waits for reads already running elsewhere to finish. */
+  /** Admit a checkpoint while the lanes are idle. An active read leaves the checkpoint for the host's bounded retry. */
   const runCheckpoint = (id: number): LaneReply => {
     const startedAtMs = systemClock.nowMs();
     Atomics.store(gate, GATE_FLAG, 1);
@@ -716,9 +717,7 @@ function runReadLane(port: MessagePort, data: unknown) {
       if (checkpoint === undefined) throw new Error("read-lane-checkpoint-unowned");
       for (let other = 0; other < LANE_COUNT; other++) {
         if (other === self) continue;
-        for (let reading = Atomics.load(gate, readingAt(other)); reading !== 0; reading = Atomics.load(gate, readingAt(other))) {
-          Atomics.wait(gate, readingAt(other), reading);
-        }
+        if (Atomics.load(gate, readingAt(other)) !== 0) return { kind: "checkpoint-deferred", id };
       }
       lane.assertSource();
       const row = CheckpointRowSchema.parse(checkpoint.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get());
