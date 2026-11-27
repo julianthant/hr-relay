@@ -2,7 +2,10 @@
 /* Dialogs keep their compact size and take the dashboard's blue primary. */
 
 /* Page hierarchy from the shared body tokens. */
-.hub-sheets-library .ds-body-section { margin-bottom:var(--ds-settings-section-gap); }
+/* The mock's list: 12px from the title row to the search, 24px between sections (12px margin + the list's 12px gap). */
+.hub-sheets-library.settings-compact-page { gap:0; }
+.hub-sheets-library.settings-compact-page > .ds-page-heading { margin-bottom:var(--ds-space-cozy); }
+.hub-sheets-library .ds-body-section { margin-bottom:var(--ds-space-cozy); }
 .sv2-card { border-radius:var(--ds-row-radius); }
 .sv2-head { height:var(--ds-row-head-h); padding-inline:var(--ds-row-pad-x); font-size:12px; line-height:16px; }
 .sv2-row { min-height:var(--ds-row-h-2); padding:var(--ds-row-pad-y) var(--ds-row-pad-x); }
