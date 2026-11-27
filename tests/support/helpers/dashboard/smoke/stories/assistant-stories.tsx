@@ -25,6 +25,9 @@ const send = async (page: Page): Promise<void> => {
 };
 const press = (name: string) => async (page: Page): Promise<void> => { await page.getByRole("button", { name, exact: true }).first().click(); };
 const then = (...steps: readonly ((page: Page) => Promise<void>)[]) => async (page: Page): Promise<void> => { for (const step of steps) await step(page); };
+const approvalProps = { modelPreference: { slug: "gpt-6.1-sol", effort: "medium" }, fullAccess: true } satisfies AssistantHostProps;
+const openApproval = press("Ask before every action");
+const pickFullAccess = then(openApproval, async page => { await page.getByRole("menuitemradio", { name: /^Full access/u }).click(); });
 /** A story that sends the request and waits on what comes back. */
 const after = (title: string, props: AssistantHostProps, ready: string, ...more: readonly ((page: Page) => Promise<void>)[]): Story =>
   scene(title, props, { play: then(send, ...more), ready });
@@ -61,6 +64,8 @@ const REPLY = {
   proposal: after("A proposal waiting on a typed yes", reply("proposal"), 'text="Reply yes to file it, or tell me what to change."'),
   "proposal-many": after("Several rows proposed", reply("proposal-many"), 'text=/Reply yes to save all 3/'),
   "answered-yes": after("A typed yes that started a session", reply("answered-yes"), '.reply-session'),
+  "full-access-dry-run": scene("A dry run started with Full access", { ...approvalProps, ...reply("full-access-dry-run") },
+    { play: then(pickFullAccess, async page => { await page.getByRole("textbox", { name: "Message Relay" }).fill("Start a Separations dry run."); }, press("Send message")), ready: '.reply-session' }),
 } satisfies Record<Exclude<AssistantReplyScript, "never" | "lost" | { readonly refused: unknown }>, Story>;
 
 // A refusal is one notice with no button; the account strip carries Sign in or Open Settings.
@@ -102,6 +107,11 @@ const MENU = {
     { ready: "#hub-model-trigger" }),
 } satisfies Record<Extract<ComposerMenu, "model">, Story>;
 
+const APPROVAL = {
+  off: scene("Approval menu with Full access off", { ...approvalProps, fullAccess: false }, { play: openApproval, ready: '[data-menu="approval"][data-open]' }),
+  on: scene("Approval menu with Full access picked", approvalProps, { play: then(pickFullAccess, press("Full access")), ready: '[data-menu="approval"][data-open]' }),
+} satisfies Record<"off" | "on", Story>;
+
 const AUDIT_FIXES = "#532";
 const BREAK_SETS = {
   /** The composer's approval picker is switched off while no model preference is served, and its Send button is not painted the accent. */
@@ -127,6 +137,8 @@ const KNOWN_BREAKS = {
   "attachment/spreadsheet": BREAK_SETS.COMPOSER_FOCUS,
   "attachment/staged": BREAK_SETS.COMPOSER_FOCUS,
   "attachment/unsupported": BREAK_SETS.COMPOSER_FOCUS,
+  "approval/off": ["primary-button-accent"],
+  "approval/on": ["primary-button-accent"],
   "history/failed": BREAK_SETS.COMPOSER_FOCUS,
   "history/notice": BREAK_SETS.COMPOSER_FOCUS,
   "history/ready": BREAK_SETS.COMPOSER_FOCUS,
@@ -139,6 +151,7 @@ const KNOWN_BREAKS = {
   "reply/proposal": BREAK_SETS.COMPOSER_FOCUS,
   "reply/proposal-many": BREAK_SETS.COMPOSER_FOCUS,
   "reply/answered-yes": BREAK_SETS.COMPOSER_FOCUS,
+  "reply/full-access-dry-run": ["named-and-focusable", "primary-button-accent"],
   "turn/failed": BREAK_SETS.COMPOSER_FOCUS,
   "turn/idle": BREAK_SETS.COMPOSER_FOCUS,
   "turn/waiting": BREAK_SETS.COMPOSER,
@@ -146,5 +159,5 @@ const KNOWN_BREAKS = {
 } as const;
 
 export const ASSISTANT_STORIES = withKnownBreaks(
-  defineSurface("assistant", { account: ACCOUNT, plan: PLAN, turn: TURN, reply: REPLY, refusal: REFUSAL, attachment: ATTACHMENT, history: HISTORY, chats: CHATS, menu: MENU }),
+  defineSurface("assistant", { account: ACCOUNT, plan: PLAN, turn: TURN, reply: REPLY, refusal: REFUSAL, attachment: ATTACHMENT, history: HISTORY, chats: CHATS, menu: MENU, approval: APPROVAL }),
   "assistant", AUDIT_FIXES, KNOWN_BREAKS);
