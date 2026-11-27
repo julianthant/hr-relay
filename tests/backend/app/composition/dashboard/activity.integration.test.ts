@@ -446,6 +446,47 @@ it("retains complete unregistered open results and distinctive absence reasons i
   assert.equal(xlsxValue("Version"), 23);
 });
 
+for (const lanes of [false, true]) it(`retains the Analytics population across ${lanes ? "lane" : "local"} requests until authority or expiry changes`, async () => {
+  const f = await fixture({ lanes });
+  const range = "from=2026-08-22&to=2026-09-20";
+  const path = "/api/v1/reports/activity/population";
+  const read = async (query = range) => {
+    const response = await f.app.request(`${path}?${query}`);
+    assert.equal(response.status, 200);
+    return ActivityPopulationSelectionSchema.parse(await response.json());
+  };
+  const selected = await read();
+  assert.equal(selected.report.totalRuns, 3);
+  f.clock.advanceWall(1_000);
+  assert.equal((await read("from=2026-08-22&to=2026-09-19")).report.totalRuns, 0);
+  assert.deepEqual(await read(), selected);
+  const selectedRequest = `${path}/selected?${range}&snapshot=${selected.snapshot.token}`;
+  const retained = await f.app.request(selectedRequest);
+  assert.equal(retained.status, 200);
+  assert.deepEqual(ActivityPopulationSelectedReadSchema.parse(await retained.json()).selection, selected);
+
+  f.clock.advanceWall(7.5 * 60_000 - 1_000);
+  const refreshed = await read();
+  assert.equal(refreshed.snapshot.authorityGeneration, selected.snapshot.authorityGeneration);
+  assert.equal(Date.parse(refreshed.snapshot.expiresAt), f.clock.nowMs() + 15 * 60_000);
+  assert.notEqual(refreshed.snapshot.token, selected.snapshot.token);
+  const stillValid = await f.app.request(selectedRequest);
+  assert.equal(stillValid.status, 200);
+  assert.deepEqual(ActivityPopulationSelectedReadSchema.parse(await stillValid.json()).selection, selected);
+
+  f.database.authority.runs.enqueue(runRecordOf({ seed: 3715, workflow: "historical-workflow", enqueuedAt: "2026-09-20T17:00:00Z" }));
+  const changed = await read();
+  assert.equal(changed.report.totalRuns, 4);
+  assert.ok(changed.snapshot.authorityGeneration > selected.snapshot.authorityGeneration);
+  assert.equal((await f.app.request(selectedRequest)).status, 409);
+  f.clock.advanceWall(15 * 60_000);
+  const renewed = await read();
+  assert.equal(renewed.snapshot.authorityGeneration, changed.snapshot.authorityGeneration);
+  assert.equal(renewed.report.totalRuns, changed.report.totalRuns);
+  assert.notEqual(renewed.snapshot.token, changed.snapshot.token);
+  assert.equal((await f.app.request(`${path}/selected?${range}&snapshot=${changed.snapshot.token}`)).status, 409);
+});
+
 it("serves the complete AP1 population and reuses its nested AS1 report for XLSX", async () => {
   const f = await fixture(); await f.artifacts.ready;
   const range = { from: "2026-09-20", to: "2026-09-20" };

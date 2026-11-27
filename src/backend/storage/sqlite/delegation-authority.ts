@@ -526,9 +526,8 @@ function readReleasedDelegation(repositories: AuthorityRepositories, parent: Run
   return { nodeId, admissionCommandId: anchor, claim: held.claim, manifests };
 }
 
-export function readDelegationWaitState(repositories: AuthorityRepositories, runId: string) {
-  const parent = repositories.runs.get(runId);
-  if (parent === undefined) throw new Error("delegation-parent-unavailable");
+export function readDelegationWaitState(repositories: AuthorityRepositories, parent: RunRecord) {
+  const runId = parent.envelope.runId;
   const wait = readReleasedDelegation(repositories, parent);
   const continued = wait === undefined && parent.lifecycle.state === "queued" && parent.envelope.continuation !== undefined
     ? repositories.dependencies.groups(runId).filter(({ manifest, group }) => manifest.join !== "none"
@@ -728,10 +727,10 @@ export function readQueueParents(repositories: AuthorityRepositories, envelopes:
   const memo = repositories.dependencies.snapshotMemo(repositories);
   const parents = new Set(envelopes.flatMap(envelope => envelope.parent === undefined ? [] : [envelope.parent.runId]));
   for (const parentId of parents) {
-    const parent = repositories.runs.get(parentId);
-    if (parent === undefined) throw new Error("delegation-parent-unavailable");
     let facts = memo?.parents.get(parentId);
     if (facts === undefined) {
+      const parent = repositories.runs.get(parentId);
+      if (parent === undefined) throw new Error("delegation-parent-unavailable");
       facts = readQueueParentFacts(repositories, parent);
       memo?.parents.set(parentId, facts);
     }
