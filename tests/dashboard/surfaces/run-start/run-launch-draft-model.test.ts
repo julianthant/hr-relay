@@ -15,7 +15,7 @@ import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-st
 const OMIT_FORM = { fields: [{ key: "reason", label: "Reason", kind: "text" }, { key: "confirmed", label: "Confirmed", kind: "boolean" }] } as unknown as Extract<RunStartWorkflow["steps"][number]["control"], { state: "omittable" }>["form"];
 const plain: RunStartWorkflow = {
   workflowId: "plain", version: 1, label: "Plain", categoryId: "operations", role: { kind: "standalone" }, icon: "Search",
-  enqueue: "reject-active", spreadsheetIntake: false, requiredWorkbookFields: [], referenceSources: [],
+  enqueue: "reject-active", spreadsheetIntake: false, requiredWorkbookFields: [],
   inputRun: { state: "present", surface: { placeholder: "Employee ID", parser: {
     split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }],
   } } },
@@ -142,8 +142,10 @@ describe("step selection", () => {
   });
   it("applies the shared cascade and orders by the timeline", () => {
     const off = toggleRow(freshLaunchDraft(plain), plain, null, row("read"), false);
-    assert.deepEqual(selectedStepKeys(off, plain), ["finish"]);
-    assert.deepEqual(selectedStepKeys(toggleRow(off, plain, null, row("read"), true), plain), ["read", "write", "finish"]);
+    assert.deepEqual(selectedStepKeys(off, plain), ["write", "finish"], "a step done by hand stays in until the operator turns it off");
+    const both = toggleRow(off, plain, null, row("write"), false);
+    assert.deepEqual(selectedStepKeys(both, plain), ["finish"]);
+    assert.deepEqual(selectedStepKeys(toggleRow(both, plain, null, row("read"), true), plain), ["read", "finish"], "restoring the read keeps a step done by hand off");
   });
   it("refuses a step the workflow does not declare", () => {
     assert.throws(() => toggleRow(freshLaunchDraft(plain), plain, null, { ...row("read"), key: "nope", stepKey: "nope" }, false), /does not declare/u);

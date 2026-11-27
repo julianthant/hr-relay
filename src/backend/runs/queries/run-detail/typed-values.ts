@@ -96,9 +96,12 @@ export function projectTypedSteps(run: RunRecord, descriptor: AnyWorkflowDescrip
     throw new ProjectionDegradedError(`run ${run.envelope.runId} was started with typed values, but workflow "${run.envelope.workflow}" has no descriptor to read them against`);
   }
   const protectedValues = protectedValuesOf(run);
+  const nodes = new Map(descriptorRuntimeNodes(descriptor).map((node) => [String(node.id), node]));
   for (const entry of entries) {
     const fields = currentFields(descriptor, entry.step);
     const copied = copiedKeys(run, entry.step);
+    const doneByHand = (descriptor.stepOmissions.find((spec) => spec.step === entry.step)?.skips ?? [])
+      .flatMap((nodeId) => { const node = nodes.get(nodeId); return node?.kind === "transaction" ? [node.id] : []; });
     views.set(entry.step, {
       typedValues: {
         title: "Operator-entered values",
@@ -108,11 +111,11 @@ export function projectTypedSteps(run: RunRecord, descriptor: AnyWorkflowDescrip
           const shown = containsProtected(JsonValueSchema.parse(entry.facts[key]), protectedValues) ? { withheld: true as const } : { value };
           return { key, label: labelOf(entry, fields, key), ...shown, mark: markOf(copied, key) };
         }),
+        ...(doneByHand.length === 0 ? {} : { doneByHand }),
       },
     });
   }
 
-  const nodes = new Map(descriptorRuntimeNodes(descriptor).map((node) => [String(node.id), node]));
   for (const category of descriptor.timeline) {
     const reads = new Set(category.nodes.flatMap((member) => (nodes.get(String(member.id))?.dependsOn ?? []).map(String)));
     const labels: string[] = [];

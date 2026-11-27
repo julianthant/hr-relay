@@ -974,7 +974,10 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
         AND json_extract(reference.value,'$.value.snapshot.libraryId')=?
         AND (? IS NULL OR json_extract(reference.value,'$.value.snapshot.versionId')=?
           OR (json_type(reference.value,'$.value.snapshot.versionId') IS NULL AND json_extract(reference.value,'$.value.snapshot.version')=?)) LIMIT 1`)
-      .get(at, id, version?.id ?? null, version?.id ?? null, version?.version ?? null) !== undefined;
+      .get(at, id, version?.id ?? null, version?.id ?? null, version?.version ?? null) !== undefined
+    || (version !== undefined && database.prepare(`SELECT 1 FROM runs,json_each(runs.lifecycle_json,'$.input.workbookReferences') reference
+      WHERE runs.state='terminal' AND json_extract(reference.value,'$.value.snapshot.libraryId')=?
+        AND json_extract(reference.value,'$.value.snapshot.versionId')=? LIMIT 1`).get(id, version.id) !== undefined);
   const repository: WorkbookLibraryRepository = {
     lastUsed: workflowId => storage(() => deps.read(() => lastUsed(workflowId))),
     rememberLastUsed: value => storage(() => deps.mutate(() => {

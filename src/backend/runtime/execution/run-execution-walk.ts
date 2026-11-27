@@ -550,7 +550,7 @@ export async function walkRunPlan(
           // A child-run dependency keeps the guard, which alone authenticates the original member authority.
           const checkpoint = settled?.runId === runId && envelope.injected === undefined && !reachesChild(node.dependsOn) ? undefined : settled;
           if (checkpoint !== undefined) {
-            const originalScope = sourceScopeFor(checkpoint.runId, node.dependsOn, boundAt(checkpoint));
+            const originalScope = sourceScopeFor(checkpoint.runId, node.dependsOn, boundAt(checkpoint), true, node.id);
             const mappings = (scope: RuntimeScope) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)),
               commit: node.commit.uses.input.parse(node.commit.bind(scope)) });
             if (canonicalJsonStringify(mappings(originalScope)) !== canonicalJsonStringify(mappings(transactionScope))) {

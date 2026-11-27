@@ -26,7 +26,7 @@ import { CommandRefusal, conflict, reject } from "./command-refusal.js";
 import { isAdmittedUnsettled, replay } from "./command-replay.js";
 import { executeResolveGate } from "./gate-command.js";
 import { executeIntake, type IntakeProjectionResolver } from "./intake-commands.js";
-import { executeNotification } from "./notification-commands.js";
+import { executeNotification, notificationCommandReceipt } from "./notification-commands.js";
 import { lifecycleRun, requireDescriptorMatchesEnvelope, requireRun, resolveDescriptorOrReject, type WorkflowDescriptorResolver } from "./run-command-context.js";
 import { executeBump, executeCancel, executeDelete, executePresentation, executeRecover, executeRetry } from "./run-lifecycle-commands.js";
 import { executeSettings, executeSettingsCommand, type SettingsApplicationExecutor, type SettingsCommitted } from "./settings-command.js";
@@ -346,7 +346,10 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             committedAt: now,
           });
         }
-        return application.result;
+        return request.family === "notification" ? CommandResultSchema.parse({
+          ...application.result,
+          notificationReceipt: notificationCommandReceipt(request, application.versionChanges, now),
+        }) : application.result;
       });
       const committedSettings = commit;
       rollback = undefined;

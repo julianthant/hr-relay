@@ -68,7 +68,6 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
   protectedSchemaHash: FIXTURE_FINGERPRINT,
   projectionGeneration: 1,
   actor: { id: "local-operator", label: "Local operator" },
-  workbookCompatibility: { workflows: [], libraries: [] },
   serverClock: { now: "2026-08-27T18:00:00.000Z", zone: "America/Los_Angeles" },
   storage: { authority: "healthy" },
   workflows: [{
@@ -93,9 +92,6 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
       }],
     },
   }],
-  systemInstances: [],
-  settingsSections: [],
-  featureAvailability: [],
 });
 /** The same workflow with a typed Run input, so the Start run dialog mounts an input box. */
 const APP_BOOTSTRAP_WITH_INPUT = FrontendBootstrapWireSchema_m1.parse({ ...APP_BOOTSTRAP, workflows: (APP_BOOTSTRAP.workflows as readonly { readonly start: object }[]).map(flow => ({ ...flow,
@@ -111,7 +107,6 @@ const APP_DAY = DashboardDayWireSchema_m1.parse({
   queueSurfaces: [],
   workerCards: [], workerAuthority: { state: "present", members: [] },
   workerPools: [],
-  notifications: [],
 });
 
 const EDITABLE_SETTINGS = FIXTURE_EDITABLE_SETTINGS_m1;
@@ -312,7 +307,7 @@ describe_m1("the sidebar's Start run +", () => {
     await loadLazyPages();
     const click = (selector: string) => act_m1(async () => { const node = document.querySelector<HTMLButtonElement>(selector); assert_m1.ok(node, selector); node.click(); await new Promise(resolve => setTimeout(resolve, 35)); });
     const input = () => { const node = document.querySelector<HTMLTextAreaElement | HTMLInputElement>('[role="dialog"] [aria-label="Input"] textarea, [role="dialog"] [aria-label="Input"] input:not([type="checkbox"])'); assert_m1.ok(node, "the Run input is mounted"); return node; };
-    const cancel = () => act_m1(async () => { const node = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(entry => entry.textContent?.trim() === "Cancel"); assert_m1.ok(node); node.click(); await new Promise(resolve => setTimeout(resolve, 35)); });
+    const cancel = () => act_m1(async () => { const node = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(entry => entry.getAttribute("aria-label") === "Close"); assert_m1.ok(node); node.click(); await new Promise(resolve => setTimeout(resolve, 35)); });
     const text = () => document.querySelector('[role="dialog"]')?.textContent ?? "";
     const type = (value: string) => act_m1(async () => { const node = input(); Object.getOwnPropertyDescriptor(node instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")?.set?.call(node, value); node.dispatchEvent(new Event("input", { bubbles: true })); });
 
@@ -976,6 +971,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
       commands += 1;
       return Promise.resolve(Response.json(authority.execute(CommandRequestSchema.parse(body))));
     } });
+    await act_m2(async () => { h.settingsRow(authority.read()); });
     assert_m2.equal(preferences.snapshot().state, "ready");
     let saving: ReturnType<typeof preferences.change> | undefined;
     await act_m2(async () => { saving = preferences.change({ "preferences.animations": { set: !preferences.snapshot().value.animations } }); });

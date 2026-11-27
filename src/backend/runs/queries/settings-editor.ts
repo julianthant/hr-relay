@@ -10,7 +10,7 @@ import type { StoredConfig } from "../../../models/config/snapshot.js";
 import type { SettingsOverride } from "../../../models/config/schema.js";
 import { ProtectedSettingsNameSchema } from "../../../models/config/protected-settings.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../models/dashboard/settings-editor.js";
-import { EditableSettingsSectionIdSchema, settingsCatalogEntry, settingsControlFor, settingsSectionFor } from "../../../models/dashboard/settings-catalog.js";
+import { EditableSettingsSectionIdSchema, settingsControlFor, settingsSectionFor } from "../../../models/dashboard/settings-catalog.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { ProtectedSettingsRuntimeSnapshot, SettingsRuntimeSnapshot } from "../../runtime/settings/settings-runtime.js";
 
@@ -54,6 +54,8 @@ export interface SettingsEditorQueryDeps {
   readonly clock: Clock;
   /** Injected resolution stays Settings-local; tests supply deterministic synthetic path facts. */
   readonly resolve?: (settings: SettingsOverride) => ResolvedConfig;
+  /** The record's and the defaults' resolutions, when a read lane already resolved them; `resolve` is then not called. */
+  readonly resolutions?: Readonly<{ record: ResolvedConfig; defaults: ResolvedConfig }>;
 }
 
 export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSettingsWire {
@@ -61,8 +63,8 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
   const { record } = snapshot;
   const runtimeStatus = SettingsRuntimeStatusSchema.parse(snapshot.runtimeStatus);
   const resolve = deps.resolve ?? ((settings: SettingsOverride) => resolveConfigWithProvenance(settings, hostConfigFacts(deps.environment), deps.clock));
-  const resolved = resolve(record.settings);
-  const defaultResolution = resolve({});
+  const resolved = deps.resolutions?.record ?? resolve(record.settings);
+  const defaultResolution = deps.resolutions?.defaults ?? resolve({});
   const defaults = { ...defaultResolution.config, preferences: defaultResolution.preferences };
   const persisted = runtimeStatus.state === "current" ? runtimeStatus.identity : runtimeStatus.persisted;
   const active = runtimeStatus.state === "current" ? runtimeStatus.identity : runtimeStatus.active;
@@ -118,7 +120,6 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
   return EditableSettingsWireSchema.parse({
     revision: record.revision, settingsSchemaHash: record.settingsSchemaHash, settingsFingerprint: record.settingsFingerprint,
     activeConfigFingerprint: active.configFingerprint, runtimeStatus,
-    catalog: SETTINGS_CATALOG.map(settingsCatalogEntry),
     sections: EditableSettingsSectionIdSchema.options.map(id => ({ id, label: SECTION_LABELS[id], description: "Ordinary settings · SQLite", leaves: leaves.filter(value => settingsSectionFor(value.path) === id) })),
     currentFiscalYear,
     protectedSettings, host: hostConfigFacts(deps.environment), deployment,

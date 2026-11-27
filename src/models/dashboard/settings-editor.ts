@@ -6,7 +6,7 @@ import { isRetiredSettingsPath, SettingsPatchSchema, SettingsRuntimeStatusSchema
 import { HostConfigFactsSchema } from "../config/host-display.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsNameSchema, ProtectedSettingsReadbackSchema, ProtectedStoreEntriesSchema } from "../config/protected-settings.js";
 import { FingerprintSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
-import { EditableSettingsSectionIdSchema, SettingsCatalogWireSchema, SettingsControlSchema, deploymentLeafSchema, catalogKeyForEditorPath, settingsControlFor, settingsSectionFor } from "./settings-catalog.js";
+import { EditableSettingsSectionIdSchema, SettingsControlSchema, deploymentLeafSchema, catalogKeyForEditorPath, settingsControlFor, settingsSectionFor } from "./settings-catalog.js";
 export { EditableSettingsPathSchema, EditableSettingsSectionIdSchema } from "./settings-catalog.js";
 export type { EditableSettingsPath, EditableSettingsSectionId } from "./settings-catalog.js";
 
@@ -79,7 +79,6 @@ const DeploymentKeySchema = z.enum(SETTINGS_CATALOG.filter(row => row.sourceClas
 export const EditableSettingsWireSchema = z.strictObject({
   revision: PositiveIntSchema, settingsSchemaHash: FingerprintSchema, settingsFingerprint: FingerprintSchema,
   activeConfigFingerprint: FingerprintSchema, runtimeStatus: SettingsRuntimeStatusSchema,
-  catalog: SettingsCatalogWireSchema,
   sections: z.array(EditableSettingsSectionWireSchema).length(EditableSettingsSectionIdSchema.options.length),
   currentFiscalYear: PositiveIntSchema,
   protectedSettings: SettingsProtectedWireSchema,

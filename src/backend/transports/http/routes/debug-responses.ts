@@ -19,6 +19,7 @@ export function registerDebugResponses(app: DashboardApp, writer: { emit(input: 
           correlationId: randomUUID(), method: c.req.method, route: c.req.routePath });
         return;
       }
+      if (c.res.ok && c.req.method === "GET" && c.req.routePath !== "/api/v1/preflight") return;
       let body: unknown;
       try {
         if (c.res.headers.get("content-type")?.startsWith("application/json")) body = await c.res.clone().json();

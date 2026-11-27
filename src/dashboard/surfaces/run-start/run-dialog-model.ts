@@ -101,7 +101,7 @@ export type RunDialogEvent =
   | { type: "source-failed"; request: number; message: string }
   | { type: "pick-workflow" }
   | { type: "draft-changed" }
-  | { type: "go-to"; stage: RunStartStage; via: "back" | "stage-bar"; path?: readonly RunStartStage[] }
+  | { type: "go-to"; stage: RunStartStage; path?: readonly RunStartStage[] }
   | { type: "continue"; gates: LaunchGates }
   | { type: "plan-settled"; request: number; plan: StartPlanResponse; planRequest: StartPlanRequest }
   | { type: "plan-failed"; request: number; message: string }
@@ -143,11 +143,6 @@ export const initialRunDialogState: RunDialogState = { nextRequest: 1, stage: "I
 function stageOrder(source: LaunchSource): readonly RunStartStage[] {
   return source.kind === "start" ? ["Input", "Start"] : ["Steps", "Start"];
 }
-/** `path` is the stages this draft walks; without it every stage of the source counts. */
-function previousStage(state: RunDialogState, path: readonly RunStartStage[] = stageOrder(state.source)): RunStartStage | null {
-  return path[path.indexOf(state.stage) - 1] ?? null;
-}
-
 const requests = (state: RunDialogState): readonly DetachedRequest[] =>
   state.activity.kind === "idle" ? state.detached : [state.activity, ...state.detached];
 const sendingExists = (state: RunDialogState) => requests(state).some(r => r.kind === "submitting" || r.kind === "replanning");
@@ -346,14 +341,8 @@ function dialogTransition(state: RunDialogState, event: RunDialogEvent, fingerpr
     }
     case "go-to": {
       if (sendingExists(state)) return { refused: "busy" };
-      if (event.via === "back") {
-        const previous = previousStage(state, event.path);
-        return previous === null || previous !== event.stage ? { refused: "not-here" } : step({ ...state, stage: previous });
-      }
-      if (state.activity.kind !== "idle") return { refused: "busy" };
       const order = event.path ?? stageOrder(state.source);
       if (!order.includes(event.stage) || order.indexOf(event.stage) >= order.indexOf(state.stage)) return { refused: "not-here" };
-      if (state.recovery.state === "retained") return { refused: "blocked" };
       return step({ ...state, stage: event.stage });
     }
     case "continue": {
@@ -459,22 +448,20 @@ export type RunDialogPrimaryInput = Readonly<{
 }>;
 export type RunDialogControls = Readonly<{
   primary: Readonly<{ label: string; enabled: boolean; loading: boolean; event: (input: RunDialogPrimaryInput) => RunDialogEvent }>;
-  back: RunStartStage | null;
 }>;
 
 /** The footer, once: the button and the Enter handler both read `primary`. `view` comes from `visibleRunDialog`. */
 export function runDialogControls(view: RunDialogState, gates: LaunchGates, fingerprint: string): RunDialogControls {
   const loading = view.activity.kind !== "idle";
-  const back = previousStage(view, gates.path);
   if (gates.next !== null) {
     const event = (input: RunDialogPrimaryInput) => ({ type: "continue", gates: input.gates }) as const;
-    return { primary: { label: "Continue", enabled: continueRefusal(view, gates) === undefined, loading, event }, back };
+    return { primary: { label: "Next", enabled: continueRefusal(view, gates) === undefined, loading, event } };
   }
   const plan = view.shown?.plan;
   const start = gates.dryRun === undefined ? "Start run" : (plan === undefined ? gates.dryRun : plan.dryRun) ? "Start dry run" : "Start live run";
   const label = shownRepeatWarning(view, fingerprint) === undefined ? start : `${start} again`;
   const event = (input: RunDialogPrimaryInput) => ({ type: "start", ...input }) as const;
-  return { primary: { label, enabled: startRefusal(view, gates, view.shown) === undefined, loading, event }, back };
+  return { primary: { label, enabled: startRefusal(view, gates, view.shown) === undefined, loading, event } };
 }
 
 /** The dialog's side effects. Each async result becomes the settled event for the effect's request number. */

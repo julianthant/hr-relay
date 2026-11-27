@@ -39,7 +39,6 @@ async function mountFailedRead(section: string): Promise<HTMLElement> {
   document.body.append(container);
   const client = {
     editableSettings: () => Promise.reject(new Error("read failed")),
-    settingsFacts: () => Promise.reject(new Error("facts unavailable")),
   } as unknown as DashboardClient;
   const element = createElement(DashboardClientProvider, {
     client,

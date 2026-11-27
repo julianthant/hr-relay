@@ -1,11 +1,10 @@
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { descriptorRuntimeNodes, workflowDryRunSupport, workflowProjections } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { PACIFIC_TIME_ZONE } from "../../../models/dashboard/search-calendar.js";
 import { PreflightReportSchema } from "../../../models/preflight/preflight.js";
 import { z } from "zod";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire, type WorkflowStartWire, type WorkflowStartReadiness } from "../../../models/dashboard/bootstrap.js";
-import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashboard/settings.js";
 import { BrowserSystemIdSchema, LOCAL_OPERATOR_ACTOR_ID, WorkflowIdSchema, type Fingerprint } from "../../../rules/identity/ids.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import { projectStartRows, projectStartSteps, startRowWire, startStepWireControl } from "../start/step-selection.js";
@@ -15,6 +14,8 @@ import type { WorkbookLibraryService, WorkbookReferenceWorkflow } from "../../wo
 
 import type { WorkbookCompatibility } from "../../../models/dashboard/workbook-library.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { AuthorityMetaSchema } from "../../storage/sqlite/authority-connection.js";
+import { defineLaneRead, type DashboardReadLanes } from "../../storage/sqlite/dashboard-read-host.js";
 
 interface BootstrapModuleView {
   readonly descriptor: AnyWorkflowDescriptor;
@@ -32,17 +33,22 @@ export interface BootstrapQueryDeps {
   readonly descriptorSetHash: Fingerprint;
   readonly settingsSchemaHash: Fingerprint;
   readonly projection: Pick<RunQueueProjection, "generation">;
-  /** Probes the authority store; throws when it cannot be reached. */
-  readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
+  /** Probes the authority store, on a read lane when one is composed; throws or rejects when it cannot be reached. */
+  readonly authorityMeta: () => AuthorityMetaProbe | Promise<AuthorityMetaProbe>;
   readonly workbookCompatibility: (workflows: readonly WorkbookReferenceWorkflow[]) => ReturnType<WorkbookLibraryService["compatibility"]>;
   /** The one retained report produced by the composed preflight authority. */
   readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
 }
 
-const DEFERRED_FEATURES = [
-  ["archive", "archive snapshots land with the version service in 2i"],
-  ["workflow-editor", "the editor is a Phase-3 surface"],
-] as const;
+type AuthorityMetaProbe = Readonly<{ schemaVersion: number; authorityGeneration: number }>;
+
+const authorityMetaLaneRead = defineLaneRead(import.meta.url, "authority-meta", {
+  lane: "navigation", priority: "interactive", args: z.strictObject({}),
+  run: ({ native }) => native.getMeta(),
+});
+
+export const laneAuthorityMeta = (lanes: Pick<DashboardReadLanes, "read">) => async (): Promise<AuthorityMetaProbe> =>
+  AuthorityMetaSchema.parse(JSON.parse((await lanes.read(authorityMetaLaneRead, {})).body));
 
 export function projectWorkflowStartSteps(descriptor: AnyWorkflowDescriptor): WorkflowStartWire["steps"] {
   const nodes = descriptorRuntimeNodes(descriptor);
@@ -84,21 +90,17 @@ export function projectWorkflowStartReadiness(workflow: WorkbookReferenceWorkflo
       requiredFields: [...projection.requiredWorkbookFields] } };
 }
 
-export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire {
-  const preflight = PreflightReportSchema.parse(deps.preflightReport());
-  const workbookCompatibility = deps.workbookCompatibility(deps.modules.map(module => module.descriptor));
+export async function buildBootstrap(deps: BootstrapQueryDeps): Promise<FrontendBootstrapWire> {
   let storageAuthority: "healthy" | "unavailable" = "healthy";
   try {
-    deps.authorityMeta();
+    await deps.authorityMeta();
   } catch {
     // The wire enum is closed; the exact failure surfaces through the
     // authority routes themselves, which throw rather than degrade.
     storageAuthority = "unavailable";
   }
-  const systems = new Set<string>();
-  for (const { descriptor } of deps.modules) {
-    for (const system of workflowProjections(descriptor).systems) systems.add(system);
-  }
+  const preflight = PreflightReportSchema.parse(deps.preflightReport());
+  const workbookCompatibility = deps.workbookCompatibility(deps.modules.map(module => module.descriptor));
   return FrontendBootstrapWireSchema.parse({
     wireVersion: 1,
     appVersion: deps.appVersion,
@@ -121,7 +123,6 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       checkedAt: preflight.checkedAt,
     })),
 
-    workbookCompatibility,
     workflows: deps.modules.map(({ descriptor, role, intake }) => ({
       id: descriptor.id,
       code: descriptor.code,
@@ -151,25 +152,5 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         ...(descriptor.workbookCheck === undefined ? {} : { workbookCheck: descriptor.workbookCheck }),
       },
     })),
-    systemInstances: [...systems.values()].sort().map((system) => ({
-      system,
-      prod: "available",
-      test: {
-        state: "unavailable",
-        code: "not-configured",
-        reason: "test-instance selection lands with the settings surface (2i)",
-      },
-    })),
-
-    settingsSections: [
-      { id: "storage", label: "Storage checks", revision: 1 },
-      { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },
-    ],
-    featureAvailability: [
-      ...DEFERRED_FEATURES.map(([feature, reason]) => ({
-        feature,
-        availability: { state: "unavailable", code: "deferred", reason },
-      })),
-    ],
   });
 }

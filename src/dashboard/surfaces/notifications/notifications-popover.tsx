@@ -1,10 +1,10 @@
-import { Bell, CheckCheck, Mail, MailOpen, Trash2, X } from "lucide-react";
+import { Bell, CheckCheck, Info, Mail, MailOpen, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { EmptyState, IconButton, Popover, PopoverContent, PopoverTrigger, SegmentedChoice, Skeleton, Tooltip, dsFocus, dsIcon } from "../../ds/ui.js";
+import { EmptyState, IconButton, Popover, PopoverContent, PopoverTrigger, SegmentedChoice, Skeleton, StatusIcon, Tooltip, dsFocus, dsIcon } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { useServedView } from "../../state/served-clock.js";
 import { LoadingRegion } from "../shared/loading/loading.js";
-import { itemClearable, itemContext, itemDay, notificationAge, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { itemClearable, notificationAge, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
 import "./notifications-popover.css";
 
 type RowHandlers = Readonly<{ onOpen: (item: NotificationItem) => void; onControl: (id: string, control: NotificationControl) => void; onClear: (id: string) => void; canAct: (id: string) => boolean; canClear: (id: string) => boolean }>;
@@ -23,20 +23,26 @@ function RowAction({ label, icon, onClick, disabled }: { label: string; icon: Re
   return <Tooltip side="bottom" content={label}><IconButton label={label} title="" size="xs" icon={icon} onClick={onClick} disabled={disabled} /></Tooltip>;
 }
 
-/** One row: the title line ends in a fixed slot that shows the time, or the read toggle and Clear while the row is hovered or focused,
- * so nothing moves. The lines below run the full width, one line each. A notice that still waits on the operator has no Clear. */
+function ToneIcon({ item }: { item: NotificationItem }) {
+  return item.tone === "info" ? <Info aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
+    : <StatusIcon status={item.tone === "danger" ? "failed" : item.tone === "positive" ? "verifiedDone" : item.kind === "run" ? "waiting" : "doneWarnings"} />;
+}
+
+/** One row: the person or run leads (else the notice's title), with the workflow and reason under it. The first line ends in a fixed slot that
+ * shows the time, or the read toggle and Clear while the row is hovered or focused, so nothing moves. A notice that still waits on the operator has no Clear. */
 function NoticeRow({ item, handlers }: { item: NotificationItem; handlers: RowHandlers }) {
-  const enabled = handlers.canAct(item.id), context = item.kind === "storage" ? "" : itemContext(item);
+  const enabled = handlers.canAct(item.id);
+  const lead = (item.kind === "run" || item.kind === "command") && item.subject !== "" ? item.subject : item.title;
   const text = <>
     <span className="notice-head">
-      <span aria-hidden className="notice-dot" />
-      <span className="notice-title">{item.title}</span>
+      <ToneIcon item={item} />
+      {lead !== item.title && <span className="sr-only">{item.title}: </span>}
+      <span className="notice-title">{lead}</span>
       {item.count !== undefined && <span className="notice-count"><span className="sr-only">{item.count} times</span><span aria-hidden>{item.count > 999 ? "999+" : item.count}</span></span>}
-      {!item.read && <span className="sr-only">Unread</span>}
+      {!item.read && <><span aria-hidden className="notice-unread" /><span className="sr-only">Unread</span></>}
       <Age item={item} />
     </span>
-    {context !== "" && <span className="notice-context">{context}</span>}
-    <span className="notice-detail">{item.gone ? "This run was deleted." : item.detail}</span>
+    <span className="notice-detail">{[item.workflow, item.gone ? "This run was deleted." : item.detail].filter(part => part !== "").join(" · ")}</span>
   </>;
   return <li className="notice-row" data-id={item.id} data-unread={!item.read || undefined} data-gone={item.gone || undefined} data-read-only-history={item.readOnlyHistory}>
     {item.gone ? <div className="notice-main">{text}</div>
@@ -58,7 +64,7 @@ export type NotificationsShow = "all" | "unread";
 const SHOW_OPTIONS = [{ value: "all", label: "All" }, { value: "unread", label: "Unread" }] as const;
 
 /** The bell and the surface it opens: a popover anchored to the bell, over the page, with its own scroll. Unread failures and waits
- * sit under Needs you; everything else falls into its day. It is modal, so Tab stays inside it until it closes. */
+ * sit under Needs you; everything else under Earlier. It is modal, so Tab stays inside it until it closes. */
 export function NotificationsPopover({ state, open, onOpenChange, show, onShow, onReadAll, onClearAll, notice = "", onClear, ...handlers }: RowHandlers & {
   state: NotificationsState; open: boolean; onOpenChange: (open: boolean) => void; show: NotificationsShow; onShow: (show: NotificationsShow) => void; onReadAll: () => void;
   /** Clears what the current tab lists, except notices that still wait on the operator. */
@@ -69,9 +75,9 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
   const all = state.state === "ready" ? state.items : [];
   const unread = all.filter(item => !item.read).length;
   const items = show === "unread" ? all.filter(item => !item.read) : all;
-  const needsYou = items.filter(item => item.priority && !item.read);
-  const rest = items.filter(item => !needsYou.includes(item));
-  const days = [...new Set(rest.map(itemDay))];
+  const needsYou = items.filter(item => item.standing === true || (item.priority && !item.read));
+  const history = items.filter(item => item.readOnlyHistory === true && !needsYou.includes(item));
+  const rest = items.filter(item => !needsYou.includes(item) && !history.includes(item));
   const clearable = items.filter(item => itemClearable(item) && handlers.canClear(item.id));
   // After a clear, focus moves to the next row that can take it, or to the header once none can; after Clear all, to the first such row left.
   const [moveFocus, setMoveFocus] = useState<{ cleared: readonly string[]; after?: readonly (string | undefined)[] }>();
@@ -115,7 +121,8 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
             description={show === "unread" && all.length > 0 ? undefined : "Failed runs and runs waiting for you show up here."} />
           : <>
             {needsYou.length > 0 && <NoticeGroup label="Needs you" items={needsYou} handlers={rowHandlers} />}
-            {days.map(day => <NoticeGroup key={day} label={day} items={rest.filter(item => itemDay(item) === day)} handlers={rowHandlers} />)}
+            {rest.length > 0 && <NoticeGroup label="Earlier" items={rest} handlers={rowHandlers} />}
+            {history.length > 0 && <NoticeGroup label="History" items={history} handlers={rowHandlers} />}
           </>}
       </div>
       {notice !== "" && <p role="status" className="notice-status">{notice}</p>}

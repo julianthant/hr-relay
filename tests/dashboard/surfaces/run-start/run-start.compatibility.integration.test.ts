@@ -27,7 +27,7 @@ afterEach(async () => {
 
 const workflowOf = (descriptor: AnyWorkflowDescriptor): RunStartWorkflow => ({ ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label,
   version: descriptor.version, steps: projectStartSteps(descriptor), requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
-  workbookReference: descriptor.workbookReference, referenceSources: [],
+  workbookReference: descriptor.workbookReference,
   ...(descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: descriptor.surfaces.uploadRun }),
   inputRun: descriptor.surfaces.inputRun === undefined ? { state: "absent", reason: "PDF input" } : { state: "present", surface: descriptor.surfaces.inputRun } });
 const noCompatibility = () => {
@@ -39,6 +39,22 @@ const noCompatibility = () => {
 const settleAll = async () => { for (let wait = 0; wait < 6; wait += 1) await h.settle(); };
 
 describe("Start run without a reference-spreadsheet check", () => {
+  it("reuses catalog, compatibility and types when Start run is reopened in the same session", async () => {
+    const reads = { catalog: 0, compatibility: 0, types: 0 };
+    const client = h.stubClient({
+      workbookCatalog: async () => { reads.catalog++; return []; },
+      workbookCompatibility: async () => { reads.compatibility++; return { workflows: [], libraries: [] }; },
+      workbookTypes: async () => { reads.types++; return []; },
+    });
+    const workflow = workflowOf(onboardingModule.descriptor);
+    const dialog = await h.openDialog(client, { workflows: [workflow], panelWorkflowId: workflow.workflowId });
+    await settleAll();
+    assert.deepEqual(reads, { catalog: 1, compatibility: 1, types: 1 });
+    await dialog.rerender({ open: false });
+    await dialog.rerender({ open: true });
+    assert.deepEqual(reads, { catalog: 1, compatibility: 1, types: 1 });
+  });
+
   for (const module of [i9CheckStartModule, onboardingModule, emergencyContactModule]) {
     it(`opens ${module.descriptor.id} with one notice and Retry where the input would be`, async () => {
       const served = noCompatibility();
@@ -47,7 +63,7 @@ describe("Start run without a reference-spreadsheet check", () => {
       const alerts = [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "");
       assert.deepEqual(alerts, ["Spreadsheets can't be checked.Retry"], dialog.text());
       assert.equal(document.querySelector('section[aria-label="Input"]') === null, true);
-      assert.equal(dialog.disabled("Continue"), true);
+      assert.equal(dialog.disabled("Next"), true);
       assert.doesNotMatch(dialog.text(), /WORKBOOK_COMPATIBILITY|Page unavailable/u);
       const before = served.reads();
       await dialog.press("Retry");
@@ -58,7 +74,7 @@ describe("Start run without a reference-spreadsheet check", () => {
 });
 
 describe("closing Start run", () => {
-  const cases = (["Escape", "Close", "Cancel"] as const).flatMap(how => (["Input", "Start"] as const).map(stage => [how, stage] as const));
+  const cases = (["Escape", "Close"] as const).flatMap(how => (["Input", "Start"] as const).map(stage => [how, stage] as const));
   for (const [how, stage] of cases) {
     it(`leaves no launch coordinate in the URL after ${how} from ${stage}`, async () => {
       const descriptor = onboardingModule.descriptor;
@@ -88,7 +104,7 @@ describe("closing Start run", () => {
       if (stage === "Start") {
         const box = document.querySelector("textarea"); assert.ok(box);
         await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(box, h.TYPED); box.dispatchEvent(new Event("input", { bubbles: true })); });
-        const next = h.buttons().find(candidate => h.buttonName(candidate) === "Continue"); assert.ok(next);
+        const next = h.buttons().find(candidate => h.buttonName(candidate) === "Next"); assert.ok(next);
         await act(async () => next.click());
         await settleAll();
         assert.equal(seen.view?.launchStage, "Start");

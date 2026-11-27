@@ -2,17 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { attemptUnresolved } from "../app/commands/command-outcome.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { DashboardClient } from "../client/index.js";
-import { NotificationWireSchema, type NotificationWire } from "../../models/dashboard/projection.js";
+import { listedAhead, upsertListedRow, NotificationWireSchema, type NotificationWire } from "../../models/dashboard/projection.js";
 import type { NotificationArrival } from "../../models/dashboard/subscription.js";
 import type { HeldNotificationStatus } from "../client/subscriptions/row-store.js";
 import type { NotificationCollectionTarget } from "../../models/notifications/notifications.js";
 import type { NotificationTarget } from "../../models/notifications/notification-target.js";
 import type { NotificationTriggerEvent } from "../../rules/notifications/notification-triggers.js";
-import { NotificationCommandRequestSchema } from "../../rules/commands/commands.js";
+import { NotificationCommandReceiptSchema, NotificationCommandRequestSchema } from "../../rules/commands/commands.js";
 import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure, shortFailureText } from "../../models/failures/error-catalog.js";
 import { verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import { notificationAge, type NotificationControl, type NotificationDestination, type NotificationItem, type NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
-import { formatLocalDay, formatMonthDay, formatWeekday } from "../lib/date-format.js";
 
 const policies = {
   "run-failed": { trigger: "failed", tone: "danger", detail: "Review the failed run before continuing." },
@@ -53,14 +52,6 @@ export function notificationTargetMatches(row: NotificationWire, target: Notific
     : (link?.kind === "run" || link?.kind === "failure") && link.runId === target.linkedRunId;
   if (target.kind === "failure") return link?.kind === "failure" && link.runId === target.runId && link.failureId === target.failureId;
   return false;
-}
-
-const PACIFIC = "America/Los_Angeles";
-const pacificDay = (value: Date) => Date.parse(`${formatLocalDay(value, PACIFIC)}T00:00:00Z`);
-/** Day group once out of Priority, by the Pacific day whatever the host zone: Today, Yesterday, the weekday within a week, else the date. */
-export function notificationDay(occurredAt: string, nowIso: string): string {
-  const when = new Date(occurredAt), ago = Math.round((pacificDay(new Date(nowIso)) - pacificDay(when)) / 86_400_000);
-  return ago <= 0 ? "Today" : ago === 1 ? "Yesterday" : ago < 7 ? formatWeekday(when, PACIFIC, "long") : formatMonthDay(when, PACIFIC, "long");
 }
 
 function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): string | undefined {
@@ -121,8 +112,8 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
       detail: notificationDetail(row) ?? "",
       ...(row.kind === "notification" && row.count > 1 ? { count: row.count } : {}),
       age: notificationAge(row.occurredAt, nowIso), at: row.occurredAt,
-      day: notificationDay(row.occurredAt, nowIso),
       ...(row.readOnlyHistory === true ? { readOnlyHistory: true } : {}),
+      ...(repeatingNotice(row) ? { quiet: true as const } : {}),
       read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },
     };
@@ -169,92 +160,72 @@ export interface InboxWiring {
   open(item: NotificationItem, navigate: (target: NotificationDestination, opened: () => void, refused: (message: string) => void) => void, opened: () => void, refused: (message: string) => void): void;
 }
 
-/** Each durable notification a listed row stands for, with its revision: a storage group stands for its members. */
-function memberRevisions(row: NotificationWire): ReadonlyMap<string, number> {
-  if (row.kind === "notification" && row.group !== undefined) return new Map(row.group.members.map(member => [member.notificationId, member.revision]));
-  return new Map([[row.notificationId, row.kind === "backfill-gap" ? 0 : row.revision]]);
-}
-
-/** Whether a listed row is ahead of the held rows: newer for one of its notifications, or holding one they lack, and older for none. */
-function listedAhead(rows: readonly NotificationWire[], listed: NotificationWire): boolean {
-  const held = new Map(rows.flatMap(row => [...memberRevisions(row)]));
-  const entries = [...memberRevisions(listed)];
-  return entries.some(([id, revision]) => (held.get(id) ?? -1) < revision) && entries.every(([id, revision]) => (held.get(id) ?? -1) <= revision);
-}
-
-/** Puts a listed row in place of every held row it stands for, when it is ahead of them; otherwise the held rows stand. */
-export function upsertListedRow(rows: readonly NotificationWire[], listed: NotificationWire): readonly NotificationWire[] {
-  const incoming = memberRevisions(listed);
-  const covered = rows.filter(row => [...memberRevisions(row).keys()].some(id => incoming.has(id)));
-  if (!listedAhead(covered, listed)) return rows;
-  return [...rows.filter(row => !covered.includes(row)), listed];
-}
-
-/** A row the inbox holds over its day. A publication's row stands while the day is the snapshot the stream held when it arrived,
- * since the stream's next snapshot carries it; a command readback stands while it is ahead of the day's rows, since the stream may
- * deliver a snapshot frozen before the command. */
-type Overlay = Readonly<{ row: NotificationWire } & ({ source: "publication"; snapshotCursor: string } | { source: "readback" })>;
-
-/** The overlays that still stand over this day's rows. */
-export function standingOverlays(overlays: readonly Overlay[], day: Readonly<{ rows: readonly NotificationWire[]; snapshotCursor: string }> | undefined): readonly Overlay[] {
-  return overlays.filter(overlay => overlay.source === "publication" ? overlay.snapshotCursor === day?.snapshotCursor
-    : day === undefined || listedAhead(day.rows, overlay.row));
-}
-
-const NO_UPSERTS: readonly Overlay[] = Object.freeze([]);
+const NO_UPSERTS: readonly NotificationWire[] = Object.freeze([]);
 const noStatus = (): HeldNotificationStatus | undefined => undefined;
+const noList = () => undefined;
 
-/** The inbox's rows come from the day it holds and the publications and command readbacks since; its status comes from the stream's row. */
+/** The inbox follows the stream's notification list and overlays confirmed command readbacks. */
 export function useInboxWiring({ client, enabled, binding }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding }): InboxWiring {
   const dayState = binding.authority.dayState;
   // Commands run in the app's active scope; the inbox's own rows are keyed by the day stream it reads, which may be another day's.
-  const request = useMemo(() => ({ client, enabled, scope: binding.scope, dayRequest: dayState.request }), [client, enabled, binding.scope, dayState.request]);
+  const request = useMemo(() => ({ client, enabled, scope: binding.scope, stream: dayState.stream ?? dayState.request }), [client, enabled, binding.scope, dayState.stream, dayState.request]);
   const store = dayState.rows;
   const status = useSyncExternalStore(listener => store.subscribe(listener), () => store.notificationStatus(), noStatus);
   const day = dayState.day;
-  const frame = day.state === "loaded" ? day.value : day.state === "loading" ? day.kept?.value : undefined;
-  const dayRows = frame?.notifications;
-  const dayView = useMemo(() => frame === undefined ? undefined : { rows: frame.notifications, snapshotCursor: frame.snapshotCursor }, [frame]);
-  const [upserts, setUpserts] = useState<{ request: typeof request; overlays: readonly Overlay[] }>();
+  const list = useSyncExternalStore(listener => store.subscribe(listener), () => store.notificationList(request.scope.actorId), noList);
+  const baseRows = list?.rows;
+  const [upserts, setUpserts] = useState<{ request: typeof request; rows: readonly NotificationWire[] }>();
   const [commandNotice, setCommandNotice] = useState<{ request: typeof request; text: string }>();
   const [publicationNotice, setPublicationNotice] = useState<{ request: typeof request; text: string }>();
   /** Items whose run the server answered as deleted when the operator opened them. */
   const [gone, setGone] = useState<{ request: typeof request; ids: ReadonlySet<string> }>();
-  /** Rows the person cleared, at the revision they were listed at; a refused clear takes its rows back out. */
+  /** Clear hides listed revisions while pending and committed revisions after confirmation. */
   const [cleared, setCleared] = useState<{ request: typeof request; ids: ReadonlyMap<string, number> }>();
   const clearedIds = cleared?.request === request ? cleared.ids : undefined;
   const clearedRef = useRef(clearedIds); clearedRef.current = clearedIds;
-  const held = upserts?.request === request ? upserts.overlays : NO_UPSERTS;
-  const rows = useMemo(() => dayRows === undefined ? undefined
-    : standingOverlays(held, dayView).reduce<readonly NotificationWire[]>((next, overlay) => upsertListedRow(next, overlay.row), dayRows), [dayRows, dayView, held]);
-  const consistent = rows !== undefined && rows.every(row => row.actorId === request.scope.actorId) && new Set(rows.map(row => row.notificationId)).size === rows.length;
-  // Controls act only on rows read with a status the stream has delivered as available.
-  const usable = enabled && consistent && status !== undefined && !status.unavailable;
-  // A clear also needs the stream live with a status it delivered itself: rows held through a reload or a reconnect may be behind
-  // the server's, and a resumed stream reports itself live before the changes it missed and its status row.
-  const clearsNow = usable && status?.stale !== true && day.state === "loaded" && dayState.connection.state === "live";
+  const held = upserts?.request === request ? upserts.rows : NO_UPSERTS;
+  const overlays = useMemo(() => baseRows === undefined ? NO_UPSERTS : held.filter(row => listedAhead(baseRows, row, true)), [baseRows, held]);
+  const rows = useMemo(() => baseRows === undefined ? undefined
+    : overlays.reduce(upsertListedRow, baseRows), [baseRows, overlays]);
+  const consistent = rows !== undefined;
+  const usable = enabled && consistent && list?.unavailable === false && status !== undefined && !status.unavailable;
+  // A reconnect may report itself live before delivering its own list and status.
+  const clearsNow = usable && list?.stale !== true && status?.stale !== true && day.state === "loaded" && dayState.connection.state === "live";
   const current = useRef({ request, binding, usable, clearsNow }); current.current = { request, binding, usable, clearsNow };
   const rowsRef = useRef(rows); rowsRef.current = rows;
-  const dayRowsRef = useRef(dayRows); dayRowsRef.current = dayRows;
-  /** Adds rows over the day. A publication drops those of older snapshots, and a readback drops those the last rendered rows caught up
-   * with; the render filters the rest, since a snapshot delivered with this row may not have rendered yet. */
-  const overlay = useCallback((listed: readonly NotificationWire[], arrived: Readonly<{ source: "publication"; snapshotCursor: string }> | Readonly<{ source: "readback" }>): void => {
-    const rendered = dayRowsRef.current;
-    rowsRef.current = listed.reduce<readonly NotificationWire[]>(upsertListedRow, rowsRef.current ?? []);
-    setUpserts(previous => ({ request, overlays: [...(previous?.request === request ? previous.overlays : NO_UPSERTS).filter(held => held.source === "publication"
-      ? arrived.source === "readback" || held.snapshotCursor === arrived.snapshotCursor
-      : rendered === undefined || listedAhead(rendered, held.row)),
-    ...listed.map(row => ({ row, ...arrived }))] }));
+  const baseRowsRef = useRef(baseRows); baseRowsRef.current = baseRows;
+  const overlay = useCallback((rows: readonly NotificationWire[]): void => {
+    rowsRef.current = rows.reduce(upsertListedRow, rowsRef.current ?? NO_UPSERTS);
+    const base = baseRowsRef.current;
+    setUpserts(previous => ({ request, rows: rows.reduce(upsertListedRow,
+      previous?.request === request ? previous.rows.filter(held => base !== undefined && listedAhead(base, held, true)) : NO_UPSERTS) }));
   }, [request]);
+  const overlayReceipt = (evidence: unknown, action: NotificationControl | "snooze" | "unsnooze") => {
+    const receipt = NotificationCommandReceiptSchema.parse(evidence);
+    const revisions = new Map(receipt.changes.map(change => [change.notificationId, change.revision]));
+    const changed = (rowsRef.current ?? NO_UPSERTS).flatMap(row => {
+      // The stream supplies aggregate state when a row represents several storage notices.
+      if (row.kind === "backfill-gap" || row.readOnlyHistory === true || row.actorId !== receipt.actorId
+        || row.kind === "notification" && row.group !== undefined) return [];
+      const revision = revisions.get(row.notificationId);
+      if (revision === undefined || revision !== row.revision + 1) return [];
+      const readState = action === "read" || action === "unread" ? action : row.readState;
+      const snoozedUntil = action === "snooze" ? receipt.snoozedUntil : action === "unsnooze" ? undefined : row.snoozedUntil;
+      return [NotificationWireSchema.parse({ ...row, revision, readState, snoozedUntil,
+        state: snoozedUntil === undefined ? readState : "snoozed",
+        ...(row.kind === "command" ? { priority: readState === "unread" && snoozedUntil === undefined } : {}),
+      })];
+    });
+    if (changed.length > 0) overlay(changed);
+  };
   const subscribePublications = dayState.subscribePublications;
   const arrivalListeners = useRef(new Set<(arrival: InboxArrival) => void>());
   useEffect(() => {
     if (!enabled) return;
     const delivered = new Set<string>();
-    return subscribePublications(({ publication, listed, target, snapshotCursor }: NotificationArrival) => {
+    return subscribePublications(({ publication, target }: NotificationArrival) => {
       if (current.current.request !== request || publication.actorId !== request.scope.actorId || delivered.has(publication.sourceId)) return;
       delivered.add(publication.sourceId);
-      overlay([listed], { source: "publication", snapshotCursor });
       const row = publication.notification;
       if (row.kind === "backfill-gap") { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") }); return; }
       if (row.state === "snoozed") return;
@@ -262,7 +233,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       for (const listener of arrivalListeners.current) listener(arrival);
       if (!notificationTargetMatches(row, target)) setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") });
     });
-  }, [enabled, request, subscribePublications, overlay]);
+  }, [enabled, request, subscribePublications]);
   const hide = (entries: readonly (readonly [string, number])[]) => {
     clearedRef.current = new Map([...(clearedRef.current ?? []), ...entries]);
     setCleared({ request, ids: clearedRef.current });
@@ -293,7 +264,11 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       source: "dashboard", family: "notification", type: "notification-clear", target: { actorId: request.scope.actorId, members, matchingCount: members.length } });
     const outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
       publish: outcome => {
-        if (current.current.request !== request || outcome.kind === "confirmed") return;
+        if (current.current.request !== request) return;
+        if (outcome.kind === "confirmed") {
+          hide(NotificationCommandReceiptSchema.parse(outcome.readback).changes.map(change => [change.notificationId, change.revision]));
+          return;
+        }
         owner.feedback(outcome);
         if (outcome.kind === "conflict") dayState.refresh();
       } });
@@ -318,7 +293,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     }
     setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") });
     let outcome: Awaited<ReturnType<typeof owner.executor.execute>> | undefined;
-    // A group acts on every durable member it holds; each confirmed readback replaces the rows it stands for.
+    // A group acts on every durable member it holds.
     for (const member of members) {
       const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.now(), requestedBy: request.scope.actorId,
         source: "dashboard", family: "notification", type: `notification-${action}`, target: { notificationId: member.notificationId, actorId: request.scope.actorId, expectedVersion: member.revision } });
@@ -326,7 +301,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
         publish: outcome => {
           if (current.current.request !== request) return;
           if (outcome.kind === "confirmed") {
-            overlay([NotificationWireSchema.parse(outcome.readback)], { source: "readback" });
+            overlayReceipt(outcome.readback, action);
             setCommandNotice({ request, text: "" });
           }
           else {
@@ -345,12 +320,12 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       && replacement.binding.scope.authority === owner.scope.authority) replacement.binding.authority.dayState.refresh();
     return current.current.request === request && outcome.kind === "confirmed";
   };
-  const statusNotice = !consistent ? inboxMessage("DASHBOARD_READ_FAILED") : status === undefined ? ""
+  const statusNotice = list?.unavailable === true ? inboxMessage("DASHBOARD_READ_FAILED") : status === undefined ? ""
     : status.unavailable ? inboxMessage("DASHBOARD_READ_FAILED")
     : status.status !== undefined && status.status.state !== "ready" ? inboxMessage(status.status.code ?? "NOTIFICATION_OBSERVATION_FAILED") : "";
   const projection = rows === undefined
-    ? { state: day.state === "failed" ? { state: "unavailable" as const, reason: inboxMessage("DASHBOARD_READ_FAILED") } : { state: "loading" as const }, notice: "" }
-    : !consistent ? { state: { state: "unavailable" as const, reason: statusNotice }, notice: "" }
+    ? { state: day.state === "failed" || list?.unavailable === true ? { state: "unavailable" as const, reason: inboxMessage("DASHBOARD_READ_FAILED") } : { state: "loading" as const }, notice: "" }
+
     : inboxProjection(rows, binding.authority.now(), gone?.request === request ? gone.ids : undefined, clearedIds);
   const pending = enabled && consistent && status === undefined ? inboxMessage("NOTIFICATION_REFRESH_PENDING") : "";
   return { state: projection.state, notice: [pending, projection.notice, enabled ? statusNotice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
@@ -392,7 +367,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
         publish: outcome => {
           if (current.current.request !== request) return;
           if (outcome.kind === "confirmed") {
-            overlay(NotificationWireSchema.array().parse(outcome.readback), { source: "readback" });
+            overlayReceipt(outcome.readback, "read");
             setCommandNotice({ request, text: "" });
           } else { setCommandNotice({ request, text: outcome.feedback.text }); owner.feedback(outcome); }
         } });

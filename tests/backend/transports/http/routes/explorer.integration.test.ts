@@ -233,12 +233,12 @@ it("lists main workflows in the picker and serves delegated workflows on the ste
 
   const world = await makeWorld();
   try {
-    const boot = buildBootstrap({ appVersion: "0.1.0", clock: manualClock(AT), modules: DASHBOARD_CATALOG_MODULES,
+    const boot = await buildBootstrap({ appVersion: "0.1.0", clock: manualClock(AT), modules: DASHBOARD_CATALOG_MODULES,
       descriptorSetHash: descriptorSetHash(DASHBOARD_CATALOG_MODULES.map(({ descriptor }) => descriptor.contractFingerprint)),
       settingsSchemaHash: descriptorSetHash(["settings-schema"]), projection: world.projection, actorLabel: () => "Fixture Operator",
       authorityMeta: () => world.database.getMeta(), preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       workbookCompatibility: modules => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, modules) });
-    const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows), boot.workbookCompatibility));
+    const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows)));
     assert.deepEqual(explorerPickerEntries(catalog), [
       { id: "person-lookup", title: "Person Lookup", depth: 0 },
       { id: "separations", title: "Separations", depth: 0 },

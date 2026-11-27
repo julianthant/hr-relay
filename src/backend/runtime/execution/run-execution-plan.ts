@@ -13,6 +13,7 @@ import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, 
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
 import { projectTransactionOutcome, type RuntimeFlowNode, type RuntimeScope } from "../../../models/workflow/graph.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
+import { orderOnlyOmission } from "../../../models/workflow/step-omission.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
 import { delegationEvidenceOutput, resolveDelegationEvidenceOutput } from "../../../models/run/result.js";
@@ -65,7 +66,7 @@ export function prepareRunPlan(
   const boundAt = (consumer: RunCheckpointRecord) => (source: RunRecord, dependency: NodeId) => originalCheckpoint(deps.authority.authority, source, String(dependency), consumer.claimGeneration);
   // `pick` names the one row the consumer was bound from; nothing is searched by time or taken as latest.
   // `conditions` is false where the record already holds every dependency's value, so none was skipped by its `when`.
-  const sourceScopeFor = (sourceRunId: string, dependsOn: readonly NodeId[], pick: (source: RunRecord, dependency: NodeId) => RunCheckpointRecord | undefined, conditions = true): RuntimeScope => {
+  const sourceScopeFor = (sourceRunId: string, dependsOn: readonly NodeId[], pick: (source: RunRecord, dependency: NodeId) => RunCheckpointRecord | undefined, conditions = true, reader?: NodeId): RuntimeScope => {
     const source = sourceRunId === runId ? getRun() : continuationSources.find(row => row.envelope.runId === sourceRunId);
     if (source === undefined) throw new RunContinuationRefusedError("run-continuation-input-source-unavailable");
     const values: Record<string, JsonValue> = {};
@@ -82,6 +83,8 @@ export function prepareRunPlan(
           ? JsonValueSchema.parse(projectTransactionOutcome(dependencyNode.commit.uses, checkpoint.output.value, "Continuation source scope", { checkpoint, schemaReader: deps.authority.evidenceSchemaHash?.bind(deps.authority) })) : checkpoint.output.value;
       }
       else if (gate !== undefined) values[String(dependency)] = gate.result.value;
+      // A step done by hand left no checkpoint; a reader that only waits on it binds nothing from it.
+      else if (reader !== undefined && orderOnlyOmission(descriptor.stepOmissions, source.envelope.stepOmissions, String(reader), String(dependency))) continue;
       else {
         if (dependencyNode?.kind === "child-run") {
           const child = deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, source.envelope)

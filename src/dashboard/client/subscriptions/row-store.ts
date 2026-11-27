@@ -1,15 +1,16 @@
-/** The client's row store: the whole read-model values the stream carries for the open views.
- * A row replaces the held value for its `(model, key)` and is never patched, so applying an envelope twice leaves it as it was. */
+/** Whole read-model values replace their held rows. A notification publication replaces the notice or group it represents. */
 import type { RunPanel, StreamRow } from "../../../models/dashboard/subscription.js";
 import type { z } from "zod";
 import type { NotificationObservationStatusSchema } from "../../../models/notifications/notifications.js";
 import type { EditableSettingsWire } from "../../../models/dashboard/settings-editor.js";
+import { upsertListedRow, type NotificationWire } from "../../../models/dashboard/projection.js";
 
 type NotificationObservationStatus = z.infer<typeof NotificationObservationStatusSchema>;
 
 /** The observer status the stream last delivered. A failed read keeps the last good status and marks it unavailable.
  * `stale` holds from a stream's reopening until that stream delivers its own status row. */
 export type HeldNotificationStatus = Readonly<{ status?: NotificationObservationStatus; unavailable: boolean; stale?: true }>;
+type HeldNotificationList = Readonly<{ rows?: readonly NotificationWire[]; unavailable: boolean; stale?: true }>;
 
 /** The settings document the stream last delivered. A failed read keeps the last good document and marks it unavailable. */
 export type HeldSettings = Readonly<{ document?: EditableSettingsWire; unavailable: boolean }>;
@@ -21,6 +22,7 @@ export interface RowStore {
   deliveredBehindRow(panel: RunPanel): boolean;
   /** `undefined` before the stream has delivered the status row. */
   notificationStatus(): HeldNotificationStatus | undefined;
+  notificationList(actorId: string): HeldNotificationList | undefined;
   /** `undefined` before the stream has delivered the settings row. */
   settings(): HeldSettings | undefined;
   subscribe(listener: () => void): () => void;
@@ -30,9 +32,10 @@ export interface RowStoreWriter extends RowStore {
   /** Replaces the held value of each row whose run is open; rows of any other run are dropped.
    * `rowRevision` answers the queue row's revision in the day delivered with them, which marks a panel that arrives below it. */
   apply(rows: readonly StreamRow[], rowRevision?: (runId: string) => number | undefined): void;
-  /** Drops every held panel, the status and the settings, keeping the open run: the stream they came from ended, so none may answer a decision. */
+  applyNotification(row: NotificationWire): void;
+  /** Drops every held row while keeping the name of the open run. */
   reset(): void;
-  /** Marks the held status stale: a new stream was opened, and it may report itself live before it delivers the status. */
+  /** Marks inbox data stale until the new stream delivers its own rows. */
   reopened(): void;
   /** Names the open run; the panel of every other run is dropped. */
   open(runId: string | undefined): void;
@@ -44,12 +47,14 @@ export function createRowStore(): RowStoreWriter {
   const listeners = new Set<() => void>();
   let openRun: string | undefined;
   let status: HeldNotificationStatus | undefined;
+  let inbox: { actorId: string; list: HeldNotificationList } | undefined;
   let settings: HeldSettings | undefined;
   const notify = (): void => { for (const listener of [...listeners]) listener(); };
   return {
     runPanel: (runId) => panels.get(runId),
     deliveredBehindRow: (panel) => behind.has(panel),
     notificationStatus: () => status,
+    notificationList: actorId => inbox?.actorId === actorId ? inbox.list : undefined,
     settings: () => settings,
     subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     apply: (rows, rowRevision) => {
@@ -58,6 +63,13 @@ export function createRowStore(): RowStoreWriter {
         if (row.model === "notification-status") {
           status = row.value.state === "available" ? { status: row.value.value, unavailable: false }
             : { ...(status?.status === undefined ? {} : { status: status.status }), unavailable: true };
+          changed = true;
+          continue;
+        }
+        if (row.model === "notification-list") {
+          const held = inbox?.actorId === row.key ? inbox.list.rows : undefined;
+          inbox = { actorId: row.key, list: row.value.state === "available" ? { rows: row.value.value, unavailable: false }
+            : { ...(held === undefined ? {} : { rows: held }), unavailable: true } };
           changed = true;
           continue;
         }
@@ -78,17 +90,27 @@ export function createRowStore(): RowStoreWriter {
       }
       if (changed) notify();
     },
+    applyNotification: row => {
+      if (inbox?.actorId !== row.actorId || inbox.list.rows === undefined) return;
+      const rows = upsertListedRow(inbox.list.rows, row);
+      if (rows === inbox.list.rows) return;
+      inbox = { actorId: inbox.actorId, list: { ...inbox.list, rows } };
+      notify();
+    },
     reset: () => {
-      if (panels.size === 0 && status === undefined && settings === undefined) return;
+      if (panels.size === 0 && status === undefined && inbox === undefined && settings === undefined) return;
       panels.clear();
       status = undefined;
+      inbox = undefined;
       settings = undefined;
       notify();
     },
     reopened: () => {
-      if (status === undefined || status.stale === true) return;
-      status = { ...status, stale: true };
-      notify();
+      const statusChanged = status !== undefined && status.stale !== true;
+      const listChanged = inbox !== undefined && inbox.list.stale !== true;
+      if (status !== undefined && statusChanged) status = { ...status, stale: true };
+      if (inbox !== undefined && listChanged) inbox = { actorId: inbox.actorId, list: { ...inbox.list, stale: true } };
+      if (statusChanged || listChanged) notify();
     },
     open: (runId) => {
       openRun = runId;

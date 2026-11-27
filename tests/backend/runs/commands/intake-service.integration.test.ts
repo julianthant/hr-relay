@@ -1,14 +1,7 @@
 import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
-import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
-import { readXlsx } from "@shbernal/ts-xlsx";
-import { composeIntake } from "../../../../src/backend/app/composition/dashboard/intake.js";
-import { readArtifactBytes } from "../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
-import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
-import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
-import JSZip from "jszip";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -162,8 +155,6 @@ async function surface(parserFor?: (artifacts: Surface["artifacts"]) => Prepared
     ledger: createTransactionHistory(database.authority),
     authority: {
       queueParents: envelopes => database.authority.dependencies.parents(envelopes),
-      listNotifications: () => [],
-      listNotificationCheckpoints: () => [],
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
       listWorkerPools: () => database.authority.workerPools.list(),
@@ -736,80 +727,7 @@ describe("2.6.1-2 retained intake evidence", () => {
 
 });
 
-describe("saved workbook intake bridge", () => {
-  it("retains immutable workbook provenance, all sheets and data, joins only exact sources, and refuses stale versions", async () => {
-    const h = await surface();
-    const library = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: h.database.authority.workbooks, clock: h.clock });
-    const first = library.create({ name: "Roster.xlsx", themes: [], hasFormulas: false, sheets: [
-      { id: "roster", name: "Roster", width: 2, hidden: [], headerRow: 1, sourceHeaderRow: 7,
-        columnBindings: [{ id: "eid", sourceColumn: 4, sourceHeader: "Original EID", fieldId: "eid", basis: "manual" }, { id: "date", sourceColumn: null, sourceHeader: "Added date", fieldId: "roster.notes", basis: "manual" }],
-        rows: [{ id: "head", cells: [{ value: "Employee ID#" }, { value: "Effective Date" }] }, { id: "data", cells: [{ value: "10456712", hyperlink: "https://example.com/employee", tooltip: "Employee" }, { value: new Date("2026-07-01T00:00:00.000Z"), numFmt: "mm/dd/yyyy" }] }] },
-      { id: "other", name: "Other", width: 1, hidden: [], rows: [{ id: "other-head", cells: [{ value: "Name" }] }, { id: "other-data", cells: [{ value: "Example Person", richText: [{ text: "Example ", font: { bold: true } }, { text: "Person" }] }] }] },
-    ] });
-    const bridge = createWorkbookIntakeBridge(library, h.intake);
-    const request = { expectedVersion: 1, workflowId: INTAKE_FIXTURE_WORKFLOW_ID };
-    const result = await bridge(first.libraryId, request);
-    if (result.state === "refused") throw new Error(result.message);
-    assert.equal(result.state, "created");
-    assert.deepEqual(result.session.workbookSource, { libraryId: first.libraryId, version: 1 });
-    assert.deepEqual(result.session.sheets, ["Roster", "Other"]); assert.equal(result.session.rowCount, 1);
-    assert.equal(result.session.headerRowIndex, 0); assert.deepEqual(result.session.bindings, []);
-    assert.deepEqual(result.session.columns.map(column => column.samples), [["10456712"], ["2026-07-01"]]);
-    const bytes = await readArtifactBytes(() => h.artifacts.open(result.session.artifact));
-    const preserved = readXlsx(Uint8Array.from(bytes));
-    assert.equal(preserved.worksheets[0].getCell('A2').value, '10456712');
-    assert.equal(preserved.worksheets[0].hyperlinkAt('A2')?.target, 'https://example.com/employee');
-    assert.equal(preserved.worksheets[0].getCell('B2').numFmt, 'mm/dd/yyyy');
-    assert.deepEqual(preserved.worksheets[1].getCell('A2').value, { richText: [{ text: 'Example ', font: { bold: true } }, { text: 'Person' }] });
-    const zip = await JSZip.loadAsync(bytes);
-    const sheetXml = await zip.file('xl/worksheets/sheet1.xml')?.async('string');
-    assert.match(sheetXml ?? '', /<hyperlink[^>]+tooltip="Employee"/u);
-    for (const entry of Object.values(zip.files)) assert.equal(entry.date.toISOString(), first.savedAt);
-    const generation = h.database.getMeta().authorityGeneration;
-    const joined = await bridge(first.libraryId, request); assert.equal(joined.state, "joined");
-    assert.equal(h.database.getMeta().authorityGeneration, generation);
-    assert.deepEqual((await h.freshIntake().read(result.session.intakeSessionId)).workbookSource, result.session.workbookSource);
-    await h.send(result.session.intakeSessionId, result.session.expectedVersion, "inspect-intake", { sheet: "Roster", headerRowIndex: 0 });
-    assert.deepEqual((await h.intake.read(result.session.intakeSessionId)).workbookSource, result.session.workbookSource);
-    await assert.rejects(h.intake.upload({ workflow: INTAKE_FIXTURE_WORKFLOW_ID, fileName: "Raw.xlsx", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes }), { code: "WORKBOOK_INTAKE_SOURCE_CONFLICT" });
-    const ordinary = await surface();
-    const raw = await ordinary.intake.upload({ workflow: INTAKE_FIXTURE_WORKFLOW_ID, fileName: "Raw.xlsx", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes });
-    if (raw.state === "refused") throw new Error(raw.message);
-    const ordinaryLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: ordinary.database.authority.workbooks, clock: ordinary.clock });
-    const other = ordinaryLibrary.create({ ...first.workbook, libraryId: undefined });
-    const ordinaryGeneration = ordinary.database.getMeta().authorityGeneration;
-    await assert.rejects(createWorkbookIntakeBridge(ordinaryLibrary, ordinary.intake)(other.libraryId, request), { code: "WORKBOOK_INTAKE_SOURCE_CONFLICT" });
-    assert.equal(ordinary.database.getMeta().authorityGeneration, ordinaryGeneration);
-    assert.equal(ordinary.database.authority.intakeSessions.findActiveBySource(raw.session.artifact.sha256).length, 1);
-    h.database.close();
-    const reopened = AuthorityDatabase.open({ path: join(h.root, "state.db"), busyTimeoutMs: 250, migrationOwner: "bridge-restart" }, h.clock);
-    try {
-      const restartedLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: reopened.authority.workbooks, clock: h.clock });
-      const restartedIntake = composeIntake({ database: reopened, artifacts: h.artifacts, parser: createIntakeParser({ artifacts: h.artifacts }),
-        projections: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined },
-        descriptors: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureDescriptor : undefined }, clock: h.clock, ids: sequentialIdFactory("f") });
-      const restartedBridge = createWorkbookIntakeBridge(restartedLibrary, restartedIntake);
-      const beforeJoin = reopened.getMeta().authorityGeneration;
-      const rejoined = await restartedBridge(first.libraryId, request);
-      if (rejoined.state === "refused") throw new Error(rejoined.message);
-      assert.equal(rejoined.state, "joined");
-      assert.equal(rejoined.session.intakeSessionId, result.session.intakeSessionId);
-      assert.equal(rejoined.session.artifact.sha256, result.session.artifact.sha256);
-      assert.equal(reopened.getMeta().authorityGeneration, beforeJoin);
-      assert.deepEqual(rejoined.session.workbookSource, result.session.workbookSource);
-      const second = restartedLibrary.save(first.libraryId, 1, first.workbook);
-      const beforeConflict = reopened.getMeta().authorityGeneration;
-      await assert.rejects(restartedBridge(first.libraryId, request), { code: "WORKBOOK_VERSION_CONFLICT" });
-      await assert.rejects(restartedBridge(first.libraryId, { ...request, expectedVersion: second.version }), { code: "WORKBOOK_INTAKE_SOURCE_CONFLICT" });
-      assert.equal(reopened.getMeta().authorityGeneration, beforeConflict);
-      assert.equal(reopened.authority.intakeSessions.findActiveBySource(result.session.artifact.sha256).length, 1);
-      assert.deepEqual(restartedLibrary.revision(first.libraryId, 1), first);
-      assert.deepEqual(reopened.authority.workbooks.creation(first.libraryId), first);
-      assert.deepEqual(restartedLibrary.read(first.libraryId), second);
-      assert.deepEqual(restartedLibrary.history(first.libraryId), []);
-    }
-    finally { reopened.close(); }
-  });
+describe("intake command readback", () => {
   it("reads only the actual recorded intake request and result for its exact session without effects", async () => {
     const h = await surface(), id = (await uploadRoster(h.intake)).session.intakeSessionId;
     const outcome = CommandResultSchema.parse(await h.send(id, 1, "inspect-intake", { sheet: "default", headerRowIndex: 1 }));

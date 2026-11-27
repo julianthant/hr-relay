@@ -1,10 +1,19 @@
 
 import assert from "node:assert/strict";
-import { describe,expect,it } from "vitest";
+import { describe,expect,it,vi } from "vitest";
+import { createComposedDashboardReadHost } from "../../../../src/backend/app/composition/dashboard/runtime-resources.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { z } from "zod";
 import { DESCRIPTORS, descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectWorkbookCompatibilityFromRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
+import { randomUUID } from "node:crypto";
+import { Hono } from "hono";
+import { composeShell } from "../../../../src/backend/app/composition/dashboard/shell.js";
+import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { registerShellRoutes } from "../../../../src/backend/transports/http/routes/shell.js";
+import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
 import { projectStartRows, projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
@@ -93,9 +102,7 @@ describe("bootstrap start-surface block", () => {
     try {
       // Re-parsed on purpose: the producer's own `.parse` is what makes this a
       // statement about the WIRE rather than about an object literal.
-      const wire = FrontendBootstrapWireSchema.parse(buildBootstrap(depsOf(world)));
-      expect(wire.workbookCompatibility.workflows.map(workflow => workflow.workflowId))
-        .toEqual(DESCRIPTORS.map(descriptor => descriptor.id));
+      const wire = FrontendBootstrapWireSchema.parse(await buildBootstrap(depsOf(world)));
       const served = new Map(
         WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)
           .map((entry) => [String(entry.id), entry.start] as const),
@@ -104,7 +111,7 @@ describe("bootstrap start-surface block", () => {
         .toEqual(DESCRIPTORS.map((d) => String(d.id)).sort());
       const systemsByStep: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
         "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "reference-check": [], "crm-dates": ["crm"] },
-        separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "kronos-timecard": ["new-kronos"], "identity-review": [], "reference-check": [], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
+        separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "kronos-timecard": ["new-kronos"], "identity-review": [], "reference-check": [], "pending-termination": ["ucpath"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
         "crm-doc-download": { "search-records": ["crm"], reference: [], "read-idocs": ["crm"], "package-worksheets": [] },
         onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "hire-review": ["ucpath"], "reference-check": [],
           "i9-creation": ["i9"], "ucpath-hire": ["ucpath"], "master-results": [] },
@@ -121,12 +128,9 @@ describe("bootstrap start-surface block", () => {
 
           readiness: descriptor.requiredWorkbookFields.length === 0
             ? { scope: "workbook-sources", state: "ready" }
-            : wire.workbookCompatibility.workflows.find(workflow => workflow.workflowId === descriptor.id)?.sources.length
-              ? { scope: "workbook-sources", state: "selection-needed",
-                fixAction: { kind: "choose-workbook-sources", workflowId: descriptor.id } }
-              : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
-                reason: "Import a Library spreadsheet before choosing a source.",
-                fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
+            : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
+              reason: "Import a Library spreadsheet before choosing a source.",
+              fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
           ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
           ...(["person-lookup", "separations", "onboarding", "work-study", "i9-check-start", "emergency-contact", "emergency-contact-member"].includes(String(descriptor.id)) ? { workbookCheck: { id: "reference-check", keyFieldId: "eid" } } : {}),
@@ -166,7 +170,7 @@ describe("bootstrap start-surface block", () => {
   it("serves a synthetic bumped descriptor version verbatim", async () => {
     const world = await makeWorld();
     try {
-      const wire = FrontendBootstrapWireSchema.parse(buildBootstrap({
+      const wire = FrontendBootstrapWireSchema.parse(await buildBootstrap({
         ...depsOf(world),
         modules: [{
           descriptor: VERSION_SEVEN_DESCRIPTOR,
@@ -185,7 +189,7 @@ describe("bootstrap start-surface block", () => {
   it("serves a declared omission's form and cascade on the step's control", async () => {
     const world = await makeWorld();
     try {
-      const wire = FrontendBootstrapWireSchema.parse(buildBootstrap({
+      const wire = FrontendBootstrapWireSchema.parse(await buildBootstrap({
         ...depsOf(world),
         modules: [{
           descriptor: omissionCascadingDescriptor,
@@ -224,8 +228,7 @@ describe("bootstrap start-surface block", () => {
 it('serves implemented saved-row and CRM starts without stale implementation refusals', async () => {
   const world = await makeWorld();
   try {
-    const wire = buildBootstrap(depsOf(world));
-    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:i9-check-start')).toBe(false);
+    const wire = await buildBootstrap(depsOf(world));
     expect(wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'i9-check-start')?.start?.uploadRun?.pdfInput).toEqual({
       documentsField: 'documents', asOfField: 'asOf', reviewerField: 'reviewerName',
     });
@@ -234,12 +237,10 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
     });
     const uploadDryRun = (id: string) => wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === id)?.start?.uploadRun?.supportsDryRun;
     expect([uploadDryRun('emergency-contact'), uploadDryRun('i9-check-start')]).toEqual([true, true]);
-    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:onboarding')).toBe(false);
     const onboarding = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'onboarding');
     expect(onboarding?.availability).toEqual({ state: 'available' });
     expect(onboarding?.start?.inputRun?.workbookRows).toEqual({ typeId: 'onboarding-roster', inputField: 'email' });
     expect(onboarding?.start?.inputRun?.typedInput?.initialMode).toBe(null);
-    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:crm-doc-download')).toBe(false);
     const crm = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'crm-doc-download');
     expect(crm?.availability).toEqual({ state: 'available' });
     expect(crm?.start?.inputRun?.parser).toBeDefined();
@@ -303,7 +304,7 @@ describe("bootstrap storage summary", () => {
     const world = await makeWorld();
     try {
       const deps = depsOf(world, { authorityReachable: true });
-      const wire = buildBootstrap(deps);
+      const wire = await buildBootstrap(deps);
       assert.equal(wire.settingsSchemaHash, deps.settingsSchemaHash);
       assert.equal(wire.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
       assert.equal(FrontendBootstrapWireSchema.safeParse({
@@ -318,7 +319,7 @@ describe("bootstrap storage summary", () => {
   it("projects the retained strict preflight report in registry order", async () => {
     const world = await makeWorld();
     try {
-      const wire = buildBootstrap(depsOf(world, { authorityReachable: true }));
+      const wire = await buildBootstrap(depsOf(world, { authorityReachable: true }));
       assert.deepEqual(wire.preflight, [
         {
           id: "runtime.compatibility",
@@ -393,7 +394,7 @@ describe("bootstrap storage summary", () => {
           : result),
       });
 
-      const wire = buildBootstrap({ ...deps, preflightReport: () => failing });
+      const wire = await buildBootstrap({ ...deps, preflightReport: () => failing });
 
       assert.ok(wire.preflight);
       assert.deepEqual(wire.preflight.find(({ id }) => id === "filesystem.health"), {
@@ -415,7 +416,7 @@ describe("bootstrap storage summary", () => {
     try {
       const reached = new Set<string>();
       for (const authorityReachable of [true, false]) {
-        const wire = buildBootstrap(depsOf(world, { authorityReachable }));
+        const wire = await buildBootstrap(depsOf(world, { authorityReachable }));
         // Parsed again on purpose: the producer's own `.parse` is what makes
         // this a statement about the WIRE and not about a literal.
         reached.add(FrontendBootstrapWireSchema.parse(wire).storage.authority);
@@ -426,11 +427,42 @@ describe("bootstrap storage summary", () => {
     }
   });
 
+  it("serves GET /api/v1/bootstrap through the composed shell with authority probed on the read lane and main getMeta disabled", async () => {
+    const profiles = createProfileFixtureSet();
+    try {
+      const profile = await profiles.create();
+      const world = await makeWorld({ profileFixture: async () => profile });
+      try {
+        const lanes = createComposedDashboardReadHost({ admission: profile.admission, database: world.database, clock: world.clock });
+        const artifacts = createContentAddressedArtifactWriter({ admission: profile.admission });
+        await artifacts.ready;
+        const deps = depsOf(world, { authorityReachable: true });
+        const shell = composeShell({ database: world.database, readLanes: lanes, clock: world.clock, ids: { uuid: randomUUID }, artifacts,
+          descriptors: { resolve: () => undefined }, appVersion: deps.appVersion, actorLabel: deps.actorLabel, descriptorSetHash: deps.descriptorSetHash,
+          preflightReport: deps.preflightReport, workbookCompatibility: deps.workbookCompatibility, projection: world.projection,
+          activity: { read: () => { throw new Error("unused activity"); }, readSelected: () => { throw new Error("unused activity"); } },
+          backfillGaps: { detected: () => { throw new Error("unused gap"); } } });
+        try {
+          const app: DashboardApp = new Hono();
+          registerShellRoutes(app, shell);
+          // Every main-isolate AuthorityDatabase, so a shell that read meta on the main connection fails the probe.
+          const getMeta = vi.spyOn(AuthorityDatabase.prototype, "getMeta").mockImplementation(() => { throw new Error("main-connection read"); });
+          try {
+            const response = await app.request("/api/v1/bootstrap");
+            assert.equal(response.status, 200, await response.clone().text());
+            assert.deepEqual(FrontendBootstrapWireSchema.parse(await response.json()).storage, { authority: "healthy" });
+            assert.equal(getMeta.mock.calls.length, 0);
+          } finally { getMeta.mockRestore(); }
+        } finally { shell.hub.close(); await lanes.close(); }
+      } finally { await world.dispose(); }
+    } finally { await profiles.close(); }
+  });
+
   it("an unreachable authority stays explicitly unavailable", async () => {
     const world = await makeWorld();
     try {
 
-      const wire = buildBootstrap(depsOf(world, { authorityReachable: false }));
+      const wire = await buildBootstrap(depsOf(world, { authorityReachable: false }));
       assert.deepEqual(
         wire.storage,
         { authority: "unavailable" },

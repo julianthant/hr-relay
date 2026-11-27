@@ -47,7 +47,7 @@ async function mount(synchronous = false) {
     return element;
   };
   const confirm = async () => {
-    const button = [...dialog().querySelectorAll("button")].find(node => node.textContent === "Add workers");
+    const button = [...dialog().querySelectorAll("button")].find(node => /^Add \d+ workers?$/.test(node.textContent ?? ""));
     assert.ok(button instanceof HTMLButtonElement);
     await settle(() => { button.focus(); button.click(); });
     assert.equal(document.querySelector('[role="dialog"]') === null, true, "confirmation closes immediately");

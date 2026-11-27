@@ -127,7 +127,7 @@ test("notification row: hovering shows the read toggle and moves nothing", async
   await page.getByRole("button", { name: /^Notifications, \d+ unread$/u }).click();
   const row = page.getByRole("dialog", { name: "Notifications" }).locator(".notice-row").first();
   await expect(row).toBeVisible();
-  const boxes = () => row.evaluate(node => [node, ...node.querySelectorAll(".notice-title, .notice-age, .notice-context, .notice-detail")].map(part => {
+  const boxes = () => row.evaluate(node => [node, ...node.querySelectorAll(".notice-title, .notice-age, .notice-detail")].map(part => {
     const box = part.getBoundingClientRect(); return [box.x, box.y, box.width, box.height];
   }));
   await page.mouse.move(0, 0);
@@ -139,6 +139,37 @@ test("notification row: hovering shows the read toggle and moves nothing", async
   // The title, the count and the time share one line without overlapping.
   const [title, age] = await Promise.all([row.locator(".notice-title").boundingBox(), row.locator(".notice-age").boundingBox()]);
   expect(title !== null && age !== null && title.x + title.width <= age.x).toBe(true);
+});
+
+test("notification row: Tab reaches the visible clear control and Enter clears it through the served command", async ({ dashboard, page, seeded }) => {
+  await dashboard.open();
+  const unreadBefore = await unreadCount(page);
+  await seeded.drive.publishNotification();
+  await seeded.drive.publishNotification(true);
+  await expect.poll(() => unreadCount(page)).toBe(unreadBefore + 2);
+  await page.getByRole("button", { name: /^Notifications, \d+ unread$/u }).click();
+  const popover = page.getByRole("dialog", { name: "Notifications" });
+  const rows = popover.locator(".notice-row");
+  const count = await rows.count();
+  const row = rows.first();
+  await row.locator("button.notice-main").focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  const clear = row.getByRole("button", { name: "Clear notification" });
+  await expect(clear).toBeFocused();
+  await expect(row.locator(".notice-action")).toHaveCSS("opacity", "1");
+  const listedIds = async () => (await (await page.request.get(new URL("/api/v1/notifications", page.url()).href)).json() as { notificationId: string }[]).map(entry => entry.notificationId);
+  const before = await listedIds();
+  const cleared = await row.getAttribute("data-id");
+  expect(before.length, "a sibling notice is listed beside the one cleared").toBeGreaterThan(1);
+  const served = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/commands" && response.request().method() === "POST" && response.request().postData()?.includes("notification-clear") === true);
+  await page.keyboard.press("Enter");
+  expect(await (await served).json()).toMatchObject({ state: "applied" });
+  await expect(rows).toHaveCount(count - 1);
+  const after = await listedIds();
+  expect(after).not.toContain(cleared);
+  expect(after.length).toBe(before.length - 1);
+  expect(after.every(id => before.includes(id))).toBe(true);
 });
 
 // A Work-Study run held at its first read goes on and the executor parks it at the gate the workflow declares.

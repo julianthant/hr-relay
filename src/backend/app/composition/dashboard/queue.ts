@@ -7,10 +7,11 @@ import { WorkerActivitySchema, WorkerDirectiveSchema, WorkerParentMessageSchema 
 import { WorkerBrowserObservationSchema, WorkerSetupRefusalCodeSchema } from "../../../../models/run/worker-control.js";
 import { WorkerPoolMemberSchema } from "../../../../models/run/worker-slot.js";
 import { ErrorCatalogCodeSchema } from "../../../../models/failures/error-catalog.js";
-import { BrowserSystemIdSchema, FingerprintSchema, LocalDateSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
+import { BrowserSystemIdSchema, LocalDateSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { systemIdFactory } from "../../../../rules/identity/identifiers.js";
 import { capturedInstantClock, localDatePart, systemClock, type Clock } from "../../../../rules/time/clock.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
+import type { CopySamples } from "./copy-samples.js";
 
 import {
   AuthorityDatabase,
@@ -22,15 +23,15 @@ import { DESCRIPTORS, descriptorSetHash, READABLE_WORKFLOW_MODULES, SERVER_REGIS
 import { queryAssistantUsage } from "../../../assistant/usage-counts.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
 import { composeQueueSummaries } from "./queue-summaries.js";
-import { composeNotificationReads } from "./notification-wiring.js";
 
 type ProjectionInput = Parameters<typeof createRunQueueProjection>[0];
 type ProjectionAuthority = ProjectionInput["authority"];
 
 /** The store reads and process facts a queue projection reads, over one connection. */
 function operatorAuthority(input: Readonly<{ database: AuthorityDatabase; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
-  descriptors: ProjectionInput["descriptors"]; listNotifications: ProjectionAuthority["listNotifications"];
-  workerMembers?: () => readonly WorkerMemberView[]; workerStartupPending?: (workflowId: string) => boolean }>): ProjectionAuthority {
+  descriptors: ProjectionInput["descriptors"];
+  workerMembers?: () => readonly WorkerMemberView[]; workerStartupPending?: (workflowId: string) => boolean;
+  samples?: Pick<CopySamples, "slots" | "leases"> }>): ProjectionAuthority {
   const { database, descriptors } = input;
   const changeKey = database.trackAuthorityTables(["runs", "run_batches", "worker_pools"]);
   return {
@@ -45,19 +46,14 @@ function operatorAuthority(input: Readonly<{ database: AuthorityDatabase; reader
       const ocr = current.run.envelope.workflow === "ocr" ? current.run : hostedOcrRun(database.authority, current.run);
       return ocr !== undefined && !endedUnfinished(current.run) && offeredOcrReview(database.authority, input.reader, ocr) !== undefined;
     }),
-    listNotifications: input.listNotifications,
-    command: (commandId) => database.authority.commands.get(commandId),
-    latestNotificationSource: (notificationId) => database.authority.notificationPublications.latest(notificationId),
-    notificationConcernActive: concern => database.authority.notificationHealth.get(concern)?.active,
-    notificationCommandSettled: id => { const read = database.authority.commands.readForNotice(id); return read === undefined ? undefined : read.result !== undefined; },
-    listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
     listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
     listGateResults: runId => database.authority.gateResults.listByRun(runId),
     listWorkerSlots: () => database.authority.workerSlots.list(),
+    ...(input.samples === undefined ? {} : { listSampleWorkerSlots: input.samples.slots }),
     listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
     ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
     ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }),
-    heldDuoLeases: workerId => database.heldDuoLeases(workerId),
+    heldDuoLeases: workerId => input.samples?.leases(workerId) ?? database.heldDuoLeases(workerId),
     listWorkerPools: () => database.authority.workerPools.list(),
     listRunBatches: () => database.authority.runSessions.list(),
     getRunBatch: (id) => database.authority.runSessions.get(id),
@@ -148,7 +144,7 @@ const replicas = new WeakMap<AuthorityDatabase, LaneReplica>();
 function laneReplica(context: LaneWarmContext): LaneReplica {
   const held = replicas.get(context.history);
   if (held !== undefined) return held;
-  const { history, native } = context;
+  const { history } = context;
   const noFacts: ProcessFacts = { workers: [], startupPending: [] };
   const state: LaneReplica["state"] = { at: capturedInstantClock(new Date(context.nowMs).toISOString()), facts: noFacts, factsKey: undefined };
   const clock: Clock = Object.freeze({
@@ -164,7 +160,7 @@ function laneReplica(context: LaneWarmContext): LaneReplica {
     descriptorSetHash: LANE_DESCRIPTOR_SET_HASH, ledger: createTransactionHistory(history.authority), queueCapabilities: workflowQueueCapabilities,
     descriptors: readableDescriptors, replica: true,
     reader: { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries },
-    authority: operatorAuthority({ database: history, reader, descriptors: readableDescriptors, listNotifications: composeNotificationReads(native, history).list,
+    authority: operatorAuthority({ database: history, reader, descriptors: readableDescriptors,
       workerMembers: () => state.facts.workers, workerStartupPending: workflowId => state.facts.startupPending.includes(workflowId) }),
   });
   const replica: LaneReplica = { projection, state };
@@ -174,8 +170,6 @@ function laneReplica(context: LaneWarmContext): LaneReplica {
 
 const QueueDayArgsSchema = z.strictObject({
   day: LocalDateSchema,
-  /** Source ids of publications main retained at dispatch; the reply names those its snapshot does not hold. */
-  publications: z.array(FingerprintSchema).max(1024),
 });
 
 /** The most runs a warm day may hold, so the warm stays a small part of the lane's boot. */
@@ -212,7 +206,7 @@ export const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day
     const warmDay = warmDayOf(context.history.readQueueDayCounts(day(WARM_WINDOW_DAYS), day(1)));
     if (warmDay !== undefined) projection.buildLaneDay(warmDay);
   },
-  run(context, { day, publications }) {
+  run(context, { day }) {
     const replica = laneReplica(context);
     replica.state.at = capturedInstantClock(new Date(context.nowMs).toISOString());
     const factsKey = JSON.stringify(context.processFacts);
@@ -222,10 +216,7 @@ export const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day
       replica.projection.processFactsChanged();
     }
     replica.projection.ingestFromTimeline();
-    const body = replica.projection.buildLaneDay(day);
-    const heldSources = publications.length === 0 ? new Set<string>()
-      : new Set(context.history.authority.notificationPublications.list().map(record => record.sourceId));
-    return { d: body.d, f: { ...body.f, missingPublications: publications.filter(sourceId => !heldSources.has(sourceId)) } };
+    return replica.projection.buildLaneDay(day);
   },
 });
 
@@ -241,7 +232,7 @@ function createDayLane(lanes: DashboardReadLanes, workerMembers: () => readonly 
   return {
     processRevision: () => facts().revision,
     async read(day, request) {
-      const reply = await lanes.read(queueDayRead, { day, publications: [...request.publications] }, {
+      const reply = await lanes.read(queueDayRead, { day }, {
         processFacts: facts(), ...(request.slot === undefined ? {} : { slot: request.slot }), ...(request.signal === undefined ? {} : { signal: request.signal }) });
       return { body: reply.body, processRevision: reply.position.processRevision };
     },
@@ -250,12 +241,14 @@ function createDayLane(lanes: DashboardReadLanes, workerMembers: () => readonly 
 
 export function createOperatorProjection(input: Omit<ProjectionInput, "authority" | "timeline" | "assistantUsage" | "dayLane" | "replica"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
   workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
-  listNotifications?: ProjectionAuthority["listNotifications"];
   /** With lanes, the day is built on the navigation lane from its replica; the pool's members are then required. */
-  readLanes?: DashboardReadLanes }) {
+  readLanes?: DashboardReadLanes;
+  /** A copy's sample Sessions cards, served beside the durable worker slots. */
+  samples?: Pick<CopySamples, "slots" | "leases"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors } = input;
   let dayLane: DashboardDayLane | undefined;
-  if (input.readLanes !== undefined) {
+  // The lane replica cannot read main's in-memory sample cards, so a seeded copy builds its day on main.
+  if (input.readLanes !== undefined && input.samples === undefined) {
     if (input.workerMembers === undefined) throw new Error("queue-day-lane-worker-members-required");
     dayLane = createDayLane(input.readLanes, input.workerMembers, input.workerStartupPending ?? (() => false));
   }
@@ -269,9 +262,10 @@ export function createOperatorProjection(input: Omit<ProjectionInput, "authority
     ledger,
     reader: input.reader,
     queueCapabilities: workflowQueueCapabilities,
-    authority: operatorAuthority({ database, reader: input.reader, descriptors, listNotifications: input.listNotifications ?? database.authority.notifications.listByActor,
+    authority: operatorAuthority({ database, reader: input.reader, descriptors,
       ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
-      ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }) }),
+      ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }),
+      ...(input.samples === undefined ? {} : { samples: input.samples }) }),
     descriptors,
     ...(dayLane === undefined ? {} : { dayLane }),
   });

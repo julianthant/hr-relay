@@ -1,8 +1,8 @@
 import { fileStatus, fileIdentityObservation, privateFileNumber } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { createHash } from "node:crypto";
-import { existsSync,readFileSync,lstatSync,opendirSync,readdirSync,type Dirent } from "node:fs";
-import { basename,join,relative,resolve,sep } from "node:path";
+import { existsSync,readFileSync,readlinkSync,lstatSync,opendirSync,readdirSync,type Dirent } from "node:fs";
+import { basename,dirname,join,relative,resolve,sep } from "node:path";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -408,6 +408,13 @@ export function inventoryFileIdentity(path: string) {
     mode: privateFileNumber(info.mode), modified: "mtimeNs" in info ? info.mtimeNs.toString() : info.mtimeMs, changed: "ctimeNs" in info ? info.ctimeNs.toString() : info.ctimeMs };
 }
 
+// Chrome leaves `RunningChromeVersion -> <version>` in each profile it opened, including the closure probe's own launches; Relay never reads it.
+function staleChromeVersionLink(path: string, profileDirectories: ReadonlySet<string>): boolean {
+  if (basename(path) !== "RunningChromeVersion" || !profileDirectories.has(dirname(path))) return false;
+  const info = fileStatus(path);
+  return info.isSymbolicLink() && Number(info.uid) === process.getuid?.() && /^\d+(?:\.\d+){3}$/u.test(readlinkSync(path));
+}
+
 export function enumerateProfileCredentialMembership<Custody extends CredentialMembershipCustody>(admission: RuntimeAdmission, custody: Custody, savedBrowserRoot: string, browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>, ownedCredentialStages: readonly string[] = []) {
   admission.assertLive();
   const root = admission.stateRoot, flat = admission.profileMaintenanceSchemaVersion() === 6;
@@ -441,6 +448,7 @@ function enumerateCredentialMembership<Custody extends CredentialMembershipCusto
     const browserRoots = new Set(profiles.map(profile => profile.profileDirectory));
     const visit = (path: string): void => {
       assertPath(path);
+      if (staleChromeVersionLink(path, browserRoots)) return;
       const entry = inventoryFileIdentity(path);
       identities.push(entry);
       const local = relative(root, path), parts = local.split(sep), top = parts[0];
