@@ -301,14 +301,16 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
       if (context.pages().length !== 3) throw new Error("read-lanes-g4-tab-count");
       const option = queue.getByRole("button", { name: /^Options/u });
       const calendar = queue.getByRole("menu", { name: "Pick a date" });
-      const queueContent = queue.locator('.dashboard-queue-column:not([aria-busy="true"]) [data-queue-scroll]');
+      const readyQueueRow = '.dashboard-queue-column:not([aria-busy="true"]) [data-queue-scroll] :is([data-queue-open], [data-queue-batch-id])';
       const sound = "preferences.notifications.sound";
       const soundControl = settings.locator(`[data-settings-path="${sound}"]`).getByRole("combobox");
       const settingsResponses: number[] = [];
       settings.on("response", response => {
         if (new URL(response.url()).pathname === "/api/v1/settings/editable") settingsResponses.push(response.status());
       });
-      await settings.goto(origin + dayPath + "&settings=general");
+      await settings.goto(origin + dayPath);
+      await settings.locator(readyQueueRow).first().waitFor();
+      await settings.getByRole("button", { name: "Settings", exact: true }).click();
       await soundControl.click({ trial: true }).catch((cause: unknown) => {
         throw new Error(`read-lanes-g4-settings-not-ready (editable HTTP: ${settingsResponses.join(", ") || "no response"})`, { cause });
       });
@@ -338,7 +340,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
           await cell.click();
           if (!(await stream).ok()) throw new Error("read-lanes-g4-queue-stream-http");
           await queue.waitForURL(url => url.searchParams.get("day") === day);
-          await queueContent.locator("[data-queue-open], [data-queue-batch-id]").first().waitFor();
+          await queue.locator(readyQueueRow).first().waitFor();
           const span = await queue.evaluate(async () => {
             const start: unknown = Reflect.get(window, "relayG4Click");
             if (typeof start !== "number") throw new Error("read-lanes-g4-click-missing");
@@ -499,21 +501,29 @@ async function runG4(profile: CopyProfile, workspace: string, args: { days: stri
   const repetitions = z.coerce.number().int().min(5).max(10).parse(args.runs ?? "5");
   const profileId = await admitG4Copy(profile, workspace);
   const results: Record<Shape, G4Run[]> = { A: [], B: [] };
-  for (let index = 0; index < repetitions; index++) {
-    for (const shape of ["B", "A"] as const) {
-      process.stderr.write(`G4 ${shape} ${String(index + 1)}/${String(repetitions)}\n`);
-      results[shape].push(await measureG4(shape, profile, { days, workflow, query, profileId }));
+  const path = join(process.cwd(), `read-lanes-g4-${String(systemClock.nowMs())}.json`);
+  const report = { gate: "G4", limits: G4_LIMITS, g2Commit: startGate.commit, profile, node: process.version,
+    scanCache: "miss forced for notification polling during each contention window",
+    runtime: "dashboard --prod (built web bundle, tsx backend)", host: { cpus: availableParallelism(), loadavg: loadavg() },
+    commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), runs: results };
+  const writeReport = (outcome: object) => {
+    writeFileSync(path, `${JSON.stringify({ ...report, ...outcome }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+  };
+  try {
+    for (let index = 0; index < repetitions; index++) {
+      for (const shape of ["B", "A"] as const) {
+        process.stderr.write(`G4 ${shape} ${String(index + 1)}/${String(repetitions)}\n`);
+        results[shape].push(await measureG4(shape, profile, { days, workflow, query, profileId }));
+      }
     }
+  } catch (cause) {
+    writeReport({ decision: "inconclusive" });
+    throw new Error(`read-lanes-g4-incomplete (wrote ${path})`, { cause });
   }
   const shapes = ShapeSchema.options.map(shape => summarizeG4(shape, results[shape], startGate));
   const eligible = shapes.find(shape => shape.passesG2 && shape.verdict !== "fail");
   const decision = eligible === undefined ? "stop-for-design" : eligible.verdict === "pass" ? eligible.shape : "inconclusive";
-  const report = { gate: "G4", decision, shapes, limits: G4_LIMITS, g2Commit: startGate.commit, profile, node: process.version,
-    scanCache: "miss forced for notification polling during each contention window",
-    runtime: "dashboard --prod (built web bundle, tsx backend)", host: { cpus: availableParallelism(), loadavg: loadavg() },
-    commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), runs: results };
-  const path = join(process.cwd(), `read-lanes-g4-${String(systemClock.nowMs())}.json`);
-  writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+  writeReport({ decision, shapes });
   process.stdout.write(`${JSON.stringify({ decision, shapes }, null, 2)}\nwrote ${path}\n`);
 }
 
