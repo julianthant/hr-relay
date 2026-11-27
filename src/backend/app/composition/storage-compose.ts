@@ -1846,4 +1846,3 @@ export async function composeStorageCommand(
     exitCode: profiles.every(({ report }) => healthy(report)) ? 0 : 1,
   };
 }
-

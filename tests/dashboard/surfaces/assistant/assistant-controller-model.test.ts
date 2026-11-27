@@ -209,7 +209,31 @@ it('re-reads session chips after a session reply, and Stop sends the run\'s Canc
   const stop = c.snapshot().sessions?.[0]?.stop; assert.ok(stop);
   await c.stop(stop);
   assert.equal(sent.length, 1); assert.equal((sent[0] as { type: string }).type, 'cancel');
-  assert.equal(feedback.at(-1)?.kind, 'confirmed'); assert.equal(refreshes, 2);
+  assert.equal(feedback.at(-1)?.kind, 'confirmed'); assert.equal(refreshes, 3);
+  assert.equal(c.snapshot().sessions?.[0]?.stop, null);
+});
+it('Stop re-reads the chip first and sends the run\'s current Cancel when the run moved from queued to running', async () => {
+  let served = sessionView(3, true);
+  const sent: unknown[] = [];
+  const client = resultClient({
+    async assistantRespond(): Promise<ScriptedReply> { return { state: 'answered', parts: [{ kind: 'session', runId: RUN_ID, label: 'Sample, Avery', meta: 'Running' }] }; },
+    async executeCommand(input: unknown): Promise<CommandResult> {
+      sent.push(input); served = sessionView(6, false);
+      return CommandResultSchema.parse({ state: 'applied', commandId: (input as { commandId: string }).commandId, affectedTargets: [{ family: 'run', runId: RUN_ID }] });
+    },
+    async executeBulkCommand(): Promise<never> { throw new Error('unexpected-bulk'); },
+  });
+  const scope: CommandExecutionScope = { actorId: LOCAL_OPERATOR_ACTOR_ID, client, authority: {}, dayRequest: {} };
+  const commands = { executor: new CommandExecutor(() => scope), scope, feedback() {} };
+  let kept: AssistantState | undefined;
+  const c = createAssistantController(client, { authority: 'a', commands }, { conversationId: crypto.randomUUID(), read: () => kept && { ...kept, sessions: [served] },
+    retain: state => { kept = state; }, revision: () => 1, receipt() {}, async local() {}, async refresh() {}, async outcome() { return undefined; }, unsaved() {} });
+  sendControl(c, 'look up Avery');
+  await vi.waitFor(() => assert.equal(c.snapshot().sessions?.[0]?.rowRevision, 3));
+  const stale = c.snapshot().sessions?.[0]?.stop; assert.ok(stale);
+  served = sessionView(5, true);
+  await c.stop(stale);
+  assert.equal(sent.length, 1); assert.equal((sent[0] as { target: { expectedVersion: number } }).target.expectedVersion, 5);
   assert.equal(c.snapshot().sessions?.[0]?.stop, null);
 });
 
