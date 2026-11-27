@@ -306,7 +306,11 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
       const taskId = runtime?.kind === "task" ? runtime.uses.id : runtime?.kind === "transaction" ? runtime.prepare.uses.id : undefined;
       const outputs = workflow.timeline.flatMap(group => (group.operatorFields ?? []).flatMap(field =>
         field.sources.filter(source => source.nodeId === node.id && source.kind === "output").map(source => ({ field, path: source.fieldPath }))));
-      if (taskId !== undefined && outputs.length > 0) {
+      if (outputs.length === 0) {
+        // No operator-visible output to observe: a plain step note keeps the timeline from being only a state card.
+        events.push(createNoteTimelineWriter({ repository: { append: input => ({ state: "inserted", record: TimelineEventRecordSchema.parse(Object.assign({ cursor: 1 }, input)) }) }, clock: capturedInstantClock(ts), pid: 1 })
+          .emitNote({ workflow: workflow.id, address: { runId, traceId, attempt: run.envelope.attempt, spanPath: task.spanPath, parentSpanPath: spanPath }, level: "step", message: node.label }));
+      } else if (taskId !== undefined) {
         events.push({ ...common, spanPath: task.spanPath, parentSpanPath: spanPath, ts, t: "data.observed", nodeId: NodeIdSchema.parse(node.id), taskId, observedAt: ts,
           points: outputs.map(({ field, path }) => ({ direction: "read", field: path,
             values: [{ key: path, state: "allowed", classification: "safe-diagnostic", transform: "allow", value: field.display?.cases[0]?.value ?? "Sample" }] })) });
