@@ -74,9 +74,38 @@ it("admits no save waiting for worker startup once the profile starts closing", 
   await assert.rejects(result, /profile-session-stale/);
   assert.equal(f.send.mock.calls.length, 0);
   const closing = f.settings.closeCommands();
+  await setImmediate();
   assert.deepEqual(f.send.mock.calls.map(([message]) => message), [{ kind: "stop" }]);
   f.closeChild(0);
   await closing;
+});
+
+it("waits for the command worker to install its stop handler when shutdown starts during startup", async () => {
+  const f = fixture();
+  const starting = assert.rejects(f.settings.execute(command()), /profile-settings-worker-unavailable/);
+  await setImmediate();
+  assert.equal(vi.mocked(fork).mock.calls.length, 1);
+  const closing = f.settings.closeCommands();
+  const queued = assert.rejects(f.settings.execute(command()), /profile-settings-worker-unavailable/);
+  try {
+    assert.equal(f.send.mock.calls.length, 0);
+    f.child.emit("message", { kind: "ready" });
+    await Promise.all([starting, queued]);
+    assert.deepEqual(f.send.mock.calls.map(([message]) => message), [{ kind: "stop" }]);
+  } finally {
+    f.closeChild(0);
+    await Promise.all([closing, starting, queued]);
+  }
+});
+
+it("reports unproved closure when a closing command worker exits before ready", async () => {
+  const f = fixture();
+  const starting = assert.rejects(f.settings.execute(command()), /profile-settings-worker-unavailable/);
+  await setImmediate();
+  const closing = assert.rejects(f.settings.closeCommands(), /settings-command-worker-close-unproved/);
+  f.closeChild(1);
+  await Promise.all([starting, closing]);
+  assert.equal(f.send.mock.calls.length, 0);
 });
 
 it("retains abnormal command worker exit as unproved closure when shutdown starts later", async () => {

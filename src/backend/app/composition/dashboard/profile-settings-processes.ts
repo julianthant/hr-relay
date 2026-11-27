@@ -136,14 +136,18 @@ function profileSettingsProcess(profileId: string, lifetime: ProcessLifetime, pr
         }
       },
       async close() {
-        if (child.connected) child.send({ kind: "stop" }, error => { if (error !== null && child.connected) child.disconnect(); });
+        // The child installs its stop handler before reporting ready.
+        const stopped = ready.promise.then(() => {
+          if (child.connected) child.send({ kind: "stop" }, error => { if (error !== null && child.connected) child.disconnect(); });
+          return exited;
+        }, () => exited);
         const deadline = Promise.withResolvers<never>();
         const timeout = setTimeout(() => {
           if (role === "editor") child.kill("SIGKILL");
           else { failed(); deadline.reject(commandClosureUnproved()); }
         }, STOP_TIMEOUT_MS);
         try {
-          await Promise.race([exited, deadline.promise]);
+          await Promise.race([stopped, deadline.promise]);
           if (owned) lifetime.assertOwnedChildClosed(child);
         } finally { clearTimeout(timeout); }
       },
