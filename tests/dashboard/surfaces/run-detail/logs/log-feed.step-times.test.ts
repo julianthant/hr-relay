@@ -18,12 +18,12 @@ const steps: readonly LogStep[] = [{ id: "s1", time: "1:24:00 PM", title: "Kuali
   { kind: "note", id: "n2", time: "1:24:07 PM", message: "Separation Document · Done" },
   { kind: "note", id: "n3", time: "1:24:15 PM", message: "Separation Plan · Failed" }] }];
 
-it("shows each step of one stage with its own time", async () => {
+it("shows the stage time once and each step row with its own time", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
   await act(async () => root?.render(createElement(TooltipProvider, null, createElement(LogFeed, { steps }))));
   const times = [...document.querySelectorAll("time")].map(node => node.textContent);
-  assert.deepEqual(times.filter(time => time?.startsWith("1:24")), ["1:24:00 PM", "1:24:07 PM", "1:24:15 PM"]);
+  assert.deepEqual(times.filter(time => time?.startsWith("1:24")), ["1:24:00 PM", "1:24:00 PM", "1:24:07 PM", "1:24:15 PM"]);
   assert.ok(document.body.textContent?.includes("Separation Plan · Failed"));
 });
