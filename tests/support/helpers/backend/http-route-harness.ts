@@ -50,7 +50,7 @@ import { type DashboardHttpServer } from "../../../../src/backend/transports/htt
 import type { RequestIdentityCheckpoint } from "../../../../src/backend/transports/http/request-identity.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../../src/backend/transports/http/request-identity.js";
 import { createDashboardApp,type DashboardAppDeps } from "../../../../src/backend/transports/http/routes/api.js";
-import { createDashboardStreamHub,type DashboardStreamHub } from "../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
+import { createDashboardStreamHub,type DashboardStreamHub, type DashboardStreamHubDeps } from "../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import type { ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
 import { initialSettingsFileRecord,settingsRuntimeIdentity } from "../../../../src/models/config/settings.js";
 import { ActivityReportSelectionSchema } from "../../../../src/models/dashboard/activity-selection.js";
@@ -210,6 +210,7 @@ export async function harness(options: {
 
   /** The hub's per-subscriber pending bound; the hub default when absent. */
   readonly maxPending?: number;
+  readonly notificationStatus?: DashboardStreamHubDeps["notificationStatus"];
   readonly preflightBeforeRun?: () => Promise<void>;
   readonly preflightScheduler?: PreflightDeadlineScheduler;
   readonly omitDiagnosticBundles?: boolean;
@@ -390,6 +391,7 @@ export async function harness(options: {
     runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
     backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
     ...(options.maxPending === undefined ? {} : { maxPending: options.maxPending }),
+    ...(options.notificationStatus === undefined ? {} : { notificationStatus: options.notificationStatus }),
   });
   cleanups.push(() => hub.close());
   const { authority, report } = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
