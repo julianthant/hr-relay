@@ -33,7 +33,7 @@ import {
 import { dayLabel, plural, runTiming } from "../shared/status/format.js";
 import { formatDuration, formatTime } from "../../lib/date-format.js";
 import { testInstanceHazardTitle, testInstanceSystems } from "../shared/status/test-instance-hazard.js";
-import { StartedByLine } from "../shared/status/started-by.js";
+import { StartedByLine } from "../run-detail/run-state-chips.js";
 import { runDisplayId } from "../shared/status/run-display-model.js";
 import { StatusBadge } from "../shared/status/status.js";
 import {

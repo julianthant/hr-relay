@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { it } from 'vitest';
 import { QueueRow } from '../../../../src/dashboard/surfaces/queue/queue.js';
 import { RunStateChips } from '../../../../src/dashboard/surfaces/run-detail/run-state-chips.js';
-import { OperatorLabelContext } from '../../../../src/dashboard/surfaces/shared/status/started-by.js';
+import { OperatorLabelContext } from '../../../../src/dashboard/state/operator-label.js';
 import { seedMockRuns } from '../../../support/fixtures/dashboard/workflow-mocks/workflow-mock-model.js';
 import { mockQueueSurface } from '../../../support/fixtures/dashboard/workflow-mocks/workflow-queue-model.js';
 

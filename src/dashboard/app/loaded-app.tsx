@@ -38,7 +38,7 @@ import { Button,FailureNotice,Notice,EmptyState,Panel,PanelBody,dsIcon,useDemoTh
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { createServedClock, ServedClockContext, useClockView } from "../state/served-clock.js";
-import { OperatorLabelContext } from "../surfaces/shared/status/started-by.js";
+import { OperatorLabelContext } from "../state/operator-label.js";
 import { keptDayFrame, useDashboardDay } from "../state/use-dashboard-day.js";
 import {
 commandResultDetail,
