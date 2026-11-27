@@ -22,7 +22,7 @@ export function consistencyViolations(path: string, text: string): readonly stri
         else if (tone.startsWith("{") && !DYNAMIC_TONE_FILES.has(path)) out.push(`${where}: <${tag}> picks its tone from an expression; branch to FailureNotice for a failure`);
       }
       if (tag === "DialogContent") {
-        const size = attr("size")?.replace(/^\{?["']|["']\}?$/gu, "");
+        const size = /^\{?["']([^"']*)["']\}?$/u.exec(attr("size") ?? "")?.[1];
         if (size !== undefined && !DIALOG_SIZES.has(size)) out.push(`${where}: dialog size "${size}"; use sm, md or lg`);
         if (/\b(max-w-|w-\[)/u.test(attr("className") ?? "")) out.push(`${where}: dialog width override; use the size's shared width`);
       }
