@@ -302,7 +302,7 @@ async function expectLiveSamples(client: ReturnType<typeof createDashboardClient
   assert.ok(day.workerAuthority.state === "present");
   expect(day.workerAuthority.members.filter(member => cards.some(card => card.workerId === member.workerId))).toEqual([]);
   const boot = await client.bootstrap();
-  const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows), boot.workbookCompatibility), undefined, boot.featureAvailability);
+  const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows)), undefined, boot.featureAvailability);
   const sessions = sessionsFromDay(day, catalog, clock.now().toISOString());
   assert.ok(sessions.state === "ready", JSON.stringify(sessions));
   expect(sessions.workers.map(worker => worker.id)).toEqual(expect.arrayContaining(cards.map(card => card.workerId)));

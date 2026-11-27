@@ -24,7 +24,7 @@ const descriptor = i9CheckStartModule.descriptor;
 const plannedOutputs = descriptor.plannedOutputs; assert.ok(plannedOutputs);
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
   steps: projectStartSteps(descriptor), inputRun: { state: "absent", reason: "PDF input" }, uploadRun: descriptor.surfaces.uploadRun,
-  requiredWorkbookFields: descriptor.requiredWorkbookFields, workbookReference: descriptor.workbookReference, referenceSources: [] };
+  requiredWorkbookFields: descriptor.requiredWorkbookFields, workbookReference: descriptor.workbookReference };
 const reference = WorkbookLibraryEntrySchema.parse({ libraryId: "action-history-file", version: 3, name: "Action History.xlsx", updatedAt: "2026-11-01T00:00:00Z", rowCount: 2,
   worksheets: [{ id: "history", name: "Action History" }], metadata: { typeId: I9_CHECK_REFERENCE.typeId, sharePoint: null },
   type: { id: I9_CHECK_REFERENCE.typeId, name: "Action History", keyFieldId: "eid", fields: [...I9_CHECK_REFERENCE.fields], defaultWorkbookId: "action-history-file" },
@@ -246,7 +246,7 @@ it("plans one Emergency Contact run per uploaded PDF", async () => {
       return { ...plan, dryRun: true, workflowId: contact.id, planned: ["first.pdf", "second.pdf"].map(title => ({ ...plan.planned[0], title,
         workbookReferences: [{ libraryId: reference.libraryId, version: reference.version, versionId: "earlier", versionName: "Fall review", worksheets: [{ sheetId: "history", name: "Action History" }], type: reference.type }] })) }; } }, [...contact.requiredWorkbookFields], contact);
   const flow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: contact.id, label: contact.label, version: contact.version, steps: projectStartSteps(contact),
-    inputRun: { state: "absent", reason: "PDF input" }, uploadRun: contact.surfaces.uploadRun && { ...contact.surfaces.uploadRun, supportsDryRun: true }, requiredWorkbookFields: contact.requiredWorkbookFields, workbookReference: contact.workbookReference, referenceSources: [] };
+    inputRun: { state: "absent", reason: "PDF input" }, uploadRun: contact.surfaces.uploadRun && { ...contact.surfaces.uploadRun, supportsDryRun: true }, requiredWorkbookFields: contact.requiredWorkbookFields, workbookReference: contact.workbookReference };
   const dialog = await h.openDialog(served, { workflows: [flow], panelWorkflowId: flow.workflowId });
   await attach([pdf("first.pdf", "%PDF first"), pdf("second.pdf", "%PDF second")]);
   await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
@@ -284,7 +284,7 @@ async function contactDialog(plans: unknown[], options: { withoutOcrFields?: boo
   const flow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: contact.id, label: contact.label, version: contact.version, steps: projectStartSteps(contact),
     inputRun: { state: "absent", reason: "PDF input" },
     uploadRun: options.withoutOcrFields ? { ...uploadRun, fields: uploadRun.fields.filter(field => field.kind !== "boolean") } : uploadRun,
-    requiredWorkbookFields: contact.requiredWorkbookFields, workbookReference: contact.workbookReference, referenceSources: [] };
+    requiredWorkbookFields: contact.requiredWorkbookFields, workbookReference: contact.workbookReference };
   const dialog = await h.openDialog(served, { workflows: [flow], panelWorkflowId: flow.workflowId });
   await attach([pdf("first.pdf", "%PDF first")]);
   await h.chooseReference("Action History.xlsx", "Fall review", "Action History");
