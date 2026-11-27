@@ -89,18 +89,21 @@ describe("selected saved Onboarding row start authority", () => {
     assert.equal(reference.snapshot.versionName, "Reviewed roster");
   });
 
-  it("refuses deleting a named version held by a start plan or a terminal run through the workbook route", async () => {
+  it("protects a named version held by a start plan or a queued run and allows deletion after the run finishes", async () => {
     const f = await fixture();
     const { action: { operationId: versionId } } = await f.apply({ kind: "create-version", name: "Pinned roster", from: { kind: "version", versionId: f.versionId }, useNow: true });
     const app: DashboardApp = new Hono();
     app.onError((error, c) => { const { status, body } = failureStatus(error); return c.json(body, status); });
     registerWorkbookRoutes(app, { workbooks: { library: f.library, workflows: [] } });
-    const assertDeleteRefused = async () => {
-      const [entry] = f.library.catalog();
+    const deleteVersion = (entry: ReturnType<typeof f.library.catalog>[number]) => {
       assert.notEqual(entry.state.selectedVersionId, versionId);
-      const response = await app.request(`/api/v1/workbooks/${f.id}/library-actions`, { method: "POST",
+      return app.request(`/api/v1/workbooks/${f.id}/library-actions`, { method: "POST",
         headers: { "content-type": "application/json" }, body: JSON.stringify({ operationId: randomUUID(),
           expectedVersion: entry.version, expectedRevision: entry.state.revision, change: { kind: "delete-version", versionId } }) });
+    };
+    const assertDeleteRefused = async () => {
+      const [entry] = f.library.catalog();
+      const response = await deleteVersion(entry);
       assert.equal(response.status, 409);
       assert.equal((await response.json() as { code: string }).code, "WORKBOOK_VERSION_IN_USE");
       assert.deepEqual(f.library.catalog(), [entry]);
@@ -112,11 +115,15 @@ describe("selected saved Onboarding row start authority", () => {
 
     await f.apply({ kind: "use-version", versionId });
     const [run] = f.start(f.plan().record);
-    assert.equal(f.kernel.execute(world.runCommand("cancel", run.envelope.runId, run.version)).state, "applied");
-    assert.equal(f.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "terminal");
+    assert.equal(run.lifecycle.state, "queued");
     await f.apply({ kind: "use-version", versionId: f.versionId });
     f.clock.advanceWall(601_000);
     await assertDeleteRefused();
+
+    assert.equal(f.kernel.execute(world.runCommand("cancel", run.envelope.runId, run.version)).state, "applied");
+    assert.equal(f.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "terminal");
+    assert.equal((await deleteVersion(f.library.catalog()[0])).status, 200);
+    assert.equal((await app.request(`/api/v1/workbooks/${f.id}/versions/${versionId}`)).status, 404);
   });
 
   it("refuses selected rows without the declared workbook-row input capability", async () => {
