@@ -71,7 +71,7 @@ it("uses queue display names for children, unidentified runs and members without
     const query = CrossDateSearchQuerySchema.parse({ q: "" });
     const page = shell.search.search(query);
     assert.ok(page.results.every(row => row.metadata.subject.state === "unavailable"));
-    const results = searchResults({ ...page, query });
+    const results = searchResults(page);
     const queue = projection.queueSurfaces([...runs, unrecorded].map(run => run.envelope.runId));
     for (const run of runs) {
       const queued = queue.find(row => row.runId === run.envelope.runId);
@@ -101,7 +101,7 @@ it("serves the visible Queue title for known input without a retained queued eve
     const buildQueue = vi.spyOn(projection, "queueSurfaces");
     const query = CrossDateSearchQuerySchema.parse({ q: "" });
     const page = shell.search.search(query);
-    assert.equal(searchResults({ ...page, query })[0].subject, queueRowTitle(queue));
+    assert.equal(searchResults(page)[0].subject, queueRowTitle(queue));
     assert.equal(buildQueue.mock.calls.length, 0);
   } finally { await close(); }
 });
@@ -122,6 +122,6 @@ it("withholds a protected-input rename at the served search and adapter boundary
     const query = CrossDateSearchQuerySchema.parse({ q: "" });
     const page = shell.search.search(query);
     assert.equal(JSON.stringify(page).includes("Withheld operator name"), false);
-    assert.equal(searchResults({ ...page, query })[0].subject, queueRowTitle(queue));
+    assert.equal(searchResults(page)[0].subject, queueRowTitle(queue));
   } finally { await close(); }
 });
