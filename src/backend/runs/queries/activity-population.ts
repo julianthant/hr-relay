@@ -67,7 +67,7 @@ export function createActivityPopulationService(input: {
     read: (from, to, generatedAt, visit) => queryActivitySummaries(database, { from, to, generatedAt }, input, visit) });
   const signer = createActivitySnapshotSigner(ActivityPopulationIdentitySchema, "ap1", clock, signingKey);
   const retained = new Map<string, ActivityPopulationSelection>();
-  let retainedPosition: string | undefined;
+  let retainedPosition: ReturnType<AuthorityDatabase["runSummaryReadPosition"]>;
   const read = (rangeInput: unknown, token?: { encoded: unknown }): ActivityPopulationSelection => {
     const selected = token === undefined ? undefined : signer.decode(token.encoded);
     const bounds = ActivityPopulationRangeSchema.safeParse(rangeInput);
@@ -75,15 +75,17 @@ export function createActivityPopulationService(input: {
     const { from, to } = bounds.data;
     return database.withAuthorityReadSnapshot(() => {
       const position = database.runSummaryReadPosition();
-      const positionKey = position === undefined ? undefined : `${position.authorityGeneration}:${position.schemaCookie}:${position.changeLogSeq}`;
-      if (retainedPosition !== positionKey) {
-        retainedPosition = positionKey;
+      if (retainedPosition?.authorityGeneration !== position?.authorityGeneration
+        || retainedPosition?.schemaCookie !== position?.schemaCookie
+        || retainedPosition?.changeLogSeq !== position?.changeLogSeq) {
+        retainedPosition = position;
         retained.clear();
       }
       const range = `${from}/${to}`;
       const cached = retained.get(range);
       if (cached !== undefined && Date.parse(cached.snapshot.expiresAt) > clock.nowMs()
-        && (token === undefined || token.encoded === cached.snapshot.token)) return cached;
+        && (token === undefined || token.encoded === cached.snapshot.token)
+        && cached.snapshot.sourceIdentity === (input.sourceIdentity ?? database.getSourceDatabaseIdentity())) return cached;
 
       const population: ActivityPopulationRun[] = [];
       const addToPopulation: VisitSummary = row => {
