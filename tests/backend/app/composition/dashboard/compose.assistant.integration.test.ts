@@ -1,3 +1,4 @@
+import { editScenarios } from "../../../assistant/scenarios/applied-edits.js";
 import { faultAuthoritySnapshot, assertHttpFaultOnly, assertOnlyLoopStallWrites, exactHttpFaultLoopDelay } from "../../../../support/helpers/backend/http-route-harness.js";
 import { AssistantM1RespondEnvelopeSchema, assistantSessionAttribution, type AssistantM1Request, type AssistantM1RespondEnvelope } from "../../../../../src/models/dashboard/assistant.js";
 import { replyText } from "../../../../../src/dashboard/surfaces/assistant/assistant-reply-parts-model.js";
@@ -483,4 +484,74 @@ it('runs a typed-yes proposal row only under the attribution of the yes that ans
     assert.deepEqual(starts.map(start => start.id), [row.result.commandId]);
     assert.ok(answered.result.reply.parts.some(part => part.kind === 'session'));
   }, { spawn: request => new ScriptedWorkerChild(7002, request, { ready: false, exitOnStop: true, reply: () => ({ state: 'done', result: null }) }) });
+});
+
+it("applies spreadsheet and settings edits in the accepted turn, keeps values local and refuses a missing source", async () => {
+  await withServedAssistant(async ({ context, transport, origin, clock }) => {
+    const client = createDashboardClient({ baseUrl: origin });
+    const db = context.database, libraryId = randomUUID(), at = clock.now().toISOString();
+    const privateName = "Synthetic private workbook";
+    const privateCell = "Synthetic private cell value";
+    db.authority.workbooks.create({ libraryId, version: 1, createdAt: at, savedAt: at,
+      workbook: { name: privateName, libraryId, themes: {}, hasFormulas: false, sheets: [{
+        id: "worksheet", name: "Sheet", width: 1, hidden: [],
+        rows: [{ id: "heading", cells: [{ value: "Header" }] }, { id: "row", cells: [{ value: privateCell }] }],
+      }] } });
+    const since = at, initialVersion = db.authority.workbooks.read(libraryId)?.version;
+    assert.equal(initialVersion, 1);
+    for (const [index, scenario] of editScenarios.entries()) {
+      const calls = [...scenario.calls];
+      const measured: number[] = [];
+      transport.setResponse(init => {
+        assert.ok(typeof init.body === "string");
+        const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
+        measured.push(Math.ceil(Buffer.byteLength(init.body) / 4));
+        for (const value of [privateName, privateCell, libraryId]) assert.ok(!init.body.includes(value));
+        const call = calls.shift();
+        assert.ok(call, "the provider was called after the edit settled");
+        assert.ok(request.tools[0]?.tools.some(tool => tool.name === call.tool));
+        return new Response(completedResponseStream([{ type: "function_call", namespace: "relay", name: call.tool,
+          call_id: String(measured.length), arguments: JSON.stringify(call.args), status: "completed" }],
+        request.model, `resp_edit_${String(index)}_${String(measured.length)}`), { headers: { "Content-Type": "text/event-stream" } });
+      });
+      const conversationId = randomUUID(), messageId = randomUUID();
+      assert.equal(AssistantHistoryResultSchema.parse(await client.assistantHistoryWrite?.({ operation: "create", conversationId, title: "Edit scenario" })).state, "saved");
+      const message = { conversationId, expectedRevision: 1, messageId, message: scenario.message };
+      const envelope = AssistantM1RespondEnvelopeSchema.parse(await client.assistantRespond(message));
+      assert.equal(calls.length, 0);
+      assert.ok(Math.max(...measured) <= scenario.largestRequest, scenario.name);
+      assert.ok(measured.reduce((sum, count) => sum + count, 0) <= scenario.total, scenario.name);
+      const edits = db.authority.assistantAppliedEdits.list(since);
+      if (index === 2) {
+        assert.ok(envelope.kind === "result" && envelope.result.state === "no-reply", JSON.stringify(envelope));
+        assert.equal(envelope.result.reason, "ASSISTANT_VALUE_NEEDS_SOURCE");
+        assert.equal(edits.length, 2);
+        continue;
+      }
+      assert.ok(envelope.kind === "result" && envelope.result.state === "answered", JSON.stringify(envelope));
+      const rows = envelope.result.reply.parts;
+      assert.equal(rows.length, 1);
+      const part = rows[0], edit = edits.find(row => row.turn.messageId === messageId);
+      assert.ok(part?.kind === "text" && part.editId !== undefined && edit !== undefined);
+      assert.equal(part.editId, edit.id);
+      assert.equal(edit.actorId, "local-operator");
+      const value = part.runs.find(run => run.kind === "value");
+      assert.ok(value?.kind === "value" && value.previous !== undefined);
+      if (index === 0) {
+        assert.equal(value.previous, privateName);
+        assert.equal(value.value, "Summer tracker");
+        assert.equal(db.authority.workbooks.read(libraryId)?.workbook.name, "Summer tracker");
+      } else {
+        assert.equal(value.value, "Off");
+        assert.equal(db.authority.settingsCurrent.get()?.settings.browser?.headless, false);
+        assert.ok(db.authority.commandAudits.findByCommand(edit.id));
+      }
+      const repeated = AssistantM1RespondEnvelopeSchema.parse(await client.assistantRespond(message));
+      assert.equal(repeated.kind, "delivery");
+      assert.equal(db.authority.assistantAppliedEdits.list(since).length, index + 1);
+    }
+    const activity = await client.assistantActivity?.();
+    assert.ok(activity?.rows.some(row => row.label === "Renamed the spreadsheet"));
+    assert.ok(activity?.rows.some(row => row.label === "Changed browser.headless"));
+  });
 });

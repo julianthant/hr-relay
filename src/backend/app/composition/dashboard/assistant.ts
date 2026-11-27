@@ -6,12 +6,14 @@ import { createAssistantTypedProposals, type AssistantTypedProposalPorts } from 
 import type { AssistantReferenceTable } from '../../../assistant/references.js';
 import type { ServerReplyBinding } from '../../../assistant/replies.js';
 import { selectActiveRunSettings } from '../../../runs/settings/run-settings.js';
-import type { CommandRequest } from '../../../../rules/commands/commands.js';
+import type { CommandRequest, CommandResult } from '../../../../rules/commands/commands.js';
 import { CrossDateSearchQuerySchema, SearchCoverageSchema } from '../../../../models/dashboard/search.js';
 import { buildRunDetail, type RunDetailQueryDeps } from '../../../runs/queries/run-detail.js';
 import type { CrossDateSearchQueryService } from '../../../runs/queries/search.js';
 import { readSettings } from '../../../runtime/settings/settings-runtime.js';
 import type { AuthorityDatabase } from '../../../storage/sqlite/authority-database.js';
+import { createAssistantEditApply, type AssistantEditOwner, type LocalEditCommand } from '../../../assistant/applied-edits.js';
+import { canonicalJsonStringify } from '../../../../rules/validation/canonical-json.js';
 import type { AssistantPluginDeps } from '../../../assistant/plugins/registry.js';
 import type { AssistantWorkflowFacts } from '../../../assistant/plugins/workflows/facts.js';
 import type { NotificationWire } from '../../../../models/dashboard/projection.js';
@@ -43,6 +45,7 @@ export function createAssistantPluginDeps(options: Readonly<{
   notifications: () => { snapshot(actor: string): readonly NotificationWire[] };
   workbooks: () => Pick<WorkbookLibraryService, 'catalog' | 'read' | 'types'>;
   attachment: AssistantPluginDeps['attachment'];
+  edits?: AssistantEditOwner;
   facts: () => AssistantWorkflowFacts;
   assertCurrent(): void;
 }>): AssistantPluginDeps {
@@ -80,6 +83,8 @@ export function createAssistantPluginDeps(options: Readonly<{
       return { catalog: () => current(() => library.catalog()), read: libraryId => current(() => library.read(libraryId)), types: () => current(() => library.types()) }; },
     attachment: (conversationId, id) => current(() => options.attachment(conversationId, id)),
     settings: () => current(() => options.database.withAuthorityReadSnapshot(() => readSettings(options.database.authority).settings)),
+    ...(options.edits === undefined ? {} : { edits: options.edits,
+      settingsRecord: () => current(() => options.database.withAuthorityReadSnapshot(() => readSettings(options.database.authority))) }),
     facts: options.facts,
   };
 }
@@ -128,6 +133,7 @@ export function composeAssistant(options: Readonly<{
   database: Pick<AuthorityDatabase, 'authority' | 'withAuthorityReadSnapshot' | 'withAuthorityTransaction'>;
   starts: Pick<AssistantTypedProposalPorts, 'descriptors' | 'served' | 'plans' | 'runs' | 'rerunValues' | 'attachment' | 'ocrSources' | 'submit'>;
   readPlugins: () => readonly AssistantPlugin[];
+  executeEditCommand?(command: LocalEditCommand): CommandResult;
 }>) {
   const { database, service } = options, store = database.authority.assistantProposals;
   const browserMode = () => database.withAuthorityReadSnapshot(() => selectActiveRunSettings(database.authority)).config.browser.headless ? 'headless' as const : 'headed' as const;
@@ -143,15 +149,33 @@ export function composeAssistant(options: Readonly<{
   } });
   // Full access arrives with its own ticket; until then only transaction-free sessions start without a yes.
   const sessions = createAssistantSessionAuthorization({ ...common, claims: store.sessions, fullAccessAllowed: () => false });
+  let activeEdit: LocalEditCommand | undefined;
+  const applyEdit = createAssistantEditApply({ clock: service.clock, transaction: work => database.withAuthorityTransaction(work),
+    record: input => database.authority.assistantAppliedEdits.insert(input),
+    execute(command) {
+      if (activeEdit !== undefined || options.executeEditCommand === undefined || command.source !== "assistant"
+        || command.requestedBy !== service.actorId || !["apply-settings", "notification-read", "notification-unread"].includes(command.type)) {
+        throw new AssistantAuthorizationError('assistant-effect-not-authorized');
+      }
+      activeEdit = command;
+      try {
+        const result = options.executeEditCommand(command);
+        if (result.commandId !== command.commandId) throw new Error('assistant-edit-command-result-mismatch');
+        return result;
+      } finally { activeEdit = undefined; }
+    },
+  });
   const assistant = createAssistantM1Service({ ...service, proposals, atomic: work => database.withAuthorityTransaction(() => work()),
     history: () => { service.assertComposition?.(); return database.authority.assistantHistory; },
     tools: () => ({ plugins: [...options.readPlugins(), proposals.plugin, sessionsPlugin()], sessions,
       bindings: assistantValueBindings }) });
-  return Object.freeze({ assistant,
+  return Object.freeze({ assistant, applyEdit,
     /** The command and worker effect hook: an assistant command runs only from its claimed proposal row or session claim. */
     assertEffect(commandId: string, command?: CommandRequest): void {
       proposals.assertEffect(commandId, command);
       sessions.assertEffect(commandId, command);
+      if (command !== undefined && activeEdit?.commandId === commandId
+        && canonicalJsonStringify(command) === canonicalJsonStringify(activeEdit)) return;
       if (command?.source.startsWith('assistant') === true && !store.hasRowCommand(commandId) && store.sessions.byCommand(commandId) === undefined) {
         throw new AssistantAuthorizationError('assistant-effect-not-authorized');
       }

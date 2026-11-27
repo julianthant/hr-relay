@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantToolContext } from "../plugin.js";
+import { observeEdit } from "../../applied-edits.js";
+import { spreadsheetChange, workbookEditRevision } from "../../spreadsheet-proposals.js";
 import type { AssistantPluginDeps } from "../registry.js";
 
 const Count = z.number().int().nonnegative();
@@ -44,7 +46,7 @@ export function spreadsheetsPlugin(deps: AssistantPluginDeps): AssistantPlugin {
   ]);
   const inspectParameters = z.strictObject({ file: referenceSchema("A") });
   const InspectOutput = z.strictObject({ file: referenceSchema("A"), worksheets: Worksheets, ...Flags });
-  return { domain: "spreadsheets", tools: [{
+  const tools: AssistantPlugin["tools"][number][] = [{
     kind: "read", tier: "read", name: "read_spreadsheets",
     description: "Read the Spreadsheets library. view list: workbooks up to limit (sheet null). view open: one workbook's worksheets by position with row, column and hidden-column counts. "
       + "view versions: one workbook's named versions with the numeric revision each points at and which is in use. view types: workbook types with field counts (sheet null). "
@@ -53,8 +55,11 @@ export function spreadsheetsPlugin(deps: AssistantPluginDeps): AssistantPlugin {
     async invoke(value, context) {
       const { view, sheet, limit } = readParameters.parse(value);
       if ((view === "open" || view === "versions") !== (sheet !== null)) throw new AssistantToolRefusal("ASSISTANT_INVALID");
-      const library = (entry: ReturnType<typeof catalogEntry>) => ({ sheet: context.references.issue("S", entry.libraryId, entry.name),
-        type: context.references.issue("T", entry.type.id, entry.type.name), version: entry.version, sharePointLinked: entry.metadata.sharePoint !== null });
+      const library = (entry: ReturnType<typeof catalogEntry>) => {
+        observeEdit(context, `workbook:${entry.libraryId}`, workbookEditRevision(entry));
+        return { sheet: context.references.issue("S", entry.libraryId, entry.name),
+        type: context.references.issue("T", entry.type.id, entry.type.name), version: entry.version, sharePointLinked: entry.metadata.sharePoint !== null };
+      };
       if (view === "list") {
         const catalog = deps.workbooks().catalog().filter(entry => !entry.state.removed);
         context.assertCurrent();
@@ -76,6 +81,7 @@ export function spreadsheetsPlugin(deps: AssistantPluginDeps): AssistantPlugin {
         return JsonValueSchema.parse({ view, ...library(entry), ...flags(record), worksheets: worksheetFacts(record) });
       }
       context.assertCurrent();
+      observeEdit(context, `workbook:${entry.libraryId}`, workbookEditRevision(entry));
       const versions = entry.state.versions;
       return JsonValueSchema.parse({ view, sheet: context.references.issue("S", entry.libraryId, entry.name), versions: versions.slice(0, limit).map(version => ({
         version: context.references.issue("V", `${entry.libraryId}:${version.id}`, version.name), revision: version.version, savedAt: version.savedAt, source: version.source,
@@ -91,5 +97,7 @@ export function spreadsheetsPlugin(deps: AssistantPluginDeps): AssistantPlugin {
       const { workbook } = await attachmentWorkbook(deps, context, file);
       return JsonValueSchema.parse({ file, worksheets: worksheetFacts(workbook), ...flags(workbook) });
     },
-  }] };
+  }];
+  if (deps.edits !== undefined) tools.push(spreadsheetChange(deps, deps.edits));
+  return { domain: "spreadsheets", tools };
 }
