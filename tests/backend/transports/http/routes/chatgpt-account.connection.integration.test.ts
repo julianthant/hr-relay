@@ -36,6 +36,22 @@ it("checks the account only on the guarded POST and serves what it found on GET"
     assert.equal((await app.request(`${path}/check-connection`, { method: "POST" })).status, 404);
   } finally { await f.cleanup(); }
 });
+
+it("rechecks a revoked session even while the previous successful evidence is fresh", async () => {
+  const f = await chatGptFixture(), app: DashboardApp = new Hono();
+  registerChatGptAccountRoutes(app, { clock: f.clock, chatGptAccount: f.service });
+  try {
+    await f.connected();
+    const ready = ChatGptAccountStatusSchema.parse(await (await check(app)).json());
+    assert.equal(ready.connection.state, "completed");
+    f.setModelsHook(async () => Response.json({ detail: "withheld" }, { status: 401 }));
+    assert.equal(f.service.readStatus().connection.state, "completed");
+    const result = ChatGptAccountStatusSchema.parse(await (await check(app, '{"fresh":true}')).json());
+    assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 2);
+    assert.equal(result.connection.failureCode, "CHATGPT_ACCOUNT_EXPIRED");
+    assert.deepEqual(f.service.readStatus(), result);
+  } finally { await f.cleanup(); }
+});
 for (const kind of ["closure", "unknown"] as const) it(`checks with the request signal and serves explicit ${kind} failure with no private details`, async () => {
   const app: DashboardApp = new Hono(), clock = manualClock(new Date(checkedAt)), abort = new AbortController();
   let observed: AbortSignal | undefined;
