@@ -2288,8 +2288,15 @@ export class AuthorityDatabase implements Disposable {
   }
 
   queryRunSummaries(query: Parameters<ReturnType<typeof createRunSummaries>["query"]>[1]) {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.#readDelegationWaitState(run),
       envelopes => this.authority.dependencies.parents(envelopes)).query(this.getMeta().authorityGeneration,query) });
+  }
+
+  /** A retained summary read still admits the current source, and never serves from a write transaction. */
+  runSummaryReadPosition() {
+    if (this.#transactionMode !== "read") return undefined;
+    this.#validateExternalQuerySources();
+    return { authorityGeneration: this.getMeta().authorityGeneration, ...this.capturedChangeKey() };
   }
 
   queryRunCalendar(query: Parameters<ReturnType<typeof createRunSummaries>["calendar"]>[1]) {
@@ -2298,7 +2305,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   readRunSummaries() {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.#readDelegationWaitState(run),
       envelopes => this.authority.dependencies.parents(envelopes)).read(this.getMeta().authorityGeneration) });
   }
 
@@ -3458,6 +3465,17 @@ export class AuthorityDatabase implements Disposable {
     return structuredClone(memoizedDelegationGroup(memo, manifest) ?? authenticateDelegationGroup(this.authority, manifest, new Set(), memo));
   }
 
+  #readDelegationWaitState(run: RunRecord | string) {
+    const runId = typeof run === "string" ? run : run.envelope.runId;
+    const cached = this.#delegationReadSnapshot?.waits.get(runId);
+    if (cached !== undefined) return cached === null ? null : { ...cached };
+    const parent = typeof run === "string" ? this.authority.runs.get(runId) : run;
+    if (parent === undefined) throw new Error("delegation-parent-unavailable");
+    const state = readDelegationWaitState(this.authority, parent);
+    this.#delegationReadSnapshot?.waits.set(runId, state === null ? null : { ...state });
+    return state;
+  }
+
   // Any row change, trigger rows included, advances total_changes() and drops every cached read; a savepoint rollback drops them too.
   #operationDelegationReads(): DelegationOperationReads | undefined {
     if (this.#delegationReadSnapshot !== undefined) return this.#delegationReadSnapshot;
@@ -4552,13 +4570,7 @@ export class AuthorityDatabase implements Disposable {
           if (parent === undefined) throw new Error("delegation-parent-unavailable");
           return AuthenticatedRunContinuation.authenticate(this.authority, parent.envelope).delegation(nodeId, edgeId);
         },
-        waitState: (parentRunId: string) => {
-          const cached = this.#delegationReadSnapshot?.waits.get(parentRunId);
-          if (cached !== undefined) return cached === null ? null : { ...cached };
-          const state = readDelegationWaitState(this.authority, parentRunId);
-          this.#delegationReadSnapshot?.waits.set(parentRunId, state === null ? null : { ...state });
-          return state;
-        },
+        waitState: (parentRunId: string) => this.#readDelegationWaitState(parentRunId),
         wait: (parentRunId: string, descriptor: AnyWorkflowDescriptor) => {
           const parent = this.authority.runs.get(parentRunId);
           if (parent === undefined) throw new Error("delegation-parent-unavailable");

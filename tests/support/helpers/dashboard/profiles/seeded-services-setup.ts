@@ -69,7 +69,7 @@ import { buildSettingsEditor, type SettingsEditorQueryDeps } from "../../../../.
 import { createCredentialStore } from "../../synthetic-storage-admission.js";
 
 export function createSeededServicesSetup({ createFixtureDashboardApp }: {
-createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
+createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
 }) {
   function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices, productWorkflows, scripting, liveSettings }: {
    /** Opt-in: ordinary settings save through the production executor, the editor reads the store, and each commit rides the stream. */
@@ -284,7 +284,6 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       hub,
     }, {
 
-      settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [personLookupDescriptor] },
       settingsEditor,
       storage: {
         admission: syntheticStateRoot(stateRoot),

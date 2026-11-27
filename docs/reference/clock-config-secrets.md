@@ -765,7 +765,6 @@ module imports only the workbook library.
 
 ## Settings and readiness readback
 
-`GET /api/v1/settings/facts` serves compatibility facts and workflow capabilities.
 `GET /api/v1/settings/editable` serves saved, effective, active, and default ordinary values, provenance, host facts, deployment paths, and independent protected-store readback.
 The browser consumes these projections and does not read SQLite or reconstruct settings authority.
 The current-year annual date editor serves only `annualDates.FY<year>.jobEndDate`, selected through

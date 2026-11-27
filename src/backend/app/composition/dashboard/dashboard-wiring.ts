@@ -32,8 +32,6 @@ import { createApplicationLifecycle } from "../../../runs/lifecycle/application-
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
 import { createWorkerCommandResultQuery } from "../../../runs/queries/worker-command-result.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
-import { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
-import { ocrHostRun } from "../../../runs/queries/ocr-record-members.js";
 import { createRunWorkbookService } from "../../../runs/workbooks.js";
 import { createRunHistoryService } from "../../../runs/commands/run-history-service.js";
 import { createCommandBrowserManager } from "../../../runtime/browser/command-browser.js";
@@ -58,7 +56,7 @@ import { composeDataQueries } from "./data.js";
 import { composeExplorer } from "./explorer.js";
 import { composeFailureResolution } from "./failure-resolution.js";
 import { composeIntake } from "./intake.js";
-import { composeNotificationPublications,composeNotificationReads,composeNotificationRoutes } from "./notification-wiring.js";
+import { composeNotificationPublications,composeNotificationReads,composeNotificationRoutes,createHistoryNotificationTarget } from "./notification-wiring.js";
 import { composeQueueSummaries } from "./queue-summaries.js";
 import { createOperatorProjection } from "./queue.js";
 import { createCopySamples } from "./copy-samples.js";
@@ -126,8 +124,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     return { commandId: request.commandId };
   };
 
-  const { activity, activityPopulation } = composeActivity({ database: history, clock, descriptors, ledger });
-  const summaries: ServedSummaryQueries = { ...composeQueueSummaries(history), activity: (from, to) => activity.read(from, to) };
+  const { activity, activityPopulation, reports, readActivityDocument } = composeActivity({ database: history, clock, descriptors, ledger, readLanes });
+  const summaries: ServedSummaryQueries = { ...composeQueueSummaries(history), activity: (from, to) => reports.read(from, to) };
   const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries };
   let snapshotWorkers: () => readonly WorkerMemberView[] = () => [];
   const workerMembers = (): readonly WorkerMemberView[] => samples === undefined ? snapshotWorkers() : [...snapshotWorkers(), ...samples.views()];
@@ -291,11 +289,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   const startPlans = samples?.guardStartPlans(nativeStartPlans) ?? nativeStartPlans;
 
-  const notificationTarget = createNotificationTargetQuery({ get: history.authority.notifications.get, read: id => reader.read(id), failure: history.authority.failures.get,
-    host: run => history.withAuthorityReadSnapshot(() => ocrHostRun(history.authority, run)),
-    command: commandId => history.authority.commands.readForNotice(commandId),
-    bulk: bulkCommandId => { const acceptance = history.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: history.authority.commands.listBulkChildren(bulkCommandId) }; } });
-  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads,
+  const notificationTarget = createHistoryNotificationTarget(history, reader);
+  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads, readLanes,
     reportListReadFailure: () => { emitOptionalDiagnostic(() => debugEvents.emit({ category: "sse", phase: "failed",
       correlationId: randomUUID(), area: "notification-list", reason: "poll-read-failed" })); } });
   const nativeDataQueries = composeDataQueries(runDetailDeps);
@@ -358,7 +353,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     "workbook_types", "workflow_workbook_selections",
   ]);
 
-  const shell = composeShell({ workbookCompatibility: workflows => workbookLibrary.compatibility(workflows), database, readLanes, projection, activity, clock, ids, artifacts, descriptors,
+  const shell = composeShell({ workbookCompatibility: workflows => workbookLibrary.compatibility(workflows), database, readLanes, projection, activity: reports, readActivityDocument, clock, ids, artifacts, descriptors,
     actorLabel: () => {
       assertCurrent();
       const person = machineAdmission.readProfileRegistry().profiles.find(row => row.profileId === admission.profileBinding.profileId);
@@ -370,7 +365,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     notificationList: notifications.streamList,
     notificationStatus: { read: () => notifications.status(), onChange: listener => notificationObserver.onStatusChange(listener) },
     runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
-    settings: { read: settingsBoundary.editable, onChange: listener => { settingsChanges.add(listener); return () => { settingsChanges.delete(listener); }; } },
+    settings: { read: settingsBoundary.editable, onChange: listener => {
+      settingsChanges.add(listener);
+      const stop = settingsBoundary.onChange(listener);
+      return () => { settingsChanges.delete(listener); stop(); };
+    } },
     preflightReport: () => preflightAuthority.readLatest(),
   });
   const { hub } = shell;
@@ -438,7 +437,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     ...settingsBoundary.routes,
     ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
-    runHistory: { status: () => runHistory.status(), clear: request => runHistory.clear(confirmedHistoryCommand(request)),
+    runHistory: { clear: request => runHistory.clear(confirmedHistoryCommand(request)),
       check: request => runHistory.check(confirmedHistoryCommand(request)) },
     ...explorerBoundary,
     activity,

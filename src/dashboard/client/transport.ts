@@ -136,7 +136,7 @@ export function createDashboardTransport(input: Readonly<{
     const code: ErrorCatalogCode | undefined = method !== "GET" ? undefined
       : accountStatus || accountCompletion ? "CHATGPT_AUTH_UNAVAILABLE"
       : route === "/api/v1/preflight" ? "PREFLIGHT_READ_UNAVAILABLE"
-      : route === "/api/v1/settings/editable" || route === "/api/v1/settings/facts" ? "SETTINGS_INITIAL_READ_UNAVAILABLE"
+      : route === "/api/v1/settings/editable" ? "SETTINGS_INITIAL_READ_UNAVAILABLE"
       : route?.startsWith("/api/v1/workbooks") || route === "/api/v1/explorer" || route?.startsWith("/api/v1/reports/activity") || retry ? "DASHBOARD_READ_FAILED" : undefined;
     const retried = method === "GET" && (retry || route === "/api/v1/preflight" || route?.startsWith("/api/v1/workbooks") === true);
     if (code === undefined || accountCompletion && init?.signal !== undefined) return sendUnbounded(path, init);

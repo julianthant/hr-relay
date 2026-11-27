@@ -1,13 +1,14 @@
+import { randomBytes } from "node:crypto";
 import { successfulActivityTiming } from "./activity-timing.js";
-import type { z } from "zod";
-import { ActivityPopulationRangeSchema, ActivityPopulationRunSchema, ActivityPopulationIdentitySchema, ActivityPopulationSelectionSchema, ActivityPopulationBrowseSchema, ActivityPopulationBrowseResultSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema, type ActivityPopulationRun, type ActivityPopulationSelection, type ActivityPopulationBrowseResult, type ActivityPopulationSelectedRead, type ActivityPopulationExport } from "../../../models/dashboard/activity-population.js";
+import { ActivityPopulationRangeSchema, ActivityPopulationIdentitySchema, ActivityPopulationSelectionSchema, ActivityPopulationBrowseSchema, ActivityPopulationBrowseResultSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema, type ActivityPopulationRun, type ActivityPopulationSelection, type ActivityPopulationBrowseResult, type ActivityPopulationSelectedRead, type ActivityPopulationExport } from "../../../models/dashboard/activity-population.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { spreadsheetCsvRow } from "../exports/spreadsheet-csv.js";
 import { deriveRunStatus } from "../../../rules/runs/run-status.js";
 import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 import { activityReportCsv, activityReportCsvFileName } from "./activity-export.js";
-import { createActivitySelectionService, createActivitySnapshotSigner } from "./activity-selection.js";
+import { ACTIVITY_SNAPSHOT_LIFETIME_MS, createActivitySelectionService, createActivitySnapshotSigner } from "./activity-selection.js";
 import { queryActivitySummaries } from "./activity-summaries.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -51,25 +52,48 @@ function browseSelection(selection: ActivityPopulationSelection, input: unknown)
 }
 
 export function createActivityPopulationService(input: {
-  database: AuthorityDatabase; clock: Clock;
+  database: AuthorityDatabase; clock: Pick<Clock, "now" | "nowMs">;
+  /** One key signs both the report and the population tokens, so a read lane can issue and validate them for this runtime. */
+  signingKey?: Uint8Array;
+  sourceIdentity?: string;
   descriptors: Parameters<typeof queryActivitySummaries>[2]["descriptors"];
   ledger: Parameters<typeof queryActivitySummaries>[2]["ledger"];
 }) {
   const { database, clock } = input;
+  const signingKey = input.signingKey ?? randomBytes(32);
   type VisitSummary = NonNullable<Parameters<typeof queryActivitySummaries>[3]>;
-  const reports = createActivitySelectionService<VisitSummary>({ database, clock,
+  const reports = createActivitySelectionService<VisitSummary>({ database, clock, signingKey,
+    ...(input.sourceIdentity === undefined ? {} : { sourceIdentity: input.sourceIdentity }),
     read: (from, to, generatedAt, visit) => queryActivitySummaries(database, { from, to, generatedAt }, input, visit) });
-  const signer = createActivitySnapshotSigner(ActivityPopulationIdentitySchema, "ap1", clock);
-  const read = (rangeInput: unknown, selected?: z.infer<typeof ActivityPopulationIdentitySchema>): ActivityPopulationSelection => {
+  const signer = createActivitySnapshotSigner(ActivityPopulationIdentitySchema, "ap1", clock, signingKey);
+  const retained = new Map<string, ActivityPopulationSelection>();
+  let retainedPosition: ReturnType<AuthorityDatabase["runSummaryReadPosition"]>;
+  const read = (rangeInput: unknown, token?: { encoded: unknown }): ActivityPopulationSelection => {
+    const selected = token === undefined ? undefined : signer.decode(token.encoded);
     const bounds = ActivityPopulationRangeSchema.safeParse(rangeInput);
     if (!bounds.success) throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
     const { from, to } = bounds.data;
     return database.withAuthorityReadSnapshot(() => {
+      const position = database.runSummaryReadPosition();
+      if (retainedPosition?.authorityGeneration !== position?.authorityGeneration
+        || retainedPosition?.schemaCookie !== position?.schemaCookie
+        || retainedPosition?.changeLogSeq !== position?.changeLogSeq) {
+        retainedPosition = position;
+        retained.clear();
+      }
+      const range = `${from}/${to}`;
+      const cached = retained.get(range);
+      const minimumLifeMs = token === undefined ? ACTIVITY_SNAPSHOT_LIFETIME_MS / 2 : 0;
+      if (cached !== undefined && Date.parse(cached.snapshot.expiresAt) > clock.nowMs() + minimumLifeMs
+        && (token === undefined || token.encoded === cached.snapshot.token)
+        && cached.snapshot.sourceIdentity === (input.sourceIdentity ?? database.getSourceDatabaseIdentity())) return cached;
+
       const population: ActivityPopulationRun[] = [];
       const addToPopulation: VisitSummary = row => {
-        population.push(ActivityPopulationRunSchema.parse({ runId: row.runId, workflowId: row.workflow, title: row.title, attempt: row.attempt, day: row.localDay, parentRunId: row.parent?.runId ?? null, shape: row.shape,
+        if (row.shape === "operation-member") throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
+        population.push({ runId: row.runId, workflowId: row.workflow, title: row.title, attempt: row.attempt, day: row.localDay, parentRunId: row.parent?.runId ?? null, shape: row.shape,
           status: deriveRunStatus(row), terminal: runResultCurrent(row), durationMs: row.durationMs,
-          receiptResult: row.receiptResult, warningCount: row.warningCount, readback: row.receiptResult === null ? null : row.receiptResult === "verified-done" }));
+          receiptResult: row.receiptResult, warningCount: row.warningCount, readback: row.receiptResult === null ? null : row.receiptResult === "verified-done" });
       };
       const report = selected === undefined ? reports.read(from, to, addToPopulation)
         : reports.readSelected(from, to, selected.reportToken, addToPopulation);
@@ -79,18 +103,27 @@ export function createActivityPopulationService(input: {
       if (selected !== undefined && populationDigest !== selected.populationDigest) throw new ActivityPopulationError("ACTIVITY_POPULATION_CONTENT_MISMATCH");
       const { token: reportToken, ...reportIdentity } = report.snapshot;
       const identity = ActivityPopulationIdentitySchema.parse({ ...reportIdentity, reportToken, populationDigest });
-      return ActivityPopulationSelectionSchema.parse({ report, population, successfulTiming, snapshot: { ...identity, token: signer.encode(identity) } });
+      const selection = ActivityPopulationSelectionSchema.parse({ report, population, successfulTiming, snapshot: { ...identity, token: signer.encode(identity) } });
+      if (position !== undefined && selected === undefined) {
+        retained.delete(range);
+        if (retained.size === 4) {
+          const oldest = retained.keys().next();
+          if (!oldest.done) retained.delete(oldest.value);
+        }
+        retained.set(range, deepFreeze(selection));
+      }
+      return selection;
     });
   };
   return Object.freeze({
     reports,
     read: (range: unknown) => read(range),
     readSelected: (range: unknown, token: unknown, browse?: unknown): ActivityPopulationSelectedRead => {
-      const selection = read(range, signer.decode(token));
+      const selection = read(range, { encoded: token });
       return ActivityPopulationSelectedReadSchema.parse({ selection, browse: browse === undefined ? null : browseSelection(selection, browse) });
     },
     exportSelected: (range: unknown, token: unknown): ActivityPopulationExport => {
-      const selection = read(range, signer.decode(token));
+      const selection = read(range, { encoded: token });
       const rows = [spreadsheetCsvRow(["Complete selected run population"]), spreadsheetCsvRow(["Population digest", selection.snapshot.populationDigest]), spreadsheetCsvRow(["Run id", "Workflow id", "Title", "Attempt", "Day", "Queue status", "Terminal", "Duration (ms)", "Read back", "Parent run id", "Shape", "Receipt result", "Warning count"]),
         ...selection.population.map(row => spreadsheetCsvRow([row.runId, row.workflowId, row.title, row.attempt, row.day, row.status, row.terminal, row.durationMs === null ? "Unavailable" : row.durationMs, row.readback === null ? "Unavailable" : row.readback, row.parentRunId === null ? "" : row.parentRunId, row.shape, row.receiptResult === null ? "Unavailable" : row.receiptResult, row.warningCount === null ? "Unavailable" : row.warningCount]))];
       const timing = [spreadsheetCsvRow(["Successful run timing"]), spreadsheetCsvRow(["Workflow id", "Total (ms)", "Measured", "Unmeasured"]),
@@ -99,4 +132,11 @@ export function createActivityPopulationService(input: {
     },
   });
 }
-export type ActivityPopulationService = ReturnType<typeof createActivityPopulationService>;
+type Awaitable<T> = T | Promise<T>;
+/** What the population routes serve: answered now on the request thread, or later from a read lane. */
+export interface ActivityPopulationService {
+  /** A lane answers the two reads with the served body, built and validated there. */
+  read(range: unknown): ActivityPopulationSelection | Promise<string>;
+  readSelected(range: unknown, token: unknown, browse?: unknown): ActivityPopulationSelectedRead | Promise<string>;
+  exportSelected(range: unknown, token: unknown): Awaitable<ActivityPopulationExport>;
+}

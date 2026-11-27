@@ -14,12 +14,12 @@ it("the Run dialog's saved bootstrap is the served fixture bootstrap", () => {
   assert.deepEqual(snapshot, JSON.parse(JSON.stringify(FIXTURE_BOOTSTRAP)));
 });
 
-function served(workflowId: string): unknown {
+async function served(workflowId: string): Promise<unknown> {
   const descriptor = DESCRIPTORS.find(candidate => String(candidate.id) === workflowId);
   assert.ok(descriptor);
   const clock = manualClock(new Date("2026-08-26T21:00:00.000Z"));
   const intake = INTAKE_PROJECTIONS[workflowId];
-  const wire = buildBootstrap({ appVersion: "0.1.0", actorLabel: () => "Fixture Operator", clock,
+  const wire = await buildBootstrap({ appVersion: "0.1.0", actorLabel: () => "Fixture Operator", clock,
     modules: [{ descriptor, role: defineWorkflowRole({ kind: "composition" }), ...(intake === undefined ? {} : { intake }) }],
     descriptorSetHash: descriptorSetHash([descriptor.contractFingerprint]), settingsSchemaHash: descriptorSetHash(["settings-schema"]),
     projection: { generation: () => 1 }, authorityMeta: () => ({ schemaVersion: 1, authorityGeneration: 1 }),
@@ -27,12 +27,12 @@ function served(workflowId: string): unknown {
   return JSON.parse(JSON.stringify(wire.workflows[0]));
 }
 
-it("the Work-Study entry saved for the cancelled-rerun stories is the served one", () => {
-  assert.deepEqual(workStudy, served("work-study"));
+it("the Work-Study entry saved for the cancelled-rerun stories is the served one", async () => {
+  assert.deepEqual(workStudy, await served("work-study"));
 });
 
-it("the Separations entry saved for the Steps stories is the served one", () => {
-  assert.deepEqual(separations, served("separations"));
+it("the Separations entry saved for the Steps stories is the served one", async () => {
+  assert.deepEqual(separations, await served("separations"));
 });
 
 it("the intake sessions saved for the Run dialog stories are the served fixture sessions", async () => {
