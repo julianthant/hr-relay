@@ -573,8 +573,8 @@ export function RunStartDialog({
             {notice === null && draftKept && <p role="status" className="m-0 shrink-0 border-b border-ui-stroke px-5 py-2 text-caption text-ui-muted">Draft kept. Your earlier entries are still here.</p>}
           <DialogBody key={currentStage} className="launch-content @container">
             {isRerun && snapshot === null && sourceError === null && <p role="status">Loading source…</p>}
-            {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
-            {recoveryError !== null && <Banner tone="danger" title="Saved start unavailable">{recoveryError}</Banner>}
+            {sourceError !== null && <FailureNotice sentence={sourceError} />}
+            {recoveryError !== null && <FailureNotice sentence={recoveryError} />}
             {/* While the Start is in flight its outcome is not unknown yet; only a settled, unresolved command needs readback. */}
             {recovery !== null && !readback && !busy && (
               <Banner tone="warning" title="A previous submission needs readback">
@@ -583,7 +583,7 @@ export function RunStartDialog({
               </Banner>
             )}
             {error !== null && (
-              <Banner tone="danger" title="The request did not complete">{error}</Banner>
+              <FailureNotice sentence={error} />
             )}
 
             <div className="launch-sections">
@@ -641,11 +641,7 @@ export function RunStartDialog({
                 <section id="run-start-plan" aria-label="Plan" className="flex flex-col gap-[var(--ds-space-cozy)]">
                   {expiredPlan && <p className="text-body text-ui-secondary">The plan expired and was rebuilt. Review it again.</p>}
                   {omissionMismatch && (
-                    <Banner tone="danger" title="This plan does not describe the steps you omitted">
-                      {`You omitted ${sentOmittedSteps.length === 0 ? "no steps" : sentOmittedSteps.join(", ")}; the plan came back omitting `
-                        + `${planOmittedSteps.length === 0 ? "no steps" : planOmittedSteps.join(", ")}. `
-                        + "Go back and plan again."}
-                    </Banner>
+                    <FailureNotice sentence={`You omitted ${sentOmittedSteps.length === 0 ? "no steps" : sentOmittedSteps.join(", ")}, but the plan omits ${planOmittedSteps.length === 0 ? "no steps" : planOmittedSteps.join(", ")}.`} />
                   )}
                 </section>
               )}

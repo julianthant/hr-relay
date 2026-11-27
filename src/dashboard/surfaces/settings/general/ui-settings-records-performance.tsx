@@ -1,7 +1,7 @@
 import { SettingsSectionSkeleton } from "../settings-loading.js";
 import { Form } from "@heroui/react";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import { BodySection, Field, FormGroup, PageHeading, UnitField, Notice } from "../../../ds/ui.js";
+import { BodySection, Field, FormGroup, PageHeading, UnitField, Notice, FailureNotice } from "../../../ds/ui.js";
 import { settingInput } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { performancePresentation, performanceSectionGroups, type PerformanceGroup } from "./settings-performance-model.js";
@@ -51,10 +51,10 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
 export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="performance" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings unavailable" description="Reopen Settings to try again." />;
+  if (editor.editor.state === "failed") return <FailureNotice sentence="Settings unavailable; reopen Settings to try again." />;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "performance");
-  if (section === undefined) return <Notice tone="danger" title="Performance unavailable" />;
+  if (section === undefined) return <FailureNotice sentence="Performance unavailable." />;
   const groups = performanceSectionGroups(section.leaves);
   const primary = groups.filter(group => ["Navigation", "Work", "Sign-in & Duo"].includes(group.title));
   const additional = groups.filter(group => !primary.includes(group));
