@@ -141,6 +141,28 @@ test("notification row: hovering shows the read toggle and moves nothing", async
   expect(title !== null && age !== null && title.x + title.width <= age.x).toBe(true);
 });
 
+test("notification row: Tab reaches the visible clear control and Enter clears it through the served command", async ({ dashboard, page, seeded }) => {
+  await dashboard.open();
+  const before = await unreadCount(page);
+  await seeded.drive.publishNotification();
+  await expect.poll(() => unreadCount(page)).toBe(before + 1);
+  await page.getByRole("button", { name: /^Notifications, \d+ unread$/u }).click();
+  const popover = page.getByRole("dialog", { name: "Notifications" });
+  const rows = popover.locator(".notice-row");
+  const count = await rows.count();
+  const row = rows.first();
+  await row.locator("button.notice-main").focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  const clear = row.getByRole("button", { name: "Clear notification" });
+  await expect(clear).toBeFocused();
+  await expect(row.locator(".notice-action")).toHaveCSS("opacity", "1");
+  const served = page.waitForRequest(request => new URL(request.url()).pathname === "/api/v1/commands" && request.method() === "POST" && request.postData()?.includes("notification-clear") === true);
+  await page.keyboard.press("Enter");
+  await served;
+  await expect(rows).toHaveCount(count - 1);
+});
+
 // A Work-Study run held at its first read goes on and the executor parks it at the gate the workflow declares.
 // The Work-Study queue holds this one run, so there is no other run to hold open beside it.
 const DECLARED_GATE_BASELINE: Partial<Record<View, readonly string[]>> = {
