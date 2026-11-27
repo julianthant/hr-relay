@@ -862,7 +862,7 @@ function FormsSection() {
         />
 
         <div className="flex flex-col gap-[var(--ds-space-base)]">
-          <SectionLabel>Search, field: the 28px bordered field inside a page, toolbar or menu</SectionLabel>
+          <SectionLabel>Search: one look (the Settings search), as long as its container</SectionLabel>
           <SearchInput
             aria-label="Search form specimens"
             value={search}
@@ -871,8 +871,6 @@ function FormsSection() {
             placeholder="Search people, files, trace ids…"
             shortcut={<Kbd>/</Kbd>}
           />
-          <SectionLabel>Search, sidebar: the filled pill above a list of rows</SectionLabel>
-          <div className="w-[264px]"><SearchInput variant="sidebar" aria-label="Search the list" placeholder="Search" /></div>
           <SectionLabel>Input and SecretField, 28px and 32px; the eye icon reveals</SectionLabel>
           <div className="flex flex-wrap items-start gap-[var(--ds-space-base)]">
             <div className="w-64"><Input aria-label="Name, 28px" placeholder="Name · 28px" /></div>

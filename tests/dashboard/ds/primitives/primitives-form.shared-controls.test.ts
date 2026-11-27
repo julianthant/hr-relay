@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -20,8 +21,9 @@ describe("Input, SecretField and SearchInput", () => {
     assert.doesNotMatch(out, />Show</u);
   });
 
-  it("marks only the sidebar search as the filled pill", () => {
-    assert.match(html(createElement(SearchInput, { variant: "sidebar", "aria-label": "Find" })), /ds-search-field--sidebar/u);
-    assert.doesNotMatch(html(createElement(SearchInput, { "aria-label": "Find" })), /ds-search-field--sidebar/u);
+  it("has one look: no variant prop and no look class", () => {
+    assert.doesNotMatch(html(createElement(SearchInput, { "aria-label": "Find" })), /ds-search-field--/u);
+    const source = readFileSync(new URL("../../../../src/dashboard/ds/primitives/primitives-form.tsx", import.meta.url), "utf8");
+    assert.doesNotMatch(source.slice(source.indexOf("export const SearchInput")), /variant\??:/u);
   });
 });
