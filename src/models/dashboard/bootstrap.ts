@@ -161,7 +161,7 @@ export const FrontendBootstrapWireSchema = createFrontendBootstrapWireSchema({
     ["featureAvailability", (bootstrap.featureAvailability ?? []).map(({ feature }) => feature)],
   ] as const;
   for (const [path, values] of identities) {
-    if (new Set(values).size !== values.length) {
+    if (new Set<string>(values).size !== values.length) {
       context.addIssue({ code: "custom", path: [path], message: `${path} identities must be unique` });
     }
   }

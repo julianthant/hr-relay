@@ -346,6 +346,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its screenshot");
     const path = `/api/v1/diagnostic-bundles/${bundle.bundleId}`;
     assert.equal((await h.app.request(path)).status, 404);
+    const manifest = await json(await h.app.request(`${path}/manifest`));
+    assert.deepEqual(manifest.attachments, [attachment]);
     const response = await h.app.request(`${path}/attachments/${attachment.artifactId}`);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "image/png");

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
-import { EditableWorkbookSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, encodeSavedWorkbook, encodeEditableWorkbook, type SavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
+import { EditableWorkbookSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, encodeSavedWorkbook, type SavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryEntrySchema } from "../../../src/models/dashboard/workbook-library.js";
 import { WorkbookCompatibilitySchema } from "../../../src/models/dashboard/workbook-library.js";
