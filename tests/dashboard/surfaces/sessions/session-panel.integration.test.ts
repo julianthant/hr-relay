@@ -49,7 +49,10 @@ it("keeps the worker cards it last read while another day loads, marked by a spi
   await render({ state: "loading" });
   assert.equal(host.querySelectorAll("article").length, cards);
   assert.equal(host.querySelector('[aria-busy="true"]') === null, true, "no skeleton for a day that is still loading");
-  assert.ok(host.querySelector("[data-sessions-stale]"), "a spinner marks the kept day");
+  const spinner = () => host.querySelector('[data-sessions-stale] [role="status"][aria-label="Refreshing"]')?.parentElement ?? undefined;
+  assert.ok(spinner()?.classList.contains("invisible"), "a fast reload shows a named spinner, still hidden");
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
+  assert.equal(spinner()?.classList.contains("invisible"), false, "a slow reload shows the spinner");
   assert.equal(host.textContent?.includes("Updating"), false);
   assert.deepEqual(workerButtons(host).filter(button => !button.disabled).map(button => button.getAttribute("aria-label")), []);
   assert.equal(addWorkers(host)?.disabled, true, "Add workers stays shown and switched off while the day loads");

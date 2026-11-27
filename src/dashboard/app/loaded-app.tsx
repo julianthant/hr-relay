@@ -158,7 +158,7 @@ interface LoadedAppProps {
 /** A stored command result opens its run through the same validated served navigation as a run notice. */
 /** The queue shows a kept copy of this day while it reloads: a small spinner, after the skeleton wait. */
 function KeptDayMark() {
-  return <span data-queue-stale className="inline-flex size-4 items-center justify-center mr-2"><DelayedSpinner /></span>;
+  return <span data-queue-stale className="inline-flex size-4 items-center justify-center"><DelayedSpinner /></span>;
 }
 
 function commandResultRun(destination: NotificationDestination): NotificationDestination | undefined {

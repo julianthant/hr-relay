@@ -94,7 +94,7 @@ function SearchResultLink({ result, active, onSelect }: { result: SettingsSearch
 
 
 /** Settings shows a kept copy while it reads again: a small spinner, after the skeleton wait. */
-function SettingsUpdatingMark() {
+export function SettingsRefreshMark() {
   return <span data-settings-stale className="ml-auto mr-2 inline-flex size-4 items-center justify-center"><DelayedSpinner /></span>;
 }
 
@@ -229,7 +229,7 @@ export function SettingsPage({
   return (
     <TakeoverFrame label="Settings" direction="row" animateFrame={false} className="settings-takeover">
       <nav aria-label="Settings sections" className="settings-panel-nav rail-scroll">
-        <header className="settings-nav-header"><h2>Settings</h2>{editor.refreshing && editor.editor.state === "loaded" && <SettingsUpdatingMark />}<IconButton label="Close settings" size="sm" icon={<X className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
+        <header className="settings-nav-header"><h2>Settings</h2>{editor.refreshing && editor.editor.state === "loaded" && <SettingsRefreshMark />}<IconButton label="Close settings" size="sm" icon={<X className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
         <SearchInput ref={navSearch} variant="sidebar" aria-label="Search settings" placeholder="Search" value={navQuery} onChange={event => setNavQuery(event.target.value)} onClear={() => setNavQuery("")} className="settings-nav-search"
           aria-controls={navQuery.trim() ? "settings-search-results" : undefined}
           onKeyDown={event => {
