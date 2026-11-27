@@ -29,7 +29,7 @@ import { createSessionPreviewPort } from "../../../src/dashboard/surfaces/sessio
 import { sessionWorkerAuthorityKey, sessionsFromDay } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { workflowProjections } from "../../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowProjections } from "../../../src/workflow-kit/workflow.js";
 import workflowSources from "../../../config/dashboard-workflow-sources.json" with { type: "json" };
 import { runtimeProfiles } from "../../../src/models/config/define-runtime-isolation.js";
 import { searchPartitionDay } from "../../../src/models/dashboard/search-calendar.js";
@@ -297,12 +297,22 @@ async function expectTimelines(client: ReturnType<typeof createDashboardClient>,
     expect(steps.map(step => step.time), name).not.toContain("—");
     const descriptor = WORKFLOW_MODULES.find(module => module.descriptor.id === run.envelope.workflow)?.descriptor;
     assert.ok(descriptor !== undefined, name);
-    const noted = steps.flatMap((step, index) => step.entries.some(entry => entry.kind === "fields" || entry.kind === "note") ? [{ index, title: step.title }] : []);
-    expect(noted.length, name).toBeGreaterThan(0);
+    const noted = steps.flatMap((step, index) => step.entries.some(entry => entry.kind === "fields") ? [{ index, title: step.title }] : []);
+    expect(steps.flatMap(step => step.entries.filter(entry => entry.kind === "note").map(() => step.title)).filter(title => title === "Run note"), name).toEqual([]);
+    // Rows follow the descriptor's step order and only cover steps a real run would have finished: none for the open step.
+    const order = descriptor.timeline.filter(group => (group.operatorFields ?? []).some(field => field.sources.some(source => source.kind === "output")));
+    const titles = noted.map(note => note.title);
+    const positions = titles.map(title => order.findIndex(group => group.label === title));
+    expect(positions.every(position => position >= 0), name).toBe(true);
+    expect([...positions].sort((left, right) => left - right), name).toEqual(positions);
+    if (state === "succeeded") expect(new Set(titles).size, name).toBe(order.length);
+    if (state === "needs-duo") expect(noted, name).toEqual([]);
     const cards = steps.flatMap((step, index) => step.entries.some(entry => entry.kind === "decision") || step.title === "Run cancelled" ? [{ index, title: step.title }] : []);
     const parkedWrite = run.lifecycle.state === "parked-write";
+    const hasGate = descriptorRuntimeNodes(descriptor).some(node => node.kind === "gate" && node.resolvedBy === "operator");
     const expected = ["paused", "cancelled", "needs-review", "failed"].includes(state) ? 1 : 0;
-    if (state !== "waiting") expect(cards, name).toHaveLength(expected);
+    if (state === "waiting" && hasGate) expect(["note", "decision"], name).toContain(steps.at(-1)?.entries.at(-1)?.kind);
+    else expect(cards, name).toHaveLength(expected);
     if (state === "paused") expect(cards[0]?.title, name).toBe("Run paused");
     if (state === "cancelled") expect(cards[0]?.title, name).toBe("Run cancelled");
     if (parkedWrite) expect(steps[cards[0]?.index ?? -1]?.entries.flatMap(entry => entry.kind === "decision" ? [entry.decision.title] : []).join(), name).toMatch(/termination/iu);

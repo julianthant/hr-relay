@@ -4,7 +4,6 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { runSpanPath, taskSpanPath } from "../../src/backend/logs/span-emitter.js";
 import { runQueuedSpanEvent } from "../../src/backend/runs/commands/run-queued-span.js";
-import { createNoteTimelineWriter } from "../../src/backend/storage/events/note-timeline-writer.js";
 import type { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 import { acquireRuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../../src/backend/storage/admission/lifetime-lock.js";
 import { noSymlinkAncestry } from "../../src/backend/storage/configuration/credential-safe-file.js";
@@ -14,7 +13,6 @@ import { runtimeProfiles } from "../../src/models/config/define-runtime-isolatio
 import { RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
 import { notificationTitle } from "../../src/models/dashboard/projection.js";
 import { PACIFIC_TIME_ZONE, searchPartitionDay } from "../../src/models/dashboard/search-calendar.js";
-import { TimelineEventRecordSchema } from "../../src/models/events/timeline.js";
 import { SpanEventWireSchema, NoteWireSchema, type NoteWire } from "../../src/models/events/types.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../../src/models/notifications/notifications.js";
 import { RunRecordSchema, type RunLifecycle, type RunRecord } from "../../src/models/run/record.js";
@@ -250,6 +248,9 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   const current = writeNode !== undefined ? writeStep : state === "needs-duo" ? 0 : Math.max(Math.min(1, steps.length - 1),
     live?.workerId !== undefined ? Math.floor(steps.length / 2) : Number.parseInt(hash.slice(4, 8), 16) % steps.length);
   const step = steps[current];
+  // A waiting run stops at its gate: every step before it is done.
+  const timelineNodes = workflow.timeline.flatMap(category => category.nodes);
+  const stepsBeforeGate = timelineNodes.slice(0, Math.max(0, timelineNodes.findIndex(node => node.id === gate?.id))).filter(node => !spanless.has(node.id)).length;
   const claim = { workerId: seedNamespace, claimGeneration: 1 };
   const completionFields = { schemaVersion: 1, expectedVersion: 2, claim, authorizedAt: settledAt } as const;
   const failure = state !== "failed" ? undefined : FailureRecordSchema.parse({
@@ -293,7 +294,7 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
     const startedMs = Date.parse(claimed?.claimedAt ?? enqueuedAt);
     events.push({ ...common, t: "run.claimed", workerId: claimed?.workerId ?? claim.workerId, claimGeneration: 1, ts: new Date(startedMs).toISOString(), spanPath });
     // Steps before the current one finished. A held run's current step is open, a paused or parked run has not reached the next one.
-    const reached = state === "succeeded" ? steps.length : state === "paused" || state === "waiting" ? Math.max(1, current) : current + 1;
+    const reached = state === "succeeded" ? steps.length : state === "waiting" && gate !== undefined ? stepsBeforeGate : state === "paused" || state === "waiting" ? Math.max(1, current) : current + 1;
     const stepMs = (Date.parse(claimed === undefined ? settledAt : now.toISOString()) - startedMs) / reached;
     const outcome = run.lifecycle.state === "terminal" ? run.lifecycle.outcome : undefined;
     for (const [position, node] of steps.slice(0, reached).entries()) {
@@ -306,21 +307,21 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
       const taskId = runtime?.kind === "task" ? runtime.uses.id : runtime?.kind === "transaction" ? runtime.prepare.uses.id : undefined;
       const outputs = workflow.timeline.flatMap(group => (group.operatorFields ?? []).flatMap(field =>
         field.sources.filter(source => source.nodeId === node.id && source.kind === "output").map(source => ({ field, path: source.fieldPath }))));
-      if (outputs.length === 0) {
-        // No operator-visible output to observe: a plain step note keeps the timeline from being only a state card.
-        events.push(createNoteTimelineWriter({ repository: { append: input => ({ state: "inserted", record: TimelineEventRecordSchema.parse(Object.assign({ cursor: 1 }, input)) }) }, clock: capturedInstantClock(ts), pid: 1 })
-          .emitNote({ workflow: workflow.id, address: { runId, traceId, attempt: run.envelope.attempt, spanPath: task.spanPath, parentSpanPath: spanPath }, level: "step", message: node.label }));
-      } else if (taskId !== undefined) {
+      const open = (claimed !== undefined || writeNode !== undefined) && position === reached - 1;
+      // The open step has produced nothing yet.
+      if (!open && taskId !== undefined && outputs.length > 0) {
         events.push({ ...common, spanPath: task.spanPath, parentSpanPath: spanPath, ts, t: "data.observed", nodeId: NodeIdSchema.parse(node.id), taskId, observedAt: ts,
           points: outputs.map(({ field, path }) => ({ direction: "read", field: path,
             values: [{ key: path, state: "allowed", classification: "safe-diagnostic", transform: "allow", value: field.display?.cases[0]?.value ?? "Sample" }] })) });
       }
       at += stepMs;
-      const open = (claimed !== undefined || writeNode !== undefined) && position === reached - 1;
       const last = position === reached - 1 && outcome !== undefined && outcome !== "done";
       if (!open) events.push({ ...task, ...(last && failure !== undefined ? { failureId: failure.failureId } : {}), t: "span.ended",
         ts: new Date(at).toISOString(), outcome: last ? outcome : "done" });
     }
+  }
+  if (state === "waiting" && gate !== undefined && run.claimGeneration > 0) {
+    events.push({ ...common, t: "gate.opened", ts: settledAt, spanPath, gate: gate.id });
   }
   if (run.lifecycle.state === "terminal") {
     const failureRef = failure === undefined ? {} : { failureId: failure.failureId };

@@ -552,7 +552,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   });
   const findings = sections.find(section => section.section === "parked-write" && section.payload.ucpathFindings !== undefined);
   const recorded = named.length > 0 ? named : heldSteps(detail.heldBeforeStart);
-  return { steps: [...recorded, ...runDecisionStep(detail.decision, recorded.at(-1)?.time), ...cancelledEnding(detail.cancellation)], timeline,
+  return { steps: [...recorded, ...runDecisionStep(detail.decision, recorded.at(-1)?.time ?? (detail.timeline.events.length === 0 ? undefined : formatTimeWithSeconds(detail.timeline.events.reduce((latest, event) => event.at > latest ? event.at : latest, detail.timeline.events[0]?.at ?? "")))), ...cancelledEnding(detail.cancellation)], timeline,
     ...(findings?.section !== "parked-write" || findings.payload.ucpathFindings === undefined ? {} : { ucpathFindings: {
       stepId: findings.payload.writeIntentId, attemptLabel: `Attempt ${findings.payload.runAttempt}`,
       presentation: ucpathFoundPresentation(findings.payload.ucpathFindings),
