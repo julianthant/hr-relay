@@ -143,10 +143,10 @@ test("notification row: hovering shows the read toggle and moves nothing", async
 
 test("notification row: Tab reaches the visible clear control and Enter clears it through the served command", async ({ dashboard, page, seeded }) => {
   await dashboard.open();
-  const before = await unreadCount(page);
+  const unreadBefore = await unreadCount(page);
   await seeded.drive.publishNotification();
   await seeded.drive.publishNotification(true);
-  await expect.poll(() => unreadCount(page)).toBe(before + 2);
+  await expect.poll(() => unreadCount(page)).toBe(unreadBefore + 2);
   await page.getByRole("button", { name: /^Notifications, \d+ unread$/u }).click();
   const popover = page.getByRole("dialog", { name: "Notifications" });
   const rows = popover.locator(".notice-row");
