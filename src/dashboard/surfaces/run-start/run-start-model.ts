@@ -549,7 +549,7 @@ export const MISSING_REFERENCE_REASON = "Add a reference spreadsheet first.";
 export const MISSING_REFERENCE_TEXT = ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text;
 
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
-  selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,
+  selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetIds: readonly string[] }>>, submissionCount: number,
   eligibleSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[], writable: boolean,
   selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] },
   checks?: { typeId: string; picks: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[] }) {
@@ -563,18 +563,19 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
     return WorkbookActiveSelectionSchema.parse({ typeId: checks?.typeId, entry: index + 1, libraryId: entry.libraryId, versionId: pick.versionId,
       sheetId: pick.sheetId, expectedVersion: entry.version });
   });
-  return Array.from({ length: submissionCount }, (_, index) => [...requiredTypes.map(typeId => {
+  return Array.from({ length: submissionCount }, (_, index) => [...requiredTypes.flatMap(typeId => {
     const selection = selections[typeId];
     if (selection === undefined) throw new Error(ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text);
     const entry = catalog.find(entry => entry.libraryId === selection.libraryId);
     if (!entry || entry.state.removed || entry.state.origin.kind !== 'local'
       || !entry.state.versions.some(version => version.id === selection.versionId)
       || writable && entry.state.selectedVersionId !== selection.versionId
-      || !eligibleSources.some(source => source.libraryId === selection.libraryId && source.versionId === selection.versionId && source.sheetId === selection.sheetId))
+      || selection.sheetIds.length === 0 || selectedRows?.typeId === typeId && selection.sheetIds.length > 1
+      || !selection.sheetIds.every(sheetId => eligibleSources.some(source => source.libraryId === selection.libraryId && source.versionId === selection.versionId && source.sheetId === sheetId)))
       throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
-    return WorkbookActiveSelectionSchema.parse({ entry: index + 1, libraryId: entry.libraryId, versionId: selection.versionId,
-      sheetId: selection.sheetId, expectedVersion: entry.version,
-      ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) });
+    return selection.sheetIds.map(sheetId => WorkbookActiveSelectionSchema.parse({ entry: index + 1, libraryId: entry.libraryId, versionId: selection.versionId,
+      sheetId, expectedVersion: entry.version,
+      ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) }));
   }), ...checkEntries(index)]).flat();
 }
 

@@ -37,16 +37,31 @@ const ActivityLaneReplySchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("population-refused"), code: codesWith("ACTIVITY_POPULATION_") }),
 ]);
 
+const lanePopulations = new WeakMap<AuthorityDatabase, {
+  signingKey: string;
+  sourceIdentity: string;
+  clock: { nowMs: number };
+  service: LocalPopulation;
+}>();
+
 /** The report, population and Activity XLSX selection run in one lane snapshot, signed and validated with the runtime's key. */
 const activityLaneRead = defineLaneRead(import.meta.url, "activity", {
   lane: "navigation", priority: "interactive",
   args: z.strictObject({ signingKey: FingerprintSchema, request: ActivityLaneRequestSchema }),
   run({ history, nowMs, start }, { signingKey, request }): z.infer<typeof ActivityLaneReplySchema> {
-    const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity({ kind: "profile", binding: start.binding });
-    const service = createActivityPopulationService({ database: history, clock: { now: () => new Date(nowMs), nowMs: () => nowMs },
-      sourceIdentity,
-      signingKey: Buffer.from(signingKey, "hex"), ledger: createTransactionHistory(history.authority),
-      descriptors: { resolve: workflowId => SERVER_REGISTRY[workflowId]?.descriptor } });
+    let held = lanePopulations.get(history);
+    if (held?.signingKey !== signingKey) {
+      const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity({ kind: "profile", binding: start.binding });
+      const clock = { nowMs };
+      const service = createActivityPopulationService({ database: history,
+        clock: { now: () => new Date(clock.nowMs), nowMs: () => clock.nowMs }, sourceIdentity,
+        signingKey: Buffer.from(signingKey, "hex"), ledger: createTransactionHistory(history.authority),
+        descriptors: { resolve: workflowId => SERVER_REGISTRY[workflowId]?.descriptor } });
+      held = { signingKey, sourceIdentity, clock, service };
+      lanePopulations.set(history, held);
+    }
+    held.clock.nowMs = nowMs;
+    const { service, sourceIdentity } = held;
     try {
       const served = request.kind === "report" ? service.reports.read(request.from, request.to)
         : request.kind === "population" ? service.read(request.range)

@@ -11,7 +11,7 @@ const entry = WorkbookLibraryEntrySchema.parse({ libraryId: 'roster', version: 3
   type: { id: 'roster-type', name: 'Roster', keyFieldId: 'email', fields: ['email', 'fullName'], defaultWorkbookId: 'roster' },
   state: { libraryId: 'roster', revision: 4, selectedVersionId: 'current', removed: false, pinned: false, tags: [], origin: { kind: 'local' },
     versions: ['earlier', 'current'].map((id, index) => ({ id, name: id, snapshotId: id, version: index + 1, savedAt: '2026-11-01T00:00:00Z', source: 'operator' })) } });
-const selections = { 'roster-type': { libraryId: 'roster', versionId: 'current', sheetId: 'people' } };
+const selections = { 'roster-type': { libraryId: 'roster', versionId: 'current', sheetIds: ['people'] } };
 const sources = [{ libraryId: 'roster', versionId: 'current', sheetId: 'people' }];
 it('sends the exact named version, selection identity for each parsed input', () => {
   expect(launchWorkbookReferences(['roster-type'], [entry], selections, 2, sources, false)).toEqual([
@@ -42,12 +42,21 @@ it('names the missing required reference when only a check spreadsheet is picked
 it('refuses missing reference identities, unavailable named versions', () => {
   expect(() => launchWorkbookReferences(['missing'], [entry], selections, 1, sources, false)).toThrow();
   expect(() => launchWorkbookReferences(['roster-type'], [], selections, 1, sources, false)).toThrow();
-  expect(() => launchWorkbookReferences(['roster-type'], [entry], { 'roster-type': { libraryId: 'roster', versionId: 'deleted', sheetId: 'people' } }, 1, sources, false)).toThrow();
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], { 'roster-type': { libraryId: 'roster', versionId: 'deleted', sheetIds: ['people'] } }, 1, sources, false)).toThrow();
   expect(() => launchWorkbookReferences(['roster-type'], [{ ...entry, state: { ...entry.state, origin: { kind: 'unavailable', code: 'WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE' } } }], selections, 1, sources, false)).toThrow();
   expect(() => launchWorkbookReferences(['roster-type'], [entry], selections, 1, [], false)).toThrow();
 });
+it('sends one reference per chosen worksheet and refuses an unknown one or a saved row beside several', () => {
+  const several = { 'roster-type': { libraryId: 'roster', versionId: 'current', sheetIds: ['people', 'staff'] } };
+  const both = [...sources, { libraryId: 'roster', versionId: 'current', sheetId: 'staff' }];
+  expect(launchWorkbookReferences(['roster-type'], [entry], several, 1, both, false)).toEqual(['people', 'staff'].map(sheetId => (
+    { entry: 1, libraryId: 'roster', versionId: 'current', sheetId, expectedVersion: 3 })));
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], several, 1, sources, false)).toThrow();
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], several, 1, both, false, { typeId: 'roster-type', rows: [{ sheetId: 'people', rowId: 'first' }] })).toThrow();
+});
+
 it('pins an explicitly chosen historical worksheet even when its sheet ID differs from current', () => {
-  const historical = { 'roster-type': { libraryId: 'roster', versionId: 'earlier', sheetId: 'former-people' } };
+  const historical = { 'roster-type': { libraryId: 'roster', versionId: 'earlier', sheetIds: ['former-people'] } };
   const compatible = [{ libraryId: 'roster', versionId: 'earlier', sheetId: 'former-people' }];
   expect(launchWorkbookReferences(['roster-type'], [entry], historical, 1, compatible, false)).toEqual([
     { entry: 1, libraryId: 'roster', versionId: 'earlier', sheetId: 'former-people', expectedVersion: 3 },

@@ -16,8 +16,8 @@ async function openFound(sheet: { versions: typeof versions; worksheets: string[
   const root = createRoot(host);
   await act(async () => {
     root.render(createElement(RunSpreadsheets, { busy: false, catalogError: null, onRefresh: () => undefined, reference: {
-      requiredLabel: "Email", sheets: [{ libraryId: "roster", name: "Roster", currentVersionId: "current", ...sheet }], chosenSheetId: "",
-      worksheets: [], worksheetsState: "ready", worksheetsError: null, onPick, onVersion: () => undefined, onWorksheet: () => undefined, onRemove: () => undefined } }));
+      requiredLabel: "Email", sheets: [{ libraryId: "roster", name: "Roster", currentVersionId: "current", ...sheet }], chosenSheetIds: [], several: false,
+      worksheets: [], worksheetsState: "ready", worksheetsError: null, onPick, onVersion: () => undefined, onWorksheets: () => undefined, onRemove: () => undefined } }));
   });
   const trigger = [...host.querySelectorAll("button")].find(button => button.textContent?.includes("Add spreadsheet"));
   assert.ok(trigger);
