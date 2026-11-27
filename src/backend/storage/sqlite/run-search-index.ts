@@ -567,7 +567,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
         return [`WHEN ${condition} THEN ${String(rank)}`];
       });
       const rank = q.length === 0 ? "0" : `CASE ${rankClauses.join(" ")} ELSE NULL END`;
-      const bindings = [...rankParameters, ...searchParameters, ...parameters];
+      const bindings = [...(q.length === 0 ? [] : rankParameters), ...searchParameters, ...parameters];
       const matched = `WITH ranked AS (SELECT id,payload_json,subject,actor,enqueued_ms,${rank} AS match_rank FROM (${searchRows}) s WHERE ${where})`;
       const after = request.after;
       const afterSql = after === undefined ? "" : "AND (match_rank>? OR (match_rank=? AND enqueued_ms<?) OR (match_rank=? AND enqueued_ms=? AND id>?))";
