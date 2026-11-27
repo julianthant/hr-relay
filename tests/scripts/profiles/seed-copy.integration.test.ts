@@ -29,7 +29,7 @@ import { createSessionPreviewPort } from "../../../src/dashboard/surfaces/sessio
 import { sessionWorkerAuthorityKey, sessionsFromDay } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { descriptorRuntimeNodes, workflowProjections } from "../../../src/workflow-kit/workflow.js";
+import { workflowProjections } from "../../../src/workflow-kit/workflow.js";
 import workflowSources from "../../../config/dashboard-workflow-sources.json" with { type: "json" };
 import { runtimeProfiles } from "../../../src/models/config/define-runtime-isolation.js";
 import { searchPartitionDay } from "../../../src/models/dashboard/search-calendar.js";
