@@ -14,7 +14,7 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../.
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { preRunsNotificationsSettingsRow, restorePreAssistantFullAccessSettingsRows, restorePreRunsNotificationsSettingsRows } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
-import { restoreSchema32CommandRows } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema32CommandRows, restoreSchema45RunSearch } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
@@ -54,6 +54,7 @@ it("upgrades schema 44, leaves Full access off, and persists an explicit opt-in 
   world.databases.splice(world.databases.indexOf(f.database), 1)[0]?.close();
   {
     using raw = new DatabaseSync(f.path);
+    restoreSchema45RunSearch(raw);
     restorePreAssistantFullAccessSettingsRows(raw);
     raw.exec("UPDATE database_states SET schema_version=44; PRAGMA user_version=44");
     const prior = snapshots(raw), priorTriggers = triggers(raw);
