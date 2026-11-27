@@ -498,8 +498,10 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     // A form action, or a step whose form types nothing, was done outside Relay; a read or gate turned off was replaced by typed values.
     const byHand = typed?.doneByHand?.some(nodeId => nodeId === requireNative(event.native).nodeId) === true;
     const why = reason === "step-omitted" && typedFields > 0 && !byHand ? "operator-asserted" : reason;
+    const recorded = event.state === "done" || event.state === "active" || event.state === "failed" ? event.state : undefined;
     steps.push({ id: event.noteId, time, title: plainStepLabel(event.label), entries: [{ kind: "note", id: event.noteId, time,
-      message: replacedReading ? REPLACED_READING : event.state === "done" || event.state === "active" ? `${plainStepLabel(event.label)} · ${state}` : reasoned(state, why) }] });
+      message: replacedReading ? REPLACED_READING : recorded !== undefined ? `${plainStepLabel(event.label)} · ${state}` : reasoned(state, why),
+      ...(recorded === undefined ? {} : { state: recorded }), ...(recorded === "failed" ? { tone: "danger" as const } : {}) }] });
   }
   if (new Set(steps.map(step => step.id)).size !== steps.length) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_DUPLICATE");
   const orderOf = (id: string): number => {
@@ -551,7 +553,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   });
   const findings = sections.find(section => section.section === "parked-write" && section.payload.ucpathFindings !== undefined);
   const recorded = named.length > 0 ? named : heldSteps(detail.heldBeforeStart);
-  return { steps: [...recorded, ...runDecisionStep(detail.decision, lastRecordedTime(recorded) ?? (detail.timeline.events.length === 0 ? undefined : formatTimeWithSeconds(detail.timeline.events.reduce((latest, event) => event.at > latest ? event.at : latest, detail.timeline.events[0]?.at ?? "")))), ...cancelledEnding(detail.cancellation)], timeline,
+  return { steps: [...recorded, ...runDecisionStep(detail.decision, detail.decision?.type === "paused" && detail.pausedAt !== undefined ? formatTimeWithSeconds(detail.pausedAt) : lastRecordedTime(recorded) ?? (detail.timeline.events.length === 0 ? undefined : formatTimeWithSeconds(detail.timeline.events.reduce((latest, event) => event.at > latest ? event.at : latest, detail.timeline.events[0]?.at ?? "")))), ...cancelledEnding(detail.cancellation)], timeline,
     ...(findings?.section !== "parked-write" || findings.payload.ucpathFindings === undefined ? {} : { ucpathFindings: {
       stepId: findings.payload.writeIntentId, attemptLabel: `Attempt ${findings.payload.runAttempt}`,
       presentation: ucpathFoundPresentation(findings.payload.ucpathFindings),
