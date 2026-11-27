@@ -1421,8 +1421,8 @@ body[data-demo-theme="light"] {
 [data-demo-theme="dark"] 
 .ds-search-field { --field-border: color-mix(in srgb, var(--ds-fg) 23%, var(--ui-canvas)); }
 /* `field`: the 8px bordered 28px field inside a page or menu, a 14px magnifier, 13px text. `sidebar` (below) is the filled pill above a list. */
-.ds-search-field [data-slot="search-field-group"] { width: 100%; height: var(--ds-h-md); min-height: var(--ds-h-md); max-height: var(--ds-h-md); box-sizing: border-box; gap: 8px; padding-inline: 12px 4px; border-radius: 9999px; background: var(--field); color: var(--field-foreground); }
-.ds-search-field [data-slot="search-field-search-icon"] { width: 14px; height: 14px; flex-shrink: 0; color: var(--field-placeholder); }
+.ds-search-field [data-slot="search-field-group"] { width: 100%; height: 32px; min-height: 32px; max-height: 32px; box-sizing: border-box; gap: 8px; padding-inline: 12px 6px; border-radius: 9999px; border: 1px solid var(--field-border); background: var(--field); color: var(--field-foreground); }
+.ds-search-field [data-slot="search-field-search-icon"] { width: 14px; height: 14px; margin: 0; flex-shrink: 0; color: var(--field-placeholder); }
 .ds-search-field [data-slot="search-field-input"] { min-width: 0; width: 100%; height: 100%; padding-block: 0; padding-inline: 0; background: transparent; font-size: 13px; font-weight: 400; line-height: 18px; }
 .ds-search-field [data-slot="search-field-input"]::placeholder { color: var(--field-placeholder); opacity: 1; }
 /* A menu's flat search row (search palette look): 36px, a 16px magnifier, 13px text, a hairline under it, no field fill or focus edge. */

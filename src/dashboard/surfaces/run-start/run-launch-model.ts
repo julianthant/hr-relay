@@ -150,13 +150,13 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
     if (plan.planned.some((planned, index) => {
       const selections = (request.workbookReferences ?? []).filter(selection => selection.entry === acceptedEntries[index]);
       const references = planned.workbookReferences ?? [];
-      const sourceIdentity = (libraryId: string, versionId: string, sheetId: string) => JSON.stringify([libraryId, versionId, sheetId]);
-      return new Set(selections.map(selection => sourceIdentity(selection.libraryId, selection.versionId, selection.sheetId))).size !== selections.length
-        || references.length !== selections.length
+      return references.length !== selections.length
+        || new Set(references.map(reference => JSON.stringify([reference.libraryId, reference.versionId, reference.worksheets[0]?.sheetId]))).size !== references.length
         || references.some((reference, referenceIndex) => {
           const selection = selections[referenceIndex];
           return selection === undefined || selection.libraryId !== reference.libraryId
-            || selection.versionId !== reference.versionId
+            || reference.versionId === undefined || reference.versionName === undefined
+            || selection.versionId !== undefined && selection.versionId !== reference.versionId
             || selection.expectedVersion !== reference.version
             || reference.worksheets.length !== 1 || reference.worksheets[0]?.sheetId !== selection.sheetId
             || canonicalJsonStringify(selection.selectedRow ?? null) !== canonicalJsonStringify(reference.selectedRow ?? null);
