@@ -586,7 +586,7 @@ test("Onboarding: a failed first read shows Failed on the row and writes nothing
   expect(seeded.scripted.writes()).toHaveLength(0);
 });
 
-test("Onboarding: a hire submit whose answer is lost parks the run and is asked for once", async ({ dashboard, seeded, page, failures }) => {
+for (const repeat of ["", " (probe 2)", " (probe 3)"]) test(`Onboarding: a hire submit whose answer is lost parks the run and is asked for once${repeat}`, async ({ dashboard, seeded, page, failures }) => {
   const { request, runId } = await onboardingStarted({ dashboard, seeded, page, failures });
   const first = await seeded.scripted.drive(runId);
   let position = first.position;
