@@ -101,7 +101,7 @@ it("shows a refused sample Pause as one toast and leaves the bell count alone", 
     const bell = document.querySelector('button[aria-label^="Notifications,"]');
     assert.ok(bell);
     const previousCount = bell.getAttribute("aria-label");
-    await act(async () => f.button("Pause after this step").click());
+    await act(async () => f.button("Pause").click());
     const request = f.sent[0];
     assert.ok(request.family === "run" && request.type === "pause" && !("targets" in request));
     assert.equal(request.target.runId, world.row.runId);
@@ -110,7 +110,7 @@ it("shows a refused sample Pause as one toast and leaves the bell count alone", 
       state: "rejected", commandId: request.commandId, code: "SAMPLE_RUN_REFUSED", message,
     })));
     assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent), [message]);
-    assert.doesNotMatch(f.host.textContent ?? "", /Pause after this step: rejected/u);
+    assert.doesNotMatch(f.host.textContent ?? "", /Pause: rejected/u);
     assert.equal(bell.getAttribute("aria-label"), previousCount);
   } finally { await f.close(); }
 });
