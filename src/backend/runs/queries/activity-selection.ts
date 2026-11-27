@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { ActivityReportWireSchema, type ActivityReportWire } from "../../../models/dashboard/activity.js";
+import type { ActivityReportWire } from "../../../models/dashboard/activity.js";
 import { ActivityReportSelectionSchema, ActivitySnapshotIdentitySchema, type ActivityReportSelection } from "../../../models/dashboard/activity-selection.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
@@ -52,7 +52,7 @@ export function createActivitySelectionService<ReadContext = never>(input: {
     const authorityGeneration=database.getMeta().authorityGeneration,sourceIdentity=input.sourceIdentity??database.getSourceDatabaseIdentity();
     if(selected!==undefined&&(selected.from!==from||selected.to!==to||selected.sourceIdentity!==sourceIdentity||selected.authorityGeneration!==authorityGeneration))throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH");
     const generatedAt=selected?.generatedAt??clock.now().toISOString();
-    const report=ActivityReportWireSchema.parse(input.read(from,to,generatedAt,context));
+    const report=input.read(from,to,generatedAt,context);
     const identity=ActivitySnapshotIdentitySchema.parse({from,to,generatedAt,sourceIdentity,authorityGeneration,
       expiresAt:selected?.expiresAt??new Date(clock.nowMs()+15*60_000).toISOString(),reportDigest:sha256Hex(canonicalJsonStringify(report))});
     if(selected!==undefined&&identity.reportDigest!==selected.reportDigest)throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_CONTENT_MISMATCH");

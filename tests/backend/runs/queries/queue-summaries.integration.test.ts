@@ -1,4 +1,10 @@
-import { afterAll, it, describe } from "vitest";
+import { afterAll, it, describe, vi } from "vitest";
+import { Hono } from "hono";
+import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
+import * as delegationAuthority from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import { registerActivityRoutes } from "../../../../src/backend/transports/http/routes/activity.js";
+import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
+import { ActivityPopulationSelectionSchema } from "../../../../src/models/dashboard/activity-population.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -334,9 +340,23 @@ it("maintains parent rollups and dependencies while batch grouping stays a bound
     assert.equal(query().items.length, 1); assert.equal(query().items[0].session?.groupInQueue, false);
     database.authority.runSessions.setGrouping(batch.sessionId, batch.version, true);
     assert.equal(query().items[0].session?.groupInQueue, true);
-    const report = queryActivitySummaries(database, { from: clock.todayLocal(), to: clock.todayLocal(), generatedAt: clock.now().toISOString() },
-      { descriptors: { resolve: () => undefined }, ledger: { foldActivityRange: () => ({ systems: [] }) } });
-    assert.equal(report.totalRuns, 1); assert.equal(report.terminalRuns, 0);
+    const app: DashboardApp = new Hono();
+    registerActivityRoutes(app, composeActivity({ database, clock, descriptors: { resolve: () => undefined },
+      ledger: createTransactionHistory(database.authority) }));
+    const to = clock.todayLocal();
+    const start = new Date(`${to}T00:00:00Z`);
+    start.setUTCDate(start.getUTCDate() - 29);
+    const from = start.toISOString().slice(0, 10);
+    const authenticate = vi.spyOn(delegationAuthority, "authenticateDelegationGroup");
+    try {
+      const response = await app.request(`/api/v1/reports/activity/population?from=${from}&to=${to}`);
+      assert.equal(response.status, 200);
+      const { report, population } = ActivityPopulationSelectionSchema.parse(await response.json());
+      assert.equal(report.totalRuns, 1);
+      assert.equal(report.terminalRuns, 0);
+      assert.deepEqual(population.map(run => run.runId), [parent.envelope.runId]);
+      assert.equal(authenticate.mock.calls.length, 1);
+    } finally { authenticate.mockRestore(); }
   } finally { await world.cleanup(); }
 });
 
