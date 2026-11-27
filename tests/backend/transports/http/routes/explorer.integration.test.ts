@@ -238,7 +238,7 @@ it("lists main workflows in the picker and serves delegated workflows on the ste
       settingsSchemaHash: descriptorSetHash(["settings-schema"]), projection: world.projection, actorLabel: () => "Fixture Operator",
       authorityMeta: () => world.database.getMeta(), preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       workbookCompatibility: modules => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, modules) });
-    const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows), boot.workbookCompatibility));
+    const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows)));
     assert.deepEqual(explorerPickerEntries(catalog), [
       { id: "person-lookup", title: "Person Lookup", depth: 0 },
       { id: "separations", title: "Separations", depth: 0 },

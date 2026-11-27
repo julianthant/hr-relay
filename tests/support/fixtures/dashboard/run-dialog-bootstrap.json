@@ -138,10 +138,6 @@
    }
   }
  ],
- "workbookCompatibility": {
-  "workflows": [],
-  "libraries": []
- },
  "systemInstances": [
   {
    "system": "ucpath",

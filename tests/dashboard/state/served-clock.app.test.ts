@@ -64,7 +64,7 @@ it("ten ticks re-render no part of a collapsed Sessions panel", async () => {
   const scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
   const binding = { client, executor: new CommandExecutor(() => scope), scope, day: FIXTURE_DAY_WIRE.day, now: () => FIXTURE_NOW,
     dayState: { rows: createRowStore(), subscribePublications: () => () => {}, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh() {} } };
-  const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
+  const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows));
   const catalog = buildWorkflowCatalog(served, servedFixtureSources(served));
   const clock = createServedClock(FIXTURE_NOW);
   let commits = 0;
@@ -109,7 +109,7 @@ it("ten ticks re-render neither an open Sessions panel nor its worker cards, whi
   fakeClock();
   const client = createDashboardClient({ baseUrl: "http://sessions.test", fetchImpl: async () => { throw new Error("no request is expected"); } });
   const scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
-  const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
+  const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows));
   const catalog = buildWorkflowCatalog(served, servedFixtureSources(served));
   const clock = createServedClock(FIXTURE_NOW);
   const host = document.body.appendChild(document.createElement("div"));

@@ -544,7 +544,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     assert_m1.equal(reads, failedReads, "mock Logs ask for no panel");
     assert_m1.match(document.body.textContent ?? "", /Is this the right person\?/);
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Logs unavailable|cross-source chronology unavailable/);
-    const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows), FIXTURE_BOOTSTRAP_m1.workbookCompatibility)[0];
+    const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows))[0];
     assert_m1.ok(workflow);
     const composition = MOCK_WORKFLOW_COMPOSITION_m1([{ ...workflow, workflowId: "generic-served-workflow" }]);
     assert_m1.equal(composition.sources["person-lookup"], "hidden");

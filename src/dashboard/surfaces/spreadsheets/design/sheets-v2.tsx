@@ -87,7 +87,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     if (outcome.state === 'added') {
       const created = outcome.libraryId;
       if (tags.length && created) {
-        await adapter.refreshCatalog();
+        await adapter.loadCatalog();
         const entry = adapter.snapshot().catalog.find(item => item.libraryId === created);
         if (!entry || !await settled(adapter.changeLibrary(entry, { kind: 'set-tags', tags: [...tags] }))) toast({ tone: 'danger', title: `Added ${outcome.name} without its tags`, description: 'Choose Edit tags on it to add them.' });
       }

@@ -247,6 +247,10 @@ describe('named library actions', () => {
     client.workbookTypes.mockResolvedValue([file.type]);
     assert.equal((await adapter.saveType(file.type)).state, 'confirmed');
     assert.equal(adapter.snapshot().typesError, '');
+    await adapter.loadCatalog();
+    assert.equal(client.workbookCatalog.mock.calls.length, 2);
+    assert.equal(client.workbookCompatibility.mock.calls.length, 2);
+    assert.equal(client.workbookTypes.mock.calls.length, 2);
   });
   const entry = () => WorkbookLibraryEntrySchema.parse({ libraryId: 'saved', version: 3, name: 'Roster.xlsx', updatedAt: '2026-11-01T00:00:00Z', rowCount: 0,
     worksheets: [{ id: 'sheet', name: 'People' }], metadata: { typeId: 'roster', sharePoint: null },

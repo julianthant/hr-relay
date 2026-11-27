@@ -123,7 +123,7 @@ function children(h: Harness, run: RunRecord) {
 /** The Run dialog's workflow as the bootstrap serves this descriptor's steps and rows. */
 function startWorkflow(descriptor: AnyWorkflowDescriptor): RunStartWorkflow {
   return { workflowId: descriptor.id, version: descriptor.version, label: descriptor.label, categoryId: descriptor.category, role: { kind: "standalone" },
-    icon: descriptor.icon, enqueue: descriptor.enqueue, spreadsheetIntake: false, requiredWorkbookFields: [], referenceSources: [],
+    icon: descriptor.icon, enqueue: descriptor.enqueue, spreadsheetIntake: false, requiredWorkbookFields: [],
     inputRun: { state: "absent", reason: "upload" }, steps: projectWorkflowStartSteps(descriptor), rows: projectStartRows(descriptor).map(startRowWire) };
 }
 /** What Rerun opens switched on: the parent's selected steps, and the child rows it switched off. */
