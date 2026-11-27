@@ -27,12 +27,12 @@ const IDLE_SAVE: SettingsSaveState = Object.freeze({ state: "idle" });
 const noRows = (): (() => void) => () => undefined;
 
 /** One ordinary atomic draft, independent protected draft, no browser-persisted values or attempts. */
-export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; view?: string; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener }>) {
+export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener }>) {
   const client = useSettingsClient();
   const binding = useDashboardCommandBinding();
   const generation = useRef<object>({});
-  // Each section visit is its own read: leaving one retires its read, and only the visit that started a read may accept it.
-  const request = useMemo(() => ({ client, scope: binding?.scope, actorId: input.actorId, descriptorFingerprint: input.descriptorFingerprint, view: input.view }), [client, binding?.scope, input.actorId, input.descriptorFingerprint, input.view]);
+  // One Settings visit is one read: switching sections reuses it, and leaving Settings retires it.
+  const request = useMemo(() => ({ client, scope: binding?.scope, actorId: input.actorId, descriptorFingerprint: input.descriptorFingerprint }), [client, binding?.scope, input.actorId, input.descriptorFingerprint]);
   const acceptedRequest = useRef<typeof request | undefined>(undefined);
   generation.current = request;
   const currentRequest = useRef(request);

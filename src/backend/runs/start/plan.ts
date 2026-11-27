@@ -223,21 +223,27 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       || lookups.some(lookup => lookup.typeId !== requirement?.id)) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); return;
     }
-    const sourceIdentity = (selection: typeof references[number]) => JSON.stringify([selection.libraryId, selection.versionId, selection.sheetId]);
     if (requirement !== undefined && requiredPicks.length === 0) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text); return;
     }
     if ((requirement === undefined ? requiredPicks.length !== 0 : requiredPicks.length > MAX_SELECTED_WORKBOOK_SOURCES)
       || requiredPicks.some(selection => selection.typeId !== undefined && selection.typeId !== requirement?.id)
-      || checkPicks.some(selection => selection.selectedRow !== undefined)
-      || new Set(references.map(sourceIdentity)).size !== references.length) {
+      || checkPicks.some(selection => selection.selectedRow !== undefined)) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); return;
     }
     let workbookReferences: SchemaBoundCanonicalValue[] | undefined, checkReferences: SchemaBoundCanonicalValue[] = [];
     if (references.length > 0) {
       if (captureReference === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); return; }
       try {
-        workbookReferences = requiredPicks.map(({ entry: _entry, typeId: _typeId, ...selection }) => {
+        const capturedSources = new Set<string>();
+        const capture = (sheetId: string, request: unknown) => {
+          const snapshot = captureReference(request);
+          const identity = JSON.stringify([snapshot.libraryId, snapshot.versionId, sheetId]);
+          if (capturedSources.has(identity)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          capturedSources.add(identity);
+          return snapshot;
+        };
+        workbookReferences = requiredPicks.map(selection => {
           const lookup = lookups[0];
           if (lookup === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           if (selection.selectedRow !== undefined) {
@@ -248,26 +254,25 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
               || "mode" in lookup || inputKey === undefined || !lookup.keys.includes(inputKey)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           }
           if (requirement === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-          const reference = { ...lookup, libraryId: selection.libraryId, versionId: selection.versionId,
-            ...(selection.selectedRow === undefined ? {} : { selectedRow: selection.selectedRow }),
-            ...("mode" in lookup ? { expectedVersion: selection.expectedVersion } : {}) };
-          const snapshot = captureReference({ kind: "selected-source", typeId: requirement.id,
+          const snapshot = capture(selection.sheetId, { kind: "selected-source", typeId: requirement.id,
             keyFieldId: requirement.keyFieldId, fields: planning.requiredWorkbookFields,
             writableFields: requirement.writableFields,
             mode: requirement.mode, keys: "mode" in lookup ? [] : lookup.keys,
             libraryId: selection.libraryId, versionId: selection.versionId, sheetId: selection.sheetId,
             expectedVersion: selection.expectedVersion,
             ...(selection.selectedRow === undefined ? {} : { selectedRow: selection.selectedRow }) });
-          return bindRunWorkbookReference(reference, snapshot);
+          return bindRunWorkbookReference({ ...lookup, libraryId: selection.libraryId, versionId: snapshot.versionId,
+            ...(selection.selectedRow === undefined ? {} : { selectedRow: selection.selectedRow }),
+            ...("mode" in lookup ? { expectedVersion: selection.expectedVersion } : {}) }, snapshot);
         });
         if (workbookReferences.length === 0) workbookReferences = undefined;
         checkReferences = checkPicks.map(selection => {
           if (check === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           const fields = [check.keyFieldId];
-          const snapshot = captureReference({ kind: "selected-source", typeId: check.id, keyFieldId: check.keyFieldId, fields,
+          const snapshot = capture(selection.sheetId, { kind: "selected-source", typeId: check.id, keyFieldId: check.keyFieldId, fields,
             writableFields: [], mode: "keys", keys: [], libraryId: selection.libraryId, versionId: selection.versionId,
             sheetId: selection.sheetId, expectedVersion: selection.expectedVersion });
-          return bindRunWorkbookReference({ typeId: check.id, keys: [], fields, libraryId: selection.libraryId, versionId: selection.versionId }, snapshot);
+          return bindRunWorkbookReference({ typeId: check.id, keys: [], fields, libraryId: selection.libraryId, versionId: snapshot.versionId }, snapshot);
         });
       } catch (error) {
         if (!(error instanceof WorkbookLibraryError)) throw error;

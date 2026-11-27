@@ -33,8 +33,8 @@ for (const rerun of [false, true]) {
       return plan;
     } };
     const replaceBinding = await mount(h, rerun ? await h.completeSource() : undefined, expiring);
-    if (rerun) { await press("Continue"); }
-    else { const box = document.querySelector("textarea"); assert.ok(box); await fill(box, "10812345"); await press("Continue"); }
+    if (rerun) { await press("Next"); }
+    else { const box = document.querySelector("textarea"); assert.ok(box); await fill(box, "10812345"); await press("Next"); }
     if (rerun) await reachChecks(start);
     else await act(async () => checkbox("Dry run").click());
     return replaceBinding;
@@ -103,7 +103,7 @@ for (const rerun of [false, true]) {
     } });
     await act(async () => { button(firstStart).click(); button(firstStart).click(); });
     assert.equal(previews, 2 + warned); assert.equal(h.finalCommands.length, 1);
-    assert.equal(button("Back").disabled, true, "the draft cannot move under the re-preview");
+    assert.equal(button(rerun ? "1 Steps" : "1 Input").disabled, true, "the draft cannot move under the re-preview");
     await act(async () => gate.resolve());
     assert.equal(text().includes("Run not started"), false);
     assert.equal(h.finalCommands.length, 1);
@@ -118,7 +118,7 @@ for (const rerun of [false, true]) {
     const replaceBinding = await review(h, client);
     await act(async () => button(firstStart).click());
     if (replacement === "scope") await replaceBinding(client, { requestKey: 1 });
-    else await press("Cancel");
+    else await press("Close");
     await act(async () => gate.resolve());
     assert.equal(text().includes("This plan expired, so it was checked again."), false);
     assert.equal(text().includes("Run not started"), false);

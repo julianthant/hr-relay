@@ -137,7 +137,7 @@ export function runStartGates(
   { requiredTypes }: ReturnType<typeof useRunStartSpreadsheets>,
   { rowCapability }: ReturnType<typeof useRunStartWorkbookRows>,
   { spreadsheetGone, spreadsheetsError, spreadsheetsReading, referencesUnavailable }: ReturnType<typeof runStartSpreadsheetReadiness>,
-  { workflowId, inputRun, pdfSurface, pdfInput, preview, declaredInput, openRows, customizeSteps, stepOmissions,
+  { workflowId, inputRun, pdfSurface, pdfInput, preview, declaredInput, openRows, customizeSteps, stepOmissions, handOffReason,
     plan, snapshot, supportsDryRun, dryRun, checks, launchStages, currentStage }: {
     workflowId: string;
     inputRun: RunStartWorkflow["inputRun"];
@@ -148,6 +148,7 @@ export function runStartGates(
     openRows: readonly OpenStepRow[];
     customizeSteps: boolean;
     stepOmissions: ReturnType<typeof stepEntries>;
+    handOffReason: string | null;
     plan: StartPlanResponse | null;
     snapshot: RerunValuesSnapshot | null;
     supportsDryRun: boolean;
@@ -178,7 +179,7 @@ export function runStartGates(
   const multiSubject = subjectCount > 1;
   const multiSubjectOmissionReason = `Typed values fit one person; ${String(subjectCount)} are entered.`;
   /** The first thing wrong on the Steps stage: more than one person entered with typed values, else the first missing or invalid field. */
-  const stepsFailure = !customizeSteps ? null : multiSubject && openRows.length > 0
+  const stepsFailure = !customizeSteps ? null : handOffReason !== null ? { text: handOffReason, rowKey: "", fieldKey: "" } : multiSubject && openRows.some(({ form }) => form.fields.length > 0)
     ? { text: multiSubjectOmissionReason, rowKey: "", fieldKey: "" } : firstStepsFailure(openRows);
   const stepsBlockedReason = stepsFailure?.text ?? null;
   /** A plan retaining different omissions describes another run; refuse its token. */

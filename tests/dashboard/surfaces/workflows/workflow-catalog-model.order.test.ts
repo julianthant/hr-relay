@@ -18,7 +18,7 @@ const LISTED_ORDER = [
   "emergency-contact",
 ] as const;
 
-const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
+const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows));
 const catalog = buildWorkflowCatalog(served, WORKFLOW_SOURCES);
 const flat = <T extends { entry: { id: string }; members: readonly { entry: { id: string } }[] }>(groups: readonly { entries: readonly T[] }[]) =>
   groups.flatMap(group => group.entries.flatMap(node => [node.entry.id, ...node.members.map(member => member.entry.id)]));

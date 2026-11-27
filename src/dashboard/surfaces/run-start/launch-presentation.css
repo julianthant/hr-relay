@@ -32,7 +32,7 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start borde
 /* A refusal line beside the buttons leaves the summary little room: it takes a second line instead of being cut. */
 .launch-dialog > footer > span:first-child { @apply whitespace-normal; }
 .launch-dialog > footer > span:first-child,
-.launch-dialog > footer > span:first-child span { @apply font-ui text-[12px] leading-4 text-ui-muted; }
+.launch-dialog > footer > span:first-child span:not(.text-ui-danger) { @apply font-ui text-[12px] leading-4 text-ui-muted; }
 
 /* The stage buttons' own 8px inset lands their markers on the content's 20px edge. */
 .launch-design .launch-stagebar {
@@ -54,7 +54,7 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start borde
 .launch-dialog .launch-section { @apply flex min-w-0 flex-col gap-3; }
 .launch-dialog .launch-section-head { @apply flex flex-col gap-0.5; }
 .launch-dialog .launch-section-head > div { @apply flex items-baseline justify-between gap-3; }
-.launch-dialog .launch-section-head :is(h3, h4) { @apply m-0 text-[length:var(--ds-row-heading)] font-normal leading-[var(--ds-row-heading-lh)] text-ui-primary; }
+.launch-dialog .launch-section-head :is(h3, h4) { @apply m-0 text-[14px] font-medium leading-5 text-ui-primary; }
 .launch-dialog .launch-section-head > div > span { @apply text-[13px] text-ui-muted; }
 .launch-dialog .launch-section-head > p { @apply m-0 text-[13px] leading-4 text-ui-secondary; }
 .launch-dialog .launch-content > section { @apply gap-1; }
@@ -91,5 +91,4 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start borde
 
 .required-capture-row { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-loose); padding: var(--ds-space-cozy) var(--ds-space-loose); }
 
-.launch-hint { @apply text-[13px] text-ui-secondary; }
 .launch-dialog section[aria-label="Repeat transaction warning"] > :first-child { border-radius: var(--ds-row-radius); }

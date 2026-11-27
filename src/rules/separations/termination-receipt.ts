@@ -132,7 +132,7 @@ export function assertTerminationReceipt(input: Readonly<{
   approvalStatus: string;
   approvedEmplId: string;
   approvedName: string;
-  expectedEffectiveDate: string;
+  effectiveDate: string;
 }>): TerminationReceipt {
   const fields = receiptFields(input.transactionNumber, input.approvalStatus);
   if (fields.state === "refused") {
@@ -141,7 +141,7 @@ export function assertTerminationReceipt(input: Readonly<{
   return TerminationReceiptSchema.parse({
     transactionNumber: fields.transactionNumber,
     approvalStatus: fields.approvalStatus,
-    effectiveDate: input.expectedEffectiveDate,
+    effectiveDate: input.effectiveDate,
     emplId: input.approvedEmplId,
     displayedName: input.approvedName,
     disposition: "operator-asserted",

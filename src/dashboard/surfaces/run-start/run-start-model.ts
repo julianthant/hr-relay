@@ -253,15 +253,9 @@ export function inputRunFieldLabel(parser: InputParserSpec): string {
   return noun === "Kuali document numbers" ? "Kuali ID" : noun.charAt(0).toUpperCase() + noun.slice(1);
 }
 
-/** Name-tuple entries end at the declared delimiter or a new line, as the hint says. */
+/** Name-tuple entries end at the declared delimiter or a new line. */
 function splitTupleEntries(text: string, delimiter: string): string[] {
   return text.split(delimiter).flatMap(part => part.split("\n"));
-}
-
-export function inputRunDelimiterHint(parser: InputParserSpec): string {
-  if (parser.split.kind === "whole-text") return "Enter one value.";
-  const delimiters = parser.split.delimiters.map(delimiter => delimiter === "\n" ? "a new line" : delimiter === ";" ? "a semicolon" : delimiter === "," ? "a comma" : JSON.stringify(delimiter));
-  return `Separate values with ${delimiters.join(" or ")}.`;
 }
 
 /** State this dialog’s missing input surface, not an unsupported claim that all start routes refuse. */
@@ -479,8 +473,29 @@ export function omittedStepViews<T extends StepOmissionStepView>(
   return steps.filter((step) => step.control.state === "omittable" && !selectedStepKeys.includes(step.key));
 }
 
-/** Lock exactly the omissions forced by the descriptor’s fixpoint, never another client rule. */
+/** A step whose omission types nothing: switching it off says it was done by hand. */
+function doneByHand(step: StepOmissionStepView | undefined): boolean {
+  return step?.control.state === "omittable" && step.control.form.fields.length === 0;
+}
+
+/** Lock exactly the omissions forced by the descriptor’s fixpoint, never another client rule; a step done by hand is never forced. */
 export function forcedStepOmissions(
+  steps: readonly StepOmissionStepView[],
+  selectedStepKeys: readonly string[],
+): ReadonlyMap<string, readonly string[]> {
+  return new Map([...cascadeTargets(steps, selectedStepKeys)].filter(([key]) => !doneByHand(steps.find((step) => step.key === key))));
+}
+
+/** Included steps done by hand that an omission reaches: the operator turns each off, or Start stays off. */
+export function handOffStepOmissions(
+  steps: readonly StepOmissionStepView[],
+  selectedStepKeys: readonly string[],
+): ReadonlyMap<string, readonly string[]> {
+  return new Map([...cascadeTargets(steps, selectedStepKeys)]
+    .filter(([key]) => selectedStepKeys.includes(key) && doneByHand(steps.find((step) => step.key === key))));
+}
+
+function cascadeTargets(
   steps: readonly StepOmissionStepView[],
   selectedStepKeys: readonly string[],
 ): ReadonlyMap<string, readonly string[]> {
@@ -517,7 +532,8 @@ export function toggleStepSelection(
     selected.add(key);
     // Only the step this press let back in is offered a return; whether it
     // GETS one is the cascade's answer, below.
-    for (const forced of forces) selected.add(forced);
+    // A form action done by hand keeps the operator's own choice.
+    for (const forced of forces) if (!doneByHand(steps.find((candidate) => candidate.key === forced))) selected.add(forced);
   } else {
     selected.delete(key);
   }

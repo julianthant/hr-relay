@@ -86,7 +86,7 @@ type Opened = Awaited<ReturnType<typeof openFilled>>;
 async function settleAll() { for (let wait = 0; wait < 6; wait += 1) await h.settle(); }
 async function settleLong() { for (let wait = 0; wait < 6; wait += 1) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); }); }
 async function toStart(dialog: Opened, kind: Case) {
-  await dialog.press("Continue");
+  await dialog.press("Next");
   assert.equal(dialog.stage(), "Start");
   if (kind === "pdf") {
     const form = document.querySelector<HTMLInputElement>('input[type="radio"][value="w4"]'); assert.ok(form, "the Form choice");
@@ -100,13 +100,13 @@ const customizes = (kind: Case) => kind === "typed" || kind === "failed spreadsh
 const lastStage = (kind: Case) => customizes(kind) ? "Steps" : "Start";
 async function toLast(dialog: Opened, kind: Case) {
   if (!customizes(kind)) return;
-  await dialog.press("Continue");
+  await dialog.press("Next");
   assert.equal(dialog.stage(), "Steps");
   await settleAll();
 }
 const startLabel = (kind: Case) => kind === "spreadsheet" ? "Start run" : "Start live run";
 
-const PRIMARY = /^(Continue|Start (live |dry )?run( again)?)$/u;
+const PRIMARY = /^(Next|Start (live |dry )?run( again)?)$/u;
 const FOCUSABLE = 'a[href], button, input:not([type="hidden"]):not([hidden]), textarea, select, [tabindex]';
 /** Every control focus can rest on, except the primary button. The dialog's own surface and anything switched off are not controls. */
 function controls(): HTMLElement[] {
@@ -126,7 +126,7 @@ describe("Enter on a focused control", () => {
     for (const stage of [firstStage(kind), "Start", ...(customizes(kind) ? ["Steps"] : [])]) {
       if (stage === "Start") await toStart(dialog, kind);
       if (stage === "Steps") await toLast(dialog, kind);
-      assert.equal(dialog.disabled(stage !== lastStage(kind) ? "Continue" : startLabel(kind)), false, `${stage} is ready to go on, so Enter could act: ${dialog.text()}`);
+      assert.equal(dialog.disabled(stage !== lastStage(kind) ? "Next" : startLabel(kind)), false, `${stage} is ready to go on, so Enter could act: ${dialog.text()}`);
       for (let index = 0; index < controls().length; index += 1) {
         const node = controls()[index];
         const name = nameOf(node);
@@ -139,7 +139,7 @@ describe("Enter on a focused control", () => {
           assert.notEqual(stage, lastStage(kind));
           assert.match(name, /^(textarea|input)/u, `${name} continued`);
           assert.doesNotMatch(name, /radio|switch|checkbox/u);
-          await dialog.press("Back");
+          await dialog.press(h.buttons().map(h.buttonName).find(name => name.endsWith(` ${stage}`)) ?? stage);
         }
       }
     }
@@ -152,7 +152,7 @@ describe("Enter on a focused control", () => {
     assert.deepEqual(calls, ["plan"]);
   });
 
-  it("ignores a held Enter that carries over from Continue onto Start", async () => {
+  it("ignores a held Enter that carries over from Next onto Start", async () => {
     const calls: string[] = [];
     const dialog = await openFilled("typed", { submitStartPlan: async () => { calls.push("plan"); return new Promise(() => undefined); } });
     await dialog.enter();
@@ -165,7 +165,7 @@ describe("Enter on a focused control", () => {
 });
 
 /** What stays usable while a command is out: leaving the dialog, searching the workflow list and reading the checks again. Every other control must be off. */
-const USABLE = (node: HTMLElement) => ["Close", "Cancel", "Clear search"].includes(node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "")
+const USABLE = (node: HTMLElement) => ["Close", "Clear search"].includes(node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "")
   || node.matches('input[type="search"], input[aria-label*="workflow" i]') || node.closest('section[aria-label="Checks"]') !== null;
 function openControls(): string[] {
   return [...document.querySelectorAll<HTMLElement>(`.launch-dialog :is(${FOCUSABLE}, [role="combobox"], [role="spinbutton"])`)]
@@ -196,7 +196,7 @@ describe("a start whose command is held", () => {
     assert.ok(openControls().length > 0, "the first page is open before the start");
     if (kind === "failed spreadsheets") assert.ok(openControls().some(name => /Retry/u.test(name)), "the failed read offers Retry before the start");
     await toStart(dialog, kind);
-    assert.ok(openControls().some(name => /Back/u.test(name)) && openControls().some(name => /headless/u.test(name)), "Start is open before the start");
+    assert.ok(openControls().some(name => /headless/u.test(name)), "Start is open before the start");
     await dialog.chooseBrowserMode("headless");
     await toLast(dialog, kind);
     await dialog.press(startLabel(kind));
@@ -211,8 +211,7 @@ describe("a start whose command is held", () => {
     // An unknown outcome gives the dialog back; its replay is a command held on the first page.
     await act(async () => { replies[0].reject(new Error("connection lost")); });
     await settleLong();
-    await dialog.press("Back");
-    if (customizes(kind)) await dialog.press("Back");
+    await dialog.press(`1 ${firstStage(kind)}`);
     assert.equal(dialog.stage(), firstStage(kind));
     await dialog.press("Replay exact submission");
     await settleAll();
@@ -380,7 +379,7 @@ describe("what a rerun keeps of its source", () => {
   it("offers no Dry run switch", async () => {
     const { dialog } = await openOneClick({}, { source: dry, rerunInOneClick: false });
     await settleAll();
-    await dialog.press("Continue");
+    await dialog.press("Next");
     assert.doesNotMatch(dialog.text(), /Dry run/u);
     assert.equal(dialog.disabled("Start dry run"), false);
   });
@@ -402,7 +401,7 @@ describe("what a rerun keeps of its source", () => {
     const value = { document: artifact, fileName: "one.pdf", readingId: "00000000-0000-4000-8000-0000000000ff", form: "w4", reading: { kind: "manual", actorId: h.ACTOR_ID, assertions: [] } };
     const { dialog } = await openOneClick({}, { workflow: pdf, source: pdfSource(value), rerunInOneClick: false });
     await settleAll();
-    await dialog.press("Continue");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Start");
     assert.match(dialog.text(), /Manual reading/u);
     assert.doesNotMatch(dialog.text(), /Read with OCR|OCR o(n|ff)/u);
@@ -416,15 +415,20 @@ describe("what a rerun keeps of its source", () => {
   });
 
   it("opens an interrupted PDF rerun and requests the retained source without restoring its input", async () => {
+    const workflow: RunStartWorkflow = { ...pdf, rows: undefined, steps: [
+      { ...pdf.steps[0], key: "read", label: "Read", control: { state: "omittable",
+        form: { fields: [{ key: "value", label: "Value", kind: "text" }] }, forces: ["finish"] } },
+      { ...pdf.steps[0], key: "finish", label: "Finish", control: { state: "omittable", form: { fields: [] }, forces: [] } },
+    ] };
     const source = RerunValuesSnapshotSchema.parse({ ...pdfSource({ fileName: "one.pdf" }),
       source: { ...finished.source, workflow: pdf.workflowId, descriptorVersion: pdf.version, outcome: "interrupted" },
-      sourceInput: { state: "unavailable", reason: "incompatible" }, retainedSteps: [] });
-    const { dialog, plans } = await openOneClick({}, { workflow: pdf, source });
+      sourceInput: { state: "unavailable", reason: "incompatible" }, retainedSteps: [{ key: "read", repeatable: true }] });
+    const { dialog, plans } = await openOneClick({}, { workflow, source });
     await settleLong();
     assert.equal(dialog.stage(), "Steps");
     assert.equal(plans.length, 0);
-    assert.equal(dialog.disabled("Continue"), false);
-    await dialog.press("Continue");
+    assert.equal(dialog.disabled("Next"), false);
+    await dialog.press("Next");
     await settleAll();
     assert.equal(dialog.disabled("Start live run"), false);
     await dialog.press("Start live run");
@@ -433,6 +437,7 @@ describe("what a rerun keeps of its source", () => {
     assert.deepEqual(plans[0]?.submissions, []);
     assert.equal(plans[0]?.workbookReferences, undefined);
     assert.equal(plans[0]?.rerunSource?.runId, source.source.runId);
+    assert.deepEqual(plans[0]?.selectedStepKeys, ["finish"]);
   });
 
   it("sends the operator to Start run when the original spreadsheet is gone", async () => {
@@ -442,7 +447,7 @@ describe("what a rerun keeps of its source", () => {
     const { dialog, plans } = await openOneClick(RUN_DIALOG_REFERENCE_READS, { workflow, source: value, rerunInOneClick: false });
     await settleLong();
     assert.match(dialog.text(), /The original input can't be reused; use Start run\./u);
-    assert.equal(dialog.disabled("Continue"), true);
+    assert.equal(dialog.disabled("Next"), true);
     assert.deepEqual(plans, []);
   });
 });
@@ -490,7 +495,7 @@ describe("a rebuilt plan whose PDFs changed on Input", () => {
     assert.equal(planned.length, 2, "the expired plan was rebuilt");
     assert.ok(h.planIsDrawn());
 
-    await dialog.press("Back");
+    await dialog.press("1 Input");
     assert.equal(dialog.stage(), "Input");
     await attachPdf("two");
     if (outcome === "failed") { await act(async () => { upload.reject(new Error("refused")); }); await settleLong(); }

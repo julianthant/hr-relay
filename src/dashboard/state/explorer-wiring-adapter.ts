@@ -3,6 +3,7 @@ import type { WorkflowExplorerWire } from "../../models/dashboard/explorer.js";
 import type { ExplorerReviewSpec } from "../../models/dashboard/explorer-review-spec.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import type { ExplorerQueries } from "../client/queries/explorer-queries.js";
+import { useDashboardCommandBinding } from "./client-context.js";
 import { useSettingsRead } from "./settings-read-model.js";
 
 export type ExplorerWiringState =
@@ -15,22 +16,24 @@ const unavailableExplorerClient = {};
 
 /** The served review spec of one workflow, at the version the bootstrap catalog registers. `retry` reads it again. */
 export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplorer"> | undefined, workflowId: string | undefined, version?: number): Readonly<{ state: ExplorerWiringState; retry: () => void; workflows: WorkflowExplorerWire["workflows"] | undefined }> {
+  const descriptorHash = useDashboardCommandBinding()?.authority.epoch.bootstrap.descriptorHash;
   const resource = useSettingsRead<WorkflowExplorerWire>(client ?? unavailableExplorerClient, "explorer");
   const result = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
   const readScope = useRef<AbortController | undefined>(undefined);
-  const retry = useCallback(() => {
+  const read = useCallback((refresh: boolean) => {
     const signal = readScope.current?.signal;
     if (client === undefined || signal === undefined) return;
-    void resource.read(requestSignal => client.workflowExplorer(requestSignal), "DASHBOARD_READ_FAILED", undefined, signal).catch(() => resource.snapshot());
-  }, [client, resource]);
+    void resource.read(requestSignal => client.workflowExplorer(requestSignal, { descriptorHash, refresh }), "DASHBOARD_READ_FAILED", undefined, signal).catch(() => resource.snapshot());
+  }, [client, descriptorHash, resource]);
+  const retry = useCallback(() => read(true), [read]);
   const selected = workflowId !== undefined;
   useEffect(() => {
     if (!selected) return;
     const controller = new AbortController();
     readScope.current = controller;
-    retry();
+    read(false);
     return () => { readScope.current = undefined; controller.abort(); };
-  }, [retry, selected]);
+  }, [read, selected]);
   const held = result.value?.workflows.find(candidate => candidate.id === workflowId);
   const mismatched = held !== undefined && version !== undefined && held.version !== version;
   useEffect(() => {

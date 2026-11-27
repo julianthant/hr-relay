@@ -322,55 +322,24 @@ export async function verifyShellCommandEffect(
     }
     return { state: "matched", evidence: current };
   }
-  if (request.family === "notification" && "members" in request.target) {
-    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== request.target.matchingCount) return mismatch(reply);
-    const rows = (await client.notificationSnapshot()).filter(row => row.readOnlyHistory !== true);
-    if (request.type === "notification-clear") {
-      // Exactly the named rows cleared, and none is listed any more, alone or inside a storage group, unless a repeat after the clear brought it back.
-      const cleared = new Set(reply.affectedTargets.map(target => target.family === "notification" ? target.notificationId : ""));
-      if (request.target.actorId !== request.requestedBy || !request.target.members.every(member => cleared.has(member.notificationId))) return mismatch(reply);
-      const listed = new Map(rows.flatMap(row => row.kind === "backfill-gap" ? []
-        : row.kind === "notification" && row.group !== undefined ? row.group.members.map(member => [member.notificationId, member.revision] as const)
-        : [[row.notificationId, row.revision] as const]));
-      return request.target.members.every(member => {
-        const revision = listed.get(member.notificationId);
-        return revision === undefined || revision > member.expectedVersion + 1;
-      }) ? { state: "matched", evidence: rows } : mismatch(rows);
-    }
-    if (rows.length !== request.target.members.length || new Set(rows.map(row => row.notificationId)).size !== rows.length) return mismatch(rows);
-    if (new Set(reply.affectedTargets.map(target => target.family === "notification" ? target.notificationId : "")).size !== reply.affectedTargets.length) return mismatch(reply);
-    for (const member of request.target.members) {
-      const row = rows.find(row => row.notificationId === member.notificationId);
-      if (row === undefined || row.actorId !== request.target.actorId) return mismatch(rows);
-      const affected = reply.affectedTargets.some(target => target.family === "notification" && target.notificationId === member.notificationId);
-      if (!affected && row.kind === "notification" && Number(row.revision) !== Number(member.expectedVersion)) return mismatch(row);
-    }
-    const evidence = [];
-    for (const target of reply.affectedTargets) {
-      if (target.family !== "notification") return mismatch(reply);
-      const before = request.target.members.find(member => member.notificationId === target.notificationId);
-      const row = rows.find(member => member.notificationId === target.notificationId);
-      if (before === undefined || row?.kind !== "notification" || row.actorId !== request.target.actorId || row.revision !== before.expectedVersion + 1) return mismatch(rows);
-      const matches = request.type === "notification-read-all" ? row.readState === "read" : request.type === "notification-unread-all" ? row.readState === "unread"
-        : request.type === "notification-unsnooze-all" ? row.state !== "snoozed" : row.state === "snoozed" && row.snoozedUntil !== undefined && Date.parse(row.snoozedUntil) > Date.parse(request.requestedAt);
-      if (!matches) return mismatch(row);
-      evidence.push(row);
-    }
-    return { state: "matched", evidence };
-  }
-  if (request.family === "notification" && "notificationId" in request.target) {
-    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "notification"
-      || reply.affectedTargets[0].notificationId !== request.target.notificationId) return mismatch(reply);
-    const rows = await client.notificationSnapshot();
+  if (request.family === "notification") {
+    if (!("state" in reply) || (reply.state !== "applied" && reply.state !== "already-applied")) return mismatch(reply);
+    const receipt = reply.notificationReceipt;
     const target = request.target;
-    const row = rows.find(row => row.notificationId === target.notificationId);
-    if (request.target.actorId !== request.requestedBy || row?.actorId !== request.target.actorId || row.kind !== "notification"
-      || row.revision !== request.target.expectedVersion + 1) return mismatch(rows);
-    const matches = request.type === "notification-read" ? row.readState === "read"
-      : request.type === "notification-unread" ? row.readState === "unread"
-      : request.type === "notification-unsnooze" ? row.state !== "snoozed"
-      : row.state === "snoozed" && row.snoozedUntil !== undefined && Date.parse(row.snoozedUntil) > Date.parse(request.requestedAt);
-    return matches ? { state: "matched", evidence: row } : mismatch(row);
+    const members = "members" in target ? target.members : [target];
+    const count = "matchingCount" in target ? target.matchingCount : 1;
+    const expected = new Map(members.map(member => [member.notificationId, member.expectedVersion]));
+    const snoozes = request.type === "notification-snooze" || request.type === "notification-snooze-all";
+    if (reply.commandId !== request.commandId || receipt === undefined || receipt.actorId !== target.actorId
+      || target.actorId !== request.requestedBy || receipt.changes.length !== count
+      || (snoozes ? receipt.snoozedUntil === undefined || Date.parse(receipt.snoozedUntil) <= Date.parse(request.requestedAt)
+        : receipt.snoozedUntil !== undefined)) return mismatch(reply);
+    for (const change of receipt.changes) {
+      const before = expected.get(change.notificationId);
+      if (before === undefined || change.revision !== before + 1) return mismatch(reply);
+      expected.delete(change.notificationId);
+    }
+    return { state: "matched", evidence: receipt };
   }
   if (request.family === "run" && (request.type === "recheck-write" || request.type === "resolve-write-absent")) {
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "run"

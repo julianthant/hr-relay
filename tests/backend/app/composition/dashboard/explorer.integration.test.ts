@@ -29,24 +29,34 @@ it("refuses a read page without a row example during Explorer registration", () 
     /workflow person-lookup Explorer registration failed: .*review field search-name on read page \S+ has no example value/u);
 });
 
-it("serves the registered review specs again as the query timestamp advances", async () => {
+it("serves one build document across Explorer registrations and sends no body for its ETag", async () => {
   const clock = clockAtStart();
   const build = vi.spyOn(reviewSpec, "buildExplorerReviewSpec");
   try {
     const app: DashboardApp = new Hono();
     registerExplorerRoutes(app, composeExplorer({ clock, descriptorSetHash: hash }));
     assert.equal(build.mock.calls.length, READABLE_WORKFLOW_MODULES.length);
-    const read = async () => {
-      const response = await app.request("/api/v1/explorer");
-      assert.equal(response.status, 200);
-      return WorkflowExplorerWireSchema.parse(await response.json());
-    };
-    const first = await read();
+    const first = await app.request("/api/v1/explorer");
+    assert.equal(first.status, 200);
+    const body = await first.text();
+    const wire = WorkflowExplorerWireSchema.parse(JSON.parse(body));
+    const tag = first.headers.get("ETag");
+    assert.ok(tag?.startsWith(`"${wire.buildId}-`));
+    assert.equal(wire.descriptorHash, hash);
+    assert.equal(wire.generatedAt, clock.now().toISOString());
     clock.advanceWall(1000);
-    const second = await read();
-    assert.equal(second.generatedAt, clock.now().toISOString());
-    assert.notEqual(second.generatedAt, first.generatedAt);
-    assert.deepEqual(second.workflows, first.workflows);
+
+    const nextApp: DashboardApp = new Hono();
+    registerExplorerRoutes(nextApp, composeExplorer({ clock, descriptorSetHash: hash }));
+    const cached = await nextApp.request("/api/v1/explorer", { headers: { "If-None-Match": `"different", W/${tag}` } });
+    assert.equal(cached.status, 304);
+    assert.equal(cached.headers.get("ETag"), tag);
+    assert.equal(cached.headers.get("Cache-Control"), "private, no-cache");
+    assert.equal(await cached.text(), "");
+    const second = await nextApp.request("/api/v1/explorer", { headers: { "If-None-Match": '"different"' } });
+    assert.equal(second.status, 200);
+    assert.equal(second.headers.get("ETag"), tag);
+    assert.equal(await second.text(), body);
     assert.equal(build.mock.calls.length, READABLE_WORKFLOW_MODULES.length);
   } finally { build.mockRestore(); }
 });

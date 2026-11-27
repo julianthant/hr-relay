@@ -5,9 +5,10 @@ import {
   KualiActionIdSchema,
   KualiDocumentNumberSchema
 } from "../../../../models/ui/kuali-document-identity.js";
-import { KualiSeparationDocumentSchema } from "../../../../models/ui/kuali-separation-document.js";
+import { KualiSeparationDocumentSchema, parseKualiFormDate, type KualiDateField } from "../../../../models/ui/kuali-separation-document.js";
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import {
   MatchTerminationTypeOutputSchema,
   SeparationsMatchTerminationType,
@@ -15,6 +16,8 @@ import {
 import {
   SeparationsReadSeparationPlan
 } from "../../../../models/workflows/separations/read-separation-plan.js";
+import { planSeparation } from "../../../../rules/separations/separation-dates.js";
+import { KUALI_TERMINATION_TYPE_BLANK_OPTION, KUALI_TERMINATION_TYPE_OPTIONS, resolveTerminationType } from "../../../../rules/separations/termination-type.js";
 import type { StepProofSpec, WorkflowAuthor, WorkflowGroupOptions } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep, requireFact } from "../../../../workflow-kit/workflow.js";
@@ -160,6 +163,60 @@ export const terminationTypeNode = kualiExtractionEntries.task(TERMINATION_TYPE_
 });
 
 
+const KualiExtractionFactsSchema = z.strictObject({
+  employeeName: z.string().min(1),
+  lastDayWorked: z.string().min(1),
+  separationDate: z.string().min(1),
+  terminationType: z.string().min(1),
+});
+
+const RunDocumentSchema = z.looseObject({ documentNumber: KualiDocumentNumberSchema });
+
+const typedDate = (raw: string): KualiDateField => {
+  const value = parseKualiFormDate(raw);
+  if (value === null) throw new Error(`kuali-extraction omission date ${JSON.stringify(raw)} is not a real MM/DD/YYYY day`);
+  return { state: "present", raw, value };
+};
+
+/** Off: the Kuali document is not read; the typed values stand for its plan and termination type. */
+export const KUALI_EXTRACTION_OMISSION: StepManualDeclaration = {
+  form: {
+    fields: [
+      { key: "employeeName", label: "Employee name", kind: "text", help: "As on the Kuali document, Last, First." },
+      { key: "lastDayWorked", label: "Last day worked", kind: "us-date" },
+      { key: "separationDate", label: "Separation date", kind: "us-date" },
+      { key: "terminationType", label: "Termination type", kind: "enum", values: KUALI_TERMINATION_TYPE_OPTIONS.filter(option => option !== KUALI_TERMINATION_TYPE_BLANK_OPTION) },
+    ],
+  },
+  produces: {
+    [PLAN_NODE]: ({ facts, scope, assertedAt }) => {
+      const typed = KualiExtractionFactsSchema.parse(facts);
+      const resolution = planSeparation({
+        documentNumber: RunDocumentSchema.parse(scope.input).documentNumber,
+        employeeName: { state: "present", value: typed.employeeName },
+        lastDayWorked: typedDate(typed.lastDayWorked),
+        separationDate: typedDate(typed.separationDate),
+        observedAt: assertedAt,
+      });
+      if (resolution.state === "refused") throw new Error(`kuali-extraction omission refused (${resolution.code}): ${resolution.reason}`);
+      return resolution.plan;
+    },
+    [TERMINATION_TYPE_NODE]: ({ facts }) => {
+      const typed = KualiExtractionFactsSchema.parse(facts);
+      const resolution = resolveTerminationType(typed.terminationType);
+      if (resolution.state === "refused") throw new Error(`kuali-extraction omission refused (${resolution.code}): ${resolution.reason}`);
+      return {
+        terminationType: resolution.terminationType,
+        classification: resolution.classification,
+        template: resolution.template,
+        reasonCode: resolution.reasonCode,
+        observedOptionCount: KUALI_TERMINATION_TYPE_OPTIONS.length,
+      };
+    },
+  },
+  skips: [ACTION_NODE, DOCUMENT_NODE],
+};
+
 
 const SeparationsKualiReadInput = z.strictObject({
   actionId: KualiActionIdSchema,
@@ -205,7 +262,7 @@ export function buildExtraction({ task, group }: Author) {
       documentNumber: input.documentNumber,
     }),
   );
-  return { action, document, plan, terminationType, steps: [[group(KUALI_EXTRACTION_STEP, { ...KUALI_EXTRACTION_DISPLAY, locked: "bound-read" }), [action, document, plan, terminationType]]] as const };
+  return { action, document, plan, terminationType, steps: [[group(KUALI_EXTRACTION_STEP, { ...KUALI_EXTRACTION_DISPLAY, manual: KUALI_EXTRACTION_OMISSION }), [action, document, plan, terminationType]]] as const };
 }
 
 export const separationsKualiReadDefinition = defineStep({

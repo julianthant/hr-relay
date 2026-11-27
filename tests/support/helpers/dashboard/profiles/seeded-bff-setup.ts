@@ -63,7 +63,7 @@ export interface SeededDrive {
   /** The running run gets a note and nothing else: no span event, so no queue row moves; answers its run id. */
   addRunningNote(message: string): string;
   /** A notification is published through the inbox and reaches every open stream. Product app only. */
-  publishNotification(): Promise<void>;
+  publishNotification(sibling?: true): Promise<void>;
 }
 
 const retainedSeededFixtureOwners = new Set<object>();
@@ -174,8 +174,6 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       ledger: createTransactionHistory(database.authority),
       authority: {
         queueParents: envelopes => database.authority.dependencies.parents(envelopes),
-        listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
-        listNotificationCheckpoints: (workflowId: string, itemId: string, nodeId: string, attempt: number) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
         listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
         listGateResults: runId => database.authority.gateResults.listByRun(runId),
         listWorkerSlots: () => database.authority.workerSlots.list(),
@@ -233,9 +231,9 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       finishRunningStep: () => settle(finishRunningStep(world)),
       parkRunningRunAtGate: () => settle(parkRunningRunAtGate(world)),
       addRunningNote: (message: string) => settle(addRunningNote(world, message)),
-      publishNotification: async () => {
+      publishNotification: async (sibling?: true) => {
         if (notificationInbox === undefined) throw new Error("the seeded server publishes notifications only as the product app");
-        await notificationInbox.publish(seededDoneNotificationEvent());
+        await notificationInbox.publish(seededDoneNotificationEvent(sibling === true));
       },
     });
     const watcherCleanups: StartupCleanup[] = [];

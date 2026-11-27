@@ -39,13 +39,14 @@ const type = (input: Element | null | undefined, value: string) => act(async () 
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true }));
 });
 
-it('lists the row menu in the mock order for a pinned, a linked and a local spreadsheet', async () => {
+it('lists the row menu with Download first and no pin or tag items', async () => {
   await render();
   await openMenu('Roster.xlsx');
-  assert.deepEqual(items(), ['Unpin', 'Sync now', 'Change SharePoint link…', 'Clone', 'Rename', 'Edit tags', 'Delete']);
-  await click(document.body.querySelector('[role="menuitem"]')); // Unpin closes the menu
+  assert.deepEqual(items(), ['Download', 'Sync now', 'Change SharePoint link…', 'Clone', 'Rename', 'Delete']);
+  await click(byText('[role="menuitem"]', 'Clone'));
+  await click(byText('button', 'Cancel'));
   await openMenu('Keys.xlsx');
-  assert.deepEqual(items(), ['Pin', 'Link to SharePoint…', 'Clone', 'Rename', 'Edit tags', 'Delete']);
+  assert.deepEqual(items(), ['Download', 'Link to SharePoint…', 'Clone', 'Rename', 'Delete']);
 });
 
 it('shows each served sync state under the SharePoint link and offers Retry sync only after a failure', async () => {
@@ -100,32 +101,22 @@ it('keeps the Clone dialog open and says why when the name is refused', async ()
   assert.match(document.body.textContent ?? '', /already exists/u);
 });
 
-it('offers Local and SharePoint as the Import source with Name, Tags, Cancel and Next', async () => {
+it('offers From this computer and SharePoint link from the Import menu, with no import dialog', async () => {
   await render();
   await click(byText('button', 'Import'));
-  const dialog = document.body.querySelector('[role="dialog"]'); assert.ok(dialog);
-  assert.match(dialog.textContent ?? '', /Source/u);
-  assert.deepEqual([...dialog.querySelectorAll('input[type="radio"]')].map(node => (node as HTMLInputElement).value), ['local', 'sharepoint']);
-  assert.deepEqual([...dialog.querySelectorAll('input[type="radio"]')].map(node => node.parentElement?.textContent?.trim()), ['Local', 'SharePoint']);
-  assert.ok(byText('button', 'Choose file'));
-  assert.ok(dialog.querySelector('input[aria-label="Name"]'));
-  assert.ok(dialog.querySelector('input[aria-label="Add a tag"]'));
-  assert.ok(byText('button', 'Cancel')); assert.ok(byText('button', 'Next'));
+  assert.ok(!document.body.querySelector('[role="dialog"]'));
+  assert.deepEqual(items(), ['From this computer.xlsx or .csv', 'SharePoint linkStays in sync']);
 });
 
-it('sends a SharePoint import with the link, name and tags when Next is chosen', async () => {
+it('sends a SharePoint import with the link and name', async () => {
   await render();
   await click(byText('button', 'Import'));
-  await click(document.body.querySelector('input[type="radio"][value="sharepoint"]'));
-  assert.equal(byText('button', 'Choose file') === undefined, true);
-  assert.equal((byText('button', 'Next') as HTMLButtonElement).disabled, true);
-  await type(document.body.querySelector('input[aria-label="SharePoint workbook link"]'), LINK);
+  await click(document.body.querySelectorAll('[role="menuitem"]')[1]);
+  assert.equal((byText('button', 'Add') as HTMLButtonElement).disabled, true);
+  await type(document.body.querySelector('input[aria-label="Workbook link"]'), LINK);
   await type(document.body.querySelector('input[aria-label="Name"]'), 'Roster 2');
-  const tag = document.body.querySelector<HTMLInputElement>('input[aria-label="Add a tag"]');
-  await type(tag, 'Fall');
-  await act(async () => { tag?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
-  await click(byText('button', 'Next'));
-  assert.deepEqual(wiring.adapter.importSharePoint?.mock.calls.at(-1), [{ source: 'sharepoint', url: LINK, name: 'Roster 2', tags: ['Fall'] }]);
+  await click(byText('button', 'Add'));
+  assert.deepEqual(wiring.adapter.importSharePoint?.mock.calls.at(-1), [{ source: 'sharepoint', url: LINK, name: 'Roster 2' }]);
 });
 
 it('titles the version dialog "Roll back" and confirms with "Roll back to v<n>?"', async () => {

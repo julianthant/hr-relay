@@ -19,7 +19,7 @@ it("serves the six Runs and Notifications settings on General with the mock's la
     const leaf = general.find(candidate => candidate.path === row.path);
     assert.deepEqual({ path: leaf?.path, input: leaf?.input, label: leaf?.label, description: leaf?.description,
       defaultValue: leaf?.defaultValue, effectiveValue: leaf?.effectiveValue, source: leaf?.source }, { ...row, effectiveValue: row.defaultValue, source: "default" });
-    assert.equal(document.catalog.some(entry => entry.key === row.path && entry.editability === "operator"), true, row.path);
+    assert.equal(leaf?.editable, true, row.path);
   }
 });
 

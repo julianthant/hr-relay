@@ -17,7 +17,7 @@ import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-wo
 import { createRowStore } from "../../../../src/dashboard/client/index.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
+const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows));
 const catalog = buildWorkflowCatalog(served, servedFixtureSources(served));
 const client = createDashboardClient({ baseUrl: "http://sessions.test", fetchImpl: async () => { throw new Error("no request is expected"); } });
 const scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };

@@ -16,8 +16,7 @@ const PICKER: readonly RunStartWorkflow[] = parseWorkflows(FIXTURE_START_PICKER_
   return { workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId, role: entry.role, icon: entry.icon,
     enqueue: start.enqueue, version: start.version, steps: start.steps,
     inputRun: start.inputRun === undefined ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] } : { state: "present", surface: start.inputRun },
-    spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookFields: start.requiredWorkbookFields, workbookReference: start.workbookReference,
-    referenceSources: FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility.workflows.find(workflow => workflow.workflowId === entry.id)?.sources ?? [] };
+    spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookFields: start.requiredWorkbookFields, workbookReference: start.workbookReference };
 });
 const STARTABLE = PICKER.filter(flow => flow.inputRun.state === "present");
 
@@ -42,7 +41,7 @@ describe("Run dialog footer and priority wording", () => {
   it("words priority as Priority, never Interactive or Bulk", async () => {
     const dialog = await h.openDialog(h.stubClient({ submitStartPlan: async () => h.planResponse("5a000000-0000-4000-8000-000000000001") }));
     await dialog.type(h.TYPED);
-    await dialog.press("Continue");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Start");
     assert.match(dialog.text(), /Priority/u);
     assert.doesNotMatch(dialog.text(), /Interactive|Bulk/u);

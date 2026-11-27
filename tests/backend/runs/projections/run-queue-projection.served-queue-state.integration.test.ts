@@ -29,7 +29,7 @@ function corruptLatest(w: DashboardWorld): void {
 afterEach(cleanup);
 
 describe("THE run/queue projection", () => {
-  it("shows the seven declared Separations steps in the queue pipeline", async () => {
+  it("shows the eight declared Separations steps in the queue pipeline", async () => {
     const w = await world({ descriptors: { resolve: () => separationsDescriptor } });
     queuedEventOf(w, { seed: 1, workflow: "separations", lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1, version: 2 });
 
@@ -40,10 +40,11 @@ describe("THE run/queue projection", () => {
       { id: "kronos-timecard", label: "Kronos timecard" },
       { id: "identity-review", label: "Identity approval" },
       { id: "reference-check", label: "Check reference spreadsheets" },
+      { id: "pending-termination", label: "Pending terminations" },
       { id: "ucpath-transaction", label: "UCPath transaction" },
       { id: "kuali-finalization", label: "Kuali finalization" },
     ]);
-    assert.deepEqual(pipeline?.map(({ state }) => state), Array(7).fill("pending"));
+    assert.deepEqual(pipeline?.map(({ state }) => state), Array(8).fill("pending"));
 
     const base = { workflow: "separations", runId: uuidOf(1), attempt: 1, traceId: traceOf(1) } as const;
     const first = `${traceOf(1)}/resolve-action#1`;
@@ -52,11 +53,11 @@ describe("THE run/queue projection", () => {
     const second = `${traceOf(1)}/document#1`;
     w.writer.emit({ ...base, t: "span.started", kind: "task", spanPath: second, parentSpanPath: traceOf(1), name: "document", ts: instantOffsetOf(0, 2_000) });
     assert.deepEqual(w.projection.queueSurface(uuidOf(1))?.pipeline.map(({ state }) => state),
-      ["active", "pending", "pending", "pending", "pending", "pending", "pending"]);
+      ["active", "pending", "pending", "pending", "pending", "pending", "pending", "pending"]);
 
     w.writer.emit({ ...base, t: "gate.opened", spanPath: traceOf(1), gate: "identity-approval", ts: instantOffsetOf(0, 3_000) });
     assert.deepEqual(w.projection.queueSurface(uuidOf(1))?.pipeline.map(({ state }) => state),
-      ["active", "pending", "pending", "blocked", "pending", "pending", "pending"]);
+      ["active", "pending", "pending", "blocked", "pending", "pending", "pending", "pending"]);
 
     w.writer.emit({ ...base, t: "span.ended", kind: "task", spanPath: second, outcome: "done", ts: instantOffsetOf(0, 3_600) });
     assert.equal(w.projection.queueSurface(uuidOf(1))?.pipeline[0]?.durationSec, 2,

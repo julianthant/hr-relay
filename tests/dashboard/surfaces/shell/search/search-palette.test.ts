@@ -55,3 +55,32 @@ it("puts the filter tabs after the results, gives workflows their rail icon and 
   }
   assert.deepEqual(actions, ["spreadsheets", "explorer", "analytics"]);
 });
+
+const run = (n: number) => ({ id: `run-${n}`, subject: `Subject ${n}`, workflow: "Person Lookup", day: "2026-08-03", state: "Done" });
+async function openWithMore(more: () => void) {
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(RailSearch, { data: { today: "2026-08-03", counts: {}, results: [run(1), run(2), run(3)], totalMatches: 40, more }, workflows: [], onAction: () => {}, onWorkflow: () => {}, onResult: () => {} }))));
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!.click());
+}
+
+it("asks for the next page of runs when the list is scrolled near its end", async () => {
+  const more = vi.fn();
+  await openWithMore(more);
+  const list = document.querySelector<HTMLElement>(".search-palette-list")!;
+  const size = (scrollTop: number) => { for (const [key, value] of Object.entries({ scrollHeight: 1000, clientHeight: 200, scrollTop })) Object.defineProperty(list, key, { value, configurable: true }); };
+  size(0);
+  await act(async () => { list.dispatchEvent(new Event("scroll")); });
+  assert.equal(more.mock.calls.length, 0);
+  size(700);
+  await act(async () => { list.dispatchEvent(new Event("scroll")); });
+  assert.equal(more.mock.calls.length, 1);
+});
+
+it("asks for the next page itself when the Runs list does not overflow", async () => {
+  const more = vi.fn();
+  await openWithMore(more);
+  assert.equal(more.mock.calls.length, 0);
+  await act(async () => { [...document.querySelectorAll<HTMLButtonElement>(".search-palette-chips button")].find(button => button.textContent === "Runs")!.click(); });
+  assert.equal(more.mock.calls.length, 1);
+});

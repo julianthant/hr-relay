@@ -27,7 +27,7 @@ describe("the queue day read's warm step", () => {
 
     const day = searchPartitionDay(new Date(f.run.envelope.enqueuedAt));
     const body = opened.history.withAuthorityReadSnapshot(() => queueDayRead.run({ ...context, processFacts: { workers: [], startupPending: [] }, snapshotAt: () => {} },
-      queueDayRead.args.parse({ day, publications: [] })));
+      queueDayRead.args.parse({ day })));
     assert.equal(z.object({ queueSurfaces: z.array(z.unknown()) }).parse(body.d).queueSurfaces.length, 1,
       "the folded replica serves the day");
   });

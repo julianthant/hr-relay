@@ -9,6 +9,11 @@ import type { CheckSheet } from "./run-start-kit.js";
 import type { RunStartWorkflow } from "./run-start.js";
 import { checkVersionKey, useCheckVersionSheets, useWorkbookRows, useWorkbookVersionSources } from "./run-workbook-rows-model.js";
 
+/** Workbooks add a worksheet at the end, so the newest one is the last tab. */
+export function newestWorksheet<T>(worksheets: readonly T[]): T | undefined {
+  return worksheets.at(-1);
+}
+
 export function useRunStartSpreadsheets(
   open: boolean, workflows: readonly RunStartWorkflow[], workflowId: string,
   client: DashboardClient, commandBinding: DashboardCommandBinding | undefined,
@@ -58,8 +63,11 @@ export function useRunStartSpreadsheets(
   const checkSelections = pickedChecks.flatMap(sheet => sheet.worksheets.filter(worksheet => sheet.pickedSheetIds?.includes(worksheet.sheetId))
     .map(worksheet => ({ libraryId: sheet.libraryId, versionId: sheet.versionId, sheetId: worksheet.sheetId })));
   useEffect(() => {
-    for (const sheet of checkSheets) if (sheet.pickedSheetIds?.length === 0 && sheet.worksheetsState === "ready" && sheet.worksheets.length > 0)
-      update(current => launchDraft.pickCheck(current, sheet.libraryId, { versionId: sheet.versionId, sheetIds: [sheet.worksheets[0].sheetId] }));
+    for (const sheet of checkSheets) {
+      const newest = newestWorksheet(sheet.worksheets);
+      if (sheet.pickedSheetIds?.length === 0 && sheet.worksheetsState === "ready" && newest !== undefined)
+        update(current => launchDraft.pickCheck(current, sheet.libraryId, { versionId: sheet.versionId, sheetIds: [newest.sheetId] }));
+    }
   }, [checkSheets, update]);
   const versionSources = useWorkbookVersionSources(client, commandBinding?.authority.epoch ?? client,
     selectedLibrary?.libraryId, selectedVersion, selectedLibrary?.state.selectedVersionId,

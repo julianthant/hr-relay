@@ -6,6 +6,7 @@ import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js"
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { readOcrReviewAuthority, readOcrSnapshotsAuthority } from "../lifecycle/ocr-review-authority.js";
 import type { CommandKernelDependencies } from "./command-kernel.js";
+import { notificationCommandReceipt } from "./notification-commands.js";
 import { z } from "zod";
 
 const OrdinarySettingsReplayVerificationSchema = z.strictObject({
@@ -100,6 +101,7 @@ export function replay(
     commandId: request.commandId,
     affectedTargets: audit.result.affectedTargets,
     ...(audit.result.noChange === undefined ? {} : { noChange: audit.result.noChange }),
+    ...(request.family === "notification" ? { notificationReceipt: notificationCommandReceipt(request, audit.versionChanges, audit.completedAt) } : {}),
     ...(settingsVerification?.kind === "ordinary" ? {
       restartRequired: audit.result.restartRequired,
       settingsRevision: settingsVerification.value.revision,

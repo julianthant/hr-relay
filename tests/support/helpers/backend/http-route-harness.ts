@@ -5,8 +5,7 @@ import { AUTHORITY_DERIVED_TABLES } from "../../../../src/models/config/authorit
 import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
-import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
-import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
+import { createWorkbookLibraryService, type WorkbookSyncDownload } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
 import { queryAssistantUsage } from "../../../../src/backend/assistant/usage-counts.js";
@@ -39,6 +38,7 @@ import type { ArtifactBytesQueryDeps } from "../../../../src/backend/runs/querie
 import type { DiagnosticBundleQueryDeps } from "../../../../src/backend/runs/queries/diagnostic-bundle.js";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
 import { readRunPanel } from "../../../../src/backend/runs/queries/run-detail.js";
+import { buildSettingsEditor } from "../../../../src/backend/runs/queries/settings-editor.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -50,7 +50,7 @@ import { type DashboardHttpServer } from "../../../../src/backend/transports/htt
 import type { RequestIdentityCheckpoint } from "../../../../src/backend/transports/http/request-identity.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../../src/backend/transports/http/request-identity.js";
 import { createDashboardApp,type DashboardAppDeps } from "../../../../src/backend/transports/http/routes/api.js";
-import { createDashboardStreamHub,type DashboardStreamHub } from "../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
+import { createDashboardStreamHub,type DashboardStreamHub, type DashboardStreamHubDeps } from "../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import type { ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
 import { initialSettingsFileRecord,settingsRuntimeIdentity } from "../../../../src/models/config/settings.js";
 import { ActivityReportSelectionSchema } from "../../../../src/models/dashboard/activity-selection.js";
@@ -199,6 +199,7 @@ function installCommandAuditInsertFault(database: AuthorityDatabase, fault: Comm
 
 export async function harness(options: {
   readonly workbookWorkflows?: readonly import("../../../../src/backend/workbooks/workbook-library-service.js").WorkbookReferenceWorkflow[];
+  readonly workbookSync?: WorkbookSyncDownload;
   readonly profileFixture?: () => Promise<BoundProfileStorageFixture>;
   readonly protectedCommandAcceptedAt?: DashboardAppDeps["protectedCommandAcceptedAt"];
   readonly requestIdentity?: RequestIdentityCheckpoint;
@@ -210,6 +211,8 @@ export async function harness(options: {
 
   /** The hub's per-subscriber pending bound; the hub default when absent. */
   readonly maxPending?: number;
+  readonly notificationStatus?: DashboardStreamHubDeps["notificationStatus"];
+  readonly streamSettings?: boolean;
   readonly preflightBeforeRun?: () => Promise<void>;
   readonly preflightScheduler?: PreflightDeadlineScheduler;
   readonly omitDiagnosticBundles?: boolean;
@@ -286,8 +289,6 @@ export async function harness(options: {
     ledger: createTransactionHistory(database.authority),
     authority: {
       queueParents: envelopes => database.authority.dependencies.parents(envelopes),
-      listNotifications: () => [],
-      listNotificationCheckpoints: () => [],
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
       listWorkerPools: () => database.authority.workerPools.list(),
@@ -387,11 +388,17 @@ export async function harness(options: {
     configSnapshotId: UUID_4,
     plannedBy: "local-operator",
   }));
+  const settingsEditor = { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),
+    environment: {}, clock };
   const hub = createDashboardStreamHub({
     projection,
     runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
     backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
     ...(options.maxPending === undefined ? {} : { maxPending: options.maxPending }),
+    ...(options.notificationStatus === undefined ? {} : { notificationStatus: options.notificationStatus }),
+    ...(options.streamSettings === true
+      ? { settings: { read: () => buildSettingsEditor(settingsEditor), onChange: () => () => undefined } }
+      : {}),
   });
   cleanups.push(() => hub.close());
   const { authority, report } = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
@@ -425,7 +432,7 @@ export async function harness(options: {
     },
   });
   const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
-  const workbookLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
+  const workbookLibrary = createWorkbookLibraryService({ sync: options.workbookSync ?? unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
@@ -437,7 +444,8 @@ export async function harness(options: {
     ...(options.notifications === undefined ? {} : { notifications: options.notifications(database) }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workerCommandResult: createWorkerCommandResultQuery(database),
-    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE), workflows: options.workbookWorkflows ?? [fixtureDescriptor] },
+    workbooks: { library: workbookLibrary, workflows: options.workbookWorkflows ?? [fixtureDescriptor],
+      withReadPosition: serve => database.withAuthorityReadSnapshot(() => serve(database.capturedChangeKey().changeLogSeq)) },
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -492,8 +500,7 @@ export async function harness(options: {
     hub,
 
     settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [fixtureDescriptor] },
-    settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),
-      environment: {}, clock },
+    settingsEditor,
     storage: {
       admission: profile.admission,
       credentials,

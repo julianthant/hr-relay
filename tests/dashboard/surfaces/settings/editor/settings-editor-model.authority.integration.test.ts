@@ -220,78 +220,35 @@ it("does not let an older refresh poison a newer authoritative command readback"
   const editor = h.controller().editor; assert.ok(editor.state === "loaded"); assert.equal(editor.document.revision, h.authority.read().revision);
 });
 
-for (const trigger of ["section return", "stream reset"] as const) {
-  it(`a ${trigger} locks the editor while it reads again, then settles on the fresh one`, async () => {
-    const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
-    const first = authority.read();
-    authority.apply({ "actor.label": { set: "Fresher saved values" } });
-    const fresh = authority.read();
-    let read = () => Promise.resolve(first);
-    const client = { editableSettings: () => read(), executeCommand: () => { throw new Error("unexpected write"); } } as unknown as DashboardClient;
-    let controller: ReturnType<typeof useEditableSettings> | undefined;
-    function Harness({ view }: { view: string }) { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view }); return null; }
-    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-    cleanups.push(() => { act(() => root.unmount()); host.remove(); });
-    const render = (view: string) => act(async () => root.render(createElement(DashboardClientProvider, { client,
-      children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: 0, children: createElement(Harness, { view }) }) })));
-    await render("general");
-    await vi.waitFor(() => assert.equal(controller?.locked, false));
-    const shown = controller?.editor.state === "loaded" ? controller.editor.document : undefined;
-    assert.ok(shown);
-    let settle!: (value: EditableSettingsWire) => void;
-    read = () => new Promise(resolve => { settle = resolve; });
-    if (trigger === "section return") await render("paths");
-    else await act(async () => { dropKeptResults(client); });
-    assert.equal(controller?.locked, true, "a kept document decides nothing");
-    assert.equal(controller?.refreshing, true);
-    if (trigger === "section return") assert.equal(controller?.editor.state === "loaded" ? controller.editor.document : undefined, shown, "a section return keeps the document on screen");
-    else assert.equal(controller?.editor.state, "loading", "nothing read before a stream reset shows after it");
-    await act(async () => { settle(fresh); });
-    await vi.waitFor(() => assert.equal(controller?.locked, false));
-    assert.equal(controller?.editor.state === "loaded" ? controller.editor.document.revision : undefined, fresh.revision);
-    assert.equal(controller?.refreshing, false);
-  });
-}
-
-for (const order of ["outgoing first", "incoming first"] as const) {
-  it(`two overlapping section visits each settle only their own read (${order})`, async () => {
-    const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
-    const shown = authority.read();
-    authority.apply({ "actor.label": { set: "General's read" } });
-    const general = authority.read();
-    authority.apply({ "actor.label": { set: "Paths' read" } });
-    const paths = authority.read();
-    const settles: ((value: EditableSettingsWire) => void)[] = [];
-    let read = () => Promise.resolve(shown);
-    const client = { editableSettings: () => read(), executeCommand: () => { throw new Error("unexpected write"); } } as unknown as DashboardClient;
-    let controller: ReturnType<typeof useEditableSettings> | undefined;
-    function Harness({ view }: { view: string }) { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view }); return null; }
-    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-    cleanups.push(() => { act(() => root.unmount()); host.remove(); });
-    const render = (view: string) => act(async () => root.render(createElement(DashboardClientProvider, { client,
-      children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: 0, children: createElement(Harness, { view }) }) })));
-    await render("paths");
-    await vi.waitFor(() => assert.equal(controller?.locked, false));
-    read = () => new Promise(resolve => { settles.push(resolve); });
-    await render("general");
-    await render("paths");
-    assert.equal(settles.length, 2, "the return to Paths starts its own read instead of reusing General's");
-    const label = () => controller?.leaves.find(leaf => leaf.path === "actor.label")?.settingsValue;
-    if (order === "outgoing first") {
-      await act(async () => { settles[0](general); });
-      assert.equal(controller?.locked, true, "General's read does not unlock Paths");
-      assert.notEqual(label(), "General's read");
-      await act(async () => { settles[1](paths); });
-    } else {
-      await act(async () => { settles[1](paths); });
-      await vi.waitFor(() => assert.equal(controller?.locked, false));
-      await act(async () => { settles[0](general); });
-    }
-    await vi.waitFor(() => assert.equal(controller?.locked, false));
-    assert.equal(label(), "Paths' read");
-    assert.equal(controller?.editor.state === "loaded" ? controller.editor.document.revision : undefined, paths.revision);
-  });
-}
+it("switching sections reads settings once; a stream reset reads again", async () => {
+  const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
+  const first = authority.read();
+  authority.apply({ "actor.label": { set: "Fresher saved values" } });
+  const fresh = authority.read();
+  let calls = 0;
+  let read = () => { calls += 1; return Promise.resolve(first); };
+  const client = { editableSettings: () => read(), executeCommand: () => { throw new Error("unexpected write"); } } as unknown as DashboardClient;
+  let controller: ReturnType<typeof useEditableSettings> | undefined;
+  function Harness() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  cleanups.push(() => { act(() => root.unmount()); host.remove(); });
+  const render = () => act(async () => root.render(createElement(DashboardClientProvider, { client,
+    children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: 0, children: createElement(Harness) }) })));
+  await render();
+  await vi.waitFor(() => assert.equal(controller?.locked, false));
+  assert.equal(calls, 1);
+  await render(); await render();
+  assert.equal(calls, 1, "re-rendering for another section makes no request");
+  let settle!: (value: EditableSettingsWire) => void;
+  read = () => new Promise(resolve => { calls += 1; settle = resolve; });
+  await act(async () => { dropKeptResults(client); });
+  assert.equal(controller?.locked, true, "a kept document decides nothing");
+  assert.notEqual(controller?.editor.state === "loaded" ? controller.editor.document : undefined, first, "nothing read before a stream reset shows after it");
+  await act(async () => { settle(fresh); });
+  await vi.waitFor(() => assert.equal(controller?.locked, false));
+  assert.equal(controller?.editor.state === "loaded" ? controller.editor.document.revision : undefined, fresh.revision);
+  assert.equal(calls, 2);
+});
 
 it("closing Settings mid-read retires that visit's read: a reopen reads again and settles only on its own reply", async () => {
   const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
@@ -301,7 +258,7 @@ it("closing Settings mid-read retires that visit's read: a reopen reads again an
   const settles: ((value: EditableSettingsWire) => void)[] = [];
   const client = { editableSettings: () => new Promise<EditableSettingsWire>(resolve => { settles.push(resolve); }), executeCommand: () => { throw new Error("unexpected write"); } } as unknown as DashboardClient;
   let controller: ReturnType<typeof useEditableSettings> | undefined;
-  function Harness() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view: "general" }); return null; }
+  function Harness() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   cleanups.push(() => { act(() => root.unmount()); host.remove(); });
   const render = (open: boolean) => act(async () => root.render(createElement(DashboardClientProvider, { client,
@@ -346,11 +303,11 @@ it.each([
   const onSaved = vi.fn();
   const onSaveProblem = vi.fn();
   let controller: ReturnType<typeof useEditableSettings> | undefined;
-  function Harness({ view }: { view: string }) { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view, onSaved, onSaveProblem }); return null; }
+  function Harness() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), onSaved, onSaveProblem }); return null; }
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   cleanups.push(() => { act(() => root.unmount()); host.remove(); });
   const render = (view?: string, requestKey = 0) => act(async () => root.render(createElement(DashboardClientProvider, { client,
-    children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, feedback, rows, children: view === undefined ? null : createElement(Harness, { view }) }) })));
+    children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, feedback, rows, children: view === undefined ? null : createElement(Harness) }) })));
   const label = () => controller?.leaves.find(leaf => leaf.path === "actor.label")?.settingsValue;
   await render("general");
   await vi.waitFor(() => assert.equal(controller?.locked, false));

@@ -5,7 +5,8 @@ import { DateOnlySchema, IsoInstantSchema, RunIdSchema, WorkflowIdSchema } from 
 import { createDashboardClient, type DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { WorkbookCloneRequestSchema, WorkbookLibraryActionSchema, projectWorkbookCompatibility, type WorkbookLibraryAction, type WorkbookLibraryEntry,
   type WorkbookLibraryState, type WorkbookLibraryVersion, type WorkbookLibrarySyncStatus, type WorkflowWorkbookRequirementInput } from "../../../../src/models/dashboard/workbook-library.js";
-import type { EditableWorkbookWire, WorkbookSummary, WorkbookType } from "../../../../src/models/dashboard/workbooks.js";
+import { decodeEditableWorkbook, encodeEditableWorkbook, type EditableWorkbookWire, type WorkbookSummary, type WorkbookType } from "../../../../src/models/dashboard/workbooks.js";
+import { copyColumnMapping } from "../../../../src/rules/spreadsheets/column-mapping.js";
 
 const BASE_URL = "http://relay.story.test";
 const SHAREPOINT_URL = "https://tenant.sharepoint.com/sites/people/Shared%20Documents/Roster.xlsx";
@@ -43,6 +44,8 @@ interface Seed {
   readonly pinned?: boolean;
   readonly sharePoint?: boolean;
   readonly mapped?: boolean;
+  /** Worksheets with the same headers; only the first is mapped. */
+  readonly sheets?: number;
   readonly versions?: number;
   readonly rows?: number;
   readonly sync?: WorkbookLibrarySyncStatus;
@@ -58,11 +61,11 @@ const WORKFLOWS: readonly WorkflowWorkbookRequirementInput[] = [{ id: "person-lo
 
 function workbookOf(seed: Seed, version: number): EditableWorkbookWire {
   const rows = seed.rows ?? 4;
-  return { name: seed.name, libraryId: seed.id, themes: [], hasFormulas: false, sheets: [{ id: "sheet-1", name: "Sheet1", width: HEADERS.length, hidden: [], headerRow: 1,
-    columnBindings: HEADERS.map((sourceHeader, column) => ({ id: `column-${column}`, sourceColumn: column, sourceHeader, fieldId: seed.mapped === false ? null : FIELDS[column] ?? null,
-      basis: seed.mapped === false || FIELDS[column] === null ? "unmapped" as const : "header" as const })),
+  return { name: seed.name, libraryId: seed.id, themes: [], hasFormulas: false, sheets: Array.from({ length: seed.sheets ?? 1 }, (_, sheet) => ({ id: `sheet-${sheet + 1}`, name: `Sheet${sheet + 1}`, width: HEADERS.length, hidden: [], headerRow: 1,
+    columnBindings: HEADERS.map((sourceHeader, column) => { const mapped = seed.mapped !== false && sheet === 0 && FIELDS[column] !== null;
+      return { id: `sheet-${sheet + 1}-column-${column}`, sourceColumn: column, sourceHeader, fieldId: mapped ? FIELDS[column] : null, basis: mapped ? "header" as const : "unmapped" as const }; }),
     rows: [{ id: "header", cells: HEADERS.map(value => ({ value })) },
-      ...Array.from({ length: rows }, (_, row) => ({ id: `row-${row}`, cells: [{ value: EMPLOYEE_IDS[(row + version) % EMPLOYEE_IDS.length] ?? "" }, { value: `Sample, Person ${row + 1}` }, { value: row % 2 === 0 ? "Active" : "" }] }))] }] };
+      ...Array.from({ length: rows }, (_, row) => ({ id: `row-${row}`, cells: [{ value: EMPLOYEE_IDS[(row + version) % EMPLOYEE_IDS.length] ?? "" }, { value: `Sample, Person ${row + 1}` }, { value: row % 2 === 0 ? "Active" : "" }] }))] })) };
 }
 
 interface Library { entry: WorkbookLibraryEntry; workbooks: Map<string, EditableWorkbookWire> }
@@ -86,7 +89,7 @@ const SEEDS: Readonly<Record<SheetsSeed, readonly Seed[]>> = {
   mixed: [
     { id: "roster", name: "Department roster.xlsx", pinned: true, sharePoint: true, versions: 3, tags: ["HR"] },
     { id: "linked", name: "Hiring tracker.xlsx", sharePoint: true, sync: FAILED_SYNC, tags: ["Hiring"] },
-    { id: "plain", name: "Onboarding list.xlsx", tags: ["HR", "Onboarding"] },
+    { id: "plain", name: "Onboarding list.xlsx", tags: ["HR", "Onboarding"], sheets: 3 },
     { id: "unmapped", name: "Imported contacts.xlsx", mapped: false, rows: 2 },
     { id: "output", name: "Person Lookup results.xlsx", workflow: { id: "person-lookup", label: "Person Lookup" }, rows: 6 },
   ],
@@ -165,6 +168,15 @@ export function sheetsStoryServer(options: SheetsStoryServerOptions = {}): Sheet
       const library = addLibrary(request.name ?? "Imported.xlsx");
       return json({ workbook: saved(library) });
     }
+    if (pathname === "/api/v1/workbooks" && method === "POST") {
+      const { workbook } = body as { workbook: EditableWorkbookWire };
+      if (options.add === "refused") return refusal("WORKBOOK_INVALID", "The library refused the spreadsheet.");
+      const library = addLibrary(workbook.name);
+      const first = library.entry.state.versions[0];
+      library.workbooks.set(first.id, { ...workbook, libraryId: library.entry.libraryId });
+      library.entry = { ...library.entry, updatedAt: first.savedAt };
+      return json(saved(library));
+    }
     const clone = /^\/api\/v1\/workbooks\/([^/]+)\/clone$/u.exec(pathname);
     if (clone !== null && method === "POST") {
       const source = libraries.get(decodeURIComponent(clone[1]));
@@ -189,15 +201,16 @@ export function sheetsStoryServer(options: SheetsStoryServerOptions = {}): Sheet
       const record = library?.entry.state.versions.find(item => item.id === decodeURIComponent(version[2]));
       return library === undefined || record === undefined ? refusal("WORKBOOK_NOT_FOUND", "Not found.", 404) : json({ libraryId: library.entry.libraryId, version: record, workbook: library.workbooks.get(record.id) });
     }
-    const write = /^\/api\/v1\/workbooks\/([^/]+)\/save$/u.exec(pathname);
+    const write = /^\/api\/v1\/workbooks\/([^/]+)\/(save|copy-mapping)$/u.exec(pathname);
     if (write !== null && method === "POST") {
       const library = libraries.get(decodeURIComponent(write[1]));
       if (library === undefined || save === "refused") return refusal("WORKBOOK_VERSION_CONFLICT", "This spreadsheet changed elsewhere.", 409);
-      const request = body as { expectedVersion: number; workbook: EditableWorkbookWire };
+      const request = body as { expectedVersion: number; workbook?: EditableWorkbookWire; worksheetId?: string };
+      const workbook = request.workbook ?? encodeEditableWorkbook(copyColumnMapping(decodeEditableWorkbook(saved(library).workbook), request.worksheetId ?? ""));
       const number = request.expectedVersion + 1;
       const id = `${library.entry.libraryId}-v${number}`;
       const record: WorkbookLibraryVersion = { id, name: `Version ${number}`, version: number, snapshotId: `${library.entry.libraryId}-s${number}`, savedAt: at(24), source: "operator" };
-      library.workbooks.set(id, request.workbook);
+      library.workbooks.set(id, workbook);
       library.entry = { ...library.entry, version: number, updatedAt: record.savedAt, state: { ...library.entry.state, revision: library.entry.state.revision + 1, selectedVersionId: id, versions: [...library.entry.state.versions, record] } };
       return json(saved(library));
     }

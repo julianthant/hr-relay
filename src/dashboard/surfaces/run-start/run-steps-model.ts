@@ -57,8 +57,10 @@ const systemNote = (systems: readonly BrowserSystemId[] | undefined): string | u
 /** The rows a workflow serves; a workflow that serves none shows one row per step. */
 export function startRowsOf(source: StepRowSource): readonly StepRow[] {
   const stepOf = (key: string) => source.steps.find(step => step.key === key);
-  const labelOf = (key: string) => stepOf(key)?.label ?? key;
-  const forcesNote = (forces: readonly string[]) => forces.length === 0 ? undefined : `Also omits: ${forces.map(labelOf).join(", ")}`;
+  const labelOf = (key: string) => source.rows?.find(row => row.target?.workflow === undefined && row.target?.step === key)?.label ?? stepOf(key)?.label ?? key;
+  // A step done by hand is never switched off for the operator, so it is not named here.
+  const forced = (key: string) => { const control = stepOf(key)?.control; return control?.state !== "omittable" || control.form.fields.length > 0; };
+  const forcesNote = (forces: readonly string[]) => forces.some(forced) ? `Also omits: ${forces.filter(forced).map(labelOf).join(", ")}` : undefined;
   if (source.rows === undefined) {
     return source.steps.map((step): StepRow => {
       const control = step.control;

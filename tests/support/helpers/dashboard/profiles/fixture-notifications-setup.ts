@@ -1,4 +1,4 @@
-import { DashboardDayWireSchema } from "../../../../../src/models/dashboard/projection.js";
+import { NotificationWireSchema } from "../../../../../src/models/dashboard/projection.js";
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
 
 
@@ -9,7 +9,7 @@ export function createFixtureNotificationsSetup({ parkedSeverity, parkedTitle, c
   at: typeof FixtureIdentityTypes.at;
   uuidOf: typeof FixtureIdentityTypes.uuidOf;
 }) {
-  const FIXTURE_NOTIFICATIONS = DashboardDayWireSchema.shape.notifications.parse([
+  const FIXTURE_NOTIFICATIONS = NotificationWireSchema.array().parse([
       {
         kind: "notification",
         notificationId: uuidOf(801),
@@ -36,7 +36,7 @@ export function createFixtureNotificationsSetup({ parkedSeverity, parkedTitle, c
       },
     ]);
 
-  const FIXTURE_BACKFILL_NOTIFICATIONS = DashboardDayWireSchema.shape.notifications.parse([
+  const FIXTURE_BACKFILL_NOTIFICATIONS = NotificationWireSchema.array().parse([
       ...[803, 804, 805, 806, 807, 808].map((seed, index) => ({
         kind: "backfill-gap",
         channel: "ping", count: 1, publicationId: seed.toString(16).padStart(64, "0"),

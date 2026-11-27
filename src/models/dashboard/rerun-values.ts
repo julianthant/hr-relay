@@ -72,7 +72,7 @@ export const RerunValuesSnapshotSchema = z.strictObject({
 export type RerunValuesSnapshot = z.infer<typeof RerunValuesSnapshotSchema>;
 export const RerunValuesRefusalCodeSchema = z.enum([
   "target-deleted", "target-not-found", "source-stale", "source-archived", "source-ineligible",
-  "descriptor-mismatch", "source-invalid",
+  "descriptor-mismatch", "source-invalid", "sample-run",
 ]);
 export type RerunValuesRefusalCode = z.infer<typeof RerunValuesRefusalCodeSchema>;
 export const RerunValuesResponseSchema = z.discriminatedUnion("state", [

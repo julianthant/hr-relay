@@ -17,6 +17,7 @@ import { READABLE_WORKFLOW_MODULES } from "../../../../../src/backend/app/regist
 import { createContentAddressedArtifactWriter } from "../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
+import type { NotificationObservationStatus } from "../../../../../src/backend/runs/notifications/observation.js";
 import { registerActivityRoutes } from "../../../../../src/backend/transports/http/routes/activity.js";
 import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
 import { registerShellRoutes } from "../../../../../src/backend/transports/http/routes/shell.js";
@@ -575,6 +576,60 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const malformed = await h.app.request(`http://localhost/events/v1?topics=dashboard-day:${DAY},run:not-a-run`, { headers: { host: "localhost" } });
     assert.equal(malformed.status, 400);
     assert.equal(h.hub.subscriberCount(), 0);
+  });
+
+  it("sends only the sync rows that moved for each connection in a live snapshot", async () => {
+    const ready = { state: "ready", pending: 0 } as const;
+    const failed = { state: "failed", pending: 1, code: "NOTIFICATION_OBSERVATION_FAILED" } as const;
+    let status: NotificationObservationStatus = ready;
+    const h = await harness({ profileFixture: profileFixtures.create, streamSettings: true,
+      notificationStatus: { read: () => status, onChange: () => () => undefined } });
+    const readers: ReadableStreamDefaultReader<Uint8Array>[] = [];
+    const decoder = new TextDecoder();
+    const snapshot = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+      for (;;) {
+        const chunk = await reader.read();
+        assert.equal(chunk.done, false);
+        const data = decoder.decode(chunk.value).split("\n").find(line => line.startsWith("data: "));
+        assert.ok(data);
+        const envelope = DashboardStreamEnvelopeSchema.parse(JSON.parse(data.slice(6)));
+        if (envelope.type === "snapshot") return envelope;
+      }
+    };
+    const connect = async () => {
+      const response = await h.app.request(`/events/v1?topics=dashboard-day:${DAY}`);
+      assert.equal(response.status, 200);
+      assert.ok(response.body);
+      const reader = response.body.getReader();
+      readers.push(reader);
+      return { reader, initial: await snapshot(reader) };
+    };
+    const row = (value: NotificationObservationStatus) => ({
+      model: "notification-status", key: "local-operator", value: { state: "available", value },
+    });
+
+    try {
+      const first = await connect();
+      const settings = first.initial.rows.find(syncRow => syncRow.model === "settings");
+      assert.equal(settings?.value.state, "available");
+      assert.deepEqual(first.initial.rows, [row(ready), settings]);
+      // The second handoff reads the new status before the first connection receives a status update.
+      status = failed;
+      const second = await connect();
+      assert.deepEqual(second.initial.rows, [row(failed), settings]);
+
+      const run = currentSeparationsRun({ seed: 340, shape: "single" });
+      seedCurrentSeparationsRun(h, run);
+      projectCurrentSeparationsRuns(h, [run]);
+
+      const [moved, unchanged] = await Promise.all([snapshot(first.reader), snapshot(second.reader)]);
+      assert.equal(moved.cursor, unchanged.cursor);
+      assert.ok(unchanged.payload.queueSurfaces.some(entry => entry.runId === run.envelope.runId));
+      assert.deepEqual(moved.rows, [row(failed)]);
+      assert.deepEqual(unchanged.rows, []);
+    } finally {
+      await Promise.all(readers.map(reader => reader.cancel()));
+    }
   });
 
   it("serves /events/v1 through the demand-driven bridge: an unread client is bounded to one reset-required and cancel closes the hub connection", async () => {

@@ -10,7 +10,7 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import { projectTransactionOutcome } from "../../../models/workflow/graph.js";
-import type { StepOmissions } from "../../../models/workflow/step-omission.js";
+import { orderOnlyOmission, type StepOmissions } from "../../../models/workflow/step-omission.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
@@ -135,7 +135,7 @@ export function validateRerunTransactionEvidence(input: Readonly<{
       if (gate === undefined) {
         const delegated = rerunDelegationOutput(repositories, run, dependency, true, schemaReader);
         if (delegated !== undefined) { outputs[id] = delegated; continue; }
-        if (gateWasSkipped(dependency, checkpoint)) continue;
+        if (gateWasSkipped(dependency, checkpoint) || orderOnlyOmission(descriptor.stepOmissions, run.envelope.stepOmissions, node.id, id)) continue;
         throw new RerunRefusedError("invalid-value", "Rerun transaction dependency is unavailable");
       }
       if (dependency?.kind !== "gate" || (schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate,
@@ -335,7 +335,8 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
         } else {
           const delegated = rerunDelegationOutput(repositories, run, dependencyNode, false, schemaReader);
           if (delegated !== undefined) outputs[dependency] = delegated;
-          else if (!gateWasSkipped(dependencyNode, transactionCheckpoint)) missingDependency = true;
+          else if (!gateWasSkipped(dependencyNode, transactionCheckpoint)
+            && !orderOnlyOmission(descriptor.stepOmissions, run.envelope.stepOmissions, node.id, dependency)) missingDependency = true;
         }
       }
     }

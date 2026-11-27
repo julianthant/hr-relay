@@ -178,7 +178,7 @@ test("Work-Study: Rerun after a failed step opens the dialog and writes once", a
   const rerun = await dashboard.holdCommands("start-run");
   await row.getByRole("button", { name: "Rerun", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Rerun", exact: true });
-  await dialog.getByRole("button", { name: "Continue" }).click();
+  await dialog.getByRole("button", { name: "Next", exact: true }).click();
   const start = dialog.getByRole("button", { name: "Start live run" });
   await start.click();
   await expect.poll(rerun.sent, { message: "the held Rerun reached the server" }).toBe(1);

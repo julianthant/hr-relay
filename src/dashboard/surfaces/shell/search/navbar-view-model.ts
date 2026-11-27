@@ -4,7 +4,7 @@ import type { PaletteSheet } from "./search-palette-model.js";
 import { formatMonthYear } from "../../../lib/date-format.js";
 
 export type NavbarSearchResult = Readonly<{ id: string; subject: string; workflow: string; day: string; state: string; publicId?: string; destination?: NotificationDestination }>;
-export type NavbarData = Readonly<{ today: string; counts: Readonly<Record<string, number>>; results: readonly NavbarSearchResult[]; totalMatches?: number; unavailable?: string; loading?: boolean; sheets?: readonly PaletteSheet[]; sheetsUnavailable?: string }>;
+export type NavbarData = Readonly<{ today: string; counts: Readonly<Record<string, number>>; results: readonly NavbarSearchResult[]; totalMatches?: number; /** Reads the next page of runs; absent when none remain. */ more?: () => void; unavailable?: string; loading?: boolean; sheets?: readonly PaletteSheet[]; sheetsUnavailable?: string }>;
 
 function dateValue(day: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(day)) throw new Error("navbar-day-invalid");

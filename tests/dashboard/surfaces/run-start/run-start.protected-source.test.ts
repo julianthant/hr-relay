@@ -25,6 +25,6 @@ it("explains how to start again when retained source input is protected without 
     { workflows: [workflow], panelWorkflowId: workflow.workflowId, rerunSource: source });
   assert.match(dialog.text(), /The original input can't be reused; use Start run\./u);
   assert.equal(dialog.stage(), "Steps");
-  assert.equal(dialog.disabled("Continue"), true);
+  assert.equal(dialog.disabled("Next"), true);
   assert.equal(document.querySelector(".launch-dialog textarea") === null, true);
 });

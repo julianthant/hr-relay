@@ -1,13 +1,24 @@
 import { type NotificationCollectionOperation, notificationMatchesCollection, notificationStanding, type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { notificationStandingSources } from "../../../rules/notifications/notification-triggers.js";
-import type { CommandRequest } from "../../../rules/commands/commands.js";
+import { NotificationCommandReceiptSchema, type CommandRequest } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
-import type { TargetReference } from "../lifecycle/run-fan-out.js";
+import type { TargetReference, VersionChange } from "../lifecycle/run-fan-out.js";
 import { applied, type CommandApplication } from "./command-application.js";
 import { reject } from "./command-refusal.js";
 
 type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
+
+const snoozeEnd = (now: string) => new Date(Date.parse(now) + 3_600_000).toISOString();
+
+export function notificationCommandReceipt(request: NotificationCommand, versions: readonly VersionChange[], completedAt: string) {
+  return NotificationCommandReceiptSchema.parse({
+    actorId: request.target.actorId,
+    changes: versions.map(({ target, after }) => ({ notificationId: target.notificationId, revision: after })),
+    ...(request.type === "notification-snooze" || request.type === "notification-snooze-all"
+      ? { snoozedUntil: snoozeEnd(completedAt) } : {}),
+  });
+}
 
 export function executeNotification(
   repositories: AuthorityRepositories,
@@ -79,11 +90,11 @@ export function executeNotification(
 }
 
 function applyNotificationState(repositories: AuthorityRepositories, current: NotificationRecord, operation: NotificationCollectionOperation | "clear", now: string) {
-  repositories.notifications.updateState({ notificationId: current.notificationId, expectedVersion: current.version,
+  const updated = repositories.notifications.updateState({ notificationId: current.notificationId, expectedVersion: current.version,
     status: operation === "read" ? "read" : operation === "unread" ? "unread" : current.status,
-    snooze: operation === "snooze" ? { state: "snoozed", until: new Date(Date.parse(now) + 3_600_000).toISOString() }
+    snooze: operation === "snooze" ? { state: "snoozed", until: snoozeEnd(now) }
       : operation === "unsnooze" ? { state: "not-snoozed" } : current.snooze,
     ...(operation === "clear" ? { clearedAt: now } : {}), updatedAt: now });
   const target: TargetReference = { family: "notification", notificationId: current.notificationId };
-  return { target, version: { target, before: current.version, after: current.version + 1 } };
+  return { target, version: { target, before: current.version, after: updated.version } };
 }
