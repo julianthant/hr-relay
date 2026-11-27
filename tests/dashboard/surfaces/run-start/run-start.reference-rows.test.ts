@@ -173,7 +173,7 @@ it("stops CRM Doc Download at the 32 worksheet cap a run can start with", async 
     { workflows: [crmFlow], panelWorkflowId: crm.id });
   await h.settle(); await add("References", "Contact roster");
   await click("Contact roster worksheets, S33");
-  for (const name of names.slice(2)) await toggle(name);
+  for (const name of names.slice(1, 32)) await toggle(name);
   assert.ok(h.buttons().some(button => h.buttonName(button) === "Contact roster worksheets, 32 worksheets"));
   const item = (name: string) => worksheetItems("menuitemcheckbox").find(node => node.textContent === name);
   assert.equal(item("S01")?.getAttribute("aria-disabled"), "true");
