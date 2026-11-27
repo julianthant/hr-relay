@@ -586,7 +586,7 @@ test("Onboarding: a failed first read shows Failed on the row and writes nothing
   expect(seeded.scripted.writes()).toHaveLength(0);
 });
 
-for (const probe of Array.from({ length: 12 }, (_, index) => index + 1)) test(`Onboarding: a hire submit whose answer is lost parks the run and is asked for once (probe ${probe})`, async ({ dashboard, seeded, page, failures }) => {
+for (const probe of [1, 2, 3, 4]) test(`Onboarding: a hire submit whose answer is lost parks the run and is asked for once (probe ${probe})`, async ({ dashboard, seeded, page, failures }) => {
   const { request, runId } = await onboardingStarted({ dashboard, seeded, page, failures });
   const first = await seeded.scripted.drive(runId);
   let position = first.position;
@@ -597,8 +597,16 @@ for (const probe of Array.from({ length: 12 }, (_, index) => index + 1)) test(`O
   expect(await run.advance()).toEqual({ at: "step", nodeId: "ucpath-source" });
   expect(await run.advance()).toEqual({ at: "step", nodeId: "hire-create" });
   expect(await run.advance()).toEqual({ at: "step", nodeId: "hire-create" });
-  expect(await run.parkWrite()).toMatchObject({ at: "settled", outcome: { state: "parked-write" } });
+  const streamUrl = `${seeded.baseUrl}/events/v1?topics=dashboard-day:${seeded.day},run:${runId}`;
+  const probeStreams = () => Promise.all(Array.from({ length: 8 }, async () => {
+    const response = await fetch(streamUrl);
+    try { expect(response.status, "Onboarding run-topic subscription").toBe(200); }
+    finally { await response.body?.cancel(); }
+  }));
+  const [settled] = await Promise.all([run.parkWrite(), probe === 1 ? undefined : probeStreams()]);
+  expect(settled).toMatchObject({ at: "settled", outcome: { state: "parked-write" } });
   await expect.poll(async () => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status, { message: "the parked write is not Done" }).toBe("blocked");
+  if (probe !== 1) await probeStreams();
   await dashboard.openRun(runId);
   await dashboard.reloadRun(runId);
   await expect(page.locator(`[data-demo-row-id="${runId}"]`)).toContainText("Write parked");

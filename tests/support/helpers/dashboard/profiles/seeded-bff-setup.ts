@@ -100,7 +100,6 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
 
   async function bridge(app: DashboardApp, req: IncomingMessage, res: ServerResponse, url: URL, timeline: AuthorityDatabase["authority"]["timelineEvents"]): Promise<void> {
     const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
-    const debugAfter = url.pathname === "/events/v1" ? timeline.debugHighWaterMark() : undefined;
     const response = await app.fetch(new Request(`http://127.0.0.1${url.pathname}${url.search}`, {
       method: req.method ?? "GET",
       headers: Object.fromEntries(
@@ -108,11 +107,12 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       ),
       ...(body === undefined ? {} : { body: new Uint8Array(body) }),
     }));
-    if (debugAfter !== undefined && response.status >= 500) {
-      const faults = timeline.debugPage({ after: debugAfter }).flatMap(({ payload }) => payload.kind === "debug"
+    if (url.pathname === "/events/v1" && response.status >= 500) {
+      const after = Math.max(0, timeline.debugHighWaterMark() - 16);
+      const faults = timeline.debugPage({ after }).flatMap(({ payload }) => payload.kind === "debug"
         && payload.event.category === "http" && payload.event.phase === "failed" ? [payload.event] : []);
       const failure = sanitizeDebugText(await response.clone().text());
-      process.stderr.write(`[DEBUG-1072] ${JSON.stringify({ status: response.status, failure, faults })}\n`);
+      process.stderr.write(`[DEBUG-1072] ${JSON.stringify({ status: response.status, resumed: req.headers["last-event-id"] !== undefined, failure, faults })}\n`);
     }
     res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
     if (response.body === null) {
