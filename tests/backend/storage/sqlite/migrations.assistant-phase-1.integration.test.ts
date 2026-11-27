@@ -15,7 +15,7 @@ import { systemClock } from "../../../../src/rules/time/clock.js";
 import { restoreSchema42AssistantStorage } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-it("upgrades populated schema-42 history, verifies its backup and keeps legacy settlements working", async () => {
+it("upgrades populated schema-42 history to 44, verifies its backup and settles the retained turn", async () => {
   const profile = await createBoundProfileFixture();
   const profileId = profile.admission.profileBinding.profileId;
   const options = {
@@ -27,10 +27,11 @@ it("upgrades populated schema-42 history, verifies its backup and keeps legacy s
     const fresh = AuthorityDatabase.open(profile.admission, options, systemClock, undefined, undefined, undefined,
       boundProfileCredentials(profile.admission));
     try {
+      fresh.bindAssistantEpoch(() => 1);
       const history = fresh.authority.assistantHistory;
       assert.equal(history.apply({ operation: "create", conversationId, title: "Retained chat" }, now).state, "saved");
       assert.equal(history.accept({ conversationId, expectedRevision: 1, messageId, text: "Explain", modelText: "Explain",
-        subjectRef: null, attachments: [], now }).state, "accepted");
+        subjectRef: null, attachments: [], proposalAnswer: null, now }).state, "accepted");
     } finally { fresh.close(); }
     profile.admission.release();
 
@@ -38,7 +39,7 @@ it("upgrades populated schema-42 history, verifies its backup and keeps legacy s
     let originalMessages;
     {
       using raw = new DatabaseSync(profile.path);
-      assert.equal(inspectNativeAuthority(raw).schemaVersion, 43);
+      assert.equal(inspectNativeAuthority(raw).schemaVersion, 44);
       for (const table of tables) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
       restoreSchema42AssistantStorage(raw);
       original = inspectNativeAuthority(raw, 42);
@@ -47,12 +48,14 @@ it("upgrades populated schema-42 history, verifies its backup and keeps legacy s
     }
 
     assert.deepEqual(await upgradeProfileAtStartup(profileBrowserClosure, profile.machine, profileId, { primaryDisplay: null }, systemClock),
-      { state: "upgraded", fromSchemaVersion: 42, toSchemaVersion: 43, credentials: "unchanged" });
+      { state: "upgraded", fromSchemaVersion: 42, toSchemaVersion: 44, credentials: "unchanged" });
     assert.deepEqual(migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION).filter(table => !migrationTableNames(42).includes(table)), tables);
     {
       using upgraded = new DatabaseSync(profile.path, { readOnly: true });
-      assert.equal(inspectNativeAuthority(upgraded).schemaVersion, 43);
-      assert.deepEqual(upgraded.prepare("SELECT * FROM assistant_messages").all(), originalMessages);
+      assert.equal(inspectNativeAuthority(upgraded).schemaVersion, 44);
+      const parts = [{ kind: "text", runs: [{ kind: "plain", text: "Explain" }] }];
+      assert.deepEqual(upgraded.prepare("SELECT * FROM assistant_messages").all().map(row => ({ ...row })), originalMessages.map(row => ({ ...row,
+        payload_json: JSON.stringify({ parts, recording: { kind: "unrecorded", usage: { state: "unrecorded" } } }) })));
       for (const table of tables) assert.equal(upgraded.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     }
 
@@ -68,8 +71,9 @@ it("upgrades populated schema-42 history, verifies its backup and keeps legacy s
       const reopened = AuthorityDatabase.open(admission, options, systemClock, undefined, undefined, undefined,
         createCredentialStore({ admission, stateRoot: profile.stateRoot }));
       try {
-        const reply = { id: randomUUID(), kind: "answer" as const, text: "Explanation", modelText: "Explanation" };
-        assert.equal(typeof reopened.authority.assistantHistory.settle(conversationId, messageId, { delivery: "answered", reply }, now), "number");
+        reopened.bindAssistantEpoch(() => 1);
+        assert.equal(reopened.authority.assistantHistory.settleInterrupted(now), 1);
+        assert.equal(reopened.authority.assistantHistory.conversation(conversationId, now)?.messages.find(message => message.id === messageId)?.delivery, "delivery-unknown");
       } finally { reopened.close(); }
     } finally { admission.release(); }
   } finally { await profile.close(); }

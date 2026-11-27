@@ -1,56 +1,31 @@
-import { AssistantActionDecisionSchema } from "../../../../src/models/dashboard/assistant.js";
 import { AssistantModelPreferenceViewSchema, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from '../../../../src/models/dashboard/assistant.js';
 import assert from "node:assert/strict";
-import { ASSISTANT_PAUSE_PROPOSAL } from "../../../support/fixtures/dashboard/assistant-start.js";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 
-it("uses the existing authenticated transport for exact opaque action decisions without command or model authority", async () => {
+const REQUEST = { conversationId: "11111111-1111-4111-8111-111111111111", expectedRevision: 1, messageId: "22222222-2222-4222-8222-222222222222", message: "pause it" };
+const NO_REPLY = { kind: "result", result: { state: "no-reply", reason: "ASSISTANT_UNAVAILABLE", canRetry: false, turn: null } };
+
+it("has no Confirm decision and sends the turn-accounting request with its approval pick", async () => {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
-  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
-    calls.push({ url, init });
-    return Response.json({ state: "applied", actionId: "00000000-0000-4000-8000-000000000002" });
-  } });
-  const decide = client.assistantDecide?.bind(client); assert.ok(decide);
-  const identity = AssistantActionDecisionSchema.parse({ chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, decision: "confirm", reviewedDigest: "a".repeat(64) });
-  assert.equal((await decide(identity)).state, "applied");
-  assert.equal(calls.length, 1); assert.equal(calls[0].url, "http://127.0.0.1:3938/api/v1/assistant/action");
-  const body = calls[0].init?.body; assert.equal(typeof body, "string"); if (typeof body !== "string") throw new Error("JSON request body required");
-  assert.deepEqual(JSON.parse(body), identity);
-  assert.equal(new Headers(calls[0].init?.headers).get("origin"), "http://127.0.0.1:3938");
-  await assert.rejects(() => decide({ ...identity, revision: 0 }));
-  await assert.rejects(() => decide({ chatId: identity.chatId, actionId: identity.actionId, revision: 1, decision: "confirm" } as never));
-  assert.equal(calls.length, 1);
-});
-it("retains a lost confirmation response as an error and never retries the action", async () => {
-  let calls = 0;
-  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => { calls++; throw new Error("synthetic lost response"); } });
-  const decide = client.assistantDecide?.bind(client); assert.ok(decide);
-  await assert.rejects(() => decide(AssistantActionDecisionSchema.parse({ chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, decision: "confirm", reviewedDigest: "a".repeat(64) })));
-  assert.equal(calls, 1);
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => { calls.push({ url, init }); return Response.json(NO_REPLY); } });
+  assert.equal("assistantDecide" in client, false);
+  assert.deepEqual(await client.assistantRespond(REQUEST), NO_REPLY);
+  assert.equal(calls.length, 1); assert.equal(calls[0]?.url, "http://127.0.0.1:3938/api/v1/assistant/respond");
+  const body = calls[0]?.init?.body; if (typeof body !== "string") throw new Error("JSON request body required");
+  assert.deepEqual(JSON.parse(body), { ...REQUEST, approvalMode: "ask" });
+  assert.equal(new Headers(calls[0]?.init?.headers).get("origin"), "http://127.0.0.1:3938");
 });
 
-it("refuses a successful-looking decision for a different action without retry", async () => {
-  let calls = 0;
-  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => { calls++; return Response.json({ state: "applied", actionId: "00000000-0000-4000-8000-000000000003" }); } });
-  const decide = client.assistantDecide?.bind(client); assert.ok(decide);
-  await assert.rejects(() => decide(AssistantActionDecisionSchema.parse({ chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, decision: "confirm", reviewedDigest: "a".repeat(64) })), /assistant-action-response-mismatch/u);
-  assert.equal(calls, 1);
-});
-
-it("preserves the exact issued automatic unknown identity and refuses a mismatched readback identity", async () => {
-  const action = ASSISTANT_PAUSE_PROPOSAL;
-  let mismatch = false, calls = 0;
-  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => {
-    calls++; return Response.json({ kind: "result", result: { state: "unknown", actionId: mismatch ? "00000000-0000-4000-8000-000000000003" : action.actionId, action } });
-  } });
-  const envelope = await client.assistantRespond({ conversationId: "11111111-1111-4111-8111-111111111111", expectedRevision: 1, messageId: "22222222-2222-4222-8222-222222222222", message: "mark notifications read" });
-  assert.equal(envelope.kind, "result"); if (envelope.kind !== "result") throw new Error("result required");
-  const { result } = envelope;
-  assert.equal(result.state, "unknown"); if (result.state !== "unknown") throw new Error("unknown identity required");
-  assert.deepEqual(result.action, action); mismatch = true;
-  await assert.rejects(() => client.assistantRespond({ conversationId: "11111111-1111-4111-8111-111111111111", expectedRevision: 1, messageId: "22222222-2222-4222-8222-222222222222", message: "mark notifications read" }));
-  assert.equal(calls, 2);
+it("refuses an envelope that is not a served reply or no-reply, and a receipt for another message", async () => {
+  const receipt = { conversationId: REQUEST.conversationId, messageId: "33333333-3333-4333-8333-333333333333", ordinal: 1, revision: 2, delivery: "answered" };
+  for (const served of [{ kind: "result", result: { state: "answered", text: "Plain text" } }, { kind: "result", result: { state: "unknown", actionId: REQUEST.messageId } },
+    { ...NO_REPLY, receipt }]) {
+    let calls = 0;
+    const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => { calls++; return Response.json(served); } });
+    await assert.rejects(() => client.assistantRespond(REQUEST));
+    assert.equal(calls, 1);
+  }
 });
 
 it('reads the strict selected assistant preference only from the authenticated view endpoint', async () => {
