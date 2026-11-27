@@ -71,7 +71,7 @@ it("admits no save waiting for worker startup once the profile starts closing", 
   f.beginClosurePreparation();
   f.child.emit("message", { kind: "ready" });
   await assert.rejects(result, /profile-session-stale/);
-  assert.deepEqual(f.send.mock.calls, []);
+  assert.equal(f.send.mock.calls.length, 0);
   const closing = f.settings.closeCommands();
   assert.deepEqual(f.send.mock.calls.map(([message]) => message), [{ kind: "stop" }]);
   f.closeChild(0);
