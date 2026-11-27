@@ -70,7 +70,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   };
   const bank = operatorTags(sheets);
   const rows: RowActions = { open: setOpenId, version: id => setDialog({ kind: 'rollback', id }), menu, logs: sheet => { if (sheet.run) onOpenRun?.(sheet.run.id, sheet.run.day); },
-    tags: (id, tags) => void change(id, { kind: 'set-tags', tags: [...tags] }), bank, pending: pendingLibraries };
+    tags: (id, tags) => void change(id, { kind: 'set-tags', tags: [...tags] }), bank };
   const warned = useRef(false);
   const back = () => {
     const id = openId;
