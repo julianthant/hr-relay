@@ -377,6 +377,27 @@ it("publishes a failed refresh while retaining the verified document and unsaved
   assert.equal(current().dirtyCount, 1);
 });
 
+it("keeps fields editable while Settings re-reads and holds an edit made meanwhile", async () => {
+  let release: (() => void) | undefined;
+  let hold = false;
+  let controller: ReturnType<typeof useEditableSettings> | undefined;
+  const client = { editableSettings: () => hold ? new Promise(resolve => { release = () => resolve(DOCUMENT); }) : Promise.resolve(DOCUMENT),
+  } as unknown as DashboardClient;
+  function Surface() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }
+  host = document.createElement("div"); document.body.append(host);
+  await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Surface) }) })); });
+  const current = () => { if (controller === undefined) throw new Error("missing editor"); return controller; };
+  const leaf = current().leaves.find(candidate => candidate.input === "text");
+  assert.ok(leaf);
+  hold = true;
+  await act(async () => current().reload());
+  assert.equal(current().refreshing, true);
+  assert.equal(current().locked, false);
+  await act(async () => current().update(leaf.path, "edited during re-read"));
+  await act(async () => { release?.(); });
+  assert.deepEqual(current().draft[leaf.path], { kind: "set", raw: "edited during re-read" });
+});
+
 for (const section of ["general", "performance"]) for (const mode of ["failed", "hung"]) {
   it(`renders the one failed-read notice with Retry in the ${section} part after a ${mode} initial read`, async () => {
     vi.useFakeTimers();

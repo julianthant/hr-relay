@@ -29,7 +29,7 @@ export function protectedSaveLanded(attempt: ProtectedReadbackAttempt, document:
   });
 }
 export function useProtectedSettings(input: {
-  actorId: string; readReady: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>; readCurrent: () => Promise<EditableSettingsWire>; acceptReadback: (document: EditableSettingsWire) => void; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener;
+  actorId: string; readReady: boolean; editable: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>; readCurrent: () => Promise<EditableSettingsWire>; acceptReadback: (document: EditableSettingsWire) => void; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener;
 }) {
   const binding = useDashboardCommandBinding();
   const live = useRef(true);
@@ -50,14 +50,14 @@ export function useProtectedSettings(input: {
   if (attemptScope.current === undefined && retained !== undefined) attemptScope.current = retained.scope;
   const available = input.document?.protectedSettings;
   const update = (name: ProtectedSettingsName, raw: string): void => {
-    if (!input.readReady || busy.current || pending.current !== undefined || available?.state !== "available" || !available.rows.some(row => row.name === name)) return;
+    if (!input.editable || busy.current || pending.current !== undefined || available?.state !== "available" || !available.rows.some(row => row.name === name)) return;
     let error: string | undefined;
     try { protectedValue(name, raw); } catch { error = "Enter a valid value for this credential."; }
     setDraft(previous => ({ ...previous, [name]: { kind: "set", raw } }));
     setErrors(previous => ({ ...previous, [name]: error })); setSave({ state: "idle" });
   };
   const clear = (name: ProtectedSettingsName): void => {
-    if (!input.readReady || busy.current || pending.current !== undefined || available?.state !== "available") return;
+    if (!input.editable || busy.current || pending.current !== undefined || available?.state !== "available") return;
     setDraft(previous => ({ ...previous, [name]: { kind: "clear" } }));
     setErrors(previous => ({ ...previous, [name]: undefined })); setSave({ state: "idle" });
   };
@@ -163,6 +163,6 @@ export function useProtectedSettings(input: {
     });
   });
   useEffect(() => { adopted(); }, [binding?.scope, retained?.request.commandId, retained?.state]);
-  return { draft, errors, save: shown, dirtyCount: Object.keys(draft).length, locked: !input.readReady || save.state === "saving" || pending.current !== undefined,
+  return { draft, errors, save: shown, dirtyCount: Object.keys(draft).length, locked: !input.editable || save.state === "saving" || pending.current !== undefined,
     explicitSave, setExplicitSave, update, clear, reset, discard, submit };
 }
