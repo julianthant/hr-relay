@@ -1,6 +1,7 @@
 import { StatusBadge } from "../shared/status/status.js";
 import { dsStatusOf } from "../shared/status/status-model.js";
 import { NEEDS_DUO_LABEL, NEEDS_DUO_MEANING, STARTING_LABEL, isNeedsDuo, isStarting, type QueueSurfaceWire } from "../queue/queue-model.js";
+import { StartedByLine } from "../shared/status/started-by.js";
 import { FlaskConical } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { dsIcon, dsText } from "../../ds/ui.js";
@@ -17,6 +18,7 @@ export function RunStateChips({ row }: { row: QueueSurfaceWire }) {
   const status = dsStatusOf(row.status);
   return <>
     {row.dryRun && <DryRunMark />}
+    <StartedByLine surface={row} />
     <StatusBadge status={status} pauseControl={row.pauseControl} interrupt={row.interrupt} cancelledBy={row.cancelledBy} presentation="queue"
       {...(isNeedsDuo(row) ? { label: NEEDS_DUO_LABEL, meaning: NEEDS_DUO_MEANING } : isStarting(row) ? { label: STARTING_LABEL } : {})} />
   </>;

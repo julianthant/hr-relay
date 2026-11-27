@@ -33,6 +33,7 @@ import {
 import { dayLabel, plural, runTiming } from "../shared/status/format.js";
 import { formatDuration, formatTime } from "../../lib/date-format.js";
 import { testInstanceHazardTitle, testInstanceSystems } from "../shared/status/test-instance-hazard.js";
+import { StartedByLine } from "../shared/status/started-by.js";
 import { runDisplayId } from "../shared/status/run-display-model.js";
 import { StatusBadge } from "../shared/status/status.js";
 import {
@@ -348,6 +349,7 @@ function RowFooterLine({
           {runDisplayId(surface.runId, surface.traceId)}
         </span>
         {timed && <RunTimingText surface={surface} nowIso={nowIso} />}
+        <StartedByLine surface={surface} />
       </div>
       <div className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
         {retryFailed.length > 0 && <IconActionButton tone="primary" icon={<RotateCcw aria-hidden className={dsIcon.md} />}

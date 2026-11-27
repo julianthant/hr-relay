@@ -433,6 +433,7 @@ it('recovers a served read-only session after a lost reply, serves it in Queue a
     // Queue and Logs both serve the run.
     const day = await client.dashboardDay(searchPartitionDay(new Date(clock.now().toISOString())));
     const row = day.queueSurfaces.find(surface => surface.runId === runId); assert.ok(row, 'queue row');
+    assert.deepEqual(row.startedBy, { kind: 'assistant', readOnly: true });
     const logs = await originalFetch(`${origin}/api/v1/runs/${runId}`, { headers: { [DASHBOARD_TAB_HEADER]: randomUUID() } });
     assert.equal(logs.status, 200); assert.equal(RunDetailWireSchema.parse(await logs.json()).header.runId, runId);
 
