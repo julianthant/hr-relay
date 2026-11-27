@@ -11,6 +11,7 @@ export const WorkStudyCanonicalInput = defineCanonicalInput(WorkStudyInput, Work
   { emplId: "10000001", effectiveDate: "2026-08-03" },
 ]);
 export type WorkStudyInputValue = z.output<typeof WorkStudyInput>;
+export const WORK_STUDY_INPUT_PLACEHOLDER = "Separate Employee IDs with semicolons";
 export const WORK_STUDY_INPUT_PARSER = InputParserSpecSchema.parse({
   split: { kind: "delimited", delimiters: [",", ";", "\n"] },
   rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }],
@@ -21,7 +22,7 @@ export const WORK_STUDY_TYPED_INPUT = TypedInputSurfaceSchema.parse({
   description: "Each Employee ID starts one run; every run uses the one effective date.",
   modes: [{
     value: "employee-ids", label: "Employee IDs", inputLabel: "Employee IDs",
-    placeholder: "10000001; 10000002", defaults: [], parser: { kind: "entries", spec: WORK_STUDY_INPUT_PARSER },
+    placeholder: WORK_STUDY_INPUT_PLACEHOLDER, defaults: [], parser: { kind: "entries", spec: WORK_STUDY_INPUT_PARSER },
     display: { kind: "first-present", fields: ["emplId"] }, identityFields: ["emplId"],
   }],
   controls: [{ kind: "date", field: "effectiveDate", label: "Effective date", placement: "input", modes: ["employee-ids"], requires: [],

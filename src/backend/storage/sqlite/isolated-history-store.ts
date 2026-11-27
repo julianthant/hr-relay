@@ -19,6 +19,7 @@ import { initialFailureColumns, initialNotificationColumns } from "./native-reco
 import { backupReadOnlyDatabase, openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
 import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
 import { backfillRunSearchOcrSubjects, copySeedSearchColumns } from "./run-search-index.js";
+import { RUN_SEARCH_FTS_MIGRATION } from "./run-search-fts.js";
 import { convertSettingsRecordRow } from "./settings-record-conversion.js";
 import { timelineEventColumns } from "./timeline-repository.js";
 import { privatePathRejects } from "../private-path.js";
@@ -108,6 +109,7 @@ function materializeHistoryArchive(source: DatabaseSync, path: string, binding: 
     }
     archive.exec("UPDATE run_search SET state='discarded' WHERE run_id IN (SELECT id FROM runs WHERE outcome='discarded') AND state NOT IN ('done','failed','cancelled','discarded','interrupted','superseded')");
     backfillRunSearchOcrSubjects(archive);
+    for (const statement of RUN_SEARCH_FTS_MIGRATION.statements) archive.exec(statement);
     for (const index of missingNativeIndexes(source, archive)) archive.exec(index);
     archive.exec("COMMIT");
     return counts;
@@ -175,7 +177,7 @@ export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding:
   if (!cloned) materializeHistoryArchive(local, path, binding);
   const archive = new DatabaseSync(path);
   try {
-    archive.exec("BEGIN IMMEDIATE");
+    archive.exec("PRAGMA secure_delete=ON; BEGIN IMMEDIATE");
     removePreviousSeed(archive);
     const from = z.iso.date().parse(seed.fromDay);
     const existing = [archive, local].flatMap(database => database.prepare("SELECT * FROM runs WHERE local_day>=?").all(from).map(runRecordFromRow));
@@ -326,6 +328,9 @@ const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync, format: 
   42: () => undefined, // The new assistant tables live in the person database.
   43: () => undefined, // Assistant message payloads live in the person database.
   44: upgradeArchivedSettings,
+  45: archive => {
+    for (const statement of RUN_SEARCH_FTS_MIGRATION.statements) archive.exec(statement);
+  },
 };
 const ArchiveVersion = z.strictObject({ format: z.literal([1, archiveFormat]), schema_version: z.number().int(), installation_id: z.uuid(), profile_id: z.uuid() });
 
