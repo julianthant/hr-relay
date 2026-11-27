@@ -3,7 +3,7 @@ import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import { WORKER_STOP_REASON_LABEL } from "../../surfaces/sessions/worker-stop-reason-label.js";
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 
-const QUEUEING_RUN = new Set(["resume", "retry", "recover-run"]);
+const QUEUEING_RUN = new Set(["resume", "retry"]);
 const QUEUEING_BULK = new Set(["resume", "retry"]);
 
 export interface WorkerStartupToast {

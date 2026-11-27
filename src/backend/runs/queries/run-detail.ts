@@ -514,7 +514,12 @@ export function runLevelDecision(facts: Readonly<{ status: string; childRetryKey
   if (facts.childRetryKey !== undefined) return projectDecision("member-failed", [{ id: "retry", send: { via: "action", actionKey: facts.childRetryKey } }]);
   if (facts.status === "cancelling") return projectDecision("cancelling", []);
   if (facts.paused) return projectDecision("paused", [...rowActionOption("resume", "resume", facts.rowActions), ...rowActionOption("cancel-run", "cancel", facts.rowActions)]);
-  if (facts.stalled) return projectDecision("stalled", [...rowActionOption("recover", "recover-run", facts.rowActions), ...rowActionOption("cancel-run", "cancel", facts.rowActions)]);
+  if (facts.stalled) {
+    const rerun = facts.rowActions?.find(action => action.kind === "navigation" && action.navigate.kind === "rerun");
+    const options = rowActionOption("cancel-run", "cancel", facts.rowActions);
+    if (rerun !== undefined) options.unshift({ id: "rerun", send: { via: "row-action", actionKey: rerun.key } });
+    return projectDecision("stalled", options);
+  }
   return undefined;
 }
 

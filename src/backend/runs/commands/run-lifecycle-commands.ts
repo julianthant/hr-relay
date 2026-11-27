@@ -11,49 +11,18 @@ import { activeRunsForItem, requireApplied, runTarget, type TargetReference, typ
 import { lifecycleCommandId, type RelatedRunChange } from "../lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../settings/run-settings.js";
 import { protectedSubjectDisplay } from "../start/protected-input.js";
-import { planRunRecovery } from "../start/recovery-plan.js";
 import { RerunRefusedError } from "../start/rerun.js";
 import { applied, type CommandApplication } from "./command-application.js";
 import type { CommandKernelDependencies } from "./command-kernel.js";
 import { conflict, reject } from "./command-refusal.js";
 import { lifecycleRefusal, lifecycleRun, requireDescriptorMatchesEnvelope, requireRun, resolveDescriptorOrReject, type RunCommand } from "./run-command-context.js";
 
-export type RunBasicCommand = Extract<RunCommand, { type: "retry" | "cancel" | "bump" | "pause" | "resume" | "recover-run" }>;
+export type RunBasicCommand = Extract<RunCommand, { type: "retry" | "cancel" | "bump" | "pause" | "resume" }>;
 
 type RunRecoveryCommand = RunBasicCommand;
 
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type RunDeleteCommand = Extract<RunCommand, { type: "delete" }>;
-
-export function executeRecover(
-  dependencies: CommandKernelDependencies, repositories: AuthorityRepositories,
-  request: RunBasicCommand & { type: "recover-run" },
-): CommandApplication {
-  const current = requireRun(repositories, request, request.target.runId);
-  const descriptor = resolveDescriptorOrReject(dependencies, request, current.envelope.workflow);
-  const planning = workflowPlanning(descriptor);
-  const publication = { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({
-    title: planning.title(current.input.parsed.value), subtitle: planning.subtitle(current.input.parsed.value),
-  })), actorId: request.requestedBy };
-  const relatedRunChanges: RelatedRunChange[] = [];
-  let record: RunRecord;
-  let children: readonly RunRecord[];
-  try {
-    planRunRecovery(repositories, descriptor, current, request.commandId, dependencies.authority.evidenceSchemaHash?.bind(dependencies.authority));
-    record = lifecycleRun(request, dependencies.lifecycle.recover({
-      commandId: lifecycleCommandId("operator-recover-run", request.commandId),
-      runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
-      runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
-      sourceCommandId: request.commandId,
-    }, descriptor, publication), relatedRunChanges);
-    children = dependencies.lifecycle.continueDelegations(record, request.commandId, relatedRunChanges);
-  } catch (error) {
-    if (error instanceof RerunRefusedError || error instanceof RunContinuationRefusedError)
-      reject(request, "RUN_CONTINUATION_REFUSED", ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
-    throw error;
-  }
-  return recoveryApplication(request, repositories, record, current, children, relatedRunChanges);
-}
 
 export function executeRetry(
   dependencies: CommandKernelDependencies,

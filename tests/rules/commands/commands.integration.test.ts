@@ -174,7 +174,7 @@ afterEach(async () => { for (const db of opened.splice(0)) db.close(); for (cons
 {
 describe("active arms", () => {
 
-  it("covers every family/action exactly once", () => {
+  it("covers every dispatchable family/action exactly once", () => {
     const partitioned = new Map<string, number>();
     for (const [family, actions] of Object.entries(PHASE1_ACTIVE_COMMAND_ARMS)) {
       for (const action of actions) {
@@ -183,7 +183,7 @@ describe("active arms", () => {
       }
     }
     const registry = COMMAND_FAMILY_REGISTRY.flatMap(({ family, actions }) =>
-      actions.map((action) => `${family}/${action}`));
+      actions.filter(action => action !== "recover-run").map((action) => `${family}/${action}`));
     assert.deepEqual([...partitioned.keys()].sort(), [...registry].sort());
     for (const [key, count] of partitioned) assert.equal(count, 1, key);
   });
