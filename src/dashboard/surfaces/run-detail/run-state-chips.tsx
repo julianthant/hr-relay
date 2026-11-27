@@ -15,11 +15,11 @@ export function DryRunMark({ className, title = "Dry run — this rehearsal read
 }
 
 /** "Started by the assistant for <operator> · read only", on a run an assistant command started; nothing otherwise. */
-export function StartedByLine({ surface, className }: { surface: Pick<QueueSurfaceWire, "startedBy">; className?: string }) {
+export function StartedByLine({ surface, className, wrap = false }: { surface: Pick<QueueSurfaceWire, "startedBy">; className?: string; wrap?: boolean }) {
   const operator = useContext(OperatorLabelContext);
   if (surface.startedBy === undefined) return null;
   const text = `Started by the assistant for ${operator}${surface.startedBy.readOnly ? " · read only" : ""}`;
-  return <span data-started-by title={text} className={cn(dsText.meta, "min-w-0 truncate text-[color:var(--ds-fg-muted)]", className)}>{text}</span>;
+  return <span data-started-by title={text} className={cn(dsText.meta, "min-w-0 text-[color:var(--ds-fg-muted)]", wrap ? "block break-words" : "truncate", className)}>{text}</span>;
 }
 
 /** The run's state in the panel header: a dry-run marker and the one status the queue row shows. */
@@ -27,7 +27,6 @@ export function RunStateChips({ row }: { row: QueueSurfaceWire }) {
   const status = dsStatusOf(row.status);
   return <>
     {row.dryRun && <DryRunMark />}
-    <StartedByLine surface={row} />
     <StatusBadge status={status} pauseControl={row.pauseControl} interrupt={row.interrupt} cancelledBy={row.cancelledBy} presentation="queue"
       {...(isNeedsDuo(row) ? { label: NEEDS_DUO_LABEL, meaning: NEEDS_DUO_MEANING } : isStarting(row) ? { label: STARTING_LABEL } : {})} />
   </>;

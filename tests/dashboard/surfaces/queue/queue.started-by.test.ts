@@ -6,7 +6,7 @@ import { it } from 'vitest';
 import { QueueSurfaceWireSchema } from '../../../../src/models/dashboard/projection.js';
 import { queueBatches } from '../../../../src/dashboard/surfaces/queue/queue-model.js';
 import { QueueRow } from '../../../../src/dashboard/surfaces/queue/queue.js';
-import { RunStateChips } from '../../../../src/dashboard/surfaces/run-detail/run-state-chips.js';
+import { StartedByLine } from '../../../../src/dashboard/surfaces/run-detail/run-state-chips.js';
 import { OperatorLabelContext } from '../../../../src/dashboard/state/operator-label.js';
 import { seedMockRuns } from '../../../support/fixtures/dashboard/workflow-mocks/workflow-mock-model.js';
 import { mockQueueSurface } from '../../../support/fixtures/dashboard/workflow-mocks/workflow-queue-model.js';
@@ -15,16 +15,18 @@ const run = seedMockRuns().find(candidate => candidate.workflowId === 'person-lo
 const base = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
 const row = (surface: typeof base) => renderToStaticMarkup(createElement(OperatorLabelContext.Provider, { value: 'Ada' },
   createElement(QueueRow, { surface, state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect() {} }, workflowLabelOf: () => 'Person Lookup' })));
-const header = (surface: typeof base) => renderToStaticMarkup(createElement(OperatorLabelContext.Provider, { value: 'Ada' }, createElement(RunStateChips, { row: surface })));
+const line = (surface: typeof base) => renderToStaticMarkup(createElement(OperatorLabelContext.Provider, { value: 'Ada' }, createElement(StartedByLine, { surface })));
 
 it('names the assistant and the operator on Queue and Logs, with read only when served', () => {
   const readOnly = { ...base, startedBy: { kind: 'assistant' as const, readOnly: true } }, live = { ...base, startedBy: { kind: 'assistant' as const, readOnly: false } };
-  for (const html of [row(readOnly), header(readOnly)]) assert.match(html, /Started by the assistant for Ada · read only/);
-  for (const html of [row(live), header(live)]) assert.match(html, /Started by the assistant for Ada(?! · read only)/);
+  assert.match(row(readOnly), /Started by the assistant for Ada · read only/);
+  assert.match(row(live), /Started by the assistant for Ada(?! · read only)/);
+  assert.match(line(readOnly), /Started by the assistant for Ada · read only/);
+  assert.match(line(live), /Started by the assistant for Ada(?! · read only)/);
 });
 
 it('shows nothing on a run the assistant did not start', () => {
-  for (const html of [row(base), header(base)]) assert.doesNotMatch(html, /Started by/);
+  for (const html of [row(base), line(base)]) assert.doesNotMatch(html, /Started by/);
 });
 
 it('draws a batch attribution from the exact visible member attempt, across a dashboard retry', () => {
@@ -37,11 +39,11 @@ it('draws a batch attribution from the exact visible member attempt, across a da
   const batch = queueBatches([original, other, retry])[0]; assert(batch);
   const batchRow = (selectedRunId?: string) => renderToStaticMarkup(createElement(OperatorLabelContext.Provider, { value: 'Ada' }, createElement(QueueRow, { surface: batch.representative, batch,
     state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>(), ...(selectedRunId === undefined ? {} : { selectedRunId }) }, handlers: { onSelect() {} }, workflowLabelOf: () => 'Person Lookup' })));
-  // The retry is the item's visible attempt and the dashboard started it: no batch line until the assistant's original is picked from history.
-  assert.doesNotMatch(batchRow(), /Started by/);
-  assert.doesNotMatch(batchRow(retry.runId), /Started by/);
-  assert.match(batchRow(original.runId), /Started by the assistant for Ada · read only/);
+  // Item one's visible attempt is the dashboard's retry; item two is untouched and keeps its assistant line.
+  const lines = (html: string) => html.match(/>Started by the assistant for Ada · read only</g)?.length ?? 0;
+  assert.equal(lines(batchRow()), 1);
+  assert.equal(lines(batchRow(retry.runId)), 1);
   const unretried = queueBatches([original, other])[0]; assert(unretried);
-  assert.match(renderToStaticMarkup(createElement(OperatorLabelContext.Provider, { value: 'Ada' }, createElement(QueueRow, { surface: unretried.representative, batch: unretried,
-    state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect() {} }, workflowLabelOf: () => 'Person Lookup' }))), /Started by the assistant for Ada · read only/);
+  assert.equal(lines(renderToStaticMarkup(createElement(OperatorLabelContext.Provider, { value: 'Ada' }, createElement(QueueRow, { surface: unretried.representative, batch: unretried,
+    state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect() {} }, workflowLabelOf: () => 'Person Lookup' })))), 2);
 });

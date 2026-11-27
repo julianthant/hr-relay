@@ -421,6 +421,7 @@ function MemberLine({ line, workflowLabel, selectedRunId, selected, onSelect, on
         {view.native !== undefined && view.native.item.attempts.length > 1 && <QueueAttemptSelector title={view.title}
           surface={view.native.surface} item={view.native.item} selectedRunId={String(view.native.surface.runId)} onSelect={onSelectRun} />}
       </div>
+      {view.native !== undefined && <StartedByLine surface={view.native.surface} className="block" />}
     </td>
     <td className={cn(dsText.meta, "w-px whitespace-nowrap border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-right", view.paused ? spec.soloTone : status === "waiting" || status === "running" ? "text-ui-info" : status === "failed" ? "text-ui-danger" : spec.soloTone)}>
       <span aria-label={view.statusAccessibleLabel}>{view.statusLabel}</span>
@@ -886,7 +887,7 @@ export function QueueRow({
               </div>
             )}
 
-            <StartedByLine surface={(batch === undefined ? surface : selectedBatchMember ?? (batch.members.every(member => member.startedBy !== undefined) ? batch.members[0] : undefined)) ?? {}} />
+            {batch === undefined && <StartedByLine surface={surface} />}
 
             {/* Render only served links and receipt facts; never infer an extracted-person count from arbitrary output arrays. */}
             {batch === undefined && (parent !== undefined || surface.linkedRuns.length > 0 || surface.facts.state === "present") && (

@@ -27,3 +27,25 @@ for (const width of [1280, 1600]) {
     });
   });
 }
+
+for (const width of [1024, 1280]) {
+  test.describe(`a long operator name with dry-run chips at ${String(width)}px`, () => {
+    test.use({ viewport: { width, height: 720 } });
+    test("the Logs header keeps the whole line on its own line under the run name", async ({ mount, page }) => {
+      await mount("run-panel/log-header/assistant-started-long");
+      const line = page.locator("[data-started-by]");
+      await expect(line).toHaveText(/^Started by the assistant for Alexandria Montgomery-Rivera.+ · read only$/);
+      await expect(page.getByText("Dry run", { exact: true })).toBeVisible();
+      const header = line.locator("xpath=ancestor::header");
+      const [text, title, box] = await Promise.all([line.boundingBox(), header.locator("h2").boundingBox(), header.boundingBox()]);
+      expect(text && title && box, "boxes").toBeTruthy();
+      if (text && title && box) {
+        expect(text.y, "under the run name").toBeGreaterThanOrEqual(title.y + title.height - 1);
+        expect(text.x + text.width, "inside the header").toBeLessThanOrEqual(box.x + box.width + 0.5);
+      }
+      expect(await line.evaluate(element => element.scrollWidth <= element.clientWidth), "the line is not clipped").toBe(true);
+      mkdirSync(STATE_FRAMES_DIR, { recursive: true });
+      await page.screenshot({ path: join(STATE_FRAMES_DIR, `started-by-log-header-long-${String(width)}.png`), animations: "disabled" });
+    });
+  });
+}
