@@ -169,7 +169,7 @@ async function serveG4(shape: Shape) {
     histogram.disable();
     hook.deregister();
     Reflect.deleteProperty(globalThis, g4Probe);
-    if (process.connected) process.disconnect();
+    if (process.connected) process.disconnect?.();
   }
 }
 
@@ -206,6 +206,20 @@ async function admitG4Copy(profile: CopyProfile, workspace: string) {
       } finally { person.release(); }
     } finally { machine.release(); }
   } finally { await lock.close(); }
+}
+
+async function withG4Cleanup<T>(run: () => Promise<T>, close: () => Promise<void>): Promise<T> {
+  const [work] = await Promise.allSettled([run()]);
+  const [cleanup] = await Promise.allSettled([close()]);
+  if (cleanup.status === "rejected") {
+    if (work.status === "rejected") {
+      const workError: unknown = work.reason, cleanupError: unknown = cleanup.reason;
+      throw new AggregateError([workError, cleanupError], "read-lanes-g4-work-and-cleanup-failed");
+    }
+    throw new Error("read-lanes-g4-cleanup-failed", { cause: cleanup.reason });
+  }
+  if (work.status === "rejected") throw new Error("read-lanes-g4-work-failed", { cause: work.reason });
+  return work.value;
 }
 
 async function measureG4(shape: Shape, profile: CopyProfile, input: { days: readonly [string, string]; query: string; profileId: string }) {
@@ -245,7 +259,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
   const stop = () => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM"); };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
-  try {
+  return await withG4Cleanup(async () => {
     await receive("hrauto-dashboard-ready");
     const origin = `http://127.0.0.1:${String(runtimeProfiles[profile].backendPort)}`;
     const auth: { proof?: string; session?: string } = {};
@@ -267,7 +281,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
       throw new Error("read-lanes-g4-copy-session-unavailable");
     }
     const browser = await chromium.launch({ headless: true });
-    try {
+    return await withG4Cleanup(async () => {
       const context = await browser.newContext({ locale: "en-US", serviceWorkers: "block", viewport: { width: 1280, height: 800 } });
       context.setDefaultTimeout(G4_TIMEOUT_MS);
       await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
@@ -395,7 +409,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
 
       const baseline: Span[] = [], uncontendedSse: Span[] = [];
       const contention: { click: Span; search: Span; calendar: Span; settings: Span; sse: Span }[] = [];
-      try {
+      return await withG4Cleanup(async () => {
         for (let index = 0; index < G4_SAMPLES; index++) {
           const day = input.days[index % 2 === 0 ? 1 : 0];
           baseline.push(await (await clickDay(day))());
@@ -413,7 +427,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
         }
         const { metrics } = z.object({ metrics: G4ProbeSchema }).parse(await receive("g4-finished", "g4-finish"));
         return { baseline, uncontendedSse, contention, metrics, startLoad, endLoad: loadavg() };
-      } finally {
+      }, async () => {
         const latest = await client.editableSettings();
         const leaf = latest.sections.flatMap(section => section.leaves).find(item => item.path === sound);
         if (leaf === undefined) throw new Error("read-lanes-g4-settings-restore-unproved");
@@ -426,14 +440,14 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
           const restoredLeaf = (await client.editableSettings()).sections.flatMap(section => section.leaves).find(item => item.path === sound);
           if (restoredLeaf?.source !== original.source || restoredLeaf.settingsValue !== original.settingsValue) throw new Error("read-lanes-g4-settings-restore-unproved");
         }
-      }
-    } finally { await browser.close(); }
-  } finally {
+      });
+    }, () => browser.close());
+  }, async () => {
     process.removeListener("SIGINT", stop);
     process.removeListener("SIGTERM", stop);
     stop();
     if (!await closed) throw new Error("read-lanes-g4-backend-close-unproved");
-  }
+  });
 }
 
 type G4Run = Awaited<ReturnType<typeof measureG4>>;
