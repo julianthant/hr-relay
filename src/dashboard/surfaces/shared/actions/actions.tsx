@@ -147,6 +147,8 @@ export function FooterActions({
       {footer.map((a) => {
         const toggle = a.kind === "command" && (a.command === "pause" || a.command === "resume");
         const isFlipped = toggle && flipHolds && a === servedToggle;
+        // A press on the served opposite while the Pause is still unconfirmed is held too.
+        const holdPress = isFlipped || toggle && flip !== null && !flip.confirmed && flip.runId === target.runId && a.command !== flip.command;
         const shown = isFlipped ? (a.key === "pause" ? { key: "resume", label: "Resume", icon: "resume" as const } : { key: "pause", label: "Pause", icon: "pause" as const })
           : { key: a.key, label: a.label, icon: a.icon };
         const label = groupCount === undefined ? shown.label
@@ -168,7 +170,7 @@ export function FooterActions({
           onClick={(e) => {
             e.stopPropagation();
             const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id]')?.querySelector<HTMLElement>("[data-queue-open]") ?? null;
-            if (isFlipped) { setFlip(now => now === null ? now : { ...now, queued: true }); return; }
+            if (holdPress) { setFlip(now => now === null ? now : { ...now, queued: true }); return; }
             const press = { key: a.key, runId: target.runId, version: target.expectedVersion };
             if (toggle) setFlip({ runId: press.runId, command: a.key, version: press.version, queued: false, confirmed: false });
             else if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });

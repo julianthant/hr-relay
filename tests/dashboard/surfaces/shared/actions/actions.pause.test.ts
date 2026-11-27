@@ -57,6 +57,19 @@ it("holds a queued Resume until the Pause confirms when the stream arrives first
   assert.deepEqual(m.sent, ["pause@7", "resume@8"]);
 });
 
+it("queues a Resume clicked after the stream update until the Pause confirms, then sends it once", async () => {
+  const m = mount(); await m.draw("a", "pause", 7);
+  await m.click();
+  await m.draw("a", "resume", 8);
+  assert.equal(m.button()?.getAttribute("aria-label"), "Resume");
+  await m.click();
+  assert.deepEqual(m.sent, ["pause@7"]);
+  await m.settle(true);
+  assert.deepEqual(m.sent, ["pause@7", "resume@8"]);
+  await m.draw("a", "resume", 8);
+  assert.deepEqual(m.sent, ["pause@7", "resume@8"]);
+});
+
 it("drops a queued Resume when the stream arrives first and the Pause is then refused", async () => {
   const m = mount(); await m.draw("a", "pause", 7);
   await m.click(); await m.click();
