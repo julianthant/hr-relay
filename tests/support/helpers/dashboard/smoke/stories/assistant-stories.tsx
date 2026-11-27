@@ -111,6 +111,7 @@ const AUDIT_FIXES = "#532";
 const BREAK_SETS = {
   /** The composer's approval picker is switched off while no model preference is served, and its Send button is not painted the accent. */
   COMPOSER: ["no-dead-disabled-control", "primary-button-accent"],
+  MODEL_COMPOSER: ["named-and-focusable", "primary-button-accent"],
   /** COMPOSER, and a control in the open panel (the message box, or a button in the transcript) shows no visible focus ring. */
   COMPOSER_FOCUS: ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
   /** COMPOSER_FOCUS, and the history skeleton is drawn from the loading flag while no read is held. */
@@ -135,7 +136,7 @@ const KNOWN_BREAKS = {
   "history/failed": BREAK_SETS.COMPOSER_FOCUS,
   "history/notice": BREAK_SETS.COMPOSER_FOCUS,
   "history/ready": BREAK_SETS.COMPOSER_FOCUS,
-  "menu/model": ["named-and-focusable", "primary-button-accent"],
+  "menu/model": BREAK_SETS.MODEL_COMPOSER,
   "plan/enabled": BREAK_SETS.COMPOSER_FOCUS,
   "refusal/plan-off": BREAK_SETS.COMPOSER_FOCUS,
   "refusal/rate-limited": BREAK_SETS.COMPOSER_FOCUS,
@@ -144,6 +145,8 @@ const KNOWN_BREAKS = {
   "reply/proposal": BREAK_SETS.COMPOSER_FOCUS,
   "reply/proposal-many": BREAK_SETS.COMPOSER_FOCUS,
   "reply/answered-yes": BREAK_SETS.COMPOSER_FOCUS,
+  "reply/spreadsheet-edit": BREAK_SETS.MODEL_COMPOSER,
+  "reply/settings-edit": BREAK_SETS.MODEL_COMPOSER,
   "turn/failed": BREAK_SETS.COMPOSER_FOCUS,
   "turn/idle": BREAK_SETS.COMPOSER_FOCUS,
   "turn/waiting": BREAK_SETS.COMPOSER,
