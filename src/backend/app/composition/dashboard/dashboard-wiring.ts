@@ -1,6 +1,6 @@
 import { resolveWriteCommandTarget } from "../../../runs/commands/write-command-target.js";
 import { randomUUID } from "node:crypto";
-import { emitFaultWithCauses } from "../../../logs/debug-events.js";
+import { emitFaultWithCauses, emitOptionalDiagnostic } from "../../../logs/debug-events.js";
 import { join } from "node:path";
 import { z } from "zod";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
@@ -44,6 +44,7 @@ import { activeSettingsConfig,activeSettingsRuntimeIdentity, readAdmittedProfile
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
+import { historyArchivePath, readCopySeedSamples } from "../../../storage/sqlite/isolated-history-store.js";
 import { startDashboardHttpServer,type DashboardHttpServer } from "../../../transports/http/http-server.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/request-identity.js";
 import { createDashboardApp } from "../../../transports/http/routes/api.js";
@@ -61,6 +62,7 @@ import { composeIntake } from "./intake.js";
 import { composeNotificationPublications,composeNotificationReads,composeNotificationRoutes } from "./notification-wiring.js";
 import { composeQueueSummaries } from "./queue-summaries.js";
 import { createOperatorProjection } from "./queue.js";
+import { createCopySamples } from "./copy-samples.js";
 import type { DashboardRuntime } from "./runtime-contracts.js";
 import { type DashboardComposeInput,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
 import { prepareDashboardEnvironment,prepareDashboardRuntime } from "./runtime-resources.js";
@@ -107,6 +109,9 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle);
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority, readLanes } = resources;
   const history = database.dashboardHistory();
+  // A copy profile serves its sample runs and Sessions cards from the history archive; production never attaches one.
+  const samples = history === database ? undefined : createCopySamples({ stored: readCopySeedSamples(historyArchivePath(stateRoot), admission.profileBinding),
+    realSlots: () => database.authority.workerSlots.list(), changed: () => { projection.reconcileWorkerAuthority(); } });
   const notificationReads = composeNotificationReads(database, history);
   const reader = history === database ? lifecycle : new RunRecordService({ database: history, clock, ids,
     publishQueued: () => { throw new Error("isolated-history-read-only"); }, resolveDescriptor: descriptors.resolve });
@@ -126,9 +131,9 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const summaries: ServedSummaryQueries = { ...composeQueueSummaries(history), activity: (from, to) => activity.read(from, to) };
   const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries };
   let snapshotWorkers: () => readonly WorkerMemberView[] = () => [];
-  const workerMembers = (): readonly WorkerMemberView[] => snapshotWorkers();
+  const workerMembers = (): readonly WorkerMemberView[] => samples === undefined ? snapshotWorkers() : [...snapshotWorkers(), ...samples.views()];
   let startupPending: (workflowId: string) => boolean = () => false;
-  const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database: history, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader, listNotifications: notificationReads.list, readLanes });
+  const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database: history, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader, readLanes, samples });
 
   const { noteWriter, stopTimeline, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, readLanes, lifecycle, debugEvents });
 
@@ -206,7 +211,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   startupCleanups.push(() => applicationLifecycle.dispose());
   // The kernel is made before the hub, so its ordinary settings commits reach the hub through this source.
   const settingsChanges = new Set<() => void>();
-  const kernel = createCommandKernel({
+  const nativeKernel = createCommandKernel({
     commandNotices: notificationInbox,
     ensureReceipt: runId => trustReads.trust.ensureReceipt(runId),
     readableDescriptors: { resolve: workflowId => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor },
@@ -257,6 +262,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     assistantRevalidate: command => { composedAssistant.assertEffect(command.commandId, command); },
   });
 
+  const kernel = samples?.guard(nativeKernel) ?? nativeKernel;
 
 
   const startWorkerCapacity = createRunWorkerCapacity({ kernel, authority: database.authority, running: workers.running, ensureRunning: workers.ensureRunning, setupRefusal: workers.setupRefusal,
@@ -270,7 +276,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     startWorkerCapacity,
   });
 
-  const startPlans = createStartPlanService({
+  const nativeStartPlans = createStartPlanService({
     workbooks: { createReferenceCapture: () => workbookLibrary.createReferenceCapture() },
     preflight: runtimePreflight.admission,
     protectedSecrets,
@@ -284,13 +290,17 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     configSnapshotId,
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
+  const startPlans = samples?.guardStartPlans(nativeStartPlans) ?? nativeStartPlans;
 
   const notificationTarget = createNotificationTargetQuery({ get: history.authority.notifications.get, read: id => reader.read(id), failure: history.authority.failures.get,
     host: run => history.withAuthorityReadSnapshot(() => ocrHostRun(history.authority, run)),
     command: commandId => history.authority.commands.readForNotice(commandId),
     bulk: bulkCommandId => { const acceptance = history.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: history.authority.commands.listBulkChildren(bulkCommandId) }; } });
-  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads });
-  const dataQueries = composeDataQueries(runDetailDeps);
+  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget, notificationReads,
+    reportListReadFailure: () => { emitOptionalDiagnostic(() => debugEvents.emit({ category: "sse", phase: "failed",
+      correlationId: randomUUID(), area: "notification-list", reason: "poll-read-failed" })); } });
+  const nativeDataQueries = composeDataQueries(runDetailDeps);
+  const dataQueries = { ...nativeDataQueries, rerunValues: (request: unknown) => samples?.rerunValues(request) ?? nativeDataQueries.rerunValues(request) };
   const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });
   const attachment = (conversationId: string, id: string) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString());
   const assistantPluginDeps = createAssistantPluginDeps({ database, runs: lifecycle, runDetail: runDetailDeps, assertCurrent, facts: assistantFacts,
@@ -354,6 +364,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox, target: notifications.target }),
+    notificationList: notifications.streamList,
     notificationStatus: { read: () => notifications.status(), onChange: listener => notificationObserver.onStatusChange(listener) },
     runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
     settings: { read: settingsBoundary.editable, onChange: listener => { settingsChanges.add(listener); return () => { settingsChanges.delete(listener); }; } },
@@ -402,6 +413,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     commands,
     resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority),
     commandJournal: database.authority.commands,
+    ...(samples === undefined ? {} : { refuseSampleCommand: samples.refuseRun }),
     protectedCommandAcceptedAt: (commandId) => protectedSettingsAuthority.acceptedAt(commandId),
     bulkCommandAcceptances: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) => {
@@ -443,7 +455,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
   }));
   dashboardPreflightRunners.markBackendOwned(server.port);
-  const gateParkTimer = startNotificationPolling(database, clock, notificationObserver);
+  const gateParkTimer = startNotificationPolling(database, clock, notificationObserver, notifications.pollList);
   startupCleanups.push(() => clearInterval(gateParkTimer));
   const historyTimer = startAssistantHistoryCleanup(() => { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); }, error => {
     const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "assistant-history-cleanup", code: "ASSISTANT_HISTORY_CLEANUP_FAILED",

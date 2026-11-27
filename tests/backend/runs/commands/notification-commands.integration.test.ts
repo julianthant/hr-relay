@@ -160,7 +160,7 @@ describe("clearing notifications", () => {
     assert.deepEqual(listed(database), [pinned]);
   });
 
-  it("drops the served day when only storage health or an observed command's result changes", async () => {
+  it("reuses the served day when only storage health or a notification command result changes", async () => {
     const { database } = await harness();
     const pending = { ...command("notification-read", 1), target: { notificationId: randomUUID(), actorId: ACTOR, expectedVersion: 1 } };
     database.authority.commands.insert(pending);
@@ -168,16 +168,16 @@ describe("clearing notifications", () => {
     const observed = () => {
       const first = database.checkQueueDaySources(day);
       assert.ok(first);
-      return { through: first.through, runIds: [], timelineRunIds: [], lastWorkerClaims: [], commandIds: [pending.commandId], relationships: [], month: { from: day, to: day, counts: [] } };
+      return { through: first.through, runIds: [], timelineRunIds: [], lastWorkerClaims: [], relationships: [], month: { from: day, to: day, counts: [] } };
     };
     let previous = observed();
     assert.equal(database.checkQueueDaySources(day, previous)?.kind, "unchanged");
     database.withAuthorityTransaction(repositories => repositories.notificationHealth.put({ concern: "disk-space", active: false,
       occurrence: 0, observedAt: LATER, createdAt: LATER, samples: [] }));
-    assert.equal(database.checkQueueDaySources(day, previous)?.kind, "full", "a health-only recovery changes a storage notice's standing");
+    assert.equal(database.checkQueueDaySources(day, previous)?.kind, "unchanged", "storage standing belongs to the inbox");
     previous = observed();
     database.authority.commandAudits.insert({ auditId: randomUUID(), request: pending, completedAt: LATER, versionChanges: [], affectedDependencyIds: [],
       result: { state: "rejected", commandId: pending.commandId, code: "target-not-found", message: "gone" } });
-    assert.equal(database.checkQueueDaySources(day, previous)?.kind, "full", "a settled command changes its recovery notice's standing");
+    assert.equal(database.checkQueueDaySources(day, previous)?.kind, "unchanged", "command recovery standing belongs to the inbox");
   });
 });

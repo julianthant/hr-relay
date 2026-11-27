@@ -111,6 +111,16 @@ describe("run detail of a run started with typed values", () => {
     });
   });
 
+  it("names the filing a typed receipt stands for as done by hand, and a typed read names none", async () => {
+    const w = await world();
+    separationsRun(w, { entry: { step: "ucpath-transaction", facts: { transactionNumber: "T000123456", approvalStatus: "Approved", effectiveDate: SEPARATION } } });
+
+    const typed = stepOf(w, "ucpath-transaction").typedValues;
+    assert.deepEqual(typed?.doneByHand, ["file-termination"]);
+    assert.deepEqual(typed?.fields.map((field) => [field.label, "value" in field ? field.value : undefined]),
+      [["Transaction number", "T000123456"], ["Status", "Approved"], ["Effective date", SEPARATION]]);
+  });
+
   it("reads the workflow's current labels for an entry stored without labels", async () => {
     const w = await world();
     separationsRun(w, { entry: { step: TIMECARD, facts: { lastDayWorked: LAST_DAY, separationDate: SEPARATION } } });

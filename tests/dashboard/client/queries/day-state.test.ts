@@ -35,7 +35,6 @@ function threeRowDay(): DashboardDayWire {
     queueSurfaces: surfaces,
     workerCards: [], workerAuthority: { state: "present", members: [] },
     workerPools: [],
-    notifications: [],
   });
 }
 
@@ -96,7 +95,6 @@ describe("applyDashboardDayPatch splices one row", () => {
     assert.equal(next.workflowCounts, day.workflowCounts);
     assert.equal(next.statusCounts, day.statusCounts);
     assert.equal(next.workerCards, day.workerCards);
-    assert.equal(next.notifications, day.notifications);
 
     assert.deepEqual(next.statusCounts, day.statusCounts);
   });

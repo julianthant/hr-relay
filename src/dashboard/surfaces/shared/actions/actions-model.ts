@@ -80,7 +80,7 @@ export function commandResultFeedEntry(input: {
   readonly clock: string;
   readonly actorId: string;
 }): CommandResultFeedEntry | undefined {
-  if (input.settlement.kind === "applied") return undefined;
+  if (input.settlement.kind === "applied" || (input.settlement.reason === "rejected" && input.settlement.code === "SAMPLE_RUN_REFUSED")) return undefined;
   return {
     id: input.commandId,
     targetRunId: input.targetRunId,

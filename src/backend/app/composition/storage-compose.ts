@@ -1644,12 +1644,6 @@ function rebuildStagedProjections(
         queueCapabilities: workflowQueueCapabilities,
         authority: {
           queueParents: envelopes => staged.authority.dependencies.parents(envelopes),
-          listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
-          command: (commandId) => staged.authority.commands.get(commandId),
-          latestNotificationSource: (notificationId) => staged.authority.notificationPublications.latest(notificationId),
-          notificationConcernActive: concern => staged.authority.notificationHealth.get(concern)?.active,
-          notificationCommandSettled: id => { const read = staged.authority.commands.readForNotice(id); return read === undefined ? undefined : read.result !== undefined; },
-          listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => staged.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
           listCheckpoints: (workflowId, itemId) => staged.authority.runCheckpoints.listByItem(workflowId, itemId),
           listGateResults: runId => staged.authority.gateResults.listByRun(runId),
           listWorkerPools: () => staged.authority.workerPools.list(),

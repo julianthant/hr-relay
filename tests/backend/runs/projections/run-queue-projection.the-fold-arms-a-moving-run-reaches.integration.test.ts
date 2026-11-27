@@ -2,7 +2,7 @@ import { createRunQueueProjectionTestWorld } from "../../../support/helpers/back
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { declareProjectionWorker, atDayOffset, claimEventOf, DAY, dayOffsetOf, instantOffsetOf, notificationRecordOf, runEndedEventOf, traceOf, uuidOf, workerMemberOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { declareProjectionWorker, atDayOffset, claimEventOf, DAY, dayOffsetOf, instantOffsetOf, runEndedEventOf, traceOf, uuidOf, workerMemberOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
 const {world, runRecordOf, queuedEventOf, CLAIM, cleanup } = createRunQueueProjectionTestWorld();
 
@@ -207,7 +207,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     ]);
   });
 
-  it("orders the month calendar, the workflow badges and the inbox deterministically", async () => {
+  it("orders the month calendar and the workflow badges deterministically", async () => {
     const w = await world();
     atDayOffset(w, 0);
     queuedEventOf(w, { seed: 1 });
@@ -215,14 +215,6 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     atDayOffset(w, 1);
     queuedEventOf(w, { seed: 3 });
     atDayOffset(w, 0);
-
-    // Two notifications share an instant on purpose: newest first, and a tie
-    // broken by id rather than by whatever order authority happened to return.
-    w.authority.notifications.push(
-      notificationRecordOf({ seed: 31, title: "later id", lastSeenAt: instantOffsetOf(0, 2_000) }),
-      notificationRecordOf({ seed: 32, title: "oldest", lastSeenAt: instantOffsetOf(0, 1_000) }),
-      notificationRecordOf({ seed: 30, title: "earlier id", lastSeenAt: instantOffsetOf(0, 2_000) }),
-    );
 
     const day = w.projection.buildDashboardDayWire(DAY);
     assert.deepEqual(day.monthCounts, [
@@ -234,9 +226,5 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
       { workflowId: "person-lookup", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
       { workflowId: "separations-kuali-finalization", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
     ]);
-    assert.deepEqual(day.notifications.map(({ notificationId }) => notificationId), [uuidOf(7030), uuidOf(7031), uuidOf(7032)]);
-    assert.deepEqual(day.notifications.map(({ title }) => title), ["Run failed", "Run failed", "Run failed"]);
-    assert.equal(day.notifications[0].severity, "error");
-    assert.equal(day.notifications[0].state, "unread");
   });
 });

@@ -16,7 +16,7 @@ import { applyDashboardDayPatch, createDashboardClient } from "../../../../../sr
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { WorkerBrowserObservationSchema } from "../../../../../src/models/run/worker-control.js";
-import type { DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
+import { notificationWireOf, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import type { DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import { NotificationRecordSchema } from "../../../../../src/models/notifications/notifications.js";
 import {
@@ -485,12 +485,14 @@ describe("dashboard stream hub", () => {
     const counts = { beforePublication: -1, afterPublication: -1 };
     const hub = createDashboardStreamHub({
       projection: w.projection,
+      notificationList: { read: () => w.authority.notifications.map(record => notificationWireOf(record, w.clock.nowMs())),
+        onChange: () => () => undefined },
       backfillGaps: {
         detected: (input: unknown) => {
           const gap = BackfillGapObservationSchema.parse(input);
           const cursor = w.projection.cursor();
           const generation = w.projection.generation();
-          counts.beforePublication = w.projection.buildDashboardDayWire(DAY).notifications.length;
+          counts.beforePublication = w.authority.notifications.length;
           const notification = NotificationRecordSchema.parse({
             notificationId: uuidOf(7001),
             actorId: "local-operator",
@@ -509,7 +511,7 @@ describe("dashboard stream hub", () => {
             updatedAt: w.clock.now().toISOString(),
           });
           w.authority.notifications.push(notification);
-          counts.afterPublication = w.projection.buildDashboardDayWire(DAY).notifications.length;
+          counts.afterPublication = w.authority.notifications.length;
           assert.equal(w.projection.cursor(), cursor);
           assert.equal(w.projection.generation(), generation);
           return Promise.resolve({
@@ -535,12 +537,13 @@ describe("dashboard stream hub", () => {
     if (snapshot?.type !== "snapshot" || snapshot.topic !== "dashboard-day") {
       assert.fail("expected one replacement dashboard snapshot");
     }
-    const fresh = w.projection.buildDashboardDayWire(DAY);
-
+    const inbox = snapshot.rows.find(row => row.model === "notification-list");
+    assert.equal("notifications" in snapshot.payload, false);
+    assert.ok(inbox?.value.state === "available");
     assert.deepEqual({
       ...counts,
-      servedNotifications: snapshot.payload.notifications.length,
-      freshNotifications: fresh.notifications.length,
+      servedNotifications: inbox.value.value.length,
+      freshNotifications: w.authority.notifications.length,
     }, {
       beforePublication: 0,
       afterPublication: 1,

@@ -88,7 +88,6 @@ export interface AuthorityFake {
   latestCheckpoint(workflowId: string, itemId: string, nodeId: string): RunCheckpointRecord | undefined;
   /** Durable inbox rows keyed by actor. */
   readonly notifications: NotificationRecord[];
-  listNotifications(actorId: string): readonly NotificationRecord[];
   listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
 
   readonly failures: Map<string, FailureRecord>;
@@ -157,7 +156,6 @@ export function authorityFake(): AuthorityFake {
     latestCheckpoint: (workflowId, itemId, nodeId) =>
       checkpoints.get(checkpointKey(workflowId, itemId, nodeId)),
     notifications,
-    listNotifications: (actorId) => notifications.filter((record) => record.actorId === actorId),
     listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => [...checkpoints.values()].filter(row => row.workflowId === workflowId && row.itemId === itemId && row.nodeId === nodeId && row.attempt === attempt),
     failures,
     getFailure: (failureId) => failures.get(failureId),

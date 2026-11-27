@@ -118,7 +118,7 @@ describe("termination verification for a specific employment record", () => {
     approvalStatus: row.approvalStatus,
     approvedEmplId: target.emplId,
     approvedName: target.expectedName,
-    expectedEffectiveDate: target.effectiveDate,
+    effectiveDate: target.effectiveDate,
   });
 
   const exactObservation = { transactionId: row.transactionId, emplRecord: "0" };

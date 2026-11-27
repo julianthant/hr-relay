@@ -104,7 +104,7 @@ describe("bootstrap start-surface block", () => {
         .toEqual(DESCRIPTORS.map((d) => String(d.id)).sort());
       const systemsByStep: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
         "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "reference-check": [], "crm-dates": ["crm"] },
-        separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "kronos-timecard": ["new-kronos"], "identity-review": [], "reference-check": [], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
+        separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "kronos-timecard": ["new-kronos"], "identity-review": [], "reference-check": [], "pending-termination": ["ucpath"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
         "crm-doc-download": { "search-records": ["crm"], reference: [], "read-idocs": ["crm"], "package-worksheets": [] },
         onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "hire-review": ["ucpath"], "reference-check": [],
           "i9-creation": ["i9"], "ucpath-hire": ["ucpath"], "master-results": [] },

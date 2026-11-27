@@ -8,7 +8,7 @@ import { RunChoice, RunOptionsLayout } from "./run-launch-layout.js";
 import { RunWorkflowPicker } from "./run-start-picker.js";
 import { RunChecksStage } from "./run-checks.js";
 import { FailureNotice } from "../../ds/primitives/failure-notice.js";
-import { useRunChecks, type RunCheckRow } from "./run-checks-model.js";
+import { failedCheckSentence, useRunChecks, type RunCheckRow } from "./run-checks-model.js";
 
 import { readLaunchRecovery, readLaunchVerificationPlan, retainLaunchFinal, dismissLaunchRecovery } from "./run-launch-recovery.js";
 import { createRunLaunchService, type RerunLaunchSource } from "./run-launch-model.js";
@@ -18,11 +18,11 @@ import { useKeepFocusInDialog } from "./run-dialog-focus.js";
 import { heldFingerprint, runDialogControls, shownRepeatWarning, useRunDialogMachine, visibleRunDialog, type AuthorityCheck, type LaunchRecovery, type RunDialogPrimaryInput } from "./run-dialog-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Check, ListChecks, Play } from "lucide-react";
+import { Check, CircleAlert, ListChecks, Play } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { useToasts, BareButton, Banner, Button, Switch, Dialog, DialogBody, DialogContent, DialogFooter, EmptyState, KeyValueList, MetaLine, dsFocus, dsIcon } from "../../ds/ui.js";
 
-import { runStartRefusalToast } from "../../app/commands/command-result.js";
+import { runStartRefusalToast, sampleRunRefusalToast } from "../../app/commands/command-result.js";
 import { type InputRunSurface, type UploadRunSurface } from "../../../models/workflow/ingress.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
@@ -30,9 +30,9 @@ import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
 import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
-import { planRefusalNotice, forcedStepOmissions, initialStepOmissionDraft, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable } from "./run-start-model.js";
+import { planRefusalNotice, forcedStepOmissions, handOffStepOmissions, initialStepOmissionDraft, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable } from "./run-start-model.js";
 import { includedRowCount, rowFieldsOpen, rowOpenFold, startRowsOf, stepEntries, type OpenStepRow, type StartStep, type StepRow } from "./run-steps-model.js";
-import { reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
+import { reconcileRunStartStage, runStartStages } from "./run-start-timeline.js";
 import { pdfRunOcrFooter, pdfRunSelectValue, pdfRunSwitchValue, restorePdfRun, usePdfRunInput } from "./run-start-pdfs.js";
 import { RunStartInput } from "./run-start-input.js";
 import { RunStartSteps } from "./run-start-steps.js";
@@ -230,6 +230,7 @@ export function RunStartDialog({
   /** Lock forced omissions using the descriptor cascade; the planner owns the rule. */
   const steps = workflow?.steps ?? EMPTY_STEPS;
   const forcedByStep = useMemo(() => forcedStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
+  const handOffByStep = useMemo(() => handOffStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
   const rows = useMemo(() => startRowsOf({ steps, rows: workflow?.rows }), [steps, workflow?.rows]);
   const inputDriven = useCallback((row: StepRow): boolean => launchDraft.rowInputDriven(workflow, typedValues, row), [workflow, typedValues]);
   const openRows: readonly OpenStepRow[] = useMemo(() => customizeSteps ? rows.flatMap(row => {
@@ -258,6 +259,11 @@ export function RunStartDialog({
     effects: {
       loadSource: async source => {
         const response = await launchService.openRerun({ runId: source.runId, expectedVersion: source.expectedVersion });
+        if (response.state === "refused" && response.code === "sample-run") {
+          // A sample run never reruns: say so in a toast and close, never as the dialog's banner.
+          toast(sampleRunRefusalToast());
+          onOpenChange(false);
+        }
         if (response.state === "refused") throw new Error(`Rerun unavailable: ${response.code}`);
         return response.snapshot;
       },
@@ -444,10 +450,12 @@ export function RunStartDialog({
     pdfSurface, preview, selectedStepKeys, customizeSteps, openRows, stepOmissions, dryRun, captureBrowserScreenshots, priority });
   const spreadsheetReadiness = runStartSpreadsheetReadiness(spreadsheets, referenceSelections, isRerun, snapshot);
   const { spreadsheetsError, spreadsheetsReading } = spreadsheetReadiness;
+  const handOff = [...handOffByStep.keys()].map(key => rows.find(row => row.stepKey === key)?.label ?? steps.find(step => step.key === key)?.label ?? key);
+  const handOffReason = handOff.length === 0 ? null : `Turn off ${handOff.join(", ")} if done by hand.`;
   const { gates, blockedReason, launchFields, optionsBlockedReason, multiSubject, stepsFailure, stepsBlockedReason,
     sentOmittedSteps, planOmittedSteps, omissionMismatch, onLastStage, rerunInputGone, dryRunGone } = runStartGates(
     draft, spreadsheets, savedRows, spreadsheetReadiness, { workflowId, inputRun, pdfSurface, pdfInput, preview, declaredInput,
-      openRows, customizeSteps, stepOmissions, plan, snapshot, supportsDryRun, dryRun, checks, launchStages, currentStage });
+      openRows, customizeSteps, stepOmissions, handOffReason, plan, snapshot, supportsDryRun, dryRun, checks, launchStages, currentStage });
 
   const stepLabel = (key: string): string => {
     const step = steps.find((candidate) => candidate.key === key);
@@ -526,12 +534,16 @@ export function RunStartDialog({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [drawn]);
   /** The one thing stopping Continue or Start on this stage, as its own line beside the buttons. */
-  const checksHint = gates.checksBlocked ? (checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : null) : null;
   const planHint = planRefusal === null ? null : planRefusal.sentence.replace(/\. .*$/u, ".");
-  const stageHint = currentStage === "Input" ? (compatibilityMissing ? null : blockedReason)
-    : currentStage === "Steps" ? stepsBlockedReason ?? (onLastStage ? checksHint ?? planHint : null)
-    : currentStage === "Start" ? optionsBlockedReason ?? (onLastStage ? stepsBlockedReason ?? checksHint ?? planHint : checksHint)
+  // With nothing entered yet, the off button and the empty input say enough.
+  const nothingEntered = preview.entries.length === 0 && preview.problem === null && !pdfInput.loading;
+  const stageHint = currentStage === "Input" ? (compatibilityMissing || nothingEntered ? null : blockedReason)
+    : currentStage === "Steps" ? stepsBlockedReason ?? (onLastStage ? planHint : null)
+    : currentStage === "Start" ? optionsBlockedReason ?? (onLastStage ? stepsBlockedReason ?? planHint : null)
     : null;
+  /** The last stage and Start show the checks, so only there do they speak in the footer. */
+  const checksShown = onLastStage || currentStage === "Start";
+  const failedChecks = checksShown ? failedCheckSentence(checks.state) : undefined;
   return (
     <Dialog open={drawn} onOpenChange={closeAndReset}>
       <DialogContent
@@ -551,7 +563,7 @@ export function RunStartDialog({
                 const activeIndex = launchStages.findIndex(entry => entry.label === currentStage);
                 const current = index === activeIndex;
                 return <li key={stage.label} aria-current={current ? "step" : undefined}>
-                  <BareButton disabled={index > activeIndex || busy || sending || recovery !== null} aria-label={`${stage.number} ${stage.label}`} className={dsFocus} onClick={() => send({ type: "go-to", stage: stage.label, via: "stage-bar", path: gates.path })}>
+                  <BareButton disabled={index > activeIndex || sending} aria-label={`${stage.number} ${stage.label}`} className={dsFocus} onClick={() => send({ type: "go-to", stage: stage.label, path: gates.path })}>
                   <span aria-hidden className="launch-stage-marker" data-current={current || undefined} data-completed={index < activeIndex || undefined}>{index < activeIndex ? <Check aria-hidden className={dsIcon.sm} /> : stage.number}</span>
                   <span className={cn("text-body", current ? "font-medium" : "text-ui-secondary")}>{stage.label}</span>
                   </BareButton>
@@ -618,7 +630,7 @@ export function RunStartDialog({
 
               {stepsShown && workflow !== undefined && (
                 <RunStartSteps workflow={workflow} snapshot={snapshot} rows={rows} selectedStepKeys={selectedStepKeys} manualRows={manualRows}
-                  forcedByStep={forcedByStep} openRows={openRows} isRerun={isRerun} multiSubject={multiSubject} inputDriven={inputDriven}
+                  forcedByStep={forcedByStep} handOffByStep={handOffByStep} openRows={openRows} isRerun={isRerun} multiSubject={multiSubject} inputDriven={inputDriven}
                   sending={sending} stepLabel={stepLabel} stepsFailure={stepsFailure} copiedOmissions={copiedOmissions} update={update} />
               )}
 
@@ -643,8 +655,9 @@ export function RunStartDialog({
           </div>
 
         <DialogFooter
-          meta={
-            <MetaLine
+          meta={failedChecks !== undefined
+            ? <span className="flex items-center gap-1.5 text-ui-danger"><CircleAlert aria-hidden className={dsIcon.md} />{failedChecks}</span>
+            : stageHint ?? <MetaLine
               tone="faint"
               items={[
                 workflow?.label,
@@ -652,20 +665,12 @@ export function RunStartDialog({
                 pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.draft, pdfInput.picks),
                 priority === "interactive" ? "Priority" : undefined,
               ].filter((item): item is string => item !== undefined)}
-            />
-          }
+            />}
         >
-          {stageHint !== null && <span className="launch-hint">{stageHint}</span>}
-          {controls.back !== null && (
-            <Button variant="secondary" disabled={sending} icon={<ArrowLeft aria-hidden className={dsIcon.sm} />} onClick={() => send({ type: "go-to", stage: controls.back as RunStartStage, via: "back", path: gates.path })}>Back</Button>
-          )}
-          <Button variant="secondary" onClick={() => closeAndReset(false)}>
-            Cancel
-          </Button>
           <Button
             variant="primary"
-            {...(onLastStage ? { icon: <Play aria-hidden className={dsIcon.md} /> } : { iconAfter: <ArrowRight aria-hidden className={dsIcon.md} /> })}
-            loading={controls.primary.loading}
+            {...(onLastStage ? { icon: <Play aria-hidden className={dsIcon.md} /> } : {})}
+            loading={controls.primary.loading || checksShown && checks.state.state === "checking"}
             disabled={submit === null}
             onClick={() => submit?.()}
           >

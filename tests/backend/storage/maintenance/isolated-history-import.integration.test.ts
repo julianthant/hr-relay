@@ -32,7 +32,7 @@ import { readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "../.
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { verifyShellCommandEffect } from "../../../../src/dashboard/app/commands/command-dispatch.js";
-import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { createDashboardClient, createRowStore } from "../../../../src/dashboard/client/index.js";
 import { searchPartitionDay } from "../../../../src/models/dashboard/search-calendar.js";
 import { DASHBOARD_REQUEST_REPORT_MESSAGE, debugFailureOutcome } from "../../../../src/models/events/debug-report.js";
 import { OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
@@ -253,7 +253,16 @@ it("serves archived notices as read alongside actionable copy notices", async ()
   const { client } = await openCopyDashboard(copy, clock);
   const day = searchPartitionDay(clock.now());
   const archived = { notificationId: archivedId, readState: "read", state: "read", readOnlyHistory: true };
-  for (const rows of [await client.notificationSnapshot(), (await client.dashboardDay(day)).notifications]) {
+  const streamRows = createRowStore();
+  const live = Promise.withResolvers<void>();
+  const stream = client.subscribeDay({ day, rows: streamRows, onDay: () => undefined, onState: state => {
+    if (state.state === "live") live.resolve();
+    if (state.state === "stopped") live.reject(state.error ?? new Error("inbox stream stopped"));
+  } });
+  try { await live.promise; } finally { stream.close(); }
+  const streamed = streamRows.notificationList(LOCAL_OPERATOR_ACTOR_ID)?.rows;
+  assert.ok(streamed);
+  for (const rows of [await client.notificationSnapshot(), streamed]) {
     expect(rows.find(row => row.notificationId === archivedId)).toMatchObject(archived);
     const local = rows.find(row => row.notificationId === localId);
     expect(local).toMatchObject({ readState: "unread", state: "unread", revision: 1 });
