@@ -842,7 +842,7 @@ export class AuthorityDatabase implements Disposable {
       timeout: 250, readBigInts: false, returnArrays: false, allowBareNamedParameters: false, allowUnknownNamedParameters: false, defensive: true });
     let open = false;
     try {
-      database.exec("PRAGMA synchronous=FULL; BEGIN IMMEDIATE"); open = true;
+      database.exec("PRAGMA synchronous=FULL; PRAGMA secure_delete=ON; BEGIN IMMEDIATE"); open = true;
       const version = readIntPragma(database, "user_version");
       if (!OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version) || normalizedNativeSchema(database) !== expectedNativeSchema(version, true)) throw new Error("run-search-projection-repair-shape-changed");
       const before = nonProjectionFingerprint(database);
@@ -5436,7 +5436,7 @@ export class AuthorityDatabase implements Disposable {
       get: (runId: string) => this.#readRunRow(runId),
       search: (input: unknown) => this.withAuthorityReadSnapshot(() => {
         this.#validateExternalQuerySources();
-        return createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration);
+        return createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration, this.#historyOwner !== undefined);
       }),
 
       listPage: (input: Readonly<{ workflow?: string; offset: number; limit: number }>) => {

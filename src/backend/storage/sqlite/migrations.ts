@@ -9,6 +9,7 @@ import { FAILURE_NOTE_REMOVAL_MIGRATION } from "./failure-note-removal-migration
 import { ASSISTANT_ATTACHMENTS_MIGRATION } from "./assistant-attachments.js";
 import { ASSISTANT_GRANT_RETIREMENT_MIGRATION, RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
 import { CHANGE_LOG_MIGRATION, changeLogTriggers } from "./authority-change-log.js";
+import { RUN_SEARCH_FTS_MIGRATION } from "./run-search-fts.js";
 import { DEBUG_EVENTS_MIGRATION } from "./timeline-repository.js";
 import { OCR_REVIEW_MIGRATION } from "./ocr-review.js";
 import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
@@ -1210,6 +1211,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     `CREATE TRIGGER command_audits_immutable BEFORE UPDATE ON command_audits
       BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
   ] },
+  RUN_SEARCH_FTS_MIGRATION,
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
