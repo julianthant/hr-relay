@@ -215,7 +215,7 @@ function seedParkedWrite({ run, nodeId, parked, id, at }: Readonly<{ run: RunRec
   const intent = WriteIntentRecordSchema.parse({ ...bound, workflowId: workflow, itemId, taskId: parkedTaskId, system: "ucpath", idempotencyKey,
     idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", idempotencyKey), currentAttemptId: id("write-attempt"), version: 1,
     createdAt: at, updatedAt: at, status: "parked", parkedCode: parked.code, message: parked.message, authorityReason });
-  const attempt = WriteAttemptRecordSchema.parse({ ...bound, writeAttemptId: id("write-attempt"),
+  const attempt = WriteAttemptRecordSchema.parse({ ...bound, writeAttemptId: id("write-attempt"), leaseId: bindingProof.leaseId,
     outcome: { state: "parked", code: parked.code, message: parked.message, authorityReason }, recordedAt: at });
   return { intent, attempt, nodeId: NodeIdSchema.parse(nodeId) };
 }

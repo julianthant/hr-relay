@@ -256,7 +256,7 @@ describe("served Logs wiring", () => {
   it("draws the Duo card after the recorded steps", async () => {
     const h = commandBindingFixture();
     const selected = { ...selection(), row: QueueSurfaceWireSchema.parse({ ...selection().row, status: "awaiting-approval",
-      operatorWait: { state: "present", kind: "duo", system: "ucpath", since: AT } }) };
+      endedAt: { state: "absent", reason: "still running" }, operatorWait: { state: "present", kind: "duo", system: "ucpath", since: AT } }) };
     const served = RunDetailWireSchema.parse({ ...detail(selected), availableSections: ["logs"] });
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : served);
     await serveRows(h.binding.authority.dayState.rows, client, RUN);
