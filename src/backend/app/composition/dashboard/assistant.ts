@@ -107,6 +107,20 @@ export function startAssistantHistoryCleanup(reclaim: () => void, report: (error
 export const assistantValueBindings = (table: AssistantReferenceTable): readonly ServerReplyBinding[] =>
   table.issued().map(([reference, entry]) => ({ kind: 'value-only' as const, reference, entry, value: entry.display }));
 
+/** Whether `attribution` names the stored claim of `command`: its session claim, or the claimed proposal row in the same chat. */
+export function attributionOwnsCommand(store: AuthorityDatabase['authority']['assistantProposals'], command: CommandRequest,
+  attribution: Parameters<AssistantTypedProposalPorts['submit']>[1], profileId: string): boolean {
+  if (attribution.kind !== 'assistant' || command.source !== 'assistant' || attribution.requestedBy !== command.requestedBy || attribution.profileId !== profileId) return false;
+  const { binding } = attribution;
+  if (binding.kind === 'proposal') {
+    const record = store.read(binding.proposalId), row = record?.rows.find(entry => entry.rowId === binding.rowId);
+    return record?.snapshot.conversationId === attribution.conversationId && row?.result.state === 'claimed' && row.result.commandId === command.commandId;
+  }
+  const claimed = store.sessions.byCommand(command.commandId)?.claim;
+  return claimed !== undefined && claimed.actionId === binding.actionId && claimed.acceptedTurn.conversationId === attribution.conversationId
+    && claimed.acceptedTurn.messageId === attribution.acceptedMessageId;
+}
+
 /** The served assistant: the turn-accounting service over the typed-yes proposal owner and read-only sessions. */
 export function composeAssistant(options: Readonly<{
   service: Omit<AssistantM1ServiceOptions, 'history' | 'proposals' | 'tools'>;
@@ -116,7 +130,12 @@ export function composeAssistant(options: Readonly<{
 }>) {
   const { database, service } = options, store = database.authority.assistantProposals;
   const browserMode = () => database.withAuthorityReadSnapshot(() => selectActiveRunSettings(database.authority)).config.browser.headless ? 'headless' as const : 'headed' as const;
-  const common = { ...options.starts, current: service.owner, clock: service.clock, actorId: service.actorId, browserMode };
+  // Every assistant command reaches the kernel only with the attribution of the claim that owns it.
+  const submit: AssistantTypedProposalPorts['submit'] = (command, attribution) => {
+    if (!attributionOwnsCommand(store, command, attribution, service.owner().profileId)) throw new AssistantAuthorizationError('assistant-attribution-mismatch', 'ASSISTANT_PROPOSAL_REFUSED');
+    return options.starts.submit(command, attribution);
+  };
+  const common = { ...options.starts, submit, current: service.owner, clock: service.clock, actorId: service.actorId, browserMode };
   const proposals = createAssistantTypedProposals({ ...common, store, plannedInputs: startPlanId => {
     const record = database.authority.startPlans.get(startPlanId);
     return record === undefined ? undefined : { capturedAt: record.plannedAt, runs: record.planned };

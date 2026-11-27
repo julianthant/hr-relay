@@ -1,5 +1,5 @@
 import { faultAuthoritySnapshot, assertHttpFaultOnly, assertOnlyLoopStallWrites, exactHttpFaultLoopDelay } from "../../../../support/helpers/backend/http-route-harness.js";
-import { AssistantM1RespondEnvelopeSchema, type AssistantM1Request } from "../../../../../src/models/dashboard/assistant.js";
+import { AssistantM1RespondEnvelopeSchema, assistantSessionAttribution, type AssistantM1Request } from "../../../../../src/models/dashboard/assistant.js";
 import { replyText } from "../../../../../src/dashboard/surfaces/assistant/assistant-reply-parts-model.js";
 import { AssistantHistoryResultSchema, AssistantModelPreferenceViewSchema, type AssistantHistoryOperation } from '../../../../../src/models/dashboard/assistant.js';
 import { withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
@@ -14,6 +14,7 @@ import { it, vi } from "vitest";
 import * as workerCapacity from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
 
 import * as assistantComposition from "../../../../../src/backend/app/composition/dashboard/assistant.js";
+import { attributionOwnsCommand } from "../../../../../src/backend/app/composition/dashboard/assistant.js";
 import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { buildRunDetail } from "../../../../../src/backend/runs/queries/run-detail.js";
@@ -29,6 +30,8 @@ import { createDashboardClient } from "../../../../../src/dashboard/client/index
 import { DASHBOARD_TAB_HEADER } from "../../../../../src/dashboard/client/transport.js";
 import { RunDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
 import { EXECUTOR_EID, personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
+import { ScriptedWorkerChild } from "../../../../support/helpers/backend/fake-worker-port.js";
+import { searchPartitionDay } from "../../../../../src/models/dashboard/search-calendar.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
@@ -342,4 +345,54 @@ it('admits no assistant command outside a claimed proposal row or session claim'
     assert.equal(CommandResultSchema.parse(await post('commands', command)).state, 'applied');
     assert.equal(context.database.authority.commands.get(command.commandId)?.source, 'dashboard');
   });
+});
+
+it('starts a read-only session through the composed kernel, serves it in Queue and Logs, and its Stop cancels it', async () => {
+  // A worker that never becomes ready keeps the started run queued, so Stop has a live run to cancel.
+  await withServedAssistant(async ({ context, transport, origin, originalFetch, post, clock }) => {
+    const client = createDashboardClient({ baseUrl: origin });
+    let turns = 0;
+    transport.setResponse(init => {
+      if (typeof init.body !== 'string') throw Error('synthetic request body required');
+      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
+      turns++;
+      const output = turns === 1 ? [{ type: 'function_call', namespace: 'relay', name: 'start_session', call_id: 'start', arguments: JSON.stringify({ workflow: 'person-lookup', entries: [EXECUTOR_EID] }), status: 'completed' }]
+        : [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Started.' }] }];
+      return new Response(completedResponseStream(output, request.model, `resp_${String(turns)}`), { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    const conversationId = randomUUID();
+    assert.equal(AssistantHistoryResultSchema.parse(await client.assistantHistoryWrite?.({ operation: 'create', conversationId, title: 'Chat' })).state, 'saved');
+    const envelope = AssistantM1RespondEnvelopeSchema.parse(await client.assistantRespond({ conversationId, expectedRevision: 1, messageId: randomUUID(), message: `Look up ${EXECUTOR_EID}` }));
+    assert.ok(envelope.kind === 'result' && envelope.result.state === 'answered', JSON.stringify(envelope));
+    const session = envelope.result.reply.parts.find(part => part.kind === 'session'); assert.ok(session?.kind === 'session');
+    const { runId } = session;
+
+    // The start is the assistant's own command under its session claim.
+    const starts = context.database.authority.assistantProposals.sessions;
+    const commandId = z.object({ id: z.string() }).array().parse(withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), database =>
+      database.prepare("SELECT id FROM commands WHERE family='start' AND json_extract(request_json,'$.source')='assistant'").all()));
+    const [startId] = commandId; assert.equal(commandId.length, 1); assert.ok(startId);
+    const claimed = starts.byCommand(startId.id), start = context.database.authority.commands.get(startId.id); assert.ok(claimed); assert.ok(start);
+    assert.deepEqual(claimed.outcome, { state: 'started', runIds: [runId] });
+    // The submit check admits only the attribution of the claim that owns the command.
+    const owned = assistantSessionAttribution(claimed.claim), profileId = context.admission.profileBinding.profileId, store = context.database.authority.assistantProposals;
+    assert.equal(attributionOwnsCommand(store, start, owned, profileId), true);
+    for (const wrong of [{ ...owned, conversationId: randomUUID() }, { ...owned, binding: { kind: 'session' as const, actionId: randomUUID() } }, { ...owned, profileId: randomUUID() }, { kind: 'unrecorded' as const }])
+      assert.equal(attributionOwnsCommand(store, start, wrong, profileId), false, JSON.stringify(wrong));
+    assert.equal(attributionOwnsCommand(store, { ...start, source: 'dashboard' }, owned, profileId), false);
+
+    // Queue and Logs both serve the run.
+    const day = await client.dashboardDay(searchPartitionDay(new Date(clock.now().toISOString())));
+    const row = day.queueSurfaces.find(surface => surface.runId === runId); assert.ok(row, 'queue row');
+    const logs = await originalFetch(`${origin}/api/v1/runs/${runId}`, { headers: { [DASHBOARD_TAB_HEADER]: randomUUID() } });
+    assert.equal(logs.status, 200); assert.equal(RunDetailWireSchema.parse(await logs.json()).header.runId, runId);
+
+    // Stop is the row's own Cancel, sent as an operator command.
+    const cancel = row.actions.find(action => action.kind === 'command' && action.command === 'cancel'); assert.ok(cancel?.kind === 'command');
+    const stopped = CommandResultSchema.parse(await post('commands', { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+      source: 'queue', family: 'run', type: 'cancel', target: { runId, expectedVersion: cancel.expectedVersion } }));
+    assert.equal(stopped.state, 'applied', JSON.stringify(stopped));
+    const after = context.database.authority.runs.get(runId); assert.ok(after);
+    assert.ok(after.lifecycle.state === 'terminal' && after.lifecycle.outcome === 'cancelled', JSON.stringify(after.lifecycle));
+  }, { spawn: request => new ScriptedWorkerChild(7001, request, { ready: false, exitOnStop: true, reply: () => ({ state: 'done', result: null }) }) });
 });
