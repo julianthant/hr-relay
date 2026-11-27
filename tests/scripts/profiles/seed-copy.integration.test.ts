@@ -319,7 +319,14 @@ async function expectTimelines(client: ReturnType<typeof createDashboardClient>,
     const expected = ["paused", "cancelled", "needs-review", "failed"].includes(state) ? 1 : 0;
     if (state === "waiting" && hasGate) expect(["note", "decision"], name).toContain(steps.at(-1)?.entries.at(-1)?.kind);
     else expect(cards, name).toHaveLength(expected);
-    if (state === "paused") expect(cards[0]?.title, name).toBe("Run paused");
+    if (state === "paused") {
+      expect(cards[0]?.title, name).toBe("Run paused");
+      // The pause is recorded after the last finished step, never at the run's start.
+      const clock = (time: string | undefined) => Date.parse(`2000-01-01 ${time ?? ""}`);
+      const pauseAt = clock(steps[cards[0]?.index ?? -1]?.time);
+      const lastRow = stepRows.at(-1);
+      if (lastRow !== undefined) expect(pauseAt, name).toBeGreaterThanOrEqual(clock(lastRow.time));
+    }
     if (state === "cancelled") expect(cards[0]?.title, name).toBe("Run cancelled");
     if (parkedWrite) expect(steps[cards[0]?.index ?? -1]?.entries.flatMap(entry => entry.kind === "decision" ? [entry.decision.title] : []).join(), name).toMatch(/termination/iu);
     else if (state === "needs-review") expect(cards[0]?.title, name).toBe("Run not responding");
