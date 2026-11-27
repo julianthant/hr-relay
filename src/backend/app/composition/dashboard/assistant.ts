@@ -114,7 +114,8 @@ export function attributionOwnsCommand(store: AuthorityDatabase['authority']['as
   const { binding } = attribution;
   if (binding.kind === 'proposal') {
     const record = store.read(binding.proposalId), row = record?.rows.find(entry => entry.rowId === binding.rowId);
-    return record?.snapshot.conversationId === attribution.conversationId && row?.result.state === 'claimed' && row.result.commandId === command.commandId;
+    return record?.snapshot.conversationId === attribution.conversationId && record.lifecycle.state === 'answered' && record.lifecycle.answerMessageId === attribution.acceptedMessageId
+      && row?.result.state === 'claimed' && row.result.commandId === command.commandId;
   }
   const claimed = store.sessions.byCommand(command.commandId)?.claim;
   return claimed !== undefined && claimed.actionId === binding.actionId && claimed.acceptedTurn.conversationId === attribution.conversationId

@@ -38,10 +38,29 @@ import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run
 import { LOCAL_OPERATOR_ACTOR_ID, SourceSurfaceIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { deriveTraceId } from "../../../../../src/rules/identity/identifiers.js";
 import { StorageHealthConcernSchema } from "../../../../../src/rules/notifications/notification-triggers.js";
+import { AssistantToolRefusal } from "../../../../../src/backend/assistant/plugins/plugin.js";
+import { createAssistantController } from "../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
+import { createAssistantHistory } from "../../../../../src/dashboard/surfaces/assistant/assistant-history-model.js";
+import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from "../../../../../src/dashboard/app/commands/command-executor.js";
 
 vi.mock("../../../../../src/backend/runs/commands/run-worker-capacity.js", async importOriginal => {
   const actual = await importOriginal<typeof workerCapacity>();
   return { ...actual, createRunWorkerCapacity: vi.fn(actual.createRunWorkerCapacity) };
+});
+
+// The composed submit, as the typed-yes owner receives it; `tamper` resends one claimed row under a changed attribution first.
+const submitProbe = vi.hoisted(() => ({ submit: undefined as undefined | ((command: never, attribution: never) => Promise<unknown>),
+  tamper: undefined as undefined | ((attribution: Record<string, unknown>) => unknown), tampered: [] as unknown[] }));
+vi.mock("../../../../../src/backend/assistant/typed-proposals.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../../../src/backend/assistant/typed-proposals.js")>();
+  return { ...actual, createAssistantTypedProposals: (ports: Parameters<typeof actual.createAssistantTypedProposals>[0]) => {
+    submitProbe.submit = ports.submit as never;
+    return actual.createAssistantTypedProposals({ ...ports, async submit(command, attribution) {
+      const tamper = submitProbe.tamper; submitProbe.tamper = undefined;
+      if (tamper !== undefined) submitProbe.tampered.push(await Promise.resolve().then(() => ports.submit(command, tamper(attribution) as never)).then(() => 'admitted', (error: unknown) => error));
+      return ports.submit(command, attribution);
+    } });
+  } };
 });
 
 type Door = { history(operation: AssistantHistoryOperation): Promise<unknown>; respond(request: AssistantM1Request): Promise<unknown> };
@@ -349,7 +368,7 @@ it('admits no assistant command outside a claimed proposal row or session claim'
 
 it('starts a read-only session through the composed kernel, serves it in Queue and Logs, and its Stop cancels it', async () => {
   // A worker that never becomes ready keeps the started run queued, so Stop has a live run to cancel.
-  await withServedAssistant(async ({ context, transport, origin, originalFetch, post, clock }) => {
+  await withServedAssistant(async ({ context, transport, origin, originalFetch, clock }) => {
     const client = createDashboardClient({ baseUrl: origin });
     let turns = 0;
     transport.setResponse(init => {
@@ -360,12 +379,19 @@ it('starts a read-only session through the composed kernel, serves it in Queue a
         : [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Started.' }] }];
       return new Response(completedResponseStream(output, request.model, `resp_${String(turns)}`), { headers: { 'Content-Type': 'text/event-stream' } });
     });
-    const conversationId = randomUUID();
-    assert.equal(AssistantHistoryResultSchema.parse(await client.assistantHistoryWrite?.({ operation: 'create', conversationId, title: 'Chat' })).state, 'saved');
-    const envelope = AssistantM1RespondEnvelopeSchema.parse(await client.assistantRespond({ conversationId, expectedRevision: 1, messageId: randomUUID(), message: `Look up ${EXECUTOR_EID}` }));
-    assert.ok(envelope.kind === 'result' && envelope.result.state === 'answered', JSON.stringify(envelope));
-    const session = envelope.result.reply.parts.find(part => part.kind === 'session'); assert.ok(session?.kind === 'session');
-    const { runId } = session;
+    // The dashboard's own assistant controller over the served history sends the message and later presses the chip's Stop.
+    const history = await createAssistantHistory(client, { getItem: () => null, removeItem() {} }, context.admission.profileBinding.profileId, new AbortController().signal);
+    if (history.chats.read().length === 0) await history.chats.create();
+    const chatId = history.chats.selectedId(); assert.ok(chatId);
+    const scope: CommandExecutionScope = { actorId: LOCAL_OPERATOR_ACTOR_ID, client, authority: {}, dayRequest: {} }, feedback: CommandOutcome[] = [];
+    const controller = createAssistantController(client, { authority: 'a', commands: { executor: new CommandExecutor(() => scope), scope, feedback: value => { feedback.push(value); } } }, {
+      conversationId: chatId, read: () => history.read(chatId), retain: state => { history.retain(chatId, state); }, revision: () => history.revision(chatId),
+      receipt: receipt => { history.receipt(receipt); }, local: text => history.local(chatId, text), outcome: messageId => history.outcome(chatId, messageId),
+      refresh: () => history.refresh(chatId), unsaved: () => { history.unsaved(); } });
+    controller.action({ type: 'edit', value: `Look up ${EXECUTOR_EID}` }); controller.action({ type: 'send' });
+    await vi.waitFor(() => assert.ok(controller.snapshot().sessions?.[0]?.stop), { timeout: 30_000, interval: 50 });
+    const chip = controller.snapshot().sessions?.[0]; assert.ok(chip?.stop);
+    const { runId } = chip;
 
     // The start is the assistant's own command under its session claim.
     const starts = context.database.authority.assistantProposals.sessions;
@@ -374,12 +400,17 @@ it('starts a read-only session through the composed kernel, serves it in Queue a
     const [startId] = commandId; assert.equal(commandId.length, 1); assert.ok(startId);
     const claimed = starts.byCommand(startId.id), start = context.database.authority.commands.get(startId.id); assert.ok(claimed); assert.ok(start);
     assert.deepEqual(claimed.outcome, { state: 'started', runIds: [runId] });
-    // The submit check admits only the attribution of the claim that owns the command.
+    // The composed submit refuses any attribution but the owning claim's, before the kernel sees the command.
     const owned = assistantSessionAttribution(claimed.claim), profileId = context.admission.profileBinding.profileId, store = context.database.authority.assistantProposals;
     assert.equal(attributionOwnsCommand(store, start, owned, profileId), true);
-    for (const wrong of [{ ...owned, conversationId: randomUUID() }, { ...owned, binding: { kind: 'session' as const, actionId: randomUUID() } }, { ...owned, profileId: randomUUID() }, { kind: 'unrecorded' as const }])
-      assert.equal(attributionOwnsCommand(store, start, wrong, profileId), false, JSON.stringify(wrong));
-    assert.equal(attributionOwnsCommand(store, { ...start, source: SourceSurfaceIdSchema.parse('dashboard') }, owned, profileId), false);
+    const submit = submitProbe.submit; assert.ok(submit);
+    const audits = context.database.authority.commandAudits.findByCommand(start.commandId);
+    for (const wrong of [{ ...owned, conversationId: randomUUID() }, { ...owned, acceptedMessageId: randomUUID() }, { ...owned, binding: { kind: 'session' as const, actionId: randomUUID() } },
+      { ...owned, profileId: randomUUID() }, { ...owned, binding: { kind: 'proposal' as const, proposalId: randomUUID(), rowId: randomUUID() } }, { kind: 'unrecorded' as const }]) {
+      await assert.rejects(async () => submit(start as never, wrong as never), (error: unknown) => error instanceof AssistantToolRefusal && error.code === 'ASSISTANT_PROPOSAL_REFUSED', JSON.stringify(wrong));
+    }
+    await assert.rejects(async () => submit({ ...start, source: SourceSurfaceIdSchema.parse('dashboard') } as never, owned as never), AssistantToolRefusal);
+    assert.deepEqual(context.database.authority.commandAudits.findByCommand(start.commandId), audits);
 
     // Queue and Logs both serve the run.
     const day = await client.dashboardDay(searchPartitionDay(new Date(clock.now().toISOString())));
@@ -387,12 +418,51 @@ it('starts a read-only session through the composed kernel, serves it in Queue a
     const logs = await originalFetch(`${origin}/api/v1/runs/${runId}`, { headers: { [DASHBOARD_TAB_HEADER]: randomUUID() } });
     assert.equal(logs.status, 200); assert.equal(RunDetailWireSchema.parse(await logs.json()).header.runId, runId);
 
-    // Stop is the row's own Cancel, sent as an operator command.
-    const cancel = row.actions.find(action => action.kind === 'command' && action.command === 'cancel'); assert.ok(cancel?.kind === 'command');
-    const stopped = CommandResultSchema.parse(await post('commands', { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: LOCAL_OPERATOR_ACTOR_ID,
-      source: 'queue', family: 'run', type: 'cancel', target: { runId, expectedVersion: cancel.expectedVersion } }));
-    assert.equal(stopped.state, 'applied', JSON.stringify(stopped));
+    // The served chip's Stop goes through the controller and the command executor to the real kernel, and the re-read chip offers no Stop.
+    await controller.stop(chip.stop);
+    assert.equal(feedback.at(-1)?.kind, 'confirmed', JSON.stringify(feedback));
     const after = context.database.authority.runs.get(runId); assert.ok(after);
     assert.ok(after.lifecycle.state === 'terminal' && after.lifecycle.outcome === 'cancelled', JSON.stringify(after.lifecycle));
+    assert.equal(controller.snapshot().sessions?.find(session => session.runId === runId)?.stop ?? null, null);
+    controller.retire();
   }, { spawn: request => new ScriptedWorkerChild(7001, request, { ready: false, exitOnStop: true, reply: () => ({ state: 'done', result: null }) }) });
+});
+
+it('runs a typed-yes proposal row only under the attribution of the yes that answered it', async () => {
+  await withServedAssistant(async ({ context, transport, origin }) => {
+    const client = createDashboardClient({ baseUrl: origin });
+    let turns = 0;
+    transport.setResponse(init => {
+      if (typeof init.body !== 'string') throw Error('synthetic request body required');
+      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
+      turns++;
+      const output = turns === 1 ? [{ type: 'function_call', namespace: 'relay', name: 'propose_workflow_start', call_id: 'propose', arguments: JSON.stringify({ workflow: 'person-lookup', entries: [EXECUTOR_EID], dryRun: false }), status: 'completed' }]
+        : [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Lookup is ready for review.' }] }];
+      return new Response(completedResponseStream(output, request.model, `resp_${String(turns)}`), { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    const conversationId = randomUUID();
+    assert.equal(AssistantHistoryResultSchema.parse(await client.assistantHistoryWrite?.({ operation: 'create', conversationId, title: 'Chat' })).state, 'saved');
+    const proposed = AssistantM1RespondEnvelopeSchema.parse(await client.assistantRespond({ conversationId, expectedRevision: 1, messageId: randomUUID(), message: `Prepare a Lookup for ${EXECUTOR_EID}.` }));
+    assert.ok(proposed.kind === 'result' && proposed.result.state === 'answered' && proposed.receipt !== undefined, JSON.stringify(proposed));
+    const store = context.database.authority.assistantProposals, open = store.open(conversationId); assert.ok(open);
+
+    // The yes's row is first resent through the composed submit as if a different accepted message had answered it.
+    submitProbe.tampered.length = 0;
+    submitProbe.tamper = attribution => ({ ...attribution, acceptedMessageId: randomUUID() });
+    const yesId = randomUUID();
+    const answered = AssistantM1RespondEnvelopeSchema.parse(await client.assistantRespond({ conversationId, expectedRevision: proposed.receipt.revision, messageId: yesId, message: 'yes' }));
+    assert.ok(answered.kind === 'result' && answered.result.state === 'answered', JSON.stringify(answered));
+    assert.equal(submitProbe.tampered.length, 1);
+    const [refusal] = submitProbe.tampered;
+    assert.ok(refusal instanceof AssistantToolRefusal && refusal.code === 'ASSISTANT_PROPOSAL_REFUSED', String(refusal));
+
+    // The yes that answered the proposal owns its one row command, which reached the kernel once.
+    const record = store.read(open.snapshot.id); assert.ok(record);
+    assert.deepEqual(record.lifecycle, { state: 'answered', answerMessageId: yesId });
+    const [row] = record.rows; assert.ok(row?.result.state === 'applied', JSON.stringify(record.rows));
+    const starts = z.object({ id: z.string() }).array().parse(withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), database =>
+      database.prepare("SELECT id FROM commands WHERE family='start' AND json_extract(request_json,'$.source')='assistant'").all()));
+    assert.deepEqual(starts.map(start => start.id), [row.result.commandId]);
+    assert.ok(answered.result.reply.parts.some(part => part.kind === 'session'));
+  }, { spawn: request => new ScriptedWorkerChild(7002, request, { ready: false, exitOnStop: true, reply: () => ({ state: 'done', result: null }) }) });
 });

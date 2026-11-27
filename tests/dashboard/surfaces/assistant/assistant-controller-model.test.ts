@@ -229,6 +229,30 @@ it('re-reads session chips after a session reply, and Stop sends the run\'s Canc
   assert.equal(feedback.at(-1)?.kind, 'confirmed'); assert.equal(refreshes, 3);
   assert.equal(c.snapshot().sessions?.[0]?.stop, null);
 });
+it('a same-id Retry answered by a delivery receipt restores the started session with its Stop, and the session starts once', async () => {
+  const ids: string[] = [], session = { kind: 'session' as const, runId: RUN_ID, label: 'Sample, Avery', meta: 'Running' };
+  let starts = 0, stored = false;
+  const client = { ...resultClient({}), async assistantRespond(input: AssistantM1Request): Promise<AssistantM1RespondEnvelope> {
+    ids.push(input.messageId);
+    // The server starts once per accepted message id; the resend replays the stored turn as a delivery receipt.
+    if (!stored) { stored = true; starts++; throw new Error('connection dropped after the session started'); }
+    const answered = scriptedEnvelope(input, { state: 'answered', parts: [session] });
+    assert.ok(answered.kind === 'result' && answered.result.state === 'answered' && answered.receipt !== undefined);
+    return { kind: 'delivery', receipt: answered.receipt, acceptedTurn: answered.result.reply.acceptedTurn, usage: answered.result.reply.usage, history: { state: 'observed' } };
+  } };
+  let kept: AssistantState | undefined, reads = 0;
+  const c = createAssistantController(client, { authority: 'a' }, { conversationId: crypto.randomUUID(), read: () => kept && { ...kept, sessions: [sessionView(3, true)] },
+    retain: state => { kept = state; }, revision: () => 1, receipt() {}, async local() {}, async refresh() {}, unsaved() {},
+    // The first read-back fails; after the resend the stored reply carries the session.
+    async outcome() { reads++; if (reads === 1) throw new Error('history offline'); return { id: 'stored', role: 'assistant', text: '', parts: [session] }; } });
+  sendControl(c, 'start a lookup for Avery');
+  await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'failed'));
+  assert.equal(c.snapshot().sessions?.length ?? 0, 0);
+  c.action({ type: 'retry' });
+  await vi.waitFor(() => assert.ok(c.snapshot().sessions?.[0]?.stop));
+  assert.equal(c.snapshot().turn.state, 'idle');
+  assert.deepEqual(ids, [ids[0], ids[0]]); assert.equal(starts, 1);
+});
 it('Stop re-reads the chip first and sends the run\'s current Cancel when the run moved from queued to running', async () => {
   let served = sessionView(3, true);
   const sent: unknown[] = [];

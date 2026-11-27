@@ -98,7 +98,11 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     const readBack = async (fallback: AssistantAction) => {
       try {
         const stored = await history?.outcome(messageId);
-        if (stored !== undefined && current()) { publish(assistantReducer(state, { type: 'settle', requestId, message: { ...stored, id: 'assistant-' + requestId } })); return; }
+        if (stored !== undefined && current()) {
+          publish(assistantReducer(state, { type: 'settle', requestId, message: { ...stored, id: 'assistant-' + requestId } }));
+          if (stored.parts?.some(part => part.kind === 'session') === true) await refreshSessions();
+          return;
+        }
       } catch { /* the outcome stays unknown, as the fallback states */ }
       if (current()) publish(assistantReducer(state, fallback));
     };
