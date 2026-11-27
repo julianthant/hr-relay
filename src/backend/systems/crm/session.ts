@@ -49,8 +49,13 @@ export function isAuthenticatedCrmUrl(rawUrl: string): boolean {
     && (path === "/hr" || path.startsWith("/hr/")) && !path.toLowerCase().includes("login");
 }
 
+function isCrmHome(rawUrl: string): boolean {
+  const url = URL.parse(rawUrl);
+  return url?.origin === `https://${CRM_APP_HOST}` && url.pathname === "/hr/";
+}
+
 /** The two-fact proof: Salesforce's own session cookie, and no sign-in form. */
-const probeCrmAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
+export const verifyCrmAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
   context,
 ): Promise<AuthenticationProbe> => verifyUcsdAuthenticatedApplication(SYSTEM, context.page, {
   assertCurrent: context.assertCurrent,
@@ -70,21 +75,6 @@ const probeCrmAuthenticatedApplication: AuthenticatedApplicationVerifier = async
     }),
   ],
 });
-
-export const verifyCrmAuthenticatedApplication: AuthenticatedApplicationVerifier = async (context, phase) => {
-  const first = await probeCrmAuthenticatedApplication(context);
-  if (phase !== "landing" || first.authenticated || first.check !== "application-route"
-    || !isAuthenticatedCrmUrl(first.observedUrl)) return first;
-
-  // Salesforce can redirect to the Communities home while the first post-SSO proof is in flight.
-  context.assertCurrent();
-  const current = context.page.url();
-  const home = URL.parse(current);
-  if (current !== first.observedUrl && home?.origin === `https://${CRM_APP_HOST}` && home.pathname === "/hr/") {
-    return probeCrmAuthenticatedApplication(context);
-  }
-  return first;
-};
 
 // Wait for the SSO form before selecting login type; verify its value again after reload. An absent picker is a valid entry state.
 async function ensureActiveDirectorySelected(context: SystemLoginContext, token: DuoCeremonyLeaseToken): Promise<void> {
@@ -202,11 +192,12 @@ export const crmLoginRecipe = defineVerifiedLoginRecipe({
     context.assertCurrent();
     await submitCrmSsoForm(context, token);
     context.assertCurrent();
+    // The default entry can visit a Salesforce redirect page under /hr/ before Communities home.
     await waitForAuthenticatedLanding(
       SYSTEM,
       context,
       token,
-      isAuthenticatedCrmUrl,
+      config.urls.crm.prod.entry === CRM_POST_SSO_ENTRY ? isCrmHome : isAuthenticatedCrmUrl,
       config.timeouts.duoApprovalCrmSeconds * 1_000,
     );
     context.assertCurrent();
