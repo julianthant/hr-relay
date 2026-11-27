@@ -113,6 +113,7 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
       ...(row.kind === "notification" && row.count > 1 ? { count: row.count } : {}),
       age: notificationAge(row.occurredAt, nowIso), at: row.occurredAt,
       ...(row.readOnlyHistory === true ? { readOnlyHistory: true } : {}),
+      ...(repeatingNotice(row) ? { quiet: true as const } : {}),
       read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },
     };

@@ -215,7 +215,7 @@ describe("canonical notification producers", () => {
       f.db.authority.evidenceReceipts.insert(receiptOf(run, 3));
       failRun(f, 3, "SUBJECT_MISMATCH");
       const before = readNotificationSources(f.db, f.reader);
-      expect(before.observations.map(row => row.event.kind)).toEqual(["verified-done", "run-failed", "subject-mismatch"]);
+      expect(before.observations.map(row => row.event.kind)).toEqual(["verified-done", "subject-mismatch"]);
       for (const row of before.observations) await f.inbox.publish(row.event, row.source);
       const rows = f.inbox.list("local-operator");
       const reopened = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "notification-reopen" }, f.clock);

@@ -4,7 +4,7 @@ import { act, createElement, type ComponentProps } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach,beforeEach,describe,it,vi } from 'vitest';
-import { TooltipProvider } from '../../../../../src/dashboard/ds/ui.js';
+import { ToastProvider,TooltipProvider } from '../../../../../src/dashboard/ds/ui.js';
 import { LogSample } from '../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js';
 import { LogPreview } from '../../../../support/fixtures/dashboard/log-preview/log-preview.js';
 import { initialMockDraft,type MockRun } from '../../../../support/fixtures/dashboard/workflow-mocks/workflow-mock-model.js';
@@ -255,6 +255,21 @@ describe('compact run headers', () => {
       const tail = markup.indexOf('Additional retained step'); assert.ok(tail > 0);
       assert.ok(markup.indexOf('aria-label="UCPath found transactions"') < tail);
       if (previewState === 'available') assert.ok(markup.indexOf('aria-label="Full dry-run preview"') > tail);
+    }
+  });
+
+  it('raises no toast each time a failed run is opened', async () => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    const dryRunPreview = DryRunPreviewWireSchema.parse({ state: 'unavailable', reason: 'preview-not-completed' });
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Failed run' }, availableSections: ['logs'] }, logs: { dryRunPreview }, unavailableEvidence: [] } });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    for (let open = 0; open < 2; open += 1) {
+      const host = document.createElement('div'); document.body.append(host);
+      const root = createRoot(host);
+      await act(async () => root.render(createElement(ToastProvider, null, sample({ selection: { row, workflowLabel: 'Person lookup' } }))));
+      assert.doesNotMatch(document.body.textContent ?? '', /Dry-run preview unavailable|did not complete/);
+      await act(async () => root.unmount()); host.remove();
     }
   });
 

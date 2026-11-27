@@ -62,8 +62,9 @@ function scanNotificationSources(database: AuthorityDatabase, reader: Pick<RunRe
   for (const failure of [...failures.values()].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.failureId.localeCompare(b.failureId))) {
     if (!runs.has(failure.runId)) throw new Error("NOTIFICATION_FAILURE_RUN_MISSING");
     const shared = { runId: failure.runId, workflowId: failure.workflowId, failureId: failure.failureId, failureFingerprint: failure.fingerprint };
-    result.push(observation({ kind: "run-failed", ...shared, code: failure.code }, failure.failureId, failure.occurredAt));
-    if (failure.code === "SUBJECT_MISMATCH" || (failure.subject?.expected !== undefined && failure.subject.observed !== undefined)) result.push(observation({ kind: "subject-mismatch", ...shared }, failure.failureId, failure.occurredAt));
+    // One alert per failure: a subject mismatch is the more specific notice of the same failure.
+    const mismatch = failure.code === "SUBJECT_MISMATCH" || (failure.subject?.expected !== undefined && failure.subject.observed !== undefined);
+    result.push(observation(mismatch ? { kind: "subject-mismatch", ...shared } : { kind: "run-failed", ...shared, code: failure.code }, failure.failureId, failure.occurredAt));
     const fingerprint = sha256Hex(canonicalJsonStringify({ workflow: failure.workflowId, step: failure.nodeId ?? failure.taskId ?? null, code: failure.code }));
     const count = (groups.get(fingerprint) ?? 0) + 1; groups.set(fingerprint, count);
     if (count >= 3 || repeated.has(failure.failureId)) result.push(observation(repeated.get(failure.failureId) ?? { kind: "repeating-failure", ...shared, failureFingerprint: fingerprint, occurrences: count, threshold: 3 }, failure.failureId, failure.occurredAt));
