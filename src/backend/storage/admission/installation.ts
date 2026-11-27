@@ -312,6 +312,7 @@ export type InstallationLease = Readonly<{ retainSourceClosure(error: unknown): 
   offlineMaintenanceOperation(): OfflineMaintenanceOperation;
   assertOfflineMaintenance(operation: OfflineMaintenanceOperation): void;
   readProfileRegistry(): ProfileRegistryDocument;
+  observeDashboardReadCustody(path: string): (() => boolean) | undefined;
   requiresFlatStoreMigration(): boolean;
   flatStoreMigrationPending(): boolean;
   readFlatStartCleanIntent(): FlatStartCleanIntent | undefined;
@@ -1211,6 +1212,44 @@ function profileEvidencePaths(control: string, locator: RuntimeLocator): readonl
     join(machine, "profile-registry-version.json"), join(machine, "profile-verifiers.json"), join(machine, "profile-pepper")];
 }
 
+/** Observe the inputs of the runtime registry, storage roots and lane source checks. */
+function observeDashboardReadCustody(control: string, locator: RuntimeLocator, database: string): (() => boolean) | undefined {
+  const publication = join(control, "profile-publication.json");
+  if (lstatMaybe(publication) !== undefined) return undefined;
+  const operations = join(locator.stateRoot, "machine", "operations");
+  const stat = (path: string) => lstatSync(path, { bigint: true, throwIfNoEntry: false });
+  // Sample membership before enumerating it, so a new operation cannot escape later validation.
+  const operationsStatus = stat(operations);
+  const files = [...profileEvidencePaths(control, locator), join(control, "account-deletion.json"),
+    join(control, "journal.json"), join(control, "profile-control-upgrade.json"), join(control, "device-recertification.json"),
+    join(dirname(control), "fixed-layout.json"), join(locator.stateRoot, FENCE), join(locator.artifactRoot, FENCE),
+    database, `${database}-wal`, `${database}-shm`, `${database}-journal`,
+    ...(operationsStatus?.isDirectory() === true
+      ? readdirSync(operations).filter(name => name.endsWith(".json")).map(name => join(operations, name))
+      : [])];
+  const directories = new Set<string>();
+  for (const directory of [join(dirname(database), "artifacts"), dirname(operations), ...files.map(path => dirname(path))]) {
+    let path = directory;
+    while (path !== operations && !directories.has(path)) {
+      directories.add(path);
+      const parent = dirname(path);
+      if (parent === path) break;
+      path = parent;
+    }
+  }
+  const paths = [...[...directories].map(path => ({ path, before: stat(path), content: false })),
+    { path: operations, before: operationsStatus, content: true },
+    { path: publication, before: undefined, content: true },
+    ...files.map(path => ({ path, before: stat(path), content: true }))];
+  return () => paths.every(({ path, before, content }) => {
+    const after = stat(path);
+    return before === undefined || after === undefined ? before === after
+      : before.dev === after.dev && before.ino === after.ino && before.mode === after.mode
+        && before.uid === after.uid && before.nlink === after.nlink
+        && (!content || (before.size === after.size && before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs));
+  });
+}
+
 function profileObservation(control: string, locator: RuntimeLocator): string {
   const operations = profileOperationInventory(locator.stateRoot);
   const files = profileEvidencePaths(control, locator).map(path => {
@@ -2023,6 +2062,16 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (lstatMaybe(completed)) fail("flat-start-clean-completion-exists");
         renameSync(intentPath, completed); fsyncPath(control);
       });
+    },
+    observeDashboardReadCustody(path) {
+      assertHeld();
+      if (options?.stoppedControlForward === true || defaultLayoutSources.has(workspace)) return undefined;
+      const unchanged = observeDashboardReadCustody(control, locator, path);
+      if (unchanged === undefined) return undefined;
+      return () => {
+        assertHeld();
+        return !defaultLayoutSources.has(workspace) && unchanged();
+      };
     },
     readProfileRegistry() {
       assertHeld();

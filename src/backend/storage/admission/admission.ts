@@ -123,6 +123,7 @@ type AdmissionAuthority = Readonly<{
   readAuthorityRestore?(operationId: string): AuthorityRestoreInput;
   assertAuthorityRestoreCurrent?(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void;
   assertProfileRuntime?(publication?: ProfilePublicationRead): void;
+  observeDashboardReadCustody?(path: string): (() => boolean) | undefined;
   assertPendingLogoutCustody?(operationId: string): void;
   readInstallationContext?(): Readonly<{ workspace: string; locator: RuntimeLocator }> | undefined;
   release(): void;
@@ -544,6 +545,18 @@ export class RuntimeAdmission {
     this.assertLive();
     if (this.#scope === "read-lane") return;
     this.#assertProfileRuntime();
+  }
+  observeDashboardReadCustody(path: string): (() => boolean) | undefined {
+    if (this.#scope !== "profile" || path !== join(this.#stateRoot, "state.db")) throw new Error("profile-database-open-source-changed");
+    // Windows access checks use native ACLs and reparse checks beyond lstat metadata.
+    if (process.platform === "win32") return undefined;
+    const unchanged = this.#authority.observeDashboardReadCustody?.(path);
+    if (unchanged === undefined) return undefined;
+    return () => {
+      if (this.#released) throw new Error("runtime-admission: missing or released admission");
+      this.lifetime.assertRuntimeAvailable();
+      return unchanged();
+    };
   }
   #assertProfileRuntime(): void {
     if (this.#scope !== "profile") throw new Error("profile-bound-authority-required");
@@ -1182,6 +1195,14 @@ export class RuntimeAdmission {
         if (restoreCustody !== undefined || restoreSettled) throw new Error("profile-restore-runtime-refused");
         if (stoppedPurpose === "settings" || repair) verifyStoppedClaim();
         else claim.verify(stoppedPurpose === undefined ? "runtime" : "issue", publication);
+      },
+      observeDashboardReadCustody: path => {
+        const unchanged = lease.observeDashboardReadCustody(path);
+        if (unchanged === undefined) return undefined;
+        return () => {
+          if (restoreCustody !== undefined || restoreSettled) throw new Error("profile-restore-runtime-refused");
+          return unchanged();
+        };
       },
       assertPendingLogoutCustody: operationId => {
         this.assertLive();
