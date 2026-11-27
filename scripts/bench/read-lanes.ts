@@ -227,13 +227,13 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
   const [
     { chromium }, { createDashboardClient }, { operatorCredentials, resumeKey }, { CrossDateSearchPageSchema },
     { CalendarWireSchema }, { DashboardStreamEnvelopeSchema }, { CommandResultSchema }, { deriveSettingsPatchFingerprint, SettingsPatchSchema },
-    { FrontendBootstrapWireSchema },
+    { FrontendBootstrapWireSchema }, { SHUTDOWN_BACKUP_WAIT_MS },
   ] = await Promise.all([
     import("playwright"), import("../../src/dashboard/client/index.js"), import("../profiles/copy-signin.js"),
     import("../../src/models/dashboard/search.js"), import("../../src/models/dashboard/calendar.js"),
     import("../../src/models/dashboard/subscription.js"), import("../../src/rules/commands/commands.js"),
     import("../../src/models/config/settings.js"),
-    import("../../src/models/dashboard/bootstrap.js"),
+    import("../../src/models/dashboard/bootstrap.js"), import("../../src/backend/app/bootstrap/secure-env-bootstrap.js"),
   ]);
   const startLoad = loadavg();
   const child = fork(fileURLToPath(import.meta.url), [profile, "--g4-backend", shape], {
@@ -243,8 +243,8 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
     child.once("close", (code, signal) => resolve(code === 0 && signal === null));
     child.once("error", () => resolve(false));
   });
-  const receive = async (type: string, send?: "g4-start" | "g4-finish"): Promise<unknown> => {
-    const signal = AbortSignal.timeout(G4_TIMEOUT_MS);
+  const receive = async (type: string, send?: "g4-start" | "g4-finish", timeoutMs = G4_TIMEOUT_MS): Promise<unknown> => {
+    const signal = AbortSignal.timeout(timeoutMs);
     const received = Promise.withResolvers<unknown>();
     const listener = (message: unknown) => {
       if (message !== null && typeof message === "object" && "type" in message && message.type === type) received.resolve(message);
@@ -261,7 +261,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   return await withG4Cleanup(async () => {
-    await receive("hrauto-dashboard-ready");
+    await receive("hrauto-dashboard-ready", undefined, SHUTDOWN_BACKUP_WAIT_MS + G4_TIMEOUT_MS);
     const origin = `http://127.0.0.1:${String(runtimeProfiles[profile].backendPort)}`;
     const auth: { proof?: string; session?: string } = {};
     const client = createDashboardClient({ baseUrl: origin, async fetchImpl(url, init) {
@@ -295,15 +295,23 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
       const boot = queue.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/bootstrap");
       await queue.goto(origin + dayPath);
       const bootstrap = FrontendBootstrapWireSchema.parse(await (await boot).json());
-      await Promise.all([search.goto(origin + dayPath), settings.goto(origin + dayPath + "&settings=general")]);
-      for (const page of [queue, search]) await page.getByRole("complementary", { name: "Workspace" }).waitFor();
+      await queue.getByRole("complementary", { name: "Workspace" }).waitFor();
+      await search.goto(origin + dayPath);
+      await search.getByRole("complementary", { name: "Workspace" }).waitFor();
       if (context.pages().length !== 3) throw new Error("read-lanes-g4-tab-count");
       const option = queue.getByRole("button", { name: /^Options/u });
       const calendar = queue.getByRole("menu", { name: "Pick a date" });
       const queueContent = queue.locator('.dashboard-queue-column:not([aria-busy="true"]) [data-queue-scroll]');
       const sound = "preferences.notifications.sound";
       const soundControl = settings.locator(`[data-settings-path="${sound}"]`).getByRole("combobox");
-      await soundControl.waitFor();
+      const settingsResponses: number[] = [];
+      settings.on("response", response => {
+        if (new URL(response.url()).pathname === "/api/v1/settings/editable") settingsResponses.push(response.status());
+      });
+      await settings.goto(origin + dayPath + "&settings=general");
+      await soundControl.click({ trial: true }).catch((cause: unknown) => {
+        throw new Error(`read-lanes-g4-settings-not-ready (editable HTTP: ${settingsResponses.join(", ") || "no response"})`, { cause });
+      });
       const settingsDocument = await client.editableSettings();
       const original = settingsDocument.sections.flatMap(section => section.leaves).find(leaf => leaf.path === sound);
       const soundValue = z.enum(["default", "none"]).parse(original?.effectiveValue);
@@ -492,7 +500,8 @@ async function runG4(profile: CopyProfile, workspace: string, args: { days: stri
   const profileId = await admitG4Copy(profile, workspace);
   const results: Record<Shape, G4Run[]> = { A: [], B: [] };
   for (let index = 0; index < repetitions; index++) {
-    for (const shape of ShapeSchema.options) {
+    for (const shape of ["B", "A"] as const) {
+      process.stderr.write(`G4 ${shape} ${String(index + 1)}/${String(repetitions)}\n`);
       results[shape].push(await measureG4(shape, profile, { days, workflow, query, profileId }));
     }
   }
