@@ -1,4 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 
 export const RUN_SEARCH_FTS_SCHEMA_VERSION = 46;
@@ -27,13 +26,7 @@ export const RUN_SEARCH_FTS_MIGRATION = deepFreeze({
   ],
 });
 
-export function assertRunSearchFts(database: DatabaseSync): void {
-  if (database.prepare("SELECT v FROM run_search_fts_config WHERE k='secure-delete'").get()?.v !== 1)
-    throw new Error("run-search-fts-secure-delete-disabled");
-  if (database.prepare(`SELECT 1 FROM run_search_fts AS f LEFT JOIN run_search AS s USING(run_id)
-    WHERE ${differences(columns.map(column => `f.${column}`), values("s"))} LIMIT 1`).get() !== undefined
-    || database.prepare(`SELECT 1 FROM run_search_fts GROUP BY run_id HAVING count(*)<>1
-      UNION ALL SELECT 1 WHERE (SELECT count(*) FROM run_search_fts)<>(SELECT count(*) FROM run_search) LIMIT 1`).get() !== undefined) {
-    throw new Error("run-search-fts-projection-mismatch");
-  }
-}
+export const RUN_SEARCH_FTS_MISMATCH_SQL = `SELECT 1 FROM run_search_fts AS f LEFT JOIN run_search AS s USING(run_id)
+  WHERE ${differences(columns.map(column => `f.${column}`), values("s"))}
+  UNION ALL SELECT 1 FROM run_search_fts GROUP BY run_id HAVING count(*)<>1
+  UNION ALL SELECT 1 WHERE (SELECT count(*) FROM run_search_fts)<>(SELECT count(*) FROM run_search) LIMIT 1`;

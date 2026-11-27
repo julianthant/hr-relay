@@ -77,6 +77,12 @@ export function dropRunSearchFts(database: DatabaseSync): void {
     DROP TABLE run_search_fts`);
 }
 
+export function inventoryRowOrder(table: string): string {
+  if (table === "run_search_fts_idx") return "segid,term";
+  if (table === "run_search_fts_config") return "k";
+  return "rowid";
+}
+
 /** Steps an authority back to schema 45, before the derived full-text index. */
 export function restoreSchema45RunSearch(database: DatabaseSync): void {
   dropRunSearchFts(database);

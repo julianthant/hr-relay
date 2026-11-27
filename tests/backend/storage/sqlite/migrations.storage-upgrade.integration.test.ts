@@ -4,6 +4,7 @@ import { existsSync,readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { inventoryRowOrder } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 const cleanups: Array<() => void | Promise<void>> = [];
@@ -20,7 +21,7 @@ function rows(path: string) {
     assert.equal(tables.length, AUTHORITY_TABLE_REGISTRY.length + AUTHORITY_DERIVED_TABLES.length);
     return Object.fromEntries(tables.map(row => {
       assert.equal(typeof row.name, "string");
-      return [String(row.name), raw.prepare(`SELECT * FROM "${String(row.name)}" ORDER BY rowid`).all()];
+      return [row.name, raw.prepare(`SELECT * FROM "${row.name}" ORDER BY ${inventoryRowOrder(row.name)}`).all()];
     }));
   } finally { raw.close(); }
 }

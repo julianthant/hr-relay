@@ -10,7 +10,7 @@ import { readonlyAuthorityImage } from "./readonly-authority-snapshot.js";
 import { execMigrationStatement } from "./worker-custody-migration.js";
 import { withoutNativeRecordReadMemo } from "./run-record-row.js";
 import { createRunSearchIndex } from "./run-search-index.js";
-import { RUN_SEARCH_FTS_SCHEMA_VERSION, assertRunSearchFts } from "./run-search-fts.js";
+import { RUN_SEARCH_FTS_MISMATCH_SQL, RUN_SEARCH_FTS_SCHEMA_VERSION } from "./run-search-fts.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { ASSISTANT_HISTORY_MIGRATION } from "./assistant-history.js";
 import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
@@ -141,6 +141,12 @@ export function checkSqliteIntegrity(database: DatabaseSync): void {
   inspectStoredData(() => QuickCheckRowSchema.parse(quickCheck));
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
   if (foreignKeyFailures.length > 0) throw authorityIntegrityError(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
+}
+
+function assertRunSearchFts(database: DatabaseSync): void {
+  if (database.prepare("SELECT v FROM run_search_fts_config WHERE k='secure-delete'").get()?.v !== 1)
+    throw new Error("run-search-fts-secure-delete-disabled");
+  if (database.prepare(RUN_SEARCH_FTS_MISMATCH_SQL).get() !== undefined) throw new Error("run-search-fts-projection-mismatch");
 }
 
 export function checkInspectionPragmas(database: DatabaseSync, requireOperationalPragmas: boolean): void {

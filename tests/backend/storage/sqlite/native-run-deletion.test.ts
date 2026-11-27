@@ -58,15 +58,20 @@ describe("native terminal run deletion", () => {
   it("securely removes search terms in the same transaction as the run", () => {
     const f = fixture();
     f.db.exec("PRAGMA secure_delete=ON");
-    const id = f.run.envelope.runId;
+    const { runId, shape, enqueuedAt, resolvedInstance } = f.run.envelope;
+    const subject = "rare deletion term";
+    const metadata = { subject: { state: "available", value: subject }, actor: { state: "unavailable", reason: "not-recorded" },
+      version: f.run.envelope.descriptorVersion, failureCode: null, evidence: { receipt: false, failure: false, diagnostic: false } };
     f.db.prepare(`INSERT INTO run_search(run_id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,subject,
       descriptor_version,has_receipt,has_diagnostic,systems_json,source_version,metadata_json,created_at,updated_at)
-      SELECT id,workflow,trace_id,local_day,outcome,shape,dry_run,0,'rare deletion term',
-        descriptor_version,0,0,'[]',version,'{}',created_at,updated_at FROM runs WHERE id=?`).run(id);
+      SELECT id,workflow,lower(trace_id),local_day,outcome,?,dry_run,?,?,
+        descriptor_version,0,0,?,version,?,created_at,updated_at FROM runs WHERE id=?`)
+      .run(shape, Date.parse(enqueuedAt), subject, canonicalJsonStringify(Object.keys(resolvedInstance).sort()),
+        canonicalJsonStringify({ runId, sourceVersion: f.run.version, buildGeneration: 0, metadata }), runId);
     f.db.exec("CREATE VIRTUAL TABLE temp.run_search_vocabulary USING fts5vocab(main,run_search_fts,row)");
     const indexed = () => f.db.prepare("SELECT run_id FROM run_search_fts WHERE run_search_fts MATCH 'deletion'").get()?.run_id;
     const tokenCount = () => f.db.prepare("SELECT count(*) AS count FROM run_search_vocabulary WHERE term='rar'").get()?.count;
-    expect(indexed()).toBe(id);
+    expect(indexed()).toBe(runId);
     expect(tokenCount()).toBe(1);
     expect(f.db.prepare("SELECT v FROM run_search_fts_config WHERE k='secure-delete'").get()?.v).toBe(1);
     expect(() => f.transaction(() => {
@@ -74,7 +79,7 @@ describe("native terminal run deletion", () => {
       expect(indexed()).toBeUndefined();
       throw new Error("rollback deletion");
     })).toThrow("rollback deletion");
-    expect(indexed()).toBe(id);
+    expect(indexed()).toBe(runId);
     f.transaction(() => executeNativeRunDeletion(f.db, f.prepare()));
     expect(indexed()).toBeUndefined();
     expect(tokenCount()).toBe(0);

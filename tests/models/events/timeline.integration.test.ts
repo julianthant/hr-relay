@@ -11,6 +11,7 @@ import { TimelineAppendSchema } from "../../../src/models/events/timeline.js";
 import { AuthoritySchemaVersionError } from "../../../src/backend/storage/sqlite/authority-errors.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
+import { inventoryRowOrder } from "../../support/fixtures/storage/historical-run-schema.js";
 import { insertMeasuredSearchRun } from "../../support/helpers/backend/cross-date-search-harness.js";
 import { foundationFixture } from "../../support/helpers/database-foundation/fixtures.js";
 import { storageTree } from "../../support/helpers/integration/storage-recovery-fixture.js";
@@ -125,7 +126,7 @@ function rows(path: string) {
     assert.deepEqual(tables.map(row => row.name), [...AUTHORITY_TABLE_REGISTRY.map(({ name }) => name), ...AUTHORITY_DERIVED_TABLES].sort());
     return Object.fromEntries(tables.map(row => {
       assert.equal(typeof row.name, "string");
-      return [String(row.name), raw.prepare(`SELECT * FROM "${String(row.name)}" ORDER BY rowid`).all()];
+      return [row.name, raw.prepare(`SELECT * FROM "${row.name}" ORDER BY ${inventoryRowOrder(row.name)}`).all()];
     }));
   } finally { raw.close(); }
 }
