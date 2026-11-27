@@ -1,8 +1,9 @@
 import { type IdleSessionCountdown } from './session-idle-model.js';
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { ChevronDown, ChevronUp, UsersRound, X } from "lucide-react";
-import { BareButton, dsFocus, IconButton, Skeleton, useSkeletonWait } from "../../ds/ui.js";
+import { BareButton, dsFocus, IconButton, Skeleton } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
+import { DelayedSpinner } from "../activity/analytics-view.js";
 import { SESSIONS_CONSOLE_ID } from "./sessions-context.js";
 import "./sessions.css";
 import { SESSION_STATE_LABELS, sessionTallies, type SessionControl, type SessionsViewState } from "./sessions-view-model.js";
@@ -19,10 +20,9 @@ function BarCounts({ data }: { data: SessionsViewState }) {
     <span className="tabular-nums">{tally.count} {SESSION_STATE_LABELS[tally.state].toLocaleLowerCase()}</span></span>)}{data.stale && <StaleMark />}</span>;
 }
 
-/** Says the counts are from the day last read; like a skeleton, it shows only once the new day has been slow. */
+/** Says the counts are from the day last read with a small spinner; like a skeleton, it shows only once the new day has been slow. */
 function StaleMark() {
-  const waiting = useSkeletonWait();
-  return <span className={cn("text-ui-muted", waiting && "invisible")}><span aria-hidden className="px-1.5">·</span><span data-sessions-stale>Updating</span></span>;
+  return <span aria-hidden data-sessions-stale className="ml-1.5 inline-flex size-4 items-center justify-center align-middle"><DelayedSpinner /></span>;
 }
 
 function SessionsSkeleton() {

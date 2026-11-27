@@ -4,8 +4,9 @@ import { ArrowUp,ChartNoAxesColumn,Check,CircleAlert,Folder,Gauge,Keyboard,ListT
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,NavRow,SearchInput,SectionLabel,TakeoverFrame,useSkeletonWait,dsFocus,dsIcon,dsSurface,dsText, FailureNotice, Notice } from "../../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,NavRow,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsSurface,dsText, FailureNotice, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
+import { DelayedSpinner } from "../activity/analytics-view.js";
 import { plural } from "../shared/status/format.js";
 import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
 import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
@@ -93,10 +94,9 @@ function SearchResultLink({ result, active, onSelect }: { result: SettingsSearch
 }
 
 
-/** Settings shows a kept copy while it reads again: the muted Updating mark Sessions and Analytics use, after the skeleton wait. */
+/** Settings shows a kept copy while it reads again: a small spinner, after the skeleton wait. */
 function SettingsUpdatingMark() {
-  const waiting = useSkeletonWait();
-  return <span role="status" data-settings-stale className={cn("text-body text-ui-muted ml-auto pr-2", waiting && "invisible")}>Updating</span>;
+  return <span aria-hidden data-settings-stale className="ml-auto mr-2 inline-flex size-4 items-center justify-center"><DelayedSpinner /></span>;
 }
 
 export function SettingsPage({

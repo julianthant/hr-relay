@@ -16,7 +16,7 @@ const OUTCOMES: readonly { key: "done" | "failed" | "attention"; label: string; 
 ];
 const share = (count: number, total: number) => total === 0 ? "—" : `${Math.round(count / total * 100)}%`;
 
-function DelayedSpinner() {
+export function DelayedSpinner() {
   const waiting = useSkeletonWait();
   return <span className={waiting ? "invisible" : undefined}><Spinner /></span>;
 }

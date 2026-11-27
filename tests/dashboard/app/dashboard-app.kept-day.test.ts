@@ -26,7 +26,7 @@ const forward = async (search: string) => {
 };
 const back = async () => { await act(async () => { window.history.back(); await new Promise(resolve => setTimeout(resolve, 20)); }); };
 
-it("Back to a kept day with its run open shows both at once, marked Updating, then the fresh day", async () => {
+it("Back to a kept day with its run open shows both at once, marked by a spinner, then the fresh day", async () => {
   const day = FIXTURE_DAY_WIRE.day;
   const otherDay = "2026-08-02";
   const run = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === "single" && row.parent === null);
@@ -49,7 +49,7 @@ it("Back to a kept day with its run open shows both at once, marked Updating, th
   const queueColumn = () => host.querySelector(".dashboard-queue-column");
   const runRow = () => host.querySelector(`[data-demo-row-id="${run.runId}"]`);
   const runTitle = () => host.querySelector('[aria-label="Selected run logs"] h2')?.textContent;
-  const updating = () => [...host.querySelectorAll('[aria-label="Queue header"] [role="status"]')].find(node => node.textContent === "Updating");
+  const updating = () => host.querySelector('[aria-label="Queue header"] [data-queue-stale]')?.firstElementChild ?? undefined;
   await vi.waitFor(() => assert.equal(runTitle(), run.title));
 
   await forward(`/?day=${otherDay}`);
@@ -66,7 +66,7 @@ it("Back to a kept day with its run open shows both at once, marked Updating, th
   assert.equal(host.querySelector(`[data-demo-row-id="${run.runId}"] [aria-label^="Actions"]`) === null, true);
   assert.ok(updating()?.classList.contains("invisible"), "a fast reload shows no mark");
   await settle(350);
-  assert.equal(updating()?.classList.contains("invisible"), false, "a slow reload shows Updating");
+  assert.equal(updating()?.classList.contains("invisible"), false, "a slow reload shows the spinner");
 
   await act(async () => streams.at(-1)?.serve(FIXTURE_DAY_WIRE));
   await vi.waitFor(() => assert.equal(queueColumn()?.hasAttribute("aria-busy"), false));
