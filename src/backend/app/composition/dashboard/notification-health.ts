@@ -117,6 +117,7 @@ export function createNotificationHealthObserver(input: { database: AuthorityDat
     const samples = [...(priorWal?.samples ?? []), { at, bytes: reading.walBytes }].slice(-3);
     const growing = samples.length === 3 && samples.every(sample => sample.bytes >= 256 * 1024 * 1024)
       && samples.every((sample, index) => index === 0 || sample.bytes > samples[index - 1].bytes && Date.parse(sample.at) - Date.parse(samples[index - 1].at) >= 60_000);
+    const records = [];
     for (const concern of StorageHealthConcernSchema.options) {
       if (concern === "outbox-stalled") continue;
       const previous = database.authority.notificationHealth.get(concern);
@@ -127,7 +128,10 @@ export function createNotificationHealthObserver(input: { database: AuthorityDat
           diagnosticFingerprint: sha256Hex(`notification-health:${concern}`) },
         { identity: sha256Hex(`notification-health:${concern}:${String(occurrence)}`), occurredAt: at });
       }
-      ownWrite(database, () => database.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern, active, occurrence, observedAt: at, samples: concern === "wal-growth" ? samples : [], createdAt: previous?.createdAt ?? at })));
+      records.push({ concern, active, occurrence, observedAt: at, samples: concern === "wal-growth" ? samples : [], createdAt: previous?.createdAt ?? at });
     }
+    ownWrite(database, () => database.withAuthorityTransaction(repos => {
+      for (const record of records) repos.notificationHealth.put(record);
+    }));
   };
 }
