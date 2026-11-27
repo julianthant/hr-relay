@@ -198,7 +198,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         } else if (ingress.warningAcknowledgment !== undefined) {
           throw new Error("warning acknowledgment requires a Rerun source");
         }
-        assertOcrStartReady(descriptor, record, deps.ocrProviderAvailable);
+        assertOcrStartReady(repositories, descriptor, record, deps.ocrProviderAvailable);
         return repositories.startPlans.create(record);
       });
       if (stored.state !== "inserted") {

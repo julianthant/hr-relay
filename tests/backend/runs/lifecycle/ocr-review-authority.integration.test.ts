@@ -29,6 +29,8 @@ import { timelineCheckpointReference } from "../../../../src/models/events/timel
 import { checkpointRecordKey } from "../../../../src/models/workflow/checkpoint.js";
 import { buildOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
 import { bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/page-accounting.js";
+import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -58,6 +60,77 @@ it("fails an Emergency Contact run with the reason its only OCR page failed", as
   assert.equal(parentFailure?.code, pageFailure.code);
   assert.equal(parentFailure.summary, pageFailure.summary);
   assert.equal(database.authority.ocrReviews.latest(run.envelope.runId), undefined);
+});
+
+it("ends an Emergency Contact PDF containing only blank pages before approval", async () => {
+  const { canonical, database, parentRun, run } = await world.fixture({ coordinator: true, dryRun: true, holdPages: true, pageCount: 2 });
+  const signal = new AbortController().signal;
+  for (let page = 0; page < 2; page++) assert.equal((await canonical.step(parentRun, signal)).outcome.state, "done");
+  assert.equal((await canonical.step(parentRun, signal)).outcome.state, "failed");
+  const parent = await canonical.step(parentRun, signal);
+  assert.equal(parent.run.envelope.runId, parentRun.envelope.runId);
+  assert.ok(parent.outcome.state === "failed");
+  const failure = database.authority.failures.get(parent.outcome.failureId);
+  assert.equal(failure?.code, "OCR_NO_REVIEWABLE_RECORDS");
+  assert.equal(failure.summary, "No reviewable records were found in the PDF.");
+  assert.equal(database.authority.ocrReviews.latest(run.envelope.runId), undefined);
+});
+
+it.each([false, true])("checks subscription OCR on interruption with extraction checkpoint = %s", async extracted => {
+  let available = true;
+  const abort = new AbortController();
+  const f = await world.fixture({ coordinator: true, dryRun: true, holdPages: true, ocrProviderAvailable: () => available,
+    onSpan: event => { if (event.t === "span.ended" && event.kind === "task" && event.outcome === "done" && /\/extract#\d+\.\d+$/u.test(event.spanPath)) abort.abort(); } });
+  const [page] = f.database.authority.runs.listChildren(f.run.envelope.runId); assert.ok(page);
+  if (extracted) assert.equal((await f.canonical.step(f.parentRun, abort.signal)).outcome.state, "abandoned");
+  const checkpoint = f.database.authority.runCheckpoints.listByRunAttempt(page.envelope.workflow, page.envelope.itemId, page.envelope.runId, page.envelope.attempt);
+  assert.equal(checkpoint.some(row => row.nodeId === "extract"), extracted);
+  assert.equal(f.ocrCalls(), Number(extracted));
+
+  const source = f.database.withAuthorityTransaction(({ runs }) => {
+    return [page, f.run, f.parentRun].map(prior => {
+      const current = runs.get(prior.envelope.runId); assert.ok(current);
+      const claim = runClaim(current), now = f.clock.now().toISOString();
+      const interrupted = runs.transition({ runId: current.envelope.runId, expectedVersion: current.version, now,
+        ...(claim === undefined ? {} : { claim }), lifecycle: { state: "terminal", outcome: "interrupted", endedAt: now } });
+      assert.ok(interrupted.state === "applied");
+      return interrupted.run;
+    }).at(-1);
+  });
+  assert.ok(source);
+  const descriptor = f.root.descriptor, selectedStepKeys = descriptor.timeline.map(step => step.key);
+  const planner = createStartPlanService({ authority: f.database, authorityRead: f.database, descriptors: { resolve: f.resolve },
+    ocrProviderAvailable: () => available, clock: f.clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: "local-operator",
+    configFingerprint: source.envelope.configFingerprint, configSnapshotId: source.envelope.configSnapshotId });
+  const plan = () => planner.plan({ workflowId: descriptor.id, dryRun: true, submissions: [], selectedStepKeys,
+    rerunSource: { runId: source.envelope.runId, expectedVersion: source.version, intent: "rerun", selectedStepKeys } });
+  const online = plan();
+  assert.ok(f.database.authority.startPlans.get(online.startPlanId)?.rerun?.continuation);
+  available = false;
+  if (!extracted) assert.throws(plan, { message: ERROR_CATALOG.PROVIDER_UNAVAILABLE.text });
+  const reviewed = extracted ? plan() : online;
+  const result = f.canonical.kernel.execute({ commandId: randomUUID(), family: "start", type: "start-run", source: "dashboard",
+    requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: { workflowId: descriptor.id,
+      startPlanId: reviewed.startPlanId, expectedVersion: reviewed.expectedVersion }, payload: reviewed.fingerprints });
+  if (extracted) {
+    assert.equal(result.state, "applied", JSON.stringify(result));
+    const replacement = f.database.authority.runs.listByWorkflow(descriptor.id).find(candidate => candidate.envelope.retryOf === source.envelope.runId);
+    assert.ok(replacement);
+    const signal = new AbortController().signal;
+    const replayed = await f.canonical.step(replacement, signal);
+    assert.equal(replayed.run.envelope.workflow, "ocr-page");
+    assert.equal(replayed.outcome.state, "done");
+    assert.equal(f.ocrCalls(), 1);
+    assert.equal((await f.canonical.step(replacement, signal)).outcome.state, "failed");
+    const parent = await f.canonical.step(replacement, signal);
+    assert.equal(parent.run.envelope.runId, replacement.envelope.runId);
+    assert.ok(parent.outcome.state === "failed");
+    assert.equal(f.database.authority.failures.get(parent.outcome.failureId)?.code, "OCR_NO_REVIEWABLE_RECORDS");
+  } else {
+    assert.ok(result.state === "rejected", JSON.stringify(result));
+    assert.equal(result.message, ERROR_CATALOG.PROVIDER_UNAVAILABLE.text);
+    assert.equal(f.database.authority.runs.listByWorkflow(descriptor.id).length, 1);
+  }
 });
 
 it("redacts full historical batches with origins and refuses undeclared or malformed observations", () => {

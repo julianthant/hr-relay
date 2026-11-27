@@ -181,7 +181,7 @@ export function executeStartRun(
     reject(request, "RUN_START_RESTART_REQUIRED", ERROR_CATALOG.RUN_START_RESTART_REQUIRED.text);
   }
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
-  assertOcrStartReady(descriptor, plan, dependencies.ocrProviderAvailable);
+  assertOcrStartReady(repositories, descriptor, plan, dependencies.ocrProviderAvailable);
   const continuation = plan.rerun?.continuation;
   if (continuation !== undefined && plan.rerun !== undefined) {
     const source = requireRun(repositories, request, plan.rerun.source.runId);
