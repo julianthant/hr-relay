@@ -101,7 +101,7 @@ const COMBINATION = {
   unread: popover("Only unread notifications", POPOVER_MANY, {}, { show: "unread" }),
   "all-read": popover("Unread chosen with everything read", notificationsReady(NOTICE_BY_TONE.positive), {}, { show: "unread" }),
   gone: popover("A notice whose run was deleted", notificationsReady(POPOVER_GONE)),
-  "history-gap": popover("Notification history is incomplete", POPOVER_FEW, {}, { notice: "Notification history is incomplete. Check the affected work." }),
+  "history-gap": popover("Notification history is incomplete", POPOVER_FEW, {}, { notice: "Notification history is incomplete. Missing completion receipts." }),
 } satisfies Record<string, Story>;
 
 type BellState = "read" | "unread" | "loading" | "unavailable";
