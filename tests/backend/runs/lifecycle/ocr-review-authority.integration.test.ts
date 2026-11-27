@@ -12,7 +12,7 @@ import { runClaim } from "../../../../src/models/run/record.js";
 import { OcrWorkflowResultSchema, compactOcrResult } from "../../../../src/models/workflows/ocr/result.js";
 import { ReadOcrResult } from "../../../../src/models/workflows/ocr/read-result.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { requireLifecycleApplied, RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { CommandAuditRecordSchema, CommandRequestSchema, RunLifecycleCommandAuditRecordSchema } from "../../../../src/rules/commands/commands.js";
@@ -31,6 +31,9 @@ import { buildOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-
 import { bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
+import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -87,18 +90,22 @@ it.each([false, true])("checks subscription OCR on interruption with extraction 
   assert.equal(checkpoint.some(row => row.nodeId === "extract"), extracted);
   assert.equal(f.ocrCalls(), Number(extracted));
 
-  const source = f.database.withAuthorityTransaction(({ runs }) => {
-    return [page, f.run, f.parentRun].map(prior => {
-      const current = runs.get(prior.envelope.runId); assert.ok(current);
-      const claim = runClaim(current), now = f.clock.now().toISOString();
-      const interrupted = runs.transition({ runId: current.envelope.runId, expectedVersion: current.version, now,
-        ...(claim === undefined ? {} : { claim }), lifecycle: { state: "terminal", outcome: "interrupted", endedAt: now } });
-      assert.ok(interrupted.state === "applied");
-      return interrupted.run;
-    }).at(-1);
-  });
-  assert.ok(source);
   const descriptor = f.root.descriptor, selectedStepKeys = descriptor.timeline.map(step => step.key);
+  const lock = f.admission.lifetime; assert.ok(lock instanceof RuntimeLifetimeLock);
+  const owner = testWorkerLifetime(f.database, descriptor.id, 1), { lifecycle } = f.canonical;
+  const interrupt = (runId: string) => {
+    const current = f.database.authority.runs.get(runId); assert.ok(current);
+    const claimed = runClaim(current) !== undefined ? current : requireLifecycleApplied(lifecycle.claimNext({
+      commandId: randomUUID(), workflow: descriptor.id, workerId: owner.workerId, runtimeConfig: selectRunRuntime(f.database.authority),
+    }));
+    assert.equal(claimed.envelope.runId, runId);
+    const claim = runClaim(claimed); assert.ok(claim);
+    return requireLifecycleApplied(lifecycle.recoverCrash({ commandId: randomUUID(), runId, expectedVersion: claimed.version, claim,
+      now: f.clock.now().toISOString() }, lock));
+  };
+  interrupt(page.envelope.runId);
+  interrupt(f.run.envelope.runId);
+  const source = interrupt(f.parentRun.envelope.runId);
   const planner = createStartPlanService({ authority: f.database, authorityRead: f.database, descriptors: { resolve: f.resolve },
     ocrProviderAvailable: () => available, clock: f.clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: "local-operator",
     configFingerprint: source.envelope.configFingerprint, configSnapshotId: source.envelope.configSnapshotId });
