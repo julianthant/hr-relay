@@ -12,7 +12,7 @@ import { ERROR_CATALOG } from "../../../../../../src/models/failures/error-catal
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
-  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_PDF_REFERENCE_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, RUN_DIALOG_CRM, RUN_DIALOG_SEVERAL_SHEETS_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
+  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_PDF_REFERENCE_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, RUN_DIALOG_SAVED_ROWS_CATALOG, RUN_DIALOG_CRM, RUN_DIALOG_SEVERAL_SHEETS_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
   never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, runDialogWriteRerunSnapshot, runDialogWriteRerunWarning, RUN_DIALOG_WRITE_RERUN_CATALOG, RUN_DIALOG_WORK_STUDY, type ServedCheck,
   RUN_DIALOG_SEPARATIONS, RUN_DIALOG_SEPARATIONS_CATALOG, RUN_DIALOG_SEPARATIONS_TYPED, runDialogSeparationsRerunSnapshot,
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
@@ -212,6 +212,13 @@ const REFERENCE = {
   start: reference("Start, with the chosen spreadsheet", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page); await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED); await press(page, "Next"); await at(page, "Start"); } }),
 } satisfies Record<ReferenceState, Story>;
 
+/** Saved onboarding rows: the version read behind the row list fails after the spreadsheet itself read fine. */
+const rowsFailing = (): Partial<DashboardClient> => { let reads = 0; const served = RUN_DIALOG_REFERENCE_READS;
+  return { ...served, workbookLibraryVersion: async (...args) => { if (reads++ < 1 && served.workbookLibraryVersion) return served.workbookLibraryVersion(...args); throw new Error("The saved rows could not be read."); } }; };
+const SAVED_ROWS = {
+  unavailable: reference("Saved rows that could not be read", rowsFailing(), RUN_DIALOG_SAVED_ROWS_CATALOG, { then: chooseRoster, ready: 'text=/Saved rows unavailable/' }),
+} satisfies Record<"unavailable", Story>;
+
 const SEPARATIONS_FLOW = { catalog: RUN_DIALOG_SEPARATIONS_CATALOG, workflowId: RUN_DIALOG_SEPARATIONS, typed: RUN_DIALOG_SEPARATIONS_TYPED } as const;
 const toggle = (page: Page, name: string) => dialog(page).getByRole("switch", { name: `Include ${name}`, exact: true }).click();
 /** Separations Steps on a customized start, with the named rows switched off in order. */
@@ -228,5 +235,5 @@ const SEPARATIONS_STEPS = {
 
 export const RUN_DIALOG_STORIES = defineSurface("run-dialog", {
   "separations-steps": SEPARATIONS_STEPS,
-  stage: STAGE, checks: CHECKS, "check-combination": CHECK_COMBINATION, "rerun-load": RERUN_LOAD, activity: ACTIVITY, refusal: REFUSAL, answer: ANSWER, recovery: RECOVERY, options: OPTIONS, pdf: PDF, reference: REFERENCE,
+  stage: STAGE, checks: CHECKS, "check-combination": CHECK_COMBINATION, "rerun-load": RERUN_LOAD, activity: ACTIVITY, refusal: REFUSAL, answer: ANSWER, recovery: RECOVERY, options: OPTIONS, pdf: PDF, reference: REFERENCE, "saved-rows": SAVED_ROWS,
 });

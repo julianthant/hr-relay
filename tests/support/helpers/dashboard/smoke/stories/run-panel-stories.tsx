@@ -8,7 +8,7 @@ import { projectFailureDisplay } from "../../../../../../src/models/dashboard/fa
 import type { RunDecisionType } from "../../../../../../src/models/dashboard/run-decision.js";
 import { QueueMemberTargetSchema, type QueueStatusSchema } from "../../../../../../src/models/dashboard/projection.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../../src/models/failures/error-catalog.js";
-import { ErrorCodeSchema, IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
+import { ErrorCodeSchema, IsoInstantSchema, StableRecordIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { Badge, Banner, FailureNotice } from "../../../../../../src/dashboard/ds/ui.js";
 import { LogPanel } from "../../../../../../src/dashboard/surfaces/run-detail/log-panel.js";
 import { LogActionButton, LogHeaderButton } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-action-button.js";
@@ -27,6 +27,7 @@ import { DashboardClientProvider } from "../../../../../../src/dashboard/state/c
 import { RunReview } from "../../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 import { ReviewDialog } from "../../../../../../src/dashboard/surfaces/run-detail/review/review-dialog.js";
 import { logTimelineSample, separationLogs } from "../../../../fixtures/dashboard/log-preview/log-fixture.js";
+import { ocrReviewPageFixture } from "../../../../fixtures/dashboard/ocr-review.js";
 import { queueStoryRow } from "../../../../fixtures/dashboard/queue-row-story-surfaces.js";
 import {
   REVIEW_CARDS, RUN_DECISIONS, withInlineCaptures, captureImage, captureOf, captureStep, decisionSteps, exampleDecision, exampleScenario,
@@ -206,8 +207,8 @@ const LOGS = {
   refreshing: panel("Logs refreshing", { steps: readingSteps, timeline: reading, toolbar: <Badge tone="neutral">Refreshing</Badge> }),
   "refresh-failed": panel("Logs that could not refresh", { steps: readingSteps, timeline: reading,
     toolbar: <FailureNotice sentence={`${LOGS_READ_FAILED}: Relay could not refresh these logs.`} /> }),
-  "load-failed": panel("Logs that could not load", { steps: [], timeline: [], content: <div className="p-4"><FailureNotice sentence="Couldn't load logs." action={{ label: "Retry", onClick: noop }} /></div> }),
-  unavailable: panel("Logs for a step that is gone", { steps: [], timeline: [], content: <FailureNotice sentence={`${LOGS_UNAVAILABLE}: ${formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text}`} /> }),
+  "load-failed": panel("Logs that could not load", { steps: [], timeline: [], content: <div className="p-[var(--ds-space-section)]"><FailureNotice sentence="Couldn't load logs." action={{ label: "Retry", onClick: noop }} /></div> }),
+  unavailable: panel("Logs for a step that is gone", { steps: [], timeline: [], content: <div className="p-[var(--ds-space-section)]"><FailureNotice sentence={`${LOGS_UNAVAILABLE}: ${formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text}`} /></div> }),
   empty: panel("A run that has logged nothing yet", { steps: [], timeline: logTimelineSample("empty") }),
   "needs-duo": panel("A run waiting for the Duo sign-in", { steps: [], timeline: logTimelineSample("empty"),
     navigation: <div className="px-3 py-2"><Banner tone="info" title="Approving Duo for UCPath"><span className="tabular-nums">Waiting 2m 10s</span></Banner></div> }),
@@ -247,7 +248,19 @@ const REVIEW_NOTICE = {
     </DashboardClientProvider></StoryFrame>,
     expects: [{ pattern: /offline|Failed to fetch|relay\.story\.test/u, reason: "the story's client fails every read on purpose" }],
   },
-} satisfies Record<"unavailable", Story>;
+  "record-unavailable": {
+    title: "A review that no longer holds the opened record", ready: '[role="alert"]',
+    render: () => {
+      const row = queueStoryRow("done", 50);
+      const client = createDashboardClient({ baseUrl: "http://relay.story.test", fetchImpl: async input => String(input).endsWith("/review")
+        ? Response.json({ section: "review", payload: ocrReviewPageFixture(row.runId) }) : Promise.reject(new Error("offline")) });
+      return <StoryFrame><DashboardClientProvider client={client}>
+        <ReviewDialog open onOpenChange={noop} subject="Emergency Contact scan"><RunReview selection={{ row, workflowLabel: "Emergency Contact" }} focus={{ runId: row.runId, recordId: StableRecordIdSchema.parse("00000000-0000-4000-8000-000000000999") }} /></ReviewDialog>
+      </DashboardClientProvider></StoryFrame>;
+    },
+    expects: [{ pattern: /offline|Failed to fetch|relay\.story\.test/u, reason: "every read but the review page fails on purpose" }],
+  },
+} satisfies Record<"unavailable" | "record-unavailable", Story>;
 
 export const RUN_PANEL_STORIES = defineSurface("run-panel", {
   header: HEADER, "log-header": LOG_HEADER, pause: PAUSE, logs: LOGS, decision: DECISION, card: CARD, answered: ANSWERED,
