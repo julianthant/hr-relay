@@ -628,7 +628,7 @@ export function addRunningNote(world: SeedWorld, message: string): string {
 }
 
 /** The notification event a publication drive sends: the seeded done run, verified. */
-export function seededDoneNotificationEvent(): { kind: "verified-done"; runId: string; workflowId: string } {
-  return { kind: "verified-done", runId: uuidOf(DONE_SEED), workflowId: WORKFLOW_ID };
+export function seededDoneNotificationEvent(sibling = false): { kind: "verified-done"; runId: string; workflowId: string } {
+  return { kind: "verified-done", runId: uuidOf(sibling ? RUNNING_SEED : DONE_SEED), workflowId: WORKFLOW_ID };
 }
 

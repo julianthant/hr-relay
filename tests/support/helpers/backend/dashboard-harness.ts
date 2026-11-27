@@ -380,7 +380,7 @@ export interface SeedRunInput {
 export function workerMemberOf(authority: AuthorityFake, input: Readonly<{
   workerId?: string;
   state?: WorkerMemberView["state"];
-  activity?: Readonly<{ state: WorkerActivity["state"]; runId?: string }>;
+  activity?: Readonly<{ state: WorkerActivity["state"]; runId?: string; waiting?: WorkerActivity["waiting"] }>;
   directive?: "run" | "pause";
   version?: number;
   browsers?: WorkerMemberView["browsers"];

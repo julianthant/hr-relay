@@ -120,7 +120,7 @@ const OperatorXlsxSearchExportRequestSelectionSchema = z.strictObject({
     }),
 });
 
-const OperatorXlsxActivityExportRequestSelectionSchema = z.strictObject({
+export const OperatorXlsxActivityExportRequestSelectionSchema = z.strictObject({
   kind: z.literal("activity"),
   from: z.iso.date(),
   to: z.iso.date(),

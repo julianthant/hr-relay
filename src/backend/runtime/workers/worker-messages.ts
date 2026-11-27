@@ -27,7 +27,7 @@ export const WorkerActivitySchema = z.strictObject({
   waiting: z.enum(["acquiring", "authenticating", "closing"]).optional(),
   /** Set while an idle worker waits out a preflight refusal. */
   refusal: WorkerRefusalStandingSchema.optional(),
-}).refine(activity => (activity.state === "busy") === (activity.runId !== undefined), "worker-activity-run-binding-invalid")
+}).refine(activity => activity.state === "busy" ? activity.runId !== undefined : activity.runId === undefined || activity.state === "waiting", "worker-activity-run-binding-invalid")
   .refine(activity => activity.waiting === undefined || activity.state === "waiting", "worker-activity-waiting-invalid")
   .refine(activity => activity.refusal === undefined || activity.state === "idle", "worker-activity-refusal-invalid");
 export type WorkerActivity = z.infer<typeof WorkerActivitySchema>;

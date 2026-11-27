@@ -45,7 +45,7 @@ it("projects editable native records, persists corrections/exclusions and freeze
     preflightReport: () => healthyDashboardPreflightReport(f.clock), workbookCompatibility: workflows => projectWorkbookCompatibilityFromRepository(f.database.authority.workbooks, workflows),
     activity: { read: unused, readSelected: unused }, backfillGaps: { detected: unused } });
   try {
-    const bootstrap = buildBootstrap(shell.bootstrap), workflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);
+    const bootstrap = await buildBootstrap(shell.bootstrap), workflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);
     const ocr = workflows.find(workflow => workflow.id === "ocr");
     assert.ok(ocr);
     assert.equal(ocr.role.kind, "composition");

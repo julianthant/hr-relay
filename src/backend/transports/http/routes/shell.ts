@@ -47,7 +47,7 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
     if (deps.applicationLifecycle === undefined) throw new SectionUnavailableError("Application lifecycle is unavailable");
     return c.json(deps.applicationLifecycle.snapshot());
   });
-  app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
+  app.get("/api/v1/bootstrap", async (c) => c.json(await buildBootstrap(deps.bootstrap)));
 
   app.get("/api/v1/calendar", async (c) => {
     const entries = [...new URL(c.req.url).searchParams];

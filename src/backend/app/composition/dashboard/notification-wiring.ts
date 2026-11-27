@@ -1,11 +1,20 @@
 import { isDeepStrictEqual } from "node:util";
+import { z } from "zod";
 import { compareNotificationRows, notificationListProjection, notificationProjection, type ServedNotificationRecord } from "../../../runs/projections/notification-list.js";
-import { upsertListedRow, type NotificationWire } from "../../../../models/dashboard/projection.js";
-import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
-import type { NotificationCollectionOperation } from "../../../../models/notifications/notifications.js";
+import { NotificationWireSchema, upsertListedRow, type NotificationWire } from "../../../../models/dashboard/projection.js";
+import { ActorIdSchema, FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID, NotificationIdSchema } from "../../../../rules/identity/ids.js";
+import { NotificationCollectionOperationSchema, NotificationCollectionTargetSchema, type NotificationCollectionOperation } from "../../../../models/notifications/notifications.js";
 import { NotificationTriggerEventSchema, notificationStandingSources } from "../../../../rules/notifications/notification-triggers.js";
 import { createNotificationDisplayContext, notificationDisplayRunId } from "../../../runs/queries/notification-display.js";
-import type { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
+import { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
+import { NotificationTargetSchema } from "../../../../models/notifications/notification-target.js";
+import { createRunReadLaneReader } from "../../../runs/queries/item-attempt-history.js";
+import { ocrHostRun } from "../../../runs/queries/ocr-record-members.js";
+import type { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
+import type { RunTimelineEvidenceSource } from "../../../runs/queries/run-timeline-compatibility.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
+import { defineLaneRead, type DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
+import { SERVER_REGISTRY } from "../../registries/workflow-registry.js";
 import type { createDashboardApp } from "../../../transports/http/routes/api.js";
 import type { prepareDashboardRuntime } from "./runtime-resources.js";
 import type { composeShell } from "./shell.js";
@@ -33,7 +42,20 @@ export function composeNotificationReads(database: NotificationWiringInput["data
     database.withAuthorityReadSnapshot(() => native.collection(actor, operation)) };
 }
 
-function createProjectionDependencies({ database, lifecycle, descriptors, runDetailDeps }: NotificationWiringInput) {
+/** The target `GET /notifications/{id}/target` serves, over the history connection and its run reader. */
+export function createHistoryNotificationTarget(history: AuthorityDatabase, reader: Pick<RunRecordService, "read">) {
+  return createNotificationTargetQuery({ get: history.authority.notifications.get, read: id => reader.read(id), failure: history.authority.failures.get,
+    host: run => history.withAuthorityReadSnapshot(() => ocrHostRun(history.authority, run)),
+    command: commandId => history.authority.commands.readForNotice(commandId),
+    bulk: bulkCommandId => { const acceptance = history.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: history.authority.commands.listBulkChildren(bulkCommandId) }; } });
+}
+
+type NotificationProjectionInput = Pick<NotificationWiringInput, "database" | "descriptors"> & {
+  lifecycle: Pick<RunRecordService, "read">;
+  runDetailDeps: RunTimelineEvidenceSource;
+};
+
+function createProjectionDependencies({ database, lifecycle, descriptors, runDetailDeps }: NotificationProjectionInput) {
   const runEvidence = database.trackAuthorityRuns(RUN_EVIDENCE);
   const commandById = (id: string) => database.authority.commands.get(id);
   const display = createNotificationDisplayContext({
@@ -107,16 +129,8 @@ export function composeNotificationPublications(input: NotificationWiringInput &
     }) };
 }
 
-type NotificationRoutes = NonNullable<Parameters<typeof createDashboardApp>[0]["notifications"]>;
-type NotificationListSource = NonNullable<Parameters<typeof composeShell>[0]["notificationList"]>;
-
-export function composeNotificationRoutes(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "assertCurrent" | "notificationObserver"> & {
-  notificationTarget: ReturnType<typeof createNotificationTargetQuery>;
-  notificationReads?: ReturnType<typeof composeNotificationReads>;
-  reportListReadFailure?: () => void;
-}): NotificationRoutes & { streamList: NotificationListSource; pollList: () => void } {
-  const { database, clock, assertCurrent, notificationObserver, notificationTarget } = input;
-  const { list, collection } = input.notificationReads ?? composeNotificationReads(database);
+function createNotificationListProjector(input: NotificationProjectionInput, list: ReturnType<typeof composeNotificationReads>["list"]) {
+  const { database } = input;
   const projectionDependencies = createProjectionDependencies(input);
   const position = database.trackAuthorityTables(LIST_SOURCES, "poll-hint");
   const evidencePosition = database.trackAuthorityTables(SHARED_ROW_EVIDENCE);
@@ -124,9 +138,8 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
   type Member = Readonly<{ version: number; readOnlyHistory: boolean; until: number; row: NotificationWire; runId: string | undefined; runRevision: number | undefined }>;
   const retained = new Map<string, { position: number; evidence: number | undefined; from: number; until: number; rows: List; members: Map<string, Member> }>();
   const within = (entry: { from: number; until: number }, now: number) => now >= entry.from && now < entry.until;
-  const project = (actor: string): List => {
+  const project = (actor: string, now: number): List => {
     const current = position();
-    const now = clock.nowMs();
     const prior = retained.get(actor);
     if (prior !== undefined && prior.position === current && within(prior, now)) return prior.rows;
     const records = list(actor);
@@ -158,13 +171,62 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
     else retained.set(actor, { position: current, evidence, from: now, until, rows, members });
     return rows;
   };
-  const snapshot = (actor: string) => database.withAuthorityReadSnapshot(() => project(actor));
+  return { project, position, retained, within };
+}
+
+const NotificationLaneRequestSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("list"), actor: ActorIdSchema }),
+  z.strictObject({ kind: z.literal("collection"), actor: ActorIdSchema, operation: NotificationCollectionOperationSchema }),
+  z.strictObject({ kind: z.literal("target"), id: NotificationIdSchema, actor: ActorIdSchema }),
+]);
+
+const laneProjectors = new WeakMap<AuthorityDatabase, ReturnType<typeof createNotificationListProjector>>();
+
+/** The notification GETs, built and validated in the lane: the list, the collection target and a row's destination. */
+const notificationLaneRead = defineLaneRead(import.meta.url, "notifications", {
+  lane: "navigation", priority: "interactive", args: NotificationLaneRequestSchema,
+  run({ native, history, nowMs }, request) {
+    if (request.kind === "collection") return NotificationCollectionTargetSchema.parse(native.authority.notifications.collection(request.actor, request.operation));
+    const reader = createRunReadLaneReader(history);
+    if (request.kind === "target") return NotificationTargetSchema.parse(createHistoryNotificationTarget(history, reader)(request.id, request.actor));
+    let projector = laneProjectors.get(history);
+    if (projector === undefined) {
+      const runDetailDeps: RunTimelineEvidenceSource = { timeline: history.authority.timelineEvents, authority: {
+        listCheckpoints: (workflowId, itemId) => history.authority.runCheckpoints.listByItem(workflowId, itemId),
+        listGateResults: runId => history.authority.gateResults.listByRun(runId),
+      } };
+      projector = createNotificationListProjector({ database: history, lifecycle: reader, runDetailDeps,
+        descriptors: { resolve: workflowId => SERVER_REGISTRY[workflowId]?.descriptor } }, composeNotificationReads(native, history).list);
+      laneProjectors.set(history, projector);
+    }
+    return z.array(NotificationWireSchema).parse(projector.project(request.actor, nowMs));
+  },
+});
+
+type NotificationRoutes = NonNullable<Parameters<typeof createDashboardApp>[0]["notifications"]>;
+type NotificationListSource = NonNullable<Parameters<typeof composeShell>[0]["notificationList"]>;
+
+export function composeNotificationRoutes(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "assertCurrent" | "notificationObserver"> & {
+  notificationTarget: ReturnType<typeof createNotificationTargetQuery>;
+  notificationReads?: ReturnType<typeof composeNotificationReads>;
+  readLanes?: Pick<DashboardReadLanes, "read">;
+  reportListReadFailure?: () => void;
+}): NotificationRoutes & { streamList: NotificationListSource; pollList: () => void } {
+  const { database, clock, assertCurrent, notificationObserver, notificationTarget, readLanes } = input;
+  const { list, collection } = input.notificationReads ?? composeNotificationReads(database);
+  const { project, position, retained, within } = createNotificationListProjector(input, list);
+  const snapshot = (actor: string) => database.withAuthorityReadSnapshot(() => project(actor, clock.nowMs()));
   let streamed: readonly NotificationWire[] | undefined;
   let pollFailure: Error | undefined;
+  const laneRead = async (request: z.input<typeof NotificationLaneRequestSchema>, signal?: AbortSignal) => {
+    if (readLanes === undefined) throw new Error("notification-lane-missing");
+    const parsed = NotificationLaneRequestSchema.parse(request);
+    return (await readLanes.read(notificationLaneRead, parsed, signal === undefined ? {} : { signal })).body;
+  };
   const listListeners = new Set<() => void>();
   return {
     withSnapshot: (actor, respond) => database.withAuthorityReadSnapshot(() => {
-      const rows = project(actor);
+      const rows = project(actor, clock.nowMs());
       return respond(retained.has(actor) ? rows : undefined, () => rows);
     }),
     collection: (actor, operation) => {
@@ -176,6 +238,16 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
     snapshot,
     target: (id, actor) => database.withAuthorityReadSnapshot(() => notificationTarget(id, actor)),
     status: notificationObserver.status,
+    ...(readLanes === undefined ? {} : { lane: {
+      list: (actor: string, signal?: AbortSignal) => laneRead({ kind: "list", actor }, signal),
+      collection: async (actor: string, operation: NotificationCollectionOperation) => {
+        assertCurrent();
+        const body = await laneRead({ kind: "collection", actor, operation });
+        assertCurrent();
+        return body;
+      },
+      target: (id: string, actor: string) => laneRead({ kind: "target", id, actor }),
+    } }),
     streamList: {
       read: () => {
         const rows = snapshot(LOCAL_OPERATOR_ACTOR_ID);
