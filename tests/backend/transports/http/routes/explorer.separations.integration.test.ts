@@ -115,7 +115,7 @@ it("continues a confirmed reference check and waits before writing when a picked
 
 it("continues an already filed termination without saving twice and stops at every unconfirmed write", async () => {
   const { reviewSpec: spec } = await served();
-  for (const [stepId, id] of [["ucpath-transaction", "clear-pending"], ["ucpath-transaction", "file-termination"], ["kuali-finalization", "finalize-kuali"]] as const) {
+  for (const [stepId, id] of [["pending-termination", "clear-pending"], ["ucpath-transaction", "file-termination"], ["kuali-finalization", "finalize-kuali"]] as const) {
     const decision = blocks(spec, stepId, "decision").find(candidate => candidate.id === id); assert.ok(decision, id);
     assert.deepEqual(decision.outcomes.find(outcome => outcome.value === "already-present"), {
       value: "already-present", label: "Already present", then: "Uses the verified existing change without saving it again, then continues.", stops: false,
@@ -142,18 +142,23 @@ it("shows the real clicks and filling pages only for the work the chosen transac
   const live = walk(spec).values;
   assert.deepEqual(clicks("identity-check", live), ["Search"]);
   assert.deepEqual(clicks("kronos-timecard", live), ["Search"]);
-  assert.deepEqual(clicks("ucpath-transaction", live), ["Search", "Delete Selected Transactions", "Create Transaction", "Continue", "Save and Submit"]);
+  assert.deepEqual(clicks("pending-termination", live), ["Search", "Delete Selected Transactions"]);
+  assert.deepEqual(clicks("ucpath-transaction", live), ["Create Transaction", "Continue", "Save and Submit"]);
   assert.deepEqual(clicks("kuali-finalization", live), ["Save"]);
   const dry = walk(spec, { "dry-run": "true" }).values;
-  assert.deepEqual(clicks("ucpath-transaction", dry), ["Search", "Create Transaction", "Continue"]);
+  assert.deepEqual(clicks("pending-termination", dry), ["Search"]);
+  assert.deepEqual(clicks("ucpath-transaction", dry), ["Create Transaction", "Continue"]);
   assert.deepEqual(clicks("kuali-finalization", dry), []);
   const present = walk(spec, {}, { "clear-pending": "already-present", "file-termination": "already-present", "finalize-kuali": "already-present" }).values;
-  assert.deepEqual(clicks("ucpath-transaction", present), ["Search"]);
+  assert.deepEqual(clicks("pending-termination", present), ["Search"]);
+  assert.deepEqual(clicks("ucpath-transaction", present), []);
   assert.deepEqual(clicks("kuali-finalization", present), []);
-  assert.deepEqual(visible(blocks(spec, "ucpath-transaction", "card"), present).map(card => card.title), ["SS Smart HR transaction search", "SS Smart HR transaction detail"]);
+  assert.deepEqual(visible(blocks(spec, "pending-termination", "card"), present).map(card => card.title), ["SS Smart HR transaction search"]);
+  assert.deepEqual(visible(blocks(spec, "ucpath-transaction", "card"), present).map(card => card.title), ["SS Smart HR transaction detail"]);
   assert.deepEqual(visible(blocks(spec, "kuali-finalization", "card"), present).map(card => [card.title, card.mode]), [["SS Smart HR transaction detail", "read"]]);
+  assert.deepEqual(visible(blocks(spec, "pending-termination", "card"), live).map(card => [card.title, card.mode]), [["SS Smart HR transaction search", "fill"]]);
   assert.deepEqual(visible(blocks(spec, "ucpath-transaction", "card"), live).map(card => [card.title, card.mode]), [
-    ["SS Smart HR transaction search", "fill"], ["Smart HR transaction setup", "fill"], ["Smart HR transaction details", "fill"],
+    ["Smart HR transaction setup", "fill"], ["Smart HR transaction details", "fill"],
     ["Smart HR transaction information", "fill"], ["SS Smart HR transaction detail", "read"],
   ]);
 });
@@ -161,23 +166,29 @@ it("shows the real clicks and filling pages only for the work the chosen transac
 it("serves the default run and every Start run step choice with matching labels and session chips", async () => {
   const workflow = await served();
   const spec = workflow.reviewSpec;
+  // Every step but the reference check can be turned off in Start run.
+  const skippable = [["kuali-extraction", "Kuali extraction"], ["identity-check", "Identity check"], ["kronos-timecard", "Kronos timecard"], ["identity-review", "Identity approval"],
+    ["pending-termination", "Pending terminations"], ["ucpath-transaction", "UCPath transaction"], ["kuali-finalization", "Kuali finalization"]] as const;
   assert.deepEqual(spec.options, [
     { id: "dry-run", label: "Dry run", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }], initial: "false" },
-    { id: "skip-kronos-timecard", label: "Kronos timecard", choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }], initial: "run" },
+    ...skippable.map(([id, label]) => ({ id: `skip-${id}`, label, choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }], initial: "run" })),
   ]);
-  const all = ["kuali-extraction", "identity-check", "kronos-timecard", "identity-review", "reference-check", "ucpath-transaction", "kuali-finalization"];
+  const all = ["kuali-extraction", "identity-check", "kronos-timecard", "identity-review", "reference-check", "pending-termination", "ucpath-transaction", "kuali-finalization"];
   const ordinary = walk(spec);
   assert.deepEqual(ordinary.steps.map(entry => entry.id), all);
   assert.equal(ordinary.stop, undefined);
   const systems = (values: Values) => visible(spec.sessions, values).map(session => session.system);
   assert.deepEqual(systems(ordinary.values), ["kuali", "ucpath", "new-kronos"]);
-  for (const dry of ["false", "true"]) {
-    const skipped = walk(spec, { "skip-kronos-timecard": "skip", "dry-run": dry });
-    assert.deepEqual(skipped.steps.map(entry => entry.id), all.filter(id => id !== "kronos-timecard"));
-    assert.deepEqual(systems(skipped.values), ["kuali", "ucpath"]);
+  for (const dry of ["false", "true"]) for (const [id] of skippable) {
+    const skipped = walk(spec, { [`skip-${id}`]: "skip", "dry-run": dry });
+    assert.deepEqual(skipped.steps.map(entry => entry.id), all.filter(candidate => candidate !== id));
+    // Kronos is the only system a single step owns; Kuali and UCPath each serve other steps too.
+    assert.deepEqual(systems(skipped.values), id === "kronos-timecard" ? ["kuali", "ucpath"] : ["kuali", "ucpath", "new-kronos"]);
   }
+  const byHand = walk(spec, { "skip-identity-check": "skip", "skip-pending-termination": "skip", "skip-ucpath-transaction": "skip", "skip-kuali-finalization": "skip" });
+  assert.deepEqual(systems(byHand.values), ["kuali", "new-kronos"]);
   assert.deepEqual(spec.steps.map(entry => [entry.id, entry.title, entry.system]), workflow.timeline.map(group => [group.key, group.label, group.system]));
-  assert.deepEqual(spec.steps.map(entry => entry.title), ["Kuali extraction", "Identity check", "Kronos timecard", "Identity approval", "Check reference spreadsheets", "UCPath transaction", "Kuali finalization"]);
+  assert.deepEqual(spec.steps.map(entry => entry.title), ["Kuali extraction", "Identity check", "Kronos timecard", "Identity approval", "Check reference spreadsheets", "Pending terminations", "UCPath transaction", "Kuali finalization"]);
   for (const entry of spec.steps) {
     assert.ok(entry.description.some(line => line.text.trim().length > 0), entry.title);
     assert.ok(entry.checks.length > 0, entry.title);
