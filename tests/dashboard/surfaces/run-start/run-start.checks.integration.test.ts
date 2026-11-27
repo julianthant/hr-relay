@@ -5,6 +5,7 @@ import { afterEach, describe, it, vi } from "vitest";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { FIXTURE_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-bootstrap.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-start.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/fixtures/dashboard/fixture-settings.js";
 import { PreflightRerunCommandRequestSchema } from "../../../../src/models/preflight/preflight-contract.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
@@ -28,8 +29,8 @@ function served(...reports: ReturnType<typeof h.readiness>[]) {
     executeCommand: async () => h.APPLIED,
   }) };
 }
-async function reachChecks(dialog: Awaited<ReturnType<typeof h.openDialog>>) {
-  await dialog.type(h.TYPED);
+async function reachChecks(dialog: Awaited<ReturnType<typeof h.openDialog>>, input = h.TYPED) {
+  await dialog.type(input);
   await dialog.press("Next");
   for (let wait = 0; wait < 6; wait += 1) await h.settle();
   assert.equal(dialog.stage(), "Start");
@@ -270,15 +271,32 @@ describe("asking for a re-check", () => {
     assert.equal(served.reruns(), 1, "a second visit to Checks only reads");
   });
 
-  it("does not ask again after switching workflow or returning from Settings, and asks once more after a reopen", async () => {
-    const served = missing(async () => { throw new Error("refused"); });
+  it("checks Separations on the first visit after Person Lookup was checked in the same dialog", async () => {
+    const reruns: string[] = [];
+    const prepared = new Set<string>();
+    const ready = h.READY;
+    assert.ok(ready.state === "present");
+    const client = h.stubClient({
+      readPreflight: async selection => selection !== undefined && prepared.has(selection.workflowId) ? ready
+        : { state: "unavailable", code: "PREFLIGHT_EVIDENCE_MISSING", reason: "This workflow has no readiness report yet." },
+      editableSettings: async () => FIXTURE_EDITABLE_SETTINGS,
+      preflightScopes: async () => WorkflowBootstrapPrimitiveSchema.array().parse(FIXTURE_START_PICKER_BOOTSTRAP.workflows),
+      rerunPreflight: async request => {
+        const command = PreflightRerunCommandRequestSchema.parse(request);
+        const workflowId = command.target.selection?.workflowId;
+        assert.ok(workflowId);
+        reruns.push(workflowId);
+        prepared.add(workflowId);
+        return { state: "completed", commandId: command.commandId, report: ready.report };
+      },
+    });
     const separations = DESCRIPTORS.find(flow => flow.id === "separations");
     assert.ok(separations?.surfaces.inputRun);
     const other = { ...h.WORKFLOWS[0], workflowId: separations.id, label: separations.label, version: separations.version,
       steps: projectStartSteps(separations), inputRun: { state: "present" as const, surface: separations.surfaces.inputRun } };
-    const dialog = await h.openDialog(served.client, { workflows: [h.WORKFLOWS[0], other], panelWorkflowId: h.WORKFLOW_ID });
+    const dialog = await h.openDialog(client, { workflows: [h.WORKFLOWS[0], other], panelWorkflowId: h.WORKFLOW_ID });
     await reachChecks(dialog);
-    assert.equal(served.reruns(), 1);
+    assert.match(dialog.text(), /Ready to start/u);
     const pick = async (label: string) => {
       const button = [...document.body.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflow"] button')].find(node => node.textContent?.includes(label));
       assert.ok(button, label);
@@ -286,24 +304,43 @@ describe("asking for a re-check", () => {
       for (let wait = 0; wait < 6; wait += 1) await h.settle();
     };
     await pick(other.label);
+    await reachChecks(dialog, "4502");
+    assert.match(dialog.text(), /Ready to start/u);
+    assert.deepEqual(reruns, [h.WORKFLOW_ID, separations.id]);
+
+    prepared.delete(h.WORKFLOW_ID);
     await pick(h.WORKFLOWS[0].label);
-    assert.equal(served.reruns(), 1, "switching workflow asks for no second re-check");
+    await reachChecks(dialog);
+    assert.match(dialog.text(), /This workflow has no readiness report yet/u);
     await dialog.rerender({ hidden: true });
     await dialog.rerender({ hidden: false });
-    assert.equal(served.reruns(), 1, "returning from Settings asks for no second re-check");
+    assert.deepEqual(reruns, [h.WORKFLOW_ID, separations.id], "an already checked workflow gets no second automatic check");
     await dialog.rerender({ open: false });
     await dialog.rerender({ open: true });
     await reachChecks(dialog);
-    assert.equal(served.reruns(), 2, "a reopened dialog may ask once more");
+    assert.deepEqual(reruns, [h.WORKFLOW_ID, separations.id, h.WORKFLOW_ID], "a reopened dialog can check the workflow again");
   });
 
   it("shows one message and Check again when the re-check is refused", async () => {
     const served = missing(async () => { throw new Error("refused"); });
     const dialog = await reachChecksWith(served.client);
     const alerts = [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "");
-    assert.deepEqual(alerts, ["Relay could not check this run.Check again"]);
+    assert.deepEqual(alerts, ["Relay could not finish checking this run.Check again"]);
     assert.doesNotMatch(dialog.text(), /Checks are unavailable/u);
     assert.equal(dialog.disabled("Start run"), true);
+  });
+
+  it("reports a real readiness read failure without automatically running checks", async () => {
+    let reruns = 0;
+    const dialog = await reachChecksWith(h.stubClient({
+      readPreflight: async () => ({ state: "unavailable", code: "PREFLIGHT_READ_FAILED", reason: "Protected settings presence could not be verified." }),
+      editableSettings: async () => FIXTURE_EDITABLE_SETTINGS,
+      preflightScopes: async () => WorkflowBootstrapPrimitiveSchema.array().parse(FIXTURE_BOOTSTRAP.workflows),
+      rerunPreflight: async () => { reruns += 1; throw new Error("Readiness report could not be read"); },
+    }));
+    assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /Protected settings presence could not be verified/u);
+    assert.equal(dialog.disabled("Start run"), true);
+    assert.equal(reruns, 0);
   });
 });
 async function reachChecksWith(client: Parameters<typeof h.openDialog>[0]) {
@@ -329,7 +366,7 @@ describe("a refused re-check through the real client", () => {
       if (path === "/api/v1/settings/editable") return Response.json(FIXTURE_EDITABLE_SETTINGS);
       if (path === "/api/v1/bootstrap") return Response.json(FIXTURE_BOOTSTRAP);
       if (path === "/api/v1/preflight/rerun") return Response.json({ state: "error", code: rerunStatus === 429 ? "PREFLIGHT_RATE_LIMITED" : "PREFLIGHT_RERUN_FAILED",
-        message: "refused", retryable: true }, { status: rerunStatus });
+        message: rerunStatus === 429 ? "Relay allows six readiness checks per minute." : "refused", retryable: true }, { status: rerunStatus });
       throw new Error(`unexpected request ${path}`);
     } });
     await real.readProfileSession();
@@ -357,7 +394,7 @@ describe("a refused re-check through the real client", () => {
     await toChecks(dialog);
     await new Promise(resolve => setTimeout(resolve, 50));
     const alerts = [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "");
-    assert.deepEqual(alerts, ["Relay could not check this run.Check again"]);
+    assert.deepEqual(alerts, ["Relay allows six readiness checks per minute.Check again"]);
     assert.equal(dialog.disabled("Start run"), true);
     assert.equal(reports.length, before, "the turned-away re-check sends no report");
   });
@@ -367,5 +404,6 @@ describe("a refused re-check through the real client", () => {
     const { dialog, before } = await openSettled(client, reports);
     await toChecks(dialog);
     await vi.waitFor(() => assert.equal(reports.length, before + 1));
+    assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /The readiness service returned HTTP 500/u);
   });
 });
