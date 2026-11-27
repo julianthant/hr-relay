@@ -14,6 +14,7 @@ import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/ru
 import {
   RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_PDF_REFERENCE_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
   never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, runDialogWriteRerunSnapshot, runDialogWriteRerunWarning, RUN_DIALOG_WRITE_RERUN_CATALOG, RUN_DIALOG_WORK_STUDY, type ServedCheck,
+  RUN_DIALOG_SEPARATIONS, RUN_DIALOG_SEPARATIONS_CATALOG, RUN_DIALOG_SEPARATIONS_TYPED, runDialogSeparationsRerunSnapshot,
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
 import { RUN_DIALOG_REFERENCE_READS, runDialogReferenceReads } from "../../../../fixtures/dashboard/run-dialog-reference-fixtures.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
@@ -39,9 +40,9 @@ const at = (page: Page, stage: string) => current(page).filter({ hasText: stage 
 const START_PATH = ["Input", "Start"] as const;
 const RERUN_PATH = ["Steps", "Start"] as const;
 /** Types the input of a start, then presses Next until `stage` is current. */
-async function reach(page: Page, stage: RunStartStage, rerun: boolean): Promise<void> {
+async function reach(page: Page, stage: RunStartStage, rerun: boolean, typed = RUN_DIALOG_TYPED): Promise<void> {
   const path: readonly string[] = rerun ? RERUN_PATH : START_PATH;
-  if (!rerun && stage !== "Input") await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED);
+  if (!rerun && stage !== "Input") await dialog(page).locator("textarea").first().fill(typed);
   await at(page, path[0] ?? "");
   for (const next of path.slice(1)) {
     if (stage === path[0]) return;
@@ -52,11 +53,11 @@ async function reach(page: Page, stage: RunStartStage, rerun: boolean): Promise<
   }
 }
 
-interface SceneOptions { readonly catalog?: typeof RUN_DIALOG_CATALOG; readonly workflowId?: string; readonly rerun?: boolean; readonly then?: (page: Page) => Promise<void>; readonly before?: () => void }
+interface SceneOptions { readonly catalog?: typeof RUN_DIALOG_CATALOG; readonly workflowId?: string; readonly typed?: string; readonly rerun?: boolean; readonly then?: (page: Page) => Promise<void>; readonly before?: () => void }
 const scene = (title: string, client: () => DashboardClient, stage: RunStartStage, extra: Partial<Story> & SceneOptions = {}): Story => {
-  const { rerun = false, then, before, catalog, workflowId, ...story } = extra;
+  const { rerun = false, then, before, catalog, workflowId, typed, ...story } = extra;
   return { title, render: () => <DialogScene client={client()} rerun={rerun} {...(catalog === undefined ? {} : { catalog })} {...(workflowId === undefined ? {} : { workflowId })} {...(before === undefined ? {} : { before })} />, ready: '[role="dialog"]',
-    play: async page => { await reach(page, stage, rerun); await then?.(page);
+    play: async page => { await reach(page, stage, rerun, typed); await then?.(page);
       // The pointer rests on the button just pressed, which would draw its hover fill.
       await page.mouse.move(0, 0); }, ...story };
 };
@@ -200,6 +201,21 @@ const REFERENCE = {
   start: reference("Start, with the chosen spreadsheet", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page); await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED); await press(page, "Next"); await at(page, "Start"); } }),
 } satisfies Record<ReferenceState, Story>;
 
+const SEPARATIONS_FLOW = { catalog: RUN_DIALOG_SEPARATIONS_CATALOG, workflowId: RUN_DIALOG_SEPARATIONS, typed: RUN_DIALOG_SEPARATIONS_TYPED } as const;
+const toggle = (page: Page, name: string) => dialog(page).getByRole("switch", { name: `Include ${name}`, exact: true }).click();
+/** Separations Steps on a customized start, with the named rows switched off in order. */
+const separationsSteps = (title: string, off: readonly string[]): Story => stage(title, reading(PASS), "Start", { ...SEPARATIONS_FLOW,
+  then: async page => { await customizeSteps(page); await press(page, "Next"); await at(page, "Steps"); for (const name of off) await toggle(page, name); } });
+const SEPARATIONS_STEPS = {
+  "all-on": separationsSteps("Separations Steps: every step on and switchable", []),
+  "read-off": separationsSteps("Read Kuali document off: its values and the reads it feeds open; Finalize waits to be turned off", ["Read Kuali document"]),
+  "approval-off": separationsSteps("Approve identity off: the run's Employee ID typed as the approval", ["Approve identity"]),
+  "by-hand": separationsSteps("Form actions done by hand: pending check, submit and finalize off", ["Check pending termination", "Submit termination", "Finalize Kuali document"]),
+  rerun: stage("A Separations rerun: timecard typed, UCPath done by hand, finalize failed", () => runDialogClient({ rerunValues: async () => runDialogSeparationsRerunSnapshot(),
+    previewRerunWarnings: async () => runDialogRerunWarning(false) }), "Steps", { rerun: true, catalog: RUN_DIALOG_SEPARATIONS_CATALOG, workflowId: RUN_DIALOG_SEPARATIONS }),
+} satisfies Record<string, Story>;
+
 export const RUN_DIALOG_STORIES = defineSurface("run-dialog", {
+  "separations-steps": SEPARATIONS_STEPS,
   stage: STAGE, checks: CHECKS, "check-combination": CHECK_COMBINATION, "rerun-load": RERUN_LOAD, activity: ACTIVITY, refusal: REFUSAL, answer: ANSWER, recovery: RECOVERY, options: OPTIONS, pdf: PDF, reference: REFERENCE,
 });

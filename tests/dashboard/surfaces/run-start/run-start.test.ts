@@ -398,7 +398,7 @@ const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
 
 const SEPARATIONS = Object.freeze({ workflows: SEPARATIONS_WORKFLOWS, panelWorkflowId: "separations" });
 
-// The served Separations write steps always run, so these Steps-screen tests supply their own omittable controls.
+// These Steps-screen tests supply their own omittable controls.
 const SEPARATIONS_OMITTABLE_WRITES = Object.freeze({
   panelWorkflowId: "separations",
   workflows: SEPARATIONS_WORKFLOWS.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
@@ -515,7 +515,7 @@ describe("an omittable step draws its own form when it is left out", () => {
 
     assert.ok(dialog.text().includes("Enter last day worked for kronos timecard."), "the first missing field drew no error in place of its help");
     assert.ok(dialog.text().includes("The last day on pay status, MM/DD/YYYY"), "a field without an error drew no help line");
-    assert.ok(dialog.text().includes("6 of 7 included"));
+    assert.ok(dialog.text().includes("7 of 8 included"));
   });
 
   it("draws nothing under an omitted step that asks for nothing at all", async () => {
@@ -677,7 +677,7 @@ describe("the request carries the operator's omissions", () => {
       "an omitted step was still selected",
     );
 
-    assert.ok(dialog.text().includes("5 of 7 included"));
+    assert.ok(dialog.text().includes("6 of 8 included"));
   });
 
   it("sends no omissions at all when the operator omitted nothing", async () => {
@@ -742,6 +742,28 @@ describe("typed facts describe ONE subject", () => {
     );
     assert.ok(dialog.text().includes("One person only."), dialog.text());
   });
+
+  it("keeps a step done by hand on when a skipped read reaches it, and holds Start until it is turned off", async () => {
+    const dialog = await openSteps(stubClient({}));
+    await dialog.press("Kuali extraction");
+    assert.ok(dialog.text().includes("5 of 8 included"), `a skipped read turned a form action off as if it were done by hand: ${dialog.text()}`);
+    assert.equal(dialog.disabled("Kuali finalization"), false);
+    assert.ok(dialog.text().includes("Needs Kuali extraction. Turn off if done by hand."), dialog.text());
+    assert.ok(dialog.text().includes("Turn off Kuali finalization if done by hand."), dialog.text());
+    await dialog.press("Kuali finalization");
+    assert.ok(dialog.text().includes("4 of 8 included"), dialog.text());
+    assert.ok(!dialog.text().includes("Turn off Kuali finalization if done by hand."), dialog.text());
+    assert.ok(dialog.text().includes("Done outside Relay."), dialog.text());
+  });
+
+  it("lets several people skip a step done by hand, which types nothing", async () => {
+    const dialog = await openSteps(stubClient({}), "4502; 4510");
+    assert.equal(dialog.disabled("Kuali finalization"), false);
+    await dialog.press("Kuali finalization");
+    assert.ok(dialog.text().includes("Done outside Relay."), dialog.text());
+    assert.ok(!dialog.text().includes("Typed values fit one person"), dialog.text());
+    assert.equal(dialog.disabled("Start live run"), false);
+  });
 });
 
 const CASCADING_SEPARATIONS = Object.freeze({
@@ -777,12 +799,12 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     assert.equal(dialog.disabled("UCPath transaction"), false);
 
     await dialog.press("Kronos timecard");
-    assert.ok(dialog.text().includes("5 of 7 included"), dialog.text());
+    assert.ok(dialog.text().includes("6 of 8 included"), dialog.text());
     assert.equal(dialog.disabled("UCPath transaction"), true, "the forced row stayed pressable");
     assert.ok(dialog.text().includes("Omitted with Kronos timecard."));
 
     await dialog.press("UCPath transaction");
-    assert.ok(dialog.text().includes("5 of 7 included"));
+    assert.ok(dialog.text().includes("6 of 8 included"));
 
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
@@ -793,7 +815,7 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     assert.deepEqual(request.stepOmissions?.map(({ step }) => step), ["kronos-timecard", "ucpath-transaction"]);
 
     await dialog.press("Kronos timecard");
-    assert.ok(dialog.text().includes("7 of 7 included"), "undoing the choice left the forced step out");
+    assert.ok(dialog.text().includes("8 of 8 included"), "undoing the choice left the forced step out");
     assert.equal(dialog.disabled("UCPath transaction"), false);
   });
 });

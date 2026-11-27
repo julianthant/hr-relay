@@ -747,9 +747,11 @@ function validateOmissions(id: string, steps: readonly WorkflowTimelineTuple[]):
     }
     const skipped = new Set(manual.skips ?? []);
     for (const [reader, readerGroup] of memberGroup) {
-      if (readerGroup === group) continue;
+      // A reader in another omittable step is switched off with this one by the Start cascade.
+      if (readerGroup === group || readerGroup.manual !== undefined) continue;
       for (const reference of reader.references) {
         if (memberGroup.get(reference) !== group || !skipped.has(reference.id) || Object.hasOwn(manual.produces, reference.id)) continue;
+        if (manual.orderOnlyReaders?.includes(reader.id) === true) continue;
         throw new Error(
           `workflow ${id} step "${group.key}" is omittable, but ${entryName(reader)} in step "${readerGroup.key}" reads its `
           + `${reference.kind} entry "${reference.id}", which omitting the step leaves unread; rebuild "${reference.id}" `

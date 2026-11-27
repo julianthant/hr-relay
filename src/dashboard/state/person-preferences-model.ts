@@ -119,9 +119,19 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       };
       const unsubscribe = resource.subscribe(accept);
       accept();
-      void resource.read(async () => EditableSettingsWireSchema.parse(await client.editableSettings()), "SETTINGS_INITIAL_READ_UNAVAILABLE")
+      // The stream's settings row is the boot read; a binding without the stream reads Settings.
+      const rows = binding.authority.dayState?.rows;
+      const takeRow = () => {
+        const held = rows?.settings();
+        if (held?.unavailable === true && held.document === undefined && started === generation) fail(operatorFailureSentence("SETTINGS_INITIAL_READ_UNAVAILABLE"));
+        if (held?.document === undefined || held.unavailable || (resource.snapshot().value?.revision ?? -1) >= held.document.revision) return;
+        resource.accept(keepNewerProtected(held.document, resource.snapshot().value));
+      };
+      const unsubscribeRows = rows?.subscribe(takeRow);
+      if (rows === undefined) void resource.read(async () => EditableSettingsWireSchema.parse(await client.editableSettings()), "SETTINGS_INITIAL_READ_UNAVAILABLE")
         .catch(() => { if (started === generation) fail(operatorFailureSentence("SETTINGS_INITIAL_READ_UNAVAILABLE")); });
-      return () => { unsubscribe(); generation += 1; connection = undefined; document = undefined; resource.reset(); recheckRows();
+      else takeRow();
+      return () => { unsubscribe(); unsubscribeRows?.(); generation += 1; connection = undefined; document = undefined; resource.reset(); recheckRows();
         // The next connection reads the served value; a save cut off here is never left pending.
         if (state.state === "saving") publish({ value: state.value, state: "loading" }); };
     },
