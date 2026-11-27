@@ -26,6 +26,8 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
     {entry.result && <ResultLine value={entry.result} />}
   </PageCard>;
   if (entry.kind === "click") return <ClickLine label={entry.label} />;
+  // The step heading carries the first entry's time; each later note shows its own.
+  if (!timeInStep) return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-3"><time className="pt-2 text-caption tabular-nums text-ui-muted">{entry.time}</time><div className="min-w-0"><LogNote entry={entry} />{entry.captureFailure && <RequiredCaptureStatus state={entry.captureFailure} />}</div></div>;
   return <><LogNote entry={entry} />{entry.captureFailure && <RequiredCaptureStatus state={entry.captureFailure} />}</>;
 }
 function LogNote({ entry }: { entry: Extract<LogEntry, { kind: "note" }> }) {

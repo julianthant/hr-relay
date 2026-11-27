@@ -117,3 +117,24 @@ it("lists retained M1b hits and each dropped candidate with its reason through s
   }
   assert.doesNotMatch(text, /matching|confirmed|dropped|emplId|SSN|DOB|2\/19\/2030|ucpath\/search-person-match/u);
 });
+
+it("shows Queued and Paused with their recorded times before the Paused card for a claimed run paused before its first task span", async () => {
+  const w = await world();
+  queuedEventOf(w, { seed: 83, descriptor: personLookupModule.descriptor });
+  const queued = w.authority.records.get(uuidOf(83)); assert.ok(queued);
+  const pausedAt = new Date(Date.parse(queued.envelope.enqueuedAt) + 90_000).toISOString();
+  const run = RunRecordSchema.parse({ ...queued, claimGeneration: 1, pause: { state: "paused", commandId: uuidOf(84), requestedAt: pausedAt, pausedAt } });
+  w.authority.put(run);
+  w.writer.emit({ t: "run.claimed", ts: pausedAt, workflow: "person-lookup", runId: run.envelope.runId, attempt: 1, traceId: run.envelope.traceId,
+    spanPath: run.envelope.traceId, workerId: "person-lookup-worker-1", claimGeneration: 1 });
+  w.projection.ingestFromTimeline();
+  const deps = { runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority,
+    descriptors: { resolve: () => ({ ...personLookupModule.descriptor, dataOrigins: dataOriginViewsOf(personLookupModule) }) } };
+  const detail = buildRunDetail(deps, run.envelope.runId);
+  assert.deepEqual(detail.heldBeforeStart, { queuedAt: run.envelope.enqueuedAt, pausedAt });
+  const section = buildRunLogsSection(deps, run.envelope.runId, w.projection.runFold(run.envelope.runId), run); assert.ok(section.section === "logs");
+  const { steps } = projectRunLogs({ detail, logs: section.payload, sections: [], unavailableEvidence: [] }, { artifactUrl: () => "unused" });
+  assert.deepEqual(steps.map(step => step.title), ["Queued", "Paused", "Run paused"]);
+  assert.ok(steps.every(step => step.time !== "—"));
+  assert.notEqual(steps[0]?.time, steps[1]?.time);
+});

@@ -470,7 +470,6 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   const decisionEvents = new Set(sections.flatMap(section => section.section === "identity-gate" && section.payload.state === "available"
     ? [gateTimelineOwner(detail, section.payload.value)?.native?.eventId ?? []].flat() : section.section === "workbook-writes"
       ? (section.payload.referenceChoices ?? []).map(choice => choice.native.eventId) : []));
-  const failedNodes = new Set<string | undefined>(sections.flatMap(section => section.section === "failure" && section.payload.state === "available" ? [section.payload.value.nodeId] : []));
   let gateDecisionShown = false;
   for (const event of detail.timeline.events) {
     if (decisionEvents.has(requireNative(event.native).eventId)) continue;
@@ -486,8 +485,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       steps.push({ id: gate.gateId, time, title: plainStepLabel(gate.label), entries: [{ kind: "decision", id: gate.gateId, time, decision: { state: "review", ...gateCard } }] });
       continue;
     }
-    // Every step that started or finished gets a row, so a run whose steps record no fields still reads as a timeline; the failed step's own card covers its failure.
-    if (event.state === "pending" || (event.state === "failed" && failedNodes.has(requireNative(event.native).nodeId))) continue;
+    // Every step that started or finished has its own row with its own title, state and time, beside any failure card.
+    if (event.state === "pending") continue;
     const time = formatTimeWithSeconds(event.at);
     groupable.add(event.noteId);
     order.set(event.noteId, requireNative(event.native).order); node.set(event.noteId, requireNative(event.native).nodeId);
