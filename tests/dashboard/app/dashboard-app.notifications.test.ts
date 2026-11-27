@@ -178,7 +178,9 @@ it("mounts served inbox controls and reports only the served search authority to
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); writes.push(command);
       rows = NotificationWireSchema.array().parse(rows.map(row => ({ ...row, revision: 2, state: "read", readState: "read" })));
-      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId: "notificationId" in command.target ? command.target.notificationId : command.target.members[0]?.notificationId }] });
+      const notificationId = rows[0].notificationId;
+      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId }],
+        notificationReceipt: { actorId: command.target.actorId, changes: [{ notificationId, revision: 2 }] } });
     }
     return app.request(url, init);
   } });
@@ -265,7 +267,8 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); writes++;
       await delayed;
       rows = NotificationWireSchema.array().parse(rows.map(row => ({ ...row, revision: 2, state: "read", readState: "read" })));
-      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId }] });
+      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId }],
+        notificationReceipt: { actorId: command.target.actorId, changes: [{ notificationId, revision: 2 }] } });
     }
     return app.request(url, init);
   } });
