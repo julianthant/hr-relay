@@ -187,7 +187,7 @@ it("gives each workflow in the list one title with its full name", async () => {
   await h.settle();
   const entry = document.body.querySelector<HTMLElement>(`nav[aria-label="Workflow"] button[aria-label="${lookup.label}"]`); assert.ok(entry);
   assert.equal(entry.getAttribute("title"), lookup.label);
-  assert.equal(entry.querySelector("[title]"), null);
+  assert.ok(entry.querySelector("[title]") === null);
 });
 
 it("keeps a workflow that cannot read several reference worksheets on a single pick", async () => {
