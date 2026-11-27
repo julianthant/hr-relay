@@ -55,7 +55,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   const previewRegion = useMemo(() => preview?.state === "available" ? <FullDryRunPreview
     stages={preview.stages.map(stage => ({ ...stage, state: stage.submitNotClicked ? "not-clicked" : stage.state }))}
     facts={preview.stages.flatMap(stage => stage.sample === undefined ? [] : [{ label: stage.label, value: stage.sample.value, sample: true }])} />
-    : preview?.state === "unavailable" ? <Notice tone="warning" title="Dry-run preview unavailable" description={preview.reason === "preview-not-completed" ? "The dry run did not complete." : preview.reason === "preview-result-unreadable" ? "The result could not be read." : "Preview is unavailable."} /> : undefined, [preview]);
+    : undefined, [preview]);
   const emptyPreview = lastStepId === undefined && previewRegion !== undefined ? <div className="mt-4 min-w-0">{previewRegion}</div> : undefined;
   const reviewAvailable = resource.snapshot?.detail.availableSections.includes("review") === true;
   const batchRetry = batchMemberRetryAction(selection.row);

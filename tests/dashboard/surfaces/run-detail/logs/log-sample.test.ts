@@ -250,12 +250,11 @@ describe('compact run headers', () => {
     assert.ok(check); assert.equal(check.disabled, false);
     assert.equal(container.querySelectorAll('[aria-label="Full dry-run preview"]').length, previewState === 'available' ? 1 : 0);
     if (previewState === 'available') assert.match(container.querySelector('[aria-label="Full dry-run preview"]')?.textContent ?? '', /Not clicked/);
-    if (previewState === 'unavailable') assert.match(markup, /Dry-run preview unavailable/);
-    else assert.doesNotMatch(markup, /Dry-run preview unavailable/);
+    assert.doesNotMatch(markup, /Dry-run preview unavailable/);
     if (trailingStep) {
       const tail = markup.indexOf('Additional retained step'); assert.ok(tail > 0);
       assert.ok(markup.indexOf('aria-label="UCPath found transactions"') < tail);
-      assert.ok(markup.indexOf(previewState === 'available' ? 'aria-label="Full dry-run preview"' : 'Dry-run preview unavailable') > tail);
+      if (previewState === 'available') assert.ok(markup.indexOf('aria-label="Full dry-run preview"') > tail);
     }
   });
 
