@@ -18,7 +18,7 @@ const proposed: AssistantScenario["turns"][number]["check"] = ({ envelope }) => 
 
 export const fullAccess: AssistantScenario = {
   name: "Stored Full access starts only supported dry runs while enabled",
-  budget: { largestRequest: 2400, total: 19000 },
+  budget: { largestRequest: 1763, total: 15591 },
   turns: [{
     message: dryRun,
     approvalMode: "full-access",

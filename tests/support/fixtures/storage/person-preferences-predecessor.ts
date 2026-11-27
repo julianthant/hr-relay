@@ -106,12 +106,15 @@ export function restorePrePanelModeRetirementSettingsRows(database: DatabaseSync
     snapshot => prePanelModeRetirementSnapshot(snapshot, snapshot.revision === 1 ? "floating" : "sidebar")));
 }
 
+export function preAssistantFullAccessSnapshot(snapshot: z.infer<typeof ConfigSnapshotRecordSchema>) {
+  const { assistantFullAccess, ...preferences } = snapshot.preferences;
+  assert.equal(assistantFullAccess, false);
+  return { ...snapshot, preferences, preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) };
+}
+
 export function restorePreAssistantFullAccessSettingsRows(database: DatabaseSync): void {
-  restorePredecessorSettingsRows(database, (table, row) => predecessorSettingsRow(table, row, PRE_ASSISTANT_FULL_ACCESS_SETTINGS_SCHEMA_HASH, snapshot => {
-    const { assistantFullAccess, ...preferences } = snapshot.preferences;
-    assert.equal(assistantFullAccess, false);
-    return { ...snapshot, preferences, preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) };
-  }));
+  restorePredecessorSettingsRows(database, (table, row) =>
+    predecessorSettingsRow(table, row, PRE_ASSISTANT_FULL_ACCESS_SETTINGS_SCHEMA_HASH, preAssistantFullAccessSnapshot));
 }
 
 export function removeSchema16PersonPreferences(database: DatabaseSync): void {

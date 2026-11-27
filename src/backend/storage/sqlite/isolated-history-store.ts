@@ -303,6 +303,17 @@ function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBi
   if (header.installation_id !== binding.installationId || header.profile_id !== binding.profileId) throw new Error("isolated-history-binding-mismatch");
 }
 
+function upgradeArchivedSettings(archive: DatabaseSync, format: number): void {
+  if (format === 1) return; // Format 1 predates archived settings snapshots.
+  const update = archive.prepare("UPDATE settings_snapshots SET payload_json=? WHERE id=?");
+  const snapshotRow = z.object({ id: z.string(), payload_json: z.string() });
+  for (const row of archive.prepare("SELECT id,payload_json FROM settings_snapshots").all()) {
+    const before = snapshotRow.parse(row);
+    const after = snapshotRow.parse(convertSettingsRecordRow("settings_snapshots", before));
+    if (after.payload_json !== before.payload_json) update.run(after.payload_json, before.id);
+  }
+}
+
 /** Each step lifts an archive written at its key's schema to the next one; the archive keeps every row it imported. */
 const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync, format: number) => void>> = {
   39: archive => archive.exec(`ALTER TABLE delegation_dependencies ADD COLUMN parent_run_id;
@@ -311,18 +322,10 @@ const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync, format: 
     archive.exec(OCR_SEARCH_TERMS_COLUMN_SQL);
     backfillRunSearchOcrSubjects(archive);
   },
-  41: (archive, format) => {
-    if (format === 1) return; // Format 1 predates archived settings snapshots.
-    const update = archive.prepare("UPDATE settings_snapshots SET payload_json=? WHERE id=?");
-    const snapshotRow = z.object({ id: z.string(), payload_json: z.string() });
-    for (const row of archive.prepare("SELECT id,payload_json FROM settings_snapshots").all()) {
-      const before = snapshotRow.parse(row);
-      const after = snapshotRow.parse(convertSettingsRecordRow("settings_snapshots", before));
-      if (after.payload_json !== before.payload_json) update.run(after.payload_json, before.id);
-    }
-  },
+  41: upgradeArchivedSettings,
   42: () => undefined, // The new assistant tables live in the person database.
   43: () => undefined, // Assistant message payloads live in the person database.
+  44: upgradeArchivedSettings,
 };
 const ArchiveVersion = z.strictObject({ format: z.literal([1, archiveFormat]), schema_version: z.number().int(), installation_id: z.uuid(), profile_id: z.uuid() });
 
