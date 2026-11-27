@@ -21,6 +21,7 @@ const WRITING: StepOmissionSpec = {
   form: { fields: [{ key: "transactionNumber", label: "Transaction number", kind: "text" }] },
   produces: { receipt: ({ facts }) => ({ transactionNumber: facts.transactionNumber }) },
   skips: ["write"],
+  skipsGatesAndTransactions: true,
 };
 
 function graph(overrides: Partial<StepOmissionGraphView> = {}): StepOmissionGraphView {
@@ -147,11 +148,30 @@ describe("stepOmissionCascade", () => {
     const chained = stepOmissionCascade(graph({
       stepOmissions: [
         { ...READING, produces: {}, skips: ["read", "fold"] },
-        { step: "deciding", form: { fields: [] }, produces: { approve: () => ({}) }, skips: ["gate"] },
+        { step: "deciding", form: { fields: [] }, produces: { approve: () => ({}) }, skips: ["gate"], skipsGatesAndTransactions: true },
         WRITING,
       ],
     }));
 
     assert.deepEqual(chained.get("reading"), { state: "omittable", forces: ["deciding"] });
+  });
+});
+
+describe("order-only readers", () => {
+  const twoWrites = (orderOnlyReaders?: readonly string[]) => graph({
+    nodes: [
+      { id: "sweep", kind: "transaction", dependsOn: [] },
+      { id: "write", kind: "transaction", dependsOn: ["sweep"] },
+      { id: "receipt", kind: "task", dependsOn: ["write"] },
+    ],
+    timeline: [{ key: "sweeping", nodes: [{ id: "sweep" }] }, { key: "writing", nodes: [{ id: "write" }, { id: "receipt" }] }],
+    stepOmissions: [{ step: "sweeping", form: { fields: [] }, produces: {}, skips: ["sweep"], skipsGatesAndTransactions: true,
+      ...(orderOnlyReaders === undefined ? {} : { orderOnlyReaders }) }, WRITING],
+  });
+
+  it("refuses a write after a write done by hand unless the step names it as only waiting", () => {
+    assert.deepEqual(planStepOmissions(twoWrites(), [{ step: "sweeping", facts: {} }]).refusals.map(({ code, step }) => [code, step]),
+      [["dependency-omitted", "writing"]]);
+    assert.deepEqual(planStepOmissions(twoWrites(["write"]), [{ step: "sweeping", facts: {} }]).refusals, []);
   });
 });

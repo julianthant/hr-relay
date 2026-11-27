@@ -25,7 +25,7 @@ describe("served Work Study last stage", () => {
     await dialog.type("10812345");
     const date = document.body.querySelector<HTMLInputElement>('input[aria-label="Effective date"]'); assert.ok(date);
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(date, "08/03/2026"); date.dispatchEvent(new Event("input", { bubbles: true })); });
-    await dialog.press("Continue");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Start");
     assert.match(dialog.text(), /Effective date08\/03\/2026/u);
   });
@@ -42,7 +42,7 @@ describe("served Work Study last stage", () => {
         rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
     }), { workflows: [workStudy], panelWorkflowId: descriptor.id, rerunSource: source });
     assert.equal(dialog.stage(), "Steps");
-    for (let guard = 0; guard < 5 && dialog.stage() !== "Start"; guard += 1) await dialog.press("Continue");
+    for (let guard = 0; guard < 5 && dialog.stage() !== "Start"; guard += 1) await dialog.press("Next");
     assert.equal(dialog.stage(), "Start");
     assert.match(dialog.text(), /Effective date08\/03\/2026/u);
   });

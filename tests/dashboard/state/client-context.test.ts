@@ -42,8 +42,6 @@ describe("released surface fixtures", () => {
       assert.equal((await client.intakeSession(FIXTURE_INTAKE_IDS.mapping)).intakeSessionId,
         FIXTURE_INTAKE_IDS.mapping);
       await assert.rejects(() => client.intakeSession("missing-session"), /no fixture intake session/u);
-      const upload = await client.uploadIntakeFile({ workflowId: "person-lookup", fileName: "people.csv", mediaType: "text/csv", bytes: new TextEncoder().encode("eid\n12345678").buffer });
-      assert.equal(upload.state, "created");
     }
   });
 

@@ -13,50 +13,84 @@ import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import { LogIdentityRefusedError, ProjectionDegradedError } from "../commands/refusals.js";
 
-export function notificationDisplayContext(record: NotificationRecord, deps: {
+type DisplayDependencies = {
   read(id: string): RunExistence;
   descriptor(workflowId: string): AnyWorkflowDescriptor | undefined;
   receipt(runId: string): RunEvidenceReceipt | undefined;
   checkpoints: { listByAttempt(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[] };
   presentation: RunTimelineEvidenceSource;
-  command(id: string): CommandRequest | undefined;
-}): NotificationDisplayContext {
+  command: (id: string) => CommandRequest | undefined;
+};
+
+export function createNotificationDisplayContext(deps: DisplayDependencies) {
+  const held = new Map<string, { actor: string; notificationVersion: number; runId: string; runVersion: number; evidence: number; context: NotificationDisplayContext }>();
+  return (record: NotificationRecord, revision: (id: string) => number | undefined, read: DisplayDependencies["read"],
+    command: DisplayDependencies["command"] = deps.command): NotificationDisplayContext =>
+    notificationDisplayContext(record, { ...deps, read, command }, run => {
+      const prior = held.get(record.notificationId);
+      const { version: runVersion, envelope: { runId } } = run;
+      const evidence = revision(runId);
+      if (prior?.actor === record.actorId && prior.notificationVersion === record.version && prior.runId === runId
+        && prior.runVersion === runVersion && prior.evidence === evidence) return prior.context;
+      const context = runDisplayContext(run, deps);
+      if (evidence !== undefined) {
+        if (held.size >= 1024 && prior === undefined) {
+          const oldest = held.keys().next().value;
+          if (oldest !== undefined) held.delete(oldest);
+        }
+        held.set(record.notificationId, { actor: record.actorId, notificationVersion: record.version, runId, runVersion, evidence, context });
+      }
+      return context;
+    });
+}
+
+export function notificationDisplayContext(record: NotificationRecord, deps: DisplayDependencies,
+  projectRun: (run: RunRecord) => NotificationDisplayContext = run => runDisplayContext(run, deps)): NotificationDisplayContext {
   const link = record.links[0];
   if (link === undefined || link.kind === "storage" || link.kind === "bulk-result") return { state: "not-applicable" };
-  const runId = link.kind === "recovery" || link.kind === "command-result" ? commandRunId(deps.command(link.commandId)) : link.runId;
+  const runId = notificationDisplayRunId(record, deps.command);
   if (runId === undefined) return { state: "unavailable" };
   const current = deps.read(runId);
-  if (current.state !== "present") return { state: "unavailable" };
-  const { workflow, itemId } = current.run.envelope;
+  return current.state === "present" ? projectRun(current.run) : { state: "unavailable" };
+}
+
+export function notificationDisplayRunId(record: NotificationRecord, command: DisplayDependencies["command"]): string | undefined {
+  const link = record.links[0];
+  if (link === undefined || link.kind === "storage" || link.kind === "bulk-result") return undefined;
+  return link.kind === "recovery" || link.kind === "command-result" ? commandRunId(command(link.commandId)) : link.runId;
+}
+
+function runDisplayContext(run: RunRecord, deps: DisplayDependencies): NotificationDisplayContext {
+  const { workflow, itemId } = run.envelope;
   const descriptor = deps.descriptor(workflow);
   if (descriptor === undefined) return { state: "unavailable" };
   const workflowOnly = { state: "workflow-only", workflow: descriptor.label } as const;
-  if (descriptor.version !== current.run.envelope.descriptorVersion || descriptor.contractFingerprint !== current.run.envelope.contractFingerprint) {
+  if (descriptor.version !== run.envelope.descriptorVersion || descriptor.contractFingerprint !== run.envelope.contractFingerprint) {
     if (descriptor.timeline === undefined) return workflowOnly;
     try {
-      assertRunTimelineCompatible(current.run, descriptor.timeline, deps.presentation);
+      assertRunTimelineCompatible(run, descriptor.timeline, deps.presentation);
     } catch (error) {
       if (error instanceof LogIdentityRefusedError) return workflowOnly;
       throw error;
     }
   }
-  if (current.run.displayName !== undefined && retainedRunProtectedBindings(current.run).length === 0) return { state: "available", workflow: descriptor.label, subject: current.run.displayName };
+  if (run.displayName !== undefined && retainedRunProtectedBindings(run).length === 0) return { state: "available", workflow: descriptor.label, subject: run.displayName };
   if (descriptor.titleProjection !== undefined) {
     try {
-      const subject = resolveResultTitle(descriptor, current.run, deps.receipt(current.run.envelope.runId));
-      return subject === undefined ? workflowOnly : { state: 'available', workflow: descriptor.label, subject };
+      const subject = resolveResultTitle(descriptor, run, deps.receipt(run.envelope.runId));
+      return subject === undefined ? workflowOnly : { state: "available", workflow: descriptor.label, subject };
     } catch (error) {
       if (error instanceof ProjectionDegradedError) return workflowOnly;
       throw error;
     }
   }
   const subject = resolveSubjectTitle(descriptor.subjectProjection, { workflowId: workflow, itemId }, {
-    latestCheckpoint: (workflowId, item, nodeId) => deps.checkpoints.listByAttempt(workflowId, item, nodeId, current.run.envelope.attempt)
-      .filter(row => row.attempt === current.run.envelope.attempt && row.runId === current.run.envelope.runId
-        && row.contractFingerprint === current.run.envelope.contractFingerprint
-        && (row.claimGeneration === undefined || row.claimGeneration <= current.run.claimGeneration))
+    latestCheckpoint: (workflowId, item, nodeId) => deps.checkpoints.listByAttempt(workflowId, item, nodeId, run.envelope.attempt)
+      .filter(row => row.attempt === run.envelope.attempt && row.runId === run.envelope.runId
+        && row.contractFingerprint === run.envelope.contractFingerprint
+        && (row.claimGeneration === undefined || row.claimGeneration <= run.claimGeneration))
       .at(-1),
-  } satisfies SubjectCheckpointSource) ?? queuedTitle(current.run, deps.presentation.timeline);
+  } satisfies SubjectCheckpointSource) ?? queuedTitle(run, deps.presentation.timeline);
   return subject === undefined ? { state: "workflow-only", workflow: descriptor.label } : { state: "available", workflow: descriptor.label, subject };
 }
 

@@ -179,22 +179,22 @@ field membership and discriminated states. The client checks identity as well as
 | Start and rerun planning | `commands/start-commands.ts` | `queue.ts`: `POST /api/v1/start-plans`, `POST /api/v1/rerun-warnings` |
 | Run detail, attempts | `queries/detail-queries.ts` | `run-detail.ts`: `GET /api/v1/runs/:runId`, `/attempt-history` |
 | Lazy run sections and rerun values | `queries/detail-queries.ts`, `queries/rerun-queries.ts` | `data.ts`, `trust.ts`: `GET /api/v1/runs/:runId/:section`; `data.ts`: `/rerun-values` |
-| Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId`, `/manifest`, `/attachments/:artifactId`; verified artifact URL `/artifacts/v1/:artifactId` |
+| Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId/manifest` and `/attachments/:artifactId` under the bundle path; verified artifact URL `/artifacts/v1/:artifactId` |
 | ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /check`, `/sign-in`, `/sign-in/:attemptId/cancel` under the account path |
 | Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
 | Preflight | `queries/preflight-queries.ts`, `queries/chatgpt-account-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun`; explicit diagnostic through the existing `chatgpt-account.ts`: `POST /api/v1/settings/chatgpt-account/test-ocr` |
 | Clear run history | `queries/storage-queries.ts`, `commands/settings-commands.ts` | `storage.ts`: `GET /api/v1/storage/run-history`, confirmed `POST /api/v1/storage/run-history/clear`, result-only `POST /api/v1/storage/run-history/result` (never starts an unrecorded command); requires the selected-person `runHistory` service in composition; Clear/result carry the confirmed profile ID and session epoch, admitted before effects and stripped from the internal journal request |
-| Notifications | `queries/notification-queries.ts` | `notifications.ts`: `GET /api/v1/notifications`, `/status`, `/:notificationId/target` |
+| Notifications | `queries/notification-queries.ts` | `notifications.ts`: `GET /api/v1/notifications`, `/:notificationId/target` and `/collection` under the notifications path |
 | Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity.csv`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
 | Explorer | `queries/explorer-queries.ts` | `explorer.ts`: read-only `GET /api/v1/explorer` |
-| Intake | `queries/intake-queries.ts` | `intake.ts`: `POST /api/v1/intake/files`, `GET /api/v1/intake/:sessionId` |
+| Intake | `queries/intake-queries.ts` | `intake.ts`: `GET /api/v1/intake/:sessionId` and `/commands/:commandId` under the session path |
 | Workbook revisions | `queries/workbook-library-queries.ts` | `workbooks.ts`: read-only `GET /api/v1/workbooks/:libraryId/revisions/:version`; exact CAS revision for attachment open/download, independent of named-version history |
 | Commands | `commands/shared-commands.ts`, `index.ts` (`workerCommandResult`) | `commands.ts`: `POST /api/v1/commands`, `/api/v1/commands/bulk`; read-only `GET /api/v1/worker-commands/:commandId` |
 | Day events | `subscriptions/subscription.ts` | `shell.ts`: `GET /events/v1?topics=dashboard-day:<day>[,run:<runId>]` |
 
 `FrontendBootstrapWire` carries actor, server clock, descriptor/config identity, workflows,
-Settings sections, storage, and readiness. `DashboardDayWire` carries the selected day's queue,
-counts, workers and pools, notifications, and projection identity. Its optional `attemptHistory`
+storage, and readiness. `DashboardDayWire` carries the selected day's queue,
+counts, workers and pools, and projection identity. Its optional `attemptHistory`
 contains each queue run's `runId`, `startedAt`, and `endedAt` for that day, including runs in
 progress. When present, `DashboardDayWireSchema` requires exact run membership and matching
 timestamps with `queueSurfaces`. The Queue view model numbers each item's runs from 1 in ascending
@@ -306,8 +306,8 @@ source/type changes and removal. Its catalogue revision and editable workbook re
 mutation. The immutable action record supports a read-only result check after a lost response;
 a refresh never resubmits a change. Removing catalogue membership keeps retained snapshot evidence.
 `workbookLibraryVersion` reads exact named bytes independently of the numeric editable revision.
-Reference requests may choose `versionId`; the retained snapshot carries its matching `versionId`
-and `versionName`, while `version` remains the current library CAS revision. Row-choice producers
+Reference requests may choose `versionId` or omit it to use the current named version. The retained
+snapshot carries the resolved `versionId` and `versionName`, while `version` remains the current library CAS revision. Row-choice producers
 read named bytes through `WorkbookLibraryRepository.libraryVersion`, preserving selected worksheet
 and row identities even when a run chooses a version other than the one in use.
 
@@ -400,9 +400,15 @@ generation change empty the outbox and abort reads nobody else is owed.
 
 Notification subjects use the registered title projection and the matching retained evidence receipt when a workflow declares one, through the same canonical title resolver as Queue. Unavailable or refused title authority withholds the subject without falling back to a checkpoint or guessed name; a readable linked run and descriptor still serve the workflow-only context. Other declared subject projections retain their checkpoint identity checks. Workflow-only previews omit the subject and retain the reason. A retained failed-row summary can supply that reason when the source publication is unavailable only if it exactly matches a current error-catalog sentence; other retained summaries leave the reason unavailable. Toast eligibility still requires the source-event policy. Run rows show the unavailable notice when their context or display reason cannot be read. This display context belongs only to the served inbox; durable notification summaries and OS delivery are unchanged.
 
-Notification publications originate after the authority transaction commits. They are live-only,
-nonretained events with explicit source identity; baseline reads, replay, reconnect and resnapshot
-never synthesize publications. The stream/client validate actor, day, descriptor and generation,
+The stream hands off the inbox in a separate actor-keyed `notification-list` row with the same
+list as `GET /api/v1/notifications`. Inbox refreshes carry that row independently of the queue
+when read state, membership, snooze expiry or display evidence changes. Display context is reused
+while the notice and linked run revisions and their display evidence still match.
+
+Notification publications originate after the authority transaction commits. A retained arrival
+can replay on resume at its original cursor. Its listed row replaces the affected notice or
+storage group in the inbox, and handoff reads never synthesize arrivals. The stream and client
+validate actor, day, descriptor and generation,
 and the mounted subscriber retains its request/client scope. Only eligible committed source events
 can toast, once per source; snoozed rows and control revisions do not toast. The adapter applies the
 eight source-event policies and shows catalog notices for missing source evidence or backfill gaps.
@@ -567,12 +573,12 @@ before the account owner when the active profile changes or the page closes.
 
 `WorkflowStartWire.requiredWorkbookFields` and `workbookReference` declare the required fields,
 logical capture ID, key, mode and writable outputs. The dashboard sends one explicit
-`workbookReferences: [{entry, libraryId, versionId, sheetId, expectedVersion, selectedRow?}]` selection
+`workbookReferences: [{entry, libraryId, versionId?, sheetId, expectedVersion, selectedRow?}]` selection
 per entry. The browser cannot supply lookup keys, fields or write authority. Keyed workflows
 declare `referenceKeys(input)`; planning derives the captured request from that callback and the
 frozen static declaration. Each selected worksheet must map every required field exactly once.
 
-`selectedRow` requires an explicit library, an immutable named version and exactly one derived key.
+`selectedRow` binds to the supplied library, the resolved immutable named version and exactly one derived key.
 The descriptor's `inputRun.workbookRows` must declare that logical capture ID, and its input field must equal
 the derived key. The selected sheet/row pair must occur exactly once among that key's retained matches.
 Expected unavailable selections produce entry refusals. Captured references bind canonical input before

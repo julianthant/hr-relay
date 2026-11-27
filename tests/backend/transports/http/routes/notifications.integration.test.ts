@@ -37,3 +37,8 @@ it("refuses an invalid collection operation before querying notification authori
   assert.deepEqual({ state, code, retryable }, { state: "error", code: "SCHEMA_INVALID", retryable: false });
   assert.equal(authorityRead.mock.calls.length, 0);
 });
+
+it("serves observation status only through the dashboard stream", async () => {
+  const { app } = await harness({ notifications: () => notificationReads });
+  assert.equal((await app.request("/api/v1/notifications/status")).status, 404);
+});

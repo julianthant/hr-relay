@@ -4,9 +4,10 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
 import { WorkbookLibraryEntrySchema } from "../../../src/models/dashboard/workbook-library.js";
-import { SEARCH_PAUSE_MS, paletteSheets, readSearchSnapshot, searchResults, withQueueSubjects, useLibrarySheets, useSearchWiring, searchMessage, workspaceSearchQuery } from "../../../src/dashboard/state/search-wiring-adapter.js";
+import { SEARCH_PAUSE_MS, paletteSheets, readMoreSearch, readSearchSnapshot, searchResults, withQueueSubjects, useLibrarySheets, useSearchWiring, searchMessage, workspaceSearchQuery } from "../../../src/dashboard/state/search-wiring-adapter.js";
 import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
+import { useWorkbookSession } from "../../../src/dashboard/state/spreadsheet-wiring-adapter.js";
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
 import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import type { NavbarData } from "../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
@@ -20,20 +21,23 @@ function result(n: number) { return { runId: `00000000-0000-4000-8000-${String(n
   runNumber: { state: "absent", reason: "not recorded" }, retryOf: { state: "absent", reason: "first" }, enqueuedAt: "2026-08-03T12:00:00Z", endedAt: { state: "absent", reason: "not recorded" }, match: { field: "workflow", strength: "contains" },
   metadata: { subject: { state: "available", value: `Subject ${n}` }, actor: { state: "unavailable", reason: "not-recorded" }, version: 1, failureCode: null, evidence: { receipt: false, failure: false, diagnostic: false } } }; }
 function page(n: number, next = false) { return CrossDateSearchPageSchema.parse({ ...zeroMatchSearchPage(), totalMatches: 2, coverage: { matched: 2, subjectUnavailable: 0, actorUnavailable: 0, candidateLimit: 10000 }, results: [result(n)], nextCursor: next ? { state: "present", value: cursor } : { state: "absent", reason: "end" } }); }
-it("materializes signed pages under the same query/facets/snapshot and uses the authority total", async () => {
+it("reads one page on open and the next only on demand, under the same snapshot", async () => {
   const requests: CrossDateSearchQueryInput[] = [];
   const client = { searchRuns: async (query: CrossDateSearchQueryInput) => { requests.push(query); return requests.length === 1 ? page(1, true) : page(2); } };
-  const snapshot = await readSearchSnapshot(client, { q: "person", facets: { from: "2026-08-01", to: "2026-08-04", workflow: "person-lookup" }, limit: 1 }, new AbortController().signal);
-  assert.equal(snapshot.totalMatches, 2); assert.equal(snapshot.results.length, 2);
+  const first = await readSearchSnapshot(client, { q: "person", facets: { from: "2026-08-01", to: "2026-08-04", workflow: "person-lookup" }, limit: 1 }, new AbortController().signal);
+  assert.equal(requests.length, 1); assert.equal(first.totalMatches, 2); assert.equal(first.results.length, 1); assert.equal(first.cursor, cursor);
+  const all = await readMoreSearch(client, first, new AbortController().signal);
   assert.deepEqual(requests[1], { ...requests[0], cursor });
-  assert.equal(searchResults(snapshot)[1].destination?.kind, "run");
+  assert.equal(all.results.length, 2); assert.equal(all.cursor, undefined);
+  assert.equal(searchResults(all)[1].destination?.kind, "run");
 });
 it("refuses inconsistent snapshots, repeated cursors, duplicates, incomplete totals and authority refusals", async () => {
   for (const second of [CrossDateSearchPageSchema.parse({ ...page(2), totalMatches: 3 }), { ...page(2), snapshot: { ...page(2).snapshot, token: "different" } }, page(1), page(2, true)]) {
-    let count = 0;
-    await assert.rejects(readSearchSnapshot({ searchRuns: async () => ++count === 1 ? page(1, true) : second }, { q: "person" }, new AbortController().signal));
+    const first = await readSearchSnapshot({ searchRuns: async () => page(1, true) }, { q: "person" }, new AbortController().signal);
+    await assert.rejects(readMoreSearch({ searchRuns: async () => second }, first, new AbortController().signal));
   }
-  await assert.rejects(readSearchSnapshot({ searchRuns: async () => page(1) }, { q: "person" }, new AbortController().signal), /INCOMPLETE/);
+  const early = await readSearchSnapshot({ searchRuns: async () => page(1, true) }, { q: "person" }, new AbortController().signal);
+  await assert.rejects(readMoreSearch({ searchRuns: async () => CrossDateSearchPageSchema.parse({ ...page(2), totalMatches: 2, results: [] }) }, early, new AbortController().signal), /INCOMPLETE/);
   await assert.rejects(readSearchSnapshot({ searchRuns: async () => { throw new Error("cursor expired"); } }, { q: "person", cursor }, new AbortController().signal), /cursor expired/);
 });
 it("keeps unavailable subject explicit without inventing an alias or destination", async () => {
@@ -56,32 +60,47 @@ const entry = (libraryId: string, name: string, selected: string, versions: read
     versions: versions.map(([id, version, savedAt]) => ({ id, name: id, snapshotId: id, version, savedAt, source: "operator" })) } });
 it("tells a rejected library read apart from an empty library", async () => {
   let reject = true;
-  const client = { workbookCatalog: async () => { if (reject) throw new Error("storage"); return []; } };
+  const next = { ...createDashboardClient({ baseUrl: "http://fixture.test" }), workbookCatalog: async () => [],
+    workbookCompatibility: async () => ({ workflows: [], libraries: [] }), workbookTypes: async () => [] };
+  const client = { ...next, workbookCatalog: async () => { if (reject) throw new Error("storage"); return []; } };
   let seen: ReturnType<typeof useLibrarySheets> | undefined;
   function Probe({ tick }: { tick: number }) { seen = useLibrarySheets(client, tick >= 0); return null; }
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(createElement(Probe, { tick: 0 })));
   assert.equal(seen?.unavailable, searchMessage("SEARCH_LIBRARY_UNAVAILABLE"));
-  reject = false; const next = { workbookCatalog: async () => [] };
+  reject = false;
   function Retry() { seen = useLibrarySheets(next, true); return null; }
   await act(async () => root?.render(createElement(Retry)));
   assert.equal(seen?.unavailable, undefined); assert.deepEqual(seen?.sheets, []);
 });
 it("reports a pending library read as loading and keeps loaded rows through a failed re-read", async () => {
-  const reads: { finish: (records: never[]) => void; fail: () => void }[] = [];
-  const client = { workbookCatalog: () => new Promise<never[]>((resolve, reject) => { reads.push({ finish: resolve, fail: () => reject(new Error("storage")) }); }) };
+  const sheet = entry("x", "Roster", "v1", [["v1", 1, "2026-11-01T12:00:00Z"]]);
+  const reads: { finish: (records: readonly typeof sheet[]) => void; fail: () => void }[] = [];
+  let compatibilityReads = 0;
+  const client = { ...createDashboardClient({ baseUrl: "http://fixture.test" }),
+    workbookCatalog: () => new Promise<readonly typeof sheet[]>((resolve, reject) => { reads.push({ finish: resolve, fail: () => reject(new Error("storage")) }); }),
+    workbookCompatibility: async () => { compatibilityReads++; return { workflows: [], libraries: [{ libraryId: "x", versionId: "v1", sheets: [] }] }; },
+    workbookTypes: async () => [] };
   let seen: ReturnType<typeof useLibrarySheets> | undefined;
-  function Probe({ open }: { open: boolean }) { seen = useLibrarySheets(client, open); return null; }
+  let adapter: ReturnType<typeof useWorkbookSession> | undefined;
+  function Probe({ open }: { open: boolean }) {
+    adapter = useWorkbookSession(client);
+    seen = useLibrarySheets(client, open);
+    return null;
+  }
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(createElement(Probe, { open: true })));
   assert.equal(seen?.sheets.length, 0); assert.equal(seen?.unavailable, undefined);
-  const sheet = entry("x", "Roster", "v1", [["v1", 1, "2026-11-01T12:00:00Z"]]) as never;
   await act(async () => reads[0].finish([sheet]));
   assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, undefined);
   await act(async () => root?.render(createElement(Probe, { open: false })));
   await act(async () => root?.render(createElement(Probe, { open: true })));
   assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, undefined);
-  await act(async () => reads[1].fail());
+  assert.equal(compatibilityReads, 0);
+  await act(async () => { await adapter?.loadCatalog(); });
+  assert.equal(compatibilityReads, 1);
+  assert.equal(reads.length, 1);
+  await act(async () => { const refresh = adapter?.refreshCatalog(); reads[1].fail(); await refresh; });
   assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, searchMessage("SEARCH_LIBRARY_UNAVAILABLE"));
 });
 const pause = () => act(async () => { await new Promise(resolve => setTimeout(resolve, SEARCH_PAUSE_MS + 100)); });
@@ -200,4 +219,18 @@ it("sends one search after the operator pauses, not one per keystroke", async ()
   await act(async () => root?.render(createElement(Probe, { query: "" })));
   await pause();
   assert.deepEqual(requests, ["archer", ""]);
+});
+
+it("opens with one page request and reads the next only when asked", async () => {
+  const requests: (string | null)[] = [];
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => { const cursorParam = new URL(url).searchParams.get("cursor"); requests.push(cursorParam); return Response.json(cursorParam === null ? page(1, true) : page(2)); } });
+  const epoch = {}, workflows: Parameters<typeof workspaceSearchQuery>[1] = [];
+  let data: NavbarData | undefined;
+  function Probe() { data = useSearchWiring({ client, enabled: true, query: "", today: "2026-08-03", epoch, workflows }); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(createElement(Probe)));
+  await pause();
+  assert.deepEqual(requests, [null]); assert.equal(data?.results.length, 1); assert.equal(data?.totalMatches, 2);
+  await act(async () => { data?.more?.(); data?.more?.(); });
+  assert.equal(requests.length, 2); assert.equal(data?.results.length, 2); assert.equal(data?.more, undefined);
 });

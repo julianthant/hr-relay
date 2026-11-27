@@ -18,10 +18,8 @@ export type NotificationItem = Readonly<{
   kind?: NotificationKind;
   /** Repeats folded into this notice; shown only above one. */
   count?: number;
-  /** Priority: still needs the operator. Resolved items fall into their day group. */
+  /** Priority: still needs the operator. Everything else lists under Earlier. */
   priority?: boolean;
-  /** Day group label once out of Needs you: Today, Yesterday, a weekday or a date. */
-  day?: string;
   /** When it happened; the shown age ticks from it. Without it the age stays as served. */
   at?: string;
   /** The run or failure it pointed at was deleted: the item says so and opens nothing. */
@@ -68,8 +66,3 @@ export function applyNotificationReads(state: NotificationsState, reads: Readonl
   if (state.state !== "ready") return state;
   return { ...state, items: state.items.map(item => reads[item.id] === undefined || reads[item.id] === item.read ? item : { ...item, read: reads[item.id] }) };
 }
-
-export const itemDay = (item: NotificationItem) => item.day ?? "Today";
-/** The workflow (or the system the notice is about) and the run, as served; nothing is invented when the run name is not served. */
-export const itemContext = (item: NotificationItem) => [item.workflow !== "" ? item.workflow : itemSource(item), item.kind === "run" || item.kind === "command" ? item.subject : ""].filter(part => part !== "").join(" · ");
-export const itemSource = (item: NotificationItem) => item.kind === "storage" ? "Storage" : item.kind === "chatgpt" ? "ChatGPT" : item.kind === "command" ? "Commands" : item.workflow;

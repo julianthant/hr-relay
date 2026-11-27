@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
+import { serveNotificationList } from "../../support/helpers/dashboard/serve-run-panel.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
-import { foldRows, inboxProjection, notificationDay, notificationPolicy, notificationTargetMatches, useInboxWiring, type InboxWiring } from "../../../src/dashboard/state/inbox-wiring-adapter.js";
+import { foldRows, inboxProjection, notificationPolicy, notificationTargetMatches, useInboxWiring, type InboxWiring } from "../../../src/dashboard/state/inbox-wiring-adapter.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { CommandExecutor, type CommandExecutionScope } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
@@ -47,8 +48,7 @@ function targetOf(notification: NotificationWire, refused = false): Notification
 }
 function publication(notification: NotificationWire, n = 1, listed: NotificationWire = notification, target: NotificationTarget = targetOf(notification)): NotificationArrival {
   // The harness stamps the cursor of the snapshot the stream holds when it delivers the arrival.
-  return { publication: NotificationPublicationWireSchema.parse({ sourceId: String(n).repeat(64), actorId: notification.actorId, durable: "created", notification }), listed, target,
-    snapshotCursor: FIXTURE_DAY_WIRE.snapshotCursor };
+  return { publication: NotificationPublicationWireSchema.parse({ sourceId: String(n).repeat(64), actorId: notification.actorId, durable: "created", notification }), listed, target };
 }
 const ERROR = WireErrorSchema.parse({ state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true });
 async function harness(enabled = true, initiallyFailed = false, statusDelivered = true) {
@@ -81,10 +81,11 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
         if (refuseClear || cleared.length !== target.members.length || cleared.some(item => item.kind !== "backfill-gap" && item.standing === true)) {
           return Response.json({ state: "rejected", commandId: command.commandId, code: "policy-refused", message: "This notice still waits on you." });
         }
-        // A repeat committed between the clear and its readback folds each row back in as unread news.
+        // A repeat committed after the clear folds each row back in as unread news.
         rows = rows.flatMap(item => !cleared.includes(item) ? [item] : repeatClear && item.kind !== "backfill-gap"
           ? [NotificationWireSchema.parse({ ...item, revision: item.revision + 2, readState: "unread", state: "unread" })] : []);
-        return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: cleared.map(item => ({ family: "notification", notificationId: item.notificationId })) });
+        return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: cleared.map(item => ({ family: "notification", notificationId: item.notificationId })),
+          notificationReceipt: { actorId: target.actorId, changes: target.members.map(member => ({ notificationId: member.notificationId, revision: member.expectedVersion + 1 })) } });
       }
       const affected = rows.filter(item => item.kind === "notification" && ("members" in target ? target.members.some(member => member.notificationId === item.notificationId) && item.readState === "unread" : item.notificationId === target.notificationId));
       rows = rows.map(item => item.kind !== "notification" || !affected.some(row => row.notificationId === item.notificationId) ? item : NotificationWireSchema.parse({ ...item, revision: item.revision + 1,
@@ -92,7 +93,10 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
         state: command.type === "notification-snooze" ? "snoozed" : command.type === "notification-unsnooze" ? item.readState : command.type === "notification-read" || command.type === "notification-read-all" ? "read" : command.type === "notification-unread" ? "unread" : item.state,
         snoozedUntil: command.type === "notification-snooze" ? "2026-08-03T18:00:00.000Z" : undefined }));
       if (lose) { lose = false; throw new Error("response lost after commit"); }
-      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: affected.map(row => ({ family: "notification", notificationId: row.notificationId })) });
+      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: affected.map(row => ({ family: "notification", notificationId: row.notificationId })),
+        ...(affected.length === 0 ? { noChange: "no-matching-notifications" } : {}),
+        notificationReceipt: { actorId: target.actorId, changes: affected.flatMap(row => row.kind === "notification" ? [{ notificationId: row.notificationId, revision: row.revision + 1 }] : []),
+          ...(command.type === "notification-snooze" ? { snoozedUntil: "2026-08-03T18:00:00.000Z" } : {}) } });
     }
     throw new Error(`unexpected ${path}`);
   } });
@@ -102,23 +106,33 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
   const status = (value: { state: "available"; value: { state: "ready" | "failed"; code?: "NOTIFICATION_OBSERVATION_FAILED"; pending: number } } | { state: "unavailable"; error: typeof ERROR }) =>
     act(async () => { store.apply([{ model: "notification-status", key: ActorIdSchema.parse("local-operator"), value }]); });
   if (enabled && statusDelivered) await status(initiallyFailed ? { state: "unavailable", error: ERROR } : { state: "available", value: { state: "ready", pending: 0 } });
+  serveNotificationList(store, rows);
   let dayServed = rows, dayRows = dayServed, refreshes = 0, snapshots = 1, reloading = false;
+  let listed = dayServed;
+  const deliverList = () => {
+    if (listed === dayServed) return;
+    listed = dayServed;
+    serveNotificationList(store, listed);
+  };
   let connection: SubscriptionState = { state: "live" };
-  let day = { state: "loaded" as const, value: { ...FIXTURE_DAY_WIRE, notifications: [...dayRows] } };
+  let day = { state: "loaded" as const, value: { ...FIXTURE_DAY_WIRE } };
   const scope = { client, authority: epoch, actorId: "local-operator", dayRequest };
   let activeScope: CommandExecutionScope = scope;
   const executor = new CommandExecutor(() => activeScope);
   const binding: DashboardCommandBinding = { executor, scope, feedback: outcome => { feedbacks.push(outcome.kind); }, authority: { epoch, now: () => now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
-    dayState: { rows: store, request: dayRequest, get day() { if (dayRows !== dayServed) { dayRows = dayServed; day = { state: "loaded", value: { ...FIXTURE_DAY_WIRE, snapshotCursor: ProjectionCursorSchema.parse(`pc:${snapshots += 1}`), notifications: [...dayServed] } }; } return reloading ? loadingWith({ value: day.value, at: day.value.snapshotCursor }) : day; },
+    dayState: { rows: store, request: dayRequest, get day() { if (dayRows !== dayServed) { dayRows = dayServed; day = { state: "loaded", value: { ...FIXTURE_DAY_WIRE, snapshotCursor: ProjectionCursorSchema.parse(`pc:${snapshots += 1}`) } }; } return reloading ? loadingWith({ value: day.value, at: day.value.snapshotCursor }) : day; },
       get connection() { return connection; }, refresh() { refreshes += 1; }, subscribePublications: listener => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; } } } };
   let value: InboxWiring | undefined;
   function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding }); return null; }
   root = createRoot(document.createElement("div"));
-  const render = async (served = enabled, currentBinding = binding, currentClient = client) => { activeScope = currentBinding.scope; await act(async () => { root?.render(createElement(Probe, { served, currentBinding, currentClient })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
+  const render = async (served = enabled, currentBinding = binding, currentClient = client) => { activeScope = currentBinding.scope; await act(async () => { deliverList(); root?.render(createElement(Probe, { served, currentBinding, currentClient })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   await render();
-  /** Each subscriber, delivering an arrival on the snapshot the stream holds now: a day the harness next serves is a new snapshot. */
-  const publishers = () => listeners.map(listener => (arrival: NotificationArrival) => listener({ ...arrival, snapshotCursor: binding.authority.dayState.day.state === "loaded"
-    ? binding.authority.dayState.day.value.snapshotCursor : FIXTURE_DAY_WIRE.snapshotCursor }));
+  /** Deliver pending list rows before a publication queued behind them. */
+  const publishers = () => listeners.map(listener => (arrival: NotificationArrival) => {
+    deliverList();
+    store.applyNotification(arrival.listed);
+    listener(arrival);
+  });
   return { client, binding, requests, commands, get listeners() { return publishers(); }, render, status, get refreshes() { return refreshes; }, get value() { assert(value); return value; },
     /** The rows the server serves, and the day the stream next delivers. */
     setRows: (next: readonly NotificationWire[]) => { rows = next; dayServed = next; },
@@ -269,8 +283,10 @@ it("refuses foreign actor and wrong revision in shared notification readback", a
   const h = await harness();
   const request = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read", target: { notificationId: id, actorId: "local-operator", expectedVersion: 1 } });
   const reply = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "notification", notificationId: id }] });
-  for (const next of [row("storage-degraded", { readState: "read", state: "read", revision: 3 }), row("storage-degraded", { actorId: "other-operator", readState: "read", state: "read", revision: 2 })]) {
-    h.setRows([next]); assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "mismatch");
+  assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "mismatch", "a bare acknowledgment is insufficient");
+  for (const [actorId, revision] of [["local-operator", 3], ["other-operator", 2]] as const) {
+    const result = CommandResultSchema.parse({ ...reply, notificationReceipt: { actorId, changes: [{ notificationId: id, revision }] } });
+    assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, result)).state, "mismatch");
   }
 });
 
@@ -430,9 +446,9 @@ for (const replacement of ["actor", "client", "authority"] as const) it(`does no
   const client = replacement === "client" ? { ...h.client } : h.client;
   const scope = { ...h.binding.scope, dayRequest: {}, client, ...(replacement === "actor" ? { actorId: "replacement-operator" } : {}), ...(replacement === "authority" ? { authority: {} } : {}) };
   await h.render(true, { ...h.binding, scope }, client);
-  const readCount = h.requests.filter(path => path.endsWith("/notifications")).length;
   await act(async () => { release(); await result; await new Promise(resolve => setTimeout(resolve, 0)); });
-  assert.equal(h.requests.filter(path => path.endsWith("/notifications")).length, readCount + 1, "only the executor's original readback runs; replacement authority must not refresh");
+  assert.deepEqual(h.requests, ["/api/v1/commands"]);
+  assert.equal(h.refreshes, 0);
   assert.equal(h.commands.length, 1);
 });
 
@@ -455,15 +471,19 @@ it("requires exact collection readback membership and one version advance for ev
   const h = await harness();
   const request = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read-all",
     target: { actorId: "local-operator", members: [{ notificationId: id, expectedVersion: 1 }], matchingCount: 1 } });
-  const reply = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "notification", notificationId: id }] });
-  for (const rows of [[], [row()], [row("storage-degraded", { revision: 3, readState: "read", state: "read" })],
-    [row("storage-degraded", { revision: 2, readState: "read", state: "read" }), row("storage-degraded", { notificationId: runId })]]) {
-    h.setRows(rows); assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "mismatch");
+  const reply = { state: "applied", commandId: request.commandId };
+  const response = (notificationId: string, revision: number) => CommandResultSchema.parse({ ...reply,
+    affectedTargets: [{ family: "notification", notificationId }],
+    notificationReceipt: { actorId: "local-operator", changes: [{ notificationId, revision }] } });
+  for (const result of [response(runId, 2), response(id, 1), response(id, 3)]) {
+    assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, result)).state, "mismatch");
   }
-  h.setRows([row("storage-degraded", { revision: 2, readState: "read", state: "read" })]);
-  assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "matched");
+  assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, response(id, 2))).state, "matched");
   assert.equal(CommandResultSchema.safeParse({ ...reply, affectedTargets: [] }).success, false);
-  assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, CommandResultSchema.parse({ ...reply, affectedTargets: [], noChange: "no-matching-notifications" }))).state, "mismatch");
+  const empty = CommandResultSchema.parse({ ...reply, affectedTargets: [], noChange: "no-matching-notifications",
+    notificationReceipt: { actorId: "local-operator", changes: [] } });
+  assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, empty)).state, "mismatch");
+  assert.deepEqual(h.requests, []);
 });
 
 it("maps command notices with policy tone, served detail and priority, and counts unread danger and warning as needs you", () => {
@@ -527,12 +547,6 @@ it("matches recovery and command-result targets by command id and bulk results b
   assert.equal(notificationTargetMatches(commandRow("bulk-incomplete"), recovery), false);
   assert.equal(notificationTargetMatches(row(), recovery), false);
   assert.equal(notificationTargetMatches(commandRow("command-unknown"), { kind: "storage" }), false);
-});
-
-it("groups served notices by local day", () => {
-  const now = new Date(2026, 10, 11, 15).toISOString();
-  const at = (days: number) => new Date(2026, 10, 11 - days, 9).toISOString();
-  assert.deepEqual([0, 1, 3, 8].map(days => notificationDay(at(days), now)), ["Today", "Yesterday", "Sunday", "November 3"]);
 });
 
 const shownIds = (inbox: InboxWiring) => inbox.state.state === "ready" ? inbox.state.items.map(item => item.id) : [];

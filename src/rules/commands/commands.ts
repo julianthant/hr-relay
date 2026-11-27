@@ -16,6 +16,7 @@ import { ActorIdSchema,BrowserSessionIdSchema,CommandAuditIdSchema,CommandIdSche
 import { JsonValueSchema,canonicalJsonStringify } from "../validation/canonical-json.js";
 import { deepFreeze } from "../validation/immutability.js";
 import { sha256Hex } from "../validation/sha256.js";
+import { RowRevisionSchema } from "../../models/dashboard/primitives.js";
 
 export const AssistantActionBindingSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("proposal"), proposalId: z.uuid(), rowId: z.uuid() }),
@@ -25,6 +26,15 @@ export const AssistantCommandAttributionSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("unrecorded") }),
   z.strictObject({ kind: z.literal("assistant"), requestedBy: ActorIdSchema, profileId: z.uuid(), conversationId: z.uuid(), acceptedMessageId: z.uuid(), binding: AssistantActionBindingSchema }),
 ]);
+
+/** A command id the caller sent again with different content: the caller's mistake, answered by name. */
+export class CommandIdReusedError extends Error {
+  readonly code = "COMMAND_ID_REUSED";
+  constructor(commandId: string) {
+    super(`command id ${commandId} was reused with different content`);
+    this.name = "CommandIdReusedError";
+  }
+}
 
 /** A durable command identity cannot be reused by another command or authority. */
 export class CommandIdentityConflictError extends Error {
@@ -444,6 +454,7 @@ export const CommandRejectionCodeSchema = z.enum([
   "WORKER_PAUSE_SETTLING",
   "OCR_REVIEW_REFUSED",
   "RUN_CONTINUATION_REFUSED",
+  "SAMPLE_RUN_REFUSED",
   "RUN_START_PLAN_EXPIRED",
   "RUN_START_RESTART_REQUIRED",
   "RUN_START_READINESS_BLOCKED",
@@ -480,11 +491,18 @@ export const RunWorkerStartupFailureSchema = z.strictObject({
 });
 export type RunWorkerStartupFailure = z.infer<typeof RunWorkerStartupFailureSchema>;
 
+export const NotificationCommandReceiptSchema = z.strictObject({
+  actorId: ActorIdSchema,
+  changes: z.array(z.strictObject({ notificationId: NotificationIdSchema, revision: RowRevisionSchema })),
+  snoozedUntil: IsoInstantSchema.optional(),
+});
+
 const CommandLandingResultSchema = z.strictObject({
   state: z.enum(["applied", "already-applied"]),
   commandId: CommandIdSchema,
   affectedTargets: z.array(CommandTargetReferenceSchema),
   noChange: z.literal("no-matching-notifications").optional(),
+  notificationReceipt: NotificationCommandReceiptSchema.optional(),
   restartRequired: z.boolean().optional(),
   settingsRevision: PositiveIntSchema.optional(),
   settingsFingerprint: FingerprintSchema.optional(),
@@ -497,6 +515,13 @@ const CommandLandingResultSchema = z.strictObject({
   }
   if ((result.affectedTargets.length === 0) !== (result.noChange !== undefined)) {
     context.addIssue({ code: "custom", path: ["affectedTargets"], message: "only an explicit no-matching-notifications result may have no affected targets" });
+  }
+  if (result.notificationReceipt !== undefined) {
+    const ids = new Set(result.notificationReceipt.changes.map(change => change.notificationId));
+    if (ids.size !== result.notificationReceipt.changes.length || ids.size !== result.affectedTargets.length
+      || !result.affectedTargets.every(target => target.family === "notification" && ids.delete(target.notificationId))) {
+      context.addIssue({ code: "custom", path: ["notificationReceipt"], message: "notification receipt must name every affected notification exactly once" });
+    }
   }
   const settingsTargets = result.affectedTargets.filter((target) => target.family === "settings");
   const protectedTargets = result.affectedTargets.filter((target) => target.family === "protected-settings");

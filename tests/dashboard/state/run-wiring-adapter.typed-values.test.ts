@@ -46,7 +46,7 @@ describe("typed values in Logs", () => {
   it("says the automatic reading was replaced, not that the step was skipped", () => {
     const text = logPlainText(projectRunLogs(snapshot(group(typedFields), {}), client).steps);
     assert.match(text, /Automatic reading replaced with operator-entered values\./u);
-    assert.doesNotMatch(text, /Skipped · Supplied by the operator/u);
+    assert.doesNotMatch(text, /Skipped · Manual values/u);
   });
 
   it("names a withheld value without showing it", () => {
@@ -62,10 +62,28 @@ describe("typed values in Logs", () => {
     assert.ok(step.entries[1].kind === "fields");
   });
 
+  it("calls a step turned off with typed values manual, and only a step with nothing typed done outside Relay", () => {
+    const read = logPlainText(projectRunLogs(snapshot(group(typedFields), {}, "step-omitted"), client).steps);
+    assert.match(read, /Skipped · Manual values/u);
+    assert.doesNotMatch(read, /Done outside Relay/u);
+    const byHand = logPlainText(projectRunLogs(snapshot(group([]), {}, "step-omitted"), client).steps);
+    assert.match(byHand, /Skipped · Done outside Relay/u);
+  });
+
+  it("calls a form action its typed receipt stands for done outside Relay, and still shows the receipt", () => {
+    const filed = { typedValues: { ...group(typedFields).typedValues, doneByHand: ["crm"] } };
+    const steps = projectRunLogs(snapshot(filed, {}, "step-omitted"), client).steps;
+    assert.match(logPlainText(steps), /Skipped · Done outside Relay/u);
+    assert.doesNotMatch(logPlainText(steps), /Manual values/u);
+    const first = steps.find(candidate => candidate.title === "Read CRM")?.entries[0];
+    assert.ok(first?.kind === "fields");
+    assert.deepEqual(first.fields.map(field => field.label), ["Process stage", "First day of service"]);
+  });
+
   it("draws a run with nothing typed as before", () => {
     const steps = projectRunLogs(snapshot({}, {}), client).steps;
     const text = logPlainText(steps);
-    assert.match(text, /Skipped · Supplied by the operator/u);
+    assert.match(text, /Skipped · Manual values/u);
     assert.doesNotMatch(text, /Operator-entered|Typed by hand|Uses values typed/u);
     assert.deepEqual(steps.map(step => step.entries.map(entry => entry.kind)), [["note"], ["fields"]]);
   });

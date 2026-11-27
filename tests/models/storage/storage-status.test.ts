@@ -52,7 +52,7 @@ describe("one storage status definition", () => {
     expect(StorageDoctorReportSchema.shape.restoreCandidates.element).toBe(RestoreCandidateSchema);
     expect(StorageDoctorWireSchema.shape.service).toBe(BackupServiceStateSchema);
     expect(StorageDoctorWireSchema.shape.authority).toBe(DoctorAuthorityWireSchema);
-    const bootstrap = createFrontendBootstrapWireSchema({ workflow: z.never(), systemInstance: z.never(), settingsSection: z.never() });
+    const bootstrap = createFrontendBootstrapWireSchema({ workflow: z.never() });
     expect(bootstrap.shape.storage).toBe(StorageAuthoritySummarySchema);
   });
 

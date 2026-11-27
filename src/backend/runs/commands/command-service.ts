@@ -1,5 +1,5 @@
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
-import { bulkChildClass } from "../../../rules/commands/command-lifecycle.js";
+import { allBulkChildrenRefusedAsSamples, bulkChildClass } from "../../../rules/commands/command-lifecycle.js";
 
 import { z } from "zod";
 import {
@@ -238,7 +238,8 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
           if (outcome.outcome === "applied" && workflowOfRun.get(outcome.runId) === workflow) results[index] = { ...outcome, workerStartup };
         }
       }
-      if (results.length < request.targets.length || results.some(result => result.outcome !== "applied")) {
+      if ((results.length < request.targets.length || results.some(result => result.outcome !== "applied"))
+        && !allBulkChildrenRefusedAsSamples(results, request.targets.length)) {
         const count = (outcome: string) => results.filter(result => result.outcome === outcome).length;
         const parts = [[count("applied"), "applied"], [count("conflict"), count("conflict") === 1 ? "conflict" : "conflicts"], [count("refused"), "refused"], [count("errored"), "failed"],
           [request.targets.length - results.length, "not attempted"]].filter(([n]) => n !== 0).map(([n, label]) => `${n} ${label}`);

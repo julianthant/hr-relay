@@ -182,6 +182,10 @@ export interface StepManualDeclaration {
   readonly skips?: readonly string[];
   /** Cross-field rules checked by the server at plan time, after the form parses. */
   readonly refine?: (facts: JsonObject) => readonly StepManualIssue[];
+  /** Allows `skips` to name the step's gates and transactions: the typed values stand for their decision or write. */
+  readonly skipsGatesAndTransactions?: true;
+  /** Nodes in other steps that depend on a skipped member only to run after it and read none of its output. */
+  readonly orderOnlyReaders?: readonly string[];
 }
 
 /** The descriptor-retained form of one declaration, bound to its step key. */
@@ -240,6 +244,12 @@ const uniqueSteps = (entries: readonly StepOmissionEntry[], ctx: z.RefinementCtx
     seen.add(key);
   }
 };
+
+/** The run omitted the step that skips `dependency`, and the workflow declares `reader` waits on it only for order. */
+export function orderOnlyOmission(specs: readonly StepOmissionSpec[], omitted: readonly StepOmissionEntry[] | undefined, reader: string, dependency: string): boolean {
+  return specs.some((spec) => spec.orderOnlyReaders?.includes(reader) === true && spec.skips?.includes(dependency) === true
+    && (omitted ?? []).some((entry) => entry.workflow === undefined && entry.step === spec.step));
+}
 
 /** The envelope field: ordered, one entry per step, so fingerprints are stable; absent, never empty. */
 export const StepOmissionsSchema = z.array(StepOmissionEntrySchema).min(1).superRefine(uniqueSteps);
@@ -337,6 +347,7 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
     for (const dependency of node.dependsOn) {
       const blockedBy = omitted.get(dependency);
       if (blockedBy === undefined) continue;
+      if (specByStep.get(blockedBy)?.orderOnlyReaders?.includes(node.id) === true) continue;
       const ownStep = stepByNode.get(node.id);
       if (ownStep === undefined) throw new Error(`node "${node.id}" is on no timeline step; a declared timeline is exhaustive`);
       refusals.push({

@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
-import { WorkbookImportRequestSchema, EditableWorkbookSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, encodeSavedWorkbook, encodeEditableWorkbook, type SavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
+import { EditableWorkbookSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, encodeSavedWorkbook, type SavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
-import { FIXTURE_INTAKE_MAPPING } from "../../support/fixtures/dashboard/fixture-intake.js";
 import { WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryEntrySchema } from "../../../src/models/dashboard/workbook-library.js";
 import { WorkbookCompatibilitySchema } from "../../../src/models/dashboard/workbook-library.js";
 
@@ -151,40 +150,6 @@ it("requires named snapshot history to retain owner and nondecreasing master rev
   for (const records of [[saved(2), saved(1)], [saved(1), saved(2, "foreign")], [saved(1), { ...saved(2), createdAt: "2025-12-31T00:00:00.000Z" }]]) {
     await assert.rejects(harness(records.map(encodeSavedWorkbook)).client.workbookHistory("library /one"), schemaFailure);
   }
-});
-
-it("bridges the exact workbook revision and workflow, retaining typed refusals", async () => {
-  const session = { ...FIXTURE_INTAKE_MAPPING, workbookSource: { libraryId: "library /one", version: 2 } };
-  for (const [state, status] of [["created", 201], ["joined", 200]] as const) {
-    const h = harness({ state, session }, status);
-    assert.deepEqual(await h.client.workbookIntake("library /one", 2, session.workflow), { state, session });
-    assert.equal(h.calls[0].url, "http://workbooks.test/api/v1/workbooks/library%20%2Fone/intake");
-    assert.deepEqual(WorkbookIntakeRequestSchema.parse(JSON.parse(requestBody(h.calls[0]))), { expectedVersion: 2, workflowId: session.workflow });
-  }
-  const refusal = { state: "refused", code: "INTAKE_UNREADABLE_FILE", message: "Cannot read workbook." };
-  assert.deepEqual(await harness(refusal, 422).client.workbookIntake("library /one", 2, session.workflow), refusal);
-  for (const body of [
-    { state: "created", session: { ...session, workbookSource: undefined } },
-    { state: "created", session: { ...session, workbookSource: { libraryId: "foreign", version: 2 } } },
-    { state: "created", session: { ...session, workbookSource: { libraryId: "library /one", version: 1 } } },
-    { state: "created", session: { ...session, workflow: "another-workflow" } },
-  ]) await assert.rejects(harness(body, 201).client.workbookIntake("library /one", 2, session.workflow), schemaFailure);
-  await assert.rejects(harness({ state: "created", session }, 200).client.workbookIntake("library /one", 2, session.workflow), schemaFailure);
-  await assert.rejects(harness(refusal, 200).client.workbookIntake("library /one", 2, session.workflow), schemaFailure);
-  await assert.rejects(harness({ state: "created", session }, 422).client.workbookIntake("library /one", 2, session.workflow), schemaFailure);
-});
-
-
-it('imports a plain workbook at version one and rejects retired purpose or reference fields', async () => {
-  const body = { workbook: encodeSavedWorkbook(saved()) };
-  const h = harness(body, 201);
-  assert.deepEqual(await h.client.workbookImport(draft), body);
-  assert.equal(h.calls[0].url, 'http://workbooks.test/api/v1/workbooks/import');
-  assert.deepEqual(WorkbookImportRequestSchema.parse(JSON.parse(requestBody(h.calls[0]))), { workbook: encodeEditableWorkbook(draft) });
-  for (const extra of [{ purpose: { kind: 'other' } }, { reference: null }]) {
-    await assert.rejects(harness({ ...body, ...extra }, 201).client.workbookImport(draft), schemaFailure);
-  }
-  await assert.rejects(harness({ workbook: encodeSavedWorkbook(saved(2)) }, 201).client.workbookImport(draft), schemaFailure);
 });
 
 it('rejects merge requests before transport and refuses historical merge records on active result/status wires', async () => {

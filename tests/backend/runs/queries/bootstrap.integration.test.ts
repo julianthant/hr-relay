@@ -94,8 +94,6 @@ describe("bootstrap start-surface block", () => {
       // Re-parsed on purpose: the producer's own `.parse` is what makes this a
       // statement about the WIRE rather than about an object literal.
       const wire = FrontendBootstrapWireSchema.parse(buildBootstrap(depsOf(world)));
-      expect(wire.workbookCompatibility.workflows.map(workflow => workflow.workflowId))
-        .toEqual(DESCRIPTORS.map(descriptor => descriptor.id));
       const served = new Map(
         WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)
           .map((entry) => [String(entry.id), entry.start] as const),
@@ -104,7 +102,7 @@ describe("bootstrap start-surface block", () => {
         .toEqual(DESCRIPTORS.map((d) => String(d.id)).sort());
       const systemsByStep: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
         "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "reference-check": [], "crm-dates": ["crm"] },
-        separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "kronos-timecard": ["new-kronos"], "identity-review": [], "reference-check": [], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
+        separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "kronos-timecard": ["new-kronos"], "identity-review": [], "reference-check": [], "pending-termination": ["ucpath"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
         "crm-doc-download": { "search-records": ["crm"], reference: [], "read-idocs": ["crm"], "package-worksheets": [] },
         onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "hire-review": ["ucpath"], "reference-check": [],
           "i9-creation": ["i9"], "ucpath-hire": ["ucpath"], "master-results": [] },
@@ -121,12 +119,9 @@ describe("bootstrap start-surface block", () => {
 
           readiness: descriptor.requiredWorkbookFields.length === 0
             ? { scope: "workbook-sources", state: "ready" }
-            : wire.workbookCompatibility.workflows.find(workflow => workflow.workflowId === descriptor.id)?.sources.length
-              ? { scope: "workbook-sources", state: "selection-needed",
-                fixAction: { kind: "choose-workbook-sources", workflowId: descriptor.id } }
-              : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
-                reason: "Import a Library spreadsheet before choosing a source.",
-                fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
+            : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
+              reason: "Import a Library spreadsheet before choosing a source.",
+              fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
           ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
           ...(["person-lookup", "separations", "onboarding", "work-study", "i9-check-start", "emergency-contact", "emergency-contact-member"].includes(String(descriptor.id)) ? { workbookCheck: { id: "reference-check", keyFieldId: "eid" } } : {}),
@@ -225,7 +220,6 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
   const world = await makeWorld();
   try {
     const wire = buildBootstrap(depsOf(world));
-    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:i9-check-start')).toBe(false);
     expect(wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'i9-check-start')?.start?.uploadRun?.pdfInput).toEqual({
       documentsField: 'documents', asOfField: 'asOf', reviewerField: 'reviewerName',
     });
@@ -234,12 +228,10 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
     });
     const uploadDryRun = (id: string) => wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === id)?.start?.uploadRun?.supportsDryRun;
     expect([uploadDryRun('emergency-contact'), uploadDryRun('i9-check-start')]).toEqual([true, true]);
-    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:onboarding')).toBe(false);
     const onboarding = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'onboarding');
     expect(onboarding?.availability).toEqual({ state: 'available' });
     expect(onboarding?.start?.inputRun?.workbookRows).toEqual({ typeId: 'onboarding-roster', inputField: 'email' });
     expect(onboarding?.start?.inputRun?.typedInput?.initialMode).toBe(null);
-    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:crm-doc-download')).toBe(false);
     const crm = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'crm-doc-download');
     expect(crm?.availability).toEqual({ state: 'available' });
     expect(crm?.start?.inputRun?.parser).toBeDefined();

@@ -1,4 +1,4 @@
-import { WorkbookCheckRequirementSchema, WorkbookCompatibilitySchema, WorkbookFieldRequirementSchema, WorkbookRequirementDeclarationSchema } from "./workbook-library.js";
+import { WorkbookCheckRequirementSchema, WorkbookFieldRequirementSchema, WorkbookRequirementDeclarationSchema } from "./workbook-library.js";
 import { z } from "zod";
 import { StorageAuthoritySummarySchema } from "../storage/storage-status.js";
 import { ActivityTimeZoneSchema } from "./activity-volume.js";
@@ -27,7 +27,6 @@ import {
   DashboardWireVersionSchema,
   FeatureAvailabilityWireSchema,
   ProjectionGenerationSchema,
-  RevisionSchema,
 } from "./primitives.js";
 
 export const ActorWireSchema = LocalOperatorActorSchema;
@@ -116,17 +115,6 @@ export const WorkflowBootstrapPrimitiveSchema = z.strictObject({
   role: WorkflowModuleRoleSchema,
   start: WorkflowStartWireSchema,
 });
-export const SystemInstancePrimitiveSchema = z.strictObject({
-  system: BrowserSystemIdSchema,
-  prod: z.literal("available"),
-  test: CapabilityAvailabilitySchema,
-});
-export const SettingsSectionPrimitiveSchema = z.strictObject({
-  id: z.string().regex(/^[a-z][a-z0-9-]*$/),
-  label: z.string().min(1),
-  revision: RevisionSchema,
-});
-
 export const PreflightVerdictSchema = z.enum(["pass", "warning", "fail"]);
 
 /** ONE doctor check, as the Top Bar's standing indicator reads it. */
@@ -142,8 +130,6 @@ export const PreflightCheckWireSchema = z.strictObject({
 
 interface BootstrapParts {
   readonly workflow: z.ZodType;
-  readonly systemInstance: z.ZodType;
-  readonly settingsSection: z.ZodType;
 }
 
 /** Composes the stable bootstrap shell with closed owner-provided projections as later slices land. */
@@ -159,10 +145,7 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     serverClock: ServerClockWireSchema,
     storage: StorageAuthoritySummarySchema,
     workflows: z.array(parts.workflow),
-    workbookCompatibility: WorkbookCompatibilitySchema,
-    systemInstances: z.array(parts.systemInstance),
-    settingsSections: z.array(parts.settingsSection),
-    featureAvailability: z.array(FeatureAvailabilityWireSchema),
+    featureAvailability: z.array(FeatureAvailabilityWireSchema).min(1).optional(),
     // Optional permits older producers; current composition must supply the strict report.
     preflight: z.array(PreflightCheckWireSchema).optional(),
   });
@@ -170,20 +153,14 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
 
 export const FrontendBootstrapWireSchema = createFrontendBootstrapWireSchema({
   workflow: WorkflowBootstrapPrimitiveSchema,
-  systemInstance: SystemInstancePrimitiveSchema,
-  settingsSection: SettingsSectionPrimitiveSchema,
 }).superRefine((bootstrap, context) => {
   const workflows = z.array(WorkflowBootstrapPrimitiveSchema).parse(bootstrap.workflows);
-  const systemInstances = z.array(SystemInstancePrimitiveSchema).parse(bootstrap.systemInstances);
-  const settingsSections = z.array(SettingsSectionPrimitiveSchema).parse(bootstrap.settingsSections);
   const identities = [
     ["workflows", workflows.map(({ id }) => id)],
-    ["systemInstances", systemInstances.map(({ system }) => system)],
-    ["settingsSections", settingsSections.map(({ id }) => id)],
-    ["featureAvailability", bootstrap.featureAvailability.map(({ feature }) => feature)],
+    ["featureAvailability", (bootstrap.featureAvailability ?? []).map(({ feature }) => feature)],
   ] as const;
   for (const [path, values] of identities) {
-    if (new Set(values).size !== values.length) {
+    if (new Set<string>(values).size !== values.length) {
       context.addIssue({ code: "custom", path: [path], message: `${path} identities must be unique` });
     }
   }

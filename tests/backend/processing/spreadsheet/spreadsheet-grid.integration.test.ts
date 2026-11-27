@@ -36,10 +36,8 @@ function noEffects(h: Harness, wire: Awaited<ReturnType<typeof ready>>) {
   assert.equal(h.database.authority.intakeSessions.get(wire.intakeSessionId)?.state, "validated");
   assert.ok(h.database.authority.runSessions.list().every(session => session.origin.kind !== "intake-manifest" || session.origin.intakeManifestId !== wire.reservedManifestId));
 }
-it("real HTTP upload refuses malformed bytes and reports exact valid/unresolved/excluded rows", async () => {
+it("reports exact valid, unresolved and excluded rows after intake confirmation", async () => {
   const h = await harness();
-  const response = await h.app.request("http://127.0.0.1/api/v1/intake/files?workflow=intake-fixture&filename=broken.xlsx", { method: "POST", headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }, body: "not a workbook" });
-  assert.equal(response.status, 422);
   const wire = await ready(h); assert.ok(wire.reviewBinding);
   assert.equal(wire.validation.state, "validated");
   if (wire.validation.state !== "validated") throw new Error("validation missing");
@@ -111,8 +109,7 @@ for (const [name, mediaType, bytes] of [
   ["partial.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Buffer.from([0x50, 0x4b, 3, 4, 0, 0])],
 ] as const) it(`refuses ${name} before creating a session or runs`, async () => {
   const h = await harness();
-  const response = await h.app.request(`http://127.0.0.1/api/v1/intake/files?workflow=intake-fixture&filename=${name}`, { method: "POST", headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": mediaType }, body: new Uint8Array(bytes) });
-  assert.equal(response.status, 422);
+  assert.equal((await h.intake.upload({ workflow: INTAKE_FIXTURE_WORKFLOW_ID, fileName: name, mediaType, bytes })).state, "refused");
   assert.deepEqual(h.database.authority.intakeSessions.findActiveBySource(createHash("sha256").update(bytes).digest("hex")), []);
   assert.deepEqual(h.database.authority.runSessions.list(), []);
   assert.equal((await ready(h)).state, "validated");

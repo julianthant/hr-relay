@@ -18,7 +18,6 @@ function world() {
   const versions: SavedWorkbook[] = [];
   const record = (workbook: unknown, version: number) => SavedWorkbookSchema.parse({ libraryId: 'library-id', version, createdAt: '2026-10-01T00:00:00Z', savedAt: '2026-10-01T00:00:00Z', workbook: { ...workbook as EditableWorkbook, libraryId: 'library-id' } });
   const client = {
-    workbookImport: vi.fn<WorkbookLibraryQueries['workbookImport']>(async () => { throw new Error('Unexpected workbookImport call'); }),
     workbookClone: vi.fn<WorkbookLibraryQueries['workbookClone']>(async () => { throw new Error('Unexpected workbookClone call'); }),
     workbookImportSharePoint: vi.fn<WorkbookLibraryQueries['workbookImportSharePoint']>(async () => { throw new Error('Unexpected workbookImportSharePoint call'); }),
     workbookList: vi.fn(async () => versions.length ? [summaryOf(versions.at(-1)!)] : []),
@@ -26,7 +25,8 @@ function world() {
     workbookCreate: vi.fn(async (workbook: unknown) => { const saved = record(workbook, 1); versions.push(saved); return saved; }),
     workbookSave: vi.fn(async (_id: string, expected: number, workbook: unknown) => { assert.equal(expected, versions.at(-1)?.version); const saved = record(workbook, expected + 1); versions.push(saved); return saved; }),
     workbookRevision: vi.fn(async (_id: string, version: number) => { const saved = versions.find(record => record.version === version); if (!saved) throw new Error('WORKBOOK_REVISION_UNAVAILABLE'); return saved; }),
-    workbookHistory: vi.fn(async () => []), workbookIntake: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(), workbookCompatibility: vi.fn<WorkbookLibraryQueries['workbookCompatibility']>(async () => WorkbookCompatibilitySchema.parse({ workflows: [], libraries: [] })), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>(),
+    workbookCopyMapping: vi.fn<WorkbookLibraryQueries['workbookCopyMapping']>(async () => { throw new Error('Unexpected workbookCopyMapping call'); }),
+    workbookHistory: vi.fn(async () => []), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(), workbookCompatibility: vi.fn<WorkbookLibraryQueries['workbookCompatibility']>(async () => WorkbookCompatibilitySchema.parse({ workflows: [], libraries: [] })), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>(),
   } satisfies WorkbookLibraryQueries;
   const adapter = createSpreadsheetWiringAdapter(client), port = createSpreadsheetChatRegistrationPort(adapter);
   return { versions, client, adapter, port };
