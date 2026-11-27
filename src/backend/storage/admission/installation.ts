@@ -1237,7 +1237,9 @@ function observeDashboardReadCustody(control: string, locator: RuntimeLocator, d
       path = parent;
     }
   }
-  const paths = [...[...directories].map(path => ({ path, before: stat(path), content: false })),
+  const roots = [...directories].map(path => ({ path, before: stat(path), content: false }));
+  if (roots.some(({ before }) => before?.isDirectory() !== true)) return undefined;
+  const paths = [...roots,
     { path: operations, before: operationsStatus, content: true },
     { path: publication, before: undefined, content: true },
     ...files.map(path => ({ path, before: stat(path), content: true }))];
@@ -2063,7 +2065,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         renameSync(intentPath, completed); fsyncPath(control);
       });
     },
-    observeDashboardReadCustody(path) {
+    observeDashboardReadCustody(path: string) {
       assertHeld();
       if (options?.stoppedControlForward === true || defaultLayoutSources.has(workspace)) return undefined;
       const unchanged = observeDashboardReadCustody(control, locator, path);

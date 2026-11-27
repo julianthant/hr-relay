@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { chmodSync, copyFileSync, linkSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import fs, { chmodSync, copyFileSync, linkSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
@@ -191,27 +192,36 @@ it.skipIf(process.platform === "win32")("reuses reply custody until the WAL chan
     checkpoint: { thresholdBytes: Number.MAX_SAFE_INTEGER }, entry: LANE_READS_ENTRY });
   cleanups.push(() => lanes.close());
   await lanes.ready;
-  const prove = vi.spyOn(RuntimeAdmission.prototype, "assertReadOnlyAuthorityDatabase");
+  const registry = join(fixture.profile.machine.stateRoot, "machine", "profiles.json");
+  const open = fs.openSync;
+  let registryReads = 0;
+  const observeRegistry = vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+    if (path === registry) registryReads++;
+    return open(path, flags, mode);
+  });
+  syncBuiltinESMExports();
   const read = () => lanes.read(laneSleep, { tag: "custody", ms: 0 });
   try {
     await read();
-    assert.equal(prove.mock.calls.length, 1);
+    const first = registryReads;
+    assert.ok(first > 0);
     await read();
-    assert.equal(prove.mock.calls.length, 1, "the next reply reuses unchanged custody");
+    assert.equal(registryReads, first, "the next reply reuses unchanged custody");
 
     fixture.database.authority.workerPools.plan({ workflow: "person-lookup", desiredWorkers: 1, expectedVersion: 0, requestedBy: "local-operator",
       now: systemClock.now().toISOString() });
-    prove.mockClear();
+    const afterCommit = registryReads;
     await read();
-    assert.equal(prove.mock.calls.length, 1, "the WAL commit requires a fresh proof");
+    const afterProof = registryReads;
+    assert.ok(afterProof > afterCommit, "the WAL commit requires a fresh proof");
     await read();
-    assert.equal(prove.mock.calls.length, 1);
+    assert.equal(registryReads, afterProof);
 
     await assert.rejects(lanes.read(laneStuck, {}), /read-lane-restarted/u);
-    prove.mockClear();
+    const afterRestart = registryReads;
     await read();
-    assert.equal(prove.mock.calls.length, 1, "the replacement lane proves its first reply");
-  } finally { prove.mockRestore(); }
+    assert.ok(registryReads > afterRestart, "the replacement lane proves its first reply");
+  } finally { observeRegistry.mockRestore(); syncBuiltinESMExports(); }
 });
 
 it("refuses replies after in-place profile evidence changes or replacement of the lane database", async () => {

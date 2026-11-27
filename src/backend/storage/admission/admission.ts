@@ -550,11 +550,14 @@ export class RuntimeAdmission {
     if (this.#scope !== "profile" || path !== join(this.#stateRoot, "state.db")) throw new Error("profile-database-open-source-changed");
     // Windows access checks use native ACLs and reparse checks beyond lstat metadata.
     if (process.platform === "win32") return undefined;
+    const parent = this.#profileParent;
+    if (parent === undefined) return undefined;
     const unchanged = this.#authority.observeDashboardReadCustody?.(path);
     if (unchanged === undefined) return undefined;
+    const lifetime = parent.lifetime;
     return () => {
-      if (this.#released) throw new Error("runtime-admission: missing or released admission");
-      this.lifetime.assertRuntimeAvailable();
+      if (this.#released || parent.#released) throw new Error("runtime-admission: missing or released admission");
+      lifetime.assertRuntimeAvailable();
       return unchanged();
     };
   }

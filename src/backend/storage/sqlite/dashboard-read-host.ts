@@ -460,7 +460,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       if (previous?.()) { custodyUnchanged = previous; return; }
       const unchanged = owner.observeDashboardReadCustody(start.path);
       admit(start);
-      custodyUnchanged = unchanged;
+      if (unchanged?.()) custodyUnchanged = unchanged;
     };
     const releaseSource = database.retainDashboardReadSource(owner, start.identity);
     let worker: Worker;
