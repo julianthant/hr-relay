@@ -156,7 +156,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   const protectedSecrets = { read: () => { assertCurrent(); const result = context.protectedSecrets.read(); assertCurrent(); return result; } };
   const settingsBoundary = composeSettings({ database, readLanes, hostFacts, clock, active: activeSettingsRuntimeIdentity,
     environment: env, credentials: protectedSettingsAuthority,
-    ...(settingsProcesses === undefined ? {} : { readProtectedSettings: settingsProcesses.read }),
+    ...(settingsProcesses === undefined ? {} : { readProtectedSettings: () => settingsProcesses.read() }),
     runtimeStoragePair,
     resolveSettings: settings => { assertCurrent(); const result = context.resolveSettings(settings); assertCurrent(); return result; }, assertCurrent,
     assertBrowserRoot: path => { assertRetainedProfileBrowserRoot(context.admission, path); } });

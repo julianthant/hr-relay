@@ -60,8 +60,8 @@ export function createProfileSettingsProcesses(admission: RuntimeAdmission, life
         || reply.committed !== (reply.result.state === "applied")) throw unavailable();
       return reply.result;
     },
-    close: editor.close,
-    closeCommands: commands.close,
+    close: () => editor.close(),
+    closeCommands: () => commands.close(),
   };
 }
 
