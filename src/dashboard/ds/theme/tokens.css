@@ -1014,6 +1014,7 @@ body[data-demo-theme="light"] {
 .ds-menu-check { width: 16px; height: 16px; stroke-width: 1.5; color: var(--ds-menu-fg); }
 .ds-menu-item:has(.ds-menu-copy) { padding-block: 5px; }
 .ds-menu-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.ds-menu-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds-menu-copy > span:first-child { font-size: 14px; line-height: 20px; color: var(--ds-menu-fg); }
 .ds-menu-copy > span + span { font-size: 13px; line-height: 20px; color: var(--ui-secondary); }
 .ds-menu-label { padding: 6px 8px 4px; font-size: 12px; font-weight: 400; line-height: 16px; color: var(--ui-muted); }
