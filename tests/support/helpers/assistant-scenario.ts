@@ -128,7 +128,7 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
       const store = assistantM1HistoryFixture({ now: at, acceptedAt: at, profileId: admission.profileBinding.profileId });
       try {
         const owner = () => ({ profileId: store.profileId(), epoch: store.epoch() });
-        const proposals = typedProposalFixture(store, at), proposalStore = proposals.ports.store;
+        const proposals = typedProposalFixture(store, at), proposalStore = store.proposals();
         const personRun = RunRecordSchema.parse(personLookupQueuedRun({ runId: randomUUID(), itemId: randomUUID() }));
         const personQuery = z.strictObject({ query: z.string().min(1) });
         const readPerson: AssistantReadTool = {
@@ -153,7 +153,7 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
           const runIds = command.family === "start" ? [proposals.run().envelope.runId] : command.family === "run" ? [command.target.runId] : [];
           return Promise.resolve(CommandResultSchema.parse({ state: "applied", commandId: command.commandId, affectedTargets: runIds.map(runId => ({ family: "run", runId })) }));
         } };
-        const composed = composeAssistant({ database: { authority, withAuthorityReadSnapshot: work => work() } as unknown as Parameters<typeof composeAssistant>[0]["database"], starts,
+        const composed = composeAssistant({ database: { authority, withAuthorityReadSnapshot: (work: () => unknown) => work() } as unknown as Parameters<typeof composeAssistant>[0]["database"], starts,
           readPlugins: () => [{ domain: "people", tools: [readPerson] }],
           service: { account, clock, actorId: "local-operator", owner,
             selectedModel: () => ({ preference: { slug: MODEL, effort: "medium" }, assertCurrent() {} }),

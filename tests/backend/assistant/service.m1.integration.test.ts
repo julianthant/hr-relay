@@ -54,7 +54,7 @@ async function world() {
       tools++; if (refuseTool) throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE");
       const token = context.references.issue("P", row.envelope.runId, personLabel, EXECUTOR_EID, row.version); tokens.add(token); return { person: token };
     } };
-  const options: AssistantM1ServiceOptions = { account: account.service, proposals: { open: id => typed.owner.open(id), supersede: id => typed.owner.supersede(id), issue: (...args) => typed.owner.issue(...args), answer: (...args) => typed.owner.answer(...args) }, history: () => history, clock: account.clock, actorId: "local-operator",
+  const options: AssistantM1ServiceOptions = { account: account.service, proposals: { open: id => typed.owner.open(id), supersede: id => typed.owner.supersede(id), issue: (...args) => typed.owner.issue(...args), answer: (...args) => typed.owner.answer(...args), needsYou: () => typed.owner.needsYou() }, history: () => history, clock: account.clock, actorId: "local-operator",
     owner: () => ({ profileId, epoch: storage.epoch() }), assertComposition() { if (profileId !== storage.profileId()) throw new AssistantToolRefusal("ASSISTANT_CONTEXT_STALE"); },
     selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent() { if (!current) throw new Error("model changed"); } }),
     facts: () => { facts++; return assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup")); }, runReferenceLabel: () => "Lookup",

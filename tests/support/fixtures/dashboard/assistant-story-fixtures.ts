@@ -3,8 +3,9 @@
 import type { AssistantQueries } from "../../../../src/dashboard/client/index.js";
 import type { HubChat, HubChatsPort } from "../../../../src/dashboard/surfaces/shell/hub-shell-model.js";
 import type { ChatGptAccountPort, ChatGptAccountSnapshot } from "../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
-import type { AssistantFailureCode, AssistantInline, AssistantReplyPart, AssistantStageResult } from "../../../../src/models/dashboard/assistant.js";
-import { scriptedEnvelope, type ScriptedReply } from "../../helpers/dashboard/assistant-served-client.js";
+import type { z } from "zod";
+import type { AssistantFailureCode, AssistantInlineSchema, AssistantStageResult } from "../../../../src/models/dashboard/assistant.js";
+import { scriptedEnvelope, type AssistantReplyPartInput as AssistantReplyPart, type ScriptedReply } from "../../helpers/dashboard/assistant-served-client.js";
 
 export const ASSISTANT_STORY_PROMPT = "Look up Avery Sample in Person Lookup.";
 
@@ -18,6 +19,7 @@ export interface AssistantStoryClientOptions {
 }
 
 const ID = "00000000-0000-4000-8000-0000000000c1";
+type AssistantInline = z.input<typeof AssistantInlineSchema>;
 const plain = (text: string): AssistantInline => ({ kind: "plain", text });
 const say = (...runs: AssistantInline[]): AssistantReplyPart => ({ kind: "text", runs });
 const value = (text: string): AssistantInline => ({ kind: "value", value: text });
