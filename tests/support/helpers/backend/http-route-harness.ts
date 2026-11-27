@@ -5,7 +5,7 @@ import { AUTHORITY_DERIVED_TABLES } from "../../../../src/models/config/authorit
 import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
-import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { createWorkbookLibraryService, type WorkbookSyncDownload } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
 import { queryAssistantUsage } from "../../../../src/backend/assistant/usage-counts.js";
@@ -199,6 +199,7 @@ function installCommandAuditInsertFault(database: AuthorityDatabase, fault: Comm
 
 export async function harness(options: {
   readonly workbookWorkflows?: readonly import("../../../../src/backend/workbooks/workbook-library-service.js").WorkbookReferenceWorkflow[];
+  readonly workbookSync?: WorkbookSyncDownload;
   readonly profileFixture?: () => Promise<BoundProfileStorageFixture>;
   readonly protectedCommandAcceptedAt?: DashboardAppDeps["protectedCommandAcceptedAt"];
   readonly requestIdentity?: RequestIdentityCheckpoint;
@@ -431,7 +432,7 @@ export async function harness(options: {
     },
   });
   const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
-  const workbookLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
+  const workbookLibrary = createWorkbookLibraryService({ sync: options.workbookSync ?? unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
