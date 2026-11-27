@@ -4,7 +4,7 @@
  * The turn's `cancelled` state comes only from typing while a reply is pending, and the composer is disabled then, so no person reaches it. */
 import type { Page } from "@playwright/test";
 import type { ChatGptAccountSnapshot } from "../../../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
-import type { AssistantHistoryState, AssistantRefusalAction, AssistantTurn } from "../../../../../../src/dashboard/surfaces/assistant/assistant-model.js";
+import type { AssistantHistoryState, AssistantTurn } from "../../../../../../src/dashboard/surfaces/assistant/assistant-model.js";
 import type { AssistantFileStage } from "../../../../../../src/dashboard/surfaces/shell/assistant-panel-model.js";
 import type { ChatListView } from "../../../../../../src/dashboard/surfaces/shell/hub-shell-model.js";
 import { ASSISTANT_FAILURES } from "../../../../../../src/models/dashboard/assistant.js";
@@ -51,8 +51,8 @@ const TURN = {
   idle: scene("A new chat waiting for a request"),
   waiting: after("A reply being prepared", { client: { reply: "never" } }, 'text="Preparing a reply…"'),
   failed: after("A reply that never arrived", { client: { reply: "lost" } }, 'text="Reply unavailable."'),
-  unknown: after("A reply cancelled before it answered", { client: { reply: "never" } }, 'text=/unclear whether this finished/', press("Cancel")),
-} satisfies Record<Exclude<AssistantTurn["state"], "cancelled">, Story>;
+  // `unknown` follows only an uncertain model save; the controller tests cover it.
+} satisfies Record<Exclude<AssistantTurn["state"], "cancelled" | "unknown">, Story>;
 
 const reply = (script: AssistantReplyScript): AssistantHostProps => ({ client: { reply: script } });
 const REPLY = {
@@ -63,10 +63,11 @@ const REPLY = {
   "answered-yes": after("A typed yes that started a session", reply("answered-yes"), '.reply-session'),
 } satisfies Record<Exclude<AssistantReplyScript, "never" | "lost" | { readonly refused: unknown }>, Story>;
 
+// A refusal is one notice with no button; the account strip carries Sign in or Open Settings.
 const REFUSAL = {
-  "open-settings": after("A reply refused because the plan is off", { client: { reply: { refused: "ASSISTANT_PLAN_DISABLED" } } }, 'button:has-text("Open Settings")'),
-  retry: after("A reply refused for too many requests", { client: { reply: { refused: "CHATGPT_RATE_LIMITED" } } }, 'button:has-text("Retry")'),
-} satisfies Record<AssistantRefusalAction, Story>;
+  "plan-off": after("A reply refused because the plan is off", { client: { reply: { refused: "ASSISTANT_PLAN_DISABLED" } } }, `text=${JSON.stringify(ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED)}`),
+  "rate-limited": after("A reply refused for too many requests", { client: { reply: { refused: "CHATGPT_RATE_LIMITED" } } }, `text=${JSON.stringify(ASSISTANT_FAILURES.CHATGPT_RATE_LIMITED)}`),
+};
 
 const HISTORY = {
   loading: scene("History being read", { loading: true }, { ready: '[aria-label="Loading chat"]', slowFetch: { region: '[aria-label="Loading chat"]' } }),
@@ -131,8 +132,8 @@ const KNOWN_BREAKS = {
   "history/ready": BREAK_SETS.COMPOSER_FOCUS,
   "menu/model": ["named-and-focusable", "primary-button-accent"],
   "plan/enabled": BREAK_SETS.COMPOSER_FOCUS,
-  "refusal/open-settings": BREAK_SETS.COMPOSER_FOCUS,
-  "refusal/retry": BREAK_SETS.COMPOSER_FOCUS,
+  "refusal/plan-off": BREAK_SETS.COMPOSER_FOCUS,
+  "refusal/rate-limited": BREAK_SETS.COMPOSER_FOCUS,
   "reply/answer": BREAK_SETS.COMPOSER_FOCUS,
   "reply/answer-long": BREAK_SETS.COMPOSER_FOCUS,
   "reply/proposal": BREAK_SETS.COMPOSER_FOCUS,
@@ -140,7 +141,6 @@ const KNOWN_BREAKS = {
   "reply/answered-yes": BREAK_SETS.COMPOSER_FOCUS,
   "turn/failed": BREAK_SETS.COMPOSER_FOCUS,
   "turn/idle": BREAK_SETS.COMPOSER_FOCUS,
-  "turn/unknown": BREAK_SETS.COMPOSER,
   "turn/waiting": BREAK_SETS.COMPOSER,
   "history/loading": BREAK_SETS.COMPOSER_FOCUS_SKELETON,
 } as const;

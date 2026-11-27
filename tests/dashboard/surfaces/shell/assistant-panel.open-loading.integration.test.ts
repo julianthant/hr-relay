@@ -100,7 +100,7 @@ it("renders a served reply's bullets and bold parts as a list and strong text, a
   } finally { await shell.close(); }
 });
 
-it("shows the typing row with Cancel while a reply is prepared, and Cancel cancels the turn", async () => {
+it("shows the typing row with no button while a reply is prepared", async () => {
   const actions: unknown[] = [];
   const served = { state: { draft: "", messages: [{ id: "m1", role: "operator" as const, text: "Hello" }], sequence: 1, turn: { state: "waiting" as const } }, canCompose: true, accountAvailable: true,
     accountAction: "settings" as const, accountNotice: "", accountRetry() {}, accountHeading: "", models: undefined, chooseModel() {}, onAction: (action: unknown) => { actions.push(action); }, revision: "",
@@ -114,8 +114,7 @@ it("shows the typing row with Cancel while a reply is prepared, and Cancel cance
     assert.equal(row.querySelectorAll(".hub-typing-dots i").length, 3);
     assert.match(row.textContent ?? "", /Preparing a reply…/u);
     assert.ok(row.closest(".hub-assistant-line"), "aligned with the assistant messages");
-    const cancel = [...row.querySelectorAll("button")].find(button => button.textContent === "Cancel"); assert.ok(cancel);
-    await act(async () => cancel.click());
-    assert.deepEqual(actions, [{ type: "cancel" }]);
+    assert.equal(row.querySelectorAll("button").length, 0);
+    assert.deepEqual(actions, []);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

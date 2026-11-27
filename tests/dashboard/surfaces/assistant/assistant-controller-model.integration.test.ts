@@ -321,7 +321,7 @@ it('offers no Retry for a recorded refusal the server marked not resendable, so 
   assert.equal(calls, 1);
 });
 
-it('shows a refused reply as one failure notice whose Retry sends the kept prompt again', async () => {
+it('shows a refused reply as one failure notice with no button, so nothing resends it', async () => {
   vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
   let current!: ReturnType<typeof useAssistantController>, calls = 0;
   const client = resultClient({ async assistantRespond(): Promise<ScriptedReply> { calls++; return { state: 'no-reply', reason: 'ASSISTANT_RESPONSE_FAILED' }; } });
@@ -337,12 +337,10 @@ it('shows a refused reply as one failure notice whose Retry sends the kept promp
   assert.equal(current.state.turn.state, 'idle');
   assert.match(document.body.textContent ?? '', /The assistant could not reply\./u);
   assert.equal(document.querySelectorAll('.hub-assistant-line').length, 0);
-  await act(async () => { [...document.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });
-  assert.equal(calls, 2);
-  assert.equal(document.querySelectorAll('.hub-assistant-line').length, 0);
+  assert.equal(document.querySelector('.hub-transcript [role="alert"] button, .hub-transcript .failure-notice button'), null);
+  assert.equal([...document.querySelectorAll('.hub-transcript button')].some(button => button.textContent === 'Retry' || button.textContent === 'Open Settings'), false);
+  assert.equal(calls, 1);
   assert.equal((document.body.textContent?.match(/The assistant could not reply\./gu) ?? []).length, 1);
-  assert.equal(document.body.textContent?.includes('Restored chat'), false);
-  assert.equal(current.state.messages.filter(message => message.role === 'operator' && message.text === 'start selected workflow').length, 2);
 });
 
 it.each([

@@ -28,7 +28,7 @@ type AssistantM1Result = Extract<AssistantM1RespondEnvelope, { kind: 'result' }>
 export function presentResult(result: AssistantM1Result, requestId: number): AssistantMessage {
   const id = `assistant-${requestId}`;
   return result.state === 'answered' ? { id, role: 'assistant', text: replyText(result.reply.parts), parts: result.reply.parts }
-    : { id, role: 'assistant', text: ASSISTANT_FAILURES[result.reason], code: result.reason, retry: result.canRetry || result.turn === null };
+    : { id, role: 'assistant', text: ASSISTANT_FAILURES[result.reason], code: result.reason };
 }
 
 /** One served chat: its id, the cached revision a send expects, and where receipts and local outcomes go. */

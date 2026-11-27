@@ -1,10 +1,10 @@
-import { ASSISTANT_UNKNOWN_NOTICE, assistantHistoryState, assistantRefusalAction } from "../assistant/assistant-model.js";
+import { ASSISTANT_UNKNOWN_NOTICE, assistantHistoryState } from "../assistant/assistant-model.js";
 import { AssistantReplyParts } from "../assistant/assistant-reply-parts.js";
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
 import { useEffect, useLayoutEffect, useMemo, useRef, type HTMLAttributes } from 'react';
 import { ArrowDown, History, Paperclip, Plus, X } from "lucide-react";
 import { AssistantReply, AssistantText } from "./assistant-thread.js";
-import { Button, FailureNotice, Skeleton } from '../../ds/ui.js';
+import { FailureNotice, Skeleton } from '../../ds/ui.js';
 import type { ComposerDraftPort } from './composer-model.js';
 import { ComposerInput } from './composer-input.js';
 import { useAssistantPanel, type AssistantConversationPort, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
@@ -23,7 +23,6 @@ function TranscriptSkeleton() {
   </div>;
 }
 /** The prompt a refused reply answered: the operator message before it. */
-const keptPrompt = (messages: readonly { role: string; text: string }[], index: number) => messages.slice(0, index).findLast(message => message.role === 'operator')?.text;
 export function AssistantPanel({ conversationPort, onAttachFile, onRegisterSpreadsheet, onOpenSettings,
   onClose, onChats, onNewChat, onRename, title, headerProps, onSendMessage, draft, served, onAutomaticTitle, historyNotice, loading = false, modelPreference, initialText = '', onOpenTarget }: AssistantPorts & {
   historyNotice?: string; loading?: boolean; modelPreference?: AssistantModelPreferenceView['preference'];
@@ -48,7 +47,7 @@ export function AssistantPanel({ conversationPort, onAttachFile, onRegisterSprea
   const historyFailed = assistantHistoryState(loading, historyNotice) === 'failed';
   const lastMessage = served.state.messages.at(-1);
   // Only the newest failed reply is shown, as one notice; it is never a chat bubble and an older failure is not repeated.
-  const lastRefusal = lastMessage?.role === 'assistant' && lastMessage.code !== undefined ? { text: lastMessage.text, code: lastMessage.code, retry: lastMessage.retry === true } : undefined;
+  const lastRefusal = lastMessage?.role === 'assistant' && lastMessage.code !== undefined ? { text: lastMessage.text } : undefined;
   const sessions = useMemo(() => new Map(served.state.sessions?.map(view => [view.runId, view])), [served.state.sessions]);
   const phase: AssistantTurnPhase = turn.state === 'waiting' ? 'waiting' : turn.state === 'failed' || turn.state === 'unknown' ? 'failed' : 'settled';
   useEffect(() => { assistantActivity.report(phase); }, [phase]);
@@ -64,10 +63,8 @@ export function AssistantPanel({ conversationPort, onAttachFile, onRegisterSprea
           : message.role === 'assistant' && message.parts !== undefined ? <AssistantReplyParts key={index} parts={message.parts} sessions={sessions} onOpen={target => onOpenTarget?.(target)} onStop={stop => { void served.stop(stop); }} />
           : message.role === 'operator' ? <div className="hub-message operator" key={index}>{message.text}{message.attachments?.map(file => <span className="hub-sent-file" key={file.id}><Paperclip aria-hidden />{file.name}</span>)}</div> : <AssistantReply key={index}><AssistantText text={message.text} /></AssistantReply>)}
         {conversation.files.filter(file => file.status !== 'Attached').map(file => <AssistantFileChip key={file.id} file={file} />)}
-        {turn.state === 'waiting' && <AssistantReply><div className="hub-typing" role="status"><span className="hub-typing-dots" aria-hidden><i /><i /><i /></span><span>Preparing a reply…</span><Button variant="secondary" size="sm" onClick={() => served.onAction({ type: 'cancel' })}>Cancel</Button></div></AssistantReply>}
-        {lastRefusal !== undefined && <FailureNotice sentence={lastRefusal.text}
-          action={turn.state !== 'idle' ? undefined : assistantRefusalAction(lastRefusal.code) === 'open-settings' ? onOpenSettings && { label: 'Open Settings', onClick: () => onOpenSettings('general', 'chatgpt.account') }
-            : !lastRefusal.retry || keptPrompt(served.state.messages, served.state.messages.length - 1) === undefined ? undefined : { label: 'Retry', onClick: () => { onSendMessage?.(); served.onAction({ type: 'edit', value: keptPrompt(served.state.messages, served.state.messages.length - 1)! }); served.onAction({ type: 'send' }); } }} />}
+        {turn.state === 'waiting' && <AssistantReply><div className="hub-typing" role="status"><span className="hub-typing-dots" aria-hidden><i /><i /><i /></span><span>Preparing a reply…</span></div></AssistantReply>}
+        {lastRefusal !== undefined && <FailureNotice sentence={lastRefusal.text} />}
         {turn.state === 'failed' && <FailureNotice sentence="Reply unavailable."
           action={accountReady && served.state.draft === turn.prompt ? { label: 'Retry', onClick: () => served.onAction({ type: 'retry' }) } : undefined} />}
         {turn.state === 'unknown' && <p className="hub-footer-status" role="alert">{ASSISTANT_UNKNOWN_NOTICE}</p>}
