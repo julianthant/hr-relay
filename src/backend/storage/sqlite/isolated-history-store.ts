@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { lstatSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { SpanEventWireSchema, type SpanEventWire } from "../../../models/events/types.js";
+import { NoteWireSchema, SpanEventWireSchema, type NoteWire, type SpanEventWire } from "../../../models/events/types.js";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { NotificationRecordSchema, type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
@@ -119,7 +119,7 @@ export const COPY_HISTORY_SEED_BUILD = sha256Hex("relay-copy-seed");
 export type CopyHistorySeed = Readonly<{
   fromDay: string;
   build(runs: readonly RunRecord[]): Readonly<{
-    runs: readonly Readonly<{ run: RunRecord; failure?: FailureRecord; events: readonly SpanEventWire[] }>[];
+    runs: readonly Readonly<{ run: RunRecord; failure?: FailureRecord; events: readonly (SpanEventWire | NoteWire)[] }>[];
     notifications: readonly NotificationRecord[];
     /** Run groups the generated runs belong to; seed-owned, never a real session. */
     batches: readonly RunSessionRecord[];
@@ -206,12 +206,12 @@ export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding:
       insert("runs", runRecordColumns(run));
       if (failure !== undefined) insert("run_failures", initialFailureColumns(failure));
       let queued: z.infer<typeof TimelineEventRecordSchema> | undefined;
-      for (const [index,event] of SpanEventWireSchema.array().parse(row.events).entries()) {
+      for (const [index,event] of z.union([SpanEventWireSchema, NoteWireSchema]).array().parse(row.events).entries()) {
         const record = TimelineEventRecordSchema.parse({ schemaVersion: 1, cursor: ++cursor,
           eventId: deriveStableUuid("relay-copy-seed-event", `${runId}/${String(index)}`), workflow,
           scope: { kind: "run", runId }, occurredAt: event.ts, recordedAt: event.ts,
-          retentionDate: event.ts.slice(0, 10), payload: { kind: "span", event }, source: { kind: "native" } });
-        if (event.t === "run.queued") {
+          retentionDate: event.ts.slice(0, 10), payload: "t" in event ? { kind: "span", event } : { kind: "note", note: event }, source: { kind: "native" } });
+        if ("t" in event && event.t === "run.queued") {
           if (queued !== undefined) throw new Error("copy-seed-duplicate-queue-event");
           queued = record;
         }

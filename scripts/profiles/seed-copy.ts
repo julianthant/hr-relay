@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { runSpanPath, taskSpanPath } from "../../src/backend/logs/span-emitter.js";
 import { runQueuedSpanEvent } from "../../src/backend/runs/commands/run-queued-span.js";
+import { createNoteTimelineWriter } from "../../src/backend/storage/events/note-timeline-writer.js";
 import type { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 import { acquireRuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../../src/backend/storage/admission/lifetime-lock.js";
 import { noSymlinkAncestry } from "../../src/backend/storage/configuration/credential-safe-file.js";
@@ -13,7 +14,7 @@ import { runtimeProfiles } from "../../src/models/config/define-runtime-isolatio
 import { RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
 import { notificationTitle } from "../../src/models/dashboard/projection.js";
 import { PACIFIC_TIME_ZONE, searchPartitionDay } from "../../src/models/dashboard/search-calendar.js";
-import { SpanEventWireSchema } from "../../src/models/events/types.js";
+import { SpanEventWireSchema, NoteWireSchema, type NoteWire } from "../../src/models/events/types.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../../src/models/notifications/notifications.js";
 import { RunRecordSchema, type RunLifecycle, type RunRecord } from "../../src/models/run/record.js";
 import { RunSessionRecordSchema } from "../../src/models/run/session.js";
@@ -213,8 +214,13 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   const title = `Synthetic ${workflow.label} ${live === undefined ? day : "today"} ${state}`;
   const runtimeNodes = descriptorRuntimeNodes(workflow);
   const gate = runtimeNodes.find(node => node.kind === "gate" && node.resolvedBy === "operator");
-  const steps = workflow.timeline.flatMap(category => category.nodes);
-  const step = live?.workerId !== undefined ? steps[Math.floor(steps.length / 2)] : steps[Number.parseInt(hash.slice(4, 8), 16) % steps.length];
+  // A gate owns no task span.
+  const gateIds = new Set<string>(runtimeNodes.filter(node => node.kind === "gate").map(node => node.id));
+  const steps = workflow.timeline.flatMap(category => category.nodes).filter(node => !gateIds.has(node.id));
+  // A Duo wait holds the first sign-in; any other state has at least one step behind it.
+  const current = state === "needs-duo" ? 0 : Math.max(Math.min(1, steps.length - 1),
+    live?.workerId !== undefined ? Math.floor(steps.length / 2) : Number.parseInt(hash.slice(4, 8), 16) % steps.length);
+  const step = steps[current];
   const claim = { workerId: seedNamespace, claimGeneration: 1 };
   const completionFields = { schemaVersion: 1, expectedVersion: 2, claim, authorizedAt: settledAt } as const;
   const failure = state !== "failed" ? undefined : FailureRecordSchema.parse({
@@ -240,7 +246,7 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
       contractFingerprint: workflow.contractFingerprint, buildId, configFingerprint: seedDigest,
       configSnapshotId: id("config"), resolvedInstance: {}, shape: "single", priority: "interactive", dryRun: true, attempt: 1, enqueuedAt },
     input: seedInput(workflow),
-    lifecycle, claimGeneration: state === "paused" || state === "cancelled" || state === "queued" ? 0 : 1, displayName: title,
+    lifecycle, claimGeneration: state === "queued" ? 0 : 1, displayName: title,
     ...(live?.sessionId === undefined ? {} : { sessionId: live.sessionId }),
     ...(state === "cancelling" ? { cancelRequested: true } : {}),
     ...(state === "paused" ? { pause: { state: "paused", commandId: id("pause"), requestedAt: settledAt, pausedAt: settledAt } } : {}),
@@ -250,29 +256,34 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   });
   const spanPath = runSpanPath(run.envelope.traceId);
   const common = { workflow: workflow.id, runId, traceId, attempt: run.envelope.attempt, pid: 1 };
-  const events: unknown[] = [{ ...runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title }), pid: 1 }];
-  if (run.claimGeneration > 0) events.push({ ...common, t: "run.claimed", workerId: claimed?.workerId ?? claim.workerId, claimGeneration: 1, ts: claimed?.claimedAt ?? enqueuedAt, spanPath });
-  if (claimed !== undefined && step !== undefined) {
-    // The steps before the current one finished; the current one is open.
-    const index = steps.indexOf(step), stepMs = (now.getTime() - Date.parse(claimed.claimedAt)) / (index + 1);
-    for (const [position, node] of steps.slice(0, index + 1).entries()) {
-      const startedAt = new Date(Date.parse(claimed.claimedAt) + position * stepMs).toISOString();
+  const events: (NoteWire | Record<string, unknown>)[] = [{ ...runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title }), pid: 1 }];
+  if (run.claimGeneration > 0 && step !== undefined) {
+    const startedMs = Date.parse(claimed?.claimedAt ?? enqueuedAt);
+    events.push({ ...common, t: "run.claimed", workerId: claimed?.workerId ?? claim.workerId, claimGeneration: 1, ts: new Date(startedMs).toISOString(), spanPath });
+    // Steps before the current one finished. A held run's current step is open, a paused or parked run has not reached the next one.
+    const reached = state === "succeeded" ? steps.length : state === "paused" || state === "waiting" ? Math.max(1, current) : current + 1;
+    const stepMs = (Date.parse(claimed === undefined ? settledAt : now.toISOString()) - startedMs) / reached;
+    const outcome = run.lifecycle.state === "terminal" ? run.lifecycle.outcome : undefined;
+    for (const [position, node] of steps.slice(0, reached).entries()) {
+      let at = startedMs + position * stepMs;
       const task = { ...common, kind: "task", parentSpanPath: spanPath, spanPath: taskSpanPath(traceId, NodeIdSchema.parse(node.id), 1, 1) };
-      events.push({ ...task, t: "span.started", ts: startedAt, name: node.label });
-      if (node !== step) events.push({ ...task, t: "span.ended", ts: new Date(Date.parse(startedAt) + stepMs).toISOString(), outcome: "done" });
+      const ts = new Date(at).toISOString();
+      events.push({ ...task, t: "span.started", ts, name: node.label });
+      // Logs draws a line for a note, not for a finished span.
+      events.push(createNoteTimelineWriter({ repository: { append: record => ({ ...record, cursor: 1 }) }, clock: capturedInstantClock(ts), pid: 1 })
+        .emitNote({ workflow: workflow.id, address: { runId, traceId, attempt: run.envelope.attempt, spanPath: task.spanPath, parentSpanPath: spanPath }, level: "step", message: node.label }));
+      at += stepMs;
+      const open = claimed !== undefined && position === reached - 1;
+      const last = position === reached - 1 && outcome !== undefined && outcome !== "done";
+      if (!open) events.push({ ...task, ...(last && failure !== undefined ? { failureId: failure.failureId } : {}), t: "span.ended",
+        ts: new Date(at).toISOString(), outcome: last ? outcome : "done" });
     }
   }
   if (run.lifecycle.state === "terminal") {
-    const { outcome } = run.lifecycle;
     const failureRef = failure === undefined ? {} : { failureId: failure.failureId };
-    if (step !== undefined && (outcome === "done" || outcome === "failed")) {
-      const task = { ...common, kind: "task", parentSpanPath: spanPath, spanPath: taskSpanPath(traceId, NodeIdSchema.parse(step.id), 1, 1) };
-      events.push({ ...task, t: "span.started", ts: enqueuedAt, name: step.label });
-      events.push({ ...task, ...failureRef, t: "span.ended", ts: settledAt, outcome });
-    }
-    events.push({ ...common, ...failureRef, t: "span.ended", kind: "run", ts: settledAt, spanPath, outcome });
+    events.push({ ...common, ...failureRef, t: "span.ended", kind: "run", ts: settledAt, spanPath, outcome: run.lifecycle.outcome });
   }
-  return { ...slot, run, failure, events: SpanEventWireSchema.array().parse(events) };
+  return { ...slot, run, failure, events: events.map(event => "t" in event ? SpanEventWireSchema.parse(event) : NoteWireSchema.parse(event)) };
 }
 
 function seedNotifications(runs: readonly ReturnType<typeof seedRun>[], profileId: string, now: Date) {

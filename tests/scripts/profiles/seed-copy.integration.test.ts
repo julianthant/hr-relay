@@ -19,7 +19,8 @@ import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { CommandExecutor } from "../../../src/dashboard/app/commands/command-executor.js";
 import { createDashboardClient, createRowStore } from "../../../src/dashboard/client/index.js";
-import { queueBatches } from "../../../src/dashboard/surfaces/queue/queue-model.js";
+import { projectRunLogs, readRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { isNeedsDuo, isStarting, queueBatches } from "../../../src/dashboard/surfaces/queue/queue-model.js";
 import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { createSessionPreviewPort } from "../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import { sessionWorkerAuthorityKey, sessionsFromDay } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
@@ -231,6 +232,7 @@ it("replaces its synthetic history and retains imported rows outside operational
   }
   const notificationIds = (await client.notificationSnapshot()).map(row => row.notificationId);
   expect(notificationIds).toEqual(expect.arrayContaining([importedNotice, ...seeded.notices].map(row => row.notificationId)));
+  await expectTimelines(client, seeded.generated);
   await expectLiveSamples(client, seeded.generated, preflight);
   expect(outbound).toEqual([]);
   expect(spawn).not.toHaveBeenCalled();
@@ -269,6 +271,30 @@ it("replaces its synthetic history and retains imported rows outside operational
   expect(JSON.parse(first.stdout)).toMatchObject({ todayByState: { queued: servedModules.length, running: servedModules.length,
     "needs-duo": servedModules.filter(({ descriptor }) => hasBrowsers(descriptor.id)).length } });
 });
+
+/** Every run that started reads as a real one: its setup steps lead its Logs, any state card follows, and the badge says its state. */
+async function expectTimelines(client: ReturnType<typeof createDashboardClient>, generated: readonly RunRecord[]) {
+  const rows = new Map((await client.dashboardDay(searchPartitionDay(clock.now()))).queueSurfaces.map(row => [row.runId, row]));
+  const live = generated.filter(row => row.displayName?.includes(" today ") === true);
+  // One seeded run per workflow and state covers history; every live run is read.
+  const history = new Map(generated.filter(row => !live.includes(row))
+    .map(row => [`${row.envelope.workflow}/${row.displayName?.split(" ").at(-1) ?? ""}`, row]));
+  for (const day of new Set([...history.values()].map(row => searchPartitionDay(new Date(row.envelope.enqueuedAt))))) {
+    for (const row of (await client.dashboardDay(day)).queueSurfaces) rows.set(row.runId, row);
+  }
+  for (const run of [...live, ...history.values()]) {
+    const row = rows.get(run.envelope.runId), name = run.displayName ?? "";
+    assert.ok(row !== undefined, name);
+    const state = name.split(" ").at(-1);
+    expect(isStarting(row), name).toBe(false);
+    expect(isNeedsDuo(row), name).toBe(state === "needs-duo");
+    if (state === "paused") expect(row.pauseControl?.state, name).toBe("paused");
+    if (run.claimGeneration === 0) { expect(state, name).toBe("queued"); continue; }
+    const { steps } = projectRunLogs(await readRunLogs(client, { row, workflowLabel: row.workflowId }, new AbortController().signal), client);
+    expect(steps[0]?.entries.some(entry => entry.kind === "note"), name).toBe(true);
+    expect(steps.map(step => step.time), name).not.toContain("—");
+  }
+}
 
 /** Today's sample queue and Sessions show every live state, and every action on them is refused or stays on the card. */
 async function expectLiveSamples(client: ReturnType<typeof createDashboardClient>, generated: readonly RunRecord[], preflight: { mock: { calls: unknown[] } }) {
