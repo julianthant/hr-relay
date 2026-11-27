@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { chatGptOcrAvailable } from "../../../models/dashboard/chatgpt-account.js";
 import { PreflightSelectionSchema, type PreflightReadinessWire } from "../../../models/preflight/preflight-contract.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { BOUNDED_READ_BUDGET_MS, PREFLIGHT_RERUN_DEADLINE_MS, readWithDeadline } from "../../client/read-deadline.js";
+import { BOUNDED_READ_BUDGET_MS, CHATGPT_ACCOUNT_READ_DEADLINE_MS, PREFLIGHT_RERUN_DEADLINE_MS, readWithDeadline } from "../../client/read-deadline.js";
 import type { PreflightQueries } from "../../client/queries/preflight-queries.js";
 import type { SettingsQueries } from "../../client/queries/settings-queries.js";
 import type { ChatGptAccountQueries } from "../../client/queries/chatgpt-account-queries.js";
@@ -48,7 +48,7 @@ export const runChecksBlocked = (state: RunChecksState): boolean =>
   state.state !== "ready" || state.rows.some(row => row.verdict === "fail");
 
 /** Reads exact-scope evidence while active; the transport bounds and retries each read. Checks may prepare missing evidence once per open dialog and once after a Fix visit. */
-export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "editableSettings"> & Pick<ChatGptAccountQueries, "chatGptAccount">,
+export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "editableSettings"> & Pick<ChatGptAccountQueries, "checkChatGptAccount">,
   workflowId: string | undefined, active: boolean, prepare: boolean, open: boolean, requiresOcr: boolean) {
   const binding = useDashboardCommandBinding();
   const actorId = binding?.scope.actorId;
@@ -69,6 +69,7 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
   useEffect(() => { if (prepare && held !== undefined && held === workflowId) { setHeld(undefined); ask(held); } }, [prepare, held, workflowId, ask]);
   useEffect(() => {
     if (!active || workflowId === undefined) return;
+    const controller = new AbortController();
     let current = true;
     const setState = (next: RunChecksState) => setRead({ workflowId, requiresOcr, state: next });
     const posting = rerun !== undefined && rerun.workflowId === workflowId && rerun.n > handled.current;
@@ -102,12 +103,13 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
       return client.readPreflight(selection);
     };
     const provider = requiresOcr
-      ? readWithDeadline(() => client.chatGptAccount(), "PROVIDER_UNAVAILABLE", BOUNDED_READ_BUDGET_MS).then(chatGptOcrAvailable, () => false)
+      ? readWithDeadline(signal => client.checkChatGptAccount(signal, { fresh: true }), "PROVIDER_UNAVAILABLE", CHATGPT_ACCOUNT_READ_DEADLINE_MS, controller.signal)
+        .then(chatGptOcrAvailable, () => false)
       : Promise.resolve(true);
     void Promise.all([check(), provider]).then(
       ([wire, ready]) => { if (current && wire !== undefined) setState(runCheckRows(wire, ready)); },
       () => { if (current) setState({ state: "unavailable", message: ERROR_CATALOG.PREFLIGHT_READ_UNAVAILABLE.text }); });
-    return () => { current = false; };
+    return () => { current = false; controller.abort(); };
   }, [client, workflowId, active, rerun, actorId, authority, requiresOcr]);
   const recheck = useCallback(() => { if (workflowId !== undefined) ask(workflowId); }, [ask, workflowId]);
   return { state, recheck, prepareAfterFix: () => { asked.current = false; } };

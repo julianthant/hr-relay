@@ -147,7 +147,7 @@ export function createRunStartDialogHarness() {
     let readback: ReturnType<typeof DashboardDayWireSchema.parse> | undefined;
     const methods: Partial<DashboardClient> = { ...served,
       readPreflight: served.readPreflight ?? (async () => READY),
-      chatGptAccount: served.chatGptAccount ?? (async () => FIXTURE_CHATGPT_OCR_AVAILABLE),
+      checkChatGptAccount: served.checkChatGptAccount ?? (async () => FIXTURE_CHATGPT_OCR_AVAILABLE),
       ...(submitStartPlan === undefined ? {} : { submitStartPlan: async (input: unknown) => {
         reviewedPlan = await submitStartPlan(input);
         return reviewedPlan;

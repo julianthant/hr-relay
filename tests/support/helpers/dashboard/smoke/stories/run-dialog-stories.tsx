@@ -173,7 +173,7 @@ const PDF = {
   "choice-unpicked": pdfStage("Options, the required form choice not made", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Next"); await at(page, "Start"); }),
   "choice-picked": pdfStage("Options, OCR off and a form chosen", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Next"); await at(page, "Start");
     await dialog(page).getByRole("switch", { name: "Read with OCR" }).click(); await dialog(page).getByText("I-9", { exact: true }).click(); }),
-  "ocr-unavailable": pdfStage("Start blocked by a disconnected OCR account", { chatGptAccount: async () => FIXTURE_CHATGPT_OCR_SIGNED_OUT }, "Input", async page => {
+  "ocr-unavailable": pdfStage("Start blocked by a disconnected OCR account", { checkChatGptAccount: async () => FIXTURE_CHATGPT_OCR_SIGNED_OUT }, "Input", async page => {
     await afterAttach(pdfFile("first.pdf"))(page);
     await press(page, "Next");
     await at(page, "Start");

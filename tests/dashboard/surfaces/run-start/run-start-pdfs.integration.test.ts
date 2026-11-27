@@ -278,7 +278,10 @@ async function contactDialog(plans: unknown[], options: { withoutOcrFields?: boo
   const contact = compileWorkflow(emergencyContactWorkflow).descriptor;
   const uploadRun = contact.surfaces.uploadRun; assert.ok(uploadRun);
   const served = client({
-    ...(options.ocrUnavailable === true ? { chatGptAccount: async () => FIXTURE_CHATGPT_OCR_SIGNED_OUT } : {}),
+    ...(options.ocrUnavailable === true ? { checkChatGptAccount: async (_signal, check) => {
+      assert.equal(check?.fresh, true);
+      return FIXTURE_CHATGPT_OCR_SIGNED_OUT;
+    } } : {}),
     uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
       artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }),
     submitStartPlan: async request => { plans.push(request); const plan = h.planResponse("5a000000-0000-4000-8000-000000000002");

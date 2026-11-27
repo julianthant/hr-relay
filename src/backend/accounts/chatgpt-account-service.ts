@@ -1,7 +1,7 @@
 import { AssistantCallUsageSchema } from "../../models/dashboard/assistant-usage.js";
 import { AssistantModelPreferenceSchema, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
 import { ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_REQUEST_MAX_BYTES, AssistantInferenceRequestSchema, AssistantInferenceResultSchema, AssistantModelCatalogSchema, type AssistantModelCatalog, assistantInputMedia, assistantUserParts, type AssistantInferenceRequest } from "../../models/dashboard/assistant.js";
-import { ChatGptAccountStatusSchema, ChatGptCheckedConnectionSchema, type ChatGptAccountStatus, type ChatGptAccountState, type ChatGptSignInRequest, type ChatGptSignedOut } from "../../models/dashboard/chatgpt-account.js";
+import { ChatGptAccountStatusSchema, ChatGptCheckedConnectionSchema, chatGptConnectionCurrent, type ChatGptAccountStatus, type ChatGptAccountState, type ChatGptSignInRequest, type ChatGptSignedOut } from "../../models/dashboard/chatgpt-account.js";
 import { createHash, createPublicKey, randomBytes, randomUUID, verify } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { z } from "zod";
@@ -920,12 +920,12 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     return AssistantModelCatalogSchema.parse(observedCatalog.catalog);
   }
   /** Asks the provider, renewing or forgetting the stored session as needed. A completed check is reused for five minutes; a failed one never is. */
-  async function checkStatus(signal?: AbortSignal): Promise<ChatGptAccountStatus> {
+  async function checkStatus(signal?: AbortSignal, options?: Readonly<{ fresh?: true | undefined }>): Promise<ChatGptAccountStatus> {
     const isCancelled = () => signal?.aborted === true;
     if (isCancelled()) throw fault("CHATGPT_CONNECTION_CANCELLED");
     const before = observeStatus().authority, key = statusKey(before);
-    const age = cachedStatus?.value.connection.state === "completed" ? clock.nowMs() - Date.parse(cachedStatus.value.connection.checkedAt) : NaN;
-    if (cachedStatus?.key === key && Number.isFinite(age) && age >= 0 && age <= 300_000) return ChatGptAccountStatusSchema.parse(cachedStatus.value);
+    if (options?.fresh !== true && cachedStatus?.key === key && chatGptConnectionCurrent(cachedStatus.value.connection, clock.nowMs()))
+      return ChatGptAccountStatusSchema.parse(cachedStatus.value);
     let shared = statusCheck;
     if (shared === undefined || shared.key !== key || shared.controller.signal.aborted) {
       const controller = new AbortController();

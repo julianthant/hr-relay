@@ -4,7 +4,7 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import { ChatGptAccountError, type ChatGptAccountService, type ChatGptAuthorization } from "../../../accounts/chatgpt-account-service.js";
 import { ChatGptCredentialError } from "../../../storage/configuration/chatgpt-credential-repository.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
-import { ChatGptAccountStatusSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptEmptyRequestSchema,
+import { ChatGptAccountStatusSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptConnectionCheckRequestSchema, ChatGptEmptyRequestSchema,
   ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignOutResultSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema,
   type ChatGptAccountStatus, type ChatGptSignInCompletion } from "../../../../models/dashboard/chatgpt-account.js";
 import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
@@ -70,8 +70,9 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
     return c.json(await statusBody(async () => {
       let input: unknown;
       try { input = await c.req.json(); } catch { throw new ChatGptAccountError("CHATGPT_AUTH_INVALID"); }
-      if (!ChatGptEmptyRequestSchema.safeParse(input).success) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
-      return service().checkStatus(c.req.raw.signal);
+      const parsed = ChatGptConnectionCheckRequestSchema.safeParse(input);
+      if (!parsed.success) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
+      return service().checkStatus(c.req.raw.signal, parsed.data);
     }));
   });
   app.post("/api/v1/settings/chatgpt-account/sign-in", async c => {
