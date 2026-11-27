@@ -15,14 +15,13 @@ import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/dea
 import { type WorkerCliLaunchSpec,type WorkerProcessSpawner } from "./worker-process.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
-import { composeProfileAssistantAuthorization,composeProfileRuntime,type ShutdownBackup } from "../storage-compose.js";
+import { composeProfileRuntime,type ShutdownBackup } from "../storage-compose.js";
 import { startDashboardHttpServer,type DashboardHttpListener,type DashboardHttpServer } from "../../../transports/http/http-server.js";
 
 export type DashboardStopFailure = Readonly<{ step: "transport-close" | "stream-close" | "loop-monitor-stop" | "worker-stop"; cause: unknown }>;
 
 export interface DashboardRuntime {
   readonly shutdownRequested?: Promise<void>;
-  readonly assistantAuthorization?: ReturnType<typeof composeProfileAssistantAuthorization>;
   readonly port: number;
   readonly noteWriter: NoteTimelineWriter;
   readonly notificationStatus: ReturnType<typeof createTrustNotifications>["observer"]["status"];

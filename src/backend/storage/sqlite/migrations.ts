@@ -2,8 +2,8 @@ import { PANEL_MODE_RETIREMENT_CONVERSION_MARKER, PERSON_PREFERENCES_CONVERSION_
 import { createHash } from "node:crypto";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js";
-import { ASSISTANT_HISTORY_MIGRATION, ASSISTANT_M1_HISTORY_STATEMENTS } from "./assistant-history.js";
-import { ASSISTANT_M2_PROPOSAL_STATEMENTS } from "./assistant-proposals.js";
+import { ASSISTANT_HISTORY_MIGRATION, ASSISTANT_HISTORY_PAYLOAD_CONVERSION_STATEMENTS, ASSISTANT_M1_HISTORY_STATEMENTS } from "./assistant-history.js";
+import { ASSISTANT_PROPOSAL_STATEMENTS } from "./assistant-proposals.js";
 import { ASSISTANT_EFFORT_SCALE_MIGRATION } from "./assistant-effort-migration.js";
 import { FAILURE_NOTE_REMOVAL_MIGRATION } from "./failure-note-removal-migration.js";
 import { ASSISTANT_ATTACHMENTS_MIGRATION } from "./assistant-attachments.js";
@@ -47,6 +47,7 @@ export const OPENABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = openableAut
 export const BUILD_ID_ENVELOPE_SCHEMA_VERSION = 22;
 export const OCR_SEARCH_TERMS_SCHEMA_VERSION = 41;
 export const ASSISTANT_PHASE_ONE_SCHEMA_VERSION = 43;
+export const ASSISTANT_HISTORY_PAYLOAD_SCHEMA_VERSION = 44;
 export const OCR_SEARCH_TERMS_BACKFILL_ID = "run-search-ocr-subject-terms:v1";
 export const OCR_SEARCH_TERMS_COLUMN_SQL = "ALTER TABLE run_search ADD COLUMN ocr_subject_terms TEXT";
 /** Migration 22 deletes every run approved before envelopes carried a build id, through the native run deletion. */
@@ -1196,9 +1197,10 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   ] },
   { version: ASSISTANT_PHASE_ONE_SCHEMA_VERSION, statements: [
     ...ASSISTANT_M1_HISTORY_STATEMENTS,
-    ...ASSISTANT_M2_PROPOSAL_STATEMENTS,
+    ...ASSISTANT_PROPOSAL_STATEMENTS,
     ...ASSISTANT_PHASE_ONE_TABLES.flatMap(changeLogTriggers),
   ] },
+  { version: ASSISTANT_HISTORY_PAYLOAD_SCHEMA_VERSION, statements: ASSISTANT_HISTORY_PAYLOAD_CONVERSION_STATEMENTS },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
