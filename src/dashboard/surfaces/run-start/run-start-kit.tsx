@@ -30,6 +30,7 @@ import { newestWorksheet } from "./run-start-spreadsheets-model.js";
 import { FailureNotice } from "../../ds/primitives/failure-notice.js";
 import { RunList, RunListRow, RunSection } from "../../ds/primitives/run-list.js";
 import { RunChoice } from "./run-launch-layout.js";
+import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
 import { SpreadsheetPicker, SpreadsheetRow, SpreadsheetSection, type PickerOption, type SheetVersion, type SheetWorksheet } from "./run-spreadsheet-picker.js";
 import { typedInputMode, typedInputDefaults, inputRunFieldLabel, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft } from "./run-start-model.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
@@ -472,7 +473,7 @@ export function RunSpreadsheets({ reference, check, busy: reading, locked = fals
     <SpreadsheetSection title={title} description={description} picker={picker}>
       {(reference !== undefined && chosen !== undefined || check?.sheets.some(sheet => sheet.pickedSheetIds !== undefined)) && <>
       {reference !== undefined && chosen && <SpreadsheetRow name={chosen.name} versions={chosen.versions} versionId={reference.chosenVersionId ?? chosen.currentVersionId} note={note}
-        worksheets={worksheets} picked={chosenSheetIds} mode={reference.several ? "many" : "one"} busy={busy} locked={locked} worksheetsReady={worksheetsState === "ready"}
+        worksheets={worksheets} picked={chosenSheetIds} mode={reference.several ? "many" : "one"} max={reference.several ? MAX_SELECTED_WORKBOOK_SOURCES : undefined} busy={busy} locked={locked} worksheetsReady={worksheetsState === "ready"}
         onVersion={reference.onVersion} onWorksheets={reference.onWorksheets} onRemove={reference.onRemove} />}
       {check !== undefined && <CheckPickedRows busy={busy} locked={locked} {...check} />}
       </>}

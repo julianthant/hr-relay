@@ -166,6 +166,22 @@ it("lets CRM Doc Download choose several reference worksheets, keeps at least on
   assert.deepEqual(planned?.workbookReferences?.map(reference => [reference.entry, reference.libraryId, reference.sheetId]), [[1, "roster", "First"], [1, "roster", "Second"]]);
 });
 
+it("stops CRM Doc Download at the 32 worksheet cap a run can start with", async () => {
+  const fields = [...crm.requiredWorkbookFields];
+  const names = Array.from({ length: 33 }, (_, index) => `S${String(index + 1).padStart(2, "0")}`);
+  await h.openDialog(h.stubClient({ ...reads([roster], [source("roster", Object.fromEntries(names.map(name => [name, fields])))], [crm]) }),
+    { workflows: [crmFlow], panelWorkflowId: crm.id });
+  await h.settle(); await add("References", "Contact roster");
+  await click("Contact roster worksheets, S33");
+  for (const name of names.slice(2)) await toggle(name);
+  assert.ok(h.buttons().some(button => h.buttonName(button) === "Contact roster worksheets, 32 worksheets"));
+  const item = (name: string) => worksheetItems("menuitemcheckbox").find(node => node.textContent === name);
+  assert.equal(item("S01")?.getAttribute("aria-disabled"), "true");
+  assert.match(text(), /32 worksheets is the most for one run/u);
+  await toggle("S03");
+  assert.equal(item("S01")?.getAttribute("aria-disabled"), null);
+});
+
 it("keeps a workflow that cannot read several reference worksheets on a single pick", async () => {
   await h.openDialog(h.stubClient({ ...rosterLookupReads() }), { workflows: [rosterLookup], panelWorkflowId: rosterLookup.workflowId });
   await h.settle(); await add("References", "Contact roster");
