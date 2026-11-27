@@ -258,18 +258,30 @@ describe('compact run headers', () => {
     }
   });
 
-  it('raises no toast each time a failed run is opened', async () => {
-    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
-    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+  for (const status of ['failed', 'cancelled'] as const) it(`raises no toast each time a ${status} dry run is opened`, async () => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: { ...initialMockDraft('person-lookup'), dryRun: true }, approved: true, seeded: true };
+    const row = { ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), dryRun: true, status };
     const dryRunPreview = DryRunPreviewWireSchema.parse({ state: 'unavailable', reason: 'preview-not-completed' });
-    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Failed run' }, availableSections: ['logs'] }, logs: { dryRunPreview }, unavailableEvidence: [] } });
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Dry run' }, availableSections: ['logs'] }, logs: { dryRunPreview }, unavailableEvidence: [] } });
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     for (let open = 0; open < 2; open += 1) {
       const host = document.createElement('div'); document.body.append(host);
       const root = createRoot(host);
       await act(async () => root.render(createElement(ToastProvider, null, sample({ selection: { row, workflowLabel: 'Person lookup' } }))));
-      assert.doesNotMatch(document.body.textContent ?? '', /Dry-run preview unavailable|did not complete/);
+      assert.doesNotMatch(document.body.textContent ?? '', /preview unavailable|did not complete/i);
+      assert.equal(document.body.querySelectorAll('[data-sonner-toast],[role="status"] li,[data-radix-toast-root]').length, 0);
       await act(async () => root.unmount()); host.remove();
+    }
+  });
+
+  it('says inline why a completed dry run has no preview', () => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: { ...initialMockDraft('person-lookup'), dryRun: true }, approved: true, seeded: true };
+    const row = { ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), dryRun: true, status: 'done' as const };
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    for (const [reason, text] of [['preview-result-unreadable', /The result could not be read/], ['preview-authority-unavailable', /Preview is unavailable/]] as const) {
+      useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Dry run' }, availableSections: ['logs'] }, logs: { dryRunPreview: DryRunPreviewWireSchema.parse({ state: 'unavailable', reason }) }, unavailableEvidence: [] } });
+      const markup = renderToStaticMarkup(sample({ selection: { row, workflowLabel: 'Person lookup' } }));
+      assert.match(markup, /Dry-run preview unavailable/); assert.match(markup, text);
     }
   });
 

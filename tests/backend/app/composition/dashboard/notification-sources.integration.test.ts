@@ -199,6 +199,30 @@ describe("canonical notification producers", () => {
       expect(JSON.stringify(rows)).not.toContain(failureRecordOf({ seed: 1, code: "SUBJECT_MISMATCH" }).summary);
     } finally { await f.close(); }
   });
+  it("keeps the run-failed publication an interrupted profile already committed for a mismatch failure", async () => {
+    const f = await fixture();
+    try {
+      failRun(f, 3, "SUBJECT_MISMATCH");
+      const [mismatch] = readNotificationSources(f.db, f.reader).observations;
+      if (mismatch?.event.kind !== "subject-mismatch") throw new Error("fixture mismatch observation missing");
+      const { kind: _kind, ...shared } = mismatch.event;
+      await f.inbox.publish({ kind: "run-failed", ...shared, code: "SUBJECT_MISMATCH" }, { identity: sha256Hex(`notification-occurrence:run-failed:${mismatch.event.failureId}`), occurredAt: mismatch.source.occurredAt });
+      const upgraded = readNotificationSources(f.db, f.reader);
+      expect(upgraded.observations.map(row => row.event.kind)).toEqual(["run-failed"]);
+      for (const row of upgraded.observations) await f.inbox.publish(row.event, row.source);
+      expect(f.inbox.list("local-operator")).toHaveLength(1);
+    } finally { await f.close(); }
+  });
+  it("publishes one failure notice for a real failure and none for a cancelled run", async () => {
+    const f = await fixture();
+    try {
+      seedRun(f, runRecordOf({ seed: 5, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }));
+      expect(readNotificationSources(f.db, f.reader).observations).toEqual([]);
+      failRun(f, 6, "SUBJECT_MISMATCH");
+      for (const row of readNotificationSources(f.db, f.reader).observations) await f.inbox.publish(row.event, row.source);
+      expect(f.inbox.list("local-operator").map(row => row.trigger)).toEqual(["failed"]);
+    } finally { await f.close(); }
+  });
   it("publishes only verified canonical receipts and refuses mismatched evidence", async () => {
     const f = await fixture();
     try {

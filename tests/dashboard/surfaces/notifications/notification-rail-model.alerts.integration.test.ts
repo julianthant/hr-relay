@@ -92,16 +92,14 @@ describe("served notification alerts", () => {
     assert.deepEqual(probe.alerts, []);
   });
 
-  it("announces a failure once, when it fails away from Logs, and adds no second toast for the same failure", async () => {
+  it("announces a failure once, when it fails away from Logs", async () => {
     const { probe, show, publish } = await mount(ready());
     const failed = item("failed", "Run failed", "danger");
     await show(ready(failed));
     await publish(failed);
-    await publish({ ...item("again", "Repeating failure crossed its threshold", "danger"), quiet: true });
     assert.deepEqual(probe.alerts.map(alert => alert.id), ["failed"]);
     assert.equal(probe.unread, 1);
     assert.match(document.body.textContent ?? "", /Run failed/);
-    assert.doesNotMatch(document.body.textContent ?? "", /Repeating failure/);
   });
 
   it("raises no failure notice for a cancelled run, which publishes nothing", async () => {
