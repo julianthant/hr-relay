@@ -22,9 +22,9 @@ function RowIcon({ row }: { row: PaletteRow }) {
 }
 
 /** Search Relay: quick actions, runs, workflows and spreadsheets in one palette. The input is its first row. */
-export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMatched, loading = false, workflows, sheets, startKey, onAction, onWorkflow, onRun, notice, onCloseAutoFocus }: {
+export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMatched, onMoreRuns, loading = false, workflows, sheets, startKey, onAction, onWorkflow, onRun, notice, onCloseAutoFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void; query: string; onQuery: (query: string) => void;
-  runs: readonly NavbarSearchResult[]; /** The served search already matched the query. */ runsMatched?: boolean; /** The served search has not answered yet. */ loading?: boolean; workflows: readonly PaletteWorkflow[]; sheets: readonly PaletteSheet[]; startKey?: string;
+  runs: readonly NavbarSearchResult[]; /** The served search already matched the query. */ runsMatched?: boolean; /** Reads the next page of runs; absent when none remain. */ onMoreRuns?: () => void; /** The served search has not answered yet. */ loading?: boolean; workflows: readonly PaletteWorkflow[]; sheets: readonly PaletteSheet[]; startKey?: string;
   onAction: (action: PaletteAction) => void; onWorkflow: (id: string) => void; onRun: (result: NavbarSearchResult) => void; notice: string;
   onCloseAutoFocus: (event: Event) => void;
 }) {
@@ -56,7 +56,7 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
         <DialogPrimitive.Title className="sr-only">Search Relay</DialogPrimitive.Title>
         <Command ref={watchSelection} shouldFilter={false} loop label="Search Relay" className="flex min-h-0 flex-1 flex-col">
           <Command.Input autoFocus aria-label="Search Relay" placeholder="Search Relay" value={query} onValueChange={onQuery} className="search-palette-input" />
-          <Command.List label="Results" className="search-palette-list">
+          <Command.List label="Results" className="search-palette-list" onScroll={event => { const list = event.currentTarget; if (onMoreRuns && list.scrollHeight - list.scrollTop - list.clientHeight < list.clientHeight) onMoreRuns(); }}>
             {sections.length === 0 && !loading && <p role="status" className="search-palette-empty">No matches</p>}
             {sections.map(section => <Command.Group key={section.id} aria-label={section.label}>
               <div aria-hidden className="search-palette-label">{section.label}</div>

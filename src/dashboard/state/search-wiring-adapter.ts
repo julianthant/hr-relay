@@ -1,6 +1,6 @@
 import { DISPLAY_STATUS_LABELS, displayStatusOf } from "../../models/dashboard/status-vocabulary.js";
 import type { QueueStatus } from "../surfaces/shared/status/status-model.js";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CrossDateSearchQuerySchema, CrossDateSearchStateFacetSchema, compareCrossDateSearchResults, currentCorpusSearchQuery, type CrossDateSearchPage, type CrossDateSearchQueryInput } from "../../models/dashboard/search.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
@@ -14,28 +14,40 @@ import { formatMonthDay } from "../lib/date-format.js";
 
 export const searchMessage = (code: "SEARCH_UNAVAILABLE" | "SEARCH_LIBRARY_UNAVAILABLE" | "SEARCH_SUBJECT_UNAVAILABLE") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
-export async function readSearchSnapshot(client: Pick<DashboardClient, "searchRuns">, input: CrossDateSearchQueryInput, signal: AbortSignal) {
+const SEARCH_CURSOR = /^sc1\.[A-Za-z0-9_-]+\.[a-f0-9]{64}$/u;
+type SearchSnapshot = Readonly<{ query: ReturnType<typeof CrossDateSearchQuerySchema.parse>; first: CrossDateSearchPage; totalMatches: number; results: readonly CrossDateSearchPage["results"][number][]; cursor?: string }>;
+
+function nextCursorOf(page: CrossDateSearchPage): string | undefined {
+  if (page.nextCursor.state !== "present") return undefined;
+  if (!SEARCH_CURSOR.test(page.nextCursor.value)) throw new Error("SEARCH_CURSOR_INVALID");
+  return page.nextCursor.value;
+}
+
+/** Opening a search reads one page; `readMoreSearch` reads the next on demand. */
+export async function readSearchSnapshot(client: Pick<DashboardClient, "searchRuns">, input: CrossDateSearchQueryInput, signal: AbortSignal): Promise<SearchSnapshot> {
   const query = CrossDateSearchQuerySchema.parse(input);
   const first = await client.searchRuns(query, signal);
   signal.throwIfAborted();
-  const results = [...first.results], ids = new Set(results.map(row => row.runId)), cursors = new Set<string>();
-  let page: CrossDateSearchPage = first;
-  while (page.nextCursor.state === "present") {
-    const cursor = page.nextCursor.value;
-    if (!/^sc1\.[A-Za-z0-9_-]+\.[a-f0-9]{64}$/u.test(cursor) || cursors.has(cursor)) throw new Error("SEARCH_CURSOR_INVALID");
-    cursors.add(cursor);
-    page = await client.searchRuns({ ...query, cursor }, signal);
-    signal.throwIfAborted();
-    if (canonicalJsonStringify(page.snapshot) !== canonicalJsonStringify(first.snapshot) || page.totalMatches !== first.totalMatches
-      || canonicalJsonStringify(page.coverage) !== canonicalJsonStringify(first.coverage) || page.generatedAt !== first.generatedAt) throw new Error("SEARCH_SNAPSHOT_MISMATCH");
-    for (const row of page.results) {
-      const previous = results.at(-1);
-      if (ids.has(row.runId) || (previous !== undefined && compareCrossDateSearchResults(previous, row) > 0)) throw new Error("SEARCH_PAGE_IDENTITY_MISMATCH");
-      ids.add(row.runId); results.push(row);
-    }
+  return { query, first, totalMatches: first.totalMatches, results: first.results, cursor: nextCursorOf(first) };
+}
+
+export async function readMoreSearch(client: Pick<DashboardClient, "searchRuns">, previous: SearchSnapshot, signal: AbortSignal): Promise<SearchSnapshot> {
+  const { first, results } = previous;
+  if (previous.cursor === undefined) return previous;
+  const page = await client.searchRuns({ ...previous.query, cursor: previous.cursor }, signal);
+  signal.throwIfAborted();
+  if (canonicalJsonStringify(page.snapshot) !== canonicalJsonStringify(first.snapshot) || page.totalMatches !== first.totalMatches
+    || canonicalJsonStringify(page.coverage) !== canonicalJsonStringify(first.coverage) || page.generatedAt !== first.generatedAt) throw new Error("SEARCH_SNAPSHOT_MISMATCH");
+  const ids = new Set(results.map(row => row.runId)), next = [...results];
+  for (const row of page.results) {
+    const last = next.at(-1);
+    if (ids.has(row.runId) || (last !== undefined && compareCrossDateSearchResults(last, row) > 0)) throw new Error("SEARCH_PAGE_IDENTITY_MISMATCH");
+    ids.add(row.runId); next.push(row);
   }
-  if (results.length !== first.totalMatches) throw new Error("SEARCH_INCOMPLETE");
-  return { query, snapshot: first.snapshot, totalMatches: first.totalMatches, results };
+  const cursor = nextCursorOf(page);
+  if (cursor === undefined && next.length !== first.totalMatches) throw new Error("SEARCH_INCOMPLETE");
+  if (cursor === previous.cursor) throw new Error("SEARCH_CURSOR_INVALID");
+  return { ...previous, results: next, cursor };
 }
 
 const SEARCH_STATE_TO_QUEUE: Readonly<Record<CrossDateSearchPage["results"][number]["state"], QueueStatus>> = {
@@ -43,7 +55,7 @@ const SEARCH_STATE_TO_QUEUE: Readonly<Record<CrossDateSearchPage["results"][numb
   done: "done", failed: "failed", interrupted: "blocked", cancelled: "cancelled", discarded: "cancelled", superseded: "cancelled",
 };
 
-export function searchResults(snapshot: Awaited<ReturnType<typeof readSearchSnapshot>>): readonly NavbarSearchResult[] {
+export function searchResults(snapshot: Pick<SearchSnapshot, "results">): readonly NavbarSearchResult[] {
   return snapshot.results.map(row => ({ id: row.runId,
     subject: row.displayTitle ?? (row.metadata.subject.state === "available" ? row.metadata.subject.value : searchMessage("SEARCH_SUBJECT_UNAVAILABLE")),
     workflow: row.registration.state === "registered" ? row.registration.label : "Unregistered workflow",
@@ -96,22 +108,44 @@ export const SEARCH_PAUSE_MS = 150;
 export function useSearchWiring({ client, enabled, query, today, epoch, workflows, titles = NO_TITLES }: { client: DashboardClient; enabled: boolean; query: string; today: string; epoch: object; workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[]; titles?: ReadonlyMap<string, string> }): NavbarData {
   const request = useMemo(() => ({ client, enabled, query, epoch, workflows }), [client, enabled, query, epoch, workflows]);
   const active = useRef(request); active.current = request;
-  const [settled, setSettled] = useState<{ request: typeof request; data: NavbarData }>();
+  const [settled, setSettled] = useState<{ request: typeof request; snapshot?: SearchSnapshot; more?: "failed" }>();
+  const reading = useRef<AbortController | undefined>(undefined);
+  const paging = useRef(false);
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
+    reading.current = controller; paging.current = false;
     const timer = setTimeout(() => {
       void readSearchSnapshot(client, workspaceSearchQuery(query, workflows), controller.signal).then(snapshot => {
         if (active.current !== request || controller.signal.aborted) return;
-        setSettled({ request, data: { today, counts: {}, results: searchResults(snapshot), totalMatches: snapshot.totalMatches } });
+        setSettled({ request, snapshot });
       }, () => {
-        if (active.current === request && !controller.signal.aborted) setSettled({ request, data: { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_UNAVAILABLE") } });
+        if (active.current === request && !controller.signal.aborted) setSettled({ request });
       });
     }, SEARCH_PAUSE_MS);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [client, enabled, query, today, workflows, request]);
+  const more = useCallback(() => {
+    const current = settled;
+    if (current?.request !== active.current || current.snapshot?.cursor === undefined || current.more === "failed" || paging.current) return;
+    const controller = reading.current;
+    if (controller === undefined || controller.signal.aborted) return;
+    paging.current = true;
+    readMoreSearch(client, current.snapshot, controller.signal).then(snapshot => {
+      paging.current = false;
+      if (active.current === current.request && !controller.signal.aborted) setSettled({ request: current.request, snapshot });
+    }, () => {
+      paging.current = false;
+      if (active.current === current.request && !controller.signal.aborted) setSettled({ ...current, more: "failed" });
+    });
+  }, [settled, client]);
   return useMemo(() => {
-    const data = settled?.request === request ? settled.data : { today, counts: {}, results: [], loading: true };
-    return { ...data, results: withQueueSubjects(data.results, titles) };
-  }, [settled, request, today, titles]);
+    const current = settled?.request === request ? settled : undefined;
+    if (current === undefined) return { today, counts: {}, results: [], loading: true };
+    if (current.snapshot === undefined) return { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_UNAVAILABLE") };
+    const { snapshot } = current;
+    return { today, counts: {}, results: withQueueSubjects(searchResults(snapshot), titles), totalMatches: snapshot.totalMatches,
+      // A failed next page keeps the rows and stops asking.
+      ...(snapshot.cursor !== undefined && current.more !== "failed" ? { more } : {}) };
+  }, [settled, request, today, titles, more]);
 }
