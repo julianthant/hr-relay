@@ -42,6 +42,17 @@ it("lists unread failures and waits under Needs you and everything read under Ea
   assert(view.host.querySelector(".notice-bell-dot"), "an unread dot sits with the count");
 });
 
+it("keeps a standing notice under Needs you even when read, so every Earlier row can be cleared through the served command", async () => {
+  const items = [item("storage", { kind: "storage", title: "Storage needs attention", tone: "warning", read: true, standing: true }), item("old", { read: true })];
+  const view = await draw({ state: "ready", items, pinned: [] });
+  assert.deepEqual(view.groups(), [["Needs you", 1], ["Earlier", 1]]);
+  assert.ok(view.row(0).querySelector('button[aria-label="Clear notification"]') === null);
+  const clear = view.row(1).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]');
+  assert(clear, "an Earlier row has Clear");
+  await act(async () => { clear.focus(); clear.click(); });
+  assert.deepEqual(view.calls, ["clear:old"]);
+});
+
 it("draws no dot and no number on the bell with nothing unread", async () => {
   const view = await draw({ state: "ready", items: [item("read", { read: true })], pinned: [] });
   assert(view.host.querySelector('button[aria-label="Notifications, 0 unread"]'));

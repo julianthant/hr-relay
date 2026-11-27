@@ -75,7 +75,7 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
   const all = state.state === "ready" ? state.items : [];
   const unread = all.filter(item => !item.read).length;
   const items = show === "unread" ? all.filter(item => !item.read) : all;
-  const needsYou = items.filter(item => item.priority && !item.read);
+  const needsYou = items.filter(item => item.standing === true || (item.priority && !item.read));
   const rest = items.filter(item => !needsYou.includes(item));
   const clearable = items.filter(item => itemClearable(item) && handlers.canClear(item.id));
   // After a clear, focus moves to the next row that can take it, or to the header once none can; after Clear all, to the first such row left.
