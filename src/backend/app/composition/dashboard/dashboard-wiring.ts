@@ -103,8 +103,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     : undefined;
 
 
-  let wakeForWork: ((workflowId: string) => void) | undefined;
-  const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle, workflowId => wakeForWork?.(workflowId));
+  let wakeForWork: (workflowId: string) => void = () => undefined;
+  const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle, workflowId => wakeForWork(workflowId));
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority, readLanes } = resources;
   const history = database.dashboardHistory();
   // A copy profile serves its sample runs and Sessions cards from the history archive; production never attaches one.
