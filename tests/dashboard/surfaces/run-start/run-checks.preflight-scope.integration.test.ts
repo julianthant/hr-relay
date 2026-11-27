@@ -18,7 +18,7 @@ import { RunChecksStage } from "../../../../src/dashboard/surfaces/run-start/run
 import { PreflightReadinessWireSchema, PreflightSelectionSchema } from "../../../../src/models/preflight/preflight-contract.js";
 import { requiredPreflightChecks } from "../../../../src/models/preflight/preflight.js";
 import { PREFLIGHT_CHECKS } from "../../../../src/models/runtime/runtime-dependencies.js";
-import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { createPreflightAdmission } from "../../../../src/rules/preflight/preflight-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
@@ -184,7 +184,7 @@ it.each([false, true])("Check again executes new exact-scope detectors with OCR 
   const checkChatGptAccount: DashboardClient["checkChatGptAccount"] = async (_signal, options) => {
     assert.equal(options?.fresh, true);
     return scopesUnavailable ? FIXTURE_CHATGPT_OCR_AVAILABLE : { account: { state: "expired" },
-      connection: { state: "refused", checkedAt: "2026-11-17T12:00:00Z", failureCode: "CHATGPT_ACCOUNT_EXPIRED" },
+      connection: { state: "refused", checkedAt: IsoInstantSchema.parse(h.clock.now().toISOString()), failureCode: "CHATGPT_ACCOUNT_EXPIRED" },
       usage: { state: "unavailable", reason: "expired" } };
   };
   const check = vi.fn(checkChatGptAccount);

@@ -115,9 +115,12 @@ export function createCopySamples(input: Readonly<{ stored: StoredSamples; realS
     refuseRun: runCommand,
     /** A rerun from a sample run is refused before its Start plan runs preflight or reads credentials. */
     guardStartPlans: (service: StartPlanService): StartPlanService => Object.freeze({
+      prepare: async (input: unknown, signal: AbortSignal) => { refuseSource(planSource(input)); await service.prepare?.(input, signal); },
       prepareAndPlan: async (input: unknown, signal: AbortSignal) => {
         refuseSource(planSource(input));
-        return service.prepareAndPlan === undefined ? service.plan(input) : service.prepareAndPlan(input, signal);
+        if (service.prepareAndPlan !== undefined) return service.prepareAndPlan(input, signal);
+        await service.prepare?.(input, signal);
+        return service.plan(input);
       },
       plan: (input: unknown) => { refuseSource(planSource(input)); return service.plan(input); },
       previewWarnings: (input: unknown) => { refuseSource(WarningSourceSchema.safeParse(input).data?.source.runId); return service.previewWarnings(input); },

@@ -920,11 +920,11 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     return AssistantModelCatalogSchema.parse(observedCatalog.catalog);
   }
   /** Asks the provider, renewing or forgetting the stored session as needed. A completed check is reused for five minutes; a failed one never is. */
-  async function checkStatus(signal?: AbortSignal, options?: Readonly<{ fresh?: true | undefined }>): Promise<ChatGptAccountStatus> {
+  async function checkStatus(signal?: AbortSignal, checkOptions?: Readonly<{ fresh?: true | undefined }>): Promise<ChatGptAccountStatus> {
     const isCancelled = () => signal?.aborted === true;
     if (isCancelled()) throw fault("CHATGPT_CONNECTION_CANCELLED");
     const before = observeStatus().authority, key = statusKey(before);
-    if (options?.fresh !== true && cachedStatus?.key === key && chatGptConnectionCurrent(cachedStatus.value.connection, clock.nowMs()))
+    if (checkOptions?.fresh !== true && cachedStatus?.key === key && chatGptConnectionCurrent(cachedStatus.value.connection, clock.nowMs()))
       return ChatGptAccountStatusSchema.parse(cachedStatus.value);
     let shared = statusCheck;
     if (shared === undefined || shared.key !== key || shared.controller.signal.aborted) {

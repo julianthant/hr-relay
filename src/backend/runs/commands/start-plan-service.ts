@@ -57,6 +57,7 @@ export interface StartPlanServiceDeps {
 
 export interface StartPlanService {
   previewWarnings(input: unknown): RerunWarningWire;
+  prepare?(input: unknown, signal: AbortSignal): Promise<void>;
   prepareAndPlan?(input: unknown, signal: AbortSignal): Promise<StartPlanWire>;
   plan(input: unknown): StartPlanWire;
 }
@@ -246,6 +247,13 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       })),
     });
   };
+  const prepare = async (input: unknown, signal: AbortSignal): Promise<void> => {
+    assertAdmission();
+    if (deps.preflight === undefined) return;
+    const scope = scopeFor(input);
+    await deps.preflight.prepare(scope, signal);
+    deps.preflight.assertReady(scope);
+  };
   return Object.freeze({
     previewWarnings(input: unknown): RerunWarningWire {
       const request = RerunWarningRequestSchema.parse(input);
@@ -256,13 +264,9 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         rerun: projectRerunPlanForOperator(previewRerunWarnings(repositories, descriptor, request.source, deps.authorityRead.evidenceSchemaHash?.bind(deps.authorityRead))),
       }));
     },
+    prepare,
     async prepareAndPlan(input: unknown, signal: AbortSignal): Promise<StartPlanWire> {
-      assertAdmission();
-      if (deps.preflight !== undefined) {
-        const scope = scopeFor(input);
-        await deps.preflight.prepare(scope, signal);
-        deps.preflight.assertReady(scope);
-      }
+      await prepare(input, signal);
       const draft = build(input);
       const checked = deps.prepareOcrProvider === undefined ? undefined : deps.authority.withAuthorityTransaction(repositories => {
         const plan = bind(repositories, draft);
