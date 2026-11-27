@@ -1288,7 +1288,7 @@ function IntakeSessionWorkspace({
     }
     if (resource.state === "failed") {
       return (
-        <FailureNotice sentence="Session not readable. Reload and try again." />
+        <FailureNotice sentence="Session not readable; reload and try again." />
       );
     }
     const session = resource.session;

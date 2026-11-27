@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogFooter,
   StatusPill,
+  FailureNotice,
   Notice,
   dsFocus,
   dsIcon,
@@ -52,7 +53,7 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
   const summary = bulkOutcome === null ? undefined : bulkSummary(bulkOutcome);
   const counts = summary?.counts;
   return <>
-    {summary !== undefined && <Notice tone={summary.tone} title={summary.counts === undefined ? summary.title : `${bulkOutcome?.plan.label ?? ""}: ${summary.counts}`} />}
+    {summary !== undefined && (summary.tone === "danger" ? <FailureNotice sentence={summary.counts === undefined ? summary.title : `${bulkOutcome?.plan.label ?? ""}: ${summary.counts}`} /> : <Notice tone={summary.tone} title={summary.counts === undefined ? summary.title : `${bulkOutcome?.plan.label ?? ""}: ${summary.counts}`} />)}
     <Dialog open={reviewing !== null} onOpenChange={next => { if (!next) onReviewed(); }}>
       {reviewing !== null && <DialogContent size="md" title={`${reviewing.plan.label} result`} description={counts}>
         <DialogBody><div aria-live="polite" data-queue-bulk-result={reviewing.response.state}>

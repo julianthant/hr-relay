@@ -24,6 +24,7 @@ import {
 import {
   BareButton,
   ConfirmDialog,
+  FailureNotice,
   Notice,
   dsFocus,
   dsIcon,
@@ -54,8 +55,9 @@ const PENDING_LIMIT_MS = 15_000;
 
 /** A refused command toasts one line; its Priority notification item opens the run. */
 export function CommandResultFeed({ results }: { results: readonly CommandResultFeedEntry[] }) {
-  return <>{results.map(entry => <Notice key={entry.id} tone={entry.settlement.reason === "conflict" ? "warning" : "danger"}
-    title={commandResultTitle(entry)} />)}</>;
+  return <>{results.map(entry => entry.settlement.reason === "conflict"
+    ? <Notice key={entry.id} tone="warning" title={commandResultTitle(entry)} />
+    : <FailureNotice key={entry.id} sentence={commandResultTitle(entry)} />)}</>;
 }
 
 const ICONS: Record<ActionIconKey, ReactNode> = {

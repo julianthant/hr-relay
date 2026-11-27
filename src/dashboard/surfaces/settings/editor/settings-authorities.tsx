@@ -23,7 +23,7 @@ const PROTECTED_DESCRIPTION: Readonly<Record<string, string>> = {
 function CredentialsSection({ editor, profileName, embedded }: { editor: Editor; profileName: string; embedded: boolean }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" contentOnly={embedded} />;
-  if (editor.editor.state === "failed") return <FailureNotice sentence="Credentials unavailable. Reopen Settings to try again." />;
+  if (editor.editor.state === "failed") return <FailureNotice sentence="Credentials unavailable; reopen Settings to try again." />;
   const settingsDocument = editor.editor.document;
   const authority = settingsDocument.protectedSettings;
   const credentials = editor.protectedEditor;

@@ -98,7 +98,7 @@ export function CompactSettingsSection({ editor, appearance }: { editor: Editor;
   return <section className="settings-compact-page">
     <PageHeading title="General" description="Assistant, app, run, and notification preferences." />
     <AssistantSettings />
-    {editor.editor.state === "failed" && <FailureNotice sentence="Settings unavailable. Reopen Settings to try again." />}
+    {editor.editor.state === "failed" && <FailureNotice sentence="Settings unavailable; reopen Settings to try again." />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} appearance={appearance} />
       : editor.editor.state === "loading" && <SettingsSectionSkeleton section="general" contentOnly />}
   </section>;

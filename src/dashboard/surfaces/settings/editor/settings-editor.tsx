@@ -25,7 +25,7 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
   if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
   if (sectionId === "providers") return <Banner tone="info" title="Provider settings retired">ChatGPT sign-in is available in General.</Banner>;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
-  if (editor.editor.state === "failed") return <FailureNotice sentence="Settings unavailable. Reopen Settings to try again." />;
+  if (editor.editor.state === "failed") return <FailureNotice sentence="Settings unavailable; reopen Settings to try again." />;
   const document = editor.editor.document;
   const sections = document.sections.filter(section => section.id === sectionId);
   if (sections.length === 0) return <FailureNotice sentence="Section unavailable." />;
