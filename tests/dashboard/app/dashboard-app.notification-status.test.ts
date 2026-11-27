@@ -169,7 +169,7 @@ it("clears only the chosen notice through the served command, and a fresh served
 });
 
 it("keeps a read storage notice under Needs you while it stands, then clears it from Earlier once resolved, and a fresh served read omits it", async () => {
-  const storage = NotificationWireSchema.parse({ ...NOTIFICATION, notificationId: "00000000-0000-4000-8000-000000000444", publicationId: "e".repeat(64), trigger: "storage-degraded",
+  const storage = NotificationWireSchema.parse({ ...NOTIFICATION, notificationId: "00000000-0000-4000-8000-000000000444", publicationId: "e".repeat(64), trigger: "storage",
     severity: "warning", title: "Storage needs attention", readState: "read", state: "read", link: { kind: "storage" }, context: { state: "unavailable" }, standing: true });
   const m = await mount(FIXTURE_DAY_WIRE.day, undefined, [storage]);
   await m.greet(READY);
@@ -177,9 +177,9 @@ it("keeps a read storage notice under Needs you while it stands, then clears it 
   const group = (label: string) => [...document.querySelectorAll(`section[aria-label="${label}"] .notice-title`)].map(title => title.textContent);
   const clearOf = () => [...document.querySelectorAll<HTMLElement>("li.notice-row")].find(row => row.dataset.id !== undefined && row.querySelector(".notice-title")?.textContent === "Storage needs attention")?.querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]') ?? null;
   assert.deepEqual(group("Needs you"), ["Storage needs attention"], "standing and read, it stays under Needs you");
-  assert.equal(clearOf(), null, "a standing notice has no Clear");
+  assert.ok(clearOf() === null, "a standing notice has no Clear");
 
-  m.serve([NotificationWireSchema.parse({ ...storage, standing: undefined, revision: storage.revision + 1 })]);
+  m.serve([NotificationWireSchema.parse({ ...storage, standing: undefined, revision: 2 })]);
   await m.change(READY, true);
   assert.deepEqual(group("Earlier").includes("Storage needs attention"), true, "resolved, it lists under Earlier");
   const clear = clearOf();
