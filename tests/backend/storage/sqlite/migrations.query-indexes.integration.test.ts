@@ -37,9 +37,9 @@ function migrateTo36(database: DatabaseSync): void {
 }
 
 describe("query index migration 37", () => {
-  it("is schema version 37, under the current schema 44, and changes no table", () => {
+  it("is schema version 37, under the current schema 45, and changes no table", () => {
     assert.equal(QUERY_INDEX_SCHEMA_VERSION, 37);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 44);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 45);
     assert.deepEqual(migrationTableNames(37), migrationTableNames(36));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
@@ -53,7 +53,7 @@ describe("query index migration 37", () => {
       migrateTo36(database);
       const after = schemaObjects(database);
       const laterObjectChanges = new Set(["delegation_dependencies", "run_search", "assistant_messages_settle_only"]);
-      const laterTables = new Set(["workbook_payloads", "debug_events", ...ASSISTANT_PHASE_ONE_TABLES]);
+      const laterTables = new Set(["workbook_payloads", "debug_events", "assistant_applied_edits", ...ASSISTANT_PHASE_ONE_TABLES]);
       assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && !(object.name in LIST_INDEXES)
         && !laterObjectChanges.has(object.name) && !laterTables.has(object.tbl_name)),
         prior.filter(object => object.name !== "checkpoints_replay_idx" && !laterObjectChanges.has(object.name)));

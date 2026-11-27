@@ -72,6 +72,7 @@ import { runtimeProfiles } from "../../../models/config/define-runtime-isolation
 import { historyArchivePath, attachHistoryArchive, validateHistoryRead, runIndex } from "./isolated-history-store.js";
 import { privatePathRejects } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
+import { createAssistantAppliedEditRepository } from "./assistant-applied-edits.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
 import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand, settledRunDeletionIds } from "./command-record-row.js";
@@ -3969,6 +3970,7 @@ export class AuthorityDatabase implements Disposable {
       profileId: () => z.object({ profile_id: z.uuid() }).parse(this.#database.prepare("SELECT profile_id FROM database_states WHERE id=1").get()).profile_id };
     // Built on first use: the profile row exists only after the store is bound.
     let history: AssistantM1HistoryRepository | undefined, proposals: AssistantProposalRepository | undefined;
+    const assistantAppliedEdits = createAssistantAppliedEditRepository(assistantPorts);
     const assistantHistory = () => history ??= createAssistantM1HistoryRepository({ ...assistantPorts, epoch: () => this.#assistantEpoch(),
       afterCommit: publish => { this.afterAuthorityCommit(publish); } });
     const settings = createSettingsActivationRepositories({ database: this.#database,
@@ -3981,6 +3983,7 @@ export class AuthorityDatabase implements Disposable {
       assistantModelPreference: createAssistantModelPreferenceRepository({ database: this.#database, read: work => this.#withReadSnapshot(work), mutate: (table, work) => this.#authorityWrite(table, work) }),
       assistantAuthorization: createAssistantAuthorizationRepository({ database: this.#database, mutate: (table, work) => this.#authorityWrite(table, work) }),
       get assistantHistory() { return assistantHistory(); },
+      assistantAppliedEdits,
       get assistantProposals() { return proposals ??= createAssistantProposalRepository({ ...assistantPorts, accepted: assistantHistory() }); },
       workbooks: createWorkbookLibraryRepository({ database: this.#database,
         changeKey: () => this.#transactionDepth > 0 && this.#transactionMode !== "read" ? undefined : this.changeKey(),

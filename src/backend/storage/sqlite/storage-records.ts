@@ -1,3 +1,4 @@
+import { AssistantAppliedEditRowSchema } from "./assistant-applied-edits.js";
 import { ASSISTANT_START_ROWS_MAX, AssistantAttachmentRecordSchema, AssistantConversationRecordSchema, AssistantM1MessageRecordSchema, AssistantProposalSnapshotSchema,
   AssistantProposalStateSchema, AssistantRowResultSchema, AssistantMessageRecordSchema, AssistantModelPreferenceRecordSchema,
   AssistantSessionClaimSchema, AssistantSessionOutcomeSchema } from "../../../models/dashboard/assistant.js";
@@ -91,6 +92,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   assistant_proposals: AssistantProposalStorageRowSchema,
   assistant_proposal_rows: AssistantProposalResultStorageRowSchema,
   assistant_session_claims: AssistantSessionClaimStorageRowSchema,
+  assistant_applied_edits: AssistantAppliedEditRowSchema,
   run_batches: RunSessionRecordSchema,
   deleted_runs: DeletedRunRecordSchema,
   runs: RunRecordSchema,

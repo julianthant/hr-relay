@@ -72,8 +72,16 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
   }
 }
 
+/** Removes the empty edit table to construct a populated schema-44 copy. */
+export function restoreSchema44AssistantEdits(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 45);
+  assert.equal(database.prepare("SELECT count(*) AS count FROM assistant_applied_edits").get()?.count, 0);
+  database.exec("DROP TABLE assistant_applied_edits; UPDATE database_states SET schema_version=44; PRAGMA user_version=44");
+}
+
 /** Steps an authority back to schema 43: every unrecorded text-part message is stored as `{text}` again. */
 export function restoreSchema43AssistantPayloads(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 45) restoreSchema44AssistantEdits(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 44);
   database.exec(`DROP TRIGGER assistant_messages_settle_only;
     UPDATE assistant_messages SET payload_json=json_object('text',COALESCE(json_extract(payload_json,'$.parts[0].runs[0].text'),''))
@@ -83,7 +91,7 @@ export function restoreSchema43AssistantPayloads(database: DatabaseSync): void {
 
 /** Removes the empty phase-1 assistant tables and restores the schema-42 message trigger. */
 export function restoreSchema42AssistantStorage(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 44) restoreSchema43AssistantPayloads(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 44) restoreSchema43AssistantPayloads(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 43);
   for (const table of ["assistant_session_claims", "assistant_proposal_rows", "assistant_proposals"]) {
     assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
