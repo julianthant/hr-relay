@@ -34,7 +34,7 @@ const descriptorId = descriptor.id;
 const rerunDescriptor = descriptor;
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
   requiredWorkbookFields: [...descriptor.requiredWorkbookFields], workbookReference: descriptor.workbookReference,
-  referenceSources: [], steps: projectStartSteps(descriptor), inputRun: { state: "present", surface: descriptor.surfaces.inputRun } };
+  steps: projectStartSteps(descriptor), inputRun: { state: "present", surface: descriptor.surfaces.inputRun } };
 const entry = WorkbookLibraryEntrySchema.parse({ libraryId: "roster", name: "Roster", version: 1, updatedAt: "2026-11-01T00:00:00Z", rowCount: 2,
   worksheets: [{ id: "first", name: "First" }, { id: "second", name: "Second" }], metadata: { typeId: "onboarding-roster", sharePoint: null },
   type: { id: "onboarding-roster", name: "Roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: "roster" },
@@ -118,7 +118,7 @@ it("reads catalog and compatibility without the workbook list while the launcher
   await h.settle(); await chooseCurrent(); await select(0); await mode("rehire");
   await dialog.press("Next"); await h.settle();
   assert.equal(reads.workbookList, 0, "Start run never lists whole workbooks");
-  assert.deepEqual([reads.workbookCatalog, reads.workbookCompatibility], [1, 1], "each reference read happens once per dialog open");
+  assert.deepEqual([reads.workbookCatalog, reads.workbookCompatibility], [1, 1], "the opening loads the reference catalog once");
 });
 
 it("uses saved rows only, requires a common explicit mode and preserves duplicate physical entry/refusal correspondence", async () => {

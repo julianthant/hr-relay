@@ -37,18 +37,21 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
   const opened: { day: string; lastEventId: string | undefined; push: (envelope: unknown) => void; end: () => void }[] = [];
   const commands: string[] = [];
   const requested: string[] = [];
-  /** The row the server lists; an accepted mark-read moves it to read at the next revision, as the readback reads it. */
-  let served: NotificationWire = NOTIFICATION;
+  /** The row the server can deliver on the stream after accepting a command. */
+  let served: NotificationWire | undefined = NOTIFICATION;
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
     requested.push(path);
-    if (path === "/api/v1/notifications") return Response.json([served]);
+    if (path === "/api/v1/notifications") return Response.json(served === undefined ? [] : [served]);
     if (path === `/api/v1/notifications/${NOTIFICATION.notificationId}/target`) return Response.json({ kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: FIXTURE_DAY_WIRE.day });
     if (path === "/api/v1/commands") {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); commands.push(command.type);
-      if (command.type === "notification-read" && served.kind === "notification") served = NotificationWireSchema.parse({ ...served, readState: "read", state: "read", revision: served.revision + 1 });
-      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId: NOTIFICATION.notificationId }] });
+      if (command.type === "notification-read" && served?.kind === "notification") served = NotificationWireSchema.parse({ ...served, readState: "read", state: "read", revision: served.revision + 1 });
+      if (command.type === "notification-clear") served = undefined;
+      const members = "members" in command.target ? command.target.members : [command.target];
+      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: members.map(({ notificationId }) => ({ family: "notification", notificationId })),
+        notificationReceipt: { actorId: command.target.actorId, changes: members.map(({ notificationId, expectedVersion }) => ({ notificationId, revision: expectedVersion + 1 })) } });
     }
     return app.request(url, init);
   } });
@@ -95,9 +98,10 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
   };
   let cursor = 1;
   /** A rows-only change carrying the status row, as the hub sends when the status moves or its retry reads it. */
-  const change = async (status: typeof READY | typeof UNAVAILABLE, handoff = false) => {
+  const change = async (status: typeof READY | typeof UNAVAILABLE, handoff = false, rows = served === undefined ? [] : [served]) => {
     const after = `pc:${cursor}`; cursor += 1;
-    await act(async () => { stream().push({ type: "change", topic: "dashboard-day", cursor: `pc:${cursor}`, after, position: 0, rows: [statusRow(status), ...(handoff ? [listRow([served])] : [])] }); });
+    await act(async () => { stream().push({ type: "change", topic: "dashboard-day", cursor: `pc:${cursor}`, after, position: 0,
+      rows: [statusRow(status), ...(handoff ? [listRow(rows)] : [])] }); });
     await settle();
   };
   const openBell = async () => {
@@ -122,8 +126,36 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
   const listed = () => [...document.querySelectorAll(".notice-title")].map(title => title.textContent);
   const notice = () => document.querySelector(".notice-status")?.textContent ?? "";
   const targetReads = () => requested.filter(path => path.endsWith("/target")).length;
-  return { host, opened, commands, greet, change, resume, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
+  return { host, opened, commands, requested, greet, change, resume, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
 }
+
+it("confirms read and clear from the command replies without requesting the inbox list", async () => {
+  const m = await mount();
+  await m.greet(READY);
+  await m.openBell();
+
+  await act(async () => m.control("Mark as read").click()); await settle();
+  assert.equal(m.control("Mark as unread").disabled, false);
+  await act(async () => m.control("Clear notification").click()); await settle();
+  assert.deepEqual(m.listed(), []);
+  assert.deepEqual(m.commands, ["notification-read", "notification-clear"]);
+  assert(!m.requested.includes("/api/v1/notifications"));
+  assert.doesNotMatch(m.notice(), /could not|replaced|pending/iu);
+});
+
+it("shows another tab's read and clear from actor-keyed stream rows", async () => {
+  const m = await mount();
+  await m.greet(READY);
+  await m.openBell();
+  assert.equal(m.control("Mark as read").disabled, false);
+
+  await m.change(READY, true, [NotificationWireSchema.parse({ ...NOTIFICATION, readState: "read", state: "read", revision: 2 })]);
+  assert.equal(m.control("Mark as unread").disabled, false);
+  await m.change(READY, true, []);
+  assert.deepEqual(m.listed(), []);
+  assert.deepEqual(m.commands, []);
+  assert(!m.requested.includes("/api/v1/notifications"));
+});
 
 it("shows a first snapshot whose status could not be read as display-only rows, then restores the controls when a change delivers it", async () => {
   const m = await mount();

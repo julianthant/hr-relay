@@ -210,8 +210,9 @@ export function LoadedApp({
   const dateError = dateSelection.state === "valid" ? undefined : dateSelection.reason === "future"
     ? `Date ${day} is after Today (${today}).` : `Invalid date: ${day || "(empty)"}.`;
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
-  const workflowComposition = useMemo(() => composeWorkflows(launchWorkflows(workflows, boot.workbookCompatibility)), [composeWorkflows, workflows, boot.workbookCompatibility]);
-  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows, boot.workbookCompatibility), workflowComposition.sources, boot.featureAvailability), [workflows, workflowComposition, boot.featureAvailability, boot.workbookCompatibility]);
+  const launchableWorkflows = useMemo(() => launchWorkflows(workflows), [workflows]);
+  const workflowComposition = useMemo(() => composeWorkflows(launchableWorkflows), [composeWorkflows, launchableWorkflows]);
+  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchableWorkflows, workflowComposition.sources, boot.featureAvailability), [launchableWorkflows, workflowComposition, boot.featureAvailability]);
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
   const dayRequested = (hasServedWorkflows || workflowComposition.sessionsHarness === undefined) && dateSelection.state === "valid" ? day : undefined;
@@ -780,7 +781,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const searchTitles = useMemo(() => new Map(queueRows.map(row => [String(row.runId), row.title])), [queueRows]);
   const servedSearchData = useSearchWiring({ client, enabled: harnessSearch === undefined && route.view?.search === true,
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows, titles: searchTitles });
-  const librarySheets = useLibrarySheets(client, harnessSearch === undefined && route.view?.search === true);
+  const librarySheets = useLibrarySheets(client, harnessSearch === undefined && route.view?.search === true, authorityEpoch);
   const searchData = useMemo(() => harnessSearch !== undefined ? { ...harnessSearch, sheets: harness?.paletteSheets } : { ...servedSearchData, sheets: librarySheets.sheets, sheetsUnavailable: librarySheets.unavailable }, [harnessSearch, harness, servedSearchData, librarySheets]);
   const harnessInbox = (harness?.useInbox ?? noHarnessInbox)({
     day, nowIso, anchorIso: boot.serverClock.now, rows: !hasServedWorkflows || dayWire ? queueRows : undefined,

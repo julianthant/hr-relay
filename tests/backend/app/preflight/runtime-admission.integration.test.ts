@@ -58,7 +58,7 @@ import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashbo
 import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { fixtureDuoSigningSource } from "../../../support/helpers/browser/duo-signing.js";
-const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows));
 const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 import { AuthorityBackupService, AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase as StoreDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";

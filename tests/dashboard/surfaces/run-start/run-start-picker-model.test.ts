@@ -9,15 +9,15 @@ import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/helpers/dashboa
 import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { WORKFLOW_SOURCES } from "../../../../src/dashboard/app/workflow-sources.js";
 
-const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
+const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows));
 const catalog = buildWorkflowCatalog(served, WORKFLOW_SOURCES);
 const ids = (query = "") => runPickerGroups(catalog, query).flatMap(group => group.entries.flatMap(node => [node.entry.id, ...node.members.map(child => child.entry.id)]));
 
 describe("shared run catalog", () => {
-  it("keeps a workflow that requires a workbook when its compatibility projection is missing", () => {
+  it("keeps a workflow that requires a workbook in the picker before loading the workbook library", () => {
     const required = parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows).find(entry => entry.start.workbookReference !== undefined);
     expect(required).toBeDefined();
-    expect(launchWorkflows([required!], { workflows: [], libraries: [] }).map(entry => entry.workflowId)).toEqual([String(required!.id)]);
+    expect(launchWorkflows([required!]).map(entry => entry.workflowId)).toEqual([String(required!.id)]);
   });
   it("keeps hidden children and removed workflows out of the picker and catalog", () => {
     const visible = ["emergency-contact", "i9-check-start", "onboarding", "person-lookup", "separations", "work-study"];

@@ -412,6 +412,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     },
     catalog: () => deps.repository.catalog().map(entry => entry.sync !== undefined && running.has(entry.libraryId)
       ? { ...entry, sync: { ...entry.sync, state: 'running' as const } } : entry),
+    hasRunningSync: () => running.size !== 0,
     libraryVersion: (libraryId: string, versionId?: string) => deps.repository.libraryVersion(input(WorkbookIdSchema, libraryId), versionId === undefined ? undefined : input(WorkbookIdSchema, versionId)),
     libraryActionRecord: (libraryId: string, operationId: string) => deps.repository.libraryActionRecord(input(WorkbookIdSchema, libraryId), input(WorkbookIdSchema, operationId)),
     libraryActionStatus(libraryId: string, operationId: string) {

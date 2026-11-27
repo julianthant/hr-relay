@@ -75,12 +75,10 @@ export interface RunStartWorkflow {
   readonly workbookReference?: Readonly<{ id: string; keyFieldId: string; mode: "keys" | "all"; writableFields: readonly string[] }>;
   /** The optional second check: any library spreadsheet that maps the key field fits, and a start may pick none. */
   readonly workbookCheck?: Readonly<{ id: string; keyFieldId: string }>;
-  readonly referenceSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string; sheetName: string }>[];
 }
 
-/** Whether a refresh left the workflow's own definition as it was; its spreadsheet matches are read apart from it. */
 function sameDefinition(left: RunStartWorkflow, right: RunStartWorkflow | undefined): boolean {
-  return JSON.stringify({ ...left, referenceSources: [] }) === JSON.stringify({ ...right, referenceSources: [] });
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function isStartable(workflow: RunStartWorkflow): boolean {
