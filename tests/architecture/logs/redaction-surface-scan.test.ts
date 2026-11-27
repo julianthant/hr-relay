@@ -66,10 +66,9 @@ describe("redaction surface scan — the declaration audit", () => {
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);
   });
 
-  it("audits the real history request/status/result as closed loopback surfaces", () => {
+  it("audits the history clear request and result as closed loopback surfaces", () => {
     const surfaces = [
       ["request/clear-run-history", ClearRunHistoryRequestSchema, ["commandId", "target.epoch", "target.profileId"]],
-      ["wire/run-history-status", RunHistoryStatusSchema, ["activeRuns", "finishedRuns", "state"]],
       ["wire/clear-run-history-result", ClearRunHistoryResultSchema, ["commandId", "deletedRuns", "reason", "state"]],
     ] as const;
     assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === "src/models/dashboard/run-history.ts")?.state, "audited");

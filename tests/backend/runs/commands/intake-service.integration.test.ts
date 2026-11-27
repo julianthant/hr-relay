@@ -1,6 +1,5 @@
 import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
-import { composeIntake } from "../../../../src/backend/app/composition/dashboard/intake.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
