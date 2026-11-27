@@ -102,13 +102,14 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
       {retry !== undefined && onAction !== undefined && <IconButton size="md" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [parentRun,onOpenLinked,resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,retry,onAction,retryEnabled,retryRun,feedback]);
   const startup = selection.row.notStarting;
   const setupProblem = startup !== undefined && WorkerSetupRefusalCodeSchema.safeParse(startup.code).success ? startup.summary : undefined;
+  // The Duo wait is a state card: it follows the recorded setup in the feed.
+  const duoCard = setupProblem === undefined && isNeedsDuo(selection.row) ? <div className="mt-4 min-w-0"><Banner tone="info" title="Approve the Duo sign-in"><span>Approve it on your phone to continue.</span></Banner></div> : undefined;
   return <><LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
-    status={status} navigation={setupProblem !== undefined ? <div className="px-3 py-2"><Banner tone="warning" title={setupProblem} /></div>
-      : isNeedsDuo(selection.row) ? <div className="px-3 py-2"><Banner tone="info" title="Approve the Duo sign-in"><span>Approve it on your phone to continue.</span></Banner></div> : undefined}
+    status={status} navigation={setupProblem !== undefined ? <div className="px-3 py-2"><Banner tone="warning" title={setupProblem} /></div> : undefined}
     onReview={reviewAvailable ? onReview : undefined}
     toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} headerActions={headerActions} rerun={rerun} records={records}
     content={content}
-    afterStep={afterStep} trailingContent={emptyPreview} />
+    afterStep={afterStep} trailingContent={duoCard === undefined ? emptyPreview : <>{emptyPreview}{duoCard}</>} />
     {reviewAvailable && <ReviewDialog open={Boolean(reviewOpen)} onOpenChange={open => { if (!open) onLogs?.(); }} subject={selection.workflowLabel}><RunReview selection={selection} focus={reviewFocus} /></ReviewDialog>}</>;
 }
 
