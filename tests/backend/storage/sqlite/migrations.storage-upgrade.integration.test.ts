@@ -20,7 +20,7 @@ function rows(path: string) {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
     assert.equal(tables.length, AUTHORITY_TABLE_REGISTRY.length + AUTHORITY_DERIVED_TABLES.length);
     return Object.fromEntries(tables.map(row => {
-      assert.equal(typeof row.name, "string");
+      assert.ok(typeof row.name === "string");
       return [row.name, raw.prepare(`SELECT * FROM "${row.name}" ORDER BY ${inventoryRowOrder(row.name)}`).all()];
     }));
   } finally { raw.close(); }

@@ -125,7 +125,7 @@ function rows(path: string) {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
     assert.deepEqual(tables.map(row => row.name), [...AUTHORITY_TABLE_REGISTRY.map(({ name }) => name), ...AUTHORITY_DERIVED_TABLES].sort());
     return Object.fromEntries(tables.map(row => {
-      assert.equal(typeof row.name, "string");
+      assert.ok(typeof row.name === "string");
       return [row.name, raw.prepare(`SELECT * FROM "${row.name}" ORDER BY ${inventoryRowOrder(row.name)}`).all()];
     }));
   } finally { raw.close(); }
