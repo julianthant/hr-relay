@@ -185,7 +185,7 @@ describe("refused sign-in detail", () => {
     assert.equal(stored.includes("secret"), false);
   });
 
-  it("stores a CRM refusal as registry leaves, and Logs still show the catalog sentence", () => {
+  it("shows the recorded CRM sign-in step in Logs without exposing diagnostics", () => {
     const failure = storedSignInFailure(
       "the login could not prove the authenticated application",
       `https://act-crm.my.site.com/hr/ONB_SearchOnboardings?EMPLID=${FIXTURE_EMPLOYEE_ID}`,
@@ -199,14 +199,18 @@ describe("refused sign-in detail", () => {
       pageOrigin: "https://act-crm.my.site.com",
       pagePath: "/hr/ONB_SearchOnboardings",
     });
-    assert.equal(projectFailureForOperator(failure).summary, "CRM sign-in failed.");
+    const expected = "Relay could not verify the signed-in CRM page.";
+    const projected = projectFailureForOperator(failure, true);
+    assert.equal(projected.summary, expected);
+    assert.equal(projected.debug, undefined);
     assert.equal(JSON.stringify(failure).includes(FIXTURE_EMPLOYEE_ID), false);
 
     const original = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;
     assert.ok(original.section === "failure" && original.payload.state === "available");
     const source = original.payload.value;
     const section = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: {
-      ...source, code: "UCPATH_SIGN_IN_FAILED", summary: `private ${FIXTURE_EMPLOYEE_ID}`,
+      ...source, code: failure.code, summary: `private ${FIXTURE_EMPLOYEE_ID}`,
+      display: { title: "Read CRM hire data", observation: projected.summary },
     } } });
     const detail = FIXTURE_RUN_DETAILS[FIXTURE_IDS.failedRun];
     assert.ok(detail);
@@ -215,7 +219,7 @@ describe("refused sign-in detail", () => {
       { artifactUrl: () => { throw new Error("sign-in refusal must not request an artifact"); } });
     const entry = projection.steps.find(step => step.id === source.failureId)?.entries[0];
     assert.ok(entry?.kind === "decision");
-    assert.equal(entry.decision.message, "UCPath sign-in failed.");
+    assert.equal(entry.decision.message, expected);
     assert.equal(entry.decision.message.includes(FIXTURE_EMPLOYEE_ID), false);
   });
 

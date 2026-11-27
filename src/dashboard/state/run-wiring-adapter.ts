@@ -446,7 +446,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
           message, ...(write.decision === undefined ? {} : { served: write.decision }) } }] });
     } else if (section.section === "failure" && section.payload.state === "available") {
       const failure = section.payload.value;
-      const message = operatorFailureSentence(failure.code);
+      const message = (failure.code === "CRM_SIGN_IN_FAILED" ? failure.display?.observation : undefined)
+        ?? operatorFailureSentence(failure.code);
       const failureTitle = failure.display?.title ?? projectFailureDisplay(failure).title;
       const noScreenshot = failureScreenshotReason(failure);
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);

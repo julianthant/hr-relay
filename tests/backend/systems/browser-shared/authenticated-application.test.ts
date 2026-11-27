@@ -100,7 +100,7 @@ describe("authenticated application URL identity", () => {
     assert.equal(failure.debug?.signInRefusal?.system, "crm");
     assert.equal(failure.debug?.signInRefusal?.pageOrigin, "https://act-crm.my.site.com");
     assert.equal(failure.debug?.signInRefusal?.pagePath, undefined);
-    assert.equal(projectFailureForOperator(failure).summary, "CRM sign-in failed.");
+    assert.equal(projectFailureForOperator(failure).summary, "CRM did not reach its signed-in page.");
     const stored = JSON.stringify(failure);
     assert.equal(stored.includes("10456712"), false);
     assert.equal(stored.includes("frag-canary"), false);
