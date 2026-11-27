@@ -52,7 +52,7 @@ function VersionsDialog({ sheet, actions, onClose }: { sheet: Sheet; actions: Di
   const done = (run: () => void) => () => { run(); onClose(); };
   if (view.step === 'use' && target) return <ConfirmDialog open onOpenChange={open => { if (!open) onClose(); }} title={`Use ${target.name}?`} detail={sheet.name} confirmLabel="Use version" onConfirm={done(() => actions.useVersion(target.id))}
     description={<><span className="block">Runs read {target.name} from now on. Other versions are kept.</span>{sheet.sharePoint && <span className="block">The next sync replaces it.</span>}</>} />;
-  if (view.step === 'delete' && target) return <ConfirmDialog open onOpenChange={open => { if (!open) onClose(); }} title={`Delete ${target.name}?`} detail={sheet.name} confirmLabel="Delete version" destructive onConfirm={done(() => actions.deleteVersion(target.id))}
+  if (view.step === 'delete' && target) return <ConfirmDialog open onOpenChange={open => { if (!open) onClose(); }} title={`Delete ${target.name}?`} confirmLabel="Delete version" destructive onConfirm={done(() => actions.deleteVersion(target.id))}
     description="Runs that used it keep their results." />;
   if (view.step === 'rename' && target) return <Shell title="Rename version" description={sheet.name} onClose={onClose} footer={<><V2Button onClick={list}>Back</V2Button><V2Button look="primary" disabled={!text.trim()} onClick={done(() => actions.renameVersion(target.id, text.trim()))}>Rename</V2Button></>}>
     <Field label="Name"><Input aria-label="Name" value={text} onChange={event => setText(event.target.value)} /></Field></Shell>;
@@ -64,7 +64,7 @@ function VersionsDialog({ sheet, actions, onClose }: { sheet: Sheet; actions: Di
       {sheet.versions.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
     </Select></Field></Shell>;
   return <Shell title="Versions" description={`${sheet.name} · in use: ${sheet.versionName}`} size="md" onClose={onClose}
-    footer={<>{sheet.sharePoint && <Grey className="mr-auto">The next sync replaces the version in use.</Grey>}<V2Button onClick={() => { setText(''); setView({ step: 'new' }); }}>New version</V2Button><Cancel onClose={onClose} />
+    footer={<><V2Button className="mr-auto" onClick={() => { setText(''); setView({ step: 'new' }); }}>New version</V2Button><Cancel onClose={onClose} />
       <V2Button look="primary" disabled={picked === undefined} onClick={() => picked && setView({ step: 'use', id: picked })}>Use version</V2Button></>}>
     <ul role="radiogroup" aria-label="Versions" className="divide-y divide-ui-stroke rounded-md border border-ui-stroke">{sheet.versions.map(entry => { const current = entry.id === sheet.currentVersionId; return <li key={entry.id} className="flex items-center gap-1 pr-2">
       <button type="button" role="radio" aria-checked={picked === entry.id} disabled={current} onClick={() => setPicked(entry.id)} className={`flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left ${dsText.ui} hover:bg-ui-hover disabled:opacity-60 ${picked === entry.id ? 'bg-ui-hover' : ''}`}>
@@ -74,5 +74,5 @@ function VersionsDialog({ sheet, actions, onClose }: { sheet: Sheet; actions: Di
       <V2Icon label={`Rename ${entry.name}`} onClick={() => { setText(entry.name); setView({ step: 'rename', id: entry.id }); }}><Pencil aria-hidden className={dsIcon.md} /></V2Icon>
       <V2Icon label={`Delete ${entry.name}`} disabled={current} onClick={() => setView({ step: 'delete', id: entry.id })}><Trash2 aria-hidden className={dsIcon.md} /></V2Icon>
     </li>; })}</ul>
-    <Grey className="mt-2 block">The version in use can't be deleted.</Grey></Shell>;
+    <Grey className="mt-2 block">The version in use can't be deleted.</Grey>{sheet.sharePoint && <Grey className="block">The next sync replaces the version in use.</Grey>}</Shell>;
 }
