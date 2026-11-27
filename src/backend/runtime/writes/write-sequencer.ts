@@ -1781,16 +1781,23 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       context.signal.throwIfAborted();
       const resolvedAt = instant();
       if (context.run.envelope.buildId === currentBuildId() && isFreshParkedWriteAbsence(intent, verdict.evidence, resolvedAt)) {
-        const resolved = deps.authority.settleResolvedParkedAbsence({ writeIntentId: intent.writeIntentId, generation: intent.generation,
-          expectedIntentVersion: intent.version, claim: context.claim,
-          settlement: { state: "operator-confirmed-absent", writeIntentId: intent.writeIntentId, generation: intent.generation,
-            operator: absenceOperator, confirmedAt: resolvedAt, evidence: verdict.evidence },
-          resolution: { commandId: recheck.commandId, auditId: recheck.auditId, expectedRunVersion: recheck.expectedRunVersion,
-            writeIntentId: intent.writeIntentId, writeAttemptId: intent.currentAttemptId, generation: intent.generation,
-            bindingProofDigest: intent.bindingProofDigest, idempotencyKeyDigest: intent.idempotencyKeyDigest,
-            runId: intent.runId, runAttempt: intent.runAttempt, decision: "absent", resolvedAt } });
-        if (resolved.status !== "retryable") throw new Error("parked-write-absence-settlement-required");
-        return { disposition: "retry-after-read" as const, intent: resolved, probeCompletedAt };
+        try {
+          const resolved = deps.authority.settleResolvedParkedAbsence({ writeIntentId: intent.writeIntentId, generation: intent.generation,
+            expectedIntentVersion: intent.version, claim: context.claim,
+            settlement: { state: "operator-confirmed-absent", writeIntentId: intent.writeIntentId, generation: intent.generation,
+              operator: absenceOperator, confirmedAt: resolvedAt, evidence: verdict.evidence },
+            resolution: { commandId: recheck.commandId, auditId: recheck.auditId, expectedRunVersion: recheck.expectedRunVersion,
+              writeIntentId: intent.writeIntentId, writeAttemptId: intent.currentAttemptId, generation: intent.generation,
+              bindingProofDigest: intent.bindingProofDigest, idempotencyKeyDigest: intent.idempotencyKeyDigest,
+              runId: intent.runId, runAttempt: intent.runAttempt, decision: "absent", resolvedAt } });
+          if (resolved.status !== "retryable") throw new Error("parked-write-absence-settlement-required");
+          return { disposition: "retry-after-read" as const, intent: resolved, probeCompletedAt };
+        } catch (error) {
+          return parkAfterFence(context, new PostFenceWriteFailure({ writeIntentId: intent.writeIntentId, generation: intent.generation,
+            intentVersion: intent.version, parkCode: "unknown", message: "The read found the write absent, but Relay could not record the result",
+            authorityReason: authorityReason(context.run, "negative-settlement-inconsistent-evidence", "settlement", authorityExceptionDetail(error)),
+            cause: error }));
+        }
       }
     }
 
