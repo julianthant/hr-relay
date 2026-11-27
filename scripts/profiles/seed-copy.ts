@@ -214,9 +214,9 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   const title = `Synthetic ${workflow.label} ${live === undefined ? day : "today"} ${state}`;
   const runtimeNodes = descriptorRuntimeNodes(workflow);
   const gate = runtimeNodes.find(node => node.kind === "gate" && node.resolvedBy === "operator");
-  // A gate owns no task span.
-  const gateIds = new Set<string>(runtimeNodes.filter(node => node.kind === "gate").map(node => node.id));
-  const steps = workflow.timeline.flatMap(category => category.nodes).filter(node => !gateIds.has(node.id));
+  // Gates and child runs own no task span.
+  const spanless = new Set<string>(runtimeNodes.filter(node => node.kind === "gate" || node.kind === "child-run").map(node => node.id));
+  const steps = workflow.timeline.flatMap(category => category.nodes).filter(node => !spanless.has(node.id));
   // A Duo wait holds the first sign-in; any other state has at least one step behind it.
   const current = state === "needs-duo" ? 0 : Math.max(Math.min(1, steps.length - 1),
     live?.workerId !== undefined ? Math.floor(steps.length / 2) : Number.parseInt(hash.slice(4, 8), 16) % steps.length);
