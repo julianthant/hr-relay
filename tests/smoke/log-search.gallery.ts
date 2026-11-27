@@ -63,12 +63,12 @@ test("with search open at 1024 Tab runs from Back to More actions in drawn order
   await page.getByRole("button", { name: "Search logs" }).click();
   const panel = page.getByRole("region", { name: "Selected run logs" });
   await panel.getByRole("button", { name: "Back to Emergency Contact batch" }).focus();
-  const stops: { name: string; row: number; x: number }[] = [];
+  const stops: { name: string; cy: number; x: number }[] = [];
   for (let step = 0; step < 14; step++) {
     const stop = await page.evaluate(() => {
       const node = document.activeElement as HTMLElement;
       const box = node.getBoundingClientRect();
-      return { name: node.getAttribute("aria-label") ?? node.textContent ?? "", row: Math.round(box.top / 20), x: box.left };
+      return { name: node.getAttribute("aria-label") ?? node.textContent ?? "", cy: box.top + box.height / 2, x: box.left };
     });
     stops.push(stop);
     if (stop.name === "More actions") break;
@@ -77,7 +77,7 @@ test("with search open at 1024 Tab runs from Back to More actions in drawn order
   expect(stops[0].name).toBe("Back to Emergency Contact batch");
   expect(stops.at(-1)!.name).toBe("More actions");
   expect(stops.some(stop => stop.name === "Search logs")).toBe(true);
-  const drawn = [...stops].sort((a, b) => a.row - b.row || a.x - b.x);
+  const drawn = [...stops].sort((a, b) => (Math.abs(a.cy - b.cy) > 10 ? a.cy - b.cy : a.x - b.x));
   expect(stops.map(stop => stop.name)).toEqual(drawn.map(stop => stop.name));
 });
 
