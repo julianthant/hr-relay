@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { chmodSync, linkSync, readFileSync, renameSync, statSync, unlinkSync } from "node:fs";
+import fs, { chmodSync, copyFileSync, linkSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
@@ -21,7 +23,7 @@ import { historyArchivePath } from "../../../../src/backend/storage/sqlite/isola
 import { admitReadLane, openReadLane, prepareReadLaneStart, READ_LANE_OPEN_MODE } from "../../../../src/backend/storage/sqlite/read-lane-admission.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { importProfileLibrary } from "../../../../scripts/profiles/profile-copy.js";
-import { LANE_READS_ENTRY, laneHistory, laneRunPage, laneSnapshotChanged, laneWrite } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { LANE_READS_ENTRY, laneHistory, laneRunPage, laneSleep, laneSnapshotChanged, laneStuck, laneWrite } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createBoundProfileFixture, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -181,6 +183,68 @@ it("answers writes through both lane connections with a refusal", async () => {
     assert.match(result.native, /cannot run inside an authority read snapshot/u);
     assert.match(result.history, /cannot run inside an authority read snapshot/u);
     assert.equal(fixture.database.authority.workerPools.get("person-lookup"), undefined);
+  } finally { await lanes.close(); }
+});
+
+it.skipIf(process.platform === "win32")("reuses reply custody until the WAL changes or the lane restarts", async () => {
+  const { fixture } = await laneFixture();
+  const lanes = createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock, lanes: ["navigation"],
+    checkpoint: { thresholdBytes: Number.MAX_SAFE_INTEGER }, entry: LANE_READS_ENTRY });
+  cleanups.push(() => lanes.close());
+  await lanes.ready;
+  const registry = join(fixture.profile.machine.stateRoot, "machine", "profiles.json");
+  const open = fs.openSync;
+  let registryReads = 0;
+  const observeRegistry = vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+    if (path === registry) registryReads++;
+    return open(path, flags, mode);
+  });
+  syncBuiltinESMExports();
+  const read = () => lanes.read(laneSleep, { tag: "custody", ms: 0 });
+  try {
+    await read();
+    const first = registryReads;
+    assert.ok(first > 0);
+    await read();
+    assert.equal(registryReads, first, "the next reply reuses unchanged custody");
+
+    fixture.database.authority.workerPools.plan({ workflow: "person-lookup", desiredWorkers: 1, expectedVersion: 0, requestedBy: "local-operator",
+      now: systemClock.now().toISOString() });
+    const afterCommit = registryReads;
+    await read();
+    const afterProof = registryReads;
+    assert.ok(afterProof > afterCommit, "the WAL commit requires a fresh proof");
+    await read();
+    assert.equal(registryReads, afterProof);
+
+    await assert.rejects(lanes.read(laneStuck, {}), /read-lane-restarted/u);
+    const afterRestart = registryReads;
+    await read();
+    assert.ok(registryReads > afterRestart, "the replacement lane proves its first reply");
+  } finally { observeRegistry.mockRestore(); syncBuiltinESMExports(); }
+});
+
+it("refuses replies after in-place profile evidence changes or replacement of the lane database", async () => {
+  const { fixture } = await laneFixture();
+  const lanes = createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock, lanes: ["navigation"], entry: LANE_READS_ENTRY });
+  const read = () => lanes.read(laneSleep, { tag: "custody", ms: 0 });
+  try {
+    await read();
+    const registry = join(fixture.profile.machine.stateRoot, "machine", "profiles.json");
+    const saved = readFileSync(registry);
+    writeFileSync(registry, "invalid profile evidence");
+    try { await assert.rejects(read(), SyntaxError); }
+    finally { writeFileSync(registry, saved); }
+    await read();
+
+    const held = `${fixture.path}.held`;
+    renameSync(fixture.path, held);
+    try {
+      copyFileSync(held, fixture.path);
+      await assert.rejects(read(), (error: unknown) => error instanceof Error && error.constructor === Error
+        && error.message === "profile-database-open-source-changed");
+    } finally { renameSync(held, fixture.path); }
+    await read();
   } finally { await lanes.close(); }
 });
 

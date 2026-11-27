@@ -361,7 +361,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     releaseCustody = undefined;
   };
 
-  const onReply = (lane: Lane, start: ReadLaneStart, message: unknown) => {
+  const onReply = (lane: Lane, proveCustody: () => void, message: unknown) => {
     const reply: LaneReply = ReplySchema.parse(message);
     if (reply.kind === "ready") {
       lane.ready = true;
@@ -394,7 +394,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     lane.consecutiveFailures = 0;
     let outcome: { reply: DashboardReadReply } | { error: Error };
     try {
-      admit(start);
+      proveCustody();
       outcome = reply.kind === "read"
         ? { reply: Object.freeze({ body: reply.body, position: reply.position, cached: reply.cached, beginSeq: reply.beginSeq }) }
         // A typed refusal crosses the lane boundary as its code, so routes and pollers still see the retryable error.
@@ -453,6 +453,15 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     const start = prepareReadLaneStart(owner, database, lane.name);
     const original = starts.get(lane.name);
     if (original === undefined || !sameDirectory(original.identity, start.identity)) throw new Error("profile-database-open-source-changed");
+    let custodyUnchanged: (() => boolean) | undefined;
+    const proveCustody = () => {
+      const previous = custodyUnchanged;
+      custodyUnchanged = undefined;
+      if (previous?.()) { custodyUnchanged = previous; return; }
+      const unchanged = owner.observeDashboardReadCustody(start.path);
+      admit(start);
+      if (unchanged?.()) custodyUnchanged = unchanged;
+    };
     const releaseSource = database.retainDashboardReadSource(owner, start.identity);
     let worker: Worker;
     try {
@@ -469,7 +478,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       // A lane that sent one invalid reply is terminating; nothing it sends after that settles a waiter.
       if (failure !== undefined) return;
       try {
-        onReply(lane, start, message);
+        onReply(lane, proveCustody, message);
         if (lane.ready && !booted) {
           booted = true;
           bootMs.push(clock.nowMs() - bootStartedAt);
