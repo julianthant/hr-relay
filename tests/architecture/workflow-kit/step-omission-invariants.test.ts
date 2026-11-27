@@ -22,6 +22,10 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presenta
 import {
   KRONOS_TIMECARD_OMISSION,
 } from "../../../src/workflows/separations/workflow.js";
+import { IDENTITY_CHECK_OMISSION, IDENTITY_REVIEW_OMISSION } from "../../../src/workflows/separations/steps/identity-check/step.js";
+import { KUALI_EXTRACTION_OMISSION } from "../../../src/workflows/separations/steps/kuali-extraction/step.js";
+import { KUALI_FINALIZATION_OMISSION } from "../../../src/workflows/separations/steps/kuali-finalization/step.js";
+import { PENDING_TERMINATION_OMISSION, UCPATH_TRANSACTION_OMISSION } from "../../../src/workflows/separations/steps/ucpath-transaction/step.js";
 import { ACTIVE_STATUS_MANUAL } from "../../../src/workflows/person-lookup/steps/active-status/step.js";
 import { CRM_DATES_MANUAL } from "../../../src/workflows/person-lookup/steps/crm-dates/step.js";
 import { CROSS_VERIFY_MANUAL } from "../../../src/workflows/person-lookup/steps/cross-verify/step.js";
@@ -170,8 +174,32 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
   produces: readonly string[];
 }>[] = [
   {
+    descriptor: SEPARATIONS_ID, step: "kuali-extraction", declaration: KUALI_EXTRACTION_OMISSION,
+    fieldKeys: ["employeeName", "lastDayWorked", "separationDate", "terminationType"], produces: ["plan", "termination-type"],
+  },
+  {
+    descriptor: SEPARATIONS_ID, step: "identity-check", declaration: IDENTITY_CHECK_OMISSION,
+    fieldKeys: ["emplId", "emplRecord", "department", "payrollTitleCode", "payrollTitle"], produces: ["subject", "employment", "department-option"],
+  },
+  {
     descriptor: SEPARATIONS_ID, step: "kronos-timecard", declaration: KRONOS_TIMECARD_OMISSION,
     fieldKeys: ["lastDayWorked", "separationDate"], produces: ["dates"],
+  },
+  {
+    descriptor: SEPARATIONS_ID, step: "identity-review", declaration: IDENTITY_REVIEW_OMISSION,
+    fieldKeys: ["emplId", "ucpathName"], produces: ["approval"],
+  },
+  {
+    descriptor: SEPARATIONS_ID, step: "pending-termination", declaration: PENDING_TERMINATION_OMISSION,
+    fieldKeys: [], produces: [],
+  },
+  {
+    descriptor: SEPARATIONS_ID, step: "ucpath-transaction", declaration: UCPATH_TRANSACTION_OMISSION,
+    fieldKeys: ["transactionNumber", "approvalStatus", "effectiveDate"], produces: ["receipt"],
+  },
+  {
+    descriptor: SEPARATIONS_ID, step: "kuali-finalization", declaration: KUALI_FINALIZATION_OMISSION,
+    fieldKeys: [], produces: [],
   },
   {
     descriptor: PERSON_LOOKUP_ID, step: "searching", declaration: SEARCHING_MANUAL,
@@ -199,7 +227,13 @@ const REQUIRED_SWEEP_ROWS: readonly string[] = [
 
 /** The exact cascade row each production step yields today (check b). */
 const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> = {
+  "separations::kuali-extraction": { state: "omittable", forces: ["identity-check", "identity-review", "kuali-finalization"] },
+  "separations::identity-check": { state: "omittable", forces: ["identity-review"] },
   "separations::kronos-timecard": { state: "omittable", forces: [] },
+  "separations::identity-review": { state: "omittable", forces: [] },
+  "separations::pending-termination": { state: "omittable", forces: [] },
+  "separations::ucpath-transaction": { state: "omittable", forces: [] },
+  "separations::kuali-finalization": { state: "omittable", forces: [] },
   "person-lookup::searching": { state: "omittable", forces: [] },
   "person-lookup::cross-verify": { state: "omittable", forces: [] },
   "person-lookup::active-status": { state: "omittable", forces: [] },
@@ -208,7 +242,13 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
 
 
 const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[] }>>> = {
+  "separations::kuali-extraction": { asserted: ["plan", "termination-type"], omitted: ["document", "resolve-action"] },
+  "separations::identity-check": { asserted: ["department-option", "employment", "subject"], omitted: ["job-summary", "name-search"] },
   "separations::kronos-timecard": { asserted: ["dates"], omitted: ["timecard", "timecard-search"] },
+  "separations::identity-review": { asserted: ["approval"], omitted: ["comparison", "identity-approval"] },
+  "separations::pending-termination": { asserted: [], omitted: ["clear-pending", "pending-set"] },
+  "separations::ucpath-transaction": { asserted: ["receipt"], omitted: ["file-termination"] },
+  "separations::kuali-finalization": { asserted: [], omitted: ["filing-presence", "finalize-kuali"] },
   "person-lookup::searching": { asserted: ["matching", "search-identity", "searching"], omitted: [] },
   "person-lookup::cross-verify": { asserted: ["crm-identity"], omitted: ["cross-verify"] },
   "person-lookup::active-status": { asserted: ["active-status"], omitted: ["crm-only-recovery"] },
@@ -218,8 +258,9 @@ const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly st
 /** The same pinning for the whole-descriptor plan: every omittable step of a descriptor omitted at once. */
 const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[] }>>> = {
   [SEPARATIONS_ID]: {
-    asserted: ["dates"],
-    omitted: ["timecard", "timecard-search"],
+    asserted: ["approval", "dates", "department-option", "employment", "plan", "receipt", "subject", "termination-type"],
+    omitted: ["clear-pending", "comparison", "document", "file-termination", "filing-presence", "finalize-kuali", "identity-approval",
+      "job-summary", "name-search", "pending-set", "resolve-action", "timecard", "timecard-search"],
   },
   [PERSON_LOOKUP_ID]: {
     asserted: ["active-status", "crm-dates", "crm-identity", "matching", "search-identity", "searching"],
@@ -373,7 +414,7 @@ describe("step-omission invariants", () => {
     assertSweptEveryDeclaration(carried, "registry-carried declaration sweep");
   });
 
-  it("never omits or asserts a gate — alone, with its cascade forces, or with every omittable step of its descriptor", () => {
+  it("never asserts a gate, and omits one only where its step skips it by declaration — alone, with its cascade forces, or with every omittable step of its descriptor", () => {
     const audited: string[] = [];
     const wholeDescriptorsAudited: string[] = [];
     const gatedDescriptors: string[] = [];
@@ -388,10 +429,11 @@ describe("step-omission invariants", () => {
       }
       const cascade = stepOmissionCascade(view);
 
+      const declaredSkips = new Set(view.stepOmissions.flatMap((spec) => spec.skipsGatesAndTransactions === true ? spec.skips ?? [] : []));
       const assertGatesExecute = (plan: StepOmissionPlan, shape: string): void => {
         for (const gateId of gateIds) {
           assert.ok(!plan.asserted.has(gateId), `${id} (${shape}): asserts gate "${gateId}"`);
-          assert.ok(!plan.omitted.has(gateId), `${id} (${shape}): omits gate "${gateId}"`);
+          assert.ok(!plan.omitted.has(gateId) || declaredSkips.has(gateId), `${id} (${shape}): omits gate "${gateId}" that no step declares it skips`);
         }
       };
 
@@ -407,7 +449,7 @@ describe("step-omission invariants", () => {
         const withForces = planSteps(descriptor, [spec.step, ...(row?.forces ?? [])]);
         assertGatesExecute(withForces, `step "${spec.step}" + forces`);
         if (row?.state === "omittable") {
-          assert.deepEqual(alone.refusals, [], `${key}: an omittable step refuses on its own`);
+          if (row.forces.length === 0) assert.deepEqual(alone.refusals, [], `${key}: an omittable step with no forces refuses on its own`);
           assert.deepEqual(withForces.refusals, [], `${key}: an omittable step refuses with its own forced set`);
         }
         if (isFixture(descriptor)) continue;

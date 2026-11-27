@@ -53,7 +53,10 @@ it("derives run options from Start run declarations only", () => {
   assert.deepEqual(workflow("ocr-page").reviewSpec.options, []);
   const separations = workflow("separations").reviewSpec;
   assert.deepEqual(separations.options.filter(option => option.id.startsWith("skip-")).map(option => [option.id, option.label, option.initial]),
-    [["skip-kronos-timecard", "Kronos timecard", "run"]]);
+    [["skip-kuali-extraction", "Kuali extraction", "run"], ["skip-identity-check", "Identity check", "run"],
+      ["skip-kronos-timecard", "Kronos timecard", "run"], ["skip-identity-review", "Identity approval", "run"],
+      ["skip-pending-termination", "Pending terminations", "run"], ["skip-ucpath-transaction", "UCPath transaction", "run"],
+      ["skip-kuali-finalization", "Kuali finalization", "run"]]);
   assert.deepEqual(separations.steps.find(step => step.id === "kronos-timecard")?.when, [{ "skip-kronos-timecard": ["run"] }]);
   assert.deepEqual(separations.sessions.find(session => session.system === "new-kronos")?.when, [{ "skip-kronos-timecard": ["run"] }]);
   const lookup = workflow("person-lookup").reviewSpec;

@@ -18,14 +18,18 @@ const PLAN = SeparationPlanSchema.parse({
 const ASSERTED_AT = IsoInstantSchema.parse("2026-09-01T17:00:00.000Z");
 
 describe("separations typed timecard step", () => {
-  it("declares typed values only for the timecard step; the write steps always run", () => {
+  it("declares manual entry on every step; the form actions produce nothing", () => {
     assert.deepEqual(
-      separationsDescriptor.stepOmissions.map(({ step }) => step),
-      ["kronos-timecard"],
-    );
-    assert.deepEqual(
-      separationsDescriptor.stepOmissions.map(({ produces }) => Object.keys(produces)),
-      [["dates"]],
+      separationsDescriptor.stepOmissions.map(({ step, produces }) => [step, Object.keys(produces)]),
+      [
+        ["kuali-extraction", ["plan", "termination-type"]],
+        ["identity-check", ["subject", "employment", "department-option"]],
+        ["kronos-timecard", ["dates"]],
+        ["identity-review", ["approval"]],
+        ["pending-termination", []],
+        ["ucpath-transaction", ["receipt"]],
+        ["kuali-finalization", []],
+      ],
     );
   });
 
