@@ -284,7 +284,6 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       hub,
     }, {
 
-      settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [personLookupDescriptor] },
       settingsEditor,
       storage: {
         admission: syntheticStateRoot(stateRoot),

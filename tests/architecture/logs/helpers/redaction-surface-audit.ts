@@ -32,7 +32,6 @@ import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/
 import { OcrCommandResultWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { WorkerCommandResultWireSchema } from "../../../../src/models/dashboard/worker-command-result.js";
 import { CrossDateSearchPageSchema } from "../../../../src/models/dashboard/search.js";
-import { SettingsFactsWireSchema } from "../../../../src/models/dashboard/settings.js";
 import { EditableSettingsPathSchema, EditableSettingsWireSchema } from "../../../../src/models/dashboard/settings-editor.js";
 import { StorageDoctorWireSchema, StorageDoctorLatestWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { ProtectedSettingsInspectionSchema } from "../../../../src/models/storage/storage-status.js";
@@ -800,7 +799,6 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/run-history-status", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: RunHistoryStatusSchema },
   { id: "wire/clear-run-history-result", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: ClearRunHistoryResultSchema },
   { id: "wire/storage-doctor-latest", egress: "operator-loopback", module: "src/models/dashboard/storage.ts", schema: StorageDoctorLatestWireSchema },
-  { id: "wire/settings-facts", egress: "operator-loopback", module: "src/models/dashboard/settings.ts", schema: SettingsFactsWireSchema },
   { id: "wire/editable-settings", egress: "operator-loopback", module: "src/models/dashboard/settings-editor.ts", schema: EditableSettingsWireSchema },
   { id: "request/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRequestSchema },
   { id: "wire/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRespondEnvelopeSchema },
@@ -2048,7 +2046,6 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/search-export.ts", state: "audited", reason: "The request reuses the strict reviewed XLSX selection; diagnostic and CSV producers explicitly omit values and identifiers." },
     { module: "src/models/dashboard/search-index.ts", state: "audited", reason: "Private durable metadata, declared subject projection addresses, grams and authentic actor links; only approved public projection values are indexed." },
     { module: "src/models/dashboard/search.ts", state: "audited", reason: "cross-date search serves redacted run authority and an opaque continuation" },
-    { module: "src/models/dashboard/settings.ts", state: "audited", reason: "the read-only Settings sections state configured system hosts and descriptor-derived capabilities" },
     { module: "src/models/dashboard/settings-catalog.ts", state: "audited", reason: "catalog-derived Settings controls and classifications are embedded by the audited editable Settings wire" },
     { module: "src/models/dashboard/settings-editor.ts", state: "audited", reason: "the server-listed editable Settings inventory carries strict values, provenance and runtime identity" },
     { module: "src/models/dashboard/status-vocabulary.ts", state: "audited", reason: "the closed status vocabulary is operator-visible prose and pill copy" },

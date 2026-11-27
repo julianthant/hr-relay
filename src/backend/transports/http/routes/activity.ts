@@ -4,8 +4,6 @@ import { ActivityPopulationError } from "../../../runs/queries/activity-populati
 import { ActivitySnapshotError } from "../../../runs/queries/activity-selection.js";
 import { DashboardReadFailedError } from "../../../runs/commands/refusals.js";
 import { selectionDownload } from "../../../runs/exports/selection-download.js";
-import { ActivitySnapshotTokenSchema } from "../../../../models/dashboard/activity-selection.js";
-import { activityReportCsv, activityReportCsvFileName } from "../../../runs/queries/activity-export.js";
 
 import type { DashboardApp } from "./api-types.js";
 import type { ActivityRouteDeps } from "./activity-types.js";
@@ -30,15 +28,6 @@ export function registerActivityRoutes(app: DashboardApp, deps: ActivityRouteDep
     if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-report-duplicate-query");
     const {from,to}=z.strictObject(reportRange).parse(Object.fromEntries(parameters));
     return c.json(deps.activity.read(from, to));
-  });
-
-
-  app.get("/api/v1/reports/activity.csv", (c) => {
-    const parameters=[...new URL(c.req.url).searchParams];
-    if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-export-duplicate-query");
-    const selection=z.strictObject({...reportRange,snapshot:ActivitySnapshotTokenSchema}).parse(Object.fromEntries(parameters));
-    const report = deps.activity.readSelected(selection.from, selection.to, selection.snapshot);
-    return selectionDownload(activityReportCsv(report),activityReportCsvFileName(report),"text/csv; charset=utf-8",selection.snapshot);
   });
 
   app.get("/api/v1/reports/activity/population", (c) => {

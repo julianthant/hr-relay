@@ -1,14 +1,12 @@
 import type { DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
 import { createSettingsApplicationExecutor } from "../../../runs/commands/settings-service.js";
 import { selectActiveRunSettings } from "../../../runs/settings/run-settings.js";
-import { activeSettingsConfig,createProtectedSettingsRuntimeReader,createSettingsRuntimeReader } from "../../../runtime/settings/settings-runtime.js";
+import { createProtectedSettingsRuntimeReader,createSettingsRuntimeReader } from "../../../runtime/settings/settings-runtime.js";
 import type { createCredentialStore } from "../../../storage/configuration/credential-store.js";
 import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { createNativePathPicker } from "../../../transports/http/native-path-picker.js";
 import type { SettingsRouteDeps } from "../../../transports/http/routes/settings-types.js";
 import { resolveConfigWithProvenance } from "../../config/resolve.js";
-import { DESCRIPTORS } from "../../registries/workflow-registry.js";
-import { buildSettingsFacts } from "../../../runs/queries/settings.js";
 import { buildSettingsEditor } from "../../../runs/queries/settings-editor.js";
 
 export function composeProfileSettings(input: Parameters<typeof createSettingsRuntimeReader>[0] & {
@@ -19,7 +17,7 @@ export function composeProfileSettings(input: Parameters<typeof createSettingsRu
 }
 
 export function composeSettings(input: Parameters<typeof createSettingsRuntimeReader>[0] & {
-  database: Pick<AuthorityDatabase, "withAuthorityReadSnapshot" | "authority" | "trackAuthorityTables">;
+  database: Pick<AuthorityDatabase, "withAuthorityReadSnapshot" | "authority">;
   environment: Readonly<Record<string, string | undefined>>; credentials: ReturnType<typeof createCredentialStore>;
   assertCurrent?: () => void;
   resolveSettings?: Parameters<typeof createSettingsApplicationExecutor>[0];
@@ -35,12 +33,8 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
     input.assertCurrent?.();
     return result;
   });
-  const factsPosition = database.trackAuthorityTables(["settings", "settings_snapshots", "commands", "command_audits"]);
   const routes: SettingsRouteDeps = {
     nativePathPicker: createNativePathPicker(),
-    settings: { readConfig: () => read(activeSettingsConfig), descriptors: DESCRIPTORS },
-    withSettingsFacts: respond => read(repositories => respond(factsPosition(),
-      () => buildSettingsFacts({ config: activeSettingsConfig(repositories), descriptors: DESCRIPTORS }))),
     settingsEditor: {
       settings: { read: () => read(repositories => {
         const snapshot = reader.read(repositories);

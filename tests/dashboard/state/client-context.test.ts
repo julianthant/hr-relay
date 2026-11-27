@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
-import { FIXTURE_EDITABLE_SETTINGS,FIXTURE_SETTINGS_FACTS,FIXTURE_STORAGE_DOCTOR } from "../../support/helpers/dashboard/mock-world/fixture-day.js";
+import { FIXTURE_EDITABLE_SETTINGS,FIXTURE_STORAGE_DOCTOR } from "../../support/helpers/dashboard/mock-world/fixture-day.js";
 import { registerFixtureExplorerRoutes } from "../../support/helpers/dashboard/mock-world/fixture-explorer-routes.js";
 import { FIXTURE_EXPLORER_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-explorer.js";
 import { registerFixtureIntakeRoutes } from "../../support/helpers/dashboard/mock-world/fixture-intake-routes.js";
@@ -22,7 +22,6 @@ import { SCENES as start } from "../../support/helpers/dashboard/mock-world/refe
 describe("released surface fixtures", () => {
   it("keeps compatibility exports as the exact schema-backed leaf objects", () => {
     assert.equal(settings.FIXTURE_EDITABLE_SETTINGS, FIXTURE_EDITABLE_SETTINGS);
-    assert.equal(settings.FIXTURE_SETTINGS_FACTS, FIXTURE_SETTINGS_FACTS);
     assert.equal(storage.FIXTURE_STORAGE_DOCTOR, FIXTURE_STORAGE_DOCTOR);
   });
 

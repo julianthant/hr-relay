@@ -20,21 +20,6 @@
       "binding": "route:GET /api/v1/storage/doctor/latest",
       "direction": "served-unconsumed",
       "note": "The latest storage doctor report is served; the dashboard no longer shows a storage doctor surface, so no client calls it."
-    },
-    {
-      "binding": "route:GET /api/v1/settings/facts",
-      "direction": "served-unconsumed",
-      "note": "Issue #864 owns this route's read-lane change. Backend Settings readback tests still exercise it. The dashboard reads editable Settings."
-    },
-    {
-      "binding": "route:GET /api/v1/storage/run-history",
-      "direction": "served-unconsumed",
-      "note": "Issue #864 owns this route's read-lane change. Backend history tests still exercise the status route. The dashboard uses the clear and result routes."
-    },
-    {
-      "binding": "route:GET /api/v1/reports/activity.csv",
-      "direction": "served-unconsumed",
-      "note": "Issue #864 owns this route's read-lane change. Backend Activity tests still exercise it. The dashboard uses the Activity population CSV and XLSX exports."
     }
   ]
 }

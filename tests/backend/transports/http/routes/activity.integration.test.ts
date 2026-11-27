@@ -2,11 +2,10 @@ import { debugEventLevel } from "../../../../../src/models/events/timeline.js";
 
 import assert from "node:assert/strict";
 import { afterEach, describe, it, vi } from "vitest";
-import { activityReportCsv } from "../../../../../src/backend/runs/queries/activity-export.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema } from "../../../../../src/models/dashboard/activity-population.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
-import { ACTIVITY_MEDIAN_ABSENT_REASON, activityReportCaveats } from "../../../../../src/models/dashboard/activity.js";
+import { ACTIVITY_MEDIAN_ABSENT_REASON } from "../../../../../src/models/dashboard/activity.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
@@ -85,42 +84,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.match(String((await json(inverted)).message), /ends before it starts/);
   });
 
-  it("serves the Activity report as a CSV that carries its own caveats", async () => {
-    const h = await harness();
-    const activityReport = ActivityReportSelectionSchema.parse(
-      await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
-    );
-    const report = h.projection.buildActivityReportWire(DAY, DAY);
-
-    const response = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=${DAY}&snapshot=${activityReport.snapshot.token}`);
-    assert.equal(response.status, 200);
-    assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
-    assert.equal(
-      response.headers.get("content-disposition"),
-      `attachment; filename="activity-${DAY}_${DAY}.csv"`,
-    );
-    const csv = await response.text();
-    // The bytes are the builder's, so the route cannot serve a second rendering.
-    assert.equal(csv, activityReportCsv(report));
-    // Every rule the panel shows behind its ⓘ is IN the file, verbatim.
-    for (const caveat of activityReportCaveats(report)) {
-      assert.ok(csv.includes(caveat.includes(",") ? `"${caveat}"` : caveat), `the export carries: ${caveat}`);
-    }
-    assert.ok(csv.includes(`Window from,${DAY}`));
-    assert.ok(csv.includes("Write ledger — what was actually filed"));
-
-    const halfRange = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&snapshot=${activityReport.snapshot.token}`);
-    assert.equal(halfRange.ok, false);
-    assert.match(String((await json(halfRange)).message), /requires both from= and to=/);
-
-    const noRange = await h.app.request("/api/v1/reports/activity.csv");
-    assert.equal(noRange.ok, false);
-    assert.match(String((await json(noRange)).message), /requires both from= and to=/);
-
-    const inverted = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=2026-08-01&snapshot=${activityReport.snapshot.token}`);
-    assert.equal(inverted.ok, false);
-    assert.match(String((await json(inverted)).message), /ends before it starts/);
-  });
 
 
 });
