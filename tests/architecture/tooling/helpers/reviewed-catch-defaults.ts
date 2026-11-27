@@ -372,5 +372,16 @@ export const REVIEWED_CATCH_DEFAULTS = [
         "occurrences": 1
       }
     ]
+  },
+  {
+    "path": "src/backend/assistant/service.ts",
+    "reason": "Only the typed AssistantToolRefusal from a stale or missing session run drops that chip's live status and Stop; the stored chip label still renders. It grants no command, claim or Stop. Every other session-read failure propagates.",
+    "statements": [
+      {
+        "kind": "try",
+        "sha256": "706f004aad168d8ea07eee1c789847ba7c8f72475788dad35e924d88ef49ccdb",
+        "occurrences": 1
+      }
+    ]
   }
 ] as const satisfies readonly ReviewedCatchDefault[];

@@ -1,5 +1,5 @@
 import { CHANGE_LOG_OBJECTS, changeLogTriggers } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
-import { ASSISTANT_M2_PROPOSAL_STATEMENTS } from "../../../../src/backend/storage/sqlite/assistant-proposals.js";
+import { ASSISTANT_PROPOSAL_STATEMENTS } from "../../../../src/backend/storage/sqlite/assistant-proposals.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -259,7 +259,7 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
   const addedTriggers = [
     ...WORKBOOK_PAYLOAD_MIGRATION.statements.filter(sql => sql.startsWith("CREATE TRIGGER workbook_payloads_")),
     ...DEBUG_EVENTS_MIGRATION.statements.filter(sql => sql.startsWith("CREATE TRIGGER debug_events_")),
-    ...ASSISTANT_M2_PROPOSAL_STATEMENTS.filter(sql => sql.startsWith("CREATE TRIGGER ")),
+    ...ASSISTANT_PROPOSAL_STATEMENTS.filter(sql => sql.startsWith("CREATE TRIGGER ")),
     ...ASSISTANT_PHASE_ONE_TABLES.flatMap(changeLogTriggers),
   ];
   const isAddedTrigger = (row: Record<string, unknown>) => addedTriggers.includes(String(row.sql));

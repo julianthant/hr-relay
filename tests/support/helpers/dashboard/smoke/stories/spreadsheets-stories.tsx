@@ -39,13 +39,14 @@ const menu = (item: string, sheet = SHEET) => then(loaded, click(`Actions for ${
 const act = (item: string, ready: string, server: SheetsStoryServerOptions = {}, ...more: readonly ((page: Page) => Promise<void>)[]): Story =>
   scene(`${item} chosen from a row's menu`, { server, play: then(menu(item), ...more), story: { ready } });
 
-type Catalog = "loaded" | "loading" | "error" | "empty" | "no-match";
+type Catalog = "loaded" | "loading" | "error" | "empty" | "no-match" | "tag-filter";
 const CATALOG = {
   loaded: scene("The library with spreadsheets"),
   loading: scene("The library being read", { server: { catalog: "never" }, story: { ready: 'text="Spreadsheets"', slowFetch: { region: '[aria-label="Loading spreadsheets"]' } } }),
   error: scene("The library could not be read", { server: { catalog: "fail" }, story: { ready: 'text="Couldn\'t load spreadsheets."' } }),
   empty: scene("A library with nothing in it", { server: { seed: "none" }, story: { ready: 'text="No spreadsheets yet"' } }),
   "no-match": scene("A search that matches nothing", { play: then(loaded, fill("Search spreadsheets", "zzz")), story: { ready: 'text="No spreadsheets match."' } }),
+  "tag-filter": scene("The All tags filter open with its search", { play: then(loaded, click("Filter by tag")), story: { ready: 'input[aria-label="Find a tag"]' } }),
 } satisfies Record<Catalog, Story>;
 
 type Table = "Pinned" | "Spreadsheets";
@@ -124,6 +125,7 @@ const IMPORT = {
 const AUDIT_FIXES = "#532";
 const KNOWN_BREAKS = {
    "catalog/loaded": ["named-and-focusable"],
+   "catalog/tag-filter": ["named-and-focusable"],
    "detail/back": ["named-and-focusable"],
    "detail/mapping-menu": ["named-and-focusable"],
    "import/added": ["named-and-focusable"],

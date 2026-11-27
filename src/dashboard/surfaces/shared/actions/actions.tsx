@@ -3,7 +3,6 @@ import {
   ArrowUpRight,
   ChevronsUp,
   ClipboardList,
-  History,
   PauseCircle,
   Pause,
   Play,
@@ -73,11 +72,6 @@ const ICONS: Record<ActionIconKey, ReactNode> = {
   rename: <Pencil aria-hidden className={dsIcon.md} />,
   external: <ArrowUpRight aria-hidden className={dsIcon.md} />,
   drill: <Search aria-hidden className={dsIcon.md} />,
-};
-
-/** Recover completed steps and Rerun both arrive with the retry or resume glyph; the key gives Recover its own. */
-const KEY_ICONS: Readonly<Record<string, ReactNode>> = {
-  "recover-run": <History aria-hidden className={dsIcon.md} />,
 };
 
 /** the pill shell and the placement folds live in `actions-model.ts` — see the note there */
@@ -158,7 +152,7 @@ export function FooterActions({
           key={a.key}
           pending={pressed?.key === a.key && pressed.version === target.expectedVersion}
           tone={INTENT_TONE[a.intent]}
-          icon={KEY_ICONS[shown.key] ?? ICONS[shown.icon ?? "external"]}
+          icon={ICONS[shown.icon ?? "external"]}
           label={label}
           title={
             a.key === CANCEL_TREE_KEY && groupCount === undefined

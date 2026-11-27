@@ -8,12 +8,13 @@ import { seedCheckClosureStore } from "../../../support/fixtures/storage/check-c
 
 const POPULATED_TABLES = [
   "artifacts",
-  "assistant_actions",
   "assistant_attachments",
-  "assistant_chats",
   "assistant_conversations",
   "assistant_messages",
   "assistant_model_preference",
+  "assistant_proposal_rows",
+  "assistant_proposals",
+  "assistant_session_claims",
   "auth_leases",
   "command_audits",
   "commands",

@@ -23,7 +23,7 @@ export const RunWorkflowPicker = memo(function RunWorkflowPicker({ catalog, valu
     if (overflow > 0) scroller.scrollTop = overflow;
   }, [value]);
   return <aside ref={rail} className="launch-workflow-rail launch-picker flex min-h-0 shrink-0 flex-col border-r border-ui-stroke">
-    <div className="launch-picker-search"><SearchInput variant="sidebar" aria-label="Filter workflows" placeholder="Search" value={query} onClear={() => onQuery("")} onChange={event => onQuery(event.target.value)} /></div>
+    <div className="launch-picker-search"><SearchInput aria-label="Filter workflows" placeholder="Search" value={query} onClear={() => onQuery("")} onChange={event => onQuery(event.target.value)} /></div>
     {groups.length > 0 ? <nav aria-label="Workflow" className="workflow-rail"><div className="workflow-rail-groups">{groups.map(group =>
       <section key={group.label} className="workflow-rail-group">
         {group.label !== "" && <h3>{createElement(categoryIcon(group.label), { "aria-hidden": true, className: "size-3.5 shrink-0" })}{group.label}</h3>}

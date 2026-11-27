@@ -50,7 +50,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
       assert.ok(claimed.state === "claimed");
       assert.equal(h.database.authority.runs.transition({ runId: source.envelope.runId, expectedVersion: claimed.run.version,
         claim: { workerId: h.database.authority.workerSlots.list(h.descriptor.id)[0].workerId, claimGeneration: claimed.run.claimGeneration },
-        lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() },
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() },
         now: h.clock.now().toISOString() }).state, "applied");
       const { runId: _runId, runAttempt: _attempt, currentAttemptId: _attemptId, bindingProof: _binding,
         bindingProofDigest: _bindingDigest, fencedAt: _fenced, confirmedAt: _confirmed,

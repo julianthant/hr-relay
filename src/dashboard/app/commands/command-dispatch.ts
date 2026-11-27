@@ -186,7 +186,6 @@ export function composeCommandRequest(
     }
     case "archive":
       return { state: "refused", reason: "Archive page removed" };
-    case "recover-run":
     case "pause":
     case "resume":
     case "cancel":
@@ -458,35 +457,6 @@ export async function verifyShellCommandEffect(
       && next.traceId === replacement.header.traceId && next.attempt === replacement.header.attempt && next.attempt > root.attempt && next.session.state === "present"
       && next.session.sessionId === root.session.sessionId
       ? { state: "matched", evidence: { details: batchRetryDetails, rows: [root, next] } } : mismatch(next);
-  }
-  if (request.type === "recover-run") {
-    if (!("affectedTargets" in reply) || root.rowRevision.valueOf() !== request.target.expectedVersion.valueOf()
-      || !reply.affectedTargets.some(target => target.family === "run" && target.runId === root.runId)) return mismatch(reply);
-    const rows: QueueSurfaceWire[] = [];
-    for (const target of reply.affectedTargets) {
-      if (target.family !== "run") return mismatch(reply);
-      const row = await readRow(target.runId);
-      if (row === undefined) return mismatch(reply);
-      rows.push(row);
-    }
-    const recovered = rows.filter(row => row.runId !== root.runId && row.workflowId === root.workflowId
-      && row.itemId === root.itemId && row.attempt > root.attempt);
-    if (recovered.length !== 1 || recovered[0] === undefined) return mismatch(rows);
-    const next = recovered[0];
-    if (next.descriptorHash !== root.descriptorHash || next.configFingerprint !== root.configFingerprint || next.dryRun !== root.dryRun) return mismatch(rows);
-    for (const row of rows) {
-      if (root.parent !== null && next.parent?.runId === root.parent.runId && row.runId === root.parent.runId) continue;
-      let current = row;
-      const visited = new Set<string>();
-      while (current.runId !== root.runId && current.runId !== next.runId) {
-        if (visited.size >= 32 || visited.has(current.runId) || current.parent === null) return mismatch(rows);
-        visited.add(current.runId);
-        const parent = await readRow(current.parent.runId);
-        if (parent === undefined) return mismatch(rows);
-        current = parent;
-      }
-    }
-    return { state: "matched", evidence: rows };
   }
   if (request.type === "rename") {
     const name = request.payload.displayName.trim();

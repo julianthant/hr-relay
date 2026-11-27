@@ -1695,12 +1695,9 @@ export class RunQueueProjection {
 
       actions: queueRowActions(descriptor?.actions, {
         pauseControl,
-        crashed: authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "failed"
-          && authority.lifecycle.failureId !== undefined && this.#deps.authority.getFailure(authority.lifecycle.failureId)?.code === "RUN_INTERRUPTED_BY_CRASH",
+        interrupted: authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "interrupted",
         status,
         cancelled: authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "cancelled",
-        ...(authority.lifecycle.state === "terminal" && (authority.lifecycle.outcome === "failed" || authority.lifecycle.outcome === "interrupted")
-          ? { recoverySource: authority.lifecycle.outcome } : {}),
         rowRevision: authority.version,
         dryRun: authority.envelope.dryRun,
         isChild: authority.envelope.parent !== undefined,

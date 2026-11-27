@@ -79,8 +79,11 @@ for (const state of ["damaged", "projection-missing", "projection-missing-attach
       assert.equal(history.apply({ operation: "create", conversationId, title: "Retained attachment" }, now).state, "saved");
       history.stage({ id: attachmentId, conversationId, mediaType: "text/plain", name: "retained.txt", bytes: new TextEncoder().encode("retained bytes"), now });
       const conversation = history.conversation(conversationId, now); assert.ok(conversation);
-      assert.equal(history.accept({ conversationId, expectedRevision: conversation.revision, messageId, text: "Read", modelText: "Read", subjectRef: null, attachments: [attachmentId], now }).state, "accepted");
-      assert.equal(typeof history.settle(conversationId, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Accepted.", modelText: "Accepted." } }, now), "number");
+      database.bindAssistantEpoch(() => 1);
+      const accepted = history.accept({ conversationId, expectedRevision: conversation.revision, messageId, text: "Read", modelText: "Read", subjectRef: null, attachments: [attachmentId], proposalAnswer: null, now });
+      if (accepted.state !== "accepted") assert.fail("turn not accepted");
+      assert.equal(typeof history.settle(accepted, { delivery: "answered", usage: { state: "measured", callCount: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        reply: { id: randomUUID(), kind: "answer", parts: [{ kind: "text", runs: [{ kind: "plain", text: "Accepted." }] }], modelText: "Accepted." } }, now), "number");
       const attachment = history.attachment(conversationId, attachmentId, now); assert.ok(attachment);
       assert.equal(attachment.messageId, messageId); assert.equal(attachment.ordinal, 1); assert.ok(attachment.expiresAt > now);
       assert.deepEqual(attachment.bytes, new TextEncoder().encode("retained bytes"));
