@@ -72,7 +72,7 @@ it("claims no progress for a session the server has not described", async () => 
 it("records who filed under a typed yes, and nothing for an unrecorded one", async () => {
   const view = await draw(AssistantReplyPartsSchema.parse([{ kind: "answered", attribution: ATTRIBUTION, at: AT }, { kind: "answered", attribution: { kind: "unrecorded" }, at: AT }]));
   assert.equal(view.host.querySelectorAll("p").length, 1);
-  assert.match(view.host.textContent ?? "", /^Filed by you · \d{1,2}:31 [AP]M$/u);
+  assert.match(view.host.textContent ?? "", /^You replied yes · \d{1,2}:31 [AP]M$/u);
 });
 
 it("stops the spinner under reduced motion", () => {
