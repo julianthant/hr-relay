@@ -100,7 +100,8 @@ describe("served notification alerts", () => {
     await publish({ ...item("again", "Repeating failure crossed its threshold", "danger"), quiet: true });
     assert.deepEqual(probe.alerts.map(alert => alert.id), ["failed"]);
     assert.equal(probe.unread, 1);
-    assert.equal((document.body.textContent ?? "").match(/Run failed/g)?.length, 1);
+    assert.match(document.body.textContent ?? "", /Run failed/);
+    assert.doesNotMatch(document.body.textContent ?? "", /Repeating failure/);
   });
 
   it("raises no failure notice for a cancelled run, which publishes nothing", async () => {
