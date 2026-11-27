@@ -284,7 +284,8 @@ describe('compact run headers', () => {
     }
     const host = document.createElement('div'); document.body.append(host);
     const root = createRoot(host);
-    const wrap = (children: ReactNode) => createElement(PersonPreferencesContext.Provider, { value: { snapshot: () => ({ value: NEUTRAL_PERSON_PREFERENCES, state: 'ready' as const }), subscribe: () => () => undefined, change: async () => true } },
+    const preferences = { value: NEUTRAL_PERSON_PREFERENCES, state: 'ready' as const };
+    const wrap = (children: ReactNode) => createElement(PersonPreferencesContext.Provider, { value: { snapshot: () => preferences, subscribe: () => () => undefined, change: async () => true } },
       createElement(ToastProvider, null, children));
     await act(async () => root.render(wrap(createElement(Session))));
     const failure: NotificationItem = { id: 'failed', title: 'Run failed notice', tone: 'danger', subject: 'Jordan', workflow: 'Person Lookup', detail: 'Review the failed run.', age: 'Just now', read: false, action: 'Open log', kind: 'run', destination: { kind: 'refused', reason: 'target-unavailable' } };
