@@ -90,11 +90,10 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     if (current()) owner.preferenceChanged?.(actual, true);
     return { kind: "saved", view: actual };
   }
-  async function respond(requestId: number, prompt: string, staged?: readonly string[]) {
+  async function respond(requestId: number, prompt: string, staged?: readonly string[], messageId: string = crypto.randomUUID()) {
     const request = { requestId, prompt, abort: new AbortController(), binding };
     outstanding = request;
     const current = () => !retired && outstanding === request && !request.abort.signal.aborted && binding === request.binding;
-    const messageId = crypto.randomUUID();
     /** Presents the stored outcome of this send, never a Confirm and never another send; `fallback` when nothing stored can be read. */
     const readBack = async (fallback: AssistantAction) => {
       try {
@@ -213,8 +212,8 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (action.type === 'new-chat') conversationId = crypto.randomUUID();
       if (action.type === 'edit' || action.type === 'new-chat' || action.type === 'cancel') abort();
       const previous = state;
-      publish(assistantReducer(state, action));
-      if (state !== previous && state.turn.state === 'waiting' && (action.type === 'send' || action.type === 'retry')) void respond(state.turn.requestId, state.turn.prompt, state.turn.staged);
+      publish(assistantReducer(state, action.type === 'send' ? { ...action, messageId: action.messageId ?? crypto.randomUUID() } : action));
+      if (state !== previous && state.turn.state === 'waiting' && (action.type === 'send' || action.type === 'retry')) void respond(state.turn.requestId, state.turn.prompt, state.turn.staged, state.turn.messageId);
     },
   });
 }

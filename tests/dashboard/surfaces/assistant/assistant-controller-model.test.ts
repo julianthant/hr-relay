@@ -182,6 +182,23 @@ it('does not infer or choose a local default when the preference query is not wi
   await vi.waitFor(() => assert.notEqual(c.snapshot().turn.state, "waiting"));
   assert.equal(inferences, 0); assert.equal(c.snapshot().messages.length, 2);
 });
+it('retries a lost reply under the same message id whether its history read throws or finds nothing, so an accepted turn is replayed, never run twice', async () => {
+  for (const outcome of [async () => { throw new Error('history offline'); }, async () => undefined]) {
+    const ids: string[] = [];
+    const client = resultClient({ async assistantRespond(input): Promise<ScriptedReply> {
+      ids.push(input.messageId); if (ids.length === 1) throw new Error('connection dropped'); return { state: 'answered', text: 'Replayed' }; } });
+    let kept: AssistantState | undefined;
+    const c = createAssistantController(client, { authority: 'a' }, { conversationId: crypto.randomUUID(), read: () => kept,
+      retain: state => { kept = state; }, revision: () => 1, receipt() {}, async local() {}, async refresh() {}, outcome, unsaved() {} });
+    sendControl(c, 'start a lookup for Avery');
+    await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'failed'));
+    c.action({ type: 'retry' });
+    await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'idle'));
+    assert.equal(ids.length, 2); assert.equal(ids[1], ids[0]);
+    sendControl(c, 'another question');
+    await vi.waitFor(() => assert.equal(ids.length, 3)); assert.notEqual(ids[2], ids[0]);
+  }
+});
 const RUN_ID = '00000000-0000-4000-8000-000000000004';
 function sessionView(rowRevision: number, stoppable: boolean) {
   return AssistantSessionViewSchema.parse({ runId: RUN_ID, label: 'Sample, Avery', meta: 'Running', rowRevision, state: stoppable ? 'running' : 'cancelled',
