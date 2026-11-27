@@ -13,7 +13,7 @@ import { runtimeProfiles } from "../../src/models/config/define-runtime-isolatio
 import { RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
 import { notificationTitle } from "../../src/models/dashboard/projection.js";
 import { PACIFIC_TIME_ZONE, searchPartitionDay } from "../../src/models/dashboard/search-calendar.js";
-import { SpanEventWireSchema, NoteWireSchema, type NoteWire } from "../../src/models/events/types.js";
+import { SpanEventWireSchema } from "../../src/models/events/types.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../../src/models/notifications/notifications.js";
 import { RunRecordSchema, type RunLifecycle, type RunRecord } from "../../src/models/run/record.js";
 import { RunSessionRecordSchema } from "../../src/models/run/session.js";
@@ -277,7 +277,7 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   const run = RunRecordSchema.parse({
     envelope: { runId, workflow: workflow.id, itemId: id("item"), traceId, descriptorVersion: workflow.version,
       contractFingerprint: workflow.contractFingerprint, buildId, configFingerprint: seedDigest,
-      configSnapshotId: id("config"), resolvedInstance: {}, shape: "single", priority: "interactive", dryRun: true, attempt: 1, enqueuedAt },
+      configSnapshotId: id("config"), resolvedInstance: {}, shape: "single", priority: "interactive", dryRun: writeNode === undefined, attempt: 1, enqueuedAt },
     input: seedInput(workflow),
     lifecycle, claimGeneration: state === "queued" ? 0 : 1, displayName: title,
     ...(live?.sessionId === undefined ? {} : { sessionId: live.sessionId }),
@@ -289,7 +289,7 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   });
   const spanPath = runSpanPath(run.envelope.traceId);
   const common = { workflow: workflow.id, runId, traceId, attempt: run.envelope.attempt, pid: 1 };
-  const events: (NoteWire | Record<string, unknown>)[] = [{ ...runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title }), pid: 1 }];
+  const events: Record<string, unknown>[] = [{ ...runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title }), pid: 1 }];
   if (run.claimGeneration > 0 && step !== undefined) {
     const startedMs = Date.parse(claimed?.claimedAt ?? enqueuedAt);
     events.push({ ...common, t: "run.claimed", workerId: claimed?.workerId ?? claim.workerId, claimGeneration: 1, ts: new Date(startedMs).toISOString(), spanPath });
@@ -302,18 +302,7 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
       const task = { ...common, kind: "task", parentSpanPath: spanPath, spanPath: taskSpanPath(traceId, NodeIdSchema.parse(node.id), 1, 1) };
       const ts = new Date(at).toISOString();
       events.push({ ...task, t: "span.started", ts, name: node.label });
-      // Logs draws a step's row from the data the step observed, as a real run records it.
-      const runtime = runtimeNodes.find(candidate => candidate.id === node.id);
-      const taskId = runtime?.kind === "task" ? runtime.uses.id : runtime?.kind === "transaction" ? runtime.prepare.uses.id : undefined;
-      const outputs = workflow.timeline.flatMap(group => (group.operatorFields ?? []).flatMap(field =>
-        field.sources.filter(source => source.nodeId === node.id && source.kind === "output").map(source => ({ field, path: source.fieldPath }))));
       const open = (claimed !== undefined || writeNode !== undefined) && position === reached - 1;
-      // The open step has produced nothing yet.
-      if (!open && taskId !== undefined && outputs.length > 0) {
-        events.push({ ...common, spanPath: task.spanPath, parentSpanPath: spanPath, ts, t: "data.observed", nodeId: NodeIdSchema.parse(node.id), taskId, observedAt: ts,
-          points: outputs.map(({ field, path }) => ({ direction: "read", field: path,
-            values: [{ key: path, state: "allowed", classification: "safe-diagnostic", transform: "allow", value: field.display?.cases[0]?.value ?? "Sample" }] })) });
-      }
       at += stepMs;
       const last = position === reached - 1 && outcome !== undefined && outcome !== "done";
       if (!open) events.push({ ...task, ...(last && failure !== undefined ? { failureId: failure.failureId } : {}), t: "span.ended",
@@ -328,7 +317,7 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
     events.push({ ...common, ...failureRef, t: "span.ended", kind: "run", ts: settledAt, spanPath, outcome: run.lifecycle.outcome });
   }
   const write = writeNode === undefined ? undefined : seedParkedWrite({ run, nodeId: writeNode.id, parked, id, at: settledAt });
-  return { ...slot, run, failure, write, events: events.map(event => "t" in event ? SpanEventWireSchema.parse(event) : NoteWireSchema.parse(event)) };
+  return { ...slot, run, failure, write, events: events.map(event => SpanEventWireSchema.parse(event)) };
 }
 
 function seedNotifications(runs: readonly ReturnType<typeof seedRun>[], profileId: string, now: Date) {

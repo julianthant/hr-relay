@@ -207,7 +207,8 @@ it("replaces its synthetic history and retains imported rows outside operational
           const analytics = ["2026-11-18", "2026-10-26", "2026-08-27"].map(from => queryActivitySummaries(history,
             { from, to: "2026-11-24", generatedAt: clock.now().toISOString() },
             { ledger: createTransactionHistory(history.authority), descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(row => row.descriptor.id === id)?.descriptor } }));
-          return { generated, notices, analytics };
+          const timelines = generated.map(row => history.authority.timelineEvents.page({ runId: row.envelope.runId, limit: 200 }));
+          return { generated, notices, analytics, timelines };
         } finally { native.close(); }
       } finally { admission.release(); }
     } finally { machine.release(); await lock.close(); }
@@ -254,7 +255,7 @@ it("replaces its synthetic history and retains imported rows outside operational
     }
   }
   expect(seeded.analytics.map(report => report.days.length)).toEqual([7, 30, 90]);
-  expect(seeded.generated.every(row => row.displayName?.startsWith("Synthetic ") === true && row.envelope.dryRun)).toBe(true);
+  expect(seeded.generated.every(row => row.displayName?.startsWith("Synthetic ") === true && row.envelope.dryRun === (row.lifecycle.state !== "parked-write"))).toBe(true);
   const workStudyEid = WorkStudyCanonicalInput.parse(canonicalInputSamples(WorkStudyCanonicalInput)[0]).emplId;
   for (const { descriptor } of WORKFLOW_MODULES) {
     const runs = seeded.generated.filter(row => row.envelope.workflow === descriptor.id);
@@ -307,6 +308,10 @@ async function expectTimelines(client: ReturnType<typeof createDashboardClient>,
     expect(positions.every(position => position >= 0), name).toBe(true);
     expect([...positions].sort((left, right) => left - right), name).toEqual(positions);
     if (state === "succeeded") expect(new Set(noted.map(note => note.title)).size, name).toBe(order.length);
+    // Each recorded step is its own row with its title, state and time, even when several share one group.
+    const stepRows = steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "note" && / · (Done|Running)$/u.test(entry.message) ? [entry] : []));
+    expect(stepRows.every(row => row.time !== "—"), name).toBe(true);
+    if (state === "succeeded") expect(stepRows.length, name).toBe(descriptor.timeline.flatMap(group => group.nodes).filter(node => !spanless.has(node.id)).length);
     if (state === "needs-duo") expect(noted.map(note => note.title), name).toEqual([order[0]?.label]);
     const cards = steps.flatMap((step, index) => step.entries.some(entry => entry.kind === "decision") || step.title === "Run cancelled" ? [{ index, title: step.title }] : []);
     const parkedWrite = run.lifecycle.state === "parked-write";

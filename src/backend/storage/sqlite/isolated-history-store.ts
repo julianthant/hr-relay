@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { lstatSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { NoteWireSchema, SpanEventWireSchema, type NoteWire, type SpanEventWire } from "../../../models/events/types.js";
+import { SpanEventWireSchema, type SpanEventWire } from "../../../models/events/types.js";
 import { TimelineAppendSchema, TimelineEventRecordSchema, type TimelineEventRecord, type TimelineRepository } from "../../../models/events/timeline.js";
 import { NotificationRecordSchema, type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
@@ -122,7 +122,7 @@ export const COPY_HISTORY_SEED_BUILD = sha256Hex("relay-copy-seed");
 export type CopyHistorySeed = Readonly<{
   fromDay: string;
   build(runs: readonly RunRecord[]): Readonly<{
-    runs: readonly Readonly<{ run: RunRecord; failure?: FailureRecord; events: readonly (SpanEventWire | NoteWire)[];
+    runs: readonly Readonly<{ run: RunRecord; failure?: FailureRecord; events: readonly SpanEventWire[];
       write?: Readonly<{ intent: WriteIntentRecord; attempt: WriteAttemptRecord; nodeId: NodeId }> }>[];
     notifications: readonly NotificationRecord[];
     /** Run groups the generated runs belong to; seed-owned, never a real session. */
@@ -145,7 +145,7 @@ const SeedMemberSchema = z.strictObject({ kind: z.enum(["run", "notification"]),
 function assertSeedRun(archive: DatabaseSync, id: string): RunRecord {
   const row = archive.prepare("SELECT * FROM runs WHERE id=?").get(id);
   const run = row === undefined ? undefined : runRecordFromRow(row);
-  if (run?.envelope.buildId !== COPY_HISTORY_SEED_BUILD || run.displayName?.startsWith("Synthetic ") !== true || !run.envelope.dryRun) throw new Error("copy-seed-run-membership-mismatch");
+  if (run?.envelope.buildId !== COPY_HISTORY_SEED_BUILD || run.displayName?.startsWith("Synthetic ") !== true) throw new Error("copy-seed-run-membership-mismatch");
   return run;
 }
 
@@ -203,31 +203,26 @@ export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding:
     const byWorkflow: Record<string, number> = {};
     for (const row of population.runs) {
       const run = RunRecordSchema.parse(row.run), { runId, workflow } = run.envelope;
-      if (run.envelope.buildId !== COPY_HISTORY_SEED_BUILD || !run.envelope.dryRun || run.displayName?.startsWith("Synthetic ") !== true || run.envelope.parent !== undefined
+      if (run.envelope.buildId !== COPY_HISTORY_SEED_BUILD || run.envelope.dryRun === (row.write !== undefined) || run.displayName?.startsWith("Synthetic ") !== true || run.envelope.parent !== undefined
         || run.sessionId !== undefined && batches.get(run.sessionId)?.workflow !== workflow) throw new Error("copy-seed-run-invalid");
       const failure = row.failure === undefined ? undefined : FailureRecordSchema.parse(row.failure);
       if (failure !== undefined && (failure.runId !== runId || run.lifecycle.state !== "terminal" || run.lifecycle.failureId !== failure.failureId)) throw new Error("copy-seed-failure-owner-mismatch");
       insert("runs", runRecordColumns(run));
       if (failure !== undefined) insert("run_failures", initialFailureColumns(failure));
       let queued: TimelineEventRecord | undefined, index = 0;
-      // The archive's side of the span writer: fixed IDs keep a reseed identical.
+      // The archive's side of the span writer: every ID is derived from the run and event position, so a reseed is identical.
       const repository: Pick<TimelineRepository, "append"> = { append: input => {
         const append = TimelineAppendSchema.parse(input);
-        // Only the writer's one-per-span IDs are stable; the rest it draws at random.
-        const stable = append.payload.kind === "span" && append.payload.event.t !== "run.claimed";
-        const eventId = stable ? append.eventId : deriveStableUuid("relay-copy-seed-event", `${runId}/${String(index)}`);
-        const found = archive.prepare("SELECT 1 FROM timeline_events WHERE id=?").get(eventId) !== undefined;
-        const record = TimelineEventRecordSchema.parse({ ...append, eventId, cursor: found ? cursor : ++cursor });
+        const found = archive.prepare("SELECT 1 FROM timeline_events WHERE id=?").get(append.eventId) !== undefined;
+        const record = TimelineEventRecordSchema.parse({ ...append, cursor: found ? cursor : ++cursor });
         if (found) return { state: "existing", record };
         insert("timeline_events", timelineEventColumns(record));
         if (record.payload.kind === "span" && record.payload.event.t === "run.queued") queued = record;
         return { state: "inserted", record };
       } };
-      for (const event of z.union([SpanEventWireSchema, NoteWireSchema]).array().parse(row.events)) {
-        const clock = capturedInstantClock(event.ts);
-        if ("t" in event) createTimelineEmitter({ repository, clock, pid: event.pid }).emit(event);
-        else repository.append({ schemaVersion: 1, eventId: runId, workflow, scope: { kind: "run", runId }, occurredAt: event.ts,
-          recordedAt: event.ts, retentionDate: localDatePart(clock.now()), payload: { kind: "note", note: event }, source: { kind: "native" } });
+      for (const event of SpanEventWireSchema.array().parse(row.events)) {
+        createTimelineEmitter({ repository, clock: capturedInstantClock(event.ts), pid: event.pid,
+          uuid: () => deriveStableUuid("relay-copy-seed-event", `${runId}/${String(index)}`) }).emit(event);
         index += 1;
       }
       if (row.write !== undefined) {

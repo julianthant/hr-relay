@@ -500,7 +500,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const byHand = typed?.doneByHand?.some(nodeId => nodeId === requireNative(event.native).nodeId) === true;
     const why = reason === "step-omitted" && typedFields > 0 && !byHand ? "operator-asserted" : reason;
     steps.push({ id: event.noteId, time, title: plainStepLabel(event.label), entries: [{ kind: "note", id: event.noteId, time,
-      message: replacedReading ? REPLACED_READING : reasoned(state, why) }] });
+      message: replacedReading ? REPLACED_READING : event.state === "done" || event.state === "active" ? `${plainStepLabel(event.label)} · ${state}` : reasoned(state, why) }] });
   }
   if (new Set(steps.map(step => step.id)).size !== steps.length) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_DUPLICATE");
   const orderOf = (id: string): number => {
