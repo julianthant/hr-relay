@@ -23,7 +23,7 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
-import { admitFixtureSlot } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { admitFixtureSlot, testRunService } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { scaledMs } from "../../../../support/time-scale.js";
 
 const profileFixtures = createProfileFixtureSet();
@@ -199,6 +199,32 @@ describe("canonical notification producers", () => {
       expect(JSON.stringify(rows)).not.toContain(failureRecordOf({ seed: 1, code: "SUBJECT_MISMATCH" }).summary);
     } finally { await f.close(); }
   });
+  it("keeps the run-failed publication an interrupted profile already committed for a mismatch failure", async () => {
+    const f = await fixture();
+    try {
+      failRun(f, 3, "SUBJECT_MISMATCH");
+      const [mismatch] = readNotificationSources(f.db, f.reader).observations;
+      if (mismatch?.event.kind !== "subject-mismatch") throw new Error("fixture mismatch observation missing");
+      const { kind: _kind, ...shared } = mismatch.event;
+      await f.inbox.publish({ kind: "run-failed", ...shared, code: "SUBJECT_MISMATCH" }, { identity: sha256Hex(`notification-occurrence:run-failed:${mismatch.event.failureId}`), occurredAt: mismatch.source.occurredAt });
+      const upgraded = readNotificationSources(f.db, f.reader);
+      expect(upgraded.observations.map(row => row.event.kind)).toEqual(["run-failed"]);
+      for (const row of upgraded.observations) await f.inbox.publish(row.event, row.source);
+      expect(f.inbox.list("local-operator")).toHaveLength(1);
+    } finally { await f.close(); }
+  });
+  it("publishes one failure notice for a real failure and none for a cancelled run", async () => {
+    const f = await fixture();
+    try {
+      const queued = seedRun(f, runRecordOf({ seed: 5 }));
+      expect(testRunService(f.db, f.clock).transition({ commandId: id(5), runId: queued.envelope.runId, expectedVersion: queued.version,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }).state).toBe("applied");
+      expect(readNotificationSources(f.db, f.reader).observations).toEqual([]);
+      failRun(f, 6, "SUBJECT_MISMATCH");
+      for (const row of readNotificationSources(f.db, f.reader).observations) await f.inbox.publish(row.event, row.source);
+      expect(f.inbox.list("local-operator").map(row => row.trigger)).toEqual(["failed"]);
+    } finally { await f.close(); }
+  });
   it("publishes only verified canonical receipts and refuses mismatched evidence", async () => {
     const f = await fixture();
     try {
@@ -215,7 +241,7 @@ describe("canonical notification producers", () => {
       f.db.authority.evidenceReceipts.insert(receiptOf(run, 3));
       failRun(f, 3, "SUBJECT_MISMATCH");
       const before = readNotificationSources(f.db, f.reader);
-      expect(before.observations.map(row => row.event.kind)).toEqual(["verified-done", "run-failed", "subject-mismatch"]);
+      expect(before.observations.map(row => row.event.kind)).toEqual(["verified-done", "subject-mismatch"]);
       for (const row of before.observations) await f.inbox.publish(row.event, row.source);
       const rows = f.inbox.list("local-operator");
       const reopened = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "notification-reopen" }, f.clock);
