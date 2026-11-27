@@ -182,6 +182,14 @@ it("stops CRM Doc Download at the 32 worksheet cap a run can start with", async 
   assert.equal(item("S01")?.getAttribute("aria-disabled"), null);
 });
 
+it("gives each workflow in the list one title with its full name", async () => {
+  await h.openDialog(h.stubClient({ ...served }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
+  await h.settle();
+  const entry = document.body.querySelector<HTMLElement>(`nav[aria-label="Workflow"] button[aria-label="${lookup.label}"]`); assert.ok(entry);
+  assert.equal(entry.getAttribute("title"), lookup.label);
+  assert.equal(entry.querySelector("[title]"), null);
+});
+
 it("keeps a workflow that cannot read several reference worksheets on a single pick", async () => {
   await h.openDialog(h.stubClient({ ...rosterLookupReads() }), { workflows: [rosterLookup], panelWorkflowId: rosterLookup.workflowId });
   await h.settle(); await add("References", "Contact roster");

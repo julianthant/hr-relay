@@ -31,8 +31,8 @@ export const RunWorkflowPicker = memo(function RunWorkflowPicker({ catalog, valu
           const reason = unavailable.get(node.entry.id);
           return <li key={node.entry.id}>
             <button type="button" aria-current={value === node.entry.id ? "page" : undefined} aria-label={node.entry.label} className={`${dsFocus} disabled:cursor-not-allowed disabled:text-ui-muted`}
-              disabled={locked || reason !== undefined} title={reason?.reason} aria-description={reason?.reason} onClick={() => onChange(node.entry.id)}>
-              <span className="truncate" title={node.entry.label}>{node.entry.label}</span>{node.harness && <WorkflowHarnessTag harness={node.harness} />}
+              disabled={locked || reason !== undefined} title={reason === undefined ? node.entry.label : `${node.entry.label}: ${reason.reason}`} aria-description={reason?.reason} onClick={() => onChange(node.entry.id)}>
+              <span className="truncate">{node.entry.label}</span>{node.harness && <WorkflowHarnessTag harness={node.harness} />}
               {reason !== undefined && <span className="ml-auto shrink-0 text-caption text-ui-muted">{reason.label}</span>}
             </button>
           </li>;
