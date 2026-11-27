@@ -1,5 +1,7 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import assert from "node:assert/strict";
-import { createElement } from "react";
+import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { Input, SearchInput, SecretField } from "../../../../src/dashboard/ds/primitives/primitives-form.js";
@@ -20,8 +22,13 @@ describe("Input, SecretField and SearchInput", () => {
     assert.doesNotMatch(out, />Show</u);
   });
 
-  it("marks only the sidebar search as the filled pill", () => {
-    assert.match(html(createElement(SearchInput, { variant: "sidebar", "aria-label": "Find" })), /ds-search-field--sidebar/u);
-    assert.doesNotMatch(html(createElement(SearchInput, { "aria-label": "Find" })), /ds-search-field--sidebar/u);
+  it("has one look: no variant prop and no look class", () => {
+    assert.doesNotMatch(html(createElement(SearchInput, { "aria-label": "Find" })), /ds-search-field--/u);
+    type Props = ComponentProps<typeof SearchInput>;
+    const variantFree: "variant" extends keyof Props ? never : true = true;
+    assert.equal(variantFree, true);
+    const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? files(join(dir, entry.name)) : [join(dir, entry.name)]);
+    const offenders = files("src/dashboard").filter(file => /\.(tsx|css)$/u.test(file) && /<SearchInput[^>]*\bvariant=|ds-search-field--/u.test(readFileSync(file, "utf8")));
+    assert.deepEqual(offenders, []);
   });
 });

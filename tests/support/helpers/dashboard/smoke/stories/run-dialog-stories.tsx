@@ -175,7 +175,7 @@ const PDF = {
 } satisfies Record<PdfInputState, Story>;
 
 /** What the dialog shows when the reference spreadsheets a workflow reads cannot be read or checked. */
-type ReferenceState = "none-added" | "pdfs-none-added" | "loading" | "catalog-failed" | "compatibility-failed" | "unchecked" | "check-loading" | "check-failed" | "chosen" | "worksheet-menu" | "one-of-several" | "three-worksheets" | "several-menu" | "start";
+type ReferenceState = "none-added" | "pdfs-none-added" | "loading" | "catalog-failed" | "compatibility-failed" | "unchecked" | "check-loading" | "check-failed" | "chosen" | "spreadsheet-menu" | "worksheet-menu" | "one-of-several" | "three-worksheets" | "several-menu" | "start";
 const unreadable = () => { throw new Error("The spreadsheets could not be read."); };
 const reference = (title: string, served: Partial<DashboardClient>, catalog = RUN_DIALOG_REFERENCE_CATALOG, extra: Partial<Story> & SceneOptions = {}): Story =>
   stage(title, () => runDialogClient({ workbookTypes: async () => [], ...served }), "Input", { catalog, ...extra });
@@ -202,6 +202,8 @@ const REFERENCE = {
   "check-loading": reference("The optional check still loading", { workbookCatalog: never, workbookCompatibility: never }, RUN_DIALOG_CHECK_CATALOG, READING),
   "check-failed": reference("The optional check's list could not be read", { workbookCatalog: async () => unreadable(), workbookCompatibility: async () => ({ workflows: [], libraries: [] }) }, RUN_DIALOG_CHECK_CATALOG),
   chosen: reference("A saved spreadsheet chosen for the reference field", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: chooseRoster }),
+  "spreadsheet-menu": reference("The Add spreadsheet menu open, searching Roster", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { knownFailures: { "named-and-focusable": "#532" }, then: async page => {
+    await dialog(page).getByRole("button", { name: /Add spreadsheet|Change spreadsheet/u }).click(); await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill("Roster"); await page.getByRole("menuitem").filter({ hasText: "Roster" }).first().waitFor(); } }),
   "worksheet-menu": reference("The chosen spreadsheet's worksheet menu open", runDialogReferenceReads(SHEETS), RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page);
     await dialog(page).getByRole("button", { name: /worksheet, /u }).click(); await page.getByRole("searchbox", { name: "Find a worksheet" }).waitFor(); } }),
   "one-of-several": several("A reference that takes several worksheets, one chosen", chooseRoster),
