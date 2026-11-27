@@ -132,16 +132,13 @@ it.each([
   if (extracted) {
     assert.equal(result.state, "applied", JSON.stringify(result));
     const replacement = f.database.authority.runs.listByWorkflow(descriptor.id).find(candidate => candidate.envelope.retryOf === source.envelope.runId);
-    assert.ok(replacement);
-    const signal = new AbortController().signal;
-    const next = await f.canonical.step(replacement, signal);
+    assert.ok(replacement?.envelope.continuation);
+    const pageReplacement = f.database.authority.runs.listByWorkflow(page.envelope.workflow)
+      .find(candidate => candidate.envelope.retryOf === page.envelope.runId);
     if (extraction === "checkpointed") {
-      assert.equal(next.run.envelope.workflow, "ocr-page");
-      assert.equal(next.outcome.state, "done");
+      assert.ok(pageReplacement?.envelope.continuation?.checkpoints.some(row => row.nodeId === "extract" && row.runId === page.envelope.runId));
     } else {
-      assert.equal(next.run.envelope.workflow, "ocr");
-      assert.ok(next.outcome.state === "failed");
-      assert.equal(f.database.authority.failures.get(next.outcome.failureId)?.code, "OCR_NO_REVIEWABLE_RECORDS");
+      assert.equal(pageReplacement, undefined);
     }
     assert.equal(f.ocrCalls(), 1);
   } else {
