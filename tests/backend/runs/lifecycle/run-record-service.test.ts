@@ -366,6 +366,17 @@ afterEach(_afterEachFixture0);
 describe("native immutable parked absence settlement",()=>{
 afterEach(_afterEachFixture0);
 
+  it("refuses a new absence settlement with only a historical operator audit",async ()=>{
+    const f=await fixture();
+    expect(()=>f.db.withAuthorityTransaction(repositories=>{
+      repositories.commands.insert(f.command);repositories.commandAudits.insert(f.audit);
+      f.db.settleResolvedParkedAbsence({writeIntentId:f.parked.writeIntentId,generation:1,expectedIntentVersion:2,
+        settlement:f.settlement,resolution:f.resolution});
+    })).toThrow();
+    expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);
+    expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);
+  });
+
   it.each(["audit","intent","run"] as const)("rolls back the complete command and run after %s",async fault=>{
     const f=await fixture();const generation=f.db.getMeta().authorityGeneration;
     expect(()=>f.apply(fault)).toThrow("resolution-fault");
