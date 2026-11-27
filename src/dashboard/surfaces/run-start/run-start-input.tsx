@@ -93,6 +93,7 @@ export function RunStartInput({
                       autoFocus
                       draft={typedValues}
                       locked={sending}
+                      rowsOwnNotice={workbookRows.state === "error"}
                       rowInput={rowCapability === undefined ? undefined : <>
                         {referenceControls([rowCapability.typeId], true)}
                         {library.catalogRefreshing && <p role="status">Refreshing reference data. Row selection is disabled.</p>}

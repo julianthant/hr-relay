@@ -20,10 +20,12 @@ const PROTECTED_DESCRIPTION: Readonly<Record<string, string>> = {
   ucpathPassword: "Password for UCPath access.",
 };
 
+export const CREDENTIALS_UNAVAILABLE = "Credentials unavailable; reopen Settings to try again.";
+
 function CredentialsSection({ editor, profileName, embedded }: { editor: Editor; profileName: string; embedded: boolean }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" contentOnly={embedded} />;
-  if (editor.editor.state === "failed") return <div className="my-[var(--ds-space-section)]"><FailureNotice sentence="Credentials unavailable; reopen Settings to try again." /></div>;
+  if (editor.editor.state === "failed") return embedded ? null : <FailureNotice sentence={CREDENTIALS_UNAVAILABLE} />;
   const settingsDocument = editor.editor.document;
   const authority = settingsDocument.protectedSettings;
   const credentials = editor.protectedEditor;

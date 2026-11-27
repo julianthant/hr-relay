@@ -208,7 +208,7 @@ const LOGS = {
   "refresh-failed": panel("Logs that could not refresh", { steps: readingSteps, timeline: reading,
     toolbar: <FailureNotice sentence={`${LOGS_READ_FAILED}: Relay could not refresh these logs.`} /> }),
   "load-failed": panel("Logs that could not load", { steps: [], timeline: [], content: <div className="p-[var(--ds-space-section)]"><FailureNotice sentence="Couldn't load logs." action={{ label: "Retry", onClick: noop }} /></div> }),
-  unavailable: panel("Logs for a step that is gone", { steps: [], timeline: [], content: <div className="p-[var(--ds-space-section)]"><FailureNotice sentence={`${LOGS_UNAVAILABLE}: ${formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text}`} /></div> }),
+  unavailable: panel("Logs for a step that is gone", { steps: [], timeline: [], content: <div className="p-[var(--ds-space-section)]"><FailureNotice sentence={`${LOGS_UNAVAILABLE}: this run or step no longer exists.`} /></div> }),
   empty: panel("A run that has logged nothing yet", { steps: [], timeline: logTimelineSample("empty") }),
   "needs-duo": panel("A run waiting for the Duo sign-in", { steps: [], timeline: logTimelineSample("empty"),
     navigation: <div className="px-3 py-2"><Banner tone="info" title="Approving Duo for UCPath"><span className="tabular-nums">Waiting 2m 10s</span></Banner></div> }),

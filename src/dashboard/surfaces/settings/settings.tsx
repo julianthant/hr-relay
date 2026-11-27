@@ -270,7 +270,7 @@ export function SettingsPage({
         {resolution.state === "open" && editor.editor.state !== "failed" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />
         )}
-        {resolution.state === "open" && resolution.entry.id === "account" && (accountPage === undefined ? <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} /> : <AccountSettings page={accountPage} username={accountPage.values.username} ucpath={<SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} embedded />} deleteAccount={deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />} />)}
+        {resolution.state === "open" && resolution.entry.id === "account" && (accountPage === undefined ? <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} /> : <AccountSettings page={accountPage} username={accountPage.values.username} ucpath={<SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} embedded />} credentialsNotice={editor.editor.state === "failed" ? <FailureNotice sentence={CREDENTIALS_UNAVAILABLE} /> : undefined} deleteAccount={deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />} />)}
         {resolution.state === "open"
           && resolution.entry.source === "served"
           && !RENDERED_SERVED_SECTION_IDS.has(resolution.entry.id) && (

@@ -36,7 +36,7 @@ function Group({ label, description, children }: { label: string; description?: 
 }
 
 /** Account page: read-only profile facts, the changeable Relay username and password, the editable UCPath sign-in, Duo status, and Delete account. */
-export function AccountSettings({ page, username, ucpath, deleteAccount }: { page: AccountPage; username: string | undefined; ucpath: ReactNode; deleteAccount: ReactNode }) {
+export function AccountSettings({ page, username, ucpath, credentialsNotice, deleteAccount }: { page: AccountPage; username: string | undefined; ucpath: ReactNode; credentialsNotice?: ReactNode; deleteAccount: ReactNode }) {
   const { duoKeys, onDuoSetup, login } = page;
   const [saved, setSaved] = useState<{ readonly base: string; readonly values: AccountValues } | undefined>();
   const base = JSON.stringify(page.values);
@@ -80,6 +80,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     </Group>
     {ucpath}
     <Group label="Workflow configuration" description="Names workflows put on the forms they file.">
+      {credentialsNotice}
       {details("Timekeeper name", values.timekeeper, timekeeperName => ({ timekeeperName }), "profile.displayName")}
       {details("Timekeeper initials", values.timekeeperInitials, timekeeperInitials => ({ timekeeperInitials }), "profile.initials")}
     </Group>
