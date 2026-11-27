@@ -10,7 +10,7 @@ import { scriptedEnvelope, type AssistantReplyPartInput as AssistantReplyPart, t
 export const ASSISTANT_STORY_PROMPT = "Look up Avery Sample in Person Lookup.";
 
 /** What the next message comes back as. `never` is a reply still being prepared; `lost` is a reply that never arrived. */
-export type AssistantReplyScript = "answer" | "answer-long" | "proposal" | "proposal-many" | "answered-yes" | "never" | "lost" | { readonly refused: AssistantFailureCode };
+export type AssistantReplyScript = "answer" | "answer-long" | "proposal" | "proposal-many" | "answered-yes" | "full-access-dry-run" | "never" | "lost" | { readonly refused: AssistantFailureCode };
 export type AssistantStageScript = "staged" | "lost" | { readonly refused: AssistantFailureCode };
 
 export interface AssistantStoryClientOptions {
@@ -36,6 +36,7 @@ const ANSWERED_YES: AssistantReplyPart[] = [say(plain("Started Person Lookup for
 const REPLIES: Readonly<Record<Exclude<AssistantReplyScript, "never" | "lost" | { readonly refused: AssistantFailureCode }>, readonly AssistantReplyPart[]>> = {
   answer: ANSWER, "answer-long": LONG, proposal: proposal([person("Sample, Avery", "10101010")]),
   "proposal-many": proposal([person("Sample, Avery", "10101010"), person("Vega, Morgan", "20202020"), person("Rivera, Alex", "30303030")]), "answered-yes": ANSWERED_YES,
+  "full-access-dry-run": [say(plain("Started the Separations dry run.")), { kind: "session", runId: ID, label: "Separations dry run", meta: "queued" }],
 };
 const never = <Value,>(): Promise<Value> => new Promise<Value>(() => undefined);
 
@@ -48,7 +49,8 @@ export function assistantStoryClient(options: AssistantStoryClientOptions = {}):
     return { state: "answered", parts: REPLIES[reply] };
   };
   return {
-    assistantRespond: async input => scriptedEnvelope(input, await respond()),
+    assistantRespond: async input => scriptedEnvelope(input, reply === "full-access-dry-run" && input.approvalMode !== "full-access"
+      ? { state: "no-reply", reason: "ASSISTANT_PROPOSAL_REFUSED" } : await respond()),
     assistantStageAttachment: async (_chat, file): Promise<AssistantStageResult> => {
       if (stage === "lost") throw new TypeError("Failed to fetch");
       if (typeof stage === "object") return { state: "refused", code: stage.refused };

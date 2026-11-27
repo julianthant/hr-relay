@@ -4,19 +4,21 @@ import { ArrowUp, ChevronDown, Hand, Paperclip, Mic, Plus, ShieldAlert, X } from
 import { Button, Skeleton, InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
   DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuItem, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator } from '../../ds/ui.js';
-import { ASSISTANT_APPROVALS, ASSISTANT_MODEL, FULL_ACCESS, composerEnterAction, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
+import { ASSISTANT_APPROVALS, ASSISTANT_MODEL, composerEnterAction, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
 import { readAssistantAttachment, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
-import { useAssistantModelChoice, useFullAccessAllowed } from './assistant-approval-model.js';
+import { useAssistantModelChoice } from './assistant-approval-model.js';
 import './composer-input.css';
 import { usePersonPreferences } from '../../lib/person-preferences.js';
-import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
+import { AssistantApprovalModeSchema, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel, type AssistantModelPreference } from '../../../models/config/assistant-model-preference.js';
 
 export function ComposerInput({ onSend, onAttachFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelLoading = false, modelPreference }: AssistantPorts & {
   modelLoading?: boolean; modelPreference?: AssistantModelPreferenceView['preference']; settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
 }) {
-  const composer = useComposer({ onSend, initialText, draft, settlementKey });
-  const { sendShortcut } = usePersonPreferences().value;
+  const preferences = usePersonPreferences();
+  const { sendShortcut, assistantFullAccess } = preferences.value;
+  const fullAccessAllowed = assistantFullAccess && (preferences.state === 'ready' || preferences.state === 'saving');
+  const composer = useComposer({ onSend, initialText, draft, settlementKey, fullAccessAllowed });
   const id = useId();
   const choice = useAssistantModelChoice();
   const [picked, setPicked] = useState<AssistantModelPreference>();
@@ -38,11 +40,10 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not attach the file. Try again.'); }
     finally { setAttaching(false); composer.textarea.current?.focus(); }
   }
-  const fullAccessAllowed = useFullAccessAllowed();
-  const approvals = fullAccessAllowed ? ASSISTANT_APPROVALS : ASSISTANT_APPROVALS.slice(0, 1);
-  const { approval, setApproval } = composer;
-  useEffect(() => { if (!fullAccessAllowed && approval === FULL_ACCESS) setApproval(ASSISTANT_APPROVALS[0].label); }, [fullAccessAllowed, approval, setApproval]);
-  const full = approval === FULL_ACCESS;
+  const approvals = fullAccessAllowed ? AssistantApprovalModeSchema.options : ['ask'] as const;
+  const { approvalMode, setApprovalMode } = composer;
+  const { label: approval } = ASSISTANT_APPROVALS[approvalMode];
+  const full = approvalMode === 'full-access';
   function menu(kind: ComposerMenu, label: string, trigger: React.ReactNode, children: React.ReactNode, size: 'sm' | 'icon-sm' = 'icon-sm', className?: string) {
     return <DropdownMenu open={composer.menu === kind} onOpenChange={open => { if (open) focusMessageOnClose.current = false; composer.setMenu(open ? kind : null); }}>
       <DropdownMenuTrigger asChild><InputGroupButton id={`hub-${kind}-trigger`} size={size} className={className} aria-label={label} title={label} disabled={disabled || attaching || !preview && kind !== 'attach' && kind !== 'model' && !(kind === 'approval' && modelPreference !== undefined)}>{trigger}</InputGroupButton></DropdownMenuTrigger>
@@ -89,8 +90,8 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
       <InputGroupAddon aria-label="Message controls">
         {menu('attach', 'Add files', <Plus aria-hidden />, <>{preview && <DropdownMenuLabel className="hub-menu-title">Add to this chat</DropdownMenuLabel>}
           <DropdownMenuItem className="hub-menu-option" onSelect={() => composer.fileInput.current?.click()}><Plus aria-hidden /><span className="hub-option-copy"><span>Attach file</span><small>Images, spreadsheets and documents</small></span></DropdownMenuItem></>)}
-        {menu('approval', approval, <>{full ? <ShieldAlert aria-hidden /> : <Hand aria-hidden />}<span>{approval}</span></>, <><DropdownMenuLabel className="hub-menu-title">How should Relay actions be approved?</DropdownMenuLabel><DropdownMenuRadioGroup value={approval} onValueChange={setApproval}>
-          {approvals.map(item => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={item.label} value={item.label}><span className="hub-option-copy"><span>{item.label}</span><small>{item.description}</small></span></DropdownMenuRadioItem>)}
+        {menu('approval', approval, <>{full ? <ShieldAlert aria-hidden /> : <Hand aria-hidden />}<span>{approval}</span></>, <><DropdownMenuLabel className="hub-menu-title">How should Relay actions be approved?</DropdownMenuLabel><DropdownMenuRadioGroup value={approvalMode} onValueChange={value => setApprovalMode(AssistantApprovalModeSchema.parse(value))}>
+          {approvals.map(mode => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={mode} value={mode}><span className="hub-option-copy"><span>{ASSISTANT_APPROVALS[mode].label}</span><small>{ASSISTANT_APPROVALS[mode].description}</small></span></DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></>, 'sm', full ? 'hub-full-access' : undefined)}
         {modelLoading ? <span className="hub-model-text"><Skeleton className="h-3.5 w-28" /></span> : modelMenu()}
         {preview && menu('voice', 'Voice input', <Mic aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">Voice input</DropdownMenuLabel><p className="hub-caption hub-voice-note">Voice recording is simulated in this UI mock.</p><DropdownMenuItem className="hub-menu-option" onSelect={() => { focusMessageOnClose.current = true; composer.setText('Check the current employment details for Alex Rivera.'); }}><Mic aria-hidden /><span className="hub-option-copy"><span>Use sample transcript</span><small>Add a sample request to the composer</small></span></DropdownMenuItem></>)}

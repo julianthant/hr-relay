@@ -30,7 +30,7 @@ it('blocks every setup attachment before panel registration and both local file 
     await act(async () => controller.onAction({ type: "edit", value: text }));
     await act(async () => {
       expect(await model.attachFile(new File(['fixture'], 'fixture.txt'))).toBeNull();
-      expect(await model.send({ text, files: [file], model: 'ignored', effort: 'ignored', approval: 'ignored' })).toBe(false);
+      expect(await model.send({ text, files: [file], model: 'ignored', effort: 'ignored', approvalMode: 'ask' })).toBe(false);
     });
     expect(model.error).toContain('text only');
   }
@@ -41,7 +41,7 @@ it('blocks every setup attachment before panel registration and both local file 
 });
 
 describe('assistant attachments', () => {
-  const sendValue = (text: string, files: readonly AssistantFile[]) => ({ text, files, model: 'ignored', effort: 'ignored', approval: 'ignored' });
+  const sendValue = (text: string, files: readonly AssistantFile[]) => ({ text, files, model: 'ignored', effort: 'ignored', approvalMode: 'ask' as const });
   const upload = (name: string, bytes = 'fixture', size = bytes.length) => ({ name, size, async arrayBuffer() { return new TextEncoder().encode(bytes).buffer; } }) as unknown as File;
   async function mountServed(client: ReturnType<typeof resultClient>, ports: AssistantPorts = { async onAttachFile(picked) { return { id: crypto.randomUUID(), name: picked!.name, status: 'Attached' }; } }) {
     let controller!: ReturnType<typeof useAssistantController>;
@@ -71,9 +71,10 @@ describe('assistant attachments', () => {
     expect(staged).toEqual([{ conversationId: staged[0]?.conversationId, name: 'report.pdf', mediaType: 'application/pdf', bytes: 8 }]);
     expect(attached).toMatchObject({ name: 'report.pdf', stage: { state: 'staged' } });
     await act(async () => controller().onAction({ type: 'edit', value: 'Check this file' }));
-    await act(async () => { await model.send(sendValue('Check this file', [attached!])); });
+    await act(async () => { await model.send({ ...sendValue('Check this file', [attached!]), approvalMode: 'full-access' }); });
     await vi.waitFor(() => expect(requests).toHaveLength(1));
     expect(requests[0].attachments).toEqual([attached!.id]);
+    expect(requests[0].approvalMode).toBe('full-access');
     expect(requests[0].conversationId).toBe(staged[0].conversationId);
   });
   it('refuses an unsupported type before any upload or send, with a plain reason', async () => {

@@ -42,7 +42,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT, NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { restoreSchema36QueryIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
-import { prePanelModeRetirementSnapshot } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
+import { preAssistantFullAccessSnapshot, prePanelModeRetirementSnapshot } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { boundProfileAdmission } from "../../../support/helpers/admission-fixture.js";
 import { DESCRIPTOR_SET_HASH, runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
@@ -473,7 +473,7 @@ it("keeps imported timeline folds through background polling and recovery", asyn
   }
 });
 
-it("loads every imported dashboard day with delegated runs and failed Lookup start evidence from a schema-41 archive", async () => {
+it.each([41, 44])("loads every imported dashboard day with delegated runs and failed Lookup start evidence from a schema-%s archive", async version => {
   const sourceWorld = createOcrReviewWorld();
   cleanups.push(() => sourceWorld.cleanup());
   const source = await sourceWorld.fixture({ coordinator: true, sessions: sessionFactoryHarness({
@@ -509,9 +509,9 @@ it("loads every imported dashboard day with delegated runs and failed Lookup sta
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       const snapshot = ConfigSnapshotRecordSchema.parse(JSON.parse(String(row.payload_json)));
-      update.run(canonicalJsonStringify(prePanelModeRetirementSnapshot(snapshot, "sidebar")), snapshot.configSnapshotId);
+      update.run(canonicalJsonStringify(version === 41 ? prePanelModeRetirementSnapshot(snapshot, "sidebar") : preAssistantFullAccessSnapshot(snapshot)), snapshot.configSnapshotId);
     }
-    archive.exec("UPDATE history_header SET schema_version=41");
+    archive.prepare("UPDATE history_header SET schema_version=?").run(version);
   } finally { archive.close(); }
   const history = copy.database.dashboardHistory();
   expect(withReadonlyAuthoritySnapshot(archivePath, db => db.prepare("SELECT schema_version FROM history_header").get()?.schema_version))
