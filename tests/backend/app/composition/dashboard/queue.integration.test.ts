@@ -6,11 +6,11 @@ import { createCopySamples, sampleWorkerId, type CopySampleSession } from "../..
 import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { AuthoritySnapshotChangedError } from "../../../../../src/backend/storage/sqlite/authority-errors.js";
 import { createComposedDashboardReadHost } from "../../../../../src/backend/app/composition/dashboard/runtime-resources.js";
+import { DESCRIPTORS, descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { admitReadLane, openReadLane, prepareReadLaneStart } from "../../../../../src/backend/storage/sqlite/read-lane-admission.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { DashboardDayWireSchema } from "../../../../../src/models/dashboard/projection.js";
 import { searchPartitionDay } from "../../../../../src/models/dashboard/search-calendar.js";
-import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
 import { systemIdFactory } from "../../../../../src/rules/identity/identifiers.js";
 import { foundationFixture } from "../../../../support/helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
@@ -32,7 +32,7 @@ it("serves a seeded copy's Queue day and sample Sessions cards through the read 
   const samples = createCopySamples({ stored: { runIds: [], sessions: [{ workerId, payload: session }] },
     realSlots: () => f.db.authority.workerSlots.list(), changed() {} });
   const projection = createOperatorProjection({ database: f.db, reader, stateRoot: f.root, clock: f.clock, appVersion: "0.1.0",
-    descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(f.db.authority),
+    descriptorSetHash: descriptorSetHash(DESCRIPTORS.map(descriptor => descriptor.contractFingerprint)), ledger: createTransactionHistory(f.db.authority),
     descriptors: { resolve }, readLanes: lanes, workerMembers: samples.views, samples });
   const day = searchPartitionDay(new Date(f.run.envelope.enqueuedAt));
   const read = await projection.requestDashboardDay(day);
