@@ -179,6 +179,8 @@ const PDF = {
     await at(page, "Start");
     await dialog(page).getByText("I-9", { exact: true }).click();
     await dialog(page).getByText(ERROR_CATALOG.PROVIDER_UNAVAILABLE.text, { exact: true }).waitFor();
+    // Begin the gallery's Tab walk before the radio groups.
+    await dialog(page).focus();
   }),
 } satisfies Record<PdfInputState, Story>;
 
