@@ -794,6 +794,15 @@ describe("whole-page factory screenshots", () => {
       assert.equal(evidence.detail, "page-capture-covered-600-of-3000px");
     });
   });
+  it("captures the viewport of a tall page whose root cannot scroll, as the Kuali action list's clipped 14962px body is", async () => {
+    const clipped = '<style>html,body{height:100%;overflow:hidden}</style><div style="height:300px;background:rgb(210,20,30)"></div><div style="height:14662px;background:rgb(20,30,210)"></div>';
+    await withPage(clipped, async (_page, resource) => {
+      const png = await image(resource);
+      assert.equal(png.height, 600);
+      assert.deepEqual(pixel(png, 20, 20), [210, 20, 30]);
+      assert.deepEqual(pixel(png, 20, 590), [20, 30, 210]);
+    });
+  });
   it("captures to the bottom of a scroller clipped at a sub-pixel offset, as the Kronos timecard grid is", async () => {
     // The page cannot scroll the grid's 120.1875px top to zero, so its clipped height is fractional while clientHeight rounds up.
     const grid = '<div style="height:120.1875px"></div><div style="height:700px;overflow:auto">'
