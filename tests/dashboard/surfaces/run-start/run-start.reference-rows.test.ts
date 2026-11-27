@@ -139,6 +139,41 @@ it("picks several worksheets of one spreadsheet as separate references", async (
   assert.deepEqual(planned?.workbookReferences?.map(reference => [reference.libraryId, reference.sheetId]), [["roster", "First"], ["roster", "Second"]]);
 });
 
+const crm = DESCRIPTORS.find(flow => flow.id === "crm-doc-download"); assert.ok(crm?.surfaces.inputRun);
+const crmFlow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: crm.id, label: crm.label, version: crm.version,
+  requiredWorkbookFields: [...crm.requiredWorkbookFields], workbookReference: crm.workbookReference,
+  steps: projectStartSteps(crm), inputRun: { state: "present", surface: crm.surfaces.inputRun } };
+const worksheetItems = (role: string) => [...document.body.querySelectorAll<HTMLElement>(`[role="${role}"]`)];
+async function toggle(name: string) {
+  const item = worksheetItems("menuitemcheckbox").find(node => node.textContent === name); assert.ok(item, `no worksheet ${name}`);
+  await act(async () => { item.click(); }); await h.settle();
+}
+
+it("lets CRM Doc Download choose several reference worksheets, keeps at least one and sends each", async () => {
+  let planned: StartPlanRequest | undefined;
+  const fields = [...crm.requiredWorkbookFields];
+  const dialog = await h.openDialog(h.stubClient({ ...reads([roster], [source("roster", { First: fields, Second: fields })], [crm]),
+    submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }),
+  { workflows: [crmFlow], panelWorkflowId: crm.id });
+  await h.settle(); await add("References", "Contact roster");
+  await click("Contact roster worksheets, Second");
+  await toggle("Second");
+  assert.ok(h.buttons().some(button => h.buttonName(button) === "Contact roster worksheets, Second"), "the last worksheet stays chosen");
+  await toggle("First");
+  assert.ok(h.buttons().some(button => h.buttonName(button) === "Contact roster worksheets, 2 worksheets"));
+  await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  await dialog.type("hire@example.test"); await dialog.press("Next"); await dialog.press("Start run");
+  assert.deepEqual(planned?.workbookReferences?.map(reference => [reference.entry, reference.libraryId, reference.sheetId]), [[1, "roster", "First"], [1, "roster", "Second"]]);
+});
+
+it("keeps a workflow that cannot read several reference worksheets on a single pick", async () => {
+  await h.openDialog(h.stubClient({ ...rosterLookupReads() }), { workflows: [rosterLookup], panelWorkflowId: rosterLookup.workflowId });
+  await h.settle(); await add("References", "Contact roster");
+  await click("Contact roster worksheet, First");
+  assert.equal(worksheetItems("menuitemcheckbox").length, 0);
+  assert.equal(worksheetItems("menuitemradio").length, 1);
+});
+
 it("draws the Add spreadsheet menu as the mock does: Pinned first, the mock's empty text, search finds the rest", async () => {
   await h.openDialog(h.stubClient({ ...served }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
   await h.settle(); await click("Add spreadsheet");

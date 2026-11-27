@@ -3,6 +3,7 @@ import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import type { TypedInputDraft } from "../../../models/workflow/ingress.js";
+import { ONBOARDING_ROSTER_TYPE_ID } from "../../../models/workflows/onboarding/roster.js";
 import type { RunStartWorkflow } from "./run-start.js";
 import {
   defaultRerunSteps, initialRerunValueDrafts, partialRerunTypedInput, plainRerunInputText, rerunsInOneClick, type RerunValueDraft,
@@ -16,7 +17,8 @@ import type { PdfRunDraft, PdfRunPicks } from "./run-start-pdfs.js";
 import type { WorkbookRowChoice } from "./run-workbook-rows-model.js";
 import { factDraft, includedRowCount, rowFieldsOpen, rowIncluded, preselectionBadge, sourceTypedFacts, startRowsOf, type ManualRows, type StepRow } from "./run-steps-model.js";
 
-export type ReferenceSelection = Readonly<{ libraryId: string; versionId: string; sheetId: string }>;
+/** `sheetIds` holds at least one worksheet; more than one only where the workflow reads them all. */
+export type ReferenceSelection = Readonly<{ libraryId: string; versionId: string; sheetIds: readonly string[] }>;
 export type CheckPick = Readonly<{ versionId: string; sheetIds: readonly string[] }>;
 export type ReferenceDraft = Readonly<{ libraryId: string; versionId?: string }>;
 
@@ -245,16 +247,22 @@ export function clearWorkbookRows(draft: LaunchDraft): LaunchDraft {
 const refusal = (code: Parameters<typeof createErrorCatalogFailure>[0]): Error =>
   new Error(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text);
 
-/** The spreadsheets the source run was started with. More than one for the workflow's one required spreadsheet cannot be picked again. */
+/** CRM Doc Download reads every worksheet it is given. Onboarding shares its roster type but writes to one saved row. shortcut: named by roster type until the other workflows read every worksheet (#1028). */
+export function readsSeveralWorksheets(reference: RunStartWorkflow["workbookReference"]): boolean {
+  return reference?.id === ONBOARDING_ROSTER_TYPE_ID && reference.writableFields.length === 0;
+}
+
+/** The spreadsheets the source run was started with. Several can be picked again only as worksheets of one version, where the workflow reads several. */
 function spreadsheetPicks(snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow): Pick<LaunchDraft, "referenceSelections" | "referenceDrafts" | "checkPicks"> {
   const picked = (typeId: string | undefined) => (snapshot.spreadsheets ?? []).filter(pick => pick.typeId === typeId);
   const [required, ...others] = picked(workflow.workbookReference?.id);
   const checkPicks: Record<string, CheckPick> = {};
   for (const { libraryId, versionId, sheetId } of picked(workflow.workbookCheck?.id))
     checkPicks[libraryId] = { versionId, sheetIds: [...(checkPicks[libraryId]?.sheetIds ?? []), sheetId] };
-  if (required === undefined || others.length > 0) return { referenceSelections: {}, referenceDrafts: {}, checkPicks };
-  const { typeId, libraryId, versionId, sheetId } = required;
-  return { referenceSelections: { [typeId]: { libraryId, versionId, sheetId } }, referenceDrafts: { [typeId]: { libraryId, versionId } }, checkPicks };
+  if (required === undefined || others.length > 0 && (!readsSeveralWorksheets(workflow.workbookReference)
+    || others.some(other => other.libraryId !== required.libraryId || other.versionId !== required.versionId))) return { referenceSelections: {}, referenceDrafts: {}, checkPicks };
+  const { typeId, libraryId, versionId } = required;
+  return { referenceSelections: { [typeId]: { libraryId, versionId, sheetIds: [required, ...others].map(pick => pick.sheetId) } }, referenceDrafts: { [typeId]: { libraryId, versionId } }, checkPicks };
 }
 
 /** A step the typed input decides (its control sits on the Input stage or is unavailable) is neither switched nor typed on its row. */
