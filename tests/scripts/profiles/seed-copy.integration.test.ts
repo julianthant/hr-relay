@@ -297,11 +297,10 @@ async function expectTimelines(client: ReturnType<typeof createDashboardClient>,
     expect(steps.map(step => step.time), name).not.toContain("—");
     const descriptor = WORKFLOW_MODULES.find(module => module.descriptor.id === run.envelope.workflow)?.descriptor;
     assert.ok(descriptor !== undefined, name);
-    const spanless = new Set<string>(descriptorRuntimeNodes(descriptor).filter(node => node.kind === "gate" || node.kind === "child-run").map(node => node.id));
-    const setup = descriptor.timeline.flatMap(category => category.nodes).filter(node => !spanless.has(node.id)).map(node => node.label);
-    const noted = steps.flatMap((step, index) => step.entries.flatMap(entry => entry.kind === "note" && setup.includes(entry.message) ? [{ index, message: entry.message }] : []));
-    expect(noted.length, name).toBeGreaterThan(0);
-    expect(noted.map(note => note.message), name).toEqual(setup.slice(0, noted.length));
+    const noted = steps.flatMap((step, index) => step.entries.some(entry => entry.kind === "fields") ? [{ index, title: step.title }] : []);
+    // A workflow that declares no operator-visible output fields records no step rows in a real run either.
+    if (descriptor.timeline.some(group => (group.operatorFields ?? []).length > 0)) expect(noted.length, name).toBeGreaterThan(0);
+    expect(noted.map(note => note.title), name).not.toContain("Run note");
     const cards = steps.flatMap((step, index) => step.entries.some(entry => entry.kind === "decision") || step.title === "Run cancelled" ? [{ index, title: step.title }] : []);
     const parkedWrite = run.lifecycle.state === "parked-write";
     const expected = ["paused", "cancelled", "needs-review", "failed"].includes(state) ? 1 : 0;
@@ -310,7 +309,7 @@ async function expectTimelines(client: ReturnType<typeof createDashboardClient>,
     if (state === "cancelled") expect(cards[0]?.title, name).toBe("Run cancelled");
     if (parkedWrite) expect(steps[cards[0]?.index ?? -1]?.entries.flatMap(entry => entry.kind === "decision" ? [entry.decision.title] : []).join(), name).toMatch(/termination/iu);
     else if (state === "needs-review") expect(cards[0]?.title, name).toBe("Run not responding");
-    for (const card of cards) expect(card.index, name).toBeGreaterThan(noted.at(-1)?.index ?? Number.POSITIVE_INFINITY);
+    for (const card of cards) expect(card.index, name).toBeGreaterThan(noted.at(-1)?.index ?? -1);
   }
   expect(generated.filter(run => run.lifecycle.state === "parked-write").map(run => run.envelope.workflow)).toEqual(["separations"]);
 }

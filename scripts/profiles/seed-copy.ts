@@ -301,9 +301,16 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
       const task = { ...common, kind: "task", parentSpanPath: spanPath, spanPath: taskSpanPath(traceId, NodeIdSchema.parse(node.id), 1, 1) };
       const ts = new Date(at).toISOString();
       events.push({ ...task, t: "span.started", ts, name: node.label });
-      // Logs draws a line for a note, not for a finished span.
-      events.push(createNoteTimelineWriter({ repository: { append: input => ({ state: "inserted", record: TimelineEventRecordSchema.parse(Object.assign({ cursor: 1 }, input)) }) }, clock: capturedInstantClock(ts), pid: 1 })
-        .emitNote({ workflow: workflow.id, address: { runId, traceId, attempt: run.envelope.attempt, spanPath: task.spanPath, parentSpanPath: spanPath }, level: "step", message: node.label }));
+      // Logs draws a step's row from the data the step observed, as a real run records it.
+      const runtime = runtimeNodes.find(candidate => candidate.id === node.id);
+      const taskId = runtime?.kind === "task" ? runtime.uses.id : runtime?.kind === "transaction" ? runtime.prepare.uses.id : undefined;
+      const outputs = workflow.timeline.flatMap(group => (group.operatorFields ?? []).flatMap(field =>
+        field.sources.filter(source => source.nodeId === node.id && source.kind === "output").map(source => ({ field, path: source.fieldPath }))));
+      if (taskId !== undefined && outputs.length > 0) {
+        events.push({ ...common, spanPath: task.spanPath, parentSpanPath: spanPath, ts, t: "data.observed", nodeId: NodeIdSchema.parse(node.id), taskId, observedAt: ts,
+          points: outputs.map(({ field, path }) => ({ direction: "read", field: path,
+            values: [{ key: path, state: "allowed", classification: "safe-diagnostic", transform: "allow", value: field.display?.cases[0]?.value ?? "Sample" }] })) });
+      }
       at += stepMs;
       const open = (claimed !== undefined || writeNode !== undefined) && position === reached - 1;
       const last = position === reached - 1 && outcome !== undefined && outcome !== "done";
