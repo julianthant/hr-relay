@@ -71,12 +71,12 @@ it("a confirmed Cancel run on a served queue row that is rejected publishes the 
     assert.equal(f.sent.length, 1);
     const request = f.sent[0]; assert.ok(request.family === "run" && request.type === "cancel");
     assert.equal(request.target.runId, row.runId);
-    const strips = () => [...document.querySelectorAll('[role="alert"]')].filter(node => node.textContent === "Cancel run: rejected");
+    const strips = () => [...document.querySelectorAll('[role="alert"]')].filter(node => node.textContent === "Couldn't cancel: the run already finished.");
     assert.equal(strips().length, 1);
     await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Dismiss"]')?.click());
     assert.equal(strips().length, 0, "Dismiss hides the strip in place");
     const text = await openNotifications();
-    assert.match(text, /Cancel run: rejected/u);
+    assert.match(text, /Couldn't cancel: the run already finished\./u);
     assert.ok(text.includes(`Morrow, Bea · ${message}`), "the same entry stays in the Priority Inbox");
     const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications"]'); assert.ok(bell);
     await act(async () => { bell.click(); await new Promise(resolve => setTimeout(resolve, 20)); });

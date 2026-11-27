@@ -118,5 +118,9 @@ export function toastAppliedCommandResult(
   });
 }
 
-export const commandResultTitle = (entry: CommandResultFeedEntry) => `${entry.actionLabel}: ${entry.settlement.reason === "conflict" ? "row changed" : "rejected"}`;
+const sentenceBody = (text: string) => text.replace(/[.!?]+$/u, "").replace(/^\p{Lu}(?=\p{Ll})/u, letter => letter.toLowerCase());
+/** A conflict names the row; a refusal says what the server said: "Couldn't cancel: the run already finished." */
+export const commandResultTitle = (entry: CommandResultFeedEntry) => entry.settlement.reason === "conflict"
+  ? `${entry.actionLabel}: row changed`
+  : `Couldn't ${entry.actionLabel.replace(/ run$/iu, "").toLowerCase()}: ${sentenceBody(entry.settlement.message)}.`;
 export const commandResultDetail = (entry: CommandResultFeedEntry) => `${entry.subject} · ${entry.settlement.message}`;
