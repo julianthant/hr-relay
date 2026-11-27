@@ -551,11 +551,20 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         ...(member.durationSec === undefined ? {} : { durationLabel: formatDuration(member.durationSec) }) }; }) };
   });
   const findings = sections.find(section => section.section === "parked-write" && section.payload.ucpathFindings !== undefined);
-  return { steps: [...named, ...runDecisionStep(detail.decision, named.at(-1)?.time), ...cancelledEnding(detail.cancellation)], timeline,
+  const recorded = named.length > 0 ? named : heldSteps(detail.heldBeforeStart);
+  return { steps: [...recorded, ...runDecisionStep(detail.decision, recorded.at(-1)?.time), ...cancelledEnding(detail.cancellation)], timeline,
     ...(findings?.section !== "parked-write" || findings.payload.ucpathFindings === undefined ? {} : { ucpathFindings: {
       stepId: findings.payload.writeIntentId, attemptLabel: `Attempt ${findings.payload.runAttempt}`,
       presentation: ucpathFoundPresentation(findings.payload.ucpathFindings),
     } }) };
+}
+
+function heldSteps(held: RunDetailWire["heldBeforeStart"]): readonly LogStep[] {
+  if (held === undefined) return [];
+  return ([["run-queued", "Queued", held.queuedAt], ["run-paused", "Paused", held.pausedAt]] as const).map(([id, title, at]) => {
+    const time = formatTimeWithSeconds(at);
+    return { id, time, title, entries: [{ kind: "note", id, time, message: title }] };
+  });
 }
 
 /** The served cancelled ending closes the log; it is a run-level fact, never a node's timeline event. */
