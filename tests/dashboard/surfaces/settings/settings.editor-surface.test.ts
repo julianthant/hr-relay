@@ -404,12 +404,12 @@ it("marks a reload of the kept document with a named spinner after the wait, and
   host = document.createElement("div"); document.body.append(host);
   await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Surface) }) })); });
   const spinner = () => host?.querySelector('[data-settings-stale] [role="status"][aria-label="Refreshing"]')?.parentElement ?? undefined;
-  assert.equal(spinner(), undefined);
+  assert.ok(spinner() === undefined);
   await act(async () => { controller?.reload(); });
   assert.ok(spinner()?.classList.contains("invisible"), "a fast reload shows a named spinner, still hidden");
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
   assert.equal(spinner()?.classList.contains("invisible"), false, "a slow reload shows the spinner");
   assert.doesNotMatch(host.textContent ?? "", /Updating/u);
   await act(async () => { land(); await second; });
-  assert.equal(spinner(), undefined);
+  assert.ok(spinner() === undefined);
 });
