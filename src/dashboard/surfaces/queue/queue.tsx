@@ -146,7 +146,7 @@ function stepTitle(step: PipelineStep): string {
   return `${step.label}${duration}${executions} (${step.state})`;
 }
 
-function QueueProgress({ pipeline }: { pipeline: QueueSurfaceWire["pipeline"] }) {
+function QueueProgress({ pipeline, moving }: { pipeline: QueueSurfaceWire["pipeline"]; moving: boolean }) {
   if (pipeline.length === 0) return null;
   return (
     <div
@@ -155,7 +155,12 @@ function QueueProgress({ pipeline }: { pipeline: QueueSurfaceWire["pipeline"] })
       aria-label={`Steps: ${pipeline.map(stepTitle).join(", ")}`}
     >
       {pipeline.map((step) => (
-        <span key={step.id} title={stepTitle(step)} className={cn("h-1.5 min-w-0 flex-1 rounded-full", STEP_TONE[step.state])} />
+        <span key={step.id} title={stepTitle(step)} className={cn("h-1.5 min-w-0 flex-1 rounded-full", STEP_TONE[step.state],
+          moving && step.state === "active" && "relative overflow-hidden bg-ui-info/25")}>
+          {/* Reduced motion stops the pulse and leaves a half-filled segment, unlike done or pending. */}
+          {moving && step.state === "active" && <span aria-hidden data-queue-step-running
+            className="absolute inset-y-0 left-0 w-1/2 animate-pulse bg-ui-info motion-reduce:animate-none" />}
+        </span>
       ))}
     </div>
   );
@@ -831,7 +836,8 @@ export function QueueRow({
               </div>
             )}
 
-            {status === "running" && !isOperation && <QueueProgress pipeline={surface.pipeline} />}
+            {status === "running" && !isOperation && <QueueProgress pipeline={surface.pipeline}
+              moving={surface.pauseControl?.state !== "paused" && !isNeedsDuo(surface)} />}
             {(subline !== undefined || (status === "running" && !isOperation && surface.pipeline.length > 0)) && (
               <div
                 className={cn(
