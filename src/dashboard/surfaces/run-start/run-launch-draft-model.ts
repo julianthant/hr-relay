@@ -19,6 +19,7 @@ import { factDraft, includedRowCount, rowFieldsOpen, rowIncluded, preselectionBa
 
 /** `sheetIds` holds at least one worksheet; more than one only where the workflow reads them all. */
 export type ReferenceSelection = Readonly<{ libraryId: string; versionId: string; sheetIds: readonly string[] }>;
+type WorksheetSource = Readonly<{ libraryId: string; versionId: string; sheetId: string }>;
 export type CheckPick = Readonly<{ versionId: string; sheetIds: readonly string[] }>;
 export type ReferenceDraft = Readonly<{ libraryId: string; versionId?: string }>;
 
@@ -78,8 +79,8 @@ export type LaunchRequestInputs = Readonly<{
   workbookRows: Readonly<{ state: string; fresh: boolean }>;
   library: Readonly<{ loading: boolean; refreshing: boolean; error: string | null; compatibility: unknown }>;
   spreadsheets: ReturnType<typeof namedSpreadsheets>;
-  versionSources: Readonly<{ state: string; sources: readonly ReferenceSelection[] }>;
-  checks: Readonly<{ pending: boolean; selections: readonly ReferenceSelection[] }>;
+  versionSources: Readonly<{ state: string; sources: readonly WorksheetSource[] }>;
+  checks: Readonly<{ pending: boolean; selections: readonly WorksheetSource[] }>;
   /** `startRequestFingerprint`: the request controls as the dialog resolves them. */
   request: string;
 }>;

@@ -65,6 +65,7 @@ describe("the launch request fingerprint", () => {
     pdf: { draft: null, picks: {}, loading: false, error: null }, workbookRows: { state: "ready", fresh: true }, library: { loading: false, refreshing: false, error: "", compatibility: undefined },
     spreadsheets: [], versionSources: { state: "ready", sources: [] }, checks: { pending: false, selections: [] }, request: "request" };
   const sheet = { libraryId: "l", versionId: "v", sheetIds: ["s"] };
+  const source = { libraryId: "l", versionId: "v", sheetId: "s" };
   /** One change per draft field and per input; a field added without one fails to typecheck here. */
   const DRAFT = {
     text: "x", typed: { workflowId: "plain", draft: { mode: "match" } }, sourceInputUnchanged: true, stepSelection: { workflowId: "plain", keys: ["read"] },
@@ -78,8 +79,8 @@ describe("the launch request fingerprint", () => {
     pdf: [{ ...REST.pdf, draft: { files: [], asOf: AT, reviewer: "r" } }, { ...REST.pdf, picks: { form: "w4" } }, { ...REST.pdf, loading: true }, { ...REST.pdf, error: "refused" }],
     workbookRows: [{ state: "loading", fresh: true }, { state: "ready", fresh: false }],
     library: [{ ...REST.library, loading: true }, { ...REST.library, refreshing: true }, { ...REST.library, error: "failed" }, { ...REST.library, compatibility: { libraries: [] } }],
-    spreadsheets: [[["l", 1, 1]], [["l", 2, 1]], [["l", 1, 2]]], versionSources: [{ state: "loading", sources: [] }, { state: "ready", sources: [sheet] }],
-    checks: [{ pending: true, selections: [] }, { pending: false, selections: [sheet] }], request: ["other"],
+    spreadsheets: [[["l", 1, 1]], [["l", 2, 1]], [["l", 1, 2]]], versionSources: [{ state: "loading", sources: [] }, { state: "ready", sources: [source] }],
+    checks: [{ pending: true, selections: [] }, { pending: false, selections: [source] }], request: ["other"],
   } satisfies { [K in keyof LaunchRequestInputs]: readonly LaunchRequestInputs[K][] };
 
   it("moves for every draft field and every other input, and a moved one drops the plan on screen", () => {
