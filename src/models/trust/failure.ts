@@ -301,7 +301,7 @@ const CRM_SIGN_IN_STEP_SENTENCES = {
 } satisfies Record<SignInStep, string>;
 
 const CRM_LANDING_CHECK_SENTENCES = {
-  "application-route": "CRM did not reach its signed-in page.",
+  "application-route": "Relay could not verify that CRM reached a stable signed-in page.",
   "positive-evidence": "Relay could not verify a CRM session cookie after sign-in.",
   "sign-in-form-absent": "Relay could not confirm that the CRM sign-in form cleared.",
   "evidence-system": CRM_SIGN_IN_STEP_SENTENCES["verify-landing"],

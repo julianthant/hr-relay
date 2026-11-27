@@ -50,7 +50,7 @@ export function isAuthenticatedCrmUrl(rawUrl: string): boolean {
 }
 
 /** The two-fact proof: Salesforce's own session cookie, and no sign-in form. */
-export const verifyCrmAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
+const probeCrmAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
   context,
 ): Promise<AuthenticationProbe> => verifyUcsdAuthenticatedApplication(SYSTEM, context.page, {
   assertCurrent: context.assertCurrent,
@@ -70,6 +70,21 @@ export const verifyCrmAuthenticatedApplication: AuthenticatedApplicationVerifier
     }),
   ],
 });
+
+export const verifyCrmAuthenticatedApplication: AuthenticatedApplicationVerifier = async (context, phase) => {
+  const first = await probeCrmAuthenticatedApplication(context);
+  if (phase !== "landing" || first.authenticated || first.check !== "application-route"
+    || !isAuthenticatedCrmUrl(first.observedUrl)) return first;
+
+  // Salesforce can redirect to the Communities home while the first post-SSO proof is in flight.
+  context.assertCurrent();
+  const current = context.page.url();
+  const home = URL.parse(current);
+  if (current !== first.observedUrl && home?.origin === `https://${CRM_APP_HOST}` && home.pathname === "/hr/") {
+    return probeCrmAuthenticatedApplication(context);
+  }
+  return first;
+};
 
 // Wait for the SSO form before selecting login type; verify its value again after reload. An absent picker is a valid entry state.
 async function ensureActiveDirectorySelected(context: SystemLoginContext, token: DuoCeremonyLeaseToken): Promise<void> {

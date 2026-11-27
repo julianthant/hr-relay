@@ -1,6 +1,6 @@
 import { createSystemSessionTestWorld } from "../../../support/helpers/backend/system-session-world.js";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { crmLoginRecipe, isAuthenticatedCrmUrl, verifyCrmAuthenticatedApplication } from "../../../../src/backend/systems/crm/session.js";
 import { type FakeCookie, type FakePageScript } from "../../../support/helpers/browser/fake-login-page.js";
@@ -32,6 +32,28 @@ describe("crm landing verification", () => {
 });
 
 describe("authenticated-application proof", () => {
+
+  it.each([true, false])("requires fresh cookie evidence after the post-sign-in redirect (cookie present: %s)", async (hasSession) => {
+    const redirect = "https://act-crm.my.site.com/hr/redirect";
+    const home = "https://act-crm.my.site.com/hr/";
+    const { context } = await crmContextFor({
+      url: redirect,
+      elements: NO_SIGN_IN_FORMS,
+      cookiesByUrl: { [redirect]: [SID], [home]: hasSession ? [SID] : [] },
+    });
+    const browser = context.page.context();
+    const readCookies = browser.cookies.bind(browser);
+    vi.spyOn(browser, "cookies").mockImplementationOnce(async (urls) => {
+      const cookies = await readCookies(urls);
+      await context.page.goto(home);
+      return cookies;
+    });
+
+    const proof = await verifyCrmAuthenticatedApplication(context, "landing");
+    assert.equal(proof.authenticated, hasSession);
+    if (proof.authenticated) assert.equal(proof.evidence.url, home);
+    else assert.equal(proof.check, "positive-evidence");
+  });
 
   it("proves a CRM session from the Salesforce session cookie and absent forms", async () => {
     const { context } = await contextFor({ url: CRM_APP, elements: NO_SIGN_IN_FORMS, cookies: [SID] });
