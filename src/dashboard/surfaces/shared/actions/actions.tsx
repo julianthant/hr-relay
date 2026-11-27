@@ -121,7 +121,7 @@ export function FooterActions({
     return () => clearTimeout(timer);
   }, [pressed]);
   // Pause and Resume flip at once: the opposite control shows until the row's revision moves.
-  const [flipped, setFlipped] = useState<number | null>(null);
+  const [flipped, setFlipped] = useState<{ runId: string; command: string; version: number } | null>(null);
   if (footer.length === 0 && !onPreviewAction) return null;
   // No `Cancel group` caption beside the ✕: an icon that already means cancel,
   // captioned "cancel", is the same word twice; the warning lives in the ✕'s own `title`.
@@ -133,7 +133,8 @@ export function FooterActions({
       </>}
       {footer.map((served) => {
         const toggle = served.kind === "command" && (served.command === "pause" || served.command === "resume");
-        const a = toggle && flipped === target.expectedVersion
+        const isFlipped = toggle && flipped?.runId === target.runId && flipped.command === served.command && flipped.version === target.expectedVersion;
+        const a = isFlipped
           ? { ...served, key: served.key === "pause" ? "resume" : "pause", command: served.key === "pause" ? "resume" : "pause",
             label: served.key === "pause" ? "Resume" : "Pause", icon: served.key === "pause" ? "resume" : "pause" } as ActionDescriptorWire
           : served;
@@ -156,11 +157,17 @@ export function FooterActions({
           onClick={(e) => {
             e.stopPropagation();
             const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id]')?.querySelector<HTMLElement>("[data-queue-open]") ?? null;
-            if (toggle) setFlipped(now => now === target.expectedVersion ? null : target.expectedVersion);
+            // A flipped control waits for the run's fresh served descriptor; the stale version would be refused.
+            if (isFlipped) return;
+            if (toggle) setFlipped({ runId: target.runId, command: served.key, version: target.expectedVersion });
             else if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });
-            const press = { key: a.key, version: target.expectedVersion };
+            const press = { key: a.key, runId: target.runId, version: target.expectedVersion };
             const settled = onAction(a, target);
-            if (!toggle && a.kind === "command" && !a.confirm) {
+            if (toggle) {
+              // A settled press that left the row unchanged was refused: show the served control again.
+              const restore = () => setFlipped(now => now?.runId === press.runId && now.version === press.version ? null : now);
+              if (settled === undefined) restore(); else void settled.catch((cause: unknown) => { window.reportError(cause); }).finally(restore);
+            } else if (a.kind === "command" && !a.confirm) {
               if (settled === undefined) setPressed(null);
               else void settled.catch((cause: unknown) => { window.reportError(cause); })
                 .finally(() => setPressed(now => now?.key === press.key && now.version === press.version ? null : now));
