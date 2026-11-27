@@ -39,6 +39,7 @@ import type { ArtifactBytesQueryDeps } from "../../../../src/backend/runs/querie
 import type { DiagnosticBundleQueryDeps } from "../../../../src/backend/runs/queries/diagnostic-bundle.js";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
 import { readRunPanel } from "../../../../src/backend/runs/queries/run-detail.js";
+import { buildSettingsEditor } from "../../../../src/backend/runs/queries/settings-editor.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -50,7 +51,7 @@ import { type DashboardHttpServer } from "../../../../src/backend/transports/htt
 import type { RequestIdentityCheckpoint } from "../../../../src/backend/transports/http/request-identity.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../../src/backend/transports/http/request-identity.js";
 import { createDashboardApp,type DashboardAppDeps } from "../../../../src/backend/transports/http/routes/api.js";
-import { createDashboardStreamHub,type DashboardStreamHub } from "../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
+import { createDashboardStreamHub,type DashboardStreamHub, type DashboardStreamHubDeps } from "../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import type { ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
 import { initialSettingsFileRecord,settingsRuntimeIdentity } from "../../../../src/models/config/settings.js";
 import { ActivityReportSelectionSchema } from "../../../../src/models/dashboard/activity-selection.js";
@@ -210,6 +211,8 @@ export async function harness(options: {
 
   /** The hub's per-subscriber pending bound; the hub default when absent. */
   readonly maxPending?: number;
+  readonly notificationStatus?: DashboardStreamHubDeps["notificationStatus"];
+  readonly streamSettings?: boolean;
   readonly preflightBeforeRun?: () => Promise<void>;
   readonly preflightScheduler?: PreflightDeadlineScheduler;
   readonly omitDiagnosticBundles?: boolean;
@@ -385,11 +388,17 @@ export async function harness(options: {
     configSnapshotId: UUID_4,
     plannedBy: "local-operator",
   }));
+  const settingsEditor = { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),
+    environment: {}, clock };
   const hub = createDashboardStreamHub({
     projection,
     runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
     backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
     ...(options.maxPending === undefined ? {} : { maxPending: options.maxPending }),
+    ...(options.notificationStatus === undefined ? {} : { notificationStatus: options.notificationStatus }),
+    ...(options.streamSettings === true
+      ? { settings: { read: () => buildSettingsEditor(settingsEditor), onChange: () => () => undefined } }
+      : {}),
   });
   cleanups.push(() => hub.close());
   const { authority, report } = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
@@ -491,8 +500,7 @@ export async function harness(options: {
     hub,
 
     settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [fixtureDescriptor] },
-    settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),
-      environment: {}, clock },
+    settingsEditor,
     storage: {
       admission: profile.admission,
       credentials,
