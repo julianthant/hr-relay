@@ -349,7 +349,6 @@ function RowFooterLine({
           {runDisplayId(surface.runId, surface.traceId)}
         </span>
         {timed && <RunTimingText surface={surface} nowIso={nowIso} />}
-        <StartedByLine surface={surface} />
       </div>
       <div className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
         {retryFailed.length > 0 && <IconActionButton tone="primary" icon={<RotateCcw aria-hidden className={dsIcon.md} />}
@@ -886,6 +885,8 @@ export function QueueRow({
                 />
               </div>
             )}
+
+            <StartedByLine surface={batch?.members.find(member => member.startedBy !== undefined) ?? (batch === undefined ? surface : {})} />
 
             {/* Render only served links and receipt facts; never infer an extracted-person count from arbitrary output arrays. */}
             {batch === undefined && (parent !== undefined || surface.linkedRuns.length > 0 || surface.facts.state === "present") && (

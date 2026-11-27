@@ -18,8 +18,8 @@ export function DryRunMark({ className, title = "Dry run — this rehearsal read
 export function StartedByLine({ surface, className }: { surface: Pick<QueueSurfaceWire, "startedBy">; className?: string }) {
   const operator = useContext(OperatorLabelContext);
   if (surface.startedBy === undefined) return null;
-  return <span data-started-by className={cn(dsText.meta, "min-w-0 truncate", className)}>
-    Started by the assistant for {operator}{surface.startedBy.readOnly ? " · read only" : ""}</span>;
+  const text = `Started by the assistant for ${operator}${surface.startedBy.readOnly ? " · read only" : ""}`;
+  return <span data-started-by title={text} className={cn(dsText.meta, "min-w-0 truncate text-[color:var(--ds-fg-muted)]", className)}>{text}</span>;
 }
 
 /** The run's state in the panel header: a dry-run marker and the one status the queue row shows. */

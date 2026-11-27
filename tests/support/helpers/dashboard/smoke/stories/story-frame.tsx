@@ -2,6 +2,7 @@
 import { useLayoutEffect, type ReactNode } from "react";
 import { useHubMotion } from "../../../../../../src/dashboard/ds/theme/motion.js";
 import { DEMO_THEME_ATTR, ToastProvider, TooltipProvider } from "../../../../../../src/dashboard/ds/ui.js";
+import { OperatorLabelContext } from "../../../../../../src/dashboard/state/operator-label.js";
 import { PersonPreferencesContext } from "../../../../../../src/dashboard/lib/person-preferences.js";
 import { createPersonPreferences } from "../../../../../../src/dashboard/state/person-preferences-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../../../../src/models/config/person-preferences.js";
@@ -25,5 +26,5 @@ function ThemeRoot({ children, theme }: { children: ReactNode; theme: "dark" | "
 
 /** `animated` is for a check of motion itself; every other story holds still. */
 export function StoryFrame({ children, animated = false, theme = "dark" }: { children: ReactNode; animated?: boolean; theme?: "dark" | "light" }) {
-  return <PersonPreferencesContext.Provider value={animated ? ANIMATED : STILL}><ThemeRoot theme={theme}>{children}</ThemeRoot></PersonPreferencesContext.Provider>;
+  return <PersonPreferencesContext.Provider value={animated ? ANIMATED : STILL}><OperatorLabelContext.Provider value="Sam Rivera"><ThemeRoot theme={theme}>{children}</ThemeRoot></OperatorLabelContext.Provider></PersonPreferencesContext.Provider>;
 }

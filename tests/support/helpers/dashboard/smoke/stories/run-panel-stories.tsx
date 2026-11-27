@@ -106,6 +106,8 @@ const LOG_HEADER = {
     headerActions: <><LogHeaderButton label="Pause Alex Morgan" icon={<Pause aria-hidden className="size-4" />} onClick={noop} /><LogHeaderButton label="Stop Alex Morgan" icon={<Square aria-hidden className="size-4" />} onClick={noop} /></>,
     linkedRuns: [{ relation: "Parent", name: "Emergency Contact batch", workflow: "Emergency Contact", status: "Running", target: QueueMemberTargetSchema.parse({ section: "logs", runId: "00000000-0000-4000-8000-000000000001", partitionDay: "2026-08-03", workflowId: "emergency-contact", label: "Emergency Contact", panelKind: "run", status: "running" }) }] }),
     play: search("employment"), ready: "text=/\\d+ of \\d+/" },
+  "assistant-started": panel("The run header of a run the assistant started", { steps: readingSteps, timeline: reading,
+    status: <RunStateChips row={queueStoryRow("done", 42, { startedBy: { kind: "assistant", readOnly: true } })} />, rerun: { label: "Rerun", run: noop } }),
   "menu-open": headerRun("The ⋯ menu open", async page => { await page.getByRole("button", { name: "More actions" }).press("Enter"); }, "[role='menu']"),
 } satisfies Record<string, Story>;
 

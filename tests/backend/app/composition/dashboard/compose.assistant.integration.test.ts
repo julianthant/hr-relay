@@ -11,6 +11,11 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
+import { createElement, type ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { QueueRow } from "../../../../../src/dashboard/surfaces/queue/queue.js";
+import { RunStateChips } from "../../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
+import { OperatorLabelContext } from "../../../../../src/dashboard/state/operator-label.js";
 import * as workerCapacity from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
 
 import * as assistantComposition from "../../../../../src/backend/app/composition/dashboard/assistant.js";
@@ -434,6 +439,11 @@ it('recovers a served read-only session after a lost reply, serves it in Queue a
     const day = await client.dashboardDay(searchPartitionDay(new Date(clock.now().toISOString())));
     const row = day.queueSurfaces.find(surface => surface.runId === runId); assert.ok(row, 'queue row');
     assert.deepEqual(row.startedBy, { kind: 'assistant', readOnly: true });
+    // The dashboard's own Queue row and Logs header draw that served row with the signed-in operator's label.
+    const { actor } = await served.bootstrap(), line = `Started by the assistant for ${actor.label} · read only`;
+    const drawn = (node: ReactElement) => renderToStaticMarkup(createElement(OperatorLabelContext.Provider, { value: actor.label }, node));
+    assert.match(drawn(createElement(QueueRow, { surface: row, state: { nowIso: clock.now().toISOString(), openWells: new Set<string>() }, handlers: { onSelect() {} }, workflowLabelOf: () => 'Person Lookup' })), new RegExp(line));
+    assert.match(drawn(createElement(RunStateChips, { row })), new RegExp(line));
     const logs = await originalFetch(`${origin}/api/v1/runs/${runId}`, { headers: { [DASHBOARD_TAB_HEADER]: randomUUID() } });
     assert.equal(logs.status, 200); assert.equal(RunDetailWireSchema.parse(await logs.json()).header.runId, runId);
 
