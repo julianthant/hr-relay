@@ -20,7 +20,11 @@ import { useDashboardClient, useDashboardCommandBinding } from "../../../state/c
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
 import { LogFeedPadding, LogSkeleton } from "../../shared/loading/loading.js";
 import { RunStateChips } from "../run-state-chips.js";
-import { isNeedsDuo, queueRowTitle } from "../../queue/queue-model.js";
+import { queueRowTitle, type QueueSurfaceWire } from "../../queue/queue-model.js";
+import { SYSTEM_NAME } from "../../shared/status/system-chip-model.js";
+import { elapsedSecondsBetween } from "../../shared/status/format.js";
+import { formatDuration } from "../../../lib/date-format.js";
+import { useServedView } from "../../../state/served-clock.js";
 import { RunReview } from "../review/review.js";
 import { ReviewDialog } from "../review/review-dialog.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
@@ -32,6 +36,14 @@ function withoutConfirm(action: ActionDescriptorWire): ActionDescriptorWire {
   if (action.kind !== "command") return action;
   const { confirm: _confirm, ...direct } = action;
   return direct;
+}
+
+/** Status only: fast-duo approves on its own; a failed approval fails the run and the operator reruns it. */
+function DuoWaitBanner({ wait, nowIso }: { wait: Extract<QueueSurfaceWire["operatorWait"], { state: "present" }>; nowIso: string }) {
+  const elapsed = useServedView(nowIso, now => formatDuration(Math.max(0, elapsedSecondsBetween(wait.since, now))));
+  // The banner is a live region: the ticking text is hidden from it so a tick never announces; the same text sits outside it for reading.
+  return <div className="px-3 py-2"><Banner tone="info" title={`Approving Duo for ${SYSTEM_NAME[wait.system]}`}><span aria-hidden className="tabular-nums">Waiting {elapsed}</span></Banner>
+    <span className="sr-only">Waiting {elapsed}</span></div>;
 }
 
 export function LogSample({ selection, initialStepId, confirm, ...navigation }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
@@ -105,7 +117,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   const setupProblem = startup !== undefined && WorkerSetupRefusalCodeSchema.safeParse(startup.code).success ? startup.summary : undefined;
   return <><LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
     status={status} navigation={setupProblem !== undefined ? <div className="px-3 py-2"><Banner tone="warning" title={setupProblem} /></div>
-      : isNeedsDuo(selection.row) ? <div className="px-3 py-2"><Banner tone="info" title="Approve the Duo sign-in"><span>Approve it on your phone to continue.</span></Banner></div> : undefined}
+      : selection.row.operatorWait.state === "present" ? <DuoWaitBanner wait={selection.row.operatorWait} nowIso={selection.row.updatedAt} /> : undefined}
     onReview={reviewAvailable ? onReview : undefined}
     toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} headerActions={headerActions} rerun={rerun} records={records}
     content={content}

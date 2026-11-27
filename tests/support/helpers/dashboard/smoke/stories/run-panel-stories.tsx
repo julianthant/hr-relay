@@ -210,7 +210,7 @@ const LOGS = {
   unavailable: panel("Logs for a step that is gone", { steps: [], timeline: [], content: <FailureNotice sentence={`${LOGS_UNAVAILABLE}: ${formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text}`} /> }),
   empty: panel("A run that has logged nothing yet", { steps: [], timeline: logTimelineSample("empty") }),
   "needs-duo": panel("A run waiting for the Duo sign-in", { steps: [], timeline: logTimelineSample("empty"),
-    navigation: <div className="px-3 py-2"><Banner tone="info" title="Approve the Duo sign-in"><span>Approve it on your phone to continue.</span></Banner></div> }),
+    navigation: <div className="px-3 py-2"><Banner tone="info" title="Approving Duo for UCPath"><span className="tabular-nums">Waiting 2m 10s</span></Banner></div> }),
 } satisfies Record<LogsResource, Story>;
 
 const preview = (state: DryRunState): Story => {
