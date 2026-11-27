@@ -411,7 +411,7 @@ describe("a refused re-check through the real client", () => {
   });
 
   it("explains a mismatched rerun response and keeps Start disabled", async () => {
-    const workflow = FIXTURE_BOOTSTRAP.workflows.find(candidate => candidate.id === h.WORKFLOW_ID);
+    const workflow = WorkflowBootstrapPrimitiveSchema.array().parse(FIXTURE_BOOTSTRAP.workflows).find(candidate => candidate.id === h.WORKFLOW_ID);
     assert.ok(workflow);
     const { client, reports } = await served(200, {
       state: "completed", commandId: "00000000-0000-4000-8000-000000000002",
