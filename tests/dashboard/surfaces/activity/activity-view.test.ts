@@ -182,6 +182,9 @@ it('while another range loads, keeps the last report under its own period with E
   assert.equal(opened.length, 1);
   assert.equal(button().disabled, true);
   const spinner = document.querySelector('[data-analytics-reading] > *'); assert(spinner);
+  const slot = spinner.parentElement; const nextButton = document.querySelector('[aria-label="Next period"]'); assert(slot && nextButton);
+  assert(nextButton.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING);
+  assert.equal(nextButton.parentElement?.contains(slot), false);
   assert.doesNotMatch(document.body.textContent, /Updating/);
   assert(spinner.classList.contains('invisible'));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });

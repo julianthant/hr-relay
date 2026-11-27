@@ -6,13 +6,10 @@ import { accountOcrPages } from "../../../../src/models/workflows/ocr/page-accou
 import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
 import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-ceremony-lease.js";
 import type { ExclusiveSessionLease } from "../../../../src/models/sessions/exclusive-session-lease.js";
-import { createAssistantAuthorization } from "../../../../src/backend/assistant/authorization.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
-import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
-import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from "../../../../src/models/dashboard/assistant.js";
+import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantProposalSnapshotSchema, assistantProposalDigest, type AssistantAcceptedTurn } from "../../../../src/models/dashboard/assistant.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { boundProfileAdmission, boundProfileCredentials } from "../admission-fixture.js";
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../run-integration-world.js";
@@ -454,13 +451,42 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
       writeResolution: { recheck: unavailable, resolveAbsent: unavailable },
       workerRuntime: { pool: unusedWorkerPool(unavailable) },
       prepareAssistantModelPreference: async () => () => true });
-    const fixture = { profileId, kernel, authorization: createAssistantAuthorization({ database: db, kernel, clock: CLOCK,
-      current: () => ({ profileId, epoch: 1 }) }) };
-    return fixture;
+    return { profileId, kernel };
   }
+  /** One phase-one chat: an accepted turn, its settled reply and the proposal that reply rendered. */
+  function phaseOne(db: AuthorityDatabase) {
+    db.bindAssistantEpoch(() => 1);
+    const history = db.authority.assistantHistory, proposals = db.authority.assistantProposals, conversationId = randomUUID();
+    assert.equal(history.apply({ operation: "create", conversationId, title: "Proposal accounting" }, NOW).state, "saved");
+    const accept = (text: string, proposalAnswer: AssistantAcceptedTurn["proposalAnswer"] = null) => {
+      const chat = history.conversation(conversationId, NOW); assert.ok(chat);
+      const turn = history.accept({ conversationId, expectedRevision: chat.revision, messageId: randomUUID(), text, modelText: text,
+        subjectRef: null, attachments: [], proposalAnswer, now: NOW });
+      if (turn.state !== "accepted") assert.fail("accounting turn was not accepted");
+      return turn;
+    };
+    const source = accept("Start Person Lookup"), renderedMessageId = randomUUID(), rowId = randomUUID();
+    assert.ok(history.settle(source, { delivery: "answered", usage: { state: "measured", callCount: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      reply: { id: renderedMessageId, kind: "answer", parts: [{ kind: "text", runs: [{ kind: "plain", text: "Ready to start" }] }], modelText: "Ready to start" } }, NOW));
+    const draft = { id: randomUUID(), profileId: source.acceptedTurn.profileId, conversationId, renderedMessageId, revision: 1,
+      sourceMessageId: source.acceptedTurn.messageId, label: "Start Person Lookup", dryRun: true, createdAt: NOW,
+      options: { browserMode: "headless", captureBrowserScreenshots: true, priority: "interactive" } as const,
+      rows: [{ id: rowId, ordinal: 1, title: "Synthetic row", display: { kind: "request" } as const,
+        operation: { kind: "workflow-start", workflowId: "person-lookup", submission: {}, reviewed: HASH_A } as const }] };
+    const shown = AssistantProposalSnapshotSchema.parse({ ...draft, renderedDigest: assistantProposalDigest(draft) });
+    const binding = { proposalId: shown.id, proposalRevision: shown.revision, renderedMessageId, renderedDigest: shown.renderedDigest };
+    return { proposals, shown, rowId, accept, answer: () => {
+      proposals.issue(shown);
+      const yes = accept("yes", binding);
+      assert.equal(proposals.claimAnswer({ ...binding, attempt: yes, now: NOW }), true);
+      return yes;
+    } };
+  }
+  const phaseOnes = new WeakMap<AuthorityDatabase, ReturnType<typeof phaseOne>>();
+  const sessionTurns = new WeakMap<AuthorityDatabase, ReturnType<ReturnType<typeof phaseOne>["accept"]>>();
+  const preparedPhaseOne = (db: AuthorityDatabase) => { const prepared = phaseOnes.get(db); assert.ok(prepared); return prepared; };
   const duoTokens = new WeakMap<AuthorityDatabase, DuoCeremonyLeaseToken>();
   const exclusiveTokens = new WeakMap<AuthorityDatabase, ExclusiveSessionLease>();
-  const assistantActions = new WeakMap<AuthorityDatabase, { fixture: ReturnType<typeof assistant>; chat: ReturnType<ReturnType<typeof assistant>["authorization"]["createChat"]> }>();
   const source = sourceFixture(1), page = source.inputs[0]; assert.ok(page);
   const seed = { review: buildOcrReviewSeed({ sourceRunId: RunIdSchema.parse(RUN_ID),
     accounting: accountOcrPages(source.manifest, READING_ID, [donePage(page)]), roster: null }), identities: [] };
@@ -482,14 +508,21 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
       db.authority.commands.insert(COMMAND_FIXTURES[0]);
       db.authority.ocrReviews.append(review, 0);
     }, mutate: db => { db.authority.ocrReviews.approve(approval); } },
-    { table: "assistant_chats", mutate: db => { assistant(db).authorization.createChat(); } },
-    { table: "assistant_actions", prepare: db => { const fixture = assistant(db); assistantActions.set(db, { fixture, chat: fixture.authorization.createChat() }); }, mutate: db => {
-      const prepared = assistantActions.get(db); assert.ok(prepared);
-      const { fixture: { authorization }, chat } = prepared;
-      const patch = { "browser.headless": { set: false } };
-      db.withAuthorityTransaction(() => { authorization.prepare(chat, { family: "settings", type: "apply-settings", commandId: randomUUID(),
-        requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: readSettings(db.authority).revision },
-        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint(patch), patch } }); });
+    { table: "assistant_proposals", prepare: db => { phaseOnes.set(db, phaseOne(db)); }, mutate: db => {
+      const { proposals, shown } = preparedPhaseOne(db);
+      assert.deepEqual(proposals.issue(shown).lifecycle, { state: "open" });
+    } },
+    { table: "assistant_proposal_rows", prepare: db => { const prepared = phaseOne(db); prepared.answer(); phaseOnes.set(db, prepared); }, mutate: db => {
+      const { proposals, shown, rowId } = preparedPhaseOne(db);
+      assert.equal(proposals.claimRow(shown.id, rowId, randomUUID()), true);
+    } },
+    { table: "assistant_session_claims", prepare: db => { const prepared = phaseOne(db); sessionTurns.set(db, prepared.accept("Look up 10800000")); phaseOnes.set(db, prepared); }, mutate: db => {
+      const { proposals } = preparedPhaseOne(db), turn = sessionTurns.get(db); assert.ok(turn);
+      assert.equal(proposals.sessions.claim({ actionId: randomUUID(), approvalMode: "ask", dryRun: false, contractFingerprint: HASH_A,
+        requestDigest: HASH_A, claimedAt: NOW, acceptedTurn: turn.acceptedTurn,
+        command: { commandId: randomUUID(), requestedAt: NOW, requestedBy: "local-operator", source: "assistant", family: "start", type: "start-run",
+          target: { workflowId: "person-lookup", startPlanId: randomUUID(), expectedVersion: 1 },
+          payload: { descriptorFingerprint: HASH_A, configFingerprint: HASH_A, ingressSchemaHash: HASH_A, canonicalInputSchemaHash: HASH_A, inputFingerprint: HASH_A } } }), true);
     } },
     { table: "assistant_model_preference", mutate: async db => {
       const { kernel, profileId } = assistant(db);

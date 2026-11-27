@@ -16,7 +16,7 @@ const OUTCOMES: readonly { key: "done" | "failed" | "attention"; label: string; 
 ];
 const share = (count: number, total: number) => total === 0 ? "—" : `${Math.round(count / total * 100)}%`;
 
-/** A small spinner beside the date while a read is in flight, after the skeleton wait; the slot keeps its room so nothing shifts. */
+/** A small spinner after the period group while a read is in flight, after the skeleton wait; the slot keeps its room so nothing shifts. */
 function ReadingSpinner({ reading }: { reading: boolean }) {
   return <span aria-hidden data-analytics-reading={reading ? "" : undefined} className="inline-flex size-4 items-center justify-center">{reading && <DelayedSpinner />}</span>;
 }
@@ -33,12 +33,11 @@ export function AnalyticsToolbar({ range, shown = range, reading = false, today,
     <PageHeading title="Analytics" description="Run results and time saved over a period." />
     <div className="ds-toolbar-row mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
       <SegmentedChoice hideLabel label="Report period" value={(quick ?? "") as Quick} options={QUICK} onChange={value => onRange(quickRange(value, today))} />
-      {isActivityCalendarDate(shown.from) && isActivityCalendarDate(shown.to) && shown.from <= shown.to && <span className="flex items-center gap-1">
+      {isActivityCalendarDate(shown.from) && isActivityCalendarDate(shown.to) && shown.from <= shown.to && <span className="flex items-center gap-2"><span className="flex items-center gap-1">
         <IconButton size="xs" label="Previous period" icon={<ChevronLeft aria-hidden className={dsIcon.md} />} onClick={() => onRange(shiftRange(range, -1))} />
         <span data-analytics-period className="text-control tabular-nums text-ui-primary">{analyticsPeriodLabel(shown)}</span>
-        <ReadingSpinner reading={reading} />
         <IconButton size="xs" label="Next period" disabled={range.to >= today} icon={<ChevronRight aria-hidden className={dsIcon.md} />} onClick={() => onRange(shiftRange(range, 1))} />
-      </span>}
+      </span><ReadingSpinner reading={reading} /></span>}
       <span className="ml-auto flex items-center gap-2"><DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="outline" className="ds-filter-trigger" iconAfter={<ChevronDown aria-hidden className="size-3.5 text-ui-muted" />}>{workflow === "all" ? "All workflows" : workflows.find(row => row.id === workflow)?.label}</Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-[220px]"><DropdownMenuRadioGroup value={workflow} onValueChange={onWorkflow}>

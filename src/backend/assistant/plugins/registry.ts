@@ -29,9 +29,10 @@ export interface AssistantPluginDeps {
 }
 
 export const ASSISTANT_TOOL_NAMESPACE = "relay";
-const MAX_TOOLS = 16;
+/** Every served tool: nine reads, one session start and three proposals. */
+const MAX_TOOLS = 13;
 const KIND_TIERS: Readonly<Record<AssistantTool["kind"], readonly AssistantToolTier[]>> = {
-  read: ["read"], session: ["session"], change: ["write-local"], proposal: ["write-local", "leaves-machine"], "typed-proposal": ["write-local", "leaves-machine"] };
+  read: ["read"], session: ["session"], proposal: ["write-local", "leaves-machine"] };
 
 export function createAssistantPlugins(deps: AssistantPluginDeps): readonly AssistantPlugin[] {
   const workflowLabel = (id: string) => deps.facts().facts.find(entry => entry.id === id)?.label ?? id;
@@ -44,7 +45,7 @@ export function assistantToolRegistry(plugins: readonly AssistantPlugin[]): Read
   if (tools.length > MAX_TOOLS || new Set(tools.map(tool => tool.name)).size !== tools.length
     || tools.some(tool => !KIND_TIERS[tool.kind].includes(tool.tier))) throw new Error("assistant-tool-registry-invalid");
   const namespace = AssistantFunctionNamespaceSchema.parse({ type: "namespace", name: ASSISTANT_TOOL_NAMESPACE,
-    description: "Relay's local reads and proposals. Reads return opaque [[…]] references instead of names and IDs; proposals only prepare a card the operator confirms.",
+    description: "Relay's local reads and proposals. Reads return opaque [[…]] references instead of names and IDs; proposals only take effect when the operator replies yes.",
     tools: tools.map(tool => ({ type: "function", name: tool.name, description: tool.description, strict: true, parameters: z.toJSONSchema(tool.parameters) })) });
   return Object.freeze({ tools, namespace });
 }

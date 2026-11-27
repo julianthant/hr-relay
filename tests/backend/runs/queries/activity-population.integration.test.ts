@@ -141,9 +141,9 @@ describe("selected Analytics population", () => {
     expect(selected.population.every(row => row.readback === null)).toBe(true);
     expect(JSON.stringify(selected.population)).not.toContain("identity");
     expect(f.service.readSelected(range, selected.snapshot.token, { metric: "failed", page: 0 }).browse?.rows.map(row => row.runId)).toEqual([uuidOf(10)]);
-    expect(readSummaryPages.mock.calls).toEqual(reportPages);
     const browse = f.service.readSelected(range, selected.snapshot.token, { metric: "timed", page: 0 }).browse;
     expect(browse?.rows.map(row => row.runId)).toEqual([uuidOf(1), uuidOf(2)]);
+    expect(readSummaryPages).not.toHaveBeenCalled();
   });
 
   it("serves a failed step, a mixed-outcome day and the median duration", async () => {
