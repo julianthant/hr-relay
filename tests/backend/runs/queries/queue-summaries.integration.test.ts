@@ -53,7 +53,7 @@ import { makeWorld, receiptWithWarningsOf } from "../../../support/helpers/backe
 import { randomUUID } from "node:crypto";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
-import { childPolicyModules, childExecutionStores } from "../../../support/fixtures/child-execution-workflows.js";
+import { childContinuationModules, childContinuationRoot, childExecutionStores } from "../../../support/fixtures/child-execution-workflows.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -315,7 +315,7 @@ it("reads current heartbeats and publishes creation and presentation atomically"
 it("maintains parent rollups and dependencies while batch grouping stays a bounded current relation", async () => {
   const world = createRunExecutorTestWorld(profileFixtures.create);
   try {
-    const workflows = childPolicyModules("cascade");
+    const workflows = { root: childContinuationRoot, modules: childContinuationModules };
     const h = await world.executorHarness({ descriptor: workflows.root.descriptor, stores: childExecutionStores });
     const { database, clock, path, stateRoot } = h.authority;
     const patch = { "actor.label": { set: "Synthetic operator" } } as const;
@@ -329,34 +329,58 @@ it("maintains parent rollups and dependencies while batch grouping stays a bound
     assert.ok(parent.sessionId);
     const batch = database.authority.runSessions.get(parent.sessionId); assert.ok(batch);
     assert.equal((await execution.step(parent, world.SIGNAL)).outcome.state, "yielded-delegation");
-    const child = database.authority.runs.listChildren(parent.envelope.runId)[0]; assert.ok(child);
+    const children = database.authority.runs.listChildren(parent.envelope.runId);
+    const [child, sibling] = children;
+    assert.ok(child && sibling && children.length === 2);
+    const childIds = children.map(run => run.envelope.runId);
     const row = () => database.readRunSummaries().find(row => row.runId === parent.envelope.runId);
-    assert.deepEqual(row()?.children, [{ runId: child.envelope.runId, state: "queued", outcome: null }]);
-    assert.deepEqual(row()?.dependencyRunIds, [child.envelope.runId]);
+    assert.deepEqual(row()?.children, childIds.map(runId => ({ runId, state: "queued", outcome: null })));
+    assert.deepEqual(row()?.dependencyRunIds.toSorted(), childIds.toSorted());
     assert.equal(execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard", requestedBy: "local-operator",
       requestedAt: clock.now().toISOString(), target: { runId: child.envelope.runId, expectedVersion: child.version } }).state, "applied");
-    assert.deepEqual(row()?.children, [{ runId: child.envelope.runId, state: "terminal", outcome: "cancelled" }]);
+    assert.deepEqual(row()?.children, [
+      { runId: child.envelope.runId, state: "terminal", outcome: "cancelled" },
+      { runId: sibling.envelope.runId, state: "queued", outcome: null },
+    ]);
     const query = () => queryQueueSummaries(database, { limit: 10, sessionId: batch.sessionId, topLevel: true });
     assert.equal(query().items.length, 1); assert.equal(query().items[0].session?.groupInQueue, false);
     database.authority.runSessions.setGrouping(batch.sessionId, batch.version, true);
     assert.equal(query().items[0].session?.groupInQueue, true);
-    const app: DashboardApp = new Hono();
-    registerActivityRoutes(app, composeActivity({ database, clock, descriptors: { resolve: () => undefined },
-      ledger: createTransactionHistory(database.authority) }));
     const to = clock.todayLocal();
     const start = new Date(`${to}T00:00:00Z`);
     start.setUTCDate(start.getUTCDate() - 29);
     const from = start.toISOString().slice(0, 10);
-    const authenticate = vi.spyOn(delegationAuthority, "authenticateDelegationGroup");
-    try {
+    const readPopulation = async () => {
+      const app: DashboardApp = new Hono();
+      registerActivityRoutes(app, composeActivity({ database, clock, descriptors: { resolve: () => undefined },
+        ledger: createTransactionHistory(database.authority) }));
       const response = await app.request(`/api/v1/reports/activity/population?from=${from}&to=${to}`);
       assert.equal(response.status, 200);
       const { report, population } = ActivityPopulationSelectionSchema.parse(await response.json());
       assert.equal(report.totalRuns, 1);
       assert.equal(report.terminalRuns, 0);
       assert.deepEqual(population.map(run => run.runId), [parent.envelope.runId]);
+    };
+    const authenticate = vi.spyOn(delegationAuthority, "authenticateDelegationGroup");
+    const waitState = vi.spyOn(delegationAuthority, "readDelegationWaitState");
+    const waitedOn = () => waitState.mock.calls.map(([, run]) => typeof run === "string" ? run : run.envelope.runId).toSorted();
+    try {
+      await readPopulation();
       assert.equal(authenticate.mock.calls.length, 1);
-    } finally { authenticate.mockRestore(); }
+      assert.deepEqual(waitedOn(), [parent.envelope.runId]);
+
+      // The pre-filter query evaluates delegation wait for every inline member.
+      const querySummaries = database.queryRunSummaries.bind(database);
+      const unfiltered = vi.spyOn(database, "queryRunSummaries").mockImplementation(input => querySummaries({ ...input, topLevel: false }));
+      try {
+        waitState.mockClear();
+        await readPopulation();
+        assert.deepEqual(waitedOn(), [parent.envelope.runId, ...childIds].toSorted());
+      } finally { unfiltered.mockRestore(); }
+    } finally {
+      waitState.mockRestore();
+      authenticate.mockRestore();
+    }
   } finally { await world.cleanup(); }
 });
 

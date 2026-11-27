@@ -8,7 +8,7 @@ import { spreadsheetCsvRow } from "../exports/spreadsheet-csv.js";
 import { deriveRunStatus } from "../../../rules/runs/run-status.js";
 import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 import { activityReportCsv, activityReportCsvFileName } from "./activity-export.js";
-import { createActivitySelectionService, createActivitySnapshotSigner } from "./activity-selection.js";
+import { ACTIVITY_SNAPSHOT_LIFETIME_MS, createActivitySelectionService, createActivitySnapshotSigner } from "./activity-selection.js";
 import { queryActivitySummaries } from "./activity-summaries.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -83,7 +83,8 @@ export function createActivityPopulationService(input: {
       }
       const range = `${from}/${to}`;
       const cached = retained.get(range);
-      if (cached !== undefined && Date.parse(cached.snapshot.expiresAt) > clock.nowMs()
+      const minimumLifeMs = token === undefined ? ACTIVITY_SNAPSHOT_LIFETIME_MS / 2 : 0;
+      if (cached !== undefined && Date.parse(cached.snapshot.expiresAt) > clock.nowMs() + minimumLifeMs
         && (token === undefined || token.encoded === cached.snapshot.token)
         && cached.snapshot.sourceIdentity === (input.sourceIdentity ?? database.getSourceDatabaseIdentity())) return cached;
 

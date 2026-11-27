@@ -465,6 +465,15 @@ for (const lanes of [false, true]) it(`retains the Analytics population across $
   assert.equal(retained.status, 200);
   assert.deepEqual(ActivityPopulationSelectedReadSchema.parse(await retained.json()).selection, selected);
 
+  f.clock.advanceWall(7.5 * 60_000 - 1_000);
+  const refreshed = await read();
+  assert.equal(refreshed.snapshot.authorityGeneration, selected.snapshot.authorityGeneration);
+  assert.equal(Date.parse(refreshed.snapshot.expiresAt), f.clock.nowMs() + 15 * 60_000);
+  assert.notEqual(refreshed.snapshot.token, selected.snapshot.token);
+  const stillValid = await f.app.request(selectedRequest);
+  assert.equal(stillValid.status, 200);
+  assert.deepEqual(ActivityPopulationSelectedReadSchema.parse(await stillValid.json()).selection, selected);
+
   f.database.authority.runs.enqueue(runRecordOf({ seed: 3715, workflow: "historical-workflow", enqueuedAt: "2026-09-20T17:00:00Z" }));
   const changed = await read();
   assert.equal(changed.report.totalRuns, 4);

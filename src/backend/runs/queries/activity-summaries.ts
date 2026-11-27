@@ -38,6 +38,7 @@ function shiftActivityDay(value:string,days:number):string {
 
 export function visitActivitySummaryRange(database: AuthorityDatabase, from: string, to: string, timeZone: string, visit: (row: SummaryRow) => void) {
   const reportDayOf = createActivityDatePartReader(timeZone);
+  // In other zones, the date-mismatch check also needs to see inline runs.
   visitRange(database, shiftActivityDay(from, -2), shiftActivityDay(to, 2), timeZone === PACIFIC_TIME_ZONE, row => {
     const enqueuedDay = reportDayOf(row.enqueuedAt);
     const storedDayIsInRange = row.localDay >= from && row.localDay <= to;
