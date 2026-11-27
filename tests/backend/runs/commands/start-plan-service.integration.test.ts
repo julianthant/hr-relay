@@ -24,6 +24,7 @@ import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definitio
 import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
+import { parseRunWorkbookReference } from "../../../../src/models/dashboard/workbooks.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -325,4 +326,14 @@ it("names the missing reference spreadsheet when an Emergency Contact start send
     [["capability-unavailable", ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text]]);
   assert.equal(checkOnly.planned.length, 0);
   assert.equal(plan([pick]).planned.length, 1);
+
+  const edited = structuredClone(applicants.workbook);
+  edited.sheets[0].rows[1].cells[1].value = "New roster value";
+  const current = library.save(applicants.libraryId, pick.expectedVersion, edited);
+  const selected = plan([{ ...pick, expectedVersion: current.version }]);
+  assert.deepEqual(selected.refused, []);
+  assert.equal(selected.planned[0]?.workbookReferences?.[0]?.versionName, "Original version");
+  const retained = h.database.authority.startPlans.get(selected.startPlanId)?.planned[0].workbookReferences?.[0];
+  assert.ok(retained);
+  assert.equal(parseRunWorkbookReference(retained).snapshot.rows[0]?.matches[0]?.values.fullName, "Doe, Jane");
 });

@@ -306,8 +306,8 @@ source/type changes and removal. Its catalogue revision and editable workbook re
 mutation. The immutable action record supports a read-only result check after a lost response;
 a refresh never resubmits a change. Removing catalogue membership keeps retained snapshot evidence.
 `workbookLibraryVersion` reads exact named bytes independently of the numeric editable revision.
-Reference requests may choose `versionId`; the retained snapshot carries its matching `versionId`
-and `versionName`, while `version` remains the current library CAS revision. Row-choice producers
+Reference requests may choose `versionId` or omit it to use the current named version. The retained
+snapshot carries the resolved `versionId` and `versionName`, while `version` remains the current library CAS revision. Row-choice producers
 read named bytes through `WorkbookLibraryRepository.libraryVersion`, preserving selected worksheet
 and row identities even when a run chooses a version other than the one in use.
 
@@ -573,12 +573,12 @@ before the account owner when the active profile changes or the page closes.
 
 `WorkflowStartWire.requiredWorkbookFields` and `workbookReference` declare the required fields,
 logical capture ID, key, mode and writable outputs. The dashboard sends one explicit
-`workbookReferences: [{entry, libraryId, versionId, sheetId, expectedVersion, selectedRow?}]` selection
+`workbookReferences: [{entry, libraryId, versionId?, sheetId, expectedVersion, selectedRow?}]` selection
 per entry. The browser cannot supply lookup keys, fields or write authority. Keyed workflows
 declare `referenceKeys(input)`; planning derives the captured request from that callback and the
 frozen static declaration. Each selected worksheet must map every required field exactly once.
 
-`selectedRow` requires an explicit library, an immutable named version and exactly one derived key.
+`selectedRow` binds to the supplied library, the resolved immutable named version and exactly one derived key.
 The descriptor's `inputRun.workbookRows` must declare that logical capture ID, and its input field must equal
 the derived key. The selected sheet/row pair must occur exactly once among that key's retained matches.
 Expected unavailable selections produce entry refusals. Captured references bind canonical input before
