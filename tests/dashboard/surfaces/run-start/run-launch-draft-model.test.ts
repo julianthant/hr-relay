@@ -56,7 +56,7 @@ const row = (key: string): StepRow => {
 };
 const used = (draft: LaunchDraft): LaunchDraft => ({ ...draft, text: "x", sourceInputUnchanged: true, priority: "bulk", dryRunRequested: true, browserMode: "headless",
   stepDrafts: { read: { reason: "r" } }, manualRows: ["kid"],
-  referenceSelections: { ref: { libraryId: "l", versionId: "v", sheetId: "s" } }, referenceDrafts: { ref: { libraryId: "l", versionId: "v" } },
+  referenceSelections: { ref: { libraryId: "l", versionId: "v", sheetIds: ["s"] } }, referenceDrafts: { ref: { libraryId: "l", versionId: "v" } },
   selectedWorkbookRows: { source: "s", choices: [] }, launchFields: { fileToOnBase: "yes" },
   valueDrafts: { 0: { text: "t", copied: false } }, copiedOmissions: { 0: true } });
 
@@ -64,7 +64,8 @@ describe("the launch request fingerprint", () => {
   const REST: LaunchRequestInputs = { draft: freshLaunchDraft(plain), rowIdentity: "row", customizeSteps: false, typedValues: {}, rerunSource: undefined,
     pdf: { draft: null, picks: {}, loading: false, error: null }, workbookRows: { state: "ready", fresh: true }, library: { loading: false, refreshing: false, error: "", compatibility: undefined },
     spreadsheets: [], versionSources: { state: "ready", sources: [] }, checks: { pending: false, selections: [] }, request: "request" };
-  const sheet = { libraryId: "l", versionId: "v", sheetId: "s" };
+  const sheet = { libraryId: "l", versionId: "v", sheetIds: ["s"] };
+  const source = { libraryId: "l", versionId: "v", sheetId: "s" };
   /** One change per draft field and per input; a field added without one fails to typecheck here. */
   const DRAFT = {
     text: "x", typed: { workflowId: "plain", draft: { mode: "match" } }, sourceInputUnchanged: true, interruptedRerun: true,
@@ -79,8 +80,8 @@ describe("the launch request fingerprint", () => {
     pdf: [{ ...REST.pdf, draft: { files: [], asOf: AT, reviewer: "r" } }, { ...REST.pdf, picks: { form: "w4" } }, { ...REST.pdf, loading: true }, { ...REST.pdf, error: "refused" }],
     workbookRows: [{ state: "loading", fresh: true }, { state: "ready", fresh: false }],
     library: [{ ...REST.library, loading: true }, { ...REST.library, refreshing: true }, { ...REST.library, error: "failed" }, { ...REST.library, compatibility: { libraries: [] } }],
-    spreadsheets: [[["l", 1, 1]], [["l", 2, 1]], [["l", 1, 2]]], versionSources: [{ state: "loading", sources: [] }, { state: "ready", sources: [sheet] }],
-    checks: [{ pending: true, selections: [] }, { pending: false, selections: [sheet] }], request: ["other"],
+    spreadsheets: [[["l", 1, 1]], [["l", 2, 1]], [["l", 1, 2]]], versionSources: [{ state: "loading", sources: [] }, { state: "ready", sources: [source] }],
+    checks: [{ pending: true, selections: [] }, { pending: false, selections: [source] }], request: ["other"],
   } satisfies { [K in keyof LaunchRequestInputs]: readonly LaunchRequestInputs[K][] };
 
   it("moves for every draft field and every other input, and a moved one drops the plan on screen", () => {
@@ -258,7 +259,7 @@ describe("input", () => {
 });
 
 describe("reference spreadsheet", () => {
-  const sheet = { libraryId: "l", versionId: "v", sheetId: "s" };
+  const sheet = { libraryId: "l", versionId: "v", sheetIds: ["s"] };
   it("a library pick sets the draft and clears the worksheet selection", () => {
     const next = pickReference({ ...freshLaunchDraft(plain), referenceSelections: { ref: sheet, keep: sheet } }, "ref", "l2", "v2");
     assert.deepEqual(next.referenceDrafts, { ref: { libraryId: "l2", versionId: "v2" } });
@@ -361,11 +362,18 @@ describe("rerun restore", () => {
       spreadsheets: [pick("roster", "people", "a"), pick("check", "extra", "b"), pick("check", "extra", "c")] });
     const next = restoreRerunDraft(source, reading);
     assert.deepEqual([next.dryRunRequested, next.priority, next.browserMode], [true, "bulk", "headless"]);
-    assert.deepEqual(next.referenceSelections, { roster: { libraryId: "people", versionId: "v1", sheetId: "a" } });
+    assert.deepEqual(next.referenceSelections, { roster: { libraryId: "people", versionId: "v1", sheetIds: ["a"] } });
     assert.deepEqual(next.referenceDrafts, { roster: { libraryId: "people", versionId: "v1" } });
     assert.deepEqual(next.checkPicks, { extra: { versionId: "v1", sheetIds: ["b", "c"] } });
     const live = restoreRerunDraft(snapshot, reading);
     assert.deepEqual([live.dryRunRequested, live.referenceSelections, live.checkPicks], [false, {}, {}]);
+  });
+  it("picks a source's several reference worksheets again only where the workflow reads them all", () => {
+    const reading = (writableFields: string[]): RunStartWorkflow => ({ ...plain, workbookReference: { id: "onboarding-roster", keyFieldId: "email", mode: "keys", writableFields } });
+    const pick = (sheetId: string) => ({ typeId: "onboarding-roster", libraryId: "people", versionId: "v1", sheetId });
+    const source = RerunValuesSnapshotSchema.parse({ ...snapshot, spreadsheets: [pick("a"), pick("b")] });
+    assert.deepEqual(restoreRerunDraft(source, reading([])).referenceSelections, { "onboarding-roster": { libraryId: "people", versionId: "v1", sheetIds: ["a", "b"] } });
+    assert.deepEqual(restoreRerunDraft(source, reading(["roster.notes"])).referenceSelections, {});
   });
   it("refuses a source whose browser mode nobody recorded instead of taking the last draft's", () => {
     const { browserMode: _browserMode, ...source } = snapshot.source;
