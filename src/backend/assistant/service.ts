@@ -111,7 +111,7 @@ export type AssistantService = Pick<ReturnType<typeof createAssistantM1Service>,
 
 export interface AssistantM1ServiceOptions extends Omit<AssistantServiceOptions, "debugEvents"> {
   readonly history: () => AssistantM1HistoryRepository;
-  /** One authority transaction: a reply and the proposal it renders commit together or not at all. */
+  /** A reply and any proposal or local edit it records settle together. */
   readonly atomic?: <T>(work: () => T) => T;
   readonly debugEvents: NonNullable<AssistantServiceOptions["debugEvents"]>;
   /** The typed-yes proposal owner; its tools come through `tools`. */
@@ -132,7 +132,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
   const references = createAssistantReferences(), live = new Map<string, AbortController>();
   const now = () => options.clock.now().toISOString();
   type Accepted = Extract<AssistantM1Acceptance, { state: "accepted" }>;
-  type Turn = Readonly<{ reason: AssistantFailureCode }> | Readonly<{ uncertain: true }>
+  type Turn = Readonly<{ reason: AssistantFailureCode }> | Readonly<{ uncertain: true }> | Readonly<{ edit(): AssistantReplyPart }>
     | Readonly<{ modelText: string; parts: z.infer<typeof AssistantReplySchema>["parts"]; assertCurrent(): void; proposal?: AssistantProposalDraft }>;
   const noReply = (reason: AssistantFailureCode): AssistantM1RespondEnvelope => ({ kind: "result", result: { state: "no-reply", reason, canRetry: false, turn: null } });
   const failure = (error: unknown, signal: AbortSignal): AssistantFailureCode => {
@@ -228,9 +228,19 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
         receipt: { conversationId, messageId, ordinal: attempt.ordinal, revision: observedRevision, delivery: "delivery-unknown" }, history: { state: "unavailable", code } });
       const settle = (outcome: Turn): AssistantM1RespondEnvelope => {
         assertOwner();
-        const reason = "reason" in outcome ? outcome.reason : undefined;
-        const reply = "parts" in outcome ? { id: randomUUID(), kind: "answer" as const, parts: outcome.parts, modelText: outcome.modelText } : undefined;
+        let reason = "reason" in outcome ? outcome.reason : undefined;
+        const replyId = randomUUID();
         const revision = (options.atomic ?? (work => work()))(() => {
+          let reply = "parts" in outcome ? { id: replyId, kind: "answer" as const, parts: outcome.parts, modelText: outcome.modelText } : undefined;
+          if ("edit" in outcome) {
+            try {
+              // The owner and local edit journal share a savepoint. The outer commit also saves the reply.
+              reply = { id: replyId, kind: "answer", parts: [outcome.edit()], modelText: "Applied the requested edit." };
+            } catch (error) {
+              reason = toolRefusalCode(error);
+              if (reason === undefined) throw error;
+            }
+          }
           const settledRevision = history.settle(attempt, { delivery: "uncertain" in outcome ? "delivery-unknown" : reason === undefined ? "answered" : "refused",
             usage, ...(reason === undefined ? {} : { code: reason }), ...(reply === undefined ? {} : { reply }) }, now());
           if (settledRevision === undefined) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE");
@@ -248,7 +258,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
           const canRetry = !effectful && ASSISTANT_M1_READ_RETRY_FAILURES.some(code => code === reason);
           return { kind: "result", receipt, result: { state: "no-reply", reason, canRetry, turn: { acceptedTurn: stored.acceptedTurn, usage: stored.usage } } };
         }
-        const view = history.conversation(conversationId, now()), row = view?.messages.find(message => message.id === reply?.id);
+        const view = history.conversation(conversationId, now()), row = view?.messages.find(message => message.id === replyId);
         if (row?.payload.recording.kind !== "reply" || row.payload.recording.acceptedMessageId !== messageId) throw new AssistantProtocolError("assistant-reply-readback-missing");
         return { kind: "result", receipt, result: { state: "answered", reply: AssistantReplySchema.parse({ parts: row.payload.parts, acceptedTurn: stored.acceptedTurn, usage: stored.usage }) } };
       };
@@ -281,7 +291,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
       async function runTurn(): Promise<Turn> {
         const sessionParts: AssistantReplyPart[] = [];
         const turn = await modelTurn(sessionParts);
-        if ("parts" in turn || sessionParts.length === 0) return turn;
+        if ("parts" in turn || "edit" in turn || sessionParts.length === 0) return turn;
         // A lost provider reply after the start is reported as incomplete; the started runs are already known.
         const reason = "reason" in turn ? turn.reason : "ASSISTANT_RESPONSE_INCOMPLETE", text = ASSISTANT_FAILURES[reason];
         return { modelText: `Started ${String(sessionParts.length)} read-only session(s), then the reply failed: ${text}`, assertCurrent,
@@ -293,7 +303,8 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
           if (open !== undefined) options.proposals?.supersede(conversationId);
           const reads = options.tools();
           if (reads.plugins.some(plugin => plugin.tools.some(tool => tool.kind === "session" ? reads.sessions === undefined
-            : tool.kind === "proposal" ? options.proposals === undefined : tool.kind !== "read" && tool.kind !== "change"))) return { reason: "ASSISTANT_UNAVAILABLE" };
+            : tool.kind === "proposal" ? options.proposals === undefined
+              : tool.kind === "change" && (options.atomic === undefined || typeof tool.change !== "function")))) return { reason: "ASSISTANT_UNAVAILABLE" };
           let facts: AssistantWorkflowFacts;
           try { facts = options.facts(); } catch (error) {
             if (closure(error)) throw error;
@@ -374,9 +385,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
             if (tool.kind === "change") {
               if (proposal !== undefined || sessionParts.length > 0) return { reason: "ASSISTANT_EDIT_REFUSED" };
               effectful = true;
-              const part = await tool.change(parameters, context);
-              // The committed edit supplies the reply. Its values stay out of inference and replay.
-              return { modelText: "Applied the requested edit.", parts: [part], assertCurrent: assertOwner };
+              return { edit: await tool.change(parameters, context) };
             }
             const key = canonicalJsonStringify({ name: tool.name, arguments: parameters });
             let outcome = outcomes.get(key);

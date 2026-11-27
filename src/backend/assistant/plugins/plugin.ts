@@ -49,10 +49,10 @@ export interface AssistantChangeContext extends AssistantToolContext {
   readonly acceptedTurn: AssistantAcceptedTurn;
   readonly editReads: Map<string, string>;
 }
-/** Commits a reversible local edit and returns its private, server-authored sentence. */
+/** Prepares a reversible edit. Only the turn settlement transaction calls the returned function. */
 export interface AssistantChangeTool extends Omit<AssistantReadTool, "kind" | "invoke"> {
   readonly kind: "change";
-  change(argumentsValue: unknown, context: AssistantChangeContext): Promise<AssistantReplyPart>;
+  change(argumentsValue: unknown, context: AssistantChangeContext): Promise<() => AssistantReplyPart>;
 }
 export const AssistantChangeOutput = z.strictObject({ status: z.literal("applied") });
 export type AssistantTool = AssistantReadTool | AssistantSessionTool | AssistantProposalTool | AssistantChangeTool;

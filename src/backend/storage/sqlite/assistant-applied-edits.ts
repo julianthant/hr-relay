@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { WorkbookIdSchema } from "../../../models/dashboard/workbooks.js";
 import { AssistantAcceptedTurnSchema, AssistantValueSourceSchema } from "../../../models/dashboard/assistant.js";
-import { ActorIdSchema, IsoInstantSchema, PositiveIntSchema } from "../../../rules/identity/ids.js";
+import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 
 export const ASSISTANT_APPLIED_EDITS_TABLE = "assistant_applied_edits";
@@ -31,8 +31,9 @@ const EditDetailsSchema = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("workbook") }),
     z.strictObject({ kind: z.literal("version"), versionId: WorkbookIdSchema }),
     z.strictObject({ kind: z.literal("cell"), sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema, column: z.number().int().nonnegative() }),
-  ]), command: z.enum(["rename", "metadata", "use-version", "rename-version", "save"]),
-    ownerRevision: WorkbookRevision, prior: JsonValueSchema, next: JsonValueSchema }),
+  ]), command: z.enum(["rename", "metadata", "link", "use-version", "rename-version", "create-version", "save"]),
+    ownerRevision: WorkbookRevision, prior: JsonValueSchema, next: JsonValueSchema,
+    attachment: z.strictObject({ id: z.uuid(), sha256: FingerprintSchema }).optional() }),
 ]);
 export type AssistantEditDetails = z.infer<typeof EditDetailsSchema>;
 

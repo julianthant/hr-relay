@@ -19,10 +19,11 @@ function scene(title: string, props: AssistantHostProps = {}, story: Partial<Sto
   return { title, render: () => <AssistantHost props={props} />, ready: PANEL, ...story };
 }
 
-const send = async (page: Page): Promise<void> => {
-  await page.locator("textarea[name=message]").fill(ASSISTANT_STORY_PROMPT);
+const sendMessage = async (page: Page, message: string): Promise<void> => {
+  await page.locator("textarea[name=message]").fill(message);
   await page.getByRole("button", { name: "Send message", exact: true }).click();
 };
+const send = (page: Page) => sendMessage(page, ASSISTANT_STORY_PROMPT);
 const press = (name: string) => async (page: Page): Promise<void> => { await page.getByRole("button", { name, exact: true }).first().click(); };
 const then = (...steps: readonly ((page: Page) => Promise<void>)[]) => async (page: Page): Promise<void> => { for (const step of steps) await step(page); };
 /** A story that sends the request and waits on what comes back. */
@@ -55,11 +56,15 @@ const TURN = {
 } satisfies Record<Exclude<AssistantTurn["state"], "cancelled" | "unknown">, Story>;
 
 const reply = (script: AssistantReplyScript): AssistantHostProps => ({ client: { reply: script } });
+const edit = (title: string, script: "spreadsheet-edit" | "settings-edit", message: string): Story =>
+  scene(title, { ...reply(script), modelChoices: true, modelPreference: { slug: "gpt-6.1-sol", effort: "medium" } }, { ready: 'text="Edit applied"', play: page => sendMessage(page, message) });
 const REPLY = {
   answer: after("A short answer", {}, 'text="10101010"'),
   "answer-long": after("A long answer", reply("answer-long"), 'text=/Each of these records/'),
   proposal: after("A proposal waiting on a typed yes", reply("proposal"), 'text="Reply yes to file it, or tell me what to change."'),
   "proposal-many": after("Several rows proposed", reply("proposal-many"), 'text=/Reply yes to save all 3/'),
+  "spreadsheet-edit": edit("A spreadsheet edit", "spreadsheet-edit", "Rename the spreadsheet to Summer tracker."),
+  "settings-edit": edit("A settings edit", "settings-edit", "Turn headless browser mode off."),
   "answered-yes": after("A typed yes that started a session", reply("answered-yes"), '.reply-session'),
 } satisfies Record<Exclude<AssistantReplyScript, "never" | "lost" | { readonly refused: unknown }>, Story>;
 

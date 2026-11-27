@@ -1,6 +1,7 @@
 /** What every assistant story mounts: the real panel on the real controller, a client that answers by script, and the ChatGPT account. */
 import { useLayoutEffect, useMemo, type ReactNode } from "react";
 import { useAssistantController } from "../../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
+import { useToasts } from "../../../../../../src/dashboard/ds/ui.js";
 import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
 import { publishAssistantModelChoice } from "../../../../../../src/dashboard/surfaces/shell/assistant-approval-model.js";
 import { assistantOpen } from "../../../../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
@@ -33,7 +34,8 @@ export interface AssistantHostProps {
 
 function Panel({ props }: { props: AssistantHostProps }) {
   const client = useMemo(() => assistantStoryClient(props.client), [props.client]);
-  const served = useAssistantController(client, client, undefined, false, "story-chat");
+  const { toast } = useToasts();
+  const served = useAssistantController(client, client, undefined, false, "story-chat", undefined, { toast });
   const preference = props.modelPreference;
   useLayoutEffect(() => {
     if (!props.modelChoices || preference === undefined) return;

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantToolContext } from "../plugin.js";
 import { observeEdit } from "../../applied-edits.js";
-import { spreadsheetChange, workbookEditRevision } from "../../spreadsheet-proposals.js";
+import { attachmentWorkbook, spreadsheetChange, workbookEditRevision } from "../../spreadsheet-proposals.js";
 import type { AssistantPluginDeps } from "../registry.js";
 
 const Count = z.number().int().nonnegative();
@@ -23,17 +23,6 @@ export function catalogEntry(deps: Pick<AssistantPluginDeps, "workbooks">, conte
   if (entry === undefined || entry.state.removed) throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE");
   return entry;
 }
-/** The staged bytes behind an `A` reference of this chat, parsed by the Spreadsheets importer; parse failures are fixed codes. */
-export async function attachmentWorkbook(deps: Pick<AssistantPluginDeps, "attachment">, context: AssistantToolContext, file: string) {
-  const record = deps.attachment(context.conversationId, context.references.resolve(file, ["A"]).target);
-  if (record === undefined) throw new AssistantToolRefusal("ASSISTANT_ATTACHMENT_UNAVAILABLE");
-  if (record.mediaType !== "text/csv" && record.mediaType !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") throw new AssistantToolRefusal("ASSISTANT_ATTACHMENT_UNSUPPORTED");
-  const { importWorkbook } = await import("../../../../rules/spreadsheets/workbook-io.js");
-  const workbook = await importWorkbook(record.name, new Uint8Array(record.bytes).buffer).catch(() => { throw new AssistantToolRefusal("ASSISTANT_ATTACHMENT_INVALID"); });
-  context.assertCurrent();
-  return { id: record.id, sha256: record.sha256, workbook };
-}
-
 export function spreadsheetsPlugin(deps: AssistantPluginDeps): AssistantPlugin {
   const readParameters = z.strictObject({ view: z.enum(["list", "open", "versions", "types"]), sheet: referenceSchema("S").nullable(), limit: z.number().int().min(1).max(50) });
   const Library = { sheet: referenceSchema("S"), type: referenceSchema("T"), version: z.number().int().positive(), sharePointLinked: z.boolean(), ...Flags };
@@ -83,9 +72,11 @@ export function spreadsheetsPlugin(deps: AssistantPluginDeps): AssistantPlugin {
       context.assertCurrent();
       observeEdit(context, `workbook:${entry.libraryId}`, workbookEditRevision(entry));
       const versions = entry.state.versions;
-      return JsonValueSchema.parse({ view, sheet: context.references.issue("S", entry.libraryId, entry.name), versions: versions.slice(0, limit).map(version => ({
-        version: context.references.issue("V", `${entry.libraryId}:${version.id}`, version.name), revision: version.version, savedAt: version.savedAt, source: version.source,
-        inUse: version.id === entry.state.selectedVersionId })), more: versions.length > limit });
+      return JsonValueSchema.parse({ view, sheet: context.references.issue("S", entry.libraryId, entry.name), versions: versions.slice(0, limit).map(version => {
+        observeEdit(context, `workbook-version:${entry.libraryId}:${version.id}`, workbookEditRevision(entry));
+        return { version: context.references.issue("V", `${entry.libraryId}:${version.id}`, version.name), revision: version.version, savedAt: version.savedAt, source: version.source,
+        inUse: version.id === entry.state.selectedVersionId };
+      }), more: versions.length > limit });
     },
   }, {
     kind: "read", tier: "read", name: "inspect_attachment",

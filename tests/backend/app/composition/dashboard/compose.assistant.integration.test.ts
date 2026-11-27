@@ -36,7 +36,7 @@ import { searchPartitionDay } from "../../../../../src/models/dashboard/search-c
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
-import { LOCAL_OPERATOR_ACTOR_ID, SourceSurfaceIdSchema } from "../../../../../src/rules/identity/ids.js";
+import { IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID, SourceSurfaceIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { deriveTraceId } from "../../../../../src/rules/identity/identifiers.js";
 import { StorageHealthConcernSchema } from "../../../../../src/rules/notifications/notification-triggers.js";
 import { AssistantToolRefusal } from "../../../../../src/backend/assistant/plugins/plugin.js";
@@ -486,10 +486,10 @@ it('runs a typed-yes proposal row only under the attribution of the yes that ans
   }, { spawn: request => new ScriptedWorkerChild(7002, request, { ready: false, exitOnStop: true, reply: () => ({ state: 'done', result: null }) }) });
 });
 
-it("applies spreadsheet and settings edits in the accepted turn, keeps values local and refuses a missing source", async () => {
+it("applies spreadsheet and settings edits in the accepted turn, keeps values local and refuses unsafe or stale edits", async () => {
   await withServedAssistant(async ({ context, transport, origin, clock }) => {
     const client = createDashboardClient({ baseUrl: origin });
-    const db = context.database, libraryId = randomUUID(), at = clock.now().toISOString();
+    const db = context.database, libraryId = randomUUID(), at = IsoInstantSchema.parse(clock.now().toISOString());
     const privateName = "Synthetic private workbook";
     const privateCell = "Synthetic private cell value";
     db.authority.workbooks.create({ libraryId, version: 1, createdAt: at, savedAt: at,
@@ -507,6 +507,12 @@ it("applies spreadsheet and settings edits in the accepted turn, keeps values lo
         const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
         measured.push(Math.ceil(Buffer.byteLength(init.body) / 4));
         for (const value of [privateName, privateCell, libraryId]) assert.ok(!init.body.includes(value));
+        if ("changeWorkbookAfterRead" in scenario && measured.length === 2) {
+          const entry = db.authority.workbooks.catalog().find(row => row.libraryId === libraryId);
+          assert.ok(entry);
+          db.authority.workbooks.libraryAction(libraryId, { operationId: randomUUID(), expectedVersion: entry.version,
+            expectedRevision: entry.state.revision, change: { kind: "rename", name: "Autumn tracker" } }, at);
+        }
         const call = calls.shift();
         assert.ok(call, "the provider was called after the edit settled");
         assert.ok(request.tools[0]?.tools.some(tool => tool.name === call.tool));
@@ -519,13 +525,16 @@ it("applies spreadsheet and settings edits in the accepted turn, keeps values lo
       const message = { conversationId, expectedRevision: 1, messageId, message: scenario.message };
       const envelope = AssistantM1RespondEnvelopeSchema.parse(await client.assistantRespond(message));
       assert.equal(calls.length, 0);
+      console.info(`assistant-edit-scenario | ${scenario.name} | ${Math.max(...measured)} | ${measured.reduce((a, b) => a + b, 0)}`);
       assert.ok(Math.max(...measured) <= scenario.largestRequest, scenario.name);
       assert.ok(measured.reduce((sum, count) => sum + count, 0) <= scenario.total, scenario.name);
       const edits = db.authority.assistantAppliedEdits.list(since);
-      if (index === 2) {
+      if ("refusal" in scenario) {
         assert.ok(envelope.kind === "result" && envelope.result.state === "no-reply", JSON.stringify(envelope));
-        assert.equal(envelope.result.reason, "ASSISTANT_VALUE_NEEDS_SOURCE");
+        assert.equal(envelope.result.reason, scenario.refusal);
         assert.equal(edits.length, 2);
+        assert.equal(db.authority.workbooks.read(libraryId)?.workbook.name,
+          index >= 3 ? "Autumn tracker" : "Summer tracker");
         continue;
       }
       assert.ok(envelope.kind === "result" && envelope.result.state === "answered", JSON.stringify(envelope));

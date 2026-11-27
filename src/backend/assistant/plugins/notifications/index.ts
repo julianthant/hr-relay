@@ -39,7 +39,7 @@ export function notificationsPlugin(deps: AssistantPluginDeps): AssistantPlugin 
     parameters: Change, output: AssistantChangeOutput, privacy: [],
     async change(input, context) {
       const { note, state } = Change.parse(input), notificationId = context.references.resolve(note, ["N"]).target;
-      return edits.apply(context, owner => {
+      return () => edits.apply(context, owner => {
         const previous = edits.notification(notificationId);
         if (previous === undefined || previous.actorId !== context.actorId || previous.clearedAt !== undefined
           || previous.trigger === "backfill-gap") throw new AssistantToolRefusal("ASSISTANT_EDIT_REFUSED");

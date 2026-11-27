@@ -59,7 +59,7 @@ export function settingsPlugin(deps: Pick<AssistantPluginDeps, "settings" | "set
       }
       const parsed = SettingsPatchSchema.safeParse({ [key]: operation === "clear" ? { clear: true } : { set: value } });
       if (!parsed.success) throw new AssistantToolRefusal("ASSISTANT_EDIT_REFUSED");
-      return edits.apply(context, owner => {
+      return () => edits.apply(context, owner => {
         const current = settingsRecord();
         requireEditRead(context, `settings:${key}`, current.revision);
         const before = at(current.settings, key);
@@ -73,7 +73,7 @@ export function settingsPlugin(deps: Pick<AssistantPluginDeps, "settings" | "set
         const next = after === undefined ? { clear: true as const } : { set: JsonValueSchema.parse(after) };
         return { details: { kind: "settings", command: "apply-settings", path: key, revision: saved.revision,
           prior: before === undefined ? { clear: true } : { set: JsonValueSchema.parse(before) }, next },
-          label: `Changed ${key}`, before: display(before), after: display(after), source: operatorEditSource(context, next) };
+          label: `Changed ${key}`, before: display(before), after: display(after), source: operatorEditSource(context, JsonValueSchema.parse(next)) };
       });
     },
   });

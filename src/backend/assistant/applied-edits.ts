@@ -2,15 +2,16 @@ import { randomUUID } from "node:crypto";
 import { AssistantReplyPartsSchema, type AssistantReplyPart, type AssistantValueSource } from "../../models/dashboard/assistant.js";
 import type { NotificationRecord } from "../../models/notifications/notifications.js";
 import type { CommandRequest, CommandResult } from "../../rules/commands/commands.js";
+import { FingerprintSchema } from "../../rules/identity/ids.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { canonicalJsonStringify, type JsonValue } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
-import type { AssistantEditDetails } from "../storage/sqlite/assistant-applied-edits.js";
+import type { AssistantAppliedEditInput } from "../storage/sqlite/assistant-applied-edits.js";
 import type { WorkbookLibraryService } from "../workbooks/workbook-library-service.js";
 import { AssistantToolRefusal, type AssistantChangeContext } from "./plugins/plugin.js";
 
 export type LocalEditCommand = Extract<CommandRequest, { family: "notification" } | { type: "apply-settings" }>;
-type EditResult = Readonly<{ details: AssistantEditDetails; label: string; before: string; after: string;
+type EditResult = Readonly<{ details: AssistantAppliedEditInput["details"]; label: string; before: string; after: string;
   source?: AssistantValueSource }>;
 export interface AssistantEditOwner {
   apply(context: AssistantChangeContext, work: (owner: Readonly<{
@@ -29,7 +30,7 @@ export function requireEditRead(context: AssistantChangeContext, target: string,
 }
 
 export function requireOperatorSource(context: AssistantChangeContext, source: string | null) {
-  if (source === null || !context.operatorText.includes(source) || /^\[redacted /u.test(source)) {
+  if (source === null || !context.operatorText.includes(source) || /\[redacted |\[\[|\]\]/u.test(source)) {
     throw new AssistantToolRefusal("ASSISTANT_VALUE_NEEDS_SOURCE");
   }
   return source;
@@ -38,14 +39,14 @@ export function requireOperatorSource(context: AssistantChangeContext, source: s
 export function operatorEditSource(context: AssistantChangeContext, value: JsonValue): AssistantValueSource {
   const turn = context.acceptedTurn;
   return { kind: "operator", profileId: turn.profileId, conversationId: turn.conversationId, messageId: turn.messageId,
-    at: turn.acceptedAt, valueFingerprint: sha256Hex(canonicalJsonStringify(value)) };
+    at: turn.acceptedAt, valueFingerprint: FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(value))) };
 }
 
 export function createAssistantEditApply(options: Readonly<{
   clock: Clock;
   transaction<T>(work: () => T): T;
   execute(command: LocalEditCommand): CommandResult;
-  record(input: import("../storage/sqlite/assistant-applied-edits.js").AssistantAppliedEditInput): unknown;
+  record(input: AssistantAppliedEditInput): unknown;
 }>): AssistantEditOwner["apply"] {
   return (context, work) => options.transaction(() => {
     context.assertCurrent();
@@ -56,6 +57,7 @@ export function createAssistantEditApply(options: Readonly<{
       { kind: "plain", text: "." },
     ] };
     AssistantReplyPartsSchema.parse([reply]);
+    context.assertCurrent();
     options.record({ id, committedAt: at, turn: context.acceptedTurn, actorId: context.actorId, label, details,
       ...(source === undefined ? {} : { source }) });
     return reply;

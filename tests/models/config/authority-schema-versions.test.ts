@@ -102,7 +102,7 @@ describe("authority schema version lists", () => {
     assert.equal(StorageUpgradeReportSchema.safeParse(report).success, true);
     assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 39 }).success, true);
     assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, state: "already-upgraded", fromSchemaVersion: 45 }).success, true);
-    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 45 }).success, false);
+    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 46 }).success, false);
     assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, toSchemaVersion: 39 }).success, false);
   });
 });
