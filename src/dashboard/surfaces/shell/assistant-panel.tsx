@@ -48,7 +48,7 @@ export function AssistantPanel({ conversationPort, onAttachFile, onRegisterSprea
   const historyFailed = assistantHistoryState(loading, historyNotice) === 'failed';
   const lastMessage = served.state.messages.at(-1);
   // Only the newest failed reply is shown, as one notice; it is never a chat bubble and an older failure is not repeated.
-  const lastRefusal = lastMessage?.role === 'assistant' && lastMessage.code !== undefined ? { text: lastMessage.text, code: lastMessage.code } : undefined;
+  const lastRefusal = lastMessage?.role === 'assistant' && lastMessage.code !== undefined ? { text: lastMessage.text, code: lastMessage.code, retry: lastMessage.retry === true } : undefined;
   const sessions = useMemo(() => new Map(served.state.sessions?.map(view => [view.runId, view])), [served.state.sessions]);
   const phase: AssistantTurnPhase = turn.state === 'waiting' ? 'waiting' : turn.state === 'failed' || turn.state === 'unknown' ? 'failed' : 'settled';
   useEffect(() => { assistantActivity.report(phase); }, [phase]);
@@ -67,7 +67,7 @@ export function AssistantPanel({ conversationPort, onAttachFile, onRegisterSprea
         {turn.state === 'waiting' && <AssistantReply><div className="hub-typing" role="status"><span className="hub-typing-dots" aria-hidden><i /><i /><i /></span><span>Preparing a reply…</span><Button variant="secondary" size="sm" onClick={() => served.onAction({ type: 'cancel' })}>Cancel</Button></div></AssistantReply>}
         {lastRefusal !== undefined && <FailureNotice sentence={lastRefusal.text}
           action={turn.state !== 'idle' ? undefined : assistantRefusalAction(lastRefusal.code) === 'open-settings' ? onOpenSettings && { label: 'Open Settings', onClick: () => onOpenSettings('general', 'chatgpt.account') }
-            : keptPrompt(served.state.messages, served.state.messages.length - 1) === undefined ? undefined : { label: 'Retry', onClick: () => { onSendMessage?.(); served.onAction({ type: 'edit', value: keptPrompt(served.state.messages, served.state.messages.length - 1)! }); served.onAction({ type: 'send' }); } }} />}
+            : !lastRefusal.retry || keptPrompt(served.state.messages, served.state.messages.length - 1) === undefined ? undefined : { label: 'Retry', onClick: () => { onSendMessage?.(); served.onAction({ type: 'edit', value: keptPrompt(served.state.messages, served.state.messages.length - 1)! }); served.onAction({ type: 'send' }); } }} />}
         {turn.state === 'failed' && <FailureNotice sentence="Reply unavailable."
           action={accountReady && served.state.draft === turn.prompt ? { label: 'Retry', onClick: () => served.onAction({ type: 'retry' }) } : undefined} />}
         {turn.state === 'unknown' && <p className="hub-footer-status" role="alert">{ASSISTANT_UNKNOWN_NOTICE}</p>}

@@ -30,6 +30,8 @@ export interface AssistantMessage {
   readonly parts?: readonly AssistantReplyPart[];
   readonly sources?: readonly AssistantSource[];
   readonly code?: AssistantFailureCode;
+  /** The server allowed resending this refusal: nothing was accepted, or the recorded turn was an effect-free read. */
+  readonly retry?: boolean;
   readonly attachments?: readonly { readonly id: string; readonly name: string }[];
 }
 

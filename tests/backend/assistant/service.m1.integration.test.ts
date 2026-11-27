@@ -282,6 +282,22 @@ it("starts a session under the accepted turn in ask mode and appends its server-
     assert.equal(JSON.stringify(w.bodies).includes(w.run().envelope.runId), false);
   } finally { await w.close(); }
 });
+it("keeps a started session's chip when the final inference then fails, and settles it as a reply that cannot be resent", async () => {
+  const w = await world(); try {
+    let starts = 0;
+    w.offerSessions({ start() { starts++; return Promise.resolve([w.run()]); } });
+    w.script.push(call("start_session", { workflow: "person-lookup", entries: [String(EXECUTOR_EID)] }), partialTextStream("incomplete"));
+    const input = w.request(), envelope = await w.send(input); const reply = result(envelope);
+    assert.equal(reply.state, "answered"); if (reply.state !== "answered") assert.fail();
+    assert.equal(envelope.receipt?.delivery, "answered");
+    const [failed, session] = reply.reply.parts;
+    assert.ok(failed?.kind === "text" && failed.runs[0]?.kind === "failure" && failed.runs[0].code === "ASSISTANT_RESPONSE_INCOMPLETE");
+    assert.ok(session?.kind === "session"); assert.equal(session.runId, w.run().envelope.runId);
+    assert.equal(starts, 1);
+    const stored = w.service().conversation(input.conversationId); assert.ok(stored);
+    assert.ok(stored.messages.at(-1)?.payload.parts.some(part => part.kind === "session"));
+  } finally { await w.close(); }
+});
 it("offers no retry after a session start was attempted and refuses session tools without their owner before the provider", async () => {
   const w = await world(); try {
     w.offerSessions({ start() { return Promise.reject(new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE")); } });

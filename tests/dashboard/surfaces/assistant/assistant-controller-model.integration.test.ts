@@ -303,6 +303,24 @@ it('shows one retryable failure after a lost chat response', async () => {
   assert.equal(calls, 2);
 });
 
+it('offers no Retry for a recorded refusal the server marked not resendable, so a turn that may have started a run is never sent twice', async () => {
+  vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
+  let current!: ReturnType<typeof useAssistantController>, calls = 0;
+  const client = resultClient({ async assistantRespond(): Promise<ScriptedReply> { calls++; return { state: 'no-reply', reason: 'ASSISTANT_RESPONSE_FAILED', recorded: true }; } });
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  const account = { ...preview, mode: 'live' as const }, producer = { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) };
+  function Harness() {
+    current = useAssistantController(client, 'current', undefined, false);
+    return createElement(ShellAssistantPanel, { conversationPort: producer, served: current });
+  }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
+  await act(async () => { current.onAction({ type: 'edit', value: 'check UCPath for 10000001' }); current.onAction({ type: 'send' }); });
+  assert.match(document.body.textContent ?? '', /The assistant could not reply\./u);
+  assert.equal([...document.querySelectorAll('button')].some(button => button.textContent === 'Retry'), false);
+  assert.equal(calls, 1);
+});
+
 it('shows a refused reply as one failure notice whose Retry sends the kept prompt again', async () => {
   vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
   let current!: ReturnType<typeof useAssistantController>, calls = 0;

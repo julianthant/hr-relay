@@ -28,7 +28,7 @@ type AssistantM1Result = Extract<AssistantM1RespondEnvelope, { kind: 'result' }>
 export function presentResult(result: AssistantM1Result, requestId: number): AssistantMessage {
   const id = `assistant-${requestId}`;
   return result.state === 'answered' ? { id, role: 'assistant', text: replyText(result.reply.parts), parts: result.reply.parts }
-    : { id, role: 'assistant', text: ASSISTANT_FAILURES[result.reason], code: result.reason };
+    : { id, role: 'assistant', text: ASSISTANT_FAILURES[result.reason], code: result.reason, retry: result.canRetry || result.turn === null };
 }
 
 /** One served chat: its id, the cached revision a send expects, and where receipts and local outcomes go. */
@@ -161,16 +161,19 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     },
     /** A session chip's Stop: the run's own served Cancel through the command executor, then a re-read of the chip. */
     async stop(stop: SessionStop) {
-      const commands = binding.commands;
-      if (retired || commands === undefined) return;
-      const composed = composeCommandRequest(stop.descriptor, { runId: stop.runId, expectedVersion: stop.descriptor.expectedVersion },
+      if (retired || binding.commands === undefined) return;
+      // The chip's cached Cancel may be a revision behind (queued to running); take the run's current Stop, or none when it no longer offers one.
+      await refreshSessions();
+      const commands = binding.commands, fresh = state.sessions?.find(session => session.runId === stop.runId)?.stop ?? null;
+      if (retired || commands === undefined || fresh === null) return;
+      const composed = composeCommandRequest(fresh.descriptor, { runId: fresh.runId, expectedVersion: fresh.descriptor.expectedVersion },
         { actorId: commands.scope.actorId, source: 'queue' });
       if (composed.state === 'refused') {
         commands.feedback({ kind: 'failed', commandId: '', cause: composed.reason, feedback: formatErrorCatalogFailure(createErrorCatalogFailure('COMMAND_REFUSED', {})) });
         return;
       }
       const before = state.sessions?.find(session => session.runId === stop.runId);
-      await commands.executor.execute(CommandRequestSchema.parse(composed.request), { scope: commands.scope, publish: commands.feedback,
+      const outcome = await commands.executor.execute(CommandRequestSchema.parse(composed.request), { scope: commands.scope, publish: commands.feedback,
         // The chip re-read proves the Cancel: the served row moved on or no longer offers Stop.
         readback: async (_request, reply) => {
           await refreshSessions();
@@ -178,6 +181,8 @@ export function createAssistantController(client: AssistantQueries, initialBindi
           const applied = "state" in reply && (reply.state === "applied" || reply.state === "already-applied");
           return { state: applied && (after === undefined || after.stop === null || after.rowRevision !== before?.rowRevision) ? "matched" : "mismatch", evidence: after ?? null };
         } });
+      // A conflict or refusal leaves the chip showing what the run is doing now.
+      if (outcome.kind !== 'confirmed') await refreshSessions();
     },
     /** Stages one picked file under this chat so a later send can name it; nothing reaches the model before then. */
     async stage(file: Readonly<{ name: string; mediaType: string; bytes: Uint8Array }>): Promise<AssistantStageResult> {

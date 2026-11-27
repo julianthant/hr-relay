@@ -9,8 +9,9 @@ import { emitFaultWithCauses } from "../logs/debug-events.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import type { RunRecord } from "../../models/run/record.js";
+import { ErrorCatalogCodeSchema } from "../../models/failures/error-catalog.js";
 import { z } from "zod";
-import { AssistantHistoryOperationSchema, type AssistantActivityWire, type AssistantHistoryResult, type AssistantReceipt, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES,
+import { AssistantHistoryOperationSchema, type AssistantActivityWire, type AssistantHistoryResult, type AssistantReceipt, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, type AssistantReplyPart,
   AssistantInferenceResultSchema, ASSISTANT_ATTACHMENT_TYPES, ASSISTANT_ATTACHMENT_UPLOAD_MS, type AssistantStageResult, ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_CONTEXT_TEXT_MAX_BYTES,
   type AssistantAttachmentRecord, type AssistantUserContentPart, assistantInputMedia, type AssistantFailureCode, type AssistantInputItem } from "../../models/dashboard/assistant.js";
 import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
@@ -271,7 +272,17 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
           return { ...await options.proposals.answer(attempt, signal, turnCurrent), assertCurrent: turnCurrent };
         } catch (error) { return { reason: failure(error, signal) }; }
       }
+      /** A turn that already started a session keeps its chips: a later failure settles as that reply plus a Failed line, so it is never resent. */
       async function runTurn(): Promise<Turn> {
+        const sessionParts: AssistantReplyPart[] = [];
+        const turn = await modelTurn(sessionParts);
+        if ("parts" in turn || sessionParts.length === 0) return turn;
+        // A lost provider reply after the start is reported as incomplete; the started runs are already known.
+        const reason = "reason" in turn ? turn.reason : "ASSISTANT_RESPONSE_INCOMPLETE", text = ASSISTANT_FAILURES[reason];
+        return { modelText: `Started ${String(sessionParts.length)} read-only session(s), then the reply failed: ${text}`, assertCurrent,
+          parts: [{ kind: "text", runs: [{ kind: "failure", code: ErrorCatalogCodeSchema.parse(reason), text: "Failed" }, { kind: "plain", text: `: ${text}` }] }, ...sessionParts] };
+      }
+      async function modelTurn(sessionParts: AssistantReplyPart[]): Promise<Turn> {
         try {
           assertCurrent();
           if (open !== undefined) options.proposals?.supersede(conversationId);
@@ -309,13 +320,12 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
           if ("code" in assembled) return { reason: assembled.code };
           const { input } = assembled;
           const outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>(), unrecovered = new Map<string, AssistantFailureCode>();
-          const sessionRuns: RunRecord[] = [];
           const startSession = async (tool: AssistantSessionTool, parameters: JsonValue) => {
             if (reads.sessions === undefined) throw new AssistantToolRefusal("ASSISTANT_UNAVAILABLE");
             const request = tool.request(parameters, context);
             effectful = true;
             const runs = await reads.sessions.start(acceptance.acceptedTurn, request, approvalMode, signal, assertAuthority);
-            sessionRuns.push(...runs);
+            sessionParts.push(...runs.map(run => assistantSessionPart(run, workflowLabel(run.envelope.workflow))));
             return { runs: runs.map(run => table.issue("R", run.envelope.runId, options.runReferenceLabel(run.envelope.runId, run.version), run.envelope.runId, run.version)) };
           };
           let proposal: AssistantProposalDraft | undefined;
@@ -346,7 +356,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
               const modelText = messages[0].content.map(part => part.text).join("");
               const bindings = await reads.bindings(table, acceptance.acceptedTurn);
               assertAuthority();
-              return { modelText, parts: [...resolveAssistantReply(modelText, table, bindings), ...sessionRuns.map(run => assistantSessionPart(run, workflowLabel(run.envelope.workflow))),
+              return { modelText, parts: [...resolveAssistantReply(modelText, table, bindings), ...sessionParts,
                 ...(proposal === undefined ? [] : assistantProposalParts(proposal))], assertCurrent: assertAuthority, ...(proposal === undefined ? {} : { proposal }) };
             }
             if (toolCalls.length !== 1 || messages.length !== 0) return { reason: "ASSISTANT_INVALID" };
