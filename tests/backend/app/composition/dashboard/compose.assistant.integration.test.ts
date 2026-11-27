@@ -552,6 +552,15 @@ it("applies spreadsheet and settings edits in the accepted turn, keeps values lo
         assert.equal(db.authority.workbooks.read(libraryId)?.workbook.name, "Summer tracker");
       } else {
         assert.equal(value.value, "Off");
+        const settings = await client.editableSettings();
+        const leaves = settings.sections.flatMap(section => section.leaves);
+        const headless = leaves.find(leaf => leaf.path === "browser.headless");
+        assert.ok(headless);
+        assert.equal(headless.label, "Headless browser");
+        assert.equal(part.runs[0]?.kind === "plain" && part.runs[0].text, `Changed ${headless.label} to `);
+        const reply = replyText(rows);
+        for (const leaf of leaves) assert.ok(!reply.includes(leaf.path), `Internal setting path in reply: ${leaf.path}`);
+        assert.ok(edit.details.kind === "settings" && edit.details.path === headless.path);
         assert.equal(db.authority.settingsCurrent.get()?.settings.browser?.headless, false);
         assert.ok(db.authority.commandAudits.findByCommand(edit.id));
       }
@@ -561,6 +570,6 @@ it("applies spreadsheet and settings edits in the accepted turn, keeps values lo
     }
     const activity = await client.assistantActivity?.();
     assert.ok(activity?.rows.some(row => row.label === "Renamed the spreadsheet"));
-    assert.ok(activity?.rows.some(row => row.label === "Changed browser.headless"));
+    assert.ok(activity?.rows.some(row => row.label === "Changed Headless browser"));
   });
 });

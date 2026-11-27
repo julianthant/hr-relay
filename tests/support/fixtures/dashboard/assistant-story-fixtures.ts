@@ -37,7 +37,7 @@ const edit = (label: string, previous: string, next: string): AssistantReplyPart
   runs: [plain(label), { kind: "value", previous, value: next }, plain(".")] });
 const REPLIES: Readonly<Record<Exclude<AssistantReplyScript, "never" | "lost" | { readonly refused: AssistantFailureCode }>, readonly AssistantReplyPart[]>> = {
   "spreadsheet-edit": [edit("Renamed the spreadsheet to ", "Spring tracker", "Summer tracker")],
-  "settings-edit": [edit("Changed browser.headless to ", "On", "Off")],
+  "settings-edit": [edit("Changed Headless browser to ", "On", "Off")],
   answer: ANSWER, "answer-long": LONG, proposal: proposal([person("Sample, Avery", "10101010")]),
   "proposal-many": proposal([person("Sample, Avery", "10101010"), person("Vega, Morgan", "20202020"), person("Rivera, Alex", "30303030")]), "answered-yes": ANSWERED_YES,
 };

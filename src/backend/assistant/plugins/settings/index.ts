@@ -3,6 +3,7 @@ import { SETTINGS_CATALOG } from "../../../../models/config/catalog.js";
 import { SETTINGS_SCHEMA_HASH, SettingsPatchSchema, deriveRawSettingsPatchFingerprint, isRetiredSettingsPath } from "../../../../models/config/settings.js";
 import { SettingsCommandRequestSchema } from "../../../../rules/commands/commands.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
+import { settingsLabel } from "../../../runs/queries/settings-editor.js";
 import { observeEdit, operatorEditSource, requireEditRead, requireOperatorSource } from "../../applied-edits.js";
 import { AssistantChangeOutput, AssistantToolRefusal, type AssistantPlugin } from "../plugin.js";
 import type { AssistantPluginDeps } from "../registry.js";
@@ -73,7 +74,7 @@ export function settingsPlugin(deps: Pick<AssistantPluginDeps, "settings" | "set
         const next = after === undefined ? { clear: true as const } : { set: JsonValueSchema.parse(after) };
         return { details: { kind: "settings", command: "apply-settings", path: key, revision: saved.revision,
           prior: before === undefined ? { clear: true } : { set: JsonValueSchema.parse(before) }, next },
-          label: `Changed ${key}`, before: display(before), after: display(after), source: operatorEditSource(context, JsonValueSchema.parse(next)) };
+          label: `Changed ${settingsLabel(key)}`, before: display(before), after: display(after), source: operatorEditSource(context, JsonValueSchema.parse(next)) };
       });
     },
   });

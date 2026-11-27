@@ -16,7 +16,7 @@ import type { ProtectedSettingsRuntimeSnapshot, SettingsRuntimeSnapshot } from "
 
 const SECTION_LABELS = { general: "General", display: "Display", performance: "Performance", paths: "Paths", routes: "Routes", "annual-dates": "Annual dates", providers: "Provider budgets & models" } as const;
 const LABELS: Readonly<Record<string, string>> = {
-  "actor.label": "Operator label", "display.screenWidth": "Screen width", "display.screenHeight": "Screen height",
+  "actor.label": "Operator label", "browser.headless": "Headless browser", "display.screenWidth": "Screen width", "display.screenHeight": "Screen height",
   "ocr.pageConcurrency": "OCR page concurrency", "ocr.maxValidationRetries": "OCR validation retries",
   "timeouts.duoApprovalSeconds": "Duo approval timeout", "concurrency.defaultWorkers": "Default workers", "paths.reportsDir": "Reports directory",
   ucpathUserId: "UCPath user ID", ucpathPassword: "UCPath password",
@@ -35,7 +35,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "preferences.notifications.sound": "Sound for finished runs, failures and runs that need you.",
   "preferences.sendShortcut": "Choose which keys send a message in the assistant.",
 };
-function settingsLabel(key: string): string {
+export function settingsLabel(key: string): string {
   return LABELS[key] ?? key.split(".").map(part => part.replace(/([a-z])([A-Z])/gu, "$1 $2")).join(" · ");
 }
 function atPath(value: unknown, path: string): unknown {
