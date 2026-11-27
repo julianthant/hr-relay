@@ -1965,6 +1965,12 @@ body[data-demo-theme="light"] {
   max-width: none;
 }
 
+/* The running segment of a queue card's step bar. */
+@keyframes ds-step-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(200%); }
+}
+
 /* REDUCED MOTION
    One switch. Because every transition in the system reads a --ds-dur-* */
 @media (prefers-reduced-motion: reduce) {
