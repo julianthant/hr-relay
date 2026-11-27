@@ -82,6 +82,24 @@ describe("affected integration tests", () => {
     });
   });
 
+  it("ranks the workflow Explorer tests first when a workflow source changes, so the shard limit keeps them", () => {
+    const explorer = "tests/backend/transports/http/routes/explorer.separations.integration.test.ts";
+    const { root, write, commit } = fixture({ [explorer]: 300, "tests/a.integration.test.ts": 300 });
+    write("src/workflows/separations/workflow.ts", "export const value = 1;");
+    write("src/other.ts", "export const value = 1;");
+    write("src/catalog.ts", 'export { value } from "./workflows/separations/workflow.js";');
+    write("tests/a.integration.test.ts", 'import "../src/workflows/separations/workflow.js"; import "../src/other.js";');
+    write(explorer, 'import "../../../../../src/catalog.js";');
+    const base = commit();
+    write("src/workflows/separations/workflow.ts", "export const value = 2;");
+    const workflow = commit();
+    write("src/other.ts", "export const value = 2;");
+    const other = commit();
+
+    expect(createAffectedTestsPlanner(root)(base, workflow, 1)).toEqual({ core: true, shardCount: 2, shards: [[explorer]] });
+    expect(createAffectedTestsPlanner(root)(workflow, other, 1)).toEqual({ core: false, shardCount: 1, shards: [["tests/a.integration.test.ts"]] });
+  });
+
   it("gives a test over the 300s target its own shard in task and full selection", () => {
     const { root, write, commit } = fixture({
       "tests/a.integration.test.ts": 100,
