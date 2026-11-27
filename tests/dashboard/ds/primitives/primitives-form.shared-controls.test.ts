@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -25,5 +27,8 @@ describe("Input, SecretField and SearchInput", () => {
     type Props = ComponentProps<typeof SearchInput>;
     const variantFree: "variant" extends keyof Props ? never : true = true;
     assert.equal(variantFree, true);
+    const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? files(join(dir, entry.name)) : [join(dir, entry.name)]);
+    const offenders = files("src/dashboard").filter(file => /\.(tsx|css)$/u.test(file) && /<SearchInput[^>]*\bvariant=|ds-search-field--/u.test(readFileSync(file, "utf8")));
+    assert.deepEqual(offenders, []);
   });
 });

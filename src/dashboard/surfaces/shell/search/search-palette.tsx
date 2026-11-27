@@ -1,8 +1,8 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
-import { ChartNoAxesColumn, Circle, CircleAlert, CircleCheck, Clock, FileSpreadsheet, ListTree, LoaderCircle, Play, Search, Settings, Table2, type LucideIcon } from "lucide-react";
+import { ChartNoAxesColumn, Circle, CircleAlert, CircleCheck, Clock, FileSpreadsheet, ListTree, LoaderCircle, Play, Settings, Table2, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Kbd, Skeleton } from "../../../ds/ui.js";
+import { Kbd, SearchInput, Skeleton } from "../../../ds/ui.js";
 import { workflowIcon } from "../../workflows/workflow-icons.js";
 import { dsLayer } from "../../../ds/theme/tokens.js";
 import { cn } from "../../../lib/utils.js";
@@ -34,12 +34,14 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
   const list = useRef<HTMLDivElement>(null);
   // A Runs list that fits without scrolling can never fire a scroll, so it asks for the next page itself.
   useEffect(() => { const el = list.current; if (open && filter === "runs" && onMoreRuns && el && el.scrollHeight <= el.clientHeight) onMoreRuns(); }, [open, filter, onMoreRuns, sections]);
-  // cmdk leaves aria-activedescendant unset until the selection first moves
+  // cmdk owns the list id and leaves aria-activedescendant unset until the selection first moves; the shared field is not its Input, so both are wired here
   const watchSelection = (root: HTMLElement | null) => {
     if (!root) return;
     const sync = () => {
       const input = root.querySelector("[cmdk-input]");
       const selected = root.querySelector('[cmdk-item][aria-selected="true"]');
+      const results = root.querySelector("[cmdk-list]");
+      if (input && results) input.setAttribute("aria-controls", results.id);
       if (input && selected) input.setAttribute("aria-activedescendant", selected.id);
     };
     sync();
@@ -58,8 +60,7 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
         onEscapeKeyDown={event => { if (query !== "") { event.preventDefault(); onQuery(""); } }}>
         <DialogPrimitive.Title className="sr-only">Search Relay</DialogPrimitive.Title>
         <Command ref={watchSelection} shouldFilter={false} loop label="Search Relay" className="flex min-h-0 flex-1 flex-col">
-          <div className="ds-search-field search-palette-field"><div data-slot="search-field-group"><Search aria-hidden className="size-[14px] shrink-0 text-[color:var(--field-placeholder)]" />
-            <Command.Input autoFocus data-slot="search-field-input" aria-label="Search Relay" placeholder="Search Relay" value={query} onValueChange={onQuery} /></div></div>
+          <div className="search-palette-field"><SearchInput autoFocus cmdk-input="" role="combobox" aria-expanded aria-label="Search Relay" placeholder="Search Relay" autoComplete="off" value={query} onChange={event => onQuery(event.target.value)} onClear={() => onQuery("")} /></div>
           <Command.List ref={list} label="Results" className="search-palette-list" onScroll={event => { const list = event.currentTarget; if (onMoreRuns && list.scrollHeight - list.scrollTop - list.clientHeight < list.clientHeight) onMoreRuns(); }}>
             {sections.length === 0 && !loading && <p role="status" className="search-palette-empty">No matches</p>}
             {sections.map(section => <Command.Group key={section.id} aria-label={section.label}>

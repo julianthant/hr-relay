@@ -84,3 +84,18 @@ it("asks for the next page itself when the Runs list does not overflow", async (
   await act(async () => { [...document.querySelectorAll<HTMLButtonElement>(".search-palette-chips button")].find(button => button.textContent === "Runs")!.click(); });
   assert.equal(more.mock.calls.length, 1);
 });
+
+it("is the shared search field and still a combobox driven by the arrow keys and Enter", async () => {
+  const actions: string[] = [];
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(RailSearch, { data: { today: "2026-08-03", counts: {}, results: [] }, workflows: [], onAction: action => actions.push(action), onWorkflow: () => {}, onResult: () => {} }))));
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!.click());
+  const input = document.querySelector<HTMLInputElement>('input[aria-label="Search Relay"]')!;
+  assert(input.closest(".ds-search-field"));
+  assert.equal(input.getAttribute("role"), "combobox");
+  assert.equal(input.getAttribute("aria-controls"), document.querySelector("[cmdk-list]")!.id);
+  await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })); });
+  await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+  assert.deepEqual(actions, ["spreadsheets"]);
+});

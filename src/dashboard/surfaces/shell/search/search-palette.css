@@ -4,7 +4,6 @@
 .search-palette-scrim { position: fixed; inset: 0; background: var(--ds-surface-scrim); }
 .search-palette { position: fixed; left: 50%; top: 64px; width: min(760px, calc(100vw - 32px)); transform: translateX(-50%); display: flex; flex-direction: column; overflow: hidden; padding: 0; outline: none; }
 .search-palette-field { flex: none; padding: var(--ds-space-base); }
-.search-palette-field [data-slot="search-field-group"] { display: flex; align-items: center; }
 .search-palette-chips { display: flex; flex: none; gap: var(--ds-space-tight); padding: var(--ds-space-base); border-top: 1px solid var(--ui-stroke); }
 .search-palette-chips button { height: 28px; padding: 0 var(--ds-space-cozy); border: 0; border-radius: 9999px; background: transparent; color: var(--pal-label); font-size: 13px; cursor: pointer; }
 .search-palette-chips button:hover { background: color-mix(in srgb, var(--ds-fg) 6%, transparent); }
