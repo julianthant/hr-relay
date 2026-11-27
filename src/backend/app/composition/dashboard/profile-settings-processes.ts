@@ -41,13 +41,17 @@ const ReplySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("unavailable"), id: z.uuid() }),
 ]);
 type WorkerReply = Extract<z.infer<typeof ReplySchema>, { kind: "read" | "command" }>;
+type ProcessLifetime = Pick<RuntimeLifetimeLock, "port" | "share" | "observeOwnedChildClosure" | "assertOwnedChildClosed">;
 const STOP_TIMEOUT_MS = 10_000;
 const unavailable = () => new Error("profile-settings-worker-unavailable");
+const commandClosureUnproved = () => new Error("settings-command-worker-close-unproved");
 
 /** Separate profile-bound processes read editor facts and apply ordinary commands. */
-export function createProfileSettingsProcesses(admission: RuntimeAdmission, lifetime: RuntimeLifetimeLock, profileEpoch: number, hostFacts: HostConfigFacts) {
-  const editor = profileSettingsProcess(admission, lifetime, profileEpoch, "editor");
-  const commands = profileSettingsProcess(admission, lifetime, profileEpoch, "ordinary-command");
+export function createProfileSettingsProcesses(admission: Pick<RuntimeAdmission, "profileBinding">, lifetime: ProcessLifetime, profileEpoch: number, hostFacts: HostConfigFacts, assertCurrent: () => void) {
+  const { profileId } = admission.profileBinding;
+  const editor = profileSettingsProcess(profileId, lifetime, profileEpoch, "editor");
+  const commands = profileSettingsProcess(profileId, lifetime, profileEpoch, "ordinary-command", assertCurrent);
+  let commandTail = Promise.resolve();
   return {
     async read(): Promise<ProtectedSettingsEditorFacts> {
       const reply = await editor.request({ kind: "read" });
@@ -55,7 +59,10 @@ export function createProfileSettingsProcesses(admission: RuntimeAdmission, life
       return reply.facts;
     },
     async execute(command: z.infer<typeof SettingsCommandRequestSchema>) {
-      const reply = await commands.request({ kind: "apply", command, hostFacts });
+      // Keep queued saves in the parent until the worker has finished the admitted save.
+      const request = commandTail.then(() => commands.request({ kind: "apply", command, hostFacts }));
+      commandTail = request.then(() => {}, () => {});
+      const reply = await request;
       if (reply.kind !== "command" || reply.result.commandId !== command.commandId
         || reply.committed !== (reply.result.state === "applied")) throw unavailable();
       return reply.result;
@@ -65,11 +72,11 @@ export function createProfileSettingsProcesses(admission: RuntimeAdmission, life
   };
 }
 
-function profileSettingsProcess(admission: RuntimeAdmission, lifetime: RuntimeLifetimeLock, profileEpoch: number, role: z.infer<typeof RoleSchema>) {
-  const profileId = admission.profileBinding.profileId;
+function profileSettingsProcess(profileId: string, lifetime: ProcessLifetime, profileEpoch: number, role: z.infer<typeof RoleSchema>, assertCurrent?: () => void) {
   const fixture = copySigninFixtureWorkspace() !== undefined;
   let worker: ReturnType<typeof spawn> | undefined;
-  let closed = false;
+  let closing: Promise<void> | undefined;
+  let closureFailure: Error | undefined;
 
   function spawn() {
     const child = fork(fileURLToPath(import.meta.url), [String(lifetime.port), profileId, String(profileEpoch), role, ...(fixture ? ["fixture"] : [])], {
@@ -88,7 +95,12 @@ function profileSettingsProcess(admission: RuntimeAdmission, lifetime: RuntimeLi
     };
     child.on("error", failed);
     child.once("disconnect", failed);
-    const exited = new Promise<number | null>(resolve => child.once("close", code => { failed(); worker = undefined; resolve(code); }));
+    const exited = new Promise<void>(resolve => child.once("close", code => {
+      if (role === "ordinary-command" && code !== 0) closureFailure = commandClosureUnproved();
+      failed();
+      worker = undefined;
+      resolve();
+    }));
     child.on("message", (input: unknown) => {
       const result = ReplySchema.safeParse(input);
       if (!result.success) { failed(); child.kill("SIGKILL"); return; }
@@ -113,7 +125,8 @@ function profileSettingsProcess(admission: RuntimeAdmission, lifetime: RuntimeLi
         const timer = role === "editor" ? setTimeout(() => { failed(); child.kill("SIGKILL"); }, STOP_TIMEOUT_MS) : undefined;
         try {
           await ready.promise;
-          if (!child.connected) throw unavailable();
+          if (closing !== undefined || !child.connected) throw unavailable();
+          assertCurrent?.();
           pending.set(id, reply);
           child.send({ ...request, id }, error => { if (error !== null) reply.reject(unavailable()); });
           return await reply.promise;
@@ -127,12 +140,11 @@ function profileSettingsProcess(admission: RuntimeAdmission, lifetime: RuntimeLi
         const deadline = Promise.withResolvers<never>();
         const timeout = setTimeout(() => {
           if (role === "editor") child.kill("SIGKILL");
-          else deadline.reject(new Error("settings-command-worker-close-unproved"));
+          else { failed(); deadline.reject(commandClosureUnproved()); }
         }, STOP_TIMEOUT_MS);
         try {
-          const code = await Promise.race([exited, deadline.promise]);
+          await Promise.race([exited, deadline.promise]);
           if (owned) lifetime.assertOwnedChildClosed(child);
-          if (role === "ordinary-command" && code !== 0) throw new Error("settings-command-worker-close-unproved");
         } finally { clearTimeout(timeout); }
       },
     };
@@ -140,12 +152,14 @@ function profileSettingsProcess(admission: RuntimeAdmission, lifetime: RuntimeLi
 
   return {
     request: (request: WorkerRequest) => {
-      if (closed) throw unavailable();
+      if (closing !== undefined || closureFailure !== undefined) throw unavailable();
       return (worker ??= spawn()).request(request);
     },
-    async close() {
-      closed = true;
-      await worker?.close();
+    close() {
+      return closing ??= (async () => {
+        await worker?.close();
+        if (closureFailure !== undefined) throw closureFailure;
+      })();
     },
   };
 }

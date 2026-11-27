@@ -151,7 +151,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   })();
   const { persistedSettings, resolved } = bootConfig;
   const protectedSettingsAuthority = context.credentials;
-  const settingsProcesses = input.profileSettingsProcesses?.(admission, input.lifetimeLock, context.profileEpoch, hostFacts);
+  const settingsProcesses = input.profileSettingsProcesses?.(admission, input.lifetimeLock, context.profileEpoch, hostFacts, assertCurrent);
   if (settingsProcesses !== undefined) startupCleanups.push(requiredClosure(() => settingsProcesses.close()), requiredClosure(() => settingsProcesses.closeCommands()));
   const protectedSecrets = { read: () => { assertCurrent(); const result = context.protectedSecrets.read(); assertCurrent(); return result; } };
   const settingsBoundary = composeSettings({ database, readLanes, hostFacts, clock, active: activeSettingsRuntimeIdentity,

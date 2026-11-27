@@ -37,6 +37,9 @@ export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDa
   const closeProducers = (): Promise<void> => {
     producerClosure ??= (async () => {
       const failures: unknown[] = [];
+      const commandClosure = (async () => {
+        try { await settingsProcesses?.closeCommands(); } catch (error) { failures.push(error); }
+      })();
       const transportClosure = (async () => {
         try { await server.close(cause => stepFailures.push({ step: "transport-close", cause })); custody.transportClosed = true; } catch (error) { failures.push(error); }
       })();
@@ -57,10 +60,9 @@ export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDa
         stepFailures.push({ step: "stream-close", cause });
         if (!hub.subscriptionsClosed) failures.push(cause);
       }
-      await Promise.all([timelineClosure, notificationClosure, editorClosure]);
+      await Promise.all([timelineClosure, notificationClosure, editorClosure, commandClosure]);
       // Lanes close after their readers stop and before restore, logout or shutdown closes the store they read.
       try { await readLanes.close(); } catch (error) { failures.push(error); }
-      try { await settingsProcesses?.closeCommands(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       producersClosed = true;
     })();
