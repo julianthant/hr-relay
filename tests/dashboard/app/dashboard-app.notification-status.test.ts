@@ -32,24 +32,31 @@ const listRow = (value: readonly NotificationWire[]) => ({ model: "notification-
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
 
 /** The app on `?day=`, its day stream answered by envelopes the test pushes; every other read is the fixture BFF's. */
-async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatchOutcome) {
+async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatchOutcome, others: readonly NotificationWire[] = []) {
   const { app } = createFixtureBff();
   const opened: { day: string; lastEventId: string | undefined; push: (envelope: unknown) => void; end: () => void }[] = [];
   const commands: string[] = [];
   const requested: string[] = [];
   /** The row the server can deliver on the stream after accepting a command. */
   let served: NotificationWire | undefined = NOTIFICATION;
+  let rest = [...others];
+  const cleared: string[] = [];
+  const listedByServer = () => [...(served === undefined ? [] : [served]), ...rest];
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
     requested.push(path);
-    if (path === "/api/v1/notifications") return Response.json(served === undefined ? [] : [served]);
+    if (path === "/api/v1/notifications") return Response.json(listedByServer());
     if (path === `/api/v1/notifications/${NOTIFICATION.notificationId}/target`) return Response.json({ kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: FIXTURE_DAY_WIRE.day });
     if (path === "/api/v1/commands") {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); commands.push(command.type);
       if (command.type === "notification-read" && served?.kind === "notification") served = NotificationWireSchema.parse({ ...served, readState: "read", state: "read", revision: served.revision + 1 });
-      if (command.type === "notification-clear") served = undefined;
       const members = "members" in command.target ? command.target.members : [command.target];
+      if (command.type === "notification-clear") {
+        const ids = members.map(({ notificationId }) => notificationId); cleared.push(...ids);
+        if (ids.includes(NOTIFICATION.notificationId)) served = undefined;
+        rest = rest.filter(row => !ids.includes(row.notificationId));
+      }
       return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: members.map(({ notificationId }) => ({ family: "notification", notificationId })),
         notificationReceipt: { actorId: command.target.actorId, changes: members.map(({ notificationId, expectedVersion }) => ({ notificationId, revision: expectedVersion + 1 })) } });
     }
@@ -77,7 +84,7 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
     const { day: streamed, push } = stream();
     await act(async () => {
       push({ type: "hello", wireVersion: 1, descriptorHash: FIXTURE_DAY_WIRE.descriptorHash, projectionGeneration: FIXTURE_DAY_WIRE.projectionGeneration, cursor: "pc:1" });
-      push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", position: 0, rows: [statusRow(status), listRow([NOTIFICATION])],
+      push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", position: 0, rows: [statusRow(status), listRow([NOTIFICATION, ...others])],
         payload: { ...FIXTURE_DAY_WIRE, day: streamed, snapshotCursor: "pc:1" } });
       push({ type: "health", state: "live" });
     });
@@ -98,7 +105,7 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
   };
   let cursor = 1;
   /** A rows-only change carrying the status row, as the hub sends when the status moves or its retry reads it. */
-  const change = async (status: typeof READY | typeof UNAVAILABLE, handoff = false, rows = served === undefined ? [] : [served]) => {
+  const change = async (status: typeof READY | typeof UNAVAILABLE, handoff = false, rows = listedByServer()) => {
     const after = `pc:${cursor}`; cursor += 1;
     await act(async () => { stream().push({ type: "change", topic: "dashboard-day", cursor: `pc:${cursor}`, after, position: 0,
       rows: [statusRow(status), ...(handoff ? [listRow(rows)] : [])] }); });
@@ -126,7 +133,7 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
   const listed = () => [...document.querySelectorAll(".notice-title")].map(title => title.textContent);
   const notice = () => document.querySelector(".notice-status")?.textContent ?? "";
   const targetReads = () => requested.filter(path => path.endsWith("/target")).length;
-  return { host, opened, commands, requested, greet, change, resume, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
+  return { host, opened, commands, cleared, serve: (next: readonly NotificationWire[]) => { rest = [...next]; }, requested, greet, change, resume, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
 }
 
 it("confirms read and clear from the command replies without requesting the inbox list", async () => {
@@ -141,6 +148,46 @@ it("confirms read and clear from the command replies without requesting the inbo
   assert.deepEqual(m.commands, ["notification-read", "notification-clear"]);
   assert(!m.requested.includes("/api/v1/notifications"));
   assert.doesNotMatch(m.notice(), /could not|replaced|pending/iu);
+});
+
+it("clears only the chosen notice through the served command, and a fresh served read keeps it cleared", async () => {
+  const second = NotificationWireSchema.parse({ ...NOTIFICATION, notificationId: "00000000-0000-4000-8000-000000000333", publicationId: "d".repeat(64),
+    title: "Second run completed", context: { state: "available", subject: "Second subject", workflow: "Person Lookup" } });
+  const m = await mount(FIXTURE_DAY_WIRE.day, undefined, [second]);
+  await m.greet(READY);
+  await m.openBell();
+  assert.deepEqual([...m.listed()].sort(), ["Second subject", "Served subject"]);
+  const row = [...document.querySelectorAll<HTMLElement>("li.notice-row")].find(found => found.querySelector(".notice-title")?.textContent === "Second subject");
+  const clear = row?.querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]');
+  assert(clear, "the second notice has Clear");
+  await act(async () => clear.click()); await settle();
+  assert.deepEqual(m.commands, ["notification-clear"]);
+  assert.deepEqual(m.cleared, [second.notificationId], "the command names the chosen notice only");
+  assert.deepEqual(m.listed(), ["Served subject"]);
+  await m.change(READY, true);
+  assert.deepEqual(m.listed(), ["Served subject"], "the server's fresh list keeps it cleared");
+});
+
+it("keeps a read storage notice under Needs you while it stands, then clears it from Earlier once resolved, and a fresh served read omits it", async () => {
+  const storage = NotificationWireSchema.parse({ ...NOTIFICATION, notificationId: "00000000-0000-4000-8000-000000000444", publicationId: "e".repeat(64), trigger: "storage",
+    severity: "warning", title: "Storage needs attention", readState: "read", state: "read", link: { kind: "storage" }, context: { state: "unavailable" }, standing: true });
+  const m = await mount(FIXTURE_DAY_WIRE.day, undefined, [storage]);
+  await m.greet(READY);
+  await m.openBell();
+  const group = (label: string) => [...document.querySelectorAll(`section[aria-label="${label}"] .notice-title`)].map(title => title.textContent);
+  const clearOf = () => [...document.querySelectorAll<HTMLElement>("li.notice-row")].find(row => row.dataset.id !== undefined && row.querySelector(".notice-title")?.textContent === "Storage needs attention")?.querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]') ?? null;
+  assert.deepEqual(group("Needs you"), ["Storage needs attention"], "standing and read, it stays under Needs you");
+  assert.ok(clearOf() === null, "a standing notice has no Clear");
+
+  m.serve([NotificationWireSchema.parse({ ...storage, standing: undefined, revision: 2 })]);
+  await m.change(READY, true);
+  assert.deepEqual(group("Earlier").includes("Storage needs attention"), true, "resolved, it lists under Earlier");
+  const clear = clearOf();
+  assert(clear, "a resolved storage notice can be cleared");
+  await act(async () => clear.click()); await settle();
+  assert.deepEqual(m.cleared, [storage.notificationId], "the served command names the storage notice");
+  await m.change(READY, true);
+  assert.deepEqual(m.listed(), ["Served subject"], "a fresh served read omits it");
 });
 
 it("shows another tab's read and clear from actor-keyed stream rows", async () => {

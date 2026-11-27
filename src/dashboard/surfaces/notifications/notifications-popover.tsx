@@ -75,8 +75,9 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
   const all = state.state === "ready" ? state.items : [];
   const unread = all.filter(item => !item.read).length;
   const items = show === "unread" ? all.filter(item => !item.read) : all;
-  const needsYou = items.filter(item => item.priority && !item.read);
-  const rest = items.filter(item => !needsYou.includes(item));
+  const needsYou = items.filter(item => item.standing === true || (item.priority && !item.read));
+  const history = items.filter(item => item.readOnlyHistory === true && !needsYou.includes(item));
+  const rest = items.filter(item => !needsYou.includes(item) && !history.includes(item));
   const clearable = items.filter(item => itemClearable(item) && handlers.canClear(item.id));
   // After a clear, focus moves to the next row that can take it, or to the header once none can; after Clear all, to the first such row left.
   const [moveFocus, setMoveFocus] = useState<{ cleared: readonly string[]; after?: readonly (string | undefined)[] }>();
@@ -121,6 +122,7 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
           : <>
             {needsYou.length > 0 && <NoticeGroup label="Needs you" items={needsYou} handlers={rowHandlers} />}
             {rest.length > 0 && <NoticeGroup label="Earlier" items={rest} handlers={rowHandlers} />}
+            {history.length > 0 && <NoticeGroup label="History" items={history} handlers={rowHandlers} />}
           </>}
       </div>
       {notice !== "" && <p role="status" className="notice-status">{notice}</p>}
