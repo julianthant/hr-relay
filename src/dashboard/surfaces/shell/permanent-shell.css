@@ -133,8 +133,8 @@
 /* The calendar's 7 x 32px columns sit centred with equal insets; the footer shares them. */
 .queue-date-menu.ds-menu-surface { padding: 8px; }
 .queue-date-menu .ds-calendar { margin-inline: auto; }
-.queue-date-menu .ds-calendar .calendar__header { padding: 0 0 8px; }
-.queue-date-menu .ds-calendar :is(table, .calendar__grid) { width: 224px; margin-inline: auto; }
-.queue-date-menu .ds-calendar .calendar__header-cell { width: 32px; text-align: center; }
+.queue-date-menu .ds-calendar header { padding: 0 0 8px; }
+.queue-date-menu .ds-calendar table { width: 224px; margin-inline: auto; }
+.queue-date-menu .ds-calendar th { width: 32px; text-align: center; }
 .queue-date-footer { display: flex; width: 224px; margin: 8px auto 0; box-sizing: border-box; align-items: center; justify-content: space-between; border-top: 1px solid var(--ui-stroke); padding: 8px 0 0; color: var(--ui-secondary); font-size: 12px; }
 .queue-date-today { padding: 0; border: 0; background: transparent; color: var(--ds-fg-link); cursor: pointer; font-size: 13px; }
