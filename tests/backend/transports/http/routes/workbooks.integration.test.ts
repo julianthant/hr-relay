@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_PAYLOAD_TABLE, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from '../../../../../src/backend/storage/sqlite/workbook-library-repository.js';
-import { createWorkbookLibraryService, projectWorkbookCompatibilityFromRepository } from '../../../../../src/backend/workbooks/workbook-library-service.js';
+import { createWorkbookLibraryService, projectWorkbookCompatibilityFromRepository, snapshotWorkbookReference } from '../../../../../src/backend/workbooks/workbook-library-service.js';
+import { buildRunWorkbookSection } from '../../../../../src/backend/runs/workbooks.js';
 import { manualClock } from '../../../../../src/rules/time/clock.js';
 import { unexpectedWorkbookSync } from '../../../../support/helpers/backend/workbook-sync.js';
 import { installRetainedMergeFixture } from '../../../../support/fixtures/storage/retained-workbook-merge.js';
@@ -16,7 +17,18 @@ import { DashboardClientError } from '../../../../../src/dashboard/client/errors
 
 import assert from "node:assert/strict";
 import { afterEach, expect, it, vi } from "vitest";
-import { WorkbookImportResultSchema, encodeEditableWorkbook, decodeSavedWorkbook } from "../../../../../src/models/dashboard/workbooks.js";
+import { WorkbookImportResultSchema, bindRunWorkbookReference, encodeEditableWorkbook, decodeSavedWorkbook, parseRunWorkbookReference } from "../../../../../src/models/dashboard/workbooks.js";
+import { RunRecordSchema } from '../../../../../src/models/run/record.js';
+import { derivePlannedInputFingerprint } from '../../../../../src/models/run/start-plan.js';
+import { deriveSchemaHash } from '../../../../../src/models/validation/schema-bound-value.js';
+import { CrmDocDownloadCanonicalInput, CrmDocDownloadInput } from '../../../../../src/models/workflows/crm-doc-download/input.js';
+import { ReadCrmDocumentRows } from '../../../../../src/models/workflows/crm-doc-download/read-document-rows.js';
+import { ONBOARDING_ROSTER_TYPE_ID } from '../../../../../src/models/workflows/onboarding/roster.js';
+import { canonicalJsonStringify } from '../../../../../src/rules/validation/canonical-json.js';
+import { sha256Hex } from '../../../../../src/rules/validation/sha256.js';
+import { QUEUED_RUN, START_PLAN } from '../../../../support/fixtures/phase1f-run-fixtures.js';
+import { HASH_B } from '../../../../support/fixtures/phase1c-contract-fixtures.js';
+import { testRunService } from '../../../../support/fixtures/run-lifecycle-fixtures.js';
 import { WorkbookLibraryActionStatusSchema, WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema } from "../../../../../src/models/dashboard/workbook-library.js";
 import { assertHttpFaultOnly,faultAuthoritySnapshot,disposeHttpRouteHarness, foreignOriginCases, harness } from "../../../../support/helpers/backend/http-route-harness.js";
 
@@ -330,6 +342,90 @@ it('serves persisted types and manual named versions, refusing forged sources an
   assert.equal((await unavailable.json() as { code: string }).code, 'WORKBOOK_REVISION_UNAVAILABLE');
   assert.deepEqual((await catalog()).state.versions.map(({ name }) => name), ['Original version', 'Archived review']);
   assert.equal(h.database.authority.workbooks.read(first.libraryId)?.version, 1);
+});
+
+it('protects a version held by a start plan or queued run and keeps the finished run reference after deletion', async () => {
+  const h = await harness();
+  const { authority } = h.database;
+  const client = workbookClient(h.app);
+  const { libraryId } = await client.workbookCreate({
+    ...workbook, name: 'Roster.xlsx', sheets: [{
+      id: 'people', name: 'People', width: 1, hidden: [], headerRow: 1,
+      columnBindings: [{ id: 'email', sourceColumn: 0, sourceHeader: 'Email', fieldId: 'email', basis: 'manual' }],
+      rows: [{ id: 'header', cells: [{ value: 'Email' }] }, { id: 'retained', cells: [{ value: 'retained@example.test' }] }],
+    }],
+  });
+  const [entry] = await client.workbookCatalog();
+  const versionId = 'historical-roster';
+  const created = await client.workbookLibraryAction(libraryId, {
+    operationId: versionId, expectedRevision: entry.state.revision, expectedVersion: entry.version,
+    change: { kind: 'create-version', name: 'Historical roster', from: { kind: 'version', versionId: entry.state.selectedVersionId }, useNow: false },
+  });
+  const path = `http://localhost/api/v1/workbooks/${libraryId}`;
+  const remove = (operationId: string) => h.app.request(`${path}/library-actions`, {
+    method: 'POST', headers, body: JSON.stringify({
+      operationId, expectedRevision: created.result.revision, expectedVersion: entry.version,
+      change: { kind: 'delete-version', versionId },
+    }),
+  });
+  const assertInUse = async (operationId: string) => {
+    const response = await remove(operationId);
+    assert.equal(response.status, 409);
+    expect(await response.json()).toMatchObject({ code: 'WORKBOOK_VERSION_IN_USE' });
+  };
+
+  const request = { typeId: ONBOARDING_ROSTER_TYPE_ID, libraryId, versionId, keys: ['retained@example.test'], fields: ['email'] };
+  const snapshot = snapshotWorkbookReference(authority.workbooks, {
+    ...request, kind: 'selected-source', mode: 'keys', sheetId: 'people', expectedVersion: entry.version, keyFieldId: 'email', writableFields: [],
+  });
+  const bound = bindRunWorkbookReference(request, snapshot);
+  const planned = START_PLAN.planned.map(run => ({ ...run, workbookReferences: [bound] }));
+  const plannedAt = h.clock.now().toISOString(), expiresAt = new Date(h.clock.nowMs() + 60_000).toISOString();
+  assert.equal(authority.startPlans.create({
+    ...START_PLAN, planned, plannedAt, expiresAt, createdAt: plannedAt, updatedAt: plannedAt,
+    inputFingerprint: derivePlannedInputFingerprint(planned, START_PLAN.ingressSchemaHash, START_PLAN.canonicalInputSchemaHash),
+  }).state, 'inserted');
+  await assertInUse('delete-with-plan');
+
+  const { people: [person] } = ReadCrmDocumentRows.example;
+  const raw = { people: person.subject.value };
+  const queued = RunRecordSchema.parse({
+    ...QUEUED_RUN, claimGeneration: 1,
+    envelope: { ...QUEUED_RUN.envelope, workflow: 'crm-doc-download', traceId: 'crm-170000-2222' },
+    input: { ...QUEUED_RUN.input, raw, parsed: { schemaHash: deriveSchemaHash(CrmDocDownloadCanonicalInput, 'output'),
+      protectedBindings: [], value: CrmDocDownloadInput.parse(raw) }, workbookReferences: [bound] },
+  });
+  authority.runs.enqueue(queued);
+  h.clock.setWall(new Date(expiresAt));
+  await assertInUse('delete-with-queued-run');
+  const { runId, workflow, itemId, attempt, descriptorVersion, contractFingerprint } = queued.envelope;
+  const finished = testRunService(h.database, h.clock).transition({
+    commandId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', runId, expectedVersion: queued.version,
+    lifecycle: { state: 'terminal', outcome: 'discarded', endedAt: expiresAt },
+  });
+  assert.equal(finished.state, 'applied');
+  const referenceDigest = sha256Hex(canonicalJsonStringify(bound));
+  authority.runCheckpoints.insert({
+    workflowId: workflow, itemId, nodeId: 'document-rows', attempt, claimGeneration: queued.claimGeneration,
+    runId, output: { schemaHash: deriveSchemaHash(ReadCrmDocumentRows.output, 'output'), value: ReadCrmDocumentRows.output.parse({
+      referenceDigest, sourceDigests: [referenceDigest], state: 'resolve-required',
+      people: [{ ...person, resolution: { state: 'resolve-required', reason: 'row-missing', candidates: [] } }],
+    }) }, descriptorVersion, contractFingerprint, implFingerprint: HASH_B, provenance: [], writtenAt: expiresAt,
+  });
+  const before = buildRunWorkbookSection(authority, finished.run);
+  expect(before.referenceChoices).toMatchObject([{ libraryId, referenceDigest, key: person.subject.value }]);
+
+  assert.equal((await remove('delete-after-finish')).status, 200);
+  assert.equal((await h.app.request(`${path}/versions/${versionId}`)).status, 404);
+  const retained = authority.runs.get(runId);
+  assert.ok(retained);
+  assert.deepEqual(buildRunWorkbookSection(authority, retained), before);
+  const retainedReference = retained.input.workbookReferences?.[0];
+  assert.ok(retainedReference);
+  expect(parseRunWorkbookReference(retainedReference).snapshot.rows).toEqual([{
+    key: 'retained@example.test', state: 'matched',
+    matches: [{ sheetId: 'people', rowId: 'retained', values: { email: 'retained@example.test' } }],
+  }]);
 });
 
 it('creates a named version from SharePoint only after its download settles', async () => {
